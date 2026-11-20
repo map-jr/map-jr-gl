@@ -97,7 +97,7 @@ try {
         await page.getByRole('button', {name: /switch to dark mode/i}).first().click();
         await page.waitForFunction(() => document.documentElement.classList.contains('dark'));
         const dark = await background();
-        check('colour mode: the paper is #f6f5f2 and the night is #17181a', light === 'rgb(246, 245, 242)' && dark === 'rgb(23, 24, 26)', `${light} / ${dark}`);
+        check('colour mode: the light page is #ffffff and the night is #17181a', light === 'rgb(255, 255, 255)' && dark === 'rgb(23, 24, 26)', `${light} / ${dark}`);
         await page.reload({waitUntil: 'networkidle'});
         check('colour mode: the choice stays after a load', await page.evaluate(() => document.documentElement.classList.contains('dark')));
         check('docs page: no failed request and no error', problems.length === 0, problems.join(' | '));

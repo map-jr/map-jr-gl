@@ -58,7 +58,7 @@
 
   --ui-primary: var(--ui-color-primary-600);
 
-  --ui-bg: #ffffff;
+  --ui-bg: var(--ui-color-neutral-50);
   --ui-bg-muted: var(--ui-color-neutral-100);
   --ui-bg-elevated: var(--ui-color-neutral-100);
   --ui-bg-accented: var(--ui-color-neutral-200);
@@ -79,6 +79,11 @@
   /* The colour of the contour lines, and of the sheet that a code block is printed on. */
   --site-contour: var(--ui-color-neutral-300);
   --site-sheet: #ffffff;
+}
+
+/* The light page is white (#1332). Surfaces that use --ui-bg (the header, the cards) keep the paper. */
+:root:not(.dark) body {
+  background-color: #ffffff;
 }
 
 /*
