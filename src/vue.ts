@@ -103,14 +103,26 @@ function kept<T, S extends unknown[] = any[]>(sources: {[K in keyof S]: () => S[
 export const MapOverlay = defineComponent({
     name: 'MapOverlay',
     props: {
+        /** The position of the content, `[lng, lat]`. */
         lngLat: {type: Array as unknown as PropType<[number, number]>, required: true},
+        /**
+         * The part of the content that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners.
+         * @default 'center'
+         */
         anchor: String as PropType<OverlayOptions['anchor']>,
+        /** A distance in CSS pixels from the position, to the right and down. */
         offset: Array as unknown as PropType<[number, number]>,
-        /** Show the content in a box with a pointer to the position. */
+        /**
+         * Whether the content is shown in a box with a tip that points to the position (a popup).
+         * @default false
+         */
         popup: Boolean,
-        /** With a listener for `close`, a popup has a button to close it. */
+        /** Called when the user closes the popup, as the listener `@close`. With it, the popup has a button to close it. */
         onClose: Function as PropType<() => void>,
-        /** The user can move the content (not for a `popup`). The events `dragstart`, `drag` and `dragend` get `[lng, lat]`. */
+        /**
+         * Whether the user can drag the content. A popup cannot be dragged. The events `dragstart`, `drag` and `dragend` receive `[lng, lat]`.
+         * @default false
+         */
         draggable: Boolean,
     },
     emits: ['close', 'dragstart', 'drag', 'dragend'],
@@ -153,12 +165,14 @@ const forwarded = Object.fromEntries(FORWARDED.map(name => [name.replace('.', ''
 export interface MapImageProps<P extends string = never> {
     /** The name of the image, for `icon-image` of a style layer. */
     name: string;
-    /** The names of the parameters of the image. The slot gets a prop for each one. */
+    /** The names of the parameters of the image, as an array of strings. The slot gets a prop for each one. */
     params?: readonly P[];
     /** The URL of an image, in place of an SVG in the slot. */
     src?: string;
-    /** The size in CSS pixels. Without it, an SVG has the size of its `viewBox` or else of its `width` and `height` attributes, and another image has its own size. */
-    width?: number; height?: number;
+    /** The width in CSS pixels. Without it, an SVG has the width of its `viewBox` or else of its `width` attribute, and another image has its own width. */
+    width?: number;
+    /** The height in CSS pixels. Without it, an SVG has the height of its `viewBox` or else of its `height` attribute, and another image has its own height. */
+    height?: number;
     /**
      * The number of image pixels for one CSS pixel, for example 2 for an image "@2x".
      * @default 1
@@ -218,16 +232,16 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  */
 /** What a template ref on `MapJr` holds. */
 export interface MapJrExposed {
-    /** The map, or `null` until the component is mounted. */
+    /** The map, or `null` until the code of the map has loaded after the component is mounted. */
     readonly map: MapInstance | null;
-    /** The state of the map, or `null` until the component is mounted. */
+    /** The state of the map, or `null` until the code of the map has loaded after the component is mounted. */
     readonly state: MapState | null;
 }
 
 const MapJrComponent = defineComponent({
     name: 'MapJr',
     props: {
-        /** The style: a style object, the URL of a style, or `{light, dark}` with one style for each resolved `colorScheme`. */
+        /** The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. */
         mapStyle: {type: [String, Object] as PropType<MapDescription['style']>, required: true},
         /** The view that the application controls, for `v-model:view`. Without it, the map starts at `initialView` and the user moves it. */
         view: Object as PropType<ViewInput>,
