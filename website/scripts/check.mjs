@@ -259,6 +259,52 @@ try {
         await close();
     }
 
+    // The table of contents (useTocActive) marks exactly one entry: the section that the reader is in (#1251).
+    {
+        const tocPage = '/guide/view-and-camera';
+        const {page, problems, close} = await open(tocPage);
+        const entries = page.locator('a.legend-link:visible');
+        const ids = (await entries.evaluateAll(links => links.map(link => decodeURIComponent(link.getAttribute('href').slice(1)))));
+        const activeIds = () => entries.evaluateAll(links => links.filter(link => link.classList.contains('toc-active')).map(link => decodeURIComponent(link.getAttribute('href').slice(1))));
+        const settle = () => page.waitForTimeout(300);
+        const expectOne = async (where, id) => {
+            const found = await activeIds();
+            check(`table of contents ${where}: one entry is active, "${id}"`, found.length === 1 && found[0] === id, JSON.stringify(found));
+        };
+        check('table of contents: the page has at least four entries', ids.length >= 4, String(ids.length));
+        await settle();
+        await expectOne('at the top', ids[0]);
+        const middle = ids[Math.floor(ids.length / 2)];
+        // The heading a little below the place where a link puts it is still the active one.
+        await page.evaluate(id => {
+            const heading = document.getElementById(id);
+            window.scrollTo(0, window.scrollY + heading.getBoundingClientRect().top - parseFloat(getComputedStyle(heading).scrollMarginTop) + 2);
+        }, middle);
+        await settle();
+        await expectOne('in the middle', middle);
+        if (screenshots) { const file = `${screenshots}-toc-middle-1440.png`; await page.screenshot({path: file}); console.log('screenshot', file); }
+        await page.mouse.wheel(0, -60);
+        await settle();
+        await expectOne('a little above a heading', ids[ids.indexOf(middle) - 1]);
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await settle();
+        await expectOne('at the bottom', ids.at(-1));
+        if (screenshots) { const file = `${screenshots}-toc-bottom-1440.png`; await page.screenshot({path: file}); console.log('screenshot', file); }
+        await entries.nth(1).click();
+        await page.waitForTimeout(1000);
+        await expectOne('after a click on the second entry', ids[1]);
+        check('table of contents: no failed request and no error', problems.length === 0, problems.join(' | '));
+        await close();
+
+        const context = await browser.newContext({viewport: {width: 1440, height: 900}, javaScriptEnabled: false});
+        const plain = await context.newPage();
+        await plain.goto(base + tocPage);
+        const plainEntries = plain.locator('a.legend-link:visible');
+        check('table of contents without JavaScript: no entry is active', await plain.locator('a.toc-active').count() === 0);
+        check('table of contents without JavaScript: the entries link to the headings', (await plainEntries.count()) === ids.length && (await plainEntries.first().getAttribute('href')) === '#' + encodeURIComponent(ids[0]));
+        await context.close();
+    }
+
     // The raw Markdown of a page is the file of docs/.
     {
         const raw = await fetch(base + '/raw/recipes/query.md').then(response => response.text());
