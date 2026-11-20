@@ -513,17 +513,18 @@ export class Map extends CoreMap {
     }
     /**
      * Moves the camera to fit a box with an animation of 800 ms unless `o` sets `duration`; MapLibre GL JS flies there for a time that `speed` sets.
-The options `speed`, `curve` and `linear` have no effect and warn once.
+     * As in MapLibre GL JS, the zoom fits the box as seen from above, and the camera ends at the `pitch` of `o` (or keeps its pitch).
+     * The options `speed`, `curve` and `linear` have no effect.
      * @param eventData Fields that the events of this move carry.
      */
-    fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) {
-        this.unsupported('The options speed, curve and linear of fitBounds', o?.speed === undefined && o?.curve === undefined && o?.linear === undefined);
-        return this.camera(eventData, () => super.fitBounds(bounds, o));
+    fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o: FitBoundsOptions = {}, eventData?: EventData) {
+        this.unsupported('The options speed, curve and linear of fitBounds', o.speed === undefined && o.curve === undefined && o.linear === undefined);
+        return this.easeTo({...this.cameraForBounds(bounds, o), pitch: o.pitch, duration: o.duration ?? 800}, eventData);
     }
     /**
      * Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`, with an
      * animation of 800 ms unless `o` sets `duration`. The method is that of MapLibre GL JS 6.17, and the options are those of
-     * `fitBounds`: `speed`, `curve` and `linear` have no effect.
+     * `fitBounds`: the camera ends at the `pitch` of `o`, and `speed`, `curve` and `linear` have no effect.
      */
     fitScreenCoordinates(p0: PointLike, p1: PointLike, bearing: number, o: FitBoundsOptions = {}, eventData?: EventData) {
         this.unsupported('The options speed, curve and linear of fitScreenCoordinates', o.speed === undefined && o.curve === undefined && o.linear === undefined);
@@ -534,7 +535,7 @@ The options `speed`, `curve` and `linear` have no effect and warn once.
         const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(fit(this.tr.width, 1, dx * Math.abs(c) + dy * Math.abs(s)), fit(this.tr.height, 0, dx * Math.abs(s) + dy * Math.abs(c))) / 512));
         // As in fitBounds, the padding of the call moves the centre (the padding of the map does that by itself): here along the turned axes.
         const world = 512 * 2 ** zoom, sx = (pad[3] - pad[1]) / 2 / world, sy = (pad[0] - pad[2]) / 2 / world;
-        return this.easeTo({center: [lngFromMerc((x0 + x1) / 2 - c * sx + s * sy), latFromMerc((y0 + y1) / 2 - s * sx - c * sy)], zoom, bearing, duration: o.duration ?? 800}, eventData);
+        return this.easeTo({center: [lngFromMerc((x0 + x1) / 2 - c * sx + s * sy), latFromMerc((y0 + y1) / 2 - s * sx - c * sy)], zoom, bearing, pitch: o.pitch, duration: o.duration ?? 800}, eventData);
     }
     private camera(eventData: EventData | undefined, f: () => this) {
         if (!this.nested) this.moveData = eventData;
