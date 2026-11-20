@@ -21,7 +21,7 @@ concurrency:
 jobs:
   site:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -47,11 +47,11 @@ jobs:
           retention-days: 14
       # The check does not wait for the map of the home page, which needs the style and the tiles of other hosts. It
       # checks the table of contents on a phone also in WebKit.
-      # An attempt that hangs (#1328) is killed after 4 minutes, so that the next attempt runs; the step stops after 15.
+      # An attempt that hangs (#1328) is killed after 6 minutes (a healthy install takes up to about 4), so that the next attempt runs; 3 attempts and 2 pauses fit in 19 minutes, and the job has 35.
       - name: Install Chromium and WebKit
-        timeout-minutes: 15
+        timeout-minutes: 19
         working-directory: website
-        run: for i in 1 2 3; do timeout -k 10 240 pnpm exec playwright install --with-deps chromium webkit && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
+        run: for i in 1 2 3; do timeout -k 10 360 pnpm exec playwright install --with-deps chromium webkit && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
       - run: pnpm check --no-map
         working-directory: website
       - name: Deploy to Cloudflare
