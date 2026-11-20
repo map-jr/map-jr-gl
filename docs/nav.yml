@@ -31,6 +31,8 @@ sections:
     folder: reference
     pages:
       - controls.md
+      - vue.md
+      - nuxt.md
       - server.md
       - maplibre-compat.md
   - title: Migrate
