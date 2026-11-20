@@ -77,7 +77,7 @@ On a system with a dark appearance, the map, the controls and the attribution ar
   `openfreemap-*` styles do not. For another style, see
   [Write a style that follows the scheme](#write-a-style-that-follows-the-scheme) and
   [Use a light style and a dark style](#use-a-light-style-and-a-dark-style).
-- The scheme that the map shows, `'light'` or `'dark'`, is `colorScheme` of [the state](../api.md#the-state), the store of the values that the map reports:
+- The scheme that the map shows, `'light'` or `'dark'`, is `colorScheme` of [the state](../reference/state.md#mapstate), the store of the values that the map reports:
   `map.state.get().colorScheme`.
 
 The compat entry has no `colorScheme`. See [In the compat entry](#in-the-compat-entry).

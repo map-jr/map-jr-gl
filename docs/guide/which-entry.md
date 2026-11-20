@@ -20,7 +20,7 @@ for MapLibre GL JS that you want to keep.
 
 The description ([`MapDescription`](../reference/description.md)) is one object that states everything that a map
 shows: the style, the data, the view and the controls. [`createMap`](../api.md#make-a-map) creates a map from a
-description. To change the map, pass a new description to [`update`](../api.md#change-the-map), and the map applies
+description. To change the map, pass a new description to [`update`](../reference/map.md#update), and the map applies
 what is different. The state of the map, such as the view and the feature under the pointer, is a store that your
 code can subscribe to.
 

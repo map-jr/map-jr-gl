@@ -103,7 +103,7 @@ See [Controls](../api.md#controls) for what each option does.
 
 ## Change or remove a control
 
-Pass a new list of controls in the description. In the main API, [`map.patch`](../api.md#change-the-map) replaces the
+Pass a new list of controls in the description. In the main API, [`map.patch`](../reference/map.md#patch) replaces the
 fields that it is passed and keeps the other fields of the description, and `map.update` takes the complete
 description.
 

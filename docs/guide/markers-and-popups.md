@@ -160,7 +160,7 @@ other forms of an image.
 
 ## Change the markers
 
-Set new GeoJSON on the source. In the main API, [`map.patch`](../api.md#change-the-map) replaces the fields that it
+Set new GeoJSON on the source. In the main API, [`map.patch`](../reference/map.md#patch) replaces the fields that it
 is passed and keeps the other fields of the description.
 
 **Main API**
