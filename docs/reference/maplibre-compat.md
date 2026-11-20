@@ -168,7 +168,7 @@ library" names a member that MapLibre GL JS does not have.
 | `removeSprite` | `(id: string) => Map` | Removes the sprite sheet with this id from the style. |
 | `getGlyphs` | `() => string \| null` | Returns the URL of the glyph files of the style, or `null` when the style has none. |
 | `setGlyphs` | `(url: string \| null) => Map` | Sets the URL of the glyph files of the style. |
-| `getFontFaces` | `() => Record<string, unknown>` | Returns the `font-faces` of the style, or `{}` when the style has none, where MapLibre GL JS returns `null`. |
+| `getFontFaces` | `() => Record<string, unknown> \| null` | Returns the `font-faces` of the style, or `null` when the style has none. |
 | `setFontFaces` | `(faces: Record<string, unknown> \| null) => Map` | Replaces the `font-faces` of the style, or removes them with `null`. |
 | `setFeatureState` | `(feature: FeatureIdentifier, state: Record<string, unknown>) => Map` | Merges `state` into the feature state of one feature. |
 | `getFeatureState` | `(feature: FeatureIdentifier) => Record<string, unknown>` | Returns the feature state of one feature. |

@@ -89,7 +89,6 @@ The [status table](../README.md#status) gives the current test results.
 | `snapToNorth` | Turns the map north when the bearing is within the option `bearingSnap` (7 degrees by default). | Turns the map north when the bearing is within 7 degrees. The option `bearingSnap` has no effect. |
 | `setMinPitch` | Throws an error for a value below 0 or above the largest pitch. | Limits the value to between 0 and the largest pitch, with no error. |
 | `getLight` | Returns the fields that the style sets. | Returns the light of the style with the defaults filled in for the fields that it does not set. |
-| `getFontFaces` | Returns `null` when the style has no `font-faces`. | Returns `{}`. |
 | `setStyle` | Returns the map. | Returns a promise that settles when the new style has loaded. |
 | `setFeatureState`, `getFeatureState` without an `id` | Fire `error`. | Warn once. `setFeatureState` changes nothing, and `getFeatureState` returns `{}`. |
 | `coveringTiles` | Returns `OverscaledTileID` objects. | Returns plain objects with the same fields: `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`. |
