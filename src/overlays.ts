@@ -273,8 +273,10 @@ export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?:
 }
 
 /**
- * The default pin of `Marker`: a `div` with an SVG drop, 27 by 41 pixels at `scale` 1, filled with `color` (default
+ * A pin for `overlay`, the default pin of `Marker` in the compat entry: a `div` with an SVG drop, 27 by 41 pixels at `scale` 1, filled with `color` (default
  * `'#3fb1ce'`). Each call makes a new element. Its anchor is `'bottom'`.
+ * @param options `color` is a CSS colour, and `scale` multiplies the size (default 1).
+ * @returns A new element.
  */
 export function defaultPin(options: {color?: string; scale?: number} = {}): HTMLElement {
     const s = +(options.scale ?? 1) || 1, el = document.createElement('div');

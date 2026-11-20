@@ -62,7 +62,16 @@ export type GeoJSON = {type: 'FeatureCollection'; features: readonly GeoJSONFeat
  */
 export type LayerInput = (BackgroundLayerSpecification | FillLayerSpecification | FillExtrusionLayerSpecification | LineLayerSpecification | CircleLayerSpecification | HeatmapLayerSpecification | RasterLayerSpecification | HillshadeLayerSpecification | ColorReliefLayerSpecification | SymbolLayerSpecification) & {before?: string};
 /** A cluster or a point that the cluster methods of `MapInstance` return, as GeoJSON in longitude and latitude. */
-export interface ClusterFeature {type: 'Feature'; id?: string | number; properties: Record<string, unknown>; geometry: {type: 'Point'; coordinates: [number, number]}}
+export interface ClusterFeature {
+    /** Always `'Feature'`. */
+    type: 'Feature';
+    /** The id of a point, from the data or from `generateId` of the source. */
+    id?: string | number;
+    /** The properties of a point. A cluster has `cluster: true`, `cluster_id`, `point_count` and `point_count_abbreviated`. */
+    properties: Record<string, unknown>;
+    /** The position of the point or of the cluster. */
+    geometry: {type: 'Point'; coordinates: [number, number]};
+}
 /**
  * Where the camera is. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map,
  * as `getBounds()` gives it in MapLibre GL JS.
@@ -205,7 +214,7 @@ export interface MapDescription extends MapSetup {
      * in `state` of the style. A name that is left out or set to `null` uses the default of the style.
      */
     globalState?: Record<string, unknown>;
-    /** The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](docs/api.md#the-state) and in `onClick`. */
+    /** The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](docs/reference/state.md#mapstate) and in `onClick`. */
     interactiveLayers?: string[];
     /**
      * Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for
@@ -373,7 +382,7 @@ export interface OverlayOptions {
 }
 /** An element that `overlay` placed on the map. */
 export interface MapOverlay {
-    /** Replaces the options of the overlay. The element moves only when `lngLat` changes, so a dragged element stays where it was dropped. */
+    /** Replaces all options of the overlay with `options`. The element moves only when `lngLat` changes, so a dragged element stays where it was dropped. */
     update(options: OverlayOptions): void;
     /** Removes the element from the map. */
     remove(): void;
@@ -576,11 +585,18 @@ export interface MapInstance {
     querySource(sourceId: string, at?: FeaturePlace | SourceOptions, options?: SourceOptions): Promise<QueriedFeature[]>;
     /**
      * Calls `listener` with the result of `queryFeatures` now and again each time that the result changes.
+     * @param at A place as for `queryFeatures`, or `undefined` for the whole map.
+     * @param options The options of `queryFeatures`.
+     * @param listener Called with the features at the start and after each change of the result.
      * @returns A function that stops the calls.
      */
     watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[]) => void): () => void;
     /**
      * Calls `listener` with the result of `querySource` now and again each time that the result changes.
+     * @param sourceId The id of a source of the style or of `sources`.
+     * @param at A place as for `querySource`, or `undefined` for the tiles of the view.
+     * @param options The options of `querySource`.
+     * @param listener Called with the features at the start and after each change of the result.
      * @returns A function that stops the calls.
      */
     watchSource(sourceId: string, at: FeaturePlace | undefined, options: SourceOptions, listener: (features: QueriedFeature[]) => void): () => void;
@@ -588,15 +604,18 @@ export interface MapInstance {
      * Merges `state` into the feature state of one feature, which `feature-state` expressions read. The map keeps the state,
      * also after a new `style`, until it is removed.
      * @param target `id` is the `id` of the feature; `sourceLayer` is required for a vector source.
+     * @param state The keys and values to set.
      */
     setFeatureState(target: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>): void;
     /**
      * Removes one key of the feature state of a feature, or its whole state when `key` is left out.
      * @param target Without `id`, the state of all features of the source is removed.
+     * @param key The key to remove. Without it, the whole state is removed.
      */
     removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void;
     /**
      * Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, from the terrain source.
+     * @param at A position, `[lng, lat]`, or a point of the screen, `{x, y}` in CSS pixels.
      * @returns A promise of the height in metres multiplied by the `exaggeration` of the terrain, or of `null` where there is no elevation data.
      */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
@@ -609,18 +628,21 @@ export interface MapInstance {
     toBlob(type?: string, quality?: number): Promise<Blob>;
     /**
      * Returns the zoom level at which a cluster of a GeoJSON source with `cluster: true` divides.
+     * @param sourceId The id of a GeoJSON source with `cluster: true`.
      * @param clusterId `properties.cluster_id` of the cluster feature.
      * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
      */
     clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>;
     /**
      * Returns the clusters and points that a cluster divides into at the next zoom level.
+     * @param sourceId The id of a GeoJSON source with `cluster: true`.
      * @param clusterId `properties.cluster_id` of the cluster feature.
      * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
      */
     clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>;
     /**
      * Returns the points of a cluster.
+     * @param sourceId The id of a GeoJSON source with `cluster: true`.
      * @param clusterId `properties.cluster_id` of the cluster feature.
      * @param options `limit` is the largest number of points (default 10), and `offset` the number to skip (default 0).
      * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
@@ -629,33 +651,45 @@ export interface MapInstance {
     /**
      * Moves the camera to a view or to `bounds`, with an animation when `duration` is more than 0 or `fly` is set. The
      * padding of the map stays that of the description.
+     * @param view Where the camera goes, and how it moves.
      */
     moveTo(view: MoveToOptions): void;
-    /** Moves the camera to fit a box, as `moveTo({bounds, ...options})` with `duration` 800 ms unless `options` sets it. */
+    /**
+     * Moves the camera to fit a box, as `moveTo({bounds, ...options})` with `duration` 800 ms unless `options` sets it.
+     * @param bounds The box to fit.
+     * @param options The options of `moveTo` other than `bounds`, `center` and `zoom`.
+     */
     fitBounds(bounds: Bounds, options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>): void;
     /**
      * Converts a position to a point of the screen.
+     * @param lngLat The position, `[lng, lat]`.
      * @returns The point in CSS pixels from the top left corner of the map.
      */
     project(lngLat: Position): {x: number; y: number};
     /**
      * Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position.
+     * @param point The point, `{x, y}`.
      * @returns The position as `[lng, lat]`.
      */
     unproject(point: {x: number; y: number}): [number, number];
     /**
      * Places an element of the page at a position of the map, as a marker, a label or a popup; the element moves with
      * the map. For many points, a symbol layer in `layers` renders much faster.
+     * @param element The element to place.
+     * @param options The position of the element, and whether it is a popup or can be dragged.
      * @returns An overlay with `update` and `remove`.
      */
     overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
     /**
      * Calls `fn` for each event of a type of `MapEvents`.
+     * @param type The name of the event.
+     * @param fn Called with the event.
      * @returns A function that stops the calls.
      */
     listen<K extends keyof MapEvents>(type: K, fn: (event: MapEvents[K]) => void): () => void;
     /**
      * Waits for the next event of a type of `MapEvents`. On a map that has loaded, `once('load')` resolves at once.
+     * @param type The name of the event.
      * @returns A promise of the event. It rejects when the map is destroyed first.
      */
     once<K extends keyof MapEvents>(type: K): Promise<MapEvents[K]>;
@@ -706,6 +740,12 @@ class GlassPopup extends Popup {
     }
 }
 
+/**
+ * Creates a map in an element of the page from a description.
+ * @param container The element, or the `id` of an element. The map fills it, so the element needs a height.
+ * @param spec The description of the map.
+ * @returns The map.
+ */
 export function createMap(container: HTMLElement | string, spec: MapDescription): MapInstance { return makeMap(container, spec, 'createMap()'); }
 
 /** @internal `createMap` for the adapters of this package. */

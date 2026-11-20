@@ -37,8 +37,8 @@ new `key`.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | [`mapStyle`](#mapstyle) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. |
-| [`view`](#view) | `ViewInput` | | The view that the application controls, for `v-model:view`. |
-| `initialView` | `InitialView` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
+| [`view`](#view) | [`ViewInput`](types.md#viewinput) | | The view that the application controls, for `v-model:view`. |
+| `initialView` | [`InitialView`](types.md#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | `sources` | `Record<string, SourceSpecification>` | | Sources to add to the style, by id. |
 | `layers` | `LayerInput[]` | | Layers to add to the style. |
 | `terrain` | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
@@ -84,7 +84,7 @@ browser, and the map loads the other style when the scheme changes. The componen
 `view` and the event `update:view` together form `v-model:view`. The component emits `update:view` with the new
 view at each change of the view, while the user moves the map and when your code changes `view`. It does not emit
 `update:view` for the first view. To read the first view, call `map.state.get()` in the handler of `@load`, which
-receives the map: the [state](../api.md#the-state) has the view in `view`.
+receives the map: the [state](state.md#mapstate) has the view in `view`.
 
 When `view` and `initialView` are both set, the fields of `view` override those of `initialView` when the map is
 created.
@@ -173,7 +173,7 @@ in the browser.
 | `idle` | none | Each time the map has drawn everything and nothing moves. |
 | `error` | `Error` | At each error of the map. Without a listener for `error`, the map writes each error to the console. |
 
-The component also emits each other event of [`listen`](../api.md#events) of the main API, with the same value:
+The component also emits each other event of [`listen`](map.md#listen) of the main API, with the same value:
 `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. The event `style.load` is `@styleload`,
 because a dot in an event name is a modifier in a template.
 
@@ -185,7 +185,7 @@ on the map of the [template ref](#the-template-ref). `map.listen` also receives 
 ### The slot
 
 The default slot renders over the map, and it receives `map` (`MapInstance | null`) and `state`
-([`MapState`](../api.md#the-state) or `null`). A slot that reads `state` renders again at each change of the state,
+([`MapState`](state.md#mapstate) or `null`). A slot that reads `state` renders again at each change of the state,
 and `state.pointer` changes at each move of the mouse. To follow one part of the state only, call
 `map.state.subscribe` with a selector.
 
@@ -212,8 +212,8 @@ map has loaded, which is after `onMounted` of the component that has the ref. In
 <!-- ref:VueMapJrExposed:start -->
 | Name | Type | Description |
 |---|---|---|
-| `map` (read only) | `MapInstance \| null` | The map, or `null` until the code of the map has loaded after the component is mounted. |
-| `state` (read only) | `MapState \| null` | The state of the map, or `null` until the code of the map has loaded after the component is mounted. |
+| `map` (read only) | [`MapInstance`](map.md#mapinstance)` \| null` | The map, or `null` until the code of the map has loaded after the component is mounted. |
+| `state` (read only) | [`MapState`](state.md#mapstate)` \| null` | The state of the map, or `null` until the code of the map has loaded after the component is mounted. |
 <!-- ref:VueMapJrExposed:end -->
 
 ## `MapOverlay`
@@ -330,7 +330,7 @@ useMapJr(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: Mayb
 | `container` | The element of the map, usually a template ref. |
 | `spec` | The [description](description.md). |
 
-**Returns** `map`, a ref that holds the map, and `state`, a ref that holds the [state](../api.md#the-state). Both
+**Returns** `map`, a ref that holds the map, and `state`, a ref that holds the [state](state.md#mapstate). Both
 are `null` until the map is created, which happens after `onMounted`, once the code of the map has loaded. The
 map is destroyed when the component that called `useMapJr` unmounts.
 
@@ -355,7 +355,7 @@ const {map, state} = useMapJr(useTemplateRef('el'), computed(() => ({
 </template>
 ```
 
-`useMapJr` calls [`update`](../api.md#change-the-map) of the map each time that `spec` returns a new object. A
+`useMapJr` calls [`update`](map.md#update) of the map each time that `spec` returns a new object. A
 computed value or a function returns one when a ref that it reads changes. A change inside a ref is not seen:
 after `const description = ref({style, cursor: ''})`, the assignment `description.value.cursor = 'crosshair'`
 changes nothing. Write `description.value = {...description.value, cursor: 'crosshair'}`. The props of `MapJr`
@@ -386,10 +386,10 @@ interface SourceOptions {sourceLayers?: string[]; filter?: FilterSpecification; 
 - `FeaturePlace` is a point in CSS pixels, a position `[lng, lat]`, or the two corners of a rectangle of the screen.
 - `FeatureOptions` limits the result to the style layers in `layers` and to the features that `filter` matches, and
   `radius` widens the place by that many CSS pixels.
-- [Queries](../api.md#queries) describes `SourceOptions` for `useMapSource`.
+- [`SourceOptions`](map.md#sourceoptions) describes the options for `useMapSource`.
 
 **Returns** a ref with the features that the style layers draw at `at`, kept up to date as
-[`watchFeatures`](../api.md#queries) of the map keeps them. Call it in a component inside `MapJr`. The place and the
+[`watchFeatures`](map.md#watchfeatures) of the map keeps them. Call it in a component inside `MapJr`. The place and the
 options can be refs or functions. The example is a component that a page puts inside `MapJr` with the style
 `elevation-zero.json`, which has the layer `building`.
 
@@ -413,7 +413,7 @@ useMapSource(sourceId: MaybeRefOrGetter<string>, at?: MaybeRefOrGetter<FeaturePl
 ```
 
 **Returns** a ref with the features of the tile data of the source `sourceId` at `at`, kept up to date as
-[`watchSource`](../api.md#queries) of the map keeps them. Call it in a component inside `MapJr`. The id, the place
+[`watchSource`](map.md#watchsource) of the map keeps them. Call it in a component inside `MapJr`. The id, the place
 and the options can be refs or functions.
 
 ## How `MapJr` sees changes

@@ -116,7 +116,7 @@ geolocate(options?: GeolocateOptions): ControlSpec
 ```
 
 When the browser returns a position, the map moves to it and zooms in to `zoom`. A map that is zoomed in further
-keeps its zoom. The map fires these events of [`MapEvents`](../api.md#events), which `map.listen` receives:
+keeps its zoom. The map fires these events of [`MapEvents`](events.md#mapevents), which `map.listen` receives:
 
 | Event | Fields |
 |---|---|

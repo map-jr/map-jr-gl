@@ -6,14 +6,19 @@ import type {TileLayers} from './tile.ts';
 
 /** A feature found by a query. It comes straight from the tile data, whether or not any style layer draws it. */
 export interface QueriedFeature {
+    /** The id of the source. */
     source: string;
+    /** The layer of the vector tile. */
     sourceLayer: string;
+    /** The id of the feature in its source, if it has one. */
     id?: number | string;
+    /** The type of the geometry. */
     type: 'Point' | 'LineString' | 'Polygon';
-    /** For a rendered-features query: the id of the style layer that draws the feature. */
+    /** Not set by `querySource`. */
     layer?: string;
+    /** The properties of the feature. */
     properties: Record<string, unknown>;
-    /** GeoJSON geometry in longitude/latitude, when requested. */
+    /** The geometry as GeoJSON, in longitude and latitude. A query of the view always sets it, and a query at a place sets it with `geometry: true`. */
     geometry?: {type: string; coordinates: unknown};
 }
 export interface TileQuery {
