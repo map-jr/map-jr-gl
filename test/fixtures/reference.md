@@ -75,8 +75,8 @@ props of the Vue and React components, the options of the Svelte action, and the
 <!-- ref:MapJrElement:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `mapStyle` | [`MapDescription`](../../docs/reference/description.md#mapdescription)`['style']` | | The `style` of the description: the URL of a style or a style object. |
-| `map` (read only) | [`MapInstance`](../../docs/reference/map.md#mapinstance)` \| null` | | The map (`MapInstance`), from the microtask after the element is added to the page until it is removed, or else `null`. |
+| `mapStyle` | [`MapDescription`](../../docs/reference/description.md#mapdescription)`['style']` | | The `style` of the description: the URL of a style, a style object, or `{light, dark}`. |
+| `map` (read only) | [`MapInstance`](../../docs/reference/map.md#mapinstance)` \| null` | | The map (`MapInstance`), from the microtask after the element is in the page with a style until it is removed, or else `null`. |
 | `state` (read only) | [`MapInstance`](../../docs/reference/map.md#mapinstance)`['state'] \| null` | | The state of the map as a store (`map.state`), or `null` while there is no map. |
 | `addEventListener` | `(type: string, listener: EventListenerOrEventListenerObject, options?: boolean \| AddEventListenerOptions \| undefined) => void` | | Adds a listener, as on any element. |
 <!-- ref:MapJrElement:end -->

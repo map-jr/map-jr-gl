@@ -42,6 +42,9 @@ sections:
       - vue.md
       - nuxt.md
       - server.md
+      - react.md
+      - svelte.md
+      - element.md
       - maplibre-compat.md
   - title: Migrate
     folder: migrate
