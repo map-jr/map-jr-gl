@@ -309,8 +309,8 @@ export class Map extends CoreMap {
 
     // ---- zoomSnap and setEventedParent, as in MapLibre GL JS ----
     /**
-     * As in MapLibre GL JS: with a `zoomSnap` above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn` and `zoomOut`
-     * goes to the nearest multiple of it, and `cameraForBounds` (and so `fitBounds`) to the multiple below.
+     * Sets the step of the zoom, as in MapLibre GL JS: above 0, a camera method ends at the nearest multiple of it.
+     * `cameraForBounds` and `fitBounds` end at the multiple below.
      */
     setZoomSnap(snap: number) { this.zoomSnap = snap; return this; }
     /** Returns the step of the zoom that the option `zoomSnap` or `setZoomSnap` set, or 0 when the zoom does not snap. */

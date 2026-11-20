@@ -32,9 +32,13 @@ sections:
     pages:
       - controls.md
       - server.md
+      - maplibre-compat.md
   - title: Migrate
     folder: migrate
-    pages: []
+    pages:
+      - from-maplibre.md
+      - wrappers.md
+      - compat-to-main-api.md
   # The documents from before the docs site. A document leaves this list when the four folders have its content.
   - title: Current docs
     pages:
