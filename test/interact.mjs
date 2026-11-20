@@ -2940,11 +2940,16 @@ for (const mode of renderers) {
                 const globe = calls, said = warnings.filter(w => w.includes('"custom"'));
                 m.setProjection({type: 'mercator'});
                 await wait(500); m.triggerRepaint(); await wait(300);
-                return {globe, said, mercator: calls};
+                const n = warnings.length, vp = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, projection: {type: 'vertical-perspective'},
+                    sources: {dem: {type: 'raster-dem', tiles: ['/none/{z}/{x}/{y}.png']}}, terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background'}]}});
+                await new Promise(r => vp.once('load', r)); vp.addLayer({id: 'c', type: 'custom', render() {}}); await wait(300); vp.remove();
+                return {globe, said, mercator: calls, vp: warnings.slice(n)};
             } finally { console.warn = warn; m.remove(); el.remove(); }
         });
         check('[main] maplibre-compat: on the globe a custom layer is not drawn and the map warns once; in Mercator it draws again (#1225)',
-            r.globe === 0 && r.said.length === 1 && /^\[map-jr-gl\] Custom layers \(the type "custom"\) are not drawn on the globe/.test(r.said[0]) && r.mercator > 0, JSON.stringify(r));
+            r.globe === 0 && r.said.length === 1 && r.said[0] === '[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: they show from zoom 12, where the map is flat, or use the projection "mercator".'
+            && r.vp.length === 2 && r.vp[0] === '[map-jr-gl] 3D terrain is not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".'
+            && r.vp[1] === '[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".' && r.mercator > 0, JSON.stringify(r));
     }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
