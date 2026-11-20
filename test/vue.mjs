@@ -148,6 +148,9 @@ try {
     await page.waitForFunction(() => window.t.order.includes('idle'), null, {timeout: 60000});
     const order = await page.evaluate(() => window.t.order.slice(0, 2));
     check('browser: the component emits load before the first idle, and the map is not idle yet at load', order[0] === 'load:false' && order[1] === 'idle', JSON.stringify(order));
+    // v-model:view gets the first view once, and the view that it gives back moves nothing: a move would report a second view (#1135).
+    const firstView = await page.evaluate(() => ({views: window.t.views, zoom: window.t.view.value.zoom, bounds: !!window.t.view.value.bounds, }));
+    check('browser: update:view comes once with the first view, and v-model:view giving it back moves nothing (#1135)', firstView.views === 1 && firstView.bounds, JSON.stringify(firstView));
     const exposed = await page.evaluate(() => { const r = window.t.map.value, m = window.t.loadHost; return {members: typeof r.queryFeatures === 'function' && typeof r.moveTo === 'function' && 'queryFeatures' in r, store: r.state === m.state && r.description === m.description, noMap: !('map' in r) && r.map === undefined, same: r.queryFeatures === r.queryFeatures, keys: Object.keys(r).includes('queryFeatures') && Object.keys(r).includes('state'), gives: typeof m.moveTo === 'function'}; });
     check('browser: the template ref exposes the members of the map that load gives, and has no member map (#265, #1151)', exposed.members && exposed.store && exposed.noMap && exposed.same && exposed.keys && exposed.gives, JSON.stringify(exposed));
     const model = await page.evaluate(async () => {

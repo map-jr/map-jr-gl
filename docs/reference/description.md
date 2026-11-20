@@ -26,7 +26,7 @@ const map = createMap('map', {
 | [`fonts`](#fonts) | `FontFaces` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | [`initialView`](#initialview) | [`InitialView`](types.md#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | [`view`](#view-and-onviewchange) | [`ViewInput`](types.md#viewinput) | | A view that the application controls. |
-| [`onViewChange`](#view-and-onviewchange) | `(view: `[`View`](state.md#view)`) => void` | | Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
+| [`onViewChange`](#view-and-onviewchange) | `(view: `[`View`](state.md#view)`) => void` | | Called with the first view once, right after `createMap` returns (before `load`), and then with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
 | [`data`](#data) | `Record<string, GeoJSON \| string>` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
 | [`images`](#images) | `Record<string, ImageInput>` | | Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
 | [`sprite`](#sprite) | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
@@ -231,6 +231,8 @@ Two other fields can override `initialView` when the map is created:
 
 When the description has `view`, the application controls the view. The application stores each view that
 `onViewChange` reports and passes it back in the next description. To move the map, it passes a different view.
+`onViewChange` receives the first view once, right after `createMap` returns and before `load`, and then each change.
+A view that it reported does not move the map when it comes back in `view`.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';

@@ -291,8 +291,9 @@ overrides `speed` and `screenSpeed`, and the map then ignores `maxDuration`.
 ## Keep the view in the application
 
 Set [`view` and `onViewChange`](../reference/description.md#view-and-onviewchange) when the application needs the
-view in its own state, for example to show it or to store it in a URL. The map reports each change of the view to
-`onViewChange`, and the application passes the view back in the next description. To move the map, the application
+view in its own state, for example to show it or to store it in a URL. The map reports the first view to
+`onViewChange` once, right after it is created and before `load`, and then each change of the view. The application
+passes the view back in the next description, and a view that the map reported does not move it. To move the map, the application
 passes a different view.
 
 **Main API**

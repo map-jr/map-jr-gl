@@ -85,9 +85,9 @@ browser, and the map loads the other style when the scheme changes. The componen
 ### `view`
 
 `view` and the event `update:view` together form `v-model:view`. The component emits `update:view` with the new
-view at each change of the view, while the user moves the map and when your code changes `view`. It does not emit
-`update:view` for the first view. To read the first view, call `map.state.get()` in the handler of `@load`, which
-receives the map: the [state](state.md#mapstate) has the view in `view`.
+view at each change of the view, while the user moves the map and when your code changes `view`. It also emits
+`update:view` once with the first view, right after the map is created and before `load`, so the bound value has the
+complete first view, `bounds` included. Giving that view back to `view` does not move the map.
 
 When `view` and `initialView` are both set, the fields of `view` override those of `initialView` when the map is
 created.
@@ -191,7 +191,7 @@ in the browser.
 
 | Event | Value | When |
 |---|---|---|
-| `update:view` | `View` | At each change of the view. See [`view`](#view). |
+| `update:view` | `View` | Once with the first view, and then at each change of the view. See [`view`](#view). |
 | `update:colorScheme` | `'auto' \| 'light' \| 'dark'` | When a control sets the colour scheme. With `v-model:color-scheme`, the prop follows. |
 | `click` | `{point: {x, y}, lngLat: [lng, lat], features}` | At each click on the map. `features` are those of `interactiveLayers` at the point. |
 | `hover` | `RenderedFeature[]` | When the features of `interactiveLayers` under the pointer change. |
