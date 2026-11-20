@@ -250,11 +250,18 @@ export interface MapJrSSROptions {
  * What a template ref on `MapJr` holds: the members of the map (`MapInstance`), as the ref of the React component
  * holds them. Call them as `mapRef.value.queryFeatures(…)`, and read the state as `mapRef.value.state.get()`.
  *
- * Until the code of the map has loaded after the component is mounted, the ref has none of these members: each one
- * is `undefined`, and a call such as `mapRef.value.moveTo(…)` throws a `TypeError`, as `ref.current.moveTo(…)` of
- * React does while `ref.current` is `null`. Call them from `@load` or later, or test `'moveTo' in mapRef.value` first.
+ * The code of the map loads after the component is mounted. Until then, a method such as `mapRef.value.moveTo(…)`
+ * throws an error that names the method, and the other members (`state`, `description`, `container`) are `undefined`.
+ * Call the members from `@load` or later, or use `useMapInstance()` in a component inside `MapJr`.
  */
 export type MapJrExposed = MapInstance;
+
+// The methods of the map, which a template ref has before the map has loaded.
+type Method = {[K in keyof MapInstance]: MapInstance[K] extends Function ? K : never}[keyof MapInstance];
+const METHODS = new Set('update patch getResolvedDescription destroy queryFeatures querySource watchFeatures watchSource setFeatureState removeFeatureState queryElevation toBlob clusterExpansionZoom clusterChildren clusterLeaves moveTo fitBounds project unproject overlay listen once'.split(' ') as Method[]);
+// (Each method of the map is in the list: the line fails the type check when one is missing.)
+type Missing = Exclude<Method, 'update' | 'patch' | 'getResolvedDescription' | 'destroy' | 'queryFeatures' | 'querySource' | 'watchFeatures' | 'watchSource' | 'setFeatureState' | 'removeFeatureState' | 'queryElevation' | 'toBlob' | 'clusterExpansionZoom' | 'clusterChildren' | 'clusterLeaves' | 'moveTo' | 'fitBounds' | 'project' | 'unproject' | 'overlay' | 'listen' | 'once'>;
+const allMethods: [Missing] extends [never] ? true : Missing = true; void allMethods;
 
 const MapJrComponent = defineComponent({
     name: 'MapJr',
@@ -439,12 +446,22 @@ const MapJrComponent = defineComponent({
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
-        // The members of the map, read when they are used: before the map has loaded, the object has none. (Functions are
-        // bound to the map, because Vue calls them on its own proxy.)
+        // The members of the map, read when they are used. Before the map has loaded, a method is a function that throws
+        // a message, and the other members are undefined. (Functions are bound to the map, because Vue calls them on its
+        // own proxy, and each one is bound once for each map, so that a read gives the same function again.)
         const target = {} as Record<PropertyKey, unknown>;
+        let bound = new Map<PropertyKey, unknown>(), of: MapInstance | null = null;
+        const read = (k: PropertyKey) => {
+            const m = host.value as any;
+            if (m !== of) { of = m; bound = new Map(); }
+            if (!bound.has(k)) bound.set(k, m ? (typeof m[k] === 'function' ? m[k].bind(m) : undefined) : (METHODS.has(k as Method) ? () => { throw new Error(`[map-jr-gl] <MapJr>: the template ref has no method "${String(k)}" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`); } : undefined));
+            return bound.get(k) ?? m?.[k];
+        };
         expose(new Proxy(target, {
-            has: (t, k) => k in t || !!host.value && k in host.value,
-            get: (t, k) => { if (k in t) return t[k]; const m = host.value as any, v = m?.[k]; return typeof v === 'function' ? v.bind(m) : v; },
+            has: (t, k) => k in t || (host.value ? k in host.value : METHODS.has(k as Method)),
+            get: (t, k) => k in t ? t[k] : read(k),
+            ownKeys: t => [...new Set([...Reflect.ownKeys(t), ...(host.value ? Reflect.ownKeys(host.value) : [])])],
+            getOwnPropertyDescriptor: (t, k) => k in t ? Reflect.getOwnPropertyDescriptor(t, k) : host.value && k in host.value ? {value: read(k), enumerable: true, configurable: true, writable: false} : undefined,
         }));
 
         // The first view from the server: the SVG and the credits. On the server they are made here. In the browser,

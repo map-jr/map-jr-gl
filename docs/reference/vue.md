@@ -239,9 +239,10 @@ React component does. Call a method as `mapRef.value.moveTo(…)`, and read the 
 TypeScript, type the ref as `useTemplateRef<InstanceType<typeof MapJr>>('mapRef')`; the type `MapJrExposed` of
 `@map-jr/map-jr-gl/vue` is `MapInstance`.
 
-The code of the map loads after `onMounted` of the component that has the ref. Until then, the ref has none of these
-members: each one is `undefined`, and a call such as `mapRef.value.moveTo(…)` throws a `TypeError`, as
-`ref.current.moveTo(…)` does in React while `ref.current` is `null`. Call the members from `@load` or later.
+The code of the map loads after `onMounted` of the component that has the ref. Until then, a method such as
+`mapRef.value.moveTo(…)` throws an error that names the method, and the other members (`state`, `description`,
+`container`) are `undefined`. Call the members from `@load` or later, or use `useMapInstance()` in a component inside
+`MapJr`.
 
 ## `MapOverlay`
 

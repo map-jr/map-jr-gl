@@ -116,7 +116,7 @@ of the mouse, so a slot that reads `state` renders at each move. A component tha
 from `map.state.subscribe` with a selector instead.
 
 A template ref on the component holds the members of the map, as the ref of React does: `mapRef.value.moveTo(…)`.
-Until the map has loaded, each member is `undefined`, and a call throws a `TypeError`. In TypeScript, type the ref as
+Until the map has loaded, a method throws an error that names it, and the other members are `undefined`. In TypeScript, type the ref as
 `InstanceType<typeof MapJr>`: `useTemplateRef<InstanceType<typeof MapJr>>('map')`. The type `MapJrExposed` of
 `@map-jr/map-jr-gl/vue` is `MapInstance`. A template ref on `LazyMapJr` of Nuxt with a
 `hydrate-*` prop does not reach them (see [The module for Nuxt](#the-module-for-nuxt)).

@@ -148,8 +148,8 @@ try {
     await page.waitForFunction(() => window.t.order.includes('idle'), null, {timeout: 60000});
     const order = await page.evaluate(() => window.t.order.slice(0, 2));
     check('browser: the component emits load before the first idle, and the map is not idle yet at load', order[0] === 'load:false' && order[1] === 'idle', JSON.stringify(order));
-    const exposed = await page.evaluate(() => { const r = window.t.map.value, m = window.t.loadHost; return {members: typeof r.queryFeatures === 'function' && typeof r.moveTo === 'function' && 'queryFeatures' in r, store: r.state === m.state && r.description === m.description, noMap: !('map' in r) && r.map === undefined, gives: typeof m.moveTo === 'function'}; });
-    check('browser: the template ref exposes the members of the map that load gives, and has no member map (#265, #1151)', exposed.members && exposed.store && exposed.noMap && exposed.gives, JSON.stringify(exposed));
+    const exposed = await page.evaluate(() => { const r = window.t.map.value, m = window.t.loadHost; return {members: typeof r.queryFeatures === 'function' && typeof r.moveTo === 'function' && 'queryFeatures' in r, store: r.state === m.state && r.description === m.description, noMap: !('map' in r) && r.map === undefined, same: r.queryFeatures === r.queryFeatures, keys: Object.keys(r).includes('queryFeatures') && Object.keys(r).includes('state'), gives: typeof m.moveTo === 'function'}; });
+    check('browser: the template ref exposes the members of the map that load gives, and has no member map (#265, #1151)', exposed.members && exposed.store && exposed.noMap && exposed.same && exposed.keys && exposed.gives, JSON.stringify(exposed));
     const model = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value;
         host.moveTo({zoom: 15, duration: 200});
@@ -370,8 +370,8 @@ try {
         app.mount(el);
         // Before the map has loaded, the ref has no members of the map, as the ref of React is null (#1151).
         let threw = '';
-        try { mapRef.value.moveTo({zoom: 1}); } catch (e) { threw = e.constructor.name; }
-        early.push('moveTo' in mapRef.value, mapRef.value.queryFeatures, mapRef.value.state, threw);
+        try { mapRef.value.moveTo({zoom: 1}); } catch (e) { threw = e.message; }
+        early.push('moveTo' in mapRef.value, typeof mapRef.value.queryFeatures, mapRef.value.state, Object.keys(mapRef.value).length, threw);
         for (let i = 0; i < 80 && !mapRef.value?.state?.get().loaded; i++) await wait(100);
         await wait(500);
         const map = mapRef.value._map;
@@ -385,7 +385,7 @@ try {
         app.unmount(); el.remove();
         return {restyled, unchanged, renders: made.length, early: early.map(String)};
     });
-    check('browser: before the map has loaded, the template ref has no members of the map, and a call throws a TypeError (#1151)', JSON.stringify(declared.early) === JSON.stringify(['false', 'undefined', 'undefined', 'TypeError']), JSON.stringify(declared.early));
+    check('browser: before the map has loaded, a method of the template ref throws a message that names it, and the other members are undefined (#1151)', JSON.stringify(declared.early.slice(0, 4)) === JSON.stringify(['true', 'function', 'undefined', '0']) && declared.early[4].startsWith('[map-jr-gl] <MapJr>: the template ref has no method "moveTo" until the map has loaded.'), JSON.stringify(declared.early));
     check('browser: :sources in the render and :data from a shallowRef: new data is no new style, and the source objects of the render are unchanged (#857)',
         declared.restyled === 0 && declared.unchanged && declared.renders >= 3, JSON.stringify(declared));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
