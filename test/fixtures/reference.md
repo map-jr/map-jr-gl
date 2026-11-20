@@ -2,9 +2,8 @@
 
 `scripts/reference.mjs` fills the blocks of this file, and `pnpm test:consistency` runs `--check` on it. The blocks
 cover the types that the reference pages do not have yet, so that a member without TSDoc fails here first: the
-events of the map, the members of the map, one method, the props of the Vue and React components, and the options of
-the Svelte action. Do not edit the tables by hand: change the comment in `src/` and run
-`node scripts/reference.mjs --write`.
+events of the map, the members of the map, one method, and the props of the Vue component. Do not edit the tables
+by hand: change the comment in `src/` and run `node scripts/reference.mjs --write`.
 
 ## `MapInstance`
 
@@ -266,31 +265,6 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `ssr` | `boolean \| {width?: number; height?: number; overrides?: false \| Record<string, `[`SSROverrides`](../../docs/reference/server.md#overrides)`>; attribution?: string \| string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]; tileZoomOffset?: number}` | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
 <!-- ref:VueMapJrProps:end -->
 
-## `ReactMapJrProps`
-
-<!-- ref:ReactMapJrProps:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `mapStyle` **required** | [`MapDescription`](../../docs/reference/description.md#mapdescription)`['style']` | | The style: a style object, the URL of a style, or `{light, dark}`. |
-| `onViewChange` | `(view: `[`View`](#view)`) => void` | | Called with the new view at each change of the view. |
-| `onHover` | `(features: RenderedFeature[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
-| `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
-| `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
-| `onError` | `(error: Error) => void` | | Called with each error of the map. |
-| `firstView` | `string` | | The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
-| `className` | `string` | | A CSS class to add to the element, after the class `map-jr-react`. |
-| `style` | `CSSProperties` | | The CSS style of the element, merged over `{position: 'relative', width: '100%', height: '100%'}`. |
-| `children` | `ReactNode` | | Content over the map, and `MapOverlay` elements. |
-<!-- ref:ReactMapJrProps:end -->
-
-## `SvelteMapAction`
-
-<!-- ref:SvelteMapAction:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `description` **required** | [`MapDescription`](../../docs/reference/description.md#mapdescription) | | The description of the map. |
-| `ready` | `(map: `[`MapInstance`](#mapinstance)`) => void` | | Called with the map once it is created. |
-<!-- ref:SvelteMapAction:end -->
 ## `CompatMap`
 
 <!-- ref:CompatMap:start -->
@@ -462,13 +436,3 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `getAttributions` | `() => string[]` | Only in this library: returns the attribution texts of the sources of the style as they are written, which can be HTML that the attribution control shows. |
 <!-- ref:CompatMap:end -->
 
-## `MapJrElement`
-
-<!-- ref:MapJrElement:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `mapStyle` | [`MapDescription`](../../docs/reference/description.md#mapdescription)`['style']` | | The `style` of the description: the URL of a style or a style object. |
-| `map` (read only) | [`MapInstance`](#mapinstance)` \| null` | | The map (`MapInstance`), from the microtask after the element is added to the page until it is removed, or else `null`. |
-| `state` (read only) | [`MapInstance`](#mapinstance)`['state'] \| null` | | The state of the map as a store (`map.state`), or `null` while there is no map. |
-| `addEventListener` | `(type: string, listener: EventListenerOrEventListenerObject, options?: boolean \| AddEventListenerOptions \| undefined) => void` | | Adds a listener, as on any element. |
-<!-- ref:MapJrElement:end -->

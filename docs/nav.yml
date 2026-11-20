@@ -32,6 +32,9 @@ sections:
     pages:
       - controls.md
       - server.md
+      - react.md
+      - svelte.md
+      - element.md
   - title: Migrate
     folder: migrate
     pages: []

@@ -38,6 +38,18 @@ except `style`, which is the prop `mapStyle`. The prop `style` is the CSS style 
 props that the description does not have, and those whose meaning differs.
 
 <!-- ref:ReactMapJrProps:start -->
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `mapStyle` **required** | [`MapDescription`](description.md#mapdescription)`['style']` | | The style: a style object, the URL of a style, or `{light, dark}`. |
+| `onViewChange` | `(view: View) => void` | | Called with the new view at each change of the view. |
+| `onHover` | `(features: RenderedFeature[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
+| `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
+| `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
+| `onError` | `(error: Error) => void` | | Called with each error of the map. |
+| [`firstView`](#firstview) | `string` | | The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
+| `className` | `string` | | A CSS class to add to the element, after the class `map-jr-react`. |
+| `style` | `CSSProperties` | | The CSS style of the element, merged over `{position: 'relative', width: '100%', height: '100%'}`. |
+| `children` | `ReactNode` | | Content over the map, and `MapOverlay` elements. |
 <!-- ref:ReactMapJrProps:end -->
 
 ### Props that are created in each render
@@ -192,6 +204,15 @@ each point.
 `MapJr`. The image is an `<svg>` element in the children, or the URL of an image in `src`.
 
 <!-- ref:ReactMapImageProps:start -->
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `name` **required** | `string` | | The name of the image, for `icon-image` of a style layer. |
+| `params` | `readonly P[]` | | The names of the parameters of the image. |
+| `src` | `string` | | The URL of an image, in place of an SVG in `children`. |
+| `width` | `number` | | The width in CSS pixels. |
+| `height` | `number` | | The height in CSS pixels. |
+| `pixelRatio` | `number` | `1` | The number of image pixels for one CSS pixel, for example 2 for an image "@2x". |
+| `children` | `ReactNode \| ((params: Record<P, string>) => ReactNode)` | | An `<svg>` element, or a function that receives the parameters and returns one. |
 <!-- ref:ReactMapImageProps:end -->
 
 The children can be a function that receives the parameters of `params` and returns an `<svg>` element. Each
