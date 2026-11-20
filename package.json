@@ -220,7 +220,10 @@
     "THIRD-PARTY-LICENSES.md",
     "docs/*.md"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/element.js",
+    "./dist/element.dev.js"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/map-jr/map-jr-gl.git"

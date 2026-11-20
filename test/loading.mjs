@@ -1,4 +1,7 @@
 // Checks every supported way of loading the library in a real browser: node test/loading.mjs (demo server running)
+import {existsSync, readFileSync as readFile} from 'node:fs';
+import path from 'node:path';
+import {buildElementPages} from './consumer/build-element.mjs';
 import {launch} from './launch.mjs';
 const browser = await launch();
 let failed = 0;
@@ -158,6 +161,24 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
         const compat = file.endsWith('.compat.js');
         const ok = await page.waitForFunction(compat => window.map && (compat ? window.map.loaded() : window.map.state.get().idle), compat, {timeout: 30000}).then(() => true, () => false);
         check(`example ${file} runs as written on a bare page and reaches idle`, ok && !errors.length, `idle=${ok} errors=${errors.join(' | ')}`);
+        await page.close();
+    }
+}
+// A page that only imports `@map-jr/map-jr-gl/element`, built with esbuild and with Vite against the built package,
+// defines <map-jr> in the browser (#1256; `pnpm test:package` runs the same builds in Node against the tarball).
+{
+    const root = path.resolve(import.meta.dirname, '..');
+    const dirs = await buildElementPages(root, path.join(root, '.cache/loading-element'));
+    for (const [name, dir] of Object.entries(dirs)) {
+        const page = await browser.newPage();
+        await page.route(`**/element-page-${name}/**`, r => {
+            const file = path.join(dir, new URL(r.request().url()).pathname.split(`/element-page-${name}/`)[1] || 'element.html');
+            if (!file.startsWith(dir) || !existsSync(file)) return r.fulfill({status: 404});
+            return r.fulfill({contentType: file.endsWith('.html') ? 'text/html' : 'text/javascript', body: readFile(file)});
+        });
+        await page.goto(`http://localhost:${port}/element-page-${name}/element.html`);
+        const defined = await page.evaluate(() => Promise.race([customElements.whenDefined('map-jr').then(() => true), new Promise(r => setTimeout(() => r(false), 5000))]));
+        check(`element: a page that only imports @map-jr/map-jr-gl/element, built with ${name}, defines <map-jr>`, defined);
         await page.close();
     }
 }
