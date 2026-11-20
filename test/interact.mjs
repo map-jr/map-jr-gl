@@ -2923,6 +2923,29 @@ for (const mode of renderers) {
     }
     // Custom layers (#45): with renderer: 'main' they draw in their place; with the worker renderer they are an error.
     if (mode === 'main') await checkCustomLayers(page, check);
+    // #1225: on the globe the map leaves custom layers out and warns once; in Mercator they draw again.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => { if (String(a[0]).startsWith('[map-jr-gl]')) warnings.push(a.join(' ')); else warn(...a); };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, projection: {type: 'globe'}, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            let calls = 0;
+            try {
+                await new Promise(r => m.once('load', r));
+                m.addLayer({id: 'c', type: 'custom', render() { calls++; }});
+                m.addLayer({id: 'c2', type: 'custom', render() {}});
+                await wait(500); m.triggerRepaint(); await wait(300);
+                const globe = calls, said = warnings.filter(w => w.includes('"custom"'));
+                m.setProjection({type: 'mercator'});
+                await wait(500); m.triggerRepaint(); await wait(300);
+                return {globe, said, mercator: calls};
+            } finally { console.warn = warn; m.remove(); el.remove(); }
+        });
+        check('[main] maplibre-compat: on the globe a custom layer is not drawn and the map warns once; in Mercator it draws again (#1225)',
+            r.globe === 0 && r.said.length === 1 && /^\[map-jr-gl\] Custom layers \(the type "custom"\) are not drawn on the globe/.test(r.said[0]) && r.mercator > 0, JSON.stringify(r));
+    }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
     if (mode === 'main') {

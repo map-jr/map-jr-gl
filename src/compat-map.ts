@@ -441,7 +441,7 @@ export class Map extends CoreMap {
     }
     /**
      * Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS.
-     * A layer whose id the style has already, or that names a source that the style does not have, fires `error` and adds nothing. A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise it fires `error`.
+     * A layer whose id the style has already, or that names a source that the style does not have, fires `error` and adds nothing. A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise it fires `error`. A custom layer is not drawn on the globe: the map writes one warning and draws it again in Mercator.
      */
     addLayer(layer: AddLayerObject, beforeId?: string) {
         let one: {id: string; source?: unknown} = layer;
