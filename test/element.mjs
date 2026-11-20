@@ -37,15 +37,18 @@ const pages = {
 <script type="module">
   window.seen = [];
   const a = document.getElementById('a');
-  // (The events of the element itself bubble to the document. An event of the map is passed on only when the element has a listener for it.)
-  for (const name of ['map-ready', 'map-load', 'map-idle', 'map-click', 'map-viewchange']) document.addEventListener(name, e => window.seen.push({name, target: e.target.id, detail: e.detail}));
+  const record = e => window.seen.push({name: e.type, target: e.target.id, detail: e.detail});
+  // (Every event bubbles to the document, whoever listens and whenever the listener was added: #1257.)
+  document.addEventListener('map-ready', record);
   // (Properties before the element is defined: the data and the layer, and a property that wins over its attribute.)
   a.data = {dot: ${JSON.stringify(point)}};
   a.layers = ${JSON.stringify(dot)};
   a.minZoom = 3;
   await import('/dist/element.js');
-  // (A listener for another event of the map is added when the element is defined: see docs/element.md.)
-  for (const name of ['map-moveend', 'map-styleload']) a.addEventListener(name, e => window.seen.push({name, target: e.target.id, detail: e.detail}));
+  // (The listeners of the other events are added to the document after the element has made its map.)
+  await new Promise(r => setTimeout(r));
+  window.startedFirst = !!a.map;
+  for (const name of ['map-load', 'map-idle', 'map-click', 'map-viewchange', 'map-moveend', 'map-styleload']) document.addEventListener(name, record);
   window.ready = true;
 </script>`,
     // Two elements on one page.
@@ -137,11 +140,11 @@ try {
     const first = await page.evaluate(() => {
         const a = document.getElementById('a'), d = a.map.description;
         return {style: d.style, initialView: d.initialView, interactiveLayers: d.interactiveLayers, hoverState: d.hoverState, cursor: d.cursor, minZoom: d.minZoom, layers: d.layers?.length, data: !!d.data?.dot,
-            own: Object.hasOwn(a, 'layers'), zoom: +a.state.get().view.zoom.toFixed(2), names: window.seen.map(e => e.name), ready: window.seen[0].detail === a.map, load: window.seen.find(e => e.name === 'map-load').detail === a.map, idle: window.seen.find(e => e.name === 'map-idle').detail};
+            own: Object.hasOwn(a, 'layers'), zoom: +a.state.get().view.zoom.toFixed(2), names: window.seen.map(e => e.name), ready: window.seen[0].detail === a.map, startedFirst: window.startedFirst, load: window.seen.find(e => e.name === 'map-load').detail === a.map, idle: window.seen.find(e => e.name === 'map-idle').detail};
     });
     check('browser: the attributes become the description', first.style === '/style.json' && JSON.stringify(first.initialView) === '{"center":[-74.0065,40.7085],"zoom":14}' && first.interactiveLayers.join() === 'dot,water' && first.hoverState === true && first.cursor === 'crosshair' && first.zoom === 14, JSON.stringify(first));
     check('browser: properties set before the element was defined are taken over, and a property wins over its attribute', first.layers === 1 && first.data && !first.own && first.minZoom === 3, JSON.stringify(first));
-    check('browser: map-ready and map-load have the map as detail, map-idle has null, and the style loads once', first.ready && first.load && first.idle === null && first.names[0] === 'map-ready' && first.names.indexOf('map-load') < first.names.indexOf('map-idle') && first.names.filter(n => n === 'map-styleload').length === 1, JSON.stringify(first.names.slice(0, 6)));
+    check('browser: map-ready and map-load have the map as detail, map-idle has null, and the style loads once', first.startedFirst && first.ready && first.load && first.idle === null && first.names[0] === 'map-ready' && first.names.indexOf('map-load') < first.names.indexOf('map-idle') && first.names.filter(n => n === 'map-styleload').length === 1, JSON.stringify(first.names.slice(0, 6)));
 
     // One update for the changes of one task.
     const batch = await page.evaluate(async () => {
@@ -161,7 +164,7 @@ try {
     await page.mouse.click(300, 200);
     await page.waitForFunction(() => window.seen.some(e => e.name === 'map-click'), null, {timeout: 10000}).catch(() => {});
     const click = await page.evaluate(() => window.seen.find(e => e.name === 'map-click'));
-    check('browser: map-click bubbles with {point, lngLat, features}', click?.target === 'a' && Math.abs(click.detail.point.x - 300) < 1 && Math.abs(click.detail.lngLat[0] + 74.0065) < 0.001 && click.detail.features?.[0]?.layer?.id === 'dot', JSON.stringify(click && {point: click.detail.point, lngLat: click.detail.lngLat, layer: click.detail.features?.[0]?.layer?.id}));
+    check('browser: map-click bubbles to a listener on the document, added after the map started, with {point, lngLat, features}', click?.target === 'a' && Math.abs(click.detail.point.x - 300) < 1 && Math.abs(click.detail.lngLat[0] + 74.0065) < 0.001 && click.detail.features?.[0]?.layer?.id === 'dot', JSON.stringify(click && {point: click.detail.point, lngLat: click.detail.lngLat, layer: click.detail.features?.[0]?.layer?.id}));
 
     // A change of the attribute `zoom` moves the map; map-viewchange and map-moveend come with it.
     await page.evaluate(() => { window.seen.length = 0; document.getElementById('a').setAttribute('zoom', '12'); });

@@ -8,11 +8,13 @@
  * ```
  * The attributes and the properties of the element form one description. The element is the container of the map,
  * and the map applies changes before the next frame. The events are `CustomEvent`s named `map-` and the name of the
- * event of the Vue component, for example `map-click`.
+ * event of the Vue component, for example `map-click`. Each one bubbles, and the element dispatches it whenever the
+ * map fires it, so a listener on the document receives it too, whenever it was added.
  */
 import {makeMap, type MapDescription, type MapInstance} from './host.ts';
 import {logError} from './map.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute, type AttributeKind} from './element-attributes.ts';
+import {FORWARDED} from './map-events.ts';
 declare const __DEV__: boolean;
 
 /**
@@ -34,9 +36,6 @@ interface StyleProperty {
     mapStyle?: MapDescription['style'];
 }
 
-/** The events with a value of their own. Each other `map-` event is the event of `listen` with that name. */
-const OWN = ['ready', 'load', 'idle', 'click', 'hover', 'error', 'viewchange', 'colorschemechange'];
-
 // (On a server there is no `HTMLElement`: the entry can be imported there, and it defines nothing.)
 const Base = (globalThis.HTMLElement ?? class {}) as typeof HTMLElement;
 
@@ -45,7 +44,6 @@ export class MapJrElement extends Base {
     private props: Properties = {};
     private made: MapInstance | null = null;
     private stops: (() => void)[] = [];
-    private heard = new Set<string>();
     private moved = new Set<string>();
     private queued = false;
     private firstProp: unknown;
@@ -81,18 +79,6 @@ export class MapJrElement extends Base {
         if (before === after) return;
         if (this.made && VIEW_FIELDS.includes(name)) this.moved.add(name);
         this.changed();
-    }
-
-    /**
-     * Adds a listener, as on any element. The events of the map are `map-ready`, `map-load`, `map-idle`, `map-click`,
-     * `map-hover`, `map-error`, `map-viewchange`, `map-colorschemechange`, and `map-` with the name of any other event of `listen` (`map-styleload` for `style.load`).
-     */
-    addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
-        super.addEventListener(type, listener, options);
-        const name = type.startsWith('map-') && type.slice(4);
-        if (!name || this.heard.has(name)) return;
-        this.heard.add(name);
-        if (this.made) this.listen(name);
     }
 
     /** One `update` for the changes of this task, one microtask later. */
@@ -131,8 +117,8 @@ export class MapJrElement extends Base {
             map.state.subscribe(s => s.loaded, v => { if (v) this.emit('load', map); }),
             map.state.subscribe(s => s.idle, v => { if (v) this.emit('idle'); }),
             map.state.subscribe(s => s.hover, v => this.emit('hover', v)),
+            ...FORWARDED.map(name => map.listen(name as 'move', e => this.emit(name.replace('.', ''), e))),
         ];
-        for (const name of this.heard) this.listen(name);
         this.emit('ready', map);
     }
 
@@ -142,12 +128,6 @@ export class MapJrElement extends Base {
         for (const stop of this.stops) stop();
         this.stops = [];
         this.made = null;
-    }
-
-    /** Passes the event of the map with that name on, as `map-` and the name (`styleload` for `style.load`). */
-    private listen(name: string) {
-        if (OWN.includes(name)) return;
-        this.stops.push(this.made!.listen((name === 'styleload' ? 'style.load' : name) as 'move', e => this.emit(name, e)));
     }
 
     /** Dispatches `map-` and the name. Returns `false` when a listener called `preventDefault()` (only `map-error` can be cancelled). */
