@@ -2086,7 +2086,8 @@ export class Map {
                 b.el.remove();
                 if (e.type !== 'pointerup' || Math.abs(at.x - b.x) < 4 || Math.abs(at.y - b.y) < 4) { this.fire('boxzoomcancel', {originalEvent: e}); return; }
                 const bounds = new LngLatBounds(this.unproject(b), this.unproject(at)).extend(this.unproject({x: b.x, y: at.y})).extend(this.unproject({x: at.x, y: b.y}));
-                this.fitBounds(bounds, {duration: 300});
+                // (An ease, as in MapLibre GL JS, also in the compat entry, whose fitBounds flies.)
+                this.easeTo({...this.cameraForBounds(bounds), duration: 300});
                 this.fire('boxzoomend', {originalEvent: e, boxZoomBounds: bounds});
                 return;
             }

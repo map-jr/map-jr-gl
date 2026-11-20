@@ -505,29 +505,25 @@ export class Map extends CoreMap {
     /**
      * Moves the camera to a view without an animation, as in MapLibre GL JS.
      * As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom,
-     * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls easeTo) keeps it.
+     * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls flyTo) keeps it.
      */
     jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(this.snapped(o))); }
     easeTo(o: EaseToOptions, eventData?: EventData) {
         return this.camera(eventData, () => super.easeTo(this.snapped(o)));
     }
     /**
-     * Moves the camera to fit a box with an animation of 800 ms unless `o` sets `duration`; MapLibre GL JS flies there for a time that `speed` sets.
-     * As in MapLibre GL JS, the zoom fits the box as seen from above, and the camera ends at the `pitch` of `o` (or keeps its pitch).
-     * The options `speed`, `curve` and `linear` have no effect.
+     * Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`.
+     * The zoom fits the box as seen from above. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.
      * @param eventData Fields that the events of this move carry.
      */
     fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o: FitBoundsOptions = {}, eventData?: EventData) {
-        this.unsupported('The options speed, curve and linear of fitBounds', o.speed === undefined && o.curve === undefined && o.linear === undefined);
-        return this.easeTo({...this.cameraForBounds(bounds, o), pitch: o.pitch, duration: o.duration ?? 800}, eventData);
+        return this.fit(this.cameraForBounds(bounds, o), o, eventData);
     }
     /**
-     * Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`, with an
-     * animation of 800 ms unless `o` sets `duration`. The method is that of MapLibre GL JS 6.17, and the options are those of
-     * `fitBounds`: the camera ends at the `pitch` of `o`, and `speed`, `curve` and `linear` have no effect.
+     * Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`. The method
+     * is that of MapLibre GL JS 6.17, and the options are those of `fitBounds`.
      */
     fitScreenCoordinates(p0: PointLike, p1: PointLike, bearing: number, o: FitBoundsOptions = {}, eventData?: EventData) {
-        this.unsupported('The options speed, curve and linear of fitScreenCoordinates', o.speed === undefined && o.curve === undefined && o.linear === undefined);
         const a = this.unproject(p0), b = this.unproject(p1), r = bearing * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
         const x0 = mercX(a.lng), x1 = mercX(b.lng), y0 = mercY(a.lat), y1 = mercY(b.lat), dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
         // The box of the two places, with edges along the meridians and parallels, is turned by the bearing: its extent on the screen is this.
@@ -535,7 +531,11 @@ export class Map extends CoreMap {
         const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(fit(this.tr.width, 1, dx * Math.abs(c) + dy * Math.abs(s)), fit(this.tr.height, 0, dx * Math.abs(s) + dy * Math.abs(c))) / 512));
         // As in fitBounds, the padding of the call moves the centre (the padding of the map does that by itself): here along the turned axes.
         const world = 512 * 2 ** zoom, sx = (pad[3] - pad[1]) / 2 / world, sy = (pad[0] - pad[2]) / 2 / world;
-        return this.easeTo({center: [lngFromMerc((x0 + x1) / 2 - c * sx + s * sy), latFromMerc((y0 + y1) / 2 - s * sx - c * sy)], zoom, bearing, pitch: o.pitch, duration: o.duration ?? 800}, eventData);
+        return this.fit({center: [lngFromMerc((x0 + x1) / 2 - c * sx + s * sy), latFromMerc((y0 + y1) / 2 - s * sx - c * sy)], zoom, bearing}, o, eventData);
+    }
+    /** As `_fitInternal` of MapLibre GL JS 6.17: the options of the call go onto the move, and the fit flies unless `linear` is set. */
+    private fit(camera: EaseToOptions, {padding, linear, ...o}: FitBoundsOptions, eventData?: EventData) {
+        return linear ? this.easeTo({...camera, ...o}, eventData) : this.flyTo({...camera, ...o}, eventData);
     }
     private camera(eventData: EventData | undefined, f: () => this) {
         if (!this.nested) this.moveData = eventData;

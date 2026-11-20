@@ -1628,19 +1628,14 @@ for (const mode of renderers) {
         check(`maplibre-compat (${mode}): flyTo zooms out on the way, takes its duration from speed, and maxDuration jumps (#43)`,
             r.low < 3.2 && r.end[0] === 40 && r.end[1] === 5 && r.ms > 700 && r.ms < 3000 && r.jump === -40 && r.jumpMs < 500 && r.warns === 0, JSON.stringify(r));
     }
-    // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
+    // #208: Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {
         const r = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
-            const warns = [], warn = console.warn;
-            console.warn = (...a) => { warns.push(String(a[0])); };
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
             const out = {};
-            let m;
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
             try {
-                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
-                for (let i = 0; i < 2; i++) m.fitBounds([[-1, -1], [1, 1]], {speed: 2, curve: 1, linear: true, duration: 0});
-                out.fit = warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes('fitBounds')).length;
                 out.offset = new mod.Marker({offset: {x: 3, y: -4}}).getOffset();
                 const px = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 128]);
                 await m.addImage('raw', {width: 2, height: 1, data: px});
@@ -1651,12 +1646,13 @@ for (const mode of renderers) {
                 await m.addImage('canvas', c);
                 const cv = m.getImage('canvas').data;
                 out.canvas = [cv.width, cv.height, cv.data instanceof Uint8Array, [...(cv.data?.slice?.(0, 4) ?? [])].join()];
-            } finally { console.warn = warn; }
-            m.remove(); el.remove();
+            } finally {
+                m.remove(); el.remove();
+            }
             return out;
         });
-        check('maplibre-compat: fitBounds speed/curve/linear warn once, Marker offset {x, y}, getImage returns RGBA pixels',
-            r.fit === 1 && r.offset?.x === 3 && r.offset?.y === -4 && r.raw?.join('|') === '2|1|true|255,0,0,255,0,255,0,128'
+        check('maplibre-compat: Marker offset {x, y}, getImage returns RGBA pixels',
+            r.offset?.x === 3 && r.offset?.y === -4 && r.raw?.join('|') === '2|1|true|255,0,0,255,0,255,0,128'
             && r.canvas?.join('|') === '2|2|true|0,0,255,255', JSON.stringify(r));
     }
     // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
@@ -3743,6 +3739,39 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: fitBounds and fitScreenCoordinates end at the pitch of the options, or keep the pitch, as in MapLibre GL JS (#1198)',
             m1198.ml.length === 3 && m1198.ml.every((v, i) => v.every((x, j) => Math.abs(x - m1198.compat[i][j]) < 1e-4)), JSON.stringify(m1198));
+        // #1235: fitBounds flies as flyTo does, with a duration from `speed`, and eases as easeTo does with `linear`, as in
+        // MapLibre GL JS (served at /ml/).
+        const m1235 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [0, 0], zoom: 5, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const fit = async (bounds, o) => {
+                    let low = m.getZoom();
+                    const onMove = () => { low = Math.min(low, m.getZoom()); };
+                    m.on('move', onMove);
+                    const t0 = performance.now();
+                    const end = new Promise(r => m.once('moveend', r));
+                    m.fitBounds(bounds, o);
+                    await end;
+                    m.off('move', onMove);
+                    return {ms: performance.now() - t0, low, end: [m.getCenter().lng, m.getCenter().lat, m.getZoom()]};
+                };
+                const out = {fly: await fit([[38, -2], [42, 2]], {speed: 4}), linear: await fit([[-2, -2], [2, 2]], {linear: true})};
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        // (The flight dips more than one zoom level below its end. The linear fit moves 40 degrees at one zoom and does not dip.)
+        check('[main] maplibre-compat: fitBounds flies with a duration from speed, and eases with linear, as in MapLibre GL JS (#1235)',
+            ['fly', 'linear'].every(k => {
+                const a = m1235.ml[k], b = m1235.compat[k];
+                return a.end.every((x, i) => Math.abs(x - b.end[i]) < 1e-4) && Math.abs(a.low - b.low) < 0.05 && b.ms > a.ms * 0.6 && b.ms < a.ms * 1.6;
+            }) && m1235.ml.fly.low < m1235.ml.fly.end[2] - 1 && m1235.ml.linear.low > m1235.ml.fly.end[2] - 0.01, JSON.stringify(m1235));
         // #565: isSourceLoaded(id) answers for one source and fires `error` for an id that the style does not have, and
         // isActive() of a handler is true during its gesture, as in MapLibre GL JS (served at /ml/).
         const m565 = {};
