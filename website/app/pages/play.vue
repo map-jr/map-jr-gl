@@ -163,8 +163,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="grid lg:h-[calc(100dvh-var(--ui-header-height))] lg:grid-cols-2">
-    <section class="flex min-h-0 flex-col border-muted lg:border-e">
+  <div class="grid grid-cols-1 lg:h-[calc(100dvh-var(--ui-header-height))] lg:grid-cols-2">
+    <section class="flex min-h-0 min-w-0 flex-col border-muted lg:border-e">
       <div class="flex flex-wrap items-center gap-2 border-b border-muted px-4 py-3">
         <h1 class="me-auto font-display text-2xl text-highlighted">Play</h1>
         <span class="text-sm text-muted">Start from</span>

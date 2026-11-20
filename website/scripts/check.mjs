@@ -549,6 +549,39 @@ try {
         if (engine !== browser) await engine.close();
     }
 
+    // /play on a phone, in Chromium and in WebKit with touch: the page has the width of the window, and no element is wider
+    // than it, apart from the lines of the editor, which scroll inside it (#1336). The editor is above the map.
+    for (const type of [chromium, webkit]) {
+        const name = `/play on a phone in ${type.name()}`;
+        const engine = type === chromium ? browser : await type.launch();
+        const context = await engine.newContext(devices['iPhone 13']);
+        const page = await context.newPage();
+        const problems = [];
+        page.on('pageerror', error => problems.push('error: ' + error.message.slice(0, 200)));
+        await page.goto(base + '/play', {waitUntil: 'load'});
+        await page.locator('.cm-content').waitFor({timeout: 30000});
+        await page.locator('.map-frame iframe').waitFor({timeout: 30000});
+        const place = await page.evaluate(() => {
+            const width = innerWidth;
+            const wide = [...document.querySelectorAll('body *')]
+                .filter(element => !element.closest('.cm-scroller') && element.getBoundingClientRect().right > width + 1 && element.getBoundingClientRect().width > 0)
+                .map(element => `${element.tagName.toLowerCase()}.${String(element.className).slice(0, 40)}`);
+            const top = selector => Math.round(document.querySelector(selector).getBoundingClientRect().top);
+            return {
+                width, scroll: document.documentElement.scrollWidth, wide: wide.slice(0, 5),
+                header: Math.round(document.querySelector('header').getBoundingClientRect().width),
+                editor: top('.code-editor'), map: top('.map-frame'),
+            };
+        });
+        check(`${name}: the layout width is that of the screen (390)`, place.width === 390 && place.scroll <= 390, `${place.width}, scroll ${place.scroll}`);
+        check(`${name}: the header has the width of the window`, place.header === place.width, String(place.header));
+        check(`${name}: no element is wider than the window`, place.wide.length === 0, place.wide.join(' | '));
+        check(`${name}: the editor is above the map`, place.editor < place.map, `${place.editor} < ${place.map}`);
+        check(`${name}: no error`, problems.length === 0, problems.join(' | '));
+        await context.close();
+        if (engine !== browser) await engine.close();
+    }
+
     // The raw Markdown of a page is the file of docs/.
     {
         const raw = await fetch(base + '/raw/recipes/query.md').then(response => response.text());
