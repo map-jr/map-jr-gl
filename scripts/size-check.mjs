@@ -50,6 +50,8 @@ const sizes = [
     // The adapter for Vue (`@map-jr/map-jr-gl/vue`). `MapJr` loads the map when it is mounted, so a component that
     // imports only `MapOverlay`, `MapImage` or `useMapInstance` does not load the map (#159).
     ['vue.js, up front (' + [...withStaticImports('vue.js')].length + ' files)', gz(withStaticImports('vue.js')), 8],
+    // The adapter for React (`@map-jr/map-jr-gl/react`), with the files that it imports when it loads (#1266).
+    ['react.js, up front (' + [...withStaticImports('react.js')].length + ' files)', gz(withStaticImports('react.js')), 8],
     // The web component (`@map-jr/map-jr-gl/element`), without the page script that it imports, which is counted above (#826).
     ['element.js, without the page script', gz(['element.js']), 4],
     // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
