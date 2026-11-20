@@ -105,18 +105,21 @@ try {
     }
 
     // The colours of the code (#1209): the tokens have the colours of the theme of the scheme, the block has the
-    // sheet of the site, and each token has 4.5:1 or more against it. The lists are the foreground colours of the
-    // themes github-light-default and github-dark-default of Shiki 4.6.0.
+    // sheet of the code, and each token has 4.5:1 or more against it. The lists are the foreground colours of the
+    // themes github-light-default and github-dark-default of Shiki 4.6.0. The block has its own background (#1331), and
+    // the light tokens are darkened by 15% (color-mix in main.css), so that the comment colour keeps 4.5:1 on it.
     {
+        const darken = colour => '#' + [1, 3, 5].map(i => Math.round(parseInt(colour.slice(i, i + 2), 16) * 0.85).toString(16).padStart(2, '0')).join('').toUpperCase();
         const themes = {
-            light: {sheet: '#FFFFFF', colours: ['#1F2328', '#6E7781', '#CF222E', '#0550AE', '#953800', '#8250DF', '#116329', '#0A3069', '#82071E', '#57606A']},
-            dark: {sheet: '#1C1D20', colours: ['#E6EDF3', '#8B949E', '#FF7B72', '#79C0FF', '#FFA657', '#D2A8FF', '#7EE787', '#A5D6FF', '#FFA198', '#F0F6FC']},
+            light: {sheet: '#F6F8FA', colours: ['#1F2328', '#6E7781', '#CF222E', '#0550AE', '#953800', '#8250DF', '#116329', '#0A3069', '#82071E', '#57606A'].map(darken)},
+            dark: {sheet: '#0F1013', colours: ['#E6EDF3', '#8B949E', '#FF7B72', '#79C0FF', '#FFA657', '#D2A8FF', '#7EE787', '#A5D6FF', '#FFA198', '#F0F6FC']},
         };
         for (const scheme of ['light', 'dark']) {
             const {page, problems, close} = await open('/guide/getting-started', {scheme});
             await page.waitForFunction(scheme => document.documentElement.classList.contains(scheme), scheme);
             const blocks = await page.locator('main pre.shiki').evaluateAll(blocks => {
-                const hex = colour => '#' + colour.match(/\d+/g).slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('').toUpperCase();
+                // The computed colour is rgb(r, g, b), or color(srgb r g b) with fractions from color-mix.
+                const hex = colour => '#' + (colour.startsWith('color(') ? colour.match(/[\d.]+/g).slice(-3).map(n => Math.round(Number(n) * 255)) : colour.match(/\d+/g).slice(0, 3).map(Number)).map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase();
                 return blocks.map(block => ({
                     sheet: hex(getComputedStyle(block).backgroundColor),
                     // A block in a language that Shiki did not load has no token colours and takes the text colour.
@@ -128,7 +131,9 @@ try {
             const used = [...new Set(blocks.flatMap(block => block.colours))];
             check(`code in ${scheme}: every code block is highlighted`, blocks.length > 0 && blocks.every(block => block.highlighted), `${blocks.filter(block => block.highlighted).length} of ${blocks.length} blocks`);
             check(`code in ${scheme}: each block has the sheet ${sheet}`, blocks.every(block => block.sheet === sheet), [...new Set(blocks.map(block => block.sheet))].join(' '));
-            const foreign = used.filter(colour => !colours.includes(colour));
+            // The browser and darken() can round a half differently, so a channel may differ by 1.
+            const near = (a, b) => [1, 3, 5].every(i => Math.abs(parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)) <= 1);
+            const foreign = used.filter(colour => !colours.some(expected => near(colour, expected)));
             check(`code in ${scheme}: the tokens have the colours of the theme`, foreign.length === 0, foreign.join(' '));
             const low = used.map(colour => [colour, contrast(colour, sheet)]).filter(([, ratio]) => ratio < 4.5);
             check(`code in ${scheme}: every token has 4.5:1 or more on the sheet`, low.length === 0, low.map(([colour, ratio]) => `${colour} ${ratio.toFixed(2)}`).join(' ') || 'lowest ' + Math.min(...used.map(colour => contrast(colour, sheet))).toFixed(2));

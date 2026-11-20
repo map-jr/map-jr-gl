@@ -81,11 +81,14 @@
   --site-sheet: #ffffff;
 
   /*
-   * Monospace text (#1331). Contrast of the text on its background: inline code 13.7, code blocks 14.8. The
-   * tokens of a block (github-light-default) keep 4.5 or more on the block background.
+   * Monospace text (#1331). Contrast of the text on its background: inline code 5.95 (the muted text on the paper),
+   * code blocks 14.8. The tokens of a block (github-light-default) keep 4.5 or more on the block background.
    */
-  --site-code-bg: #eceff3;
-  --site-code-fg: #1f2328;
+  --site-code-bg: var(--color-paper-50);
+  --site-code-fg: var(--color-paper-600);
+  --site-code-padding: 0.1em 0.35em;
+  --site-code-radius: 0.25rem;
+  --site-code-size: 0.875em;
   --site-pre-bg: #f6f8fa;
   --site-pre-fg: #1f2328;
 }
@@ -118,9 +121,9 @@
   --site-contour: var(--ui-color-neutral-700);
   --site-sheet: #1c1d20;
 
-  /* Contrast of the text on its background: inline code 11.7, code blocks 16.1. */
-  --site-code-bg: #2a2d33;
-  --site-code-fg: #e6edf3;
+  /* Contrast of the text on its background: inline code 6.0 (#a2a09a on #222326), code blocks 16.1. */
+  --site-code-bg: #222326;
+  --site-code-fg: var(--color-paper-400);
   --site-pre-bg: #0f1013;
   --site-pre-fg: #e6edf3;
 }
@@ -366,6 +369,11 @@
 :not(pre) > code {
   background-color: var(--site-code-bg);
   color: var(--site-code-fg);
+  padding: var(--site-code-padding);
+  border-radius: var(--site-code-radius);
+  font-size: var(--site-code-size);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 /*
