@@ -2940,9 +2940,9 @@ for (const mode of renderers) {
                 const globe = calls, said = warnings.filter(w => w.includes('"custom"'));
                 m.setProjection({type: 'mercator'});
                 await wait(500); m.triggerRepaint(); await wait(300);
-                const n = warnings.length, vp = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, projection: {type: 'vertical-perspective'},
+                const n = warnings.length, el2 = document.body.appendChild(el.cloneNode()), vp = new mod.Map({container: el2, renderer: 'main', attributionControl: false, style: {version: 8, projection: {type: 'vertical-perspective'},
                     sources: {dem: {type: 'raster-dem', tiles: ['/none/{z}/{x}/{y}.png']}}, terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background'}]}});
-                await new Promise(r => vp.once('load', r)); vp.addLayer({id: 'c', type: 'custom', render() {}}); await wait(300); vp.remove();
+                await new Promise(r => vp.once('load', r)); vp.addLayer({id: 'c', type: 'custom', render() {}}); await wait(300); vp.remove(); el2.remove();
                 return {globe, said, mercator: calls, vp: warnings.slice(n)};
             } finally { console.warn = warn; m.remove(); el.remove(); }
         });
