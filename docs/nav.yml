@@ -36,6 +36,10 @@ sections:
       - pmtiles.md
       - terrain.md
       - globe.md
+      - clusters.md
+      - control.md
+      - shields.md
+      - stores.md
   - title: Reference
     folder: reference
     pages:

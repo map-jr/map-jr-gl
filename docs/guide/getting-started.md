@@ -199,9 +199,7 @@ components fill their parent element, and `<map-jr>` is the container itself.
 
 A container with no height shows nothing. A parent that has only `min-height` gives a component a height of 0,
 because a percentage height needs a parent with a set height. Set `height` on the parent, or make the parent a flex
-or grid container. In development, a bundler that sets the `development` export condition, as Vite does, loads the
-development build of the library. It warns once when the container has a height of 0 one second after the map was
-created.
+or grid container.
 
 ## Load the library without a bundler
 

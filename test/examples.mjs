@@ -58,6 +58,13 @@ for (const file of readdirSync(dir).filter(f => /\.(js|vue|jsx|svelte|html)$/.te
     } catch (e) { problems.push(String(e.message).split('\n')[0]); }
     check(file, problems.length === 0, problems.join(' | '));
 }
+// The component tests of the recipes (examples/tests/*.test.js and .jsx) must compile too. They run with Vitest, which
+// this repository does not install.
+for (const file of readdirSync(path.join(dir, 'tests')).filter(f => /\.test\.jsx?$/.test(f)).sort()) {
+    let problem = '';
+    try { transformSync(readFileSync(path.join(dir, 'tests', file), 'utf8'), {loader: file.endsWith('.jsx') ? 'jsx' : 'js', jsx: 'automatic'}); } catch (e) { problem = String(e.message).split('\n')[0]; }
+    check(`tests/${file}`, !problem, problem);
+}
 
 // TypeScript code must compile against the built types (dist/types): code that was written for MapLibre GL JS
 // against the compat entry (test/types/maplibre-code.ts, and lines from real projects in test/types/maplibre-projects-code.ts), code for the main API (test/types/main-code.ts, and a style built with its style types in test/types/style-code.ts), a template ref on the Vue component (test/types/vue-code.ts), the names in `paint` and `layout` of each layer type (test/types/layer-types-code.ts), values typed with the types of maplibre-gl (test/types/maplibre-typed-code.ts), and the names of MapLibre GL JS that the compat entry exports as types (test/types/compat-exported-types-code.ts).

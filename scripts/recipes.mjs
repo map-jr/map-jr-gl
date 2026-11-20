@@ -3,6 +3,8 @@
 // script fills it with the forms of examples/<id>.*, formatted as docs-lint formats a fence (website/build/format.mjs).
 // The Nuxt form is left out when it differs from the Vue form only in its imports and its first comment, as the style
 // guide asks; the page then says once that Nuxt needs no imports.
+// A recipe can also have a block `<!-- file:<path>:start -->` … `<!-- file:<path>:end -->`, which this script fills
+// with one fence of the file examples/<path>, such as a component test of examples/tests/.
 //
 // Usage: node scripts/recipes.mjs [--write | --check]   (writing is the default)
 //   --check  writes nothing, and fails when a block differs from its files or names an example that does not exist.
@@ -33,27 +35,36 @@ const forms = [
 // The Vue code without its imports and the comment lines at the start of the script, to compare with Nuxt.
 const body = code => code.split('\n').filter(l => !/^\s*import\s/.test(l)).join('\n').replace(/(<script[^>]*>\n)(\/\/.*\n)+/, '$1');
 
+/** The code of a file of examples/ as a fence of the docs: formatted as docs-lint formats it, at the width of the site. */
+async function formatted(raw, language) {
+    // A comment of several lines is one paragraph: its lines are joined, so that the re-flow breaks it only where the
+    // width needs (the re-flow breaks each long line on its own).
+    const code = raw.replace(/^([ \t]*)\/\/ (.*)\n(?:\1\/\/ .*\n?)+/gm, (run, indent) =>
+        indent + '// ' + run.split('\n').filter(Boolean).map(l => l.trim().slice(3)).join(' ') + (run.endsWith('\n') ? '\n' : ''));
+    if (language !== 'html') return format.formatCode(code, language, format.desktopWidth);
+    // The site does not re-flow the comments of a script in an HTML page, and the phone shows them at 38 columns.
+    // The comments of the page are written at that width here, with a comment of several lines joined first.
+    const joined = code.replace(/<!--([\s\S]*?)-->/g, (_, text) => `<!-- ${text.trim().replace(/\s+/g, ' ')} -->`);
+    return format.reflowComments(await format.formatCode(joined, language, format.desktopWidth), 'vue', format.phoneWidth - 4);
+}
+
+const read = name => readFileSync(path.join(root, 'examples', name), 'utf8').replace(/\n+$/, '');
+
 async function block(id) {
     const parts = [];
-    const read = suffix => readFileSync(path.join(root, 'examples', id + suffix), 'utf8').replace(/\n+$/, '');
     for (const [label, suffix, language] of forms) {
-        const raw = read(suffix);
-        // A comment of several lines is one paragraph: its lines are joined, so that the re-flow breaks it only where the
-        // width needs (the re-flow breaks each long line on its own).
-        const code = raw.replace(/^([ \t]*)\/\/ (.*)\n(?:\1\/\/ .*\n?)+/gm, (run, indent) =>
-            indent + '// ' + run.split('\n').filter(Boolean).map(l => l.trim().slice(3)).join(' ') + (run.endsWith('\n') ? '\n' : ''));
-        if (label === 'Nuxt' && body(raw) === body(read('.vue'))) continue;
-        let formatted = await format.formatCode(code, language, format.desktopWidth);
-        // The site does not re-flow the comments of a script in an HTML page, and the phone shows them at 38 columns.
-        // The comments of the page are written at that width here, with a comment of several lines joined first.
-        if (language === 'html') {
-            const joined = code.replace(/<!--([\s\S]*?)-->/g, (_, text) => `<!-- ${text.trim().replace(/\s+/g, ' ')} -->`);
-            formatted = format.reflowComments(await format.formatCode(joined, language, format.desktopWidth), 'vue', format.phoneWidth - 4);
-        }
+        const raw = read(id + suffix);
+        if (label === 'Nuxt' && body(raw) === body(read(id + '.vue'))) continue;
         const name = label.startsWith('<') ? '`' + label + '`' : label;
-        parts.push(`**${name}**\n\n\`\`\`${language} [${label}]\n${formatted}\n\`\`\``);
+        parts.push(`**${name}**\n\n\`\`\`${language} [${label}]\n${await formatted(raw, language)}\n\`\`\``);
     }
     return parts.join('\n\n');
+}
+
+/** One fence with the file examples/<name>. */
+async function fileBlock(name) {
+    const language = name.endsWith('.jsx') ? 'jsx' : 'js';
+    return `\`\`\`${language}\n${await formatted(read(name), language)}\n\`\`\``;
 }
 
 const dir = path.join(root, 'docs', 'recipes');
@@ -61,20 +72,23 @@ let failures = 0;
 for (const file of readdirSync(dir).filter(f => f.endsWith('.md'))) {
     const text = readFileSync(path.join(dir, file), 'utf8');
     let out = text;
-    for (const match of text.matchAll(/^<!-- example:([\w-]+):start -->\n([\s\S]*?)^<!-- example:\1:end -->$/gm)) {
-        const [whole, id, current] = match;
-        if (!existsSync(path.join(root, 'examples', id + '.js'))) {
-            console.log(`docs/recipes/${file}: the example "${id}" has no files in examples/.`);
+    const blocks = [
+        ...[...text.matchAll(/^<!-- (example):([\w-]+):start -->\n([\s\S]*?)^<!-- example:\2:end -->$/gm)],
+        ...[...text.matchAll(/^<!-- (file):([\w./-]+):start -->\n([\s\S]*?)^<!-- file:\2:end -->$/gm)],
+    ];
+    for (const [whole, kind, id, current] of blocks) {
+        if (!existsSync(path.join(root, 'examples', kind === 'file' ? id : id + '.js'))) {
+            console.log(`docs/recipes/${file}: ${kind === 'file' ? `the file examples/${id} does not exist` : `the example "${id}" has no files in examples/`}.`);
             failures++;
             continue;
         }
-        const wanted = await block(id);
+        const wanted = kind === 'file' ? await fileBlock(id) : await block(id);
         if (current.replace(/\n$/, '') === wanted) continue;
         if (check) {
-            console.log(`docs/recipes/${file}: the code of "${id}" differs from examples/${id}.*. Change the example, then run node scripts/recipes.mjs.`);
+            console.log(`docs/recipes/${file}: the code of "${id}" differs from examples/${kind === 'file' ? id : id + '.*'}. Change the example, then run node scripts/recipes.mjs.`);
             failures++;
         }
-        out = out.replace(whole, `<!-- example:${id}:start -->\n${wanted}\n<!-- example:${id}:end -->`);
+        out = out.replace(whole, `<!-- ${kind}:${id}:start -->\n${wanted}\n<!-- ${kind}:${id}:end -->`);
     }
     if (!check && out !== text) {
         writeFileSync(path.join(dir, file), out);

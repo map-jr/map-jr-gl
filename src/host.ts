@@ -643,14 +643,14 @@ export interface MapInstance {
      * Returns the zoom level at which a cluster of a GeoJSON source with `cluster: true` divides.
      * @param sourceId The id of a GeoJSON source with `cluster: true`.
      * @param clusterId `properties.cluster_id` of the cluster feature.
-     * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
+     * @returns A promise that rejects when the source has no cluster with this id.
      */
     clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>;
     /**
      * Returns the clusters and points that a cluster divides into at the next zoom level.
      * @param sourceId The id of a GeoJSON source with `cluster: true`.
      * @param clusterId `properties.cluster_id` of the cluster feature.
-     * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
+     * @returns A promise that rejects when the source has no cluster with this id.
      */
     clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>;
     /**
@@ -658,7 +658,7 @@ export interface MapInstance {
      * @param sourceId The id of a GeoJSON source with `cluster: true`.
      * @param clusterId `properties.cluster_id` of the cluster feature.
      * @param options `limit` is the largest number of points (default 10), and `offset` the number to skip (default 0).
-     * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
+     * @returns A promise that rejects when the source has no cluster with this id.
      */
     clusterLeaves(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}): Promise<ClusterFeature[]>;
     /**
