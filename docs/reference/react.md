@@ -351,9 +351,6 @@ React renders the SVG once, outside the page, and the map draws it once for each
 component inside the SVG can change it, and the map then uses the new SVG. An image of `MapImage` overrides an image
 of the prop `images` with the same name.
 
-The [development build](create-map.md#the-development-build) warns when `MapImage` is not inside `MapJr`, and when it has neither an `<svg>`
-element nor `src` one second after it mounts.
-
 ## `useMap`
 
 ```ts

@@ -1112,17 +1112,17 @@ export class Map {
     private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
     /**
      * Sets the smallest zoom level that the user can reach.
-     * @param z The zoom level. `undefined` restores the default, -2. `null` is stored as it is, where MapLibre GL JS restores the default.
+     * @param z The zoom level. `undefined` or `null` restores the default, -2.
      */
-    setMinZoom(z = -2) { this.tr.minZoom = z; return this.limits(); }
+    setMinZoom(z?: number | null) { this.tr.minZoom = z ?? -2; return this.limits(); }
     /**
      * Sets the largest zoom level that the user can reach.
-     * @param z The zoom level. `undefined` restores the default, 22. `null` is stored as it is, where MapLibre GL JS restores the default.
+     * @param z The zoom level. `undefined` or `null` restores the default, 22.
      */
-    setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
+    setMaxZoom(z?: number | null) { this.tr.maxZoom = z ?? 22; return this.limits(); }
     declare private pitchWarned?: boolean;
     /**
-     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90 and warns once.
+     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
      * @param p The pitch. `undefined` or `null` restores the default, 60.
      */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
@@ -1665,7 +1665,7 @@ export class Map {
     hasControl(control: Control) { return this.controls.has(control); }
 
     // ---- fonts and images ----
-    /** Only in this library: loads more web fonts for labels after the map is made. See the option `fonts`. */
+    /** Only in this library: loads more web fonts for labels after the map is created. See the option `fonts`. */
     addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
 
     /**
@@ -2086,7 +2086,8 @@ export class Map {
                 b.el.remove();
                 if (e.type !== 'pointerup' || Math.abs(at.x - b.x) < 4 || Math.abs(at.y - b.y) < 4) { this.fire('boxzoomcancel', {originalEvent: e}); return; }
                 const bounds = new LngLatBounds(this.unproject(b), this.unproject(at)).extend(this.unproject({x: b.x, y: at.y})).extend(this.unproject({x: at.x, y: b.y}));
-                this.fitBounds(bounds, {duration: 300});
+                // (An ease, as in MapLibre GL JS, also in the compat entry, whose fitBounds flies.)
+                this.easeTo({...this.cameraForBounds(bounds), duration: 300});
                 this.fire('boxzoomend', {originalEvent: e, boxZoomBounds: bounds});
                 return;
             }

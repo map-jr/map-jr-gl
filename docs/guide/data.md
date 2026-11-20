@@ -169,9 +169,8 @@ Three things often go wrong:
 
 - A key is removed from `data`, and a layer still uses its source. The map removes the source, and the layer draws
   nothing. Remove the layer in the same description.
-- A key names a source of the style that is not a GeoJSON source, such as a vector source. The data has no effect,
-  and the map calls `onError` of the description with an `Error` that names the key. Without `onError`, the map
-  writes the error to the console.
+- A key names a source of the style that is not a GeoJSON source, such as a vector source. The data has no effect.
+  Use a key that no source of the style has, or the id of a GeoJSON source of the style.
 - A wide line is cut off at the edges of the tiles. Set a larger `buffer` on the source, as in the table below.
 
 `buffer` is the margin around each tile in which a GeoJSON source keeps the features that cross the edge of the
@@ -273,8 +272,7 @@ Set `id` from a field of the record that stays the same, not from the index: the
 record before it is removed. A string of decimal digits that is a safe integer, such as `'12'`, becomes the number
 `12` in the features that [`queryFeatures`](../reference/map.md#queryfeatures) returns and in `state.hover`.
 
-A record whose position is not two finite numbers, such as `['2.3', '48.8']`, is left out. The
-[development build](../api.md#make-a-map) warns once with the index of the first such record.
+A record whose position is not two finite numbers, such as `['2.3', '48.8']`, is left out.
 
 ## Group points into clusters
 
@@ -382,8 +380,7 @@ cluster. Each is called with the id of the source and the `cluster_id` of the cl
 | `clusterChildren(sourceId, clusterId)` | The clusters and points that the cluster divides into, as GeoJSON features. |
 | `clusterLeaves(sourceId, clusterId, {limit, offset})` | The points of the cluster as GeoJSON features. `limit` is 10 by default, and `Infinity` returns all of them. `offset` is 0 by default. |
 
-The promise rejects when the source is not a GeoJSON source of the map, when the source has no clusters, or when no
-cluster has that id.
+The promise rejects when the source has no cluster with that id.
 
 ## Highlight a feature with its state
 
@@ -503,10 +500,11 @@ A click on a circle turns it red, and the circle that was red before turns blue.
 - `source` is the id of the source.
 - `sourceLayer` is the layer of the tiles, and it is required for a vector source.
 - `id` is the `id` of the feature, as [`queryFeatures`](../reference/map.md#queryfeatures) and `event.features` return it. A
-  vector source needs a numeric id. In a GeoJSON source, the id is a number or a string, or the value of the
-  property that `promoteId` names.
+  feature of a vector source has the numeric id that its tile gives it, and a feature that the tile gives no id cannot
+  have a state. In a GeoJSON source, the id is a number or a string, or the value of the property that `promoteId`
+  names.
 
-A `target` without `id` makes `removeFeatureState` remove the state of all features of the source.
+Without `id`, `removeFeatureState` removes the state of all features of the source.
 
 The map keeps the state until the application removes it, also when the data or the style changes. A source of a new
 style with the same id draws the state that was set for the old source. The state is not part of the description, so

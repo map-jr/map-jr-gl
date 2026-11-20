@@ -3,7 +3,7 @@
 import type {Map} from './compat-map.ts';
 import type {Map as CoreMap, MapEvent as CoreMapEvent, MapOptions as CoreMapOptions, RenderedFeature, RenderedQueryOptions, PaddingInput, RequestTransform, GeoJSONDiff} from './map.ts';
 import type {CameraOptions as CoreCameraOptions} from './engine.ts';
-import type {CameraInput} from './map.ts';
+import type {CameraInput, FlyOptions} from './map.ts';
 import type {Control} from './controls.ts';
 import type {LngLat, LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
 import type {AttributionControl} from './controls.ts';
@@ -137,11 +137,14 @@ export type JumpToOptions = Parameters<Map['jumpTo']>[0];
 /** `essential: true` animates the change also when the user asked the system for less motion. */
 export type EaseToOptions = CameraInput & {duration?: number; around?: [number, number]; essential?: boolean; offset?: [number, number] | {x: number; y: number}; easing?: (t: number) => number};
 export type FlyToOptions = EaseToOptions;
-/** The options of `map.fitBounds`. The camera ends at `pitch`. `speed`, `curve` and `linear` have no effect: the map always eases to the bounds. */
-export type FitBoundsOptions = NonNullable<Parameters<CoreMap['fitBounds']>[1]> & {pitch?: number; essential?: boolean; speed?: number; curve?: number; linear?: boolean};
+/**
+ * The options of `map.fitBounds`, as in MapLibre GL JS: those of `flyTo`, `maxZoom`, and `linear`, which makes the fit ease as `easeTo`
+ * does instead of flying. `padding` is space around the box, on top of the padding of the map.
+ */
+export type FitBoundsOptions = EaseToOptions & FlyOptions & {maxZoom?: number; linear?: boolean};
 /** The camera of a map. `padding` is a number or an object with `top`, `right`, `bottom` and `left`, in pixels. */
 export type CameraOptions = CameraInput;
-/** A feature for `setFeatureState` and `getFeatureState`. Without an `id`, the methods write a warning and do nothing. */
+/** A feature for `setFeatureState` and `getFeatureState`. Without an `id`, the methods do nothing. */
 export type FeatureIdentifier = {source: string; sourceLayer?: string; id?: string | number};
 export type CameraForBoundsOptions = NonNullable<Parameters<Map['cameraForBounds']>[1]>;
 export type CenterZoomBearing = Pick<CoreCameraOptions, 'center' | 'zoom' | 'bearing'>;
@@ -310,7 +313,7 @@ export type CanvasSourceSpecification = {type: 'canvas'; coordinates: Coordinate
  * An image for `map.addImage` as an object with pixels. The map reads `data` (RGBA, `width` × `height` × 4 bytes) once,
  * when the image is added. `render`, `onAdd` and `onRemove` have no effect: the map does not call them, so an image
  * cannot change itself. Call `map.updateImage` to change it. A `data` that is not pixels (the WebGL form of MapLibre GL
- * JS) throws.
+ * JS) is not supported.
  */
 export interface StyleImageInterface {
     width: number; height: number; data: Uint8Array | Uint8ClampedArray;
