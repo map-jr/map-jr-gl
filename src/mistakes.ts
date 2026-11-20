@@ -4,11 +4,12 @@
  */
 import type {Map} from './map.ts';
 import type {FeatureOptions, MapDescription, MapInstance, SourceOptions} from './host.ts';
+import type {Given} from './unset.ts';
 import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
-export interface Checked { map: Map; warned: Set<string>; spec(): MapDescription; /** The map exists and has loaded the style of the description. */ ready(): boolean }
+export interface Checked { map: Map; warned: Set<string>; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
 
 const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
@@ -140,7 +141,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         known(1, spec.interactiveLayers);
         for (const l of map.getStyle()?.layers ?? []) { const src = (l as {source?: unknown}).source; if (typeof src === 'string' && !map.getSource(src) && !c.warned.has(`6 ${l.id} ${src}`)) warn(2, l.id, src); }
     } else if (kind === 2) {
-        const next = a as MapDescription, before = b as MapDescription | undefined;
+        const next = a as Given, before = b as Given | undefined;
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);

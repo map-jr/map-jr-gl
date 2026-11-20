@@ -157,6 +157,9 @@ This holds for both entries: a new value in `update()` or `patch()` (in the styl
 
 ## The description
 
+Every optional field accepts `null`, and `null` means the same as leaving the field out, except in `terrain`, where
+`null` turns off the terrain of the style.
+
 | Field | Meaning |
 |---|---|
 | `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new URL is a new style. A new object is a new style too, except when it differs from the old one only in its layers: then `update()` changes the `paint`, `layout` and `filter` of a layer in place, adds and removes layers, and moves layers to a new order, and loads no style. A new layer whose `source` the style does not have, and a change of any other property of a layer that stays (`type`, `source`, `source-layer`, `minzoom`, `maxzoom` and the others), load the style again. A pair `{light, dark}` of two styles uses the style of the resolved `colorScheme`: see [A light and a dark style](#a-light-and-a-dark-style). The root property `sky` draws the sky above the horizon and, on 3D terrain, the fog, in Mercator only; the differences from MapLibre GL JS are under `sky` in docs/maplibre-compatibility.md. |

@@ -109,3 +109,14 @@ const badScale: ScaleOptions = {unit: 'miles'};
 // @ts-expect-error `source` is required.
 const badTerrain: TerrainOptions = {exaggeration: 2};
 console.log(badScale, badTerrain);
+
+// Every optional field of the description accepts null as "not set", as a description from JSON has it (#1146).
+const fromJSON: MapDescription = {
+    style: 'https://demotiles.maplibre.org/style.json', renderer: null, fontFamily: null, interactive: null, antialias: null, attribution: null, hash: null, nonce: null,
+    sources: null, layers: null, terrain: null, fonts: null, initialView: null, view: null, onViewChange: null, data: null, images: null, sprite: null, controls: null,
+    projection: null, globalState: null, interactiveLayers: null, hoverState: null, onClick: null, onError: null, minZoom: null, maxZoom: null, maxPitch: null,
+    maxBounds: null, cursor: null, cooperativeGestures: null, colorScheme: null, onColorSchemeChange: null, padding: null, transformRequest: null, locale: null,
+};
+map.update(fromJSON);
+// @ts-expect-error `style` is required, and null is not a style.
+map.update({style: null});
