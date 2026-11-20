@@ -151,7 +151,7 @@ async function copy() {
     await writeAddress();
     try {
         await navigator.clipboard.writeText(location.href);
-        toast.add({title: 'The link is copied', description: 'It opens this page with the same code and view.', icon: 'i-lucide-link'});
+        toast.add({title: 'The link is copied', description: 'It keeps the code and the view of the map.', icon: 'i-lucide-link'});
     } catch {
         toast.add({title: 'The link could not be copied', description: 'Copy the address of the page.', color: 'error'});
     }
@@ -169,7 +169,15 @@ onBeforeUnmount(() => {
         <h1 class="me-auto font-display text-2xl text-highlighted">Play</h1>
         <span class="text-sm text-muted">Start from</span>
         <UButton v-for="item in starts" :key="item.label" size="sm" color="neutral" variant="outline" @click="begin(item.code)">{{ item.label }}</UButton>
-        <UButton size="sm" icon="i-lucide-link" @click="copy">Copy the link</UButton>
+        <div class="flex items-center gap-1">
+          <UButton size="sm" icon="i-lucide-link" @click="copy">Copy link</UButton>
+          <UPopover :content="{side: 'bottom', align: 'end'}">
+            <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-info" aria-label="What the link keeps" />
+            <template #content>
+              <p class="max-w-64 p-3 text-sm text-default">The link keeps the code and the view of the map. Whoever opens it sees the same code and the same map.</p>
+            </template>
+          </UPopover>
+        </div>
       </div>
       <p class="border-b border-muted px-4 py-2 text-sm text-muted">
         The code is a module of the Main API whose default export is a
