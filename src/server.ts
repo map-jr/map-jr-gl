@@ -6,7 +6,7 @@ import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
-import {renderSVG} from './svg.ts';
+import {renderSVG, cleanCredits} from './svg.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
 import type {MapDescription} from './host.ts';
 import {compileFor, pickImage} from './expr.ts';
@@ -327,24 +327,6 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 }
 
 /**
- * Returns HTML of credits that is safe to put into a page: the text, escaped, and links to http and https URLs. Every other tag is removed.
- * @returns The cleaned HTML.
- */
-export function cleanCredits(html: string): string {
-    const text = (t: string) => t.replace(/&(?!#?\w+;)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    let out = '', open = 0;
-    for (const [part] of html.matchAll(/<a\b[^>]*>|<\/a\s*>|<[^>]*>?|[^<]+/gi)) {
-        if (part[0] !== '<') out += text(part);
-        else if (/^<\/a/i.test(part)) { if (open) { open--; out += '</a>'; } }
-        else if (/^<a\b/i.test(part) && part.endsWith('>')) {
-            const href = /href\s*=\s*(?:"(https?:\/\/[^"]*)"|'(https?:\/\/[^']*)')/i.exec(part);
-            if (href) { open++; out += `<a href="${text(href[1] ?? href[2])}">`; }
-        }
-    }
-    return out + '</a>'.repeat(open);
-}
-
-/**
  * Renders the first view of a map as HTML for a page from a server: the SVG, with the credits over it. Put the HTML into
  * the element of the map; the map removes it when it has loaded the tiles of its first view, just before `load`.
  * @param o The options of `renderToSVG`. `attribution` sets the credits instead of those of the sources, and `false` shows none.
@@ -468,4 +450,3 @@ export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
     return {image, contentType: 'image/' + format, tiles};
 }
 
-export {renderSVG} from './svg.ts';

@@ -9,7 +9,8 @@ import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts'
 import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from '../../src/markers.ts';
-import {cleanCredits, renderToSVG} from '../../src/server.ts';
+import {renderToSVG} from '../../src/server.ts';
+import {cleanCredits} from '../../src/svg.ts';
 import {decodePNG, decodeWebPLossless} from '../../src/webp.ts';
 import {deflateSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
