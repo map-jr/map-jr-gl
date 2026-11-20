@@ -25,7 +25,7 @@ if (supported()) {
   });
 } else {
   container.textContent =
-    'This browser cannot show the map. The office is at 1 Centre Street, New York.';
+    'This browser cannot show the map. The office is at 1 Centre Street, NYC.';
 }
 ```
 

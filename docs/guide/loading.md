@@ -101,8 +101,10 @@ The page script and the worker file must come from the same version of the packa
 a worker file of another version, the map writes this warning once and still starts, but it can fail later:
 
 ```text
-[map-jr-gl] The worker file is version 0.1.0 and the page file is version 0.2.0. Serve map-jr-gl-worker.js from the
-same version of the package as the page file, or pass `workerUrl` with the URL of that file.
+[map-jr-gl] The worker file is version 0.1.0 and the page file is version 0.2.0.
+Serve map-jr-gl-worker.js from the
+same version of the package as the page file, or pass `workerUrl` with the URL
+of that file.
 ```
 
 ## Preload the parts of the page script
@@ -113,7 +115,8 @@ browser requests them together. The names of the parts have a hash that changes 
 prints the lines for an entry from the files of the installed package:
 
 ```js
-// preload-links.mjs: prints the <link rel="modulepreload"> lines for an entry of the library.
+// preload-links.mjs: prints the <link rel="modulepreload"> lines for an entry
+// of the library.
 // Run it with: node preload-links.mjs map-jr-gl.js /assets/
 import {readFileSync} from 'node:fs';
 
@@ -175,7 +178,9 @@ const map = new Map({
 Import the entry from the CDN with the version in the URL. The map finds the worker file next to it on the CDN.
 
 ```js
-import {createMap} from 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js';
+const {createMap} = await import(
+  'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js'
+);
 
 // The page has <div id="map" style="height: 400px"></div>.
 const map = createMap('map', {
@@ -267,7 +272,8 @@ export default function MapView() {
       center: [-74.0065, 40.7085],
       zoom: 13.6,
     });
-    // StrictMode runs each effect twice in development, so the cleanup removes the map.
+    // StrictMode runs each effect twice in development, so the cleanup removes
+    // the map.
     return () => map.remove();
   }, []);
   return <div ref={container} style={{height: 400}} />;

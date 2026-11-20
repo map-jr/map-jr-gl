@@ -322,16 +322,17 @@ The image has no accessible name, so `label` has no effect.
 ```ts
 decodePNG(
   bytes: Uint8Array,
-): Promise<{width: number; height: number; data: Uint8Array}>
+): Promise<{width: number; height: number; data: Uint8Array}>;
 decodeWebPLossless(bytes: Uint8Array): {
   width: number;
   height: number;
   data: Uint8Array;
-}
+};
 ```
 
 ```ts
-type ImageDecoder = (bytes: Uint8Array) => Pixels | Promise<Pixels>; // Pixels is {width, height, data}
+// Pixels is {width, height, data}
+type ImageDecoder = (bytes: Uint8Array) => Pixels | Promise<Pixels>;
 ```
 
 The decoders that `decodeImage` uses by default. `data` has the RGBA bytes of the image, and `bytes` is the file of

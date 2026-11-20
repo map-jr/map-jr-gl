@@ -11,7 +11,8 @@ React components fill their parent element, so give the parent a height.
 **Main API**
 
 ```js [Main API]
-// The module script of a page that has <div id="map" style="height: 500px"></div>. The answer to a click shows in a
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The answer to a click shows in a
 // box on the map, and a line of text below the map counts the features.
 import {createMap} from '@map-jr/map-jr-gl';
 
@@ -25,7 +26,8 @@ const show = text => {
   readout.textContent = text;
 };
 
-// The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
+// The answer shows in a box in a corner of the map. The box takes no pointer
+// events, so a click on it reaches the map.
 const box = document.createElement('div');
 box.style.cssText =
   'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
@@ -39,13 +41,17 @@ const map = createMap(container, {
   cursor: 'crosshair', // a click asks about one position
   onClick: async e => {
     const click = ++clicks;
-    // `querySource` reads the tile data of one source within 8 pixels of the click. It also finds
-    // features that the style does not draw. "openmaptiles" is the id of the vector source in this style.
-    // A query fails when its tile cannot be loaded: the answer is then `null` here.
+    // `querySource` reads the tile data of one source within 8 pixels of the
+    // click. It also finds
+    // features that the style does not draw. "openmaptiles" is the id of the
+    // vector source in this style.
+    // A query fails when its tile cannot be loaded: the answer is then `null`
+    // here.
     const features = await map
       .querySource('openmaptiles', e.lngLat, {radius: 8})
       .catch(() => null);
-    // An earlier click can get its answer after a later click. Only the last click is shown.
+    // An earlier click can get its answer after a later click. Only the last
+    // click is shown.
     if (click !== clicks) return;
 
     box.replaceChildren();
@@ -73,7 +79,8 @@ show('Click the map to list what is there.');
 **MapLibre compat**
 
 ```js [MapLibre compat]
-// The module script of a page that has <div id="map" style="height: 500px"></div>. The answer to a click shows in a
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The answer to a click shows in a
 // box on the map, and a line of text below the map counts the features.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
@@ -91,7 +98,8 @@ map.setCursor('crosshair');
 const readout = document.createElement('p');
 map.getContainer().after(readout);
 
-// The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
+// The answer shows in a box in a corner of the map. The box takes no pointer
+// events, so a click on it reaches the map.
 const box = document.createElement('div');
 box.style.cssText =
   'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
@@ -101,14 +109,19 @@ map.getContainer().append(box);
 let clicks = 0;
 map.on('click', async e => {
   const click = ++clicks;
-  // `querySource` is an addition of this library. It reads the tile data of one source within
-  // 8 pixels of the click, and it also finds features that the style does not draw. "openmaptiles" is the id of
-  // the vector source in this style. (`queryRenderedFeatures` of MapLibre GL JS is there also.)
-  // A query fails when its tile cannot be loaded: the answer is then `null` here.
+  // `querySource` is an addition of this library. It reads the tile data of one
+  // source within
+  // 8 pixels of the click, and it also finds features that the style does not
+  // draw. "openmaptiles" is the id of
+  // the vector source in this style. (`queryRenderedFeatures` of MapLibre GL JS
+  // is there also.)
+  // A query fails when its tile cannot be loaded: the answer is then `null`
+  // here.
   const features = await map
     .querySource('openmaptiles', e.lngLat, {radius: 8})
     .catch(() => null);
-  // An earlier click can get its answer after a later click. Only the last click is shown.
+  // An earlier click can get its answer after a later click. Only the last
+  // click is shown.
   if (click !== clicks) return;
 
   box.replaceChildren();
@@ -136,7 +149,8 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
-// The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
+// The answer shows in a box in a corner of the map. The box takes no pointer
+// events, so a click on it reaches the map.
 const box =
   'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
 
@@ -146,14 +160,18 @@ let clicks = 0;
 
 async function ask(event) {
   const click = ++clicks;
-  // `querySource` reads the tile data of one source within 8 pixels of the click. It also finds
-  // features that the style does not draw. "openmaptiles" is the id of the vector source in this style.
-  // A query fails when its tile cannot be loaded: the answer is then `null` here.
+  // `querySource` reads the tile data of one source within 8 pixels of the
+  // click. It also finds
+  // features that the style does not draw. "openmaptiles" is the id of the
+  // vector source in this style.
+  // A query fails when its tile cannot be loaded: the answer is then `null`
+  // here.
   const features = await map.value.map
     .querySource('openmaptiles', event.lngLat, {radius: 8})
     .catch(() => null);
-  // An earlier click can get its answer after a later click. Only the last click is shown.
-  if (click === clicks) found.value = {features};
+  // An earlier click can get its answer after a later click. Only the last
+  // click is shown.
+  if (click === clicks) found.value = {features, first: features?.slice(0, 8)};
 }
 </script>
 
@@ -166,7 +184,7 @@ async function ask(event) {
     @click="ask"
   >
     <div v-if="found" :style="box">
-      <div v-for="f in found.features?.slice(0, 8)">
+      <div v-for="f in found.first">
         <b>{{ f.sourceLayer }}</b> {{ f.properties.name ?? f.properties.class }}
       </div>
       <div v-if="!found.features">The tile data did not load</div>
@@ -184,7 +202,8 @@ import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
-// The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
+// The answer shows in a box in a corner of the map. The box takes no pointer
+// events, so a click on it reaches the map.
 const box = {
   position: 'absolute',
   top: '8px',
@@ -200,6 +219,15 @@ const box = {
   boxShadow: '0 1px 6px #0004',
 };
 
+// The source layer and the name of a feature.
+function Feature({f}) {
+  return (
+    <>
+      <b>{f.sourceLayer}</b> {f.properties.name ?? f.properties.class}
+    </>
+  );
+}
+
 export default function Query() {
   const map = useRef(null);
   const [found, setFound] = useState(null);
@@ -207,13 +235,17 @@ export default function Query() {
 
   async function ask(event) {
     const click = ++clicks.current;
-    // `querySource` reads the tile data of one source within 8 pixels of the click. It also finds
-    // features that the style does not draw. "openmaptiles" is the id of the vector source in this style.
-    // A query fails when its tile cannot be loaded: the answer is then `null` here.
+    // `querySource` reads the tile data of one source within 8 pixels of the
+    // click. It also finds
+    // features that the style does not draw. "openmaptiles" is the id of the
+    // vector source in this style.
+    // A query fails when its tile cannot be loaded: the answer is then `null`
+    // here.
     const features = await map.current
       .querySource('openmaptiles', event.lngLat, {radius: 8})
       .catch(() => null);
-    // An earlier click can get its answer after a later click. Only the last click is shown.
+    // An earlier click can get its answer after a later click. Only the last
+    // click is shown.
     if (click === clicks.current) setFound({features});
   }
 
@@ -229,7 +261,7 @@ export default function Query() {
         <div style={box}>
           {found.features?.slice(0, 8).map((f, i) => (
             <div key={i}>
-              <b>{f.sourceLayer}</b> {f.properties.name ?? f.properties.class}
+              <Feature f={f} />
             </div>
           ))}
           {!found.features

@@ -47,6 +47,7 @@ import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const view = {center: [-74.0065, 40.7085], zoom: 13.6};
+const options = JSON.stringify({style, initialView: view});
 // The page imports the library from the built files of the package.
 const dist = path.resolve('node_modules/@map-jr/map-jr-gl/dist');
 
@@ -56,7 +57,8 @@ http
       res.writeHead(200, {'content-type': 'text/javascript'});
       return res.end(await readFile(path.join(dist, path.basename(req.url))));
     }
-    // A failed render must not fail the page: the map then draws in the browser.
+    // A failed render must not fail the page: the map then draws in the
+    // browser.
     const firstView = await renderFirstView({
       style,
       ...view,
@@ -68,11 +70,14 @@ http
     });
     res.writeHead(200, {'content-type': 'text/html'});
     res.end(`<!doctype html>
-<script type="importmap">{"imports": {"@map-jr/map-jr-gl": "/map-jr-gl/map-jr-gl.js"}}</script>
-<div id="map" style="position: relative; width: 800px; height: 500px">${firstView}</div>
+<script type="importmap">
+  {"imports": {"@map-jr/map-jr-gl": "/map-jr-gl/map-jr-gl.js"}}
+</script>
+<div id="map"
+  style="position: relative; width: 800px; height: 500px">${firstView}</div>
 <script type="module">
   import {createMap} from '@map-jr/map-jr-gl';
-  createMap('map', {style: ${JSON.stringify(style)}, initialView: ${JSON.stringify(view)}});
+  createMap('map', ${options});
 </script>`);
   })
   .listen(3000);
@@ -100,8 +105,15 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 ```html [<map-jr>]
 <!doctype html>
-<!-- page.html. The server below writes the element of renderElement in place of the last line. -->
-<script type="importmap">{"imports": {"@map-jr/map-jr-gl/element": "/map-jr-gl/element.js"}}</script>
+<!--
+  page.html. The server below writes the element of renderElement in place of
+  the last line.
+-->
+<script type="importmap">
+  {"imports": {
+    "@map-jr/map-jr-gl/element": "/map-jr-gl/element.js"
+  }}
+</script>
 <script type="module">
   import '@map-jr/map-jr-gl/element';
 </script>
@@ -135,7 +147,8 @@ http
         style: 'https://styles.map-jr.org/1/elevation-zero.json',
         initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
       },
-      // width and height set the size of the render. The CSS height in attributes sets the size of the element.
+      // width and height set the size of the render. The CSS height in
+      // attributes sets the size of the element.
       {
         width: 800,
         height: 500,
