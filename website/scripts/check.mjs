@@ -244,7 +244,28 @@ try {
         }));
         check('package managers: a reload with a stored choice has no layout shift', shift < 0.01, `CLS ${shift}`);
         check('package managers page: no failed request and no error', problems.length === 0, problems.join(' | '));
-        if (screenshots) {
+        // Each example of /play runs without an error (#1339): the map reaches idle and the frame shows no error. The
+    // examples load the style and tiles of other hosts, so this runs with the map only.
+    if (withMap) {
+        const {page, problems, close} = await open('/play');
+        const examplesButton = page.getByRole('button', {name: 'Examples', exact: true});
+        await examplesButton.click();
+        const labels = (await page.getByRole('menuitem').allTextContents()).map(label => label.trim());
+        await page.keyboard.press('Escape');
+        for (const label of labels) {
+            await examplesButton.click();
+            await page.getByRole('menuitem', {name: label, exact: true}).click();
+            const idle = await page.locator('[data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
+            await page.waitForTimeout(1500);
+            const log = page.locator('.map-frame [role="log"]');
+            const logged = await log.count() ? await log.textContent() : '';
+            check(`/play example "${label}": the map reaches idle with no error`, idle && !logged.trim(), logged.trim().slice(0, 200) || (idle ? '' : 'no idle'));
+        }
+        check('/play examples: no error of the page', problems.length === 0, problems.join(' | '));
+        await close();
+    }
+
+    if (screenshots) {
             for (const width of [1440, 390]) {
                 await page.setViewportSize({width, height: width === 390 ? 844 : 900});
                 await group.scrollIntoViewIfNeeded();
@@ -496,6 +517,7 @@ try {
         const playFrame = page.frameLocator('.map-frame iframe');
         const playEditor = page.locator('.cm-content');
         check(`${engine}: /play: the editor and the map start`, await shown(playEditor) && await shown(playFrame.locator('#map canvas').first()));
+        check(`${engine}: /play: has no section "The code"`, await page.getByText('The code is a module').count() === 0 && await page.locator('main p').filter({hasText: 'default export'}).count() === 0);
         const changed = "import {navigation} from '@map-jr/map-jr-gl/controls';\n\nexport default {\n  style: 'https://styles.map-jr.org/1/elevation-zero.json',\n  initialView: {center: [2.35, 48.86], zoom: 5},\n  controls: [navigation()],\n};";
         await replace(playEditor, changed);
         const written = await page.waitForFunction(() => location.hash.includes('code=') && location.hash.includes('view=5/48.86/2.35'), null, {timeout: 30000}).then(() => true, () => false);
@@ -511,6 +533,35 @@ try {
         check(`${engine}: /play: a copied address shows the same code`, text.trim() === changed, text.slice(0, 80));
         const view = new URLSearchParams(new URL(second.url()).hash.slice(1)).get('view');
         check(`${engine}: /play: a copied address shows the same view`, view === '7/48.9/2.4/20/30', view);
+        // The examples are one menu, and it fits a phone (#1339). Each item puts its code into the editor.
+        const examplesButton = page.getByRole('button', {name: 'Examples', exact: true});
+        const menuItems = page.getByRole('menuitem');
+        const chosen = [];
+        await examplesButton.click();
+        const labels = (await shown(menuItems.first()) ? await menuItems.allTextContents() : []).map(label => label.trim());
+        await page.keyboard.press('Escape');
+        check(`${engine}: /play: the examples menu has 10 or more examples`, labels.length >= 10, labels.join(', '));
+        for (const label of labels) {
+            await examplesButton.click();
+            await page.getByRole('menuitem', {name: label, exact: true}).click();
+            await page.waitForTimeout(300);
+            const code = await textOf(playEditor);
+            const duplicate = chosen.includes(code);
+            chosen.push(code);
+            check(`${engine}: /play: the example "${label}" puts a description into the editor`, /export default \{/.test(code) && !duplicate, code.split('\n').slice(0, 3).join(' ').slice(0, 80));
+        }
+        {
+            const phone = await own.newContext({viewport: {width: 390, height: 700}});
+            const small = await phone.newPage();
+            await small.goto(base + '/play', {waitUntil: 'load'});
+            await small.getByRole('button', {name: 'Examples', exact: true}).click();
+            await small.getByRole('menuitem').first().waitFor();
+            const box = await small.locator('[role="menu"]').evaluate(menu => { const {left, right, top, bottom} = menu.getBoundingClientRect(); return {left, right, top, bottom, width: innerWidth, height: innerHeight}; });
+            check(`${engine}: /play: at 390 the examples menu is inside the window`, box.left >= 0 && box.right <= box.width && box.top >= 0 && box.bottom <= box.height, JSON.stringify(box));
+            await small.getByRole('menuitem').last().scrollIntoViewIfNeeded();
+            check(`${engine}: /play: at 390 the last example can be reached`, await small.getByRole('menuitem').last().isVisible());
+            await phone.close();
+        }
         check(`${engine}: /play: no error of the page`, problems.length === 0, problems.join(' | '));
         // The button reads "Copy link", and a popover says what the link keeps.
         check(`${engine}: /play: the button reads "Copy link"`, await page.getByRole('button', {name: 'Copy link', exact: true}).count() === 1);
@@ -548,6 +599,39 @@ try {
         }), id);
         check(`${name}: a tap on an entry closes the list`, state === 'closed', state);
         check(`${name}: the heading "${id}" is in view below the bar`, place.heading >= place.bar && place.heading < place.window / 2, JSON.stringify(place));
+        check(`${name}: no error`, problems.length === 0, problems.join(' | '));
+        await context.close();
+        if (engine !== browser) await engine.close();
+    }
+
+    // /play on a phone, in Chromium and in WebKit with touch: the page has the width of the window, and no element is wider
+    // than it, apart from the lines of the editor, which scroll inside it (#1336). The editor is above the map.
+    for (const type of [chromium, webkit]) {
+        const name = `/play on a phone in ${type.name()}`;
+        const engine = type === chromium ? browser : await type.launch();
+        const context = await engine.newContext(devices['iPhone 13']);
+        const page = await context.newPage();
+        const problems = [];
+        page.on('pageerror', error => problems.push('error: ' + error.message.slice(0, 200)));
+        await page.goto(base + '/play', {waitUntil: 'load'});
+        await page.locator('.cm-content').waitFor({timeout: 30000});
+        await page.locator('.map-frame iframe').waitFor({timeout: 30000});
+        const place = await page.evaluate(() => {
+            const width = innerWidth;
+            const wide = [...document.querySelectorAll('body *')]
+                .filter(element => !element.closest('.cm-scroller') && element.getBoundingClientRect().right > width + 1 && element.getBoundingClientRect().width > 0)
+                .map(element => `${element.tagName.toLowerCase()}.${String(element.className).slice(0, 40)}`);
+            const top = selector => Math.round(document.querySelector(selector).getBoundingClientRect().top);
+            return {
+                width, scroll: document.documentElement.scrollWidth, wide: wide.slice(0, 5),
+                header: Math.round(document.querySelector('header').getBoundingClientRect().width),
+                editor: top('.code-editor'), map: top('.map-frame'),
+            };
+        });
+        check(`${name}: the layout width is that of the screen (390)`, place.width === 390 && place.scroll <= 390, `${place.width}, scroll ${place.scroll}`);
+        check(`${name}: the header has the width of the window`, place.header === place.width, String(place.header));
+        check(`${name}: no element is wider than the window`, place.wide.length === 0, place.wide.join(' | '));
+        check(`${name}: the editor is above the map`, place.editor < place.map, `${place.editor} < ${place.map}`);
         check(`${name}: no error`, problems.length === 0, problems.join(' | '));
         await context.close();
         if (engine !== browser) await engine.close();
