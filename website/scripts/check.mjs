@@ -260,6 +260,30 @@ try {
         await close();
     }
 
+    // A table without a Default column (Name, Type, Description) and the tables of /reference/server are reference
+    // tables too: a row has an anchor, the rows stack on a phone, and the page does not scroll sideways (#1221).
+    {
+        const {page, problems, close} = await open('/reference/map', {width: 390, height: 844});
+        const table = page.locator('.reference-table').filter({has: page.locator('thead th:nth-child(3)')}).filter({hasNot: page.locator('thead th:nth-child(4)')}).first();
+        const href = await table.locator('.reference-anchor').first().getAttribute('href').catch(() => null);
+        check('three-column reference table at 390 on /reference/map: a row has an anchor', !!href && await page.locator(`tr[id="${href.slice(1)}"]`).count() === 1, href ?? 'no table');
+        const display = await table.locator('tbody tr').first().evaluate(row => getComputedStyle(row).display).catch(() => 'none found');
+        check('three-column reference table at 390 on /reference/map: the rows stack', display === 'block', display);
+        check('reference tables at 390 on /reference/map: no horizontal scroll', await overflow(page) <= 0, (await overflow(page)) + ' px');
+        check('reference tables at 390 on /reference/map: no failed request and no error', problems.length === 0, problems.join(' | '));
+        if (screenshots) { const file = `${screenshots}-reference-map-390.png`; await table.scrollIntoViewIfNeeded(); await page.screenshot({path: file}); console.log('screenshot', file); }
+        await close();
+    }
+    {
+        const {page, problems, close} = await open('/reference/server', {width: 390, height: 844});
+        check('/reference/server at 390: no horizontal scroll of the page', await overflow(page) <= 0, (await overflow(page)) + ' px');
+        const plain = await page.locator('main table').evaluateAll(tables => tables.filter(table => !table.closest('.reference-table')).map(table => [...table.querySelectorAll('th')].map(th => th.textContent.trim()).join('|')));
+        check('/reference/server at 390: every table of members is a reference table', !plain.some(head => /^(Name|Option)\|Type\|/.test(head)), plain.join(', '));
+        check('/reference/server at 390: no failed request and no error', problems.length === 0, problems.join(' | '));
+        if (screenshots) { const file = `${screenshots}-reference-server-390.png`; await page.locator('.reference-table').nth(2).scrollIntoViewIfNeeded(); await page.screenshot({path: file}); console.log('screenshot', file); }
+        await close();
+    }
+
     // The forms of the code (#1250): a code line never wraps, the phone form shows below 48rem and the desktop form
     // from it, and no code block or its code is wider than its column (scrollWidth <= clientWidth).
     for (const path of [installPage, '/reference/server']) {
@@ -297,8 +321,7 @@ try {
             check(`code at ${width} on ${path}: no code line wraps`, found.lines > 0 && found.wrapped.length === 0, `${found.wrapped.length} of ${found.lines} lines wrap ${found.wrapped.join(' | ')}`);
             check(`code at ${width} on ${path}: no code block scrolls${width === 390 ? ' except for a string or URL' : ''}`, found.wide.length === 0, `${found.blocks} blocks, ${found.scrolling} scroll sideways; ${found.wide.join(' | ')}`);
             check(`code at ${width} on ${path}: the ${width === 390 ? 'phone' : 'desktop'} form shows`, width === 390 ? found.forms.phone > 0 && found.forms.desktop === 0 : found.forms.desktop > 0 && found.forms.phone === 0, JSON.stringify(found.forms));
-            // The table of options of /reference/server is wider than a phone (#1221).
-            if (path === installPage || width === 1440) check(`code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
+            check(`code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
             check(`code at ${width} on ${path}: no failed request and no error`, problems.length === 0, problems.join(' | '));
             if (screenshots && path === '/reference/server') {
                 await page.locator('main pre:visible').filter({hasText: 'ImageDecoder'}).first().scrollIntoViewIfNeeded();

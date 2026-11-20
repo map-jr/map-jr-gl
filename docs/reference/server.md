@@ -223,7 +223,7 @@ right. Put the HTML into the element of the map, which needs a `position` that i
 |---|---|---|
 | `options` | [`RenderOptions`](#renderoptions) and `attribution` | The options of `renderToSVG`, and the attribution to show. |
 
-| Option | Type | Default | Description |
+| Name | Type | Default | Description |
 |---|---|---|---|
 | `attribution` | `string \| string[] \| false` | the attribution of the sources | The attribution as HTML. `false` shows none. |
 | `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colours of the attribution box, and the [style](#style) of a pair `{light, dark}`. |
@@ -345,7 +345,7 @@ The Vue component of `@map-jr/map-jr-gl/vue` renders the first view on the serve
 value `true` renders with the defaults below. An object sets these options. When the render fails, the component renders the element without
 the first view, writes the error to the console of the server, and emits it as `error` when it has a listener for `error`.
 
-| Option | Type | Default | Description |
+| Name | Type | Default | Description |
 |---|---|---|---|
 | `width` | `number` | `800` | The width in CSS pixels that the map has on most screens. |
 | `height` | `number` | `500` | The height in CSS pixels that the map has on most screens. |

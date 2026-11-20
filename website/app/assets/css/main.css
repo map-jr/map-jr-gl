@@ -347,8 +347,16 @@
   }
 }
 
+/* Inline code in a paragraph or a list wraps anywhere when one word of it is wider than the column, so that a long
+ * value such as a CSS declaration does not widen the page on a phone (#1221). */
+main p > code,
+main li > code {
+  overflow-wrap: anywhere;
+}
+
 /*
- * Reference tables: the tables with the columns Name, Type, Default and Description (website/build/markdown.ts).
+ * Reference tables: the tables with the columns Name, Type, Default and Description, or Name, Type and Description
+ * (website/build/markdown.ts).
  * The type wraps at its spaces and, for a long name, anywhere. Below the width of a tablet, each row is a block
  * with the name first and the other cells below it, each with the name of its column.
  */
