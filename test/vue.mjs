@@ -364,14 +364,10 @@ try {
     const declared = await page.evaluate(async () => {
         const {createApp, h, ref, shallowRef} = await import('vue'), {MapJr} = await import('/dist/vue.js'), wait = ms => new Promise(r => setTimeout(r, ms));
         const c = [-74.0065, 40.7085], fc = coords => ({type: 'FeatureCollection', features: coords.map(coordinates => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates}}))});
-        const data = shallowRef({v: fc([c])}), mapRef = ref(), made = [], early = [];
+        const data = shallowRef({v: fc([c])}), mapRef = ref(), made = [];
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
         const app = createApp({render: () => { const sources = {v: {type: 'geojson', data: fc([])}}; made.push(sources.v); return h(MapJr, {ref: mapRef, mapStyle: '/style.json', initialView: {center: c, zoom: 14}, attribution: false, sources, data: data.value, layers: [{id: 'v', type: 'circle', source: 'v'}], style: 'height:200px'}); }});
         app.mount(el);
-        // Before the map has loaded, the ref has no members of the map, as the ref of React is null (#1151).
-        let threw = '';
-        try { mapRef.value.moveTo({zoom: 1}); } catch (e) { threw = e.message; }
-        early.push('moveTo' in mapRef.value, typeof mapRef.value.queryFeatures, mapRef.value.state, Object.keys(mapRef.value).length, threw);
         for (let i = 0; i < 80 && !mapRef.value?.state?.get().loaded; i++) await wait(100);
         await wait(500);
         const map = mapRef.value._map;
@@ -383,9 +379,26 @@ try {
         await wait(1000);
         const unchanged = made.every(s => s.data.features.length === 0);
         app.unmount(); el.remove();
-        return {restyled, unchanged, renders: made.length, early: early.map(String)};
+        return {restyled, unchanged, renders: made.length};
     });
-    check('browser: before the map has loaded, a method of the template ref throws a message that names it, and the other members are undefined (#1151)', JSON.stringify(declared.early.slice(0, 4)) === JSON.stringify(['true', 'function', 'undefined', '0']) && declared.early[4].startsWith('[map-jr-gl] <MapJr>: the template ref has no method "moveTo" until the map has loaded.'), JSON.stringify(declared.early));
+    // Before the map has loaded (#1151): in the production build the members are undefined, as the ref of React is null;
+    // in the development build a method throws a message that names it.
+    const beforeLoad = await page.evaluate(async () => {
+        const {createApp, h, ref} = await import('vue'), out = {};
+        for (const file of ['vue.js', 'vue.dev.js']) {
+            const {MapJr} = await import('/dist/' + file), mapRef = ref();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const app = createApp({render: () => h(MapJr, {ref: mapRef, mapStyle: '/style.json', attribution: false})});
+            app.mount(el);
+            let threw = '';
+            try { mapRef.value.moveTo({zoom: 1}); } catch (e) { threw = e.message; }
+            out[file] = ['moveTo' in mapRef.value, typeof mapRef.value.moveTo, typeof mapRef.value.state, Object.keys(mapRef.value).length, threw].map(String);
+            app.unmount(); el.remove();
+        }
+        return out;
+    });
+    check('browser: before the map has loaded, the members of the template ref are undefined, and in the development build a method throws a message that names it (#1151)',
+        JSON.stringify(beforeLoad['vue.js'].slice(0, 4)) === JSON.stringify(['false', 'undefined', 'undefined', '0']) && JSON.stringify(beforeLoad['vue.dev.js'].slice(0, 4)) === JSON.stringify(['true', 'function', 'undefined', '0']) && beforeLoad['vue.dev.js'][4].startsWith('[map-jr-gl] <MapJr>: the template ref has no method "moveTo" until the map has loaded.'), JSON.stringify(beforeLoad));
     check('browser: :sources in the render and :data from a shallowRef: new data is no new style, and the source objects of the render are unchanged (#857)',
         declared.restyled === 0 && declared.unchanged && declared.renders >= 3, JSON.stringify(declared));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
