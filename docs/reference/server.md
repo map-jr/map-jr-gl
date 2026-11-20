@@ -322,12 +322,12 @@ The image has no accessible name, so `label` has no effect.
 ```ts
 decodePNG(
   bytes: Uint8Array,
-): Promise<{width: number; height: number; data: Uint8Array}>;
+): Promise<{width: number; height: number; data: Uint8Array}>
 decodeWebPLossless(bytes: Uint8Array): {
   width: number;
   height: number;
   data: Uint8Array;
-};
+}
 ```
 
 ```ts
