@@ -111,7 +111,7 @@ Every event has these members:
 <!-- ref:MapEventBase:start -->
 | Name | Type | Description |
 |---|---|---|
-| `type` | `T` | The name of the event. |
+| `type` | `string` | The name of the event. |
 | `target` | [`MapInstance`](map.md#mapinstance) | The map that fired the event, as `createMap` returned it. |
 <!-- ref:MapEventBase:end -->
 
@@ -125,7 +125,7 @@ The events of the mouse (`click`, `dblclick`, `contextmenu`, `mousedown`, `mouse
 |---|---|---|
 | `point` | `{x: number; y: number}` | The point in CSS pixels from the top left corner of the map. |
 | `lngLat` | `[number, number]` | The position under the pointer, `[lng, lat]`. |
-| `originalEvent` | `E` | The DOM event. |
+| `originalEvent` | `MouseEvent` | The DOM event. |
 | `preventDefault` | `() => void` | Stops what the map does for this event. |
 | `defaultPrevented` (read only) | `boolean` | Whether a listener called `preventDefault()`. |
 <!-- ref:MapPointerEvent:end -->

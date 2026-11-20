@@ -15,7 +15,7 @@ import type * as element from '../../src/element.ts';
 import type * as server from '../../src/server.ts';
 import type * as style from '../../src/style.ts';
 import type * as compat from '../../src/maplibre-compat.ts';
-import type {MapJr as VueMapJr, MapOverlay as VueMapOverlay, MapImageProps as VueMapImagePropsOf, MapJrExposed as VueMapJrExposedOf} from '../../src/vue.ts';
+import type {MapJr as VueMapJr, MapOverlay as VueMapOverlay, MapImageProps as VueMapImagePropsOf, MapJrExposed as VueMapJrExposedOf, MapJrSSROptions as VueMapJrSSROptionsOf} from '../../src/vue.ts';
 
 export type MapDescription = host.MapDescription;
 export type MapSetup = host.MapSetup;
@@ -56,6 +56,8 @@ export type TerrainOptions = controls.TerrainOptions;
 export type VueMapJrProps = InstanceType<typeof VueMapJr>['$props'];
 /** What a template ref on the Vue component `MapJr` holds. */
 export type VueMapJrExposed = VueMapJrExposedOf;
+/** The options of the prop `ssr` of the Vue component `MapJr`. */
+export type MapJrSSROptions = VueMapJrSSROptionsOf;
 /** The props of the Vue component `MapOverlay` of `@map-jr/map-jr-gl/vue`. */
 export type VueMapOverlayProps = InstanceType<typeof VueMapOverlay>['$props'];
 /** The props of the Vue component `MapImage` of `@map-jr/map-jr-gl/vue`. */

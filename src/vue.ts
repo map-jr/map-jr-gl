@@ -230,6 +230,28 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  * ```
  * The style is the prop `map-style` (`style` is the CSS style of an element in Vue).
  */
+/** The options of the prop `ssr` of `MapJr`: how the server renders the first view as SVG. */
+export interface MapJrSSROptions {
+    /** The width in CSS pixels that the map has on most screens. @default 800 */
+    width?: number;
+    /** The height in CSS pixels that the map has on most screens. @default 500 */
+    height?: number;
+    /** Changes for the server render, for each id of a style layer, as `overrides` of `renderToSVG`. */
+    overrides?: false | Record<string, SSROverrides>;
+    /** The attribution to show, as HTML. The prop `:attribution="false"` overrides it and shows none. @default the attribution of the sources */
+    attribution?: string | string[];
+    /** The time in milliseconds that all requests of the render can take together, as `timeout` of `renderToSVG`. `0` sets no limit. @default 30000 */
+    timeout?: number;
+    /** The time in milliseconds that one request can take, as `requestTimeout` of `renderToSVG`. `0` sets no limit. @default 10000 */
+    requestTimeout?: number;
+    /** The largest body of one response in bytes, after decompression, as `maxBytes` of `renderToSVG`. `0` sets no limit. @default 0 */
+    maxBytes?: number;
+    /** The host names that the render can request, as `allowHosts` of `renderToSVG`. Without it, all hosts are allowed. */
+    allowHosts?: string[];
+    /** The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. @default 0 */
+    tileZoomOffset?: number;
+}
+
 /** What a template ref on `MapJr` holds. */
 export interface MapJrExposed {
     /** The map, or `null` until the code of the map has loaded after the component is mounted. */
@@ -347,7 +369,7 @@ const MapJrComponent = defineComponent({
          * those of `RenderOptions` of `@map-jr/map-jr-gl/server` with the same names.
          * @default false
          */
-        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: false | Record<string, SSROverrides>; attribution?: string | string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]; tileZoomOffset?: number}>, default: false},
+        ssr: {type: [Boolean, Object] as PropType<boolean | MapJrSSROptions>, default: false},
     },
     emits: {
         'update:view': (_view: View) => true,
