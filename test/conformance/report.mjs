@@ -36,7 +36,7 @@ export function apiBlock({have, accepted, extra, missing, notCounted}) {
             ['Internal to MapLibre GL JS, not counted', notCounted.length, ''],
         ], [1, 2]), '',
         `**Available:** ${code(have)}`, '',
-        `**Accepted, with no effect** (a value that the library cannot do gives one warning): ${code(accepted)}`, '',
+        `**Accepted, with no effect** (a value that the library cannot do gives one warning, except for \`setAnisotropicFilterPitch\`, which gives none): ${code(accepted)}`, '',
         `**Only in this library:** ${code(extra)}`, '',
         `**Not available:** ${code(missing)}`, '',
         `**Internal to MapLibre GL JS, not counted** (the declaration tags the method \`@internal\`, or only the class \`Camera\` has it, which the package does not export): ${code(notCounted)}`,

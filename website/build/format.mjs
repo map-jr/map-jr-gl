@@ -5,6 +5,7 @@
 // check that the fences of docs/ are in the desktop form, and that no line of the phone form is longer than 38
 // columns: a string or URL that nothing can break is the writer's to shorten.
 import * as prettier from 'prettier';
+import * as sveltePlugin from 'prettier-plugin-svelte';
 
 export const desktopWidth = 80;
 export const phoneWidth = 38;
@@ -12,13 +13,13 @@ export const phoneWidth = 38;
 // The style of the code in docs/.
 const options = {tabWidth: 2, singleQuote: true, bracketSpacing: false, arrowParens: 'avoid', trailingComma: 'all'};
 
-const parsers = {js: 'babel', javascript: 'babel', jsx: 'babel', ts: 'typescript', typescript: 'typescript', tsx: 'typescript', vue: 'vue', css: 'css', html: 'html', json: 'json'};
+const parsers = {js: 'babel', javascript: 'babel', jsx: 'babel', ts: 'typescript', typescript: 'typescript', tsx: 'typescript', vue: 'vue', css: 'css', html: 'html', json: 'json', svelte: 'svelte'};
 
 // The parser of Prettier for the language of a fence, or undefined when Prettier does not format that language.
 export const parserOf = language => parsers[language?.toLowerCase()];
 
 // The kinds of comment of each language whose comments the site re-flows.
-const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh', text: 'text', txt: 'text', json: 'js'};
+const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', svelte: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh', text: 'text', txt: 'text', json: 'js'};
 
 // Whether the site formats the fences of the language.
 export const formatsLanguage = language => !!commentKinds[language?.toLowerCase()];
@@ -119,7 +120,12 @@ export async function formatCode(code, language, width) {
 export async function prettierFormat(code, language, width) {
     const parser = parserOf(language);
     if (!parser) return undefined;
-    const format = async text => (await prettier.format(text, {...options, parser, printWidth: width})).replace(/\n$/, '');
+    // The JSON of an import map keeps its lines as written: a mapping to a long path can then put the path on a line
+    // of its own, which Prettier would join.
+    const maps = [];
+    const hide = text => parser === 'html' ? text.replace(/(<script type="importmap">)([\s\S]*?)(<\/script>)/g, (_, open, body, close) => `${open}${close}<!--importmap-${maps.push(body) - 1}-->`) : text;
+    const show = text => text.replace(/^(\s*)(<script type="importmap">)<\/script>\s*<!--importmap-(\d+)-->/gm, (_, indent, open, index) => `${indent}${open}${maps[index]}</script>`);
+    const format = async text => show((await prettier.format(hide(text), {...options, parser, printWidth: width, plugins: [sveltePlugin]})).replace(/\n$/, ''));
     try {
         return await format(code);
     } catch {}

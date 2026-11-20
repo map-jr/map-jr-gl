@@ -59,7 +59,7 @@ export const useMap = () => useContext(Host);
 /**
  * Returns a part of the state of the map, and renders the component again when that part changes:
  * `const zoom = useMapState(s => s.view.zoom)`.
- * @param select A function that returns a part of the state as it is. A new object at each call renders at each change of the state.
+ * @param select A function that returns a part of the state as it is, or a number or a string. A new object or array at each call makes React render without end.
  * @param map The map to read. Without it, the map of the `MapJr` that the component is in.
  * @returns The part of the state, or `undefined` until the map has started.
  */
@@ -141,8 +141,10 @@ export interface MapImageProps<P extends string = never> {
     params?: readonly P[];
     /** The URL of an image, in place of an SVG in `children`. */
     src?: string;
-    /** The size in CSS pixels. Without it, an SVG has the size of its `viewBox`, or else of its `width` and `height` attributes, and another image has its own size. */
-    width?: number; height?: number;
+    /** The width in CSS pixels. Without it, an SVG has the width of its `viewBox`, or else of its `width` attribute, and another image has its own width. */
+    width?: number;
+    /** The height in CSS pixels. Without it, an SVG has the height of its `viewBox`, or else of its `height` attribute, and another image has its own height. */
+    height?: number;
     /**
      * The number of image pixels for one CSS pixel, for example 2 for an image "@2x".
      * @default 1

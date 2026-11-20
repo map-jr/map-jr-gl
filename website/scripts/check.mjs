@@ -66,7 +66,7 @@ try {
 
         // Navigation: a click changes the page with no load of a document, and previous and next follow the manifest.
         await page.evaluate(() => { window.__sameDocument = true; });
-        await page.locator('aside').getByRole('link', {name: 'React', exact: true}).click();
+        await page.locator('aside a[href="/react"]').click();
         await page.waitForURL('**/react');
         await page.locator('h1', {hasText: 'React'}).waitFor();
         check('navigation: a click leads to /react in the same document', await page.evaluate(() => window.__sameDocument === true));

@@ -62,6 +62,8 @@ export type VueMapOverlayProps = InstanceType<typeof VueMapOverlay>['$props'];
 export type VueMapImageProps = VueMapImagePropsOf<string>;
 /** The props of the React component `MapJr` of `@map-jr/map-jr-gl/react`. */
 export type ReactMapJrProps = react.MapJrProps;
+/** The props of the React component `MapImage` of `@map-jr/map-jr-gl/react`. */
+export type ReactMapImageProps = react.MapImageProps<string>;
 /** The options of the Svelte action `mapJr` of `@map-jr/map-jr-gl/svelte`. */
 export type SvelteMapAction = svelte.MapAction;
 export type MapJrElement = element.MapJrElement;

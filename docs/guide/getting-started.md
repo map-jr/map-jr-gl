@@ -159,10 +159,7 @@ export function CityMap() {
     );
 </script>
 
-<div
-  use:mapJr={{description, ready}}
-  style="height: 400px"
-></div>
+<div use:mapJr={{description, ready}} style="height: 400px"></div>
 ```
 
 **`<map-jr>`**

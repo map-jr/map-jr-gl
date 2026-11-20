@@ -204,9 +204,8 @@ if (!format) {
     if (fix) console.log(`docs-lint: formatted ${unformatted} fences.`);
     else if (unformatted) console.log(`docs-lint: ${unformatted} fences are not formatted (warnings). node scripts/docs-lint.mjs --fix formats them.`);
     if (tooLong) {
-        // They fail only with --strict until the pages of the open pull requests of 2026-11-20 are formatted (#1250).
-        console.log(`docs-lint: ${tooLong} lines of code are too long for the phone or the desktop (errors; --strict fails).`);
-        if (strict) process.exitCode = 1;
+        console.log(`docs-lint: ${tooLong} lines of code are too long for the phone or the desktop (errors).`);
+        process.exitCode = 1;
     }
 }
 if (strict && findings.length) process.exit(1);
