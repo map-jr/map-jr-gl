@@ -223,7 +223,7 @@ right. Put the HTML into the element of the map, which needs a `position` that i
 |---|---|---|
 | `options` | [`RenderOptions`](#renderoptions) and `attribution` | The options of `renderToSVG`, and the attribution to show. |
 
-| Option | Type | Default | Description |
+| Name | Type | Default | Description |
 |---|---|---|---|
 | `attribution` | `string \| string[] \| false` | the attribution of the sources | The attribution as HTML. `false` shows none. |
 | `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colours of the attribution box, and the [style](#style) of a pair `{light, dark}`. |

@@ -138,7 +138,9 @@ function groupFences(nodes: Node[], state: {groups: number; variants: string[]})
 }
 
 const slugOf = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const referenceColumns = ['Name', 'Type', 'Default', 'Description'];
+// The headers of a reference table: a member with a default (the description, options) or without one (methods,
+// the state, events; scripts/reference.mjs).
+const referenceColumns = ['Name|Type|Default|Description', 'Name|Type|Description'];
 
 // Marks the reference tables of a page. A row gets the id "<heading>-<name>": the id of the heading above the table
 // and the name of the row, for example "mapdescription-style".
@@ -152,7 +154,7 @@ function markReferenceTables(nodes: Node[]) {
         const [, props, ...parts] = node;
         const head = parts.find(part => Array.isArray(part) && part[0] === 'thead') as Node[] | undefined;
         const columns = (head?.[2] as Node[] | undefined)?.slice(2).map(cell => textOf(cell).trim()) ?? [];
-        if (columns.join('|') !== referenceColumns.join('|')) continue;
+        if (!referenceColumns.includes(columns.join('|'))) continue;
         props.class = 'reference-table';
         const body = parts.find(part => Array.isArray(part) && part[0] === 'tbody') as Node[] | undefined;
         for (const row of (body?.slice(2) ?? []) as [string, Record<string, any>, ...Node[]][]) {
