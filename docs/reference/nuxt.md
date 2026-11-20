@@ -71,7 +71,7 @@ The other exports of `@map-jr/map-jr-gl/vue` do not load the code of the map. A 
 `MapImage` or `useMapInstance` next to a `LazyMapJr` does not bring that code into the page.
 
 A template ref on `LazyMapJr` with `hydrate-on-visible`, or with another `hydrate-*` prop, holds the wrapper that
-Nuxt puts around `MapJr`. It has no `map` and no `state`, also after hydration. Reach the map in one of these ways:
+Nuxt puts around `MapJr`. It has none of the members of the map, also after hydration. Reach the map in one of these ways:
 
 - `@load` receives the map, as in the example below.
 - The default slot receives `map` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{map}">`.

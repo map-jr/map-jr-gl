@@ -210,11 +210,11 @@ function showManhattan() {
 import {useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
-// `map` of the component is the map of the main API, or null before the
+// The ref has the members of the map once the map has loaded, after the
 // component is mounted.
 const component = useTemplateRef('component');
 const flyToParis = () =>
-  component.value.map.moveTo({center: [2.35, 48.86], zoom: 12, fly: true});
+  component.value.moveTo({center: [2.35, 48.86], zoom: 12, fly: true});
 </script>
 
 <template>
@@ -439,7 +439,7 @@ const rememberView = () => {
   stored = view.value;
 };
 const backToStoredView = () =>
-  component.value.map.moveTo({...stored, duration: 500});
+  component.value.moveTo({...stored, duration: 500});
 </script>
 
 <template>

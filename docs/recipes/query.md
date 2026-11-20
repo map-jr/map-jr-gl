@@ -165,7 +165,7 @@ async function ask(event) {
   // click. It also finds features that the style does not draw. "openmaptiles"
   // is the id of the vector source in this style. When the tile does not load,
   // the query rejects, and the example shows a text instead.
-  const features = await map.value.map
+  const features = await map.value
     .querySource('openmaptiles', event.lngLat, {radius: 8})
     .catch(() => null);
   // An earlier click can get its answer after a later click. Only the last
@@ -454,7 +454,7 @@ export default function Query() {
 - The answers of two clicks can arrive in the other order. The example counts the clicks and shows only the answer of
   the last one.
 
-To call a method of the map in a framework: in Vue, the template ref of `MapJr` has the map in its member `map` (see
+To call a method of the map in a framework: in Vue, the template ref of `MapJr` has the members of the map (see
 [the template ref](../reference/vue.md#the-template-ref)). In React, the ref of `MapJr` is the map. In Svelte, the
 action `mapJr` calls `ready` with the map. On the element `<map-jr>`, the property `map` is the map.
 
