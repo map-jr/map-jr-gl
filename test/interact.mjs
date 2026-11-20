@@ -2970,6 +2970,59 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: cooperativeGestures: a plain wheel and one finger leave the map to the page, fire cooperativegestureprevented and show the hint; Ctrl + wheel zooms; disable() gives the gestures back',
             coop.warnings.length === 0 && coop.enabled && coop.touchAction === 'pan-x pan-y' && !coop.plainPrevented && coop.plainZoom === 0 && /scroll to zoom the map/.test(coop.hint) && coop.hintOpacity === '1' && coop.touchMoved === 0 && coop.prevented.startsWith('wheel_zoom,touch_pan') && coop.bypassZoom > 0.1 && coop.afterZoom > 0.1 && !coop.afterHint && coop.afterTouchAction === 'none' && !coop.afterEnabled, JSON.stringify(coop));
     }
+    // #1286: with cooperativeGestures, a move of two fingers cancels the default of `touchmove`, as in MapLibre GL JS,
+    // so that the browser does not take the gesture (iOS Safari ends it with pointercancel); one finger does not, so the
+    // page scrolls. A two-finger drag keeps moving the map while a finger is over a control or out of the container.
+    if (mode === 'main' && browserName === 'chromium') {
+        for (const entry of ['host', 'compat']) {
+            await page.evaluate(async entry => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:100px;top:100px;width:600px;height:400px;z-index:1000'}));
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+                if (entry === 'host') {
+                    const {createMap} = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
+                    const m = createMap(el, {renderer: 'main', style, initialView: {center: [0, 0], zoom: 3}, cooperativeGestures: true, controls: [navigation()]});
+                    await new Promise(r => { const stop = m.state.subscribe(s => { if (s.loaded) { queueMicrotask(() => stop()); r(); } }); });
+                    window.coopDrag = {el, lng: () => m.state.get().view.center[0], remove: () => { m.destroy(); el.remove(); }};
+                } else {
+                    const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                    const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style, center: [0, 0], zoom: 3, cooperativeGestures: true});
+                    m.addControl(new mod.NavigationControl(), 'top-right');
+                    await new Promise(r => m.once('load', r));
+                    window.coopDrag = {el, lng: () => m.getCenter().lng, remove: () => { m.remove(); el.remove(); }};
+                }
+                await new Promise(r => setTimeout(r, 300));
+                window.coopDrag.moves = [];
+                window.coopDrag.record = e => window.coopDrag.moves.push(e.touches.length + ':' + e.defaultPrevented);
+                document.addEventListener('touchmove', window.coopDrag.record);
+            }, entry);
+            const cdp = await page.context().newCDPSession(page);
+            const touch = (type, touchPoints = []) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints});
+            const ctrl = await page.evaluate(() => { const r = window.coopDrag.el.querySelector('.map-jr-ctrl').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + 10}; });
+            const out = {};
+            // One finger: the default stays (the page scrolls).
+            await touch('touchStart', [{id: 0, x: 400, y: 300}]);
+            for (let i = 1; i <= 5; i++) await touch('touchMove', [{id: 0, x: 400, y: 300 - i * 4}]);
+            await touch('touchEnd');
+            out.one = await page.evaluate(() => window.coopDrag.moves.splice(0).join());
+            for (const [name, target] of [['control', ctrl], ['outside', {x: 850, y: 120}]]) {
+                const at = i => { const x = 500 + (target.x - 500) * i / 20, y = 200 + (target.y - 200) * i / 20; return [{id: 0, x, y}, {id: 1, x: x - 100, y: y + 50}]; };
+                await touch('touchStart', at(0));
+                for (let i = 1; i <= 20; i++) { await touch('touchMove', at(i)); await page.waitForTimeout(16); }
+                const before = await page.evaluate(() => window.coopDrag.lng());
+                for (let i = 1; i <= 10; i++) { await touch('touchMove', at(20).map(p => ({...p, x: p.x - i * 15}))); await page.waitForTimeout(16); }
+                await page.waitForTimeout(100);
+                out[name] = await page.evaluate(() => window.coopDrag.lng()) - before;
+                await touch('touchEnd');
+                await page.waitForTimeout(300);
+            }
+            out.two = [...new Set(await page.evaluate(() => window.coopDrag.moves.splice(0)))].join();
+            await cdp.detach();
+            await page.evaluate(() => { document.removeEventListener('touchmove', window.coopDrag.record); window.coopDrag.remove(); window.coopDrag = undefined; });
+            check(`[main] ${entry === 'host' ? 'createMap' : 'maplibre-compat'}: cooperativeGestures: a two-finger touchmove is defaultPrevented and a one-finger one is not; a two-finger drag keeps moving the map over a control and out of the container (#1286)`,
+                /^(1:false,?)+$/.test(out.one) && out.two === '2:true' && out.control > 1 && out.outside > 1, JSON.stringify(out));
+        }
+    }
+    if (mode === 'main' && browserName !== 'chromium') skip('[main] cooperativeGestures: a two-finger drag over a control and out of the container (#1286)', noCDP);
     // Class names of MapLibre GL JS: stylesheets and end-to-end tests written for that library select by them.
     if (mode === 'main') {
         const names = await page.evaluate(async () => {

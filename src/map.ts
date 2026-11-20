@@ -1901,8 +1901,11 @@ export class Map {
     // ---- input ----
     private dragging = false;
     private awaitingInertia = false;
-    /** @internal Set by `cooperativeGestures` of the compat entry: returns true when the gesture is blocked (the page scrolls). */
-    gate?: (gestureType: 'wheel_zoom' | 'touch_pan', e: Event) => boolean;
+    private gated?: (gestureType: 'wheel_zoom' | 'touch_pan', e: Event) => boolean;
+    private holdTouch?: () => void;
+    /** @internal Set by `cooperativeGestures`: returns true when the gesture is blocked (the page scrolls). */
+    get gate() { return this.gated; }
+    set gate(fn) { this.gated = fn; this.holdTouch?.(); }
     private bindInput() {
         const el = this.canvas, pointers = new globalThis.Map<number, {x: number; y: number}>();
         const listen = <K extends keyof HTMLElementEventMap>(type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions) => {
@@ -2126,6 +2129,12 @@ export class Map {
                 mouseEvent('click', e);
             }
         };
+        // While `cooperativeGestures` is on, the canvas has `touch-action: pan-x pan-y` so that one finger scrolls the
+        // page. A move of two fingers that started on the canvas cancels its default, as MapLibre GL JS does, so that
+        // the browser does not take the gesture and end it with `pointercancel` (iOS Safari, #1286).
+        const hold = (e: TouchEvent) => { if (e.targetTouches.length > 1 && e.cancelable) e.preventDefault(); };
+        (this.holdTouch = () => { el.removeEventListener('touchmove', hold); if (this.gated) el.addEventListener('touchmove', hold, {passive: false}); })();
+        this.inputCleanup.push(() => { el.removeEventListener('touchmove', hold); this.holdTouch = undefined; });
         listen('pointerup', up);
         listen('pointercancel', up);
         listen('lostpointercapture', up);
