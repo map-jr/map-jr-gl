@@ -489,7 +489,7 @@ const features = await map
 
 ### Get the geometry of each feature
 
-At a position, a feature has no `geometry` unless the query sets `geometry: true`. The geometry is GeoJSON in longitude
+A feature has no `geometry` unless the query sets `geometry: true`, at a position and in a query of the view. The geometry is GeoJSON in longitude
 and latitude, and it is the part of the feature that lies in its tile.
 
 ```js
@@ -500,8 +500,8 @@ const features = await map
 
 ### Ask for everything in the view
 
-`at` is optional. Without it, `querySource(sourceId, options)` returns the features of the source in the view, each with
-its `geometry`.
+`at` is optional. Without it, `querySource(sourceId, options)` returns the features of the source in the view. Add
+`geometry: true` to get the geometry of each.
 
 ```js
 const features = await map

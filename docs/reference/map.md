@@ -255,7 +255,7 @@ for the other rejections.
 |---|---|---|---|
 | `layers` | `string[]` | | The ids of the style layers to look in. |
 | `filter` | `FilterSpecification` | | A filter expression of the MapLibre style specification: the query returns only the features that pass it. |
-| `radius` | `number` | `0` | At a point or a position, the distance in CSS pixels around the place within which a feature is found. |
+| `radius` | `number` | `3` | At a point or a position, the distance in CSS pixels around the place within which a feature is found. |
 <!-- ref:FeatureOptions:end -->
 
 ## `querySource`
@@ -306,7 +306,7 @@ const inView = await map.querySource('openmaptiles', {sourceLayers: ['park']});
 ```
 
 The promise rejects when `sourceId` is not a string. The development build warns once for an option that has no
-effect: `layers`, `radius` for a box or the view, and `geometry: false` or `zoom` in a query of the view.
+effect: `layers`, `radius` for a box or the view, and `zoom` in a query of the view.
 
 ### `SourceOptions`
 
@@ -316,7 +316,7 @@ effect: `layers`, `radius` for a box or the view, and `geometry: false` or `zoom
 | `sourceLayers` | `string[]` | | The names of the layers of a vector tile source to look in. |
 | `filter` | `FilterSpecification` | | A filter expression of the MapLibre style specification: the query returns only the features that pass it. |
 | `radius` | `number` | `3` | At a point or a position, the distance in CSS pixels around the place within which a feature is found. |
-| `geometry` | `boolean` | `false` | At a point or a position, whether each feature has `geometry`. |
+| `geometry` | `boolean` | `false` | Whether each feature has `geometry`, at a point, at a position and in a query of the view. |
 | `zoom` | `number` | the zoom of the map | At a point or a position, the zoom level of the tiles to read, rounded down and kept between `minzoom` and `maxzoom` of the source. |
 <!-- ref:SourceOptions:end -->
 

@@ -960,7 +960,7 @@ The options of `queryFeatures` (`FeatureOptions`):
 |---|---|
 | `layers` | The ids of the style layers to look in. The default is all style layers. |
 | `filter` | A filter expression of the MapLibre style specification, for example `['==', ['get', 'class'], 'park']`. The query returns only the features that pass it. |
-| `radius` | At a point or a position: the query asks a square of that many pixels of the screen to each side of the place. The default is 0. |
+| `radius` | At a point or a position: the query asks a square of that many pixels of the screen to each side of the place. The default is 3, as in `querySource`. |
 
 The options of `querySource` (`SourceOptions`):
 
@@ -969,12 +969,12 @@ The options of `querySource` (`SourceOptions`):
 | `sourceLayers` | The names of the layers of a vector tile source to look in. The default is all of them. | In each query. |
 | `filter` | A filter expression, as for `queryFeatures`. | In each query. |
 | `radius` | The distance around the place, in pixels of the screen, within which a feature is found. The default is 3. | At a point or a position. |
-| `geometry` | `true` to give each feature a `geometry` (GeoJSON, in longitude and latitude). The default is `false`, which keeps the answer small. | At a point or a position. In a query of the view, the features always have a `geometry`. |
+| `geometry` | `true` to give each feature a `geometry` (GeoJSON, in longitude and latitude). The default is `false`, which keeps the answer small. | In each query. |
 | `zoom` | The zoom level of the tiles to read. The default is the zoom of the map. The query rounds it down to a whole number and keeps it between the `minzoom` and the `maxzoom` of the source: above the `maxzoom`, it reads the tile at the `maxzoom`, which is the deepest tile of the source. | At a point or a position. |
 
 An option that has no effect is ignored, and the map writes one warning for it: an option of `querySource` in
 `queryFeatures` (`sources`, `sourceLayers`, `geometry`, `zoom`), `layers` in `querySource`, `radius` in a query for a
-rectangle or the whole map, and `geometry: false` or `zoom` in a `querySource` of the view. A place that is not one of
+rectangle or the whole map, and `zoom` in a `querySource` of the view. A place that is not one of
 the forms (for example `{lng, lat}`) in `queryFeatures` rejects the promise with an error that names the forms. A
 first argument of `querySource` that is not a string rejects the promise.
 

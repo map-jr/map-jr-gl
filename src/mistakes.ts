@@ -166,7 +166,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         const o = b as SourceOptions & {id: string};
         if (c.ready()) known(4, [o.id], true);
         for (const k of ['layers', 'sources']) if (k in o) warn(12, k, 's');
-        if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
+        if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 9) warn(30, a);
     else if (kind === 7) warn(23);
     else {

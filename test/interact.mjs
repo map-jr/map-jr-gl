@@ -330,9 +330,10 @@ for (const mode of renderers) {
         const here = await all([-74.0060, 40.7127], {sourceLayers: ['landcover', 'poi'], radius: 12});
         const far = await all([2.2945, 48.8584], {zoom: 14, sourceLayers: ['poi', 'building'], radius: 30, geometry: true});
         const filtered = await all([2.2945, 48.8584], {zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
-        // `queryFeatures` gives what the style layers draw (#12), as `queryRenderedFeatures` does.
+        // `queryFeatures` gives what the style layers draw (#12), as `queryRenderedFeatures` does. MapLibre has no radius,
+        // so the comparison sets `radius: 0` (the default of `queryFeatures` is 3, #1150).
         const c = window.map.getCenter(), at = window.map.project(c), key = f => f.layer.id + ' ' + f.id;
-        const drawn = await window.map.queryFeatures(c), same = await window.map.queryRenderedFeatures([at.x, at.y]);
+        const drawn = await window.map.queryFeatures(c, {radius: 0}), same = await window.map.queryRenderedFeatures([at.x, at.y]);
         const wide = await window.map.queryFeatures({x: at.x, y: at.y}, {radius: 40}), box = await window.map.queryRenderedFeatures([[at.x - 40, at.y - 40], [at.x + 40, at.y + 40]]);
         const one = {drawn: drawn.length, layer: typeof drawn[0]?.layer?.id, same: drawn.map(key).join() === same.map(key).join(), wide: wide.length, box: wide.map(key).join() === box.map(key).join(), all: (await window.map.queryFeatures()).length};
         const centre = window.map.getCenter();

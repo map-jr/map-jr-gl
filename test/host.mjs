@@ -862,15 +862,17 @@ for (const renderer of renderers) {
         // 3d. `radius` widens a query for what the style layers draw, as it widens a query of `querySource` (#12).
         const radius = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
-            // A line of 2 pixels through the centre of the map, from west to east. The questions are 6 pixels below it.
+            // A line of 2 pixels through the centre of the map, from west to east. The questions are 6 pixels below it: the default radius of 3 finds the line there, and a radius of 2 or 0 does not.
             const line = {type: 'Feature', properties: {name: 'line'}, geometry: {type: 'LineString', coordinates: [[-74.02, 40.7085], [-73.99, 40.7085]]}};
             const host = t.lib.createMap(el, {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false,
                 sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 2}}]});
             await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const at = {x: 100, y: 81}, below = host.unproject(at), count = async (place, o) => (await host.queryFeatures(place, o)).length;
-            const out = {on: await count({x: 100, y: 75}, {layers: ['own-line']}), none: await count(at, {layers: ['own-line']}), small: await count(at, {layers: ['own-line'], radius: 2}), point: await count(at, {layers: ['own-line'], radius: 8}),
+            const out = {on: await count({x: 100, y: 75}, {layers: ['own-line']}), near: await count(at, {layers: ['own-line']}), nearZero: await count(at, {layers: ['own-line'], radius: 0}), small: await count(at, {layers: ['own-line'], radius: 2}), point: await count(at, {layers: ['own-line'], radius: 8}),
                 position: await count(below, {layers: ['own-line'], radius: 8}), data: (await host.querySource('own', at, {radius: 8})).length, dataDefault: (await host.querySource('own', at)).length,
-                layer: (await host.queryFeatures(at, {layers: ['own-line'], radius: 8}))[0]?.layer?.id};
+                layer: (await host.queryFeatures(at, {layers: ['own-line'], radius: 8}))[0]?.layer?.id,
+                // A query of the view gives `geometry` only with `geometry: true`, as a query at a place does (#1150).
+                viewGeometry: (await host.querySource('own')).map(f => 'geometry' in f).join(), viewGeometryOn: (await host.querySource('own', {geometry: true})).map(f => f.geometry?.type).join()};
             host.destroy(); el.remove();
             return out;
         }, renderer);
@@ -927,8 +929,8 @@ for (const renderer of renderers) {
         check(`[${renderer}] queryFeatures and querySource give the string id of a GeoJSON feature and the number for a string of digits, and setFeatureState takes a string id (#528)`,
             textId.square.join('|') === '"square-a"|"square-a"|"square-a"|"square-a"' && textId.places.join('|') === '"louvre",12|"louvre",12' && textId.colour === 'red' && textId.state?.on === true
             && textId.digits === 'true' && textId.digitsRemoved === 'none', JSON.stringify(textId));
-        check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 in querySource`,
-            radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
+        check(`[${renderer}] queryFeatures: radius widens a query for drawn features, its default is 3 as in querySource, and querySource of the view gives geometry only with geometry: true (#1150)`,
+            radius.on === 1 && radius.near === 1 && radius.nearZero === 0 && radius.viewGeometry === 'false' && radius.viewGeometryOn === 'LineString' && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
         // 3d. A GeoJSON line with longitudes past 180° is drawn on the far side of the antimeridian too, as in MapLibre (#197).
         const pastAntimeridian = await page.evaluate(async renderer => {
@@ -1248,7 +1250,7 @@ for (const renderer of renderers) {
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'queryFeatures(): the style has no layer "nope"',
             'querySource(): the style has no source "nope"', 'layers: the layer "lost" has before: "nonexistent"', 'layers: the layer "lost" uses the source "missing"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"',
             'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" is not an option', 'queryFeatures(): "sources" is not an option', 'queryFeatures(): "radius" has an effect only in a query at a point or a position',
-            'querySource(): "radius" has an effect only', 'querySource(): "geometry" has an effect only', 'querySource(): "zoom" has an effect only', 'querySource(): "layers" is not an option'];
+            'querySource(): "radius" has an effect only', 'querySource(): "zoom" has an effect only', 'querySource(): "layers" is not an option'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
             && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
