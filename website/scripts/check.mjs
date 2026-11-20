@@ -563,6 +563,10 @@ try {
             await phone.close();
         }
         check(`${engine}: /play: no error of the page`, problems.length === 0, problems.join(' | '));
+        // The button reads "Copy link", and a popover says what the link keeps.
+        check(`${engine}: /play: the button reads "Copy link"`, await page.getByRole('button', {name: 'Copy link', exact: true}).count() === 1);
+        await page.getByRole('button', {name: 'What the link keeps'}).click();
+        check(`${engine}: /play: a popover says that the link keeps the code and the view`, await shown(page.getByText('The link keeps the code and the view of the map')));
 
         // The steps of the history (#1338): Run, a choice of an example and Copy link make a step, a key stroke does not.
         // Each code sets `data-step` on the body of the frame, so the checks see which code the map got.
@@ -619,7 +623,7 @@ try {
         await undoButton.click();
         check(`${engine}: /play history: Undo returns from an example`, await editorIs(step('c')));
         await replace(playEditor, step('d'));
-        await page.getByRole('button', {name: /^Copy (the )?link$/}).click();
+        await page.getByRole('button', {name: 'Copy link', exact: true}).click();
         await undoButton.click();
         check(`${engine}: /play history: Copy link makes a step`, await editorIs(step('c')));
         await redoButton.click();
