@@ -2,7 +2,10 @@
   /play: the visitor edits a description of the Main API, and the map beside it follows each change
   (components/MapFrame.vue, the form "description"). The address keeps the state: `code` is the code, compressed with
   deflate and written in base64url, and `view` the view as zoom/lat/lng/bearing/pitch. A copied address shows the same
-  code and the same view. This page replaces site/playground.html of the gallery.
+  code and the same view. A step of the history is a state of the code that the visitor made with Run, with a choice of
+  an example or with Copy link: it is an entry of the history of the browser, so Undo, Redo and the buttons Back and
+  Forward of the browser go from step to step. The entry keeps the code of its step in `history.state.play`, while
+  the address of the entry follows the work in progress. This page replaces site/playground.html of the gallery.
 -->
 <script setup lang="ts">
 import type {FrameView} from '~/utils/map-frame';
@@ -55,6 +58,15 @@ const problem = ref('');
 const frameKey = ref(0);
 const route = useRoute();
 
+// The steps of the history: `committed` is the code of the step that the visitor is at, `step` its number, and `top`
+// the number of the last step that Redo can reach.
+const committed = ref('');
+const step = ref(0);
+const top = ref(0);
+const dirty = computed(() => code.value !== undefined && code.value !== committed.value);
+const canUndo = computed(() => step.value > 0 || dirty.value);
+const canRedo = computed(() => step.value < top.value && !dirty.value);
+
 onMounted(async () => {
     // (The router has the hash of the address; `location.hash` is empty while the page hydrates.)
     const params = new URLSearchParams(route.hash.slice(1));
@@ -68,19 +80,29 @@ onMounted(async () => {
         }
     }
     code.value = sent.value = text;
+    // A page that was loaded again keeps the step of its entry. A new page starts at step 0 with its code.
+    const saved = history.state?.play;
+    step.value = top.value = saved?.step ?? 0;
+    committed.value = saved?.code ?? text;
+    history.replaceState({...history.state, play: {step: step.value, code: committed.value}}, '');
+    addEventListener('popstate', onPop);
 });
 
 // The address follows the code and the view, half a second after the last change.
 let timer: ReturnType<typeof setTimeout> | undefined;
+// The address for `text` and the view. (Both values are safe in an address, so they are written as they are: the view keeps its slashes.)
+async function addressOf(text: string | undefined): Promise<string> {
+    const parts: string[] = [];
+    if (text !== undefined && text !== first) parts.push('code=' + await pack(text));
+    if (view.value) parts.push('view=' + writeView(view.value));
+    const hash = parts.join('&');
+    return hash ? '#' + hash : location.pathname + location.search;
+}
 async function writeAddress() {
     clearTimeout(timer);
     timer = undefined;
-    // (Both values are safe in an address, so they are written as they are: the view keeps its slashes.)
-    const parts: string[] = [];
-    if (code.value !== undefined && code.value !== first) parts.push('code=' + await pack(code.value));
-    if (view.value) parts.push('view=' + writeView(view.value));
-    const hash = parts.join('&');
-    history.replaceState(history.state, '', hash ? '#' + hash : location.pathname + location.search);
+    const address = await addressOf(code.value);
+    history.replaceState(history.state, '', address);
 }
 const later = () => { clearTimeout(timer); timer = setTimeout(writeAddress, 500); };
 
@@ -98,16 +120,53 @@ function onView(next: FrameView) {
     view.value = next;
     later();
 }
-// A starting point makes a new map at its first view.
-function begin(text: string) {
+// A step is a new entry of the history that has the code as it is now. Nothing happens when the code is the one of the
+// step. (`commit` also sends the code to the map, as Run does.)
+async function commit() {
+    const text = code.value;
+    if (text === undefined || text === committed.value) return;
+    clearTimeout(timer);
+    clearTimeout(sending);
+    sent.value = text;
+    const address = await addressOf(text);
+    // The entry that the visitor leaves keeps the code of its step in the state and the work in its address.
+    history.pushState({...history.state, play: {step: step.value + 1, code: text}}, '', address);
+    committed.value = text;
+    top.value = ++step.value;
+}
+// Back, Forward, Undo and Redo: the code of the entry replaces the code of the editor, and the map follows.
+function onPop() {
+    const saved = history.state?.play;
+    if (!saved || code.value === undefined) return;
+    clearTimeout(sending);
+    problem.value = '';
+    step.value = saved.step;
+    top.value = Math.max(top.value, saved.step);
+    committed.value = code.value = sent.value = saved.code;
+    writeAddress();
+}
+async function undo() {
+    await commit();
+    history.back();
+}
+const redo = () => history.forward();
+async function run() {
+    send();
+    await commit();
+}
+// A starting point makes a new map at its first view. The work that came before it stays a step.
+async function begin(text: string) {
+    await commit();
     problem.value = '';
     start.value = view.value = undefined;
     code.value = sent.value = text;
     frameKey.value++;
+    await commit();
 }
 
 const toast = useToast();
 async function copy() {
+    await commit();
     await writeAddress();
     try {
         await navigator.clipboard.writeText(location.href);
@@ -117,6 +176,7 @@ async function copy() {
     }
 }
 onBeforeUnmount(() => {
+    removeEventListener('popstate', onPop);
     clearTimeout(sending);
     clearTimeout(timer);
 });
@@ -161,6 +221,9 @@ function onSplitKey(event: KeyboardEvent) {
     <section class="relative flex min-h-0 min-w-0 flex-col border-muted lg:border-e">
       <div class="flex flex-wrap items-center gap-2 border-b border-muted px-4 py-3">
         <h1 class="me-auto font-display text-2xl text-highlighted">Play</h1>
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-undo-2" aria-label="Undo" :disabled="!canUndo" @click="undo" />
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-redo-2" aria-label="Redo" :disabled="!canRedo" @click="redo" />
+        <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-play" title="Run (Ctrl+Enter)" @click="run">Run</UButton>
         <UDropdownMenu :items="menu" :content="{align: 'start'}">
           <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-layout-list" trailing-icon="i-lucide-chevron-down">Examples</UButton>
         </UDropdownMenu>
@@ -177,7 +240,7 @@ function onSplitKey(event: KeyboardEvent) {
       <p v-if="problem" class="border-b border-muted px-4 py-2 text-sm text-error" role="status">{{ problem }}</p>
       <LazyCodeEditor
         v-if="code !== undefined" v-model="code" language="js" label="The description of the map"
-        class="h-[50vh] lg:h-auto lg:flex-1" @run="send"
+        class="h-[50vh] lg:h-auto lg:flex-1" @run="run"
       />
       <div v-else class="h-[50vh] lg:flex-1" />
       <div

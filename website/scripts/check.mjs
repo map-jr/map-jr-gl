@@ -620,6 +620,68 @@ try {
         check(`${engine}: /play: the button reads "Copy link"`, await page.getByRole('button', {name: 'Copy link', exact: true}).count() === 1);
         await page.getByRole('button', {name: 'What the link keeps'}).click();
         check(`${engine}: /play: a popover says that the link keeps the code and the view`, await shown(page.getByText('The link keeps the code and the view of the map')));
+
+        // The steps of the history (#1338): Run, a choice of an example and Copy link make a step, a key stroke does not.
+        // Each code sets `data-step` on the body of the frame, so the checks see which code the map got.
+        await page.goto(base + '/play', {waitUntil: 'load'});
+        await shown(playEditor);
+        const step = name => `document.body.dataset.step = '${name}';\nexport default {\n  style: 'https://styles.map-jr.org/1/elevation-zero.json',\n  initialView: {center: [2.35, 48.86], zoom: 5},\n};`;
+        const editorIs = async expected => {
+            for (let tries = 0; tries < 80; tries++) {
+                if ((await textOf(playEditor)).trim() === expected.trim()) return true;
+                await page.waitForTimeout(100);
+            }
+            return false;
+        };
+        const editorStarts = async start => {
+            for (let tries = 0; tries < 80; tries++) {
+                if ((await textOf(playEditor)).startsWith(start)) return true;
+                await page.waitForTimeout(100);
+            }
+            return false;
+        };
+        const mapHas = name => shown(playFrame.locator(`body[data-step="${name}"]`), 'attached');
+        const undoButton = page.getByRole('button', {name: 'Undo', exact: true});
+        const redoButton = page.getByRole('button', {name: 'Redo', exact: true});
+        const first = "import {navigation, scale}";
+        check(`${engine}: /play history: Undo and Redo are disabled at the start`, await undoButton.isDisabled() && await redoButton.isDisabled());
+        const entries = () => page.evaluate(() => history.length);
+        const length = await entries();
+        await replace(playEditor, step('a'));
+        check(`${engine}: /play history: a key stroke is no step`, await entries() === length, `${length} entries before, ${await entries()} after`);
+        await page.getByRole('button', {name: 'Run', exact: true}).click();
+        await replace(playEditor, step('b'));
+        await page.keyboard.press('ControlOrMeta+Enter');
+        check(`${engine}: /play history: Run makes a step, and the map follows`, await mapHas('b') && await undoButton.isEnabled() && await redoButton.isDisabled());
+        await undoButton.click();
+        check(`${engine}: /play history: Undo restores the code of the first Run, and the map follows`, await editorIs(step('a')) && await mapHas('a') && await redoButton.isEnabled());
+        await undoButton.click();
+        check(`${engine}: /play history: Undo again restores the first example`, await editorStarts(first) && await undoButton.isDisabled());
+        await redoButton.click();
+        check(`${engine}: /play history: Redo restores the first Run`, await editorIs(step('a')) && await mapHas('a'));
+        await redoButton.click();
+        check(`${engine}: /play history: Redo restores the second Run`, await editorIs(step('b')) && await mapHas('b') && await redoButton.isDisabled());
+        await page.goBack();
+        check(`${engine}: /play history: Back restores the first Run, and the map follows`, await editorIs(step('a')) && await mapHas('a') && await redoButton.isEnabled());
+        await page.goForward();
+        check(`${engine}: /play history: Forward restores the second Run`, await editorIs(step('b')) && await mapHas('b'));
+        await replace(playEditor, step('c'));
+        await undoButton.click();
+        check(`${engine}: /play history: Undo keeps the work that no Run has saved as a step`, await editorIs(step('b')) && await mapHas('b'));
+        await redoButton.click();
+        check(`${engine}: /play history: Redo returns to that work`, await editorIs(step('c')) && await mapHas('c'));
+        await page.getByRole('button', {name: 'Examples', exact: true}).click();
+        await page.getByRole('menuitem', {name: 'Globe', exact: true}).click();
+        check(`${engine}: /play history: choosing an example makes a step`, await editorStarts("import {navigation, globe}"));
+        await undoButton.click();
+        check(`${engine}: /play history: Undo returns from an example`, await editorIs(step('c')));
+        await replace(playEditor, step('d'));
+        await page.getByRole('button', {name: 'Copy link', exact: true}).click();
+        await undoButton.click();
+        check(`${engine}: /play history: Copy link makes a step`, await editorIs(step('c')));
+        await redoButton.click();
+        check(`${engine}: /play history: the step of Copy link has the code of the link`, await editorIs(step('d')) && decodeURIComponent(page.url()).includes('code='));
+        check(`${engine}: /play history: no error of the page`, problems.length === 0, problems.join(' | '));
         await context.close();
         if (own !== browser) await own.close();
     }
