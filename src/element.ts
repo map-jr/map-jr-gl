@@ -6,7 +6,8 @@
  * <script type="module" src="https://unpkg.com/@map-jr/map-jr-gl/dist/element.js"></script>
  * <map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="13.4,52.52" zoom="11" style="height:400px"></map-jr>
  * ```
- * The attributes and the properties of the element form one description. The element is the container of the map,
+ * A boolean attribute is on when it is there, whatever its value, as in HTML; a field that is on by default has an
+ * attribute named `no-` and the field (`no-interactive`). The attributes and the properties of the element form one description. The element is the container of the map,
  * and the map applies changes before the next frame. The events are `CustomEvent`s named `map-` and the name of the
  * event of the Vue component, for example `map-click`. Each one bubbles, and the element dispatches it whenever the
  * map fires it, so a listener on the document receives it too, whenever it was added.
@@ -146,6 +147,7 @@ export class MapJrElement extends Base {
         if (text === null) return;
         const kind: AttributeKind = ATTRIBUTES[field as keyof typeof ATTRIBUTES], v = readAttribute(kind, text);
         if (__DEV__ && v === undefined) this.warn(826, `${name}="${text}"`, kind);
+        if (__DEV__ && (kind === 'b' || kind === 'o') && text.trim().toLowerCase() === 'false') this.warn(1258, name, kind);
         return v;
     }
 
@@ -153,6 +155,9 @@ export class MapJrElement extends Base {
     private description(): MapDescription {
         const out: Record<string, unknown> = {}, view = this.viewOfAttributes();
         for (const k in ATTRIBUTES) if (!VIEW_FIELDS.includes(k)) { const v = this.attribute(k); if (v !== undefined) out[k] = v; }
+        // (`attribution-compact` is `attribution: {compact: true}`, unless `no-attribution` hides the attribution.)
+        if (out.attributionCompact) out.attribution ??= {compact: true};
+        delete out.attributionCompact;
         for (const k of PROPERTIES) { const v = this.props[k]; if (v !== undefined) out[k === 'mapStyle' ? 'style' : k] = v; }
         if (Object.keys(view).length || out.initialView) out.initialView = {...view, ...out.initialView as object};
         if (this.nonce) out.nonce = this.nonce;
