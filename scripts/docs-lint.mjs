@@ -180,6 +180,8 @@ if (!format) {
             const at = text.slice(0, match.index).split('\n').length;
             // Both forms fit their width. A line on a phone may be longer only because of one string or URL, and a
             // line on the desktop only when that token alone is longer than 80 columns.
+            // A text fence shows a message as it is: its lines are the writer's (#1271).
+            if (format.isVerbatim(language)) continue;
             for (const [form, width, strictForm] of [['phone', format.phoneWidth, false], ['desktop', format.desktopWidth, true]]) {
                 const lines = (await format.formatCode(code, language, width) ?? code).split('\n');
                 // On a phone, a line of code that Prettier leaves long cannot be broken; only a comment can.

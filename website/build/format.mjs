@@ -1,7 +1,7 @@
 // Formats the code of a fence for the site (#1250). The site shows each fence in two forms: the desktop form at 80
 // columns, and the phone form at 38 columns, which fits a 390 px screen. A code block never wraps its lines.
 // Prettier formats JavaScript, TypeScript, Vue and JSX; then a comment that is longer than the width is re-flowed
-// onto several comment lines, also in Vue templates, HTML and shell. scripts/docs-lint.mjs uses the same code to
+// onto several comment lines, also in Vue templates, HTML and shell. A text fence keeps its lines. scripts/docs-lint.mjs uses the same code to
 // check that the fences of docs/ are in the desktop form, and that no line of the phone form is longer than 38
 // columns: a string or URL that nothing can break is the writer's to shorten.
 import * as prettier from 'prettier';
@@ -19,10 +19,15 @@ const parsers = {js: 'babel', javascript: 'babel', jsx: 'babel', ts: 'typescript
 export const parserOf = language => parsers[language?.toLowerCase()];
 
 // The kinds of comment of each language whose comments the site re-flows.
-const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', svelte: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh', text: 'text', txt: 'text', json: 'js'};
+const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', svelte: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh', json: 'js'};
 
 // Whether the site formats the fences of the language.
 export const formatsLanguage = language => !!commentKinds[language?.toLowerCase()];
+
+// The languages of fences that show text as it is, such as a message of the library that a user searches for. The
+// site neither formats them nor checks their width.
+const verbatim = new Set(['text', 'txt', 'console', 'output']);
+export const isVerbatim = language => verbatim.has(language?.toLowerCase());
 
 // Splits the text of a comment into lines of at most `room` columns, at the spaces. A URL takes a line of its own.
 // A word that is longer than `room` stays whole.
@@ -141,13 +146,16 @@ export function reflowComments(code, language, width) {
     const base = commentKinds[language?.toLowerCase()];
     if (!base) return code;
     const lines = code.split('\n');
+    // In Vue, Svelte and HTML, the lines of a <script> or <style> element have the comments of JavaScript and CSS
+    // (#1271). An element that opens and closes on one line, such as <script src="…"></script>, is markup.
     let inScript = false;
     const kinds = lines.map(line => {
-        if (base !== 'vue') return base;
-        if (/^\s*<script\b/.test(line)) inScript = true;
-        const kind = inScript || /^\s*<style\b/.test(line) ? 'js' : 'html';
-        if (/^\s*<\/script>/.test(line)) inScript = false;
-        return kind;
+        if (base !== 'vue' && base !== 'html') return base;
+        const opens = /^\s*<(script|style)\b/.test(line), closes = /<\/(script|style)>/.test(line);
+        if (opens && closes) return 'html';
+        if (opens) { inScript = true; return 'html'; }
+        if (closes && inScript) { inScript = false; return /^\s*<\//.test(line) ? 'html' : 'js'; }
+        return inScript ? 'js' : 'html';
     });
     const out = [];
     for (let i = 0; i < lines.length;) {
@@ -164,8 +172,6 @@ export function reflowComments(code, language, width) {
 function reflowLine(line, kind, width) {
     if (line.length <= width) return [line];
     const indent = line.match(/^\s*/)[0];
-    // A plain text fence, such as a message of the library, wraps at the spaces.
-    if (kind === 'text') return wrapWords(line.trim(), width - indent.length).map(part => indent + part);
     // A line inside a block comment that starts with "*".
     const star = /^(\s*)\* (.*)$/.exec(line);
     if (kind === 'js' && star && !star[2].includes('*/')) return commentLines(star[1], '*', star[2], width);

@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-ignore: a JavaScript module of the site without types.
-import {reflowComments, desktopWidth, phoneWidth} from '../../website/build/format.mjs';
+import {reflowComments, formatCode, isVerbatim, desktopWidth, phoneWidth} from '../../website/build/format.mjs';
 
 const words = (text: string) => text.replace(/\/\/|\/\*\*?|\*\/|<!--|-->|^\s*\*/gm, ' ').split(/\s+/).filter(Boolean);
 
@@ -75,4 +75,64 @@ test('an HTML comment of several lines is one paragraph between "<!--" and "-->"
 test('a comment of several lines that fits keeps its lines', () => {
     const code = '// One line.\n// Another line.\nx();';
     assert.equal(reflowComments(code, 'js', phoneWidth), code);
+});
+
+test('the comments of a <script> in an html fence re-flow as JavaScript comments (#1271)', () => {
+    const code = [
+        '<script src="https://unpkg.com/@map-jr/map-jr-gl/dist/map-jr-gl.js"></script>',
+        '<script type="module">',
+        '  // The map shows the terrain with a hillshade and contour lines at every zoom level of the map.',
+        '  // It fades to the horizon.',
+        '  /* A block comment that is longer than the phone width. */',
+        '  createMap();',
+        '</script>',
+    ].join('\n');
+    assert.equal(reflowComments(code, 'html', phoneWidth), [
+        '<script src="https://unpkg.com/@map-jr/map-jr-gl/dist/map-jr-gl.js"></script>',
+        '<script type="module">',
+        '  // The map shows the terrain with a',
+        '  // hillshade and contour lines at',
+        '  // every zoom level of the map. It',
+        '  // fades to the horizon.',
+        '  /*',
+        '   * A block comment that is longer',
+        '   * than the phone width.',
+        '   */',
+        '  createMap();',
+        '</script>',
+    ].join('\n'));
+    const desktop = reflowComments(code, 'html', desktopWidth).split('\n');
+    assert.ok(desktop.slice(1).every(line => line.length <= desktopWidth), desktop.join('\n'));
+});
+
+test('an html fence re-flows "<!-- -->" with paragraphs kept apart (#1271)', () => {
+    const code = [
+        '<!-- The map shows the terrain with a hillshade and contour lines at every zoom.',
+        '',
+        '     - a list item that is long enough to wrap at the phone width',
+        '-->',
+        '<div id="map"></div>',
+    ].join('\n');
+    assert.equal(reflowComments(code, 'html', phoneWidth), [
+        '<!--',
+        '  The map shows the terrain with a',
+        '  hillshade and contour lines at every',
+        '  zoom.',
+        '',
+        '  - a list item that is long enough to',
+        '    wrap at the phone width',
+        '-->',
+        '<div id="map"></div>',
+    ].join('\n'));
+});
+
+test('a text fence keeps its lines at both widths (#1271)', async () => {
+    const code = '[map-jr-gl] <map-jr>: the attribute hover-state="false" switches the option on all\nthe same.';
+    for (const language of ['text', 'txt', 'console', 'output']) {
+        assert.ok(isVerbatim(language), language);
+        for (const width of [desktopWidth, phoneWidth]) {
+            assert.equal(reflowComments(code, language, width), code);
+            assert.equal(await formatCode(code, language, width) ?? code, code);
+        }
+    }
 });
