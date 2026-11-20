@@ -1,5 +1,5 @@
-// Checks the output of `pnpm generate` in Chromium (and the editor in the browsers of --browsers), behind the plain
-// static server of scripts/serve.mjs.
+// Checks the output of `pnpm generate` in Chromium, the table of contents on a phone also in WebKit, and the editor in
+// the browsers of --browsers, behind the plain static server of scripts/serve.mjs.
 //
 // Usage: node scripts/check.mjs [--no-map] [--screenshots=<path and start of the file names>] [--browsers=<list>]
 //   --no-map       does not wait for the map of the home page. The map needs the style and the tiles of other hosts.
@@ -11,7 +11,7 @@ import {readFileSync} from 'node:fs';
 import * as playwright from 'playwright';
 import {serve} from './serve.mjs';
 
-const {chromium} = playwright;
+const {chromium, devices, webkit} = playwright;
 const withMap = !process.argv.includes('--no-map');
 const screenshots = process.argv.find(argument => argument.startsWith('--screenshots='))?.slice('--screenshots='.length);
 const editorBrowsers = process.argv.find(argument => argument.startsWith('--browsers='))?.slice('--browsers='.length).split(',') ?? ['chromium'];
@@ -455,6 +455,39 @@ try {
         check(`${engine}: /play: no error of the page`, problems.length === 0, problems.join(' | '));
         await context.close();
         if (own !== browser) await own.close();
+    }
+
+    // The table of contents on a phone, in Chromium and in WebKit with touch: a tap on an entry closes the list and
+    // shows the heading below the bar of the list (#1311). The page has no scroll anchoring, as in Safari before 27.
+    for (const type of [chromium, webkit]) {
+        const name = `table of contents on a phone in ${type.name()}`;
+        const engine = type === chromium ? browser : await type.launch();
+        const context = await engine.newContext(devices['iPhone 13']);
+        const page = await context.newPage();
+        const problems = [];
+        page.on('pageerror', error => problems.push('error: ' + error.message.slice(0, 200)));
+        await page.goto(base + '/reference/map', {waitUntil: 'networkidle'});
+        await page.addStyleTag({content: '* {overflow-anchor: none}'});
+        const trigger = page.getByRole('button', {name: 'On this page'});
+        const entries = page.locator('nav').filter({has: trigger}).locator('[data-slot="content"][data-state="open"] a');
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight / 2));
+        await trigger.tap();
+        await entries.first().waitFor();
+        const entry = entries.nth(Math.floor((await entries.count()) / 2));
+        const id = decodeURIComponent((await entry.getAttribute('href')).slice(1));
+        await entry.tap();
+        await page.waitForTimeout(1000);
+        const state = await trigger.getAttribute('data-state');
+        const place = await page.evaluate(id => ({
+            heading: Math.round(document.getElementById(id).getBoundingClientRect().top),
+            bar: Math.round(document.querySelector('nav:has(button[data-slot="trigger"])').getBoundingClientRect().bottom),
+            window: innerHeight,
+        }), id);
+        check(`${name}: a tap on an entry closes the list`, state === 'closed', state);
+        check(`${name}: the heading "${id}" is in view below the bar`, place.heading >= place.bar && place.heading < place.window / 2, JSON.stringify(place));
+        check(`${name}: no error`, problems.length === 0, problems.join(' | '));
+        await context.close();
+        if (engine !== browser) await engine.close();
     }
 
     // The raw Markdown of a page is the file of docs/.

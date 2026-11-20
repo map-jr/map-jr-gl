@@ -151,7 +151,8 @@ map.addControl(new TerrainControl({source: 'terrarium', exaggeration: 1.5}));
 To turn the terrain on and off from your own code, pass a new `terrain` to
 [`patch`](../reference/map.md#patch) with the main API, or call `map.setTerrain(null)` with the MapLibre compat entry.
 With the main API, a change of `terrain` [loads the style again](../reference/description.md#style). A click on the
-control changes the terrain without loading the style. A `patch` of another field keeps the terrain of a click. A new
+control changes the terrain without loading the style. A `patch` of another field keeps the terrain that the last
+click on the control set. A new
 `terrain` or a new `style` replaces it.
 
 **Main API**
@@ -283,8 +284,7 @@ map.on('load', () => {
 `hillshade-illumination-altitude` is the height of the light above the horizon, in degrees from 0 to 90. The default
 is 45. With `multidirectional`, the four properties of the example each accept one value or a list with a value for
 each light. A list that is shorter than the longest list repeats its last value. The layer draws at most 8 lights.
-The other methods use the first value of a list. A `hillshade-method` that is not one of the five writes one warning,
-and the layer uses `standard`.
+The other methods use the first value of a list.
 
 ## Colour the ground by its height
 
@@ -507,9 +507,11 @@ tiles that it reads.
 
 `queryElevation` returns a promise of the height of the ground in metres above sea level, at a position
 (`[lng, lat]`) or at a point of the screen (`{x, y}`). Over the sea, the elevation tiles of `elevation.json` give 0.
-The promise resolves to `null` when the source has no tile at the position. It rejects with the error
-`No elevation (raster-dem) source in the style` when the style and `sources` have no `raster-dem` source. The query does not need 3D terrain, and the
-position can be outside the view.
+The query does not need 3D terrain, and the position can be outside the view.
+
+The promise resolves to `null` when the source has no tile at the position. It rejects when the style has no
+`raster-dem` source, for example after a change to a style without one. A `raster-dem` source of `sources` counts as
+a source of the style.
 
 **Main API**
 

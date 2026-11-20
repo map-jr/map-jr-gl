@@ -42,8 +42,8 @@ in the bundler or in an import map. The code of the wrapper does not change.
 3. Remove the imports of `maplibre-gl/dist/maplibre-gl.css` and of the worker file, and the `workerUrl` prop of
    react-map-gl. The library adds its own styles and loads its own worker file.
 
-4. Run the application and read the console of the browser. A method that the wrapper calls and that has no effect
-   here writes one warning.
+4. Run the application. The table of [Wrappers](#wrappers) lists the methods of each wrapper that have no effect
+   here.
 
 | Bundler | What to do |
 |---|---|
@@ -76,7 +76,7 @@ the entry does not export fails when the application is built. See
 
 A map with `viewState` and `onMove` works when `onMove` sets `viewState` to `e.viewState`. When `onMove` changes the
 view, for example to limit the latitude, the map renders the view of the gesture during the gesture, and moves to
-`viewState` when the gesture ends. The map then writes one warning. To keep the view inside a box, set `maxBounds`.
+`viewState` when the gesture ends. To keep the view inside a box, set `maxBounds`.
 
 ```jsx
 import {useState} from 'react';

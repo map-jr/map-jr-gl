@@ -69,8 +69,11 @@ A writer who has the source open tends to write what the source shows. These rul
   nothing to do. Say what the reader does differently.
 - **State behaviour as what the user can rely on, in one statement.** A list of cases comes after it, and has only
   the cases in which the user must act.
-- **Leave out the errors of plain misuse,** or put them in a short section at the end of the entry. Describe a
-  failure where the reader meets it only when a correct program can meet it, such as a style that does not load.
+- **Do not describe the messages for incorrect use.** When the library warns or throws because of a mistake, the
+  message tells the developer what to change, and the docs do not repeat it or say that it exists. Describe an error
+  only where a correct program can meet it, such as a request that fails and reaches `onError`, or a limit that a
+  correct program can reach. On the pages of the compat entry, state that a member is not supported or has no
+  effect, and leave out the message that the library gives for it.
 - **Name a value by what it is to the user,** not by how the code recognises it: "an SVG document as a string", not
   "a string that starts with `<`"; "the URL of a style", not "a string".
 - **A row and a section start with what the member is for,** in the user's terms, before they name any other member.
@@ -200,15 +203,16 @@ One or two sentences that say what the thing is and what it is for, with a link 
 
 ## `style`
 
-A section for each member that needs more than its row: the accepted forms, what a change does, the warning
-for a mistake, what is not supported, one short example, and "See also".
+A section for each member that needs more than its row: the accepted forms, what a change does, what is not
+supported, one short example, and "See also".
 ```
 
 - `scripts/reference.mjs` writes the tables from the types and the TSDoc of `src/`. To change a row, change the
   comment in the source.
 - A row description is one sentence of at most 200 characters (lint). More goes into a section for the member, and
   the name in the row links to it.
-- A method has its signature, a table of parameters, **Returns** with the type, and the errors and warnings.
+- A method has its signature, a table of parameters, **Returns** with the type, and the errors that a correct program
+  can meet.
 - The order is that of the source, and every entry has the same parts in the same order.
 - A reference states what is not supported and what the library does then. It gives no advice and no reasons.
 
@@ -369,7 +373,7 @@ Give the reader reviewer this checklist as it is:
 7. **Shape in prose.** Is a nested value described in words where a type or an example would show it?
 8. **Dead end.** Does a sentence say what does not happen and not say how to get it?
 9. **Written from the source.** Does a sentence say how the types are built, list the cases of the code, state what
-   every developer assumes, or describe an error that only plain misuse causes?
+   every developer assumes, or describe a message that the library gives for a mistake?
 10. **Opening.** Do the first two sentences say what the thing is and what it is for?
 11. **Example.** Can each code block run as it is written? Does it use a style from `https://styles.map-jr.org/1/`?
 

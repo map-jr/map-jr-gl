@@ -108,8 +108,8 @@ Each value of the `data` prop (GeoJSON for sources) is compared by identity only
 ## Your own controls
 
 To put your own component into a control corner, give the map `custom({key, position, element})` from
-`@map-jr/map-jr-gl/controls` and render the component into `element` with a portal. The example is in
-[A control of your own](api.md#a-control-of-your-own).
+`@map-jr/map-jr-gl/controls` and render the component into `element` with a portal. The example is in the recipe
+[Add a control of your own](recipes/control.md).
 
 ## Hooks
 
