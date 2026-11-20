@@ -69,7 +69,9 @@ map.patch({cursor: 'crosshair'});
 ```
 
 `patch(part)` changes only the fields of `part`. It is `map.update({...map.description, ...part})`: a field of
-`part` that is `undefined` is removed (`map.patch({cursor: undefined})`). `map.description` is the description of
+`part` that is `undefined` is removed (`map.patch({cursor: undefined})`). `data` is merged by key:
+`map.patch({data: {pins}})` changes only the source `pins`, and a key that is `null` removes its source
+(`map.patch({data: {pins: null}})`). Every other field, `layers` included, is replaced whole. `map.description` is the description of
 the last `createMap`, `update` or `patch`. It is read only. After `createMap` and `update` it is the object that you
 passed, so do not change that object in place. A framework adapter gives the complete description from its props, so with an adapter use the props
 and not `patch`. The compat entry has neither member.
@@ -1153,7 +1155,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | Member | Meaning |
 |---|---|
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
-| `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed. See [Change the map](#change-the-map). |
+| `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed, and `data` is merged by key (`null` removes a key). See [Change the map](#change-the-map). |
 | `description` | The description of the last `createMap`, `update` or `patch` (read only). |
 | `getResolvedDescription()` | The description with `style` and `globalState` resolved, for reading (see below). |
 | `destroy()` | Removes the map and frees its memory. It also removes the elements of `overlay()` from the page at once, without the closing animation of a popup, and it does not call `onClose`. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |

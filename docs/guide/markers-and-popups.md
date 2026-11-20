@@ -282,8 +282,9 @@ function movePlace(id, lng, lat) {
 }
 
 function removePlaces() {
-  // This removes every source that `data` created and every layer of `layers`.
-  map.patch({data: {}, layers: []});
+  // `null` removes the source `places`, and `layers: []` removes every layer
+  // of `layers`.
+  map.patch({data: {places: null}, layers: []});
 }
 ```
 
