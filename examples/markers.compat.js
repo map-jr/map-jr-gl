@@ -43,4 +43,7 @@ for (const id of ['pins', 'dots-below-pins', 'dots']) map.on('click', id, e => {
   popup?.remove();
   popup = new Popup({offset: id === 'pins' ? 30 : 6}).setLngLat(at).setText(`Marker at ${at.map(v => v.toFixed(3)).join(', ')}`).addTo(map);
 });
-map.on('stats', e => { readout.textContent = `50,000 markers, ${e.fps.toFixed(0)} frames per second.`; });
+map.on('stats', e => {
+  const fps = e.fps.toFixed(0);
+  readout.textContent = `50,000 markers, ${fps} frames per second.`;
+});

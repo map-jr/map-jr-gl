@@ -14,7 +14,7 @@ const thresholds = {
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
   sources: {
-    // Contour lines are made from the elevation tiles, in the tile workers.
+    // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or metres.
     contours: {type: 'contour', source: 'terrarium', multiplier: unit === 'ft' ? 3.28084 : 1, thresholds: thresholds[unit]},
   },
   layers: [
@@ -41,7 +41,8 @@ const describe = () => ({
   attribution: {compact: true},
   onClick: async e => {
     const metres = await map.queryElevation(e.lngLat);
-    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${(metres * 3.28084).toFixed(0)} ft) above sea level`;
+    const feet = metres * 3.28084;
+    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   },
 });
 const map = createMap(container, describe());

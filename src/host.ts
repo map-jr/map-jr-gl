@@ -614,9 +614,10 @@ export interface MapInstance {
      */
     removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void;
     /**
-     * Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, from the terrain source.
+     * Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, read from the elevation tiles
+     * of the first `raster-dem` source of the style. The `exaggeration` of the terrain does not change it.
      * @param at A position, `[lng, lat]`, or a point of the screen, `{x, y}` in CSS pixels.
-     * @returns A promise of the height in metres multiplied by the `exaggeration` of the terrain, or of `null` where there is no elevation data.
+     * @returns A promise of the height in metres, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
      */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /**

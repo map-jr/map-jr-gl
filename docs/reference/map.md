@@ -34,7 +34,7 @@ map.moveTo({zoom: 15, duration: 500});
 | [`watchSource`](#watchsource) | `(sourceId: string, at: FeaturePlace \| undefined, options: `[`SourceOptions`](#sourceoptions)`, listener: (features: `[`QueriedFeature`](types.md#queriedfeature)`[]) => void) => () => void` | Calls `listener` with the result of `querySource` now and again each time that the result changes. |
 | [`setFeatureState`](#setfeaturestate) | `(target: {source: string; sourceLayer?: string; id: number \| string}, state: Record<string, unknown>) => void` | Merges `state` into the feature state of one feature, which `feature-state` expressions read. |
 | [`removeFeatureState`](#removefeaturestate) | `(target: {source: string; sourceLayer?: string; id?: number \| string}, key?: string) => void` | Removes one key of the feature state of a feature, or its whole state when `key` is left out. |
-| [`queryElevation`](#queryelevation) | `(at: Position \| {x: number; y: number}) => Promise<number \| null>` | Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, from the terrain source. |
+| [`queryElevation`](#queryelevation) | `(at: Position \| {x: number; y: number}) => Promise<number \| null>` | Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, read from the elevation tiles of the first `raster-dem` source of the style. |
 | [`toBlob`](#toblob) | `(type?: string, quality?: number) => Promise<Blob>` | Returns the map as an image once the map is idle, in the size of the canvas in device pixels. |
 | [`clusterExpansionZoom`](#clusterexpansionzoom) | `(sourceId: string, clusterId: number) => Promise<number>` | Returns the zoom level at which a cluster of a GeoJSON source with `cluster: true` divides. |
 | [`clusterChildren`](#clusterchildren) | `(sourceId: string, clusterId: number) => Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>` | Returns the clusters and points that a cluster divides into at the next zoom level. |
@@ -522,11 +522,11 @@ queryElevation(
 |---|---|---|---|
 | `at` **required** | `Position \| {x: number; y: number}` | | A position, `[lng, lat]`, or a point of the screen, `{x, y}` in CSS pixels. |
 
-**Returns:** `Promise<number \| null>`. A promise of the height in metres multiplied by the `exaggeration` of the terrain, or of `null` where there is no elevation data.
+**Returns:** `Promise<number \| null>`. A promise of the height in metres, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
 <!-- ref:MapInstance.queryElevation:end -->
 
-The terrain source is the source of `terrain` of the description or of the style. The promise resolves to `null`
-where the map has no elevation data.
+The height is in metres, and the `exaggeration` of the terrain does not change it. The promise resolves to `null`
+when the elevation tile has no data, and it rejects when the style has no `raster-dem` source.
 
 ## `toBlob`
 

@@ -16,7 +16,10 @@ const tilt = Object.assign(document.createElement('button'), {textContent: 'Tilt
 map.getContainer().after(readout, markers, tilt);
 
 let under = 'nothing';
-const report = () => { readout.textContent = `zoom ${map.getZoom().toFixed(2)} · under the pointer: ${under}`; };
+const report = () => {
+  const zoom = map.getZoom().toFixed(2);
+  readout.textContent = `zoom ${zoom} · under the pointer: ${under}`;
+};
 map.on('move', report);
 map.on('mousemove', async e => {
   const features = await map.queryRenderedFeatures(e.point, {layers: ['park', 'water']});

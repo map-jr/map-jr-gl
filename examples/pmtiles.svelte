@@ -1,6 +1,8 @@
 <script>
   import {mapJr} from '@map-jr/map-jr-gl/svelte';
 
+  const boundaryFile = 'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+
   let map = null;
   let names = $state('Click to list the county, state and ZIP code');
   const description = {
@@ -8,7 +10,7 @@
     // Additions to the style: a PMTiles file on a usual file host. The map reads the tiles that it needs with HTTP
     // range requests.
     sources: {
-      admin: {type: 'vector', url: 'pmtiles://https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles'},
+      admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
     },
     layers: [
       {id: 'zips', type: 'line', source: 'admin', 'source-layer': 'zip_features', minzoom: 9,
@@ -19,7 +21,7 @@
     initialView: {center: [-74.1, 40.75], zoom: 9.2},
     attribution: {compact: true},
     onClick: async e => {
-      const features = await map.querySource('admin', e.point);
+      const features = await map.querySource('admin', e.lngLat);
       names = features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here';
     },
   };

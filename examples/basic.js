@@ -20,5 +20,8 @@ const map = createMap(container, {
 
 // The thread that draws is known when the map has started.
 map.state.subscribe(state => state.renderer, renderer => show(`${renderer} rendering`));
-map.listen('stats', e => show(`${map.state.get().renderer} rendering, ${e.fps.toFixed(0)} frames per second`));
+map.listen('stats', e => {
+  const fps = e.fps.toFixed(0);
+  show(`${map.state.get().renderer} rendering, ${fps} frames per second`);
+});
 show('Starting');
