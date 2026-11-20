@@ -125,8 +125,10 @@ function Zoom() {
 }
 ```
 
-`useMapState` takes a function that returns a part of the state. Return a part as it is (`state.hover`,
-`state.view.zoom`), not a new object.
+`useMapState` takes a function that returns a part of the state. It can return a part as it is (`state.hover`,
+`state.view.zoom`) or a new plain object of several parts (`state => ({zoom: state.view.zoom, pitch: state.view.pitch})`):
+the hook compares the result with the last one, one level deep, and the component renders again only when a member
+changes.
 
 To read the state once, in an event handler, without a new render on each change, call `state.get()` of the map:
 
