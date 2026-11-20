@@ -62,6 +62,8 @@ export function fontFaces(faces: FontFaces | undefined, base?: string): FontSour
     return fonts;
 }
 export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; /** The URL of the glyph files of the style, with `{fontstack}` and `{range}`. */ glyphs?: string; /** A source is still on its way (see `Partial`): the map is not idle. */ waiting?: boolean; sprite?: string; fonts?: FontSource[];
+    /** The names of the images in `metadata["map-jr:images"]` of the style: they win over the sprite images of the same name (#1199). */
+    own?: string[];
     /** 3D terrain: the raster-dem source that shapes the ground, and how much to exaggerate it. */
     terrain?: {source: string; exaggeration: number};
     /** The root property `projection` of the style, as it is (see `globeStops` in geo.ts). */
@@ -252,7 +254,8 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     const state = rawState && Object.fromEntries(Object.entries(rawState).map(([k, v]) => [k, v && typeof v === 'object' && 'default' in v ? v.default : v]));
     // (A relative URL: joined by hand, because `{fontstack}` must stay as it is.)
     const g = style.glyphs, glyphs = typeof g !== 'string' ? undefined : /^[a-z][a-z0-9+.-]*:/i.test(g) || !base ? g : g.startsWith('//') ? new URL(base).protocol + g : g[0] === '/' ? new URL(base).origin + g : base.replace(/[?#].*$/, '').replace(/[^/]*$/, '') + g;
-    return {layers, sources, unsupported: [...unsupported], sprite, glyphs, fonts, terrain, state, light: (style as any).light, sky: (style as any).sky, transition: (style as any).transition, projection: (style as any).projection, waiting: partial && Object.keys(style.sources ?? {}).some(id => !sources[id] && fetched.get(style.sources[id]) && !fetched.get(style.sources[id])!.err)};
+    const given = (style as any).metadata?.['map-jr:images'], own = given && typeof given === 'object' && !Array.isArray(given) ? Object.keys(given).slice(0, 500) : undefined;
+    return {layers, sources, unsupported: [...unsupported], sprite, own, glyphs, fonts, terrain, state, light: (style as any).light, sky: (style as any).sky, transition: (style as any).transition, projection: (style as any).projection, waiting: partial && Object.keys(style.sources ?? {}).some(id => !sources[id] && fetched.get(style.sources[id]) && !fetched.get(style.sources[id])!.err)};
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number, ratio = 1) {

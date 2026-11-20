@@ -2,18 +2,11 @@
 import {launch, browserName, workerRenders, inWorker, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
 import {guard} from './suite-guard.mjs';
-import {crc32, deflateSync} from 'node:zlib';
+import {solidPNG} from './png.mjs';
 
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0;
-/** A PNG of `size` by `size` pixels in one colour ([r, g, b]). */
-const solidPNG = (size, [r, g, b]) => {
-    const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4), body = Buffer.concat([Buffer.from(type), data]); len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(body)); return Buffer.concat([len, body, crc]); };
-    const head = Buffer.alloc(13); head.writeUInt32BE(size, 0); head.writeUInt32BE(size, 4); head[8] = 8; head[9] = 2;
-    const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3).map((_, i) => [r, g, b][i % 3])]);
-    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', head), chunk('IDAT', deflateSync(Buffer.concat(Array(size).fill(row)))), chunk('IEND', Buffer.alloc(0))]);
-};
 // TIMINGS=1 prints, before each check, the seconds since the previous check (to find the slow ones).
 let lastCheck = performance.now();
 const check = (name, ok, detail = '') => {
@@ -1453,6 +1446,19 @@ for (const renderer of renderers) {
         check(`[${renderer}] a sprite of the description: added to the sprite of the style and named id:name, a sprite that does not load is an error, and the sprite goes with the field`,
             ofSprite === '#80f' && spriteGone.some(e => e.includes('test-sprite-495/missing')) && !withoutSprite.includes('#80f'),
             JSON.stringify({ofSprite, spriteGone, withoutSprite}));
+
+        // #1199: an image of metadata["map-jr:images"] takes the place of the sprite image of the same name, and an image
+        // of `images` of the description takes the place of both.
+        await page.route(/\/test-sprite-1199\//, route => route.request().url().includes('.json')
+            ? route.fulfill({contentType: 'application/json', body: JSON.stringify({square: {x: 0, y: 0, width: 40, height: 40, pixelRatio: 1}})})
+            : route.fulfill({contentType: 'image/png', body: solidPNG(40, [0x88, 0x00, 0xff])}));
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: {...t.withImages({square: t.square('#f80')}), sprite: location.origin + '/test-sprite-1199/s'}}); });
+        const styleOverSprite = await shows('#f80');
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, images: {square: t.square('#0f0')}}); });
+        const descriptionOverBoth = await shows('#0f0');
+        await page.evaluate(() => { const t = window.t, {images: _, ...rest} = t.spec; t.host.update(t.spec = {...rest, style: t.style}); });
+        check(`[${renderer}] an image of metadata["map-jr:images"] takes the place of the sprite image of the same name, and an image of images takes the place of both (#1199)`,
+            styleOverSprite === '#f80' && descriptionOverBoth === '#0f0', JSON.stringify({styleOverSprite, descriptionOverBoth}));
 
         // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
         // (Of each square, the colour of its upper half and of its lower half is read.)

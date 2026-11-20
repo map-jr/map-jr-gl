@@ -863,7 +863,8 @@ export class Engine {
         // asked for). With none, the first name is the image that is missing, as in MapLibre GL JS.
         name = pickImage(name, n => this.images.has(n) || this.sprite && Object.hasOwn(this.sprite.icons, n) || Object.hasOwn(this.slots, n.split(VARIANT)[0]));
         // (The name can come from data: `toString` is no icon of the sprite.)
-        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
+        // An image of the style (`own`) takes the place of the sprite image of the same name: the page gives it on demand (#1199).
+        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) && !this.style?.own?.includes(name) ? this.sprite.icons[name] : undefined);
         // Ask the page for images the style names but nothing provides (once each, and only after the sprite has had its chance).
         if (!found && (this.sprite || !this.spriteUrl) && !this.missing.has(name)) {
             this.missing.add(name);
@@ -1866,7 +1867,8 @@ export class Engine {
 
     /** The image with a name, or (for the name of a template) one of its variants: they all have one size. */
     private imageNamed(name: string) {
-        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
+        // An image of the style (`own`) takes the place of the sprite image of the same name: the page gives it on demand (#1199).
+        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) && !this.style?.own?.includes(name) ? this.sprite.icons[name] : undefined);
         if (found) return found;
         for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
     }
