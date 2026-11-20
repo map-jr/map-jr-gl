@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The world as a globe</title>
+<!-- A line of text below the map names the projection. The globe turns into Mercator between zoom 11 and 12, as in
+     MapLibre GL JS. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" projection="globe" center="10,30" zoom="1.5"
+        style="height: 500px"></map-jr>
+<p id="readout">Projection: globe</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {globe, navigation} from '@map-jr/map-jr-gl/controls';
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  map.controls = [navigation(), globe()];
+  map.attribution = {compact: true};
+
+  // The button of the globe control switches between the globe and Mercator.
+  map.addEventListener('map-projectiontransition', event => {
+    readout.textContent = `Projection: ${event.detail.newProjection}`;
+  });
+</script>

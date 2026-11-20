@@ -164,6 +164,45 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
         await page.close();
     }
 }
+// The <map-jr> forms (.html) and the Svelte forms (.svelte) of the gallery run too, and reach idle with no page error
+// (#1115). A <map-jr> form is the page itself, with an import map put after its <meta charset>. A Svelte form is
+// compiled with svelte/compiler and bundled with esbuild into a page that mounts it in <body>; its imports of the
+// entry go to examples/harness/svelte.js, which keeps the map that the action makes. The Vue, Nuxt and React forms
+// are only compiled (test/examples.mjs): running them needs an application of each framework.
+{
+    const {readdirSync, readFileSync} = await import('node:fs');
+    const {build} = await import('esbuild'), {compile} = await import('svelte/compiler');
+    const root = path.resolve(import.meta.dirname, '..'), dir = path.join(root, 'examples');
+    const imports = {'@map-jr/map-jr-gl': '/dist/map-jr-gl.js', '@map-jr/map-jr-gl/controls': '/dist/controls.js', '@map-jr/map-jr-gl/element': '/dist/element.js', '@map-jr/map-jr-gl/svelte': '/dist/svelte.js'};
+    const importMap = `<script type="importmap">${JSON.stringify({imports})}</script>`, shim = path.join(dir, 'harness/svelte.js');
+    const svelte = {
+        name: 'svelte-examples',
+        setup(b) {
+            b.onResolve({filter: /^@map-jr\/map-jr-gl\/svelte$/}, args => args.importer.endsWith('.svelte') ? {path: shim} : {path: args.path, external: true});
+            b.onResolve({filter: /^@map-jr\//}, args => ({path: args.path, external: true}));
+            b.onLoad({filter: /\.svelte$/}, args => ({contents: compile(readFileSync(args.path, 'utf8'), {filename: args.path, generate: 'client', css: 'injected'}).js.code, loader: 'js', resolveDir: path.dirname(args.path)}));
+        },
+    };
+    const files = readdirSync(dir).filter(f => (f.endsWith('.html') && f !== 'run.html') || f.endsWith('.svelte')).sort();
+    for (const file of files) {
+        let body;
+        if (file.endsWith('.html')) body = readFileSync(path.join(dir, file), 'utf8').replace('<meta charset="utf-8">', m => m + importMap);
+        else {
+            const entry = `import {mount, flushSync} from 'svelte'; import App from ${JSON.stringify(path.join(dir, file))}; import {made} from ${JSON.stringify(shim)};\nmount(App, {target: document.body}); flushSync(); window.map = made[0];`;
+            const result = await build({stdin: {contents: entry, resolveDir: root, loader: 'js'}, bundle: true, format: 'esm', write: false, plugins: [svelte], logLevel: 'silent'});
+            body = `<!doctype html><meta charset="utf-8">${importMap}<script type="module">${result.outputFiles[0].text.replaceAll('</script', '<\\/script')}</script>`;
+        }
+        const page = await browser.newPage({viewport: {width: 800, height: 600}}), errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        await page.route('**/example-page/', r => r.fulfill({contentType: 'text/html', body}));
+        await page.goto(`http://localhost:${port}/example-page/`);
+        const ok = await page.waitForFunction(() => (window.map ?? document.querySelector('map-jr')?.map)?.state.get().idle, null, {timeout: 30000}).then(() => true, () => false);
+        // The line of text below the map, where the example has one, says what the map does.
+        const text = await page.evaluate(() => document.querySelector('p')?.textContent ?? 'none');
+        check(`example ${file} runs as written and reaches idle`, ok && !errors.length && text.trim() !== '', `idle=${ok} text="${text}" errors=${errors.join(' | ')}`);
+        await page.close();
+    }
+}
 // A page that only imports `@map-jr/map-jr-gl/element`, built with esbuild and with Vite against the built package,
 // defines <map-jr> in the browser (#1256; `pnpm test:package` runs the same builds in Node against the tarball).
 {

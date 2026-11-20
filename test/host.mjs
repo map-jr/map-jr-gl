@@ -2967,13 +2967,31 @@ for (const code of ['core', 'compat']) {
         const errorOf = async query => { await page.goto(`${origin}/gallery/examples/run.html?${query}`); await page.waitForFunction(() => window.exampleError || window.maps, null, {timeout: 30000}); return page.evaluate(() => [window.exampleError, document.querySelector('.readout').textContent]); };
         const noForm = await errorOf('id=query&form=vue'), noId = await errorOf('id=nothing&form=core');
         check('examples, harness page: a form that does not run and an unknown example each give a message on the page and in window.exampleError (#1114)',
-            /^\[map-jr-gl\] examples: the form "vue" does not run here\. Use one of: core, compat\.$/.test(noForm[0]) && noForm[1] === noForm[0] && /^\[map-jr-gl\] examples: no example has the id "nothing"/.test(noId[0]) && noId[1] === noId[0], JSON.stringify({noForm: noForm[0], noId: noId[0]}));
+            /^\[map-jr-gl\] examples: the form "vue" does not run here\. Use one of: core, compat, svelte, element\.$/.test(noForm[0]) && noForm[1] === noForm[0] && /^\[map-jr-gl\] examples: no example has the id "nothing"/.test(noId[0]) && noId[1] === noId[0], JSON.stringify({noForm: noForm[0], noId: noId[0]}));
         await page.goto(`${origin}/gallery/?code=vue`);
         await page.waitForFunction(() => window.maps?.basic, null, {timeout: 60000});
         const rows = await page.evaluate(() => [...document.querySelectorAll('#rows > article')].map(a => `${a.id}:${a.querySelector('code').textContent.length > 100 && !!a.querySelector('.live, .pair') && !!a.querySelector('.readout') && !!a.querySelector('.actions')}`).join(' '));
         check('gallery: one row for each of the nine examples and the server row, each with its code, and a live map in the first row (#1114)',
             rows === ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'pmtiles', 'server'].map(id => id + ':true').join(' '), rows);
     } catch (e) { check('examples, harness page and gallery (#1114): the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The Svelte and <map-jr> forms of each example run on the harness page and reach idle, with their line of text in
+// .readout and their buttons in .actions (#1115).
+for (const form of ['svelte', 'element']) {
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}}), results = [];
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    try {
+        for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'pmtiles']) {
+            await page.goto(`${origin}/gallery/examples/run.html?id=${id}&form=${form}`);
+            const idle = await page.waitForFunction(id => window.exampleError || window.maps?.[id]?.state.get().idle, id, {timeout: 30000}).then(() => true, () => false);
+            const [error, buttons, inStage] = await page.evaluate(() => [window.exampleError, document.querySelectorAll('.actions button').length, !!document.querySelector('.live canvas')]);
+            results.push(`${id}:${idle && !error && inStage ? 'ok' : 'no'}${buttons ? `/${buttons}` : ''}`);
+        }
+    } catch (e) { results.push(String(e.message).split('\n')[0]); }
+    check(`examples, harness page: the ${form} form of each example runs in the stage and reaches idle (#1115)`,
+        results.join(' ') === 'basic:ok reactive:ok/2 markers:ok draggable:ok images:ok terrain:ok/2 globe:ok query:ok pmtiles:ok' && !errors.length, `${results.join(' ')} ${errors.join(' | ')}`);
     await page.close();
 }
 // Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested

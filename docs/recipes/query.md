@@ -5,7 +5,9 @@ pixels of a click, also features that the style does not draw.
 
 Each block below is a file of the gallery. The two `js` files are the module script of a page that has
 `<div id="map" style="height: 500px"></div>`, and each one creates the line of text below the map itself. The Vue and
-React components fill their parent element, so give the parent a height.
+React components fill their parent element, so give the parent a height. The Svelte component and the `<map-jr>` page
+give the element of the map a height of 500 pixels. In Nuxt, the code is the Vue code without the imports, which the
+module for Nuxt does.
 
 <!-- example:query:start -->
 **Main API**
@@ -273,6 +275,177 @@ export default function Query() {
   );
 }
 ```
+
+**Svelte**
+
+```svelte [Svelte]
+<script>
+  import {mapJr} from '@map-jr/map-jr-gl/svelte';
+
+  let map = null,
+    clicks = 0;
+  // The answer to the last click: `{features}`, where `features` is `null` when
+  // the query failed.
+  let found = $state.raw(null);
+  const description = {
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    initialView: {center: [-74.0065, 40.7085], zoom: 16.2},
+    attribution: {compact: true},
+    cursor: 'crosshair', // a click asks about one position
+    onClick: async e => {
+      const click = ++clicks;
+      // `querySource` reads the tile data of one source within 8 pixels of the
+      // click. It also finds features that the
+      // style does not draw. "openmaptiles" is the id of the vector source in
+      // this style. A query fails when its tile
+      // cannot be loaded: the answer is then `null` here.
+      const features = await map
+        .querySource('openmaptiles', e.lngLat, {radius: 8})
+        .catch(() => null);
+      // An earlier click can get its answer after a later click. Only the last
+      // click is shown.
+      if (click === clicks) found = {features};
+    },
+  };
+</script>
+
+<!--
+  The answer shows in a box in a corner of the map. The box takes no pointer
+  events, so a click on it reaches the map.
+-->
+<div
+  use:mapJr={{description, ready: instance => (map = instance)}}
+  style="height: 500px"
+>
+  {#if found}
+    <div class="answer">
+      {#each found.features?.slice(0, 8) ?? [] as f}
+        <div>
+          <b>{f.sourceLayer}</b>
+          {f.properties.name ?? f.properties.class ?? ''}
+        </div>
+      {:else}
+        {found.features ? 'Nothing here' : 'The tile data did not load'}
+      {/each}
+    </div>
+  {/if}
+</div>
+<p>
+  {found
+    ? found.features
+      ? `${found.features.length} features within 8 pixels`
+      : 'The query failed'
+    : 'Click the map to list what is there.'}
+</p>
+
+<style>
+  .answer {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 1;
+    pointer-events: none;
+    max-width: 240px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #fff;
+    color: #222;
+    font:
+      12px/1.5 system-ui,
+      sans-serif;
+    box-shadow: 0 1px 6px #0004;
+  }
+</style>
+```
+
+**`<map-jr>`**
+
+```html [<map-jr>]
+<!doctype html>
+<meta charset="utf-8" />
+<title>Ask the map what is at a position</title>
+<!-- The answer to a click shows in a
+     box on the map, and a line of
+     text below the map counts the
+     features. The box takes no
+     pointer events, so a click on it
+     reaches the map. -->
+<map-jr
+  id="map"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="16.2"
+  cursor="crosshair"
+  style="height: 500px"
+>
+  <div
+    id="answer"
+    hidden
+    style="
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 1;
+      pointer-events: none;
+      max-width: 240px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #fff;
+      color: #222;
+      font:
+        12px/1.5 system-ui,
+        sans-serif;
+      box-shadow: 0 1px 6px #0004;
+    "
+  ></div>
+</map-jr>
+<p id="readout">Click the map to list what is there.</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+
+  const map = document.getElementById('map');
+  const box = document.getElementById('answer');
+  const readout = document.getElementById('readout');
+  map.attribution = {compact: true};
+
+  let clicks = 0;
+  map.addEventListener('map-click', async event => {
+    const click = ++clicks;
+    // `querySource` reads the tile
+    // data of one source within 8
+    // pixels of the click. It also
+    // finds features that the style
+    // does not draw. "openmaptiles"
+    // is the id of the vector
+    // source in this style. A query
+    // fails when its tile cannot be
+    // loaded: the answer is then
+    // `null` here.
+    const features = await map.map
+      .querySource('openmaptiles', event.detail.lngLat, {radius: 8})
+      .catch(() => null);
+    // An earlier click can get its
+    // answer after a later click.
+    // Only the last click is shown.
+    if (click !== clicks) return;
+
+    box.replaceChildren();
+    for (const f of features?.slice(0, 8) ?? []) {
+      const line = box.appendChild(document.createElement('div'));
+      line.appendChild(document.createElement('b')).textContent = f.sourceLayer;
+      line.append(' ' + (f.properties.name ?? f.properties.class ?? ''));
+    }
+    if (!features?.length)
+      box.textContent = features
+        ? 'Nothing here'
+        : 'The tile data did not load';
+    box.hidden = false;
+    readout.textContent = features
+      ? `${features.length} features within 8 pixels`
+      : 'The query failed';
+  });
+</script>
+```
 <!-- example:query:end -->
 
 ## How it works
@@ -289,7 +462,7 @@ export default function Query() {
 - The answers of two clicks can arrive in the other order. The example counts the clicks and shows only the answer
   of the last one.
 
-In Vue, `map.value.map` is the map of the component. In React, the ref of `MapJr` is the map.
+In Vue, `map.value.map` is the map of the component. In React, the ref of `MapJr` is the map. In Svelte, `ready` gets the map. On the element `<map-jr>`, the property `map` is the map.
 
 ## Variations
 

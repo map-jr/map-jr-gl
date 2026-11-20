@@ -345,14 +345,21 @@ The Vue component of `@map-jr/map-jr-gl/vue` renders the first view on the serve
 value `true` renders with the defaults below. An object sets these options. When the render fails, the component renders the element without
 the first view, writes the error to the console of the server, and emits it as `error` when it has a listener for `error`.
 
+<!-- ref:MapJrSSROptions:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `width` | `number` | `800` | The width in CSS pixels that the map has on most screens. |
 | `height` | `number` | `500` | The height in CSS pixels that the map has on most screens. |
-| `overrides` | `false \| Record<string, SSROverrides>` | | As [`overrides`](#overrides) of `renderToSVG`. |
-| `attribution` | `string \| string[]` | the attribution of the sources | The attribution to show, as HTML. The prop `:attribution="false"` overrides it and shows none. |
-| `tileZoomOffset` | `number` | `0` | As [`tileZoomOffset`](#tilezoomoffset) of `renderToSVG`. |
-| `timeout`, `requestTimeout`, `maxBytes`, `allowHosts` | | | As the [limits for requests](#limits-for-requests) of `renderToSVG`. |
+| [`overrides`](#overrides) | `false \| Record<string, `[`SSROverrides`](#overrides)`>` | | Changes for the server render, for each id of a style layer, as `overrides` of `renderToSVG`. |
+| `attribution` | `string \| string[]` | the attribution of the sources | The attribution to show, as HTML. |
+| `timeout` | `number` | `30000` | The time in milliseconds that all requests of the render can take together, as `timeout` of `renderToSVG`. |
+| `requestTimeout` | `number` | `10000` | The time in milliseconds that one request can take, as `requestTimeout` of `renderToSVG`. |
+| `maxBytes` | `number` | `0` | The largest body of one response in bytes, after decompression, as `maxBytes` of `renderToSVG`. |
+| `allowHosts` | `string[]` | | The host names that the render can request, as `allowHosts` of `renderToSVG`. |
+| [`tileZoomOffset`](#tilezoomoffset) | `number` | `0` | The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. |
+<!-- ref:MapJrSSROptions:end -->
+
+The prop `:attribution="false"` overrides `attribution` and shows none.
 
 The render uses the props `map-style`, `initial-view`, `view`, `sources`, `layers`, `terrain`, `sprite`, `data`,
 `images` and `color-scheme`. It does not use `font-family`.

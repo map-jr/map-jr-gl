@@ -1,0 +1,19 @@
+<script setup>
+// A page of a Nuxt app whose nuxt.config.ts has modules: ['@map-jr/map-jr-gl/nuxt']. The module imports MapJr and
+// the other components, the composables and the controls (as navigationControl() and so on), and Nuxt imports the
+// functions of Vue.
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const pin = ref([-74.0065, 40.7085]);
+const moving = ref(false);
+</script>
+
+<template>
+  <MapJr :map-style="style" :initial-view="{center: pin, zoom: 14}" :attribution="{compact: true}">
+    <!-- The new position comes with dragend. The pin stays where it was dropped until lng-lat changes. -->
+    <MapOverlay :lng-lat="pin" anchor="bottom" draggable @dragstart="moving = true" @dragend="p => { pin = p; moving = false; }">
+      <svg width="27" height="41" viewBox="0 0 27 41"><path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z" fill="#d6453d"/><circle cx="13.5" cy="13.5" r="5.5" fill="#fff"/></svg>
+    </MapOverlay>
+    <p class="note">{{ moving ? 'Moving' : `Pin at ${pin[0].toFixed(5)}, ${pin[1].toFixed(5)}` }}</p>
+  </MapJr>
+</template>

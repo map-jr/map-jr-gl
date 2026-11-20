@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>One file of tiles: PMTiles</title>
+<!-- A legend is on the map, and a line of text below the map lists what a click finds. The legend takes no pointer
+     events, so a click on it reaches the map. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.1,40.75" zoom="9.2"
+        style="height: 500px">
+  <div style="position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;display:flex;flex-direction:column;padding:7px 10px;border-radius:8px;background:#fffe;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 4px #0003">
+    <b>From one PMTiles file</b>
+    <div><span style="display:inline-block;width:22px;margin-right:7px;vertical-align:middle;border-top:2px solid #5746af"></span>County boundaries</div>
+    <div><span style="display:inline-block;width:22px;margin-right:7px;vertical-align:middle;border-top:1px solid #7c66dc"></span>ZIP code areas (from zoom 9)</div>
+    <small>The base map below them is a usual tile source.</small>
+  </div>
+</map-jr>
+<p id="readout">Click to list the county, state and ZIP code</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  map.attribution = {compact: true};
+  // Additions to the style: a PMTiles file on a usual file host. The map reads the tiles that it needs with HTTP
+  // range requests.
+  map.sources = {
+    admin: {type: 'vector', url: 'pmtiles://https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles'},
+  };
+  map.layers = [
+    {id: 'zips', type: 'line', source: 'admin', 'source-layer': 'zip_features', minzoom: 9,
+      paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6}},
+    {id: 'counties', type: 'line', source: 'admin', 'source-layer': 'county_features',
+      paint: {'line-color': '#5746af', 'line-width': 2}},
+  ];
+
+  map.addEventListener('map-click', async event => {
+    const features = await map.map.querySource('admin', event.detail.point);
+    readout.textContent = features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here';
+  });
+</script>
