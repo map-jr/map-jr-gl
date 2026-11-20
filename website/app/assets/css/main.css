@@ -79,6 +79,15 @@
   /* The colour of the contour lines, and of the sheet that a code block is printed on. */
   --site-contour: var(--ui-color-neutral-300);
   --site-sheet: #ffffff;
+
+  /*
+   * Monospace text (#1331). Contrast of the text on its background: inline code 13.7, code blocks 14.8. The
+   * tokens of a block (github-light-default) keep 4.5 or more on the block background.
+   */
+  --site-code-bg: #eceff3;
+  --site-code-fg: #1f2328;
+  --site-pre-bg: #f6f8fa;
+  --site-pre-fg: #1f2328;
 }
 
 /*
@@ -108,6 +117,12 @@
 
   --site-contour: var(--ui-color-neutral-700);
   --site-sheet: #1c1d20;
+
+  /* Contrast of the text on its background: inline code 11.7, code blocks 16.1. */
+  --site-code-bg: #2a2d33;
+  --site-code-fg: #e6edf3;
+  --site-pre-bg: #0f1013;
+  --site-pre-fg: #e6edf3;
 }
 
 @layer base {
@@ -345,6 +360,12 @@
   .code-phone {
     display: block;
   }
+}
+
+/* Monospace text has its own background and colour (#1331). The tokens of a block set their own colours. */
+:not(pre) > code {
+  background-color: var(--site-code-bg);
+  color: var(--site-code-fg);
 }
 
 /* Inline code in a paragraph or a list wraps anywhere when one word of it is wider than the column, so that a long
