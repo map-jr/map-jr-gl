@@ -370,11 +370,14 @@ try {
                     list: Math.round(element.getBoundingClientRect().bottom),
                     last: Math.round(links[links.length - 1].getBoundingClientRect().bottom),
                     window: innerHeight,
+                    page: scrollY,
                     scrolled: element.scrollTop > 0 && element.scrollTop >= element.scrollHeight - element.clientHeight - 1,
                 };
             });
             check(`${name}: the list is longer than the window and scrolls to its end`, place.scrolled, JSON.stringify(place));
             check(`${name}: the last entry is in the window`, place.last <= place.list && place.list <= place.window, JSON.stringify(place));
+            // The last turn of the wheel in the loop is past the end of the list.
+            if (type === chromium) check(`${name}: the wheel past the end of the list does not scroll the page`, place.page === 0, JSON.stringify(place));
             const lastEntry = entries.last();
             const id = decodeURIComponent((await lastEntry.getAttribute('href')).slice(1));
             await lastEntry.tap();
