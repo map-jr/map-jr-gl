@@ -16,7 +16,7 @@
 import {readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {API, SymbolFlags} from 'typescript/unstable/sync';
+import {API, NodeBuilderFlags, SymbolFlags} from 'typescript/unstable/sync';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const write = process.argv.includes('--write'), check = process.argv.includes('--check');
@@ -93,7 +93,8 @@ function members(name) {
         const node = handle.resolve(project);
         const modifiers = node?.modifiers?.map(m => m.getText()) ?? [];
         // (Private members, members that start with `_` for wrappers, and the callbacks of a custom element that the browser calls.)
-        if (modifiers.includes('private') || modifiers.includes('protected') || /^[#_]/.test(member.name) || lifecycle.has(member.name)) continue;
+        // (A member tagged `@internal` is for other parts of the library, not for the user.)
+        if (modifiers.includes('private') || modifiers.includes('protected') || /^[#_]/.test(member.name) || lifecycle.has(member.name) || checker.getJsDocTagsOfSymbol(member).some(t => t.name === 'internal')) continue;
         const parent = node?.parent?.name ? `${handle.path}#${node.parent.name.getText()}` : '';
         if (parent && parent !== self && named.has(parent)) continue;
         // (A getter without a setter is read only, and its type is the type that it returns.)
@@ -123,7 +124,7 @@ const typeText = (member, optional, node, getter = false) => {
         return flat(`${generics}(${node.parameters.map(param).join(', ')}) => ${node.type.getText()}`);
     }
     if (node?.type) return flat(node.type.getText());
-    let text = checker.typeToString(checker.getTypeOfSymbol(member)).replace(/"([^"']*)"/g, "'$1'").replace(/\{ /g, '{').replace(/;? \}/g, '}');
+    let text = checker.typeToString(checker.getTypeOfSymbol(member), undefined, NodeBuilderFlags.NoTruncation).replace(/"([^"']*)"/g, "'$1'").replace(/\{ /g, '{').replace(/;? \}/g, '}');
     // (A prop of Vue has no annotation. Where the checker shortens a long type, take the type of its `PropType<…>`.)
     const prop = /PropType<(.*)>/s.exec(node?.getText() ?? '');
     if (text.includes('...') && prop) {

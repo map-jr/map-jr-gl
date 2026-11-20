@@ -201,8 +201,19 @@ export class Map {
     private moving = false;
     protected ready = false;
     protected styleBase = '';
-    readonly dragPan = new InteractionHandler(); readonly scrollZoom = new InteractionHandler(); readonly doubleClickZoom = new InteractionHandler();
-    readonly dragRotate = new InteractionHandler(); readonly touchZoomRotate = new TouchZoomRotateHandler(); readonly touchPitch = new InteractionHandler();
+    /** A drag with the mouse or one finger moves the map. */
+    readonly dragPan = new InteractionHandler();
+    /** The scroll wheel and the trackpad zoom the map. */
+    readonly scrollZoom = new InteractionHandler();
+    /** A double click or a double tap zooms in by one level. */
+    readonly doubleClickZoom = new InteractionHandler();
+    /** A drag with the right mouse button, or with Ctrl and the left one, turns and tilts the map. */
+    readonly dragRotate = new InteractionHandler();
+    /** A pinch with two fingers zooms and turns the map; `disableRotation()` keeps the zoom only. */
+    readonly touchZoomRotate = new TouchZoomRotateHandler();
+    /** A drag up or down with two fingers tilts the map. */
+    readonly touchPitch = new InteractionHandler();
+    /** The arrow keys, `+` and `-` move, turn and zoom the map while it has the focus. */
     readonly keyboard = new InteractionHandler();
     /** Shift and drag draws a box, and the map zooms to it. */
     readonly boxZoom = new InteractionHandler();
@@ -259,7 +270,7 @@ export class Map {
     private heights = new globalThis.Map<string, Float32Array>();
     private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void; result?: Promise<unknown>}>();
     private nextQuery = 1;
-    /** Which thread the engine ended up on. */
+    /** Only in this library: the thread that draws the map, `'worker'` or `'main'`. */
     renderer: 'worker' | 'main' = 'main';
     /** The page asked for `renderer: 'worker'` by name. Only then does a fall back to the main thread warn (#792). */
     private askedWorker: boolean;
@@ -948,10 +959,10 @@ export class Map {
         const wrap: Listener = e => { this.off(type, wrap); fn(e); };
         return this.on(type, wrap);
     }
-    /** The cursor shown over the map, e.g. 'pointer' while hovering something clickable; '' restores the default. */
+    /** Only in this library: sets the CSS cursor over the map, such as `'pointer'` over something that the user can click. `''` restores the default. */
     setCursor(cursor: string) { this.canvas.style.cursor = cursor; return this; }
     /**
-     * Dispatches an event to listeners. Public so controls and plugins can raise their own.
+     * Calls the listeners of the event `type` with `data` as the event, as in MapLibre GL JS. Controls and plugins use it for their own events.
      * (A subclass that sends an event later returns a promise for that moment: the default action of the map waits for it.)
      */
     fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
@@ -964,16 +975,24 @@ export class Map {
     }
 
     // ---- camera ----
+    /** Returns the map center. */
     getCenter() { return new LngLat(this.tr.lng, this.tr.lat); }
+    /** Returns the zoom level. */
     getZoom() { return this.tr.zoom; }
+    /** Returns the bearing in degrees clockwise from north. */
     getBearing() { return this.tr.bearing; }
+    /** Returns the pitch in degrees from straight down. */
     getPitch() { return this.tr.pitch; }
+    /** Returns the smallest zoom level that the user can reach. */
     getMinZoom() { return this.tr.minZoom; }
+    /** Returns the largest zoom level that the user can reach. */
     getMaxZoom() { return this.tr.maxZoom; }
+    /** Returns the element that holds the map. */
     getContainer() { return this.container; }
+    /** Returns the canvas that the map draws on. */
     getCanvas() { return this.canvas; }
     /**
-     * The map as an image. Waits until the map is idle, draws one frame and gives the canvas of that frame as a Blob
+     * Only in this library: returns a promise of the map as an image. It waits until the map is idle, draws one frame and gives the canvas of that frame as a Blob
      * (`type` and `quality` as in `HTMLCanvasElement.toBlob`; the default is PNG). It works with both renderers: the
      * drawing buffer of the main renderer can be cleared after each frame, so the image is taken in the same task as the frame.
      */
@@ -1003,18 +1022,21 @@ export class Map {
     loaded() { return this.isLoaded && this.tilesLoaded && !this.styleLoading && this.restyled === this.restyles; }
     /** A `setStyle` whose style has not come yet. */
     private styleLoading = false;
+    /** Whether the camera moves now, by the user or by a camera method. */
     isMoving() { return this.moving; }
     project(lngLat: LngLatLike) { const [x, y] = this.tr.project(...toLngLat(lngLat)); return {x, y}; }
+    /** Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. */
     unproject(point: {x: number; y: number} | [number, number]) {
         const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
         const [lng, lat] = this.tr.unproject(x, y);
         return new LngLat(lng, lat);
     }
-    /** Whether the far side of the globe hides a position from the camera; always false for Mercator. Markers read it. */
+    /** Only in this library: whether the far side of the globe hides a position from the camera. It is always `false` for Mercator. */
     isLocationOccluded(lngLat: LngLatLike) {
         const [lng, lat] = toLngLat(lngLat);
         return !!this.tr.globeness && this.tr.globe!.hidden(this.tr, mercX(lng), mercY(lat));
     }
+    /** Returns the smallest box that contains the visible map. */
     getBounds() {
         // (On the globe: the edges of the screen and of the globe, and a pole in view; see `bounds` in globe.ts.)
         if (this.tr.globeness) return new LngLatBounds(this.tr.globe!.bounds(this.tr));
@@ -1032,7 +1054,7 @@ export class Map {
         return this;
     }
     /**
-     * `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the centre of the view, as in
+     * `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the center of the view, as in
      * MapLibre GL JS. `easing` maps the time (0 to 1) to the progress (0 to 1); it is sampled into a table of 65
      * values, because a function cannot be sent to the engine's worker.
      */
@@ -1074,6 +1096,7 @@ export class Map {
         return this.easeTo({...o, duration: o.duration ?? 1});
     }
     private flight?: number[];
+    /** Stops the animation of the camera, where it is. */
     stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
 
     /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
@@ -1087,9 +1110,21 @@ export class Map {
     }
 
     private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
+    /**
+     * Sets the smallest zoom level that the user can reach.
+     * @param z The zoom level. `undefined` restores the default, -2. `null` is stored as it is, where MapLibre GL JS restores the default.
+     */
     setMinZoom(z = -2) { this.tr.minZoom = z; return this.limits(); }
+    /**
+     * Sets the largest zoom level that the user can reach.
+     * @param z The zoom level. `undefined` restores the default, 22. `null` is stored as it is, where MapLibre GL JS restores the default.
+     */
     setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
     declare private pitchWarned?: boolean;
+    /**
+     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90 and warns once.
+     * @param p The pitch. `undefined` or `null` restores the default, 60.
+     */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
     private pitchCap(p?: number | null) {
         p ??= 60;
@@ -1097,10 +1132,16 @@ export class Map {
         if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
+    /** Returns the largest pitch that the user can reach, in degrees. */
     getMaxPitch() { return this.tr.maxPitch; }
+    /** Returns the smallest pitch that the user can reach, in degrees. */
     getMinPitch() { return this.tr.minPitch; }
+    /**
+     * Sets the smallest pitch that the user can reach, in degrees. The value is limited to between 0 and the largest pitch, where MapLibre GL JS throws an error.
+     * @param p The pitch. `undefined` restores the default, 0.
+     */
     setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
-    /** Keeps the map centre inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
+    /** Keeps the map center inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
         // The corners are kept as given (as MapLibre keeps them): a west edge east of the east edge crosses the antimeridian.
         const flat = bounds && (bounds instanceof LngLatBounds ? bounds.toArray().flat()
@@ -1110,9 +1151,11 @@ export class Map {
         this.tr.constrain();
         return this.limits();
     }
+    /** Returns the box that the map center stays in, or `null` when there is none. */
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
+    /** Returns the ratio of device pixels to CSS pixels that the canvas uses. */
     getPixelRatio() { return this.dpr; }
-    /** With 3D terrain: the height of the ground at a position, in metres above sea level multiplied by the exaggeration (as in MapLibre); `null` without terrain. */
+    /** Returns the elevation of the ground at a position in metres, multiplied by the exaggeration as in MapLibre GL JS, or `null` without 3D terrain. */
     queryTerrainElevation(lngLat: LngLatLike): number | null {
         const [lng, lat] = toLngLat(lngLat);
         return this.tr.heightAt ? this.tr.heightAt(mercX(lng), mercY(lat)) : null;
@@ -1125,16 +1168,20 @@ export class Map {
         if (!this.rawStyle?.sources[id]) { this.fire('error', {error: new Error(`There is no source with ID "${id}"`)}); return undefined!; }
         return !!this.resolved?.sources[id] && (this.tilesLoaded || this.loadedSources.has(id));
     }
-    /** Loads a source's tiles again, e.g. after the data behind its URL changed. */
+    /** Loads the tiles of a source again, for example after the data behind its URL changed. */
     refreshTiles(sourceId: string) { this.unloaded(sourceId); this.post({type: 'refresh', source: sourceId}); return this; }
     /** The data of a source changed: the source is not loaded until the engine says so. */
     private unloaded(id: string) { this.loadedSources.delete(id); this.tilesLoaded = false; }
+    /** Whether the style has loaded. */
     isStyleLoaded() { return this.ready; }
+    /** Whether the tiles of the current view have loaded. */
     areTilesLoaded() { return this.tilesLoaded; }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
     zoomOut() { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300}); }
+    /** Draws the map again in the next frame. */
     triggerRepaint() { this.post({type: 'repaint'}); }
 
+    /** Reads the size of the container again and resizes the map to it. Call it after a change of the size that the map does not see. */
     resize() {
         this.measure();
         this.post({type: 'resize', width: this.tr.width, height: this.tr.height, dpr: this.dpr});
@@ -1344,8 +1391,9 @@ export class Map {
         if (!terrain) { this.tr.heightAt = undefined; this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
+    /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
-    /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), colour and intensity. */
+    /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), color and intensity. */
     setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
         return this.editStyle(s => { s.light = {...s.light, ...light}; });
     }
@@ -1398,6 +1446,7 @@ export class Map {
         this.instant = !options?.diff;
         this.restyle(true);
     }
+    /** Returns the style layer with this id as an object of the style specification (`id`, `type`, `paint`, `layout` and the others), or `undefined`. */
     getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }
     /** The source's specification. GeoJSON sources also get MapLibre's `setData(data)` to replace their contents. */
     getSource(id: string) {
@@ -1554,7 +1603,9 @@ export class Map {
         // (The engine works out whether this needs tiles rebuilt: per-feature values are baked into their buffers.)
         return this.editStyle(s => { (s.layers[this.layerIndex(s, layerId)][group] ??= {})[name] = value; });
     }
+    /** Sets the value of a paint property of a style layer. */
     setPaintProperty(layerId: string, name: string, value: unknown) { return this.setProp('paint', layerId, name, value); }
+    /** Sets the value of a layout property of a style layer. */
     setLayoutProperty(layerId: string, name: string, value: unknown) {
         if (name === 'visibility') this.toggled.add(layerId);
         return this.setProp('layout', layerId, name, value);
@@ -1563,6 +1614,7 @@ export class Map {
     private toggled = new Set<string>();
     /** The layers that the engine hides after the last style, as it reported them (#1032). */
     private hidden = new Set<string>();
+    /** Sets the filter of a style layer. */
     setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
     /**
@@ -1601,18 +1653,20 @@ export class Map {
         corner.appendChild(el);
         return this;
     }
+    /** Removes a control that `addControl` added. */
     removeControl(control: Control) {
         if (this.controls.delete(control)) control.onRemove(this);
         return this;
     }
+    /** Whether the map has this control. */
     hasControl(control: Control) { return this.controls.has(control); }
 
     // ---- fonts and images ----
-    /** Loads more web fonts for labels after construction. See the `fonts` option. */
+    /** Only in this library: loads more web fonts for labels after the map is made. See the option `fonts`. */
     addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
 
     /**
-     * Makes an image available to `icon-image` under `name`. `source` may be an SVG document (rasterised at the
+     * Makes an image available to `icon-image` under `name`, and returns a promise of the map; MapLibre GL JS returns the map. `source` may be an SVG document (rasterised at the
      * screen's pixel density, so it stays sharp), an image URL, or anything drawable such as an ImageBitmap or canvas.
      * `width`/`height` are the display size in CSS pixels; they default to the image's natural size.
      *
@@ -1682,6 +1736,7 @@ export class Map {
             content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight, sdf: options.sdf, update}, [data.buffer]);
         return this;
     }
+    /** Removes an image that `addImage` added. */
     removeImage(name: string) {
         this.sendUpdates();
         this.imageTurn(name); this.imageNames.delete(name); this.imageInputs.delete(name);
@@ -1690,7 +1745,7 @@ export class Map {
         return this;
     }
     /**
-     * Replaces the pixels of an image added earlier and keeps its options (stretch, content, sdf), as MapLibre GL JS
+     * Replaces the pixels of an image added earlier, keeps its options (stretch, content, sdf) and returns a promise of the map; MapLibre GL JS returns the map. As MapLibre GL JS
      * does. When the new pixels have the size of the old ones, they are copied into the texture in place and the map
      * redraws without placing its icons again. Another size replaces the image as `addImage` would. (#949)
      * Pixels and drawables go to the map at the end of the task: of several calls in one task, only the last is sent (#979).
@@ -1715,9 +1770,10 @@ export class Map {
         this.updates.clear();
         for (const [name, source] of list) if (!this.removed && this.imageNames.has(name)) this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
     }
+    /** Whether the map has an image with this name. */
     hasImage(name: string) { return this.imageNames.has(name); }
     /**
-     * Supplies images on demand. When a style asks for an `icon-image` nothing provides, the resolver is called with
+     * Sets a function that supplies images on demand, as in MapLibre GL JS. When a style asks for an `icon-image` nothing provides, the resolver is called with
      * its name and may call `addImage` (it can be async). This is how generated icons such as highway shields work:
      * encode what to draw in the name, and build the SVG for it here.
      */
@@ -1744,7 +1800,7 @@ export class Map {
     }
 
     /**
-     * The features that the style layers draw, the top one first. `MapInstance.queryFeatures` of the main API is this method.
+     * Only in this library: returns a promise of the features that the style layers draw, the top one first. `MapInstance.queryFeatures` of the main API is this method.
      * `at` is a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
      * nothing for the whole map; the options can come in its place (`queryFeatures({layers})`).
      */
@@ -1757,7 +1813,7 @@ export class Map {
     }
 
     /**
-     * The features of the tile data of the source `sourceId`. They need no style layer, and at a position they need not
+     * Only in this library: returns a promise of the features of the tile data of the source `sourceId`. They need no style layer, and at a position they need not
      * be on the screen (the tile is fetched if necessary). `at` is a point of the screen or a position, or nothing for the
      * tiles of the view; the options can come in its place. `MapInstance.querySource` of the main API is this method.
      */
@@ -1815,7 +1871,7 @@ export class Map {
 
 
 
-    /** Ground elevation in metres at a location, read from the style's elevation (raster-dem) source; null where there is no data. */
+    /** Only in this library: returns a promise of the elevation of the ground in metres at a position, from the raster-dem source of the style, or `null` where it has no data. */
     queryElevation(at: LngLatLike | {x: number; y: number}, options: {source?: string; zoom?: number} = {}): Promise<number | null> {
         const [lng, lat] = 'x' in at ? this.tr.unproject(at.x, at.y) : toLngLat(at);
         return this.ask(id => ({type: 'elevation', id, lng, lat, ...options}));
@@ -2123,7 +2179,7 @@ export class Map {
         });
     }
 
-    /** Attribution strings (as provided, possibly HTML) of the sources in the current style. */
+    /** Only in this library: returns the attribution texts of the sources of the style as they are written, which can be HTML that the attribution control shows. */
     getAttributions(): string[] {
         // As in MapLibre GL JS: only the sources that a visible layer uses at the current zoom, and no blank text.
         const z = this.tr.zoom, sources = this.resolved?.sources ?? {}, layers: any[] = this.rawStyle?.layers ?? [];
@@ -2200,7 +2256,7 @@ export interface ImageOptions {
     /** For icons fitted around text: the ranges that may stretch and the box the text sits in, in image pixels. */
     stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number];
     textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional';
-    /** The image is a signed distance field in its alpha channel: `icon-color` and `icon-halo-*` recolour it. Default false. */
+    /** The image is a signed distance field in its alpha channel: `icon-color` and `icon-halo-*` recolor it. Default false. */
     sdf?: boolean;
 }
 
