@@ -972,6 +972,7 @@ for (const renderer of renderers) {
         const fitNames = await page.evaluate(async renderer => {
             const t = window.t, small = [[-74.0101, 40.7101], [-74.01, 40.71]];
             const wait = ms => new Promise(r => setTimeout(r, ms));
+            const m = t.host._map, before = {center: m.getCenter().toArray(), zoom: m.getZoom(), bearing: m.getBearing(), pitch: m.getPitch()};
             const warned = [], warn = console.warn;
             console.warn = (...a) => warned.push(a.join(' '));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -991,6 +992,8 @@ for (const renderer of renderers) {
             const padded = Math.round(p.x - rect.width / 2);
             await wait(500);
             old.destroy(); el.remove();
+            // (The later checks use the same map at the view that it had before.)
+            t.host.moveTo(before);
             console.warn = warn;
             return {initial, initialOld, moved, fitted, movedOld, padded, warned: warned.filter(w => w.includes('is not an option of a fit'))};
         }, renderer);
