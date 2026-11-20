@@ -3,8 +3,11 @@
 This page moves a map from the compat entry (`@map-jr/map-jr-gl/maplibre-compat`, the API of MapLibre GL JS) to the
 main API (`@map-jr/map-jr-gl`). In the main API, one object, the description
 ([`MapDescription`](../reference/description.md)), states the style, the sources, the layers, the view and the
-controls. In place of a sequence of calls such as `addSource` and `addLayer`, you pass a new description to
-[`update`](../api.md#change-the-map), and the map applies what is different. Both entries render with the same
+controls. In place of a sequence of calls such as `addSource` and `addLayer`, you pass the changed fields to
+[`patch`](../api.md#change-the-map), and the map applies what is different. `patch` keeps the fields that it does not
+receive, and [`update`](../api.md#change-the-map) replaces the whole description.
+
+Both entries render with the same
 engine and read the same styles, so the map looks the same.
 
 ## Steps
@@ -63,8 +66,9 @@ engine and read the same styles, so the map looks the same.
 
 3. Replace each call that changes the style, such as `setPaintProperty`, `setFilter` or `getSource(id).setData`,
    with a call of [`patch`](../api.md#change-the-map). `patch` applies the fields that it receives and keeps the
-   other fields of the description. Set the features of a GeoJSON source with
-   [`data`](../reference/description.md#data).
+   other fields of the description. A field is replaced as a whole, so pass the complete list of `layers`. Set the
+   features of a GeoJSON source with [`data`](../reference/description.md#data): a key of `data` that no source has
+   creates a GeoJSON source with that id.
 
    Before:
 
@@ -148,13 +152,14 @@ engine and read the same styles, so the map looks the same.
 | `map.setStyle(style)` | `map.patch({style})` | The sources and layers of the description stay on the new style. |
 | `map.addSource(id, source)`, `map.removeSource(id)` | `sources` of the description | |
 | `map.addLayer(layer, beforeId)`, `map.removeLayer(id)` | `layers` of the description, with `before: beforeId` | A layer of the style itself is not removed; hide it with a style object of your own. |
-| `setPaintProperty`, `setLayoutProperty`, `setFilter`, `setLayerZoomRange` | A changed layer in `layers` | The map applies the change in place. |
+| `setPaintProperty`, `setLayoutProperty`, `setFilter`, `setLayerZoomRange` on a layer of `layers` | The changed layer in `layers` | The map applies the change in place. |
+| The same methods on a layer of the style | `map.patch({style})` with a style object in which the layer is changed | Load the style JSON with `fetch` once. When only layers changed, the map updates those layers in place. |
 | `map.getSource(id).setData(data)` | `map.patch({data: {[id]: data}})` | Pass a new object: the map compares the value by identity. |
 | `setGlobalStateProperty(name, value)` | `globalState` of the description | |
 | `setTerrain`, `setProjection`, `setPadding`, `setMaxBounds`, `setMinZoom`, `setMaxZoom`, `setMaxPitch` | `terrain`, `projection`, `padding`, `maxBounds`, `minZoom`, `maxZoom`, `maxPitch` of the description | |
 | `addImage(name, image)` | `images` of the description | |
 | `jumpTo(view)` | `map.moveTo(view)` | See [The camera](../api.md#the-camera). |
-| `easeTo(view)` | `map.moveTo({...view, duration: 500})` | The default `duration` of `moveTo` is 0. |
+| `easeTo(view)` | `map.moveTo({...view, duration: 500})` | The default `duration` of `moveTo` is 0. For `padding` of `easeTo`, set `padding` of the description. |
 | `flyTo(view)` | `map.moveTo({...view, fly: true})` | |
 | `fitBounds(bounds, options)` | `map.fitBounds(bounds, options)` | `bounds` is `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `getCenter()`, `getZoom()`, `getBearing()`, `getPitch()`, `getBounds()` | `map.state.get().view` | `center` is `[lng, lat]`, and `bounds` is `[[west, south], [east, north]]`. |
@@ -169,13 +174,13 @@ engine and read the same styles, so the map looks the same.
 | `setFeatureState`, `removeFeatureState` | `map.setFeatureState`, `map.removeFeatureState` | The same arguments. |
 | `new Marker()`, `new Popup()` | `map.overlay(element, {lngLat, popup})` | |
 | `map.addControl(new NavigationControl())` | `controls: [navigation()]` | The functions are in `@map-jr/map-jr-gl/controls`. |
-| `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attributionControl` | `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attribution` | `hash`, `interactive` and `renderer` are read only when the map is created. |
+| `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attributionControl` | `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attribution` | `hash`, `interactive`, `renderer` and `attribution` are read only when the map is created. |
 
 ## What the main API does not have
 
 The main API has no method for a camera that moves step by step (`panBy`, `zoomIn`, `rotateTo`), no custom layers
-(`type: 'custom'`), and no way to change a layer of a style that is loaded from a URL. To change such a
-layer, pass the style as an object with the changed layer to `style`. Keep the compat entry for a page that needs a
+(`type: 'custom'`), and no method that changes one property of a layer of the style. To change such a layer,
+pass the style as an object with the changed layer to `style`. Keep the compat entry for a page that needs a
 plugin for MapLibre GL JS: see [Wrappers and plugins](wrappers.md).
 
 ## See also

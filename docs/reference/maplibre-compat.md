@@ -1,6 +1,6 @@
 # The compat entry
 
-The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS 6, so that code and plugins for MapLibre
+The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS 6.17, so that code and plugins for MapLibre
 GL JS run with a change of the import. This page lists what the entry exports and every member of its `Map`. See
 [From MapLibre GL JS](../migrate/from-maplibre.md) for the steps to move an application to it.
 
@@ -20,9 +20,15 @@ These differences change the code of most applications:
   promise. Only the promise has the complete result.
 - [`setStyle`](#setstyle), [`addImage`](#addimage) and `updateImage` return a promise where MapLibre GL JS returns
   the map.
-- The largest pitch is 90 degrees. The camera has no roll, and its field of view is fixed.
+- `maxPitch` and `setMaxPitch` accept at most 90 degrees, where MapLibre GL JS accepts up to 180. A higher value is
+  limited to 90, with one warning. The default is 60 in both.
+- The camera has no roll, and its field of view is fixed. `setRoll` and `setVerticalFieldOfView` have no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
-- The library does not validate the style. It warns only for a layer type or an expression that it does not draw.
+- The library does not validate the style, and the option `validate` has no effect. It warns for a layer type or an
+  expression that it does not draw, and does not draw them. Another mistake in the style gets no message: see
+  [The style is not validated](../migrate/from-maplibre.md#the-style-is-not-validated).
+- When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
+  `error` with that error and shows a message in the container. Call `supported()` before you create the map.
 
 [MapLibre compatibility](../maplibre-compatibility.md) is the complete list of the differences, of what is not
 available, and of the types that differ.
@@ -33,15 +39,18 @@ available, and of the types that differ.
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders the map. `'auto'` renders in a worker where the browser can. A custom layer needs `'main'`. |
-| `strict` | `boolean` | `false` | Whether an option or a method that has no effect throws an error, in place of one warning. |
+| `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders the map: see [`renderer`](description.md#renderer) of the main API for each value. |
+| `strict` | `boolean` | `false` | Whether each warning of an option or a method with no effect, and each `error` event, is an error that is thrown. |
 | `fonts` | `FontSource[]` | | Web fonts for labels, for example `[{family: 'Open Sans', src: '/fonts/open-sans.woff2', weight: '300 800'}]`. |
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font. |
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
-The options `renderWorldCopies: false`, `canvasContextAttributes` (other than `antialias`), `logoPosition`,
-`validate`, `fadeDuration` (other than 300), `pitchWithRotate: false` and `projection` have no effect, and each
-writes one warning.
+These options of MapLibre GL JS have no effect and write one warning, or throw it with `strict: true`:
+`renderWorldCopies: false`, `canvasContextAttributes` other than `antialias`, `logoPosition`, `validate` with any
+value, `fadeDuration` other than 300, `pitchWithRotate: false`, and `projection` other than `'mercator'`.
+
+A custom layer (`type: 'custom'`) needs `renderer: 'main'`. With `'auto'` or `'worker'`, `addLayer` fires `error` and
+adds nothing.
 
 ## `Map`
 
@@ -113,7 +122,7 @@ library" names a member that MapLibre GL JS does not have.
 | `zoomIn` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Increases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`; MapLibre GL JS takes 500 ms. |
 | `zoomOut` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Decreases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`; MapLibre GL JS takes 500 ms. |
 | `rotateTo` | `(bearing: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
-| `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than 7 degrees from north, and else does nothing. |
+| `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of MapLibre GL JS has no effect. |
 | `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
 | `getRoll` | `() => number` | Returns 0: the camera has no roll. |
 | `getCenterElevation` | `() => number` | Returns the elevation of the ground at the map center in metres, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. |
@@ -220,9 +229,9 @@ library" names a member that MapLibre GL JS does not have.
 ## `queryRenderedFeatures`
 
 `queryRenderedFeatures` and `querySourceFeatures` take the arguments of MapLibre GL JS and return an array that is
-also a promise. Await it: the promise resolves to the complete result. The array alone has the features of GeoJSON
-sources and can lack the features of tile sources. `await` also works with MapLibre GL JS, so the same code runs
-with both libraries.
+also a promise. Await it: the promise resolves to the complete result. Code that reads the array without `await`
+gets no error and no warning, but the array can lack the features of tile sources. `await` also works with
+MapLibre GL JS, so the same code runs with both libraries.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -239,8 +248,16 @@ When `remove()` is called before the answer, the promise rejects with the error
 
 ## `setStyle`
 
-`setStyle(style, options)` replaces the style and returns a promise that resolves when the new style has loaded. The
-map always replaces the whole style. The option `diff: true`, the default of MapLibre GL JS, writes no warning.
+`setStyle(style, options)` replaces the style and returns a promise that resolves when the new style has loaded.
+
+```ts
+setStyle(style: string | StyleSpecification, options?: {diff?: boolean; transformStyle?: (previous: StyleSpecification, next: StyleSpecification) => StyleSpecification}): Promise<void>
+```
+
+The sources and layers that `addSource` and `addLayer` added are removed with the old style, as in MapLibre GL JS.
+To keep them, return a style with them from `transformStyle`, which receives the old and the new style. The option
+`diff` has no effect: the map always replaces the whole style, and `diff: true`, the default of MapLibre GL JS,
+writes no warning.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -255,7 +272,8 @@ async function showDark() {
 
 ## `addImage`
 
-`addImage(name, image, options)` accepts what MapLibre GL JS accepts, and also an SVG document as a string or the
+`addImage(name, image, options)` accepts the image and the options of MapLibre GL JS (`pixelRatio`, `sdf`,
+`stretchX`, `stretchY`, `content`, `textFitWidth` and `textFitHeight`), and also an SVG document as a string or the
 URL of an image. It returns a promise of the map that resolves when the image is ready. An SVG image has the size of
 its `viewBox` in CSS pixels and is sharp at every pixel ratio.
 
@@ -293,7 +311,7 @@ names the image.
 | `getVersion()` | Returns the version of this library. |
 | `GPUInitializationError` | The error of the `error` event when the map cannot start. The constructor does not throw it. |
 | `MapLibreMap` | Another name of `Map`. |
-| `InteractionHandler` | The class of `map.dragPan` and the other handlers. |
+| `InteractionHandler` | Only in this library: the class of `map.dragPan` and the other handlers. |
 | The default export | An object with the same names, for code that writes `import maplibregl from 'maplibre-gl'`. |
 
 The entry also exports the types of MapLibre GL JS under their names, such as `MapOptions`, `StyleSpecification`
@@ -303,7 +321,7 @@ and `MapMouseEvent`. An event type or a source type, such as `MapMouseEvent` or 
 ## Exports of `maplibre-gl` that the entry lacks
 
 An import of a name in this list fails when the application is built, and `maplibregl.Name` is `undefined` at run
-time. See [Types](../maplibre-compatibility.md#types) for why each group of names is missing.
+time. The last table of [Types](../maplibre-compatibility.md#types) says why each group of names is missing.
 
 <!-- exports:start -->
 **A type here, not a value** (17): `ErrorEvent`, `GeoJSONSource`, `ImageSource`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`.

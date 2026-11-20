@@ -579,7 +579,10 @@ The options `speed`, `curve` and `linear` have no effect and warn once.
     zoomOut(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300, ...o}, eventData); }
     /** Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     rotateTo(bearing: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing, ...o}, eventData); }
-    /** Turns the map to bearing 0 when the bearing is less than 7 degrees from north, and else does nothing. The option `bearingSnap` of MapLibre GL JS has no effect. */
+    /**
+     * Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of
+     * MapLibre GL JS has no effect.
+     */
     snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o, eventData) : this; }
     /** Returns `true`: the map always draws copies of the world. */
     getRenderWorldCopies() { return true; }

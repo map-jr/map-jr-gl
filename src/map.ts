@@ -1025,7 +1025,8 @@ export class Map {
     }
     /**
      * Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17.
-     * The defaults are `curve` 1.42 and `speed` 1.2, and without `duration` the duration follows from the distance. The engine computes the curve, also in a worker, from these options.
+     * The defaults are `curve` 1.42 and `speed` 1.2, and without `duration` the duration follows from the distance.
+     * The engine computes the curve, also in a worker, from these options.
      */
     flyTo(o: Parameters<Map['easeTo']>[0] & FlyOptions) {
         // (The options reach easeTo, also through the override of the compat entry, in this member.)

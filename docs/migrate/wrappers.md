@@ -42,27 +42,30 @@ in the bundler or in an import map. The code of the wrapper does not change.
 
 | Bundler | What to do |
 |---|---|
-| Vite 8 | The alias above. |
-| Vite 5 in development | The alias, and the option `optimizeDeps` of [Vite in development](../loading.md#vite-in-development). |
+| Vite 5 and Vite 8 | The alias, and in development `optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']}`: see [Vite in development](../loading.md#vite-in-development). Without it, the map draws on the main thread. |
+| Vite 6 and 7 | Not checked. Use the settings of Vite 8. |
 | Next.js | The alias in webpack and in Turbopack: see [Next.js](../loading.md#nextjs). |
+| webpack, Rollup, esbuild | Not checked. Set an alias that matches the name `maplibre-gl` exactly. |
+| An import map | Serve every file of `dist/` of the package from one folder. The map loads `map-jr-gl-worker.js` from the folder of the file that the page imports. |
 
 ## Wrappers
 
 | Wrapper | Version | Result |
 |---|---|---|
-| `@vis.gl/react-maplibre`, and `react-map-gl/maplibre` of react-map-gl | 8.1.3 | Runs with a map, a source, a layer, a marker, a popup and a control, and with a controlled view. |
+| `@vis.gl/react-maplibre` | 8.1.3 | Runs with a map, a source, a layer, a marker, a popup and a control, and with a controlled view. |
+| `react-map-gl/maplibre` of react-map-gl | 8 | Runs in one application. The components of the table row above were not run with it. |
 | react-map-gl | 7 | Does not work: it reads the private `map.transform` and throws a `TypeError`. Upgrade to version 8. |
 | `@indoorequal/vue-maplibre-gl` | 9.0.1 | Runs with a map, a source, a layer, a marker and a control. |
-| `vue-maplibre-gl` | 5.6.1 | Not run. It calls only methods that the entry has. |
+| `vue-maplibre-gl` | 5.6.1 | Not run. It calls `setRenderWorldCopies`, which has no effect here. |
 | `svelte-maplibre` | 2.0.1 | Not run. It imports `config`, which the entry does not export. |
 | `svelte-maplibre-gl` | 2.2.1 | Not run. It imports `Hash`, `Event` and the source classes, which the entry does not export. |
-| `@maplibre/ngx-maplibre-gl` | 22.3.1 | Not run. It calls only methods that the entry has. |
-| `@maptiler/sdk` | 4.2.1 | Not run. It calls only methods that the entry has. |
+| `@maplibre/ngx-maplibre-gl` | 22.3.1 | Not run. It calls `setRenderWorldCopies`, `setAnisotropicFilterPitch` and `setCenterElevation`, which have no effect here. |
+| `@maptiler/sdk` | 4.2.1 | Not run. It calls `setRoll`, which has no effect here. |
 
 "Runs" means that a page with the wrapper renders the map with this library and that its components work. "Not run"
-means that only the code of the wrapper was read for the methods and exports that it uses. See
-[The compat entry](../reference/maplibre-compat.md#exports-of-maplibre-gl-that-the-entry-lacks) for the exports that
-the entry lacks.
+means that only the code of the wrapper was read for the methods and exports that it uses. An import of a name that
+the entry does not export fails when the application is built. See
+[The compat entry](../reference/maplibre-compat.md#exports-of-maplibre-gl-that-the-entry-lacks) for those names.
 
 ### A controlled map of react-map-gl
 
@@ -109,8 +112,7 @@ as `map.transform` or `map.painter`, does not. These plugins run with this libra
 | `@deck.gl/mapbox` with `interleaved: false` | 9.4.1 |
 | `pmtiles` | 4.5.0 |
 
-A source URL that starts with `pmtiles://` works without the `pmtiles` plugin. With `interleaved: true`, deck.gl adds a
-custom layer, which needs a map that is created with `renderer: 'main'`; that case is not tested. See [Ecosystem](../ecosystem.md) for the
+A source URL that starts with `pmtiles://` works without the `pmtiles` plugin. deck.gl with `interleaved: true` is not checked. See [Ecosystem](../ecosystem.md) for the
 methods that more plugins use.
 
 ## Types
