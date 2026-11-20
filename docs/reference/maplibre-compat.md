@@ -193,8 +193,8 @@ library" names a member that MapLibre GL JS does not have.
 | `isLocationOccluded` | `(lngLat: LngLatLike) => boolean` | Only in this library: whether the far side of the globe hides a position from the camera. |
 | `getBounds` | `() => LngLatBounds` | Returns the smallest box that contains the visible map. |
 | `stop` | `() => Map` | Stops the animation of the camera, where it is. |
-| `setMinZoom` | `(z?: number) => Map` | Sets the smallest zoom level that the user can reach. |
-| `setMaxZoom` | `(z?: number) => Map` | Sets the largest zoom level that the user can reach. |
+| `setMinZoom` | `(z?: number \| null \| undefined) => Map` | Sets the smallest zoom level that the user can reach. |
+| `setMaxZoom` | `(z?: number \| null \| undefined) => Map` | Sets the largest zoom level that the user can reach. |
 | `setMaxPitch` | `(p?: number \| null \| undefined) => Map` | Sets the largest pitch that the user can reach, in degrees. |
 | `getMaxPitch` | `() => number` | Returns the largest pitch that the user can reach, in degrees. |
 | `getMinPitch` | `() => number` | Returns the smallest pitch that the user can reach, in degrees. |

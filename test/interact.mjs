@@ -3683,6 +3683,24 @@ for (const mode of renderers) {
             m1021.readd.ml === m1021.readd.base && m1021.readd.ml !== m1021['2,1'].ml && m1021.readd.main === m1021.readd.cbase && m1021.readd.worker === m1021.readd.cbase && m1021.readd.cbase !== m1021['2,1'].main, JSON.stringify(m1021.readd));
         check('[main] maplibre-compat: setStyle that replaces a source with one of the same id drops its setSourceTileLodParams values, as in MapLibre GL JS (#1059)',
             m1021.restyle.ml === m1021.readd.base && m1021.restyle.main === m1021.readd.cbase && m1021.restyle.worker === m1021.readd.cbase, JSON.stringify(m1021.restyle));
+        // #1246: setMinZoom(null) and setMaxZoom(null) restore the defaults, as in MapLibre GL JS (served at /ml/).
+        const m1246 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, minZoom: 1, maxZoom: 10});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.setMinZoom(null); m.setMaxZoom(null);
+                const out = [m.getMinZoom(), m.getMaxZoom()];
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: setMinZoom(null) and setMaxZoom(null) restore -2 and 22, as in MapLibre GL JS (#1246)',
+            JSON.stringify(m1246.ml) === '[-2,22]' && JSON.stringify(m1246.compat) === '[-2,22]', JSON.stringify(m1246));
         // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
         const m1019 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
