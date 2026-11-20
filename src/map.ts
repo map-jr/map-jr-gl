@@ -867,8 +867,8 @@ export class Map {
 
     // ---- events ----
     /**
-     * `on(type, listener)`, or `on(type, layerId, listener)` to hear `click`, `mousemove`, `mouseenter` and
-     * `mouseleave` only where that style layer's features are, with the features on the event as `e.features`.
+     * Adds a listener for an event; `on(type, layerId, listener)` hears `click`, `mousemove`, `mouseenter` and
+     * `mouseleave` over the features of a style layer. The event then has the features as `e.features`.
      */
     on(type: string, a: string | string[] | Listener, b?: Listener) {
         const layers = this.layerArg(type, a, b);
@@ -1086,9 +1086,9 @@ export class Map {
         return this;
     }
     /**
-     * Moves the camera along a curve that zooms out and back in (van Wijk and Nuij), with the options of `flyTo` of
-     * MapLibre GL JS 6.17 (`curve` 1.42, `speed` 1.2, `screenSpeed`, `minZoom`, `maxDuration`; without `duration`,
-     * the duration follows from the distance). The engine computes the curve, also in a worker, from these options.
+     * Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17.
+     * The defaults are `curve` 1.42 and `speed` 1.2, and without `duration` the duration follows from the distance.
+     * The engine computes the curve, also in a worker, from these options.
      */
     flyTo(o: Parameters<Map['easeTo']>[0] & FlyOptions) {
         // (The options reach easeTo, also through the override of the compat entry, in this member.)
