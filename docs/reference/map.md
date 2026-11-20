@@ -40,7 +40,7 @@ map.moveTo({zoom: 15, duration: 500});
 | [`clusterChildren`](#clusterchildren) | `(sourceId: string, clusterId: number) => Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>` | Returns the clusters and points that a cluster divides into at the next zoom level. |
 | [`clusterLeaves`](#clusterleaves) | `(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}) => Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>` | Returns the points of a cluster. |
 | [`moveTo`](#moveto) | `(view: `[`MoveToOptions`](#movetooptions)`) => void` | Moves the camera to a view or to `bounds`, with an animation when `duration` is more than 0 or `fly` is set. |
-| [`fitBounds`](#fitbounds) | `(bounds: Bounds, options?: Omit<`[`MoveToOptions`](#movetooptions)`, 'bounds' \| 'center' \| 'zoom'>) => void` | Moves the camera to fit a box, as `moveTo({bounds, ...options})` with `duration` 800 ms unless `options` sets it. |
+| [`fitBounds`](#fitbounds) | `(bounds: Bounds, options?: Omit<`[`MoveToOptions`](#movetooptions)`, 'bounds' \| 'center' \| 'zoom'>) => void` | Moves the camera to fit a box, as `moveTo({bounds, ...options})`. |
 | [`project`](#project) | `(lngLat: Position) => {x: number; y: number}` | Converts a position to a point of the screen. |
 | [`unproject`](#unproject) | `(point: {x: number; y: number}) => [number, number]` | Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. |
 | [`overlay`](#overlay) | `(element: HTMLElement, options: `[`OverlayOptions`](#overlayoptions)`) => `[`MapOverlay`](#mapoverlay) | Places an element of the page at a position of the map, as a marker, a label or a popup; the element moves with the map. |

@@ -656,7 +656,8 @@ export interface MapInstance {
      */
     moveTo(view: MoveToOptions): void;
     /**
-     * Moves the camera to fit a box, as `moveTo({bounds, ...options})` with `duration` 800 ms unless `options` sets it.
+     * Moves the camera to fit a box, as `moveTo({bounds, ...options})`. The camera jumps unless `options` sets `duration`
+     * or `fly`, as with `moveTo`.
      * @param bounds The box to fit.
      * @param options The options of `moveTo` other than `bounds`, `center` and `zoom`.
      */
@@ -1219,7 +1220,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         queryElevation: at => map.queryElevation(at),
         toBlob: (type, quality) => map.toBlob(type, quality),
         moveTo,
-        fitBounds: (bounds, o = {}) => moveTo({duration: 800, ...o, bounds}),
+        fitBounds: (bounds, o = {}) => moveTo({...o, bounds}),
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
         overlay(element, o) {

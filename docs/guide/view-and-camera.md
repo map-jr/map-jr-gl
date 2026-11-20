@@ -270,8 +270,8 @@ A member that `moveTo` is not passed keeps its value, so `{zoom: 15}` keeps the 
 
 When the system asks for reduced motion (`prefers-reduced-motion: reduce`), the camera jumps.
 
-[`map.fitBounds(bounds, options)`](../api.md#the-camera) is the same as `map.moveTo({bounds, ...options})`, except
-that `duration` is 800 by default.
+[`map.fitBounds(bounds, options)`](../api.md#the-camera) is the same as `map.moveTo({bounds, ...options})`. It
+jumps unless `options` sets `duration` or `fly`.
 
 ### Fly along a curve
 
