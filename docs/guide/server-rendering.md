@@ -110,9 +110,11 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
   the last line.
 -->
 <script type="importmap">
-  {"imports": {
-    "@map-jr/map-jr-gl/element": "/map-jr-gl/element.js"
-  }}
+  {
+    "imports": {
+      "@map-jr/map-jr-gl/element": "/map-jr-gl/element.js"
+    }
+  }
 </script>
 <script type="module">
   import '@map-jr/map-jr-gl/element';

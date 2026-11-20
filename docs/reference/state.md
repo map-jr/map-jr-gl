@@ -13,7 +13,10 @@ const map = createMap('map', {
   interactiveLayers: ['building-3d'],
 });
 console.log(map.state.get().view.zoom);
-const stop = map.state.subscribe(state => state.hover, buildings => console.log(buildings[0]?.properties));
+const stop = map.state.subscribe(
+  state => state.hover,
+  buildings => console.log(buildings[0]?.properties),
+);
 ```
 
 ## `Readable`
@@ -31,7 +34,10 @@ const stop = map.state.subscribe(state => state.hover, buildings => console.log(
 
 ```ts
 interface Readable<T> {
-  subscribe<S>(select: (value: T) => S, fn: (part: S, value: T) => void): () => void;
+  subscribe<S>(
+    select: (value: T) => S,
+    fn: (part: S, value: T) => void,
+  ): () => void;
 }
 ```
 

@@ -7,9 +7,9 @@ on an element above it. The rules of the library have no specificity, so a rule 
 ```css
 #map {
   height: 400px;
-  --map-control-opacity: .8;
+  --map-control-opacity: 0.8;
   --map-control-color: #1b3a57;
-  --map-popup-background: rgb(255 255 255 / .9);
+  --map-popup-background: rgb(255 255 255 / 0.9);
 }
 ```
 

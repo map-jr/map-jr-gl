@@ -15,17 +15,29 @@ the style nor [`sources`](../reference/description.md#sources) has a source with
 ```js [Main API]
 import {createMap} from '@map-jr/map-jr-gl';
 
-const route = to => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], to]}});
+const route = to => ({
+  type: 'Feature',
+  properties: {},
+  geometry: {type: 'LineString', coordinates: [[-74.01, 40.7], to]},
+});
 
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.99, 40.74], zoom: 11.5},
   data: {route: route([-73.97, 40.75])},
-  layers: [{id: 'route', type: 'line', source: 'route', paint: {'line-color': '#d6453d', 'line-width': 3}}],
+  layers: [
+    {
+      id: 'route',
+      type: 'line',
+      source: 'route',
+      paint: {'line-color': '#d6453d', 'line-width': 3},
+    },
+  ],
 });
 
 function extendRoute(to) {
-  // A new object: the map applies `data.route` only when it is a different object.
+  // A new object: the map applies `data.route` only when it is a different
+  // object.
   map.patch({data: {route: route(to)}});
 }
 ```
@@ -35,13 +47,27 @@ function extendRoute(to) {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const route = to => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], to]}});
+const route = to => ({
+  type: 'Feature',
+  properties: {},
+  geometry: {type: 'LineString', coordinates: [[-74.01, 40.7], to]},
+});
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.99, 40.74], zoom: 11.5});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.99, 40.74],
+  zoom: 11.5,
+});
 
 map.on('load', () => {
   map.addSource('route', {type: 'geojson', data: route([-73.97, 40.75])});
-  map.addLayer({id: 'route', type: 'line', source: 'route', paint: {'line-color': '#d6453d', 'line-width': 3}});
+  map.addLayer({
+    id: 'route',
+    type: 'line',
+    source: 'route',
+    paint: {'line-color': '#d6453d', 'line-width': 3},
+  });
 });
 
 function extendRoute(to) {
@@ -56,10 +82,21 @@ function extendRoute(to) {
 import {shallowRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
-const route = to => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], to]}});
+const route = to => ({
+  type: 'Feature',
+  properties: {},
+  geometry: {type: 'LineString', coordinates: [[-74.01, 40.7], to]},
+});
 // A shallowRef: the map sees a change only when `data` is a new object.
 const data = shallowRef({route: route([-73.97, 40.75])});
-const layers = [{id: 'route', type: 'line', source: 'route', paint: {'line-color': '#d6453d', 'line-width': 3}}];
+const layers = [
+  {
+    id: 'route',
+    type: 'line',
+    source: 'route',
+    paint: {'line-color': '#d6453d', 'line-width': 3},
+  },
+];
 </script>
 
 <template>
@@ -71,7 +108,9 @@ const layers = [{id: 'route', type: 'line', source: 'route', paint: {'line-color
       :layers="layers"
     />
   </div>
-  <button @click="data = {route: route([-73.95, 40.78])}">Extend the route</button>
+  <button @click="data = {route: route([-73.95, 40.78])}">
+    Extend the route
+  </button>
 </template>
 ```
 
@@ -81,15 +120,37 @@ const layers = [{id: 'route', type: 'line', source: 'route', paint: {'line-color
 import {useMemo} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
-const layers = [{id: 'route', type: 'line', source: 'route', paint: {'line-color': '#d6453d', 'line-width': 3}}];
+const layers = [
+  {
+    id: 'route',
+    type: 'line',
+    source: 'route',
+    paint: {'line-color': '#d6453d', 'line-width': 3},
+  },
+];
 
 // `to` is the end of the route as [lng, lat], for example [-73.97, 40.75].
 export function Route({to}) {
-  // A new object only when `to` changes: the map applies `data.route` only when it is a different object.
-  const data = useMemo(() => ({route: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], to]}}}), [to]);
+  // A new object only when `to` changes: the map applies `data.route` only when
+  // it is a different object.
+  const data = useMemo(
+    () => ({
+      route: {
+        type: 'Feature',
+        properties: {},
+        geometry: {type: 'LineString', coordinates: [[-74.01, 40.7], to]},
+      },
+    }),
+    [to],
+  );
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [-73.99, 40.74], zoom: 11.5}} data={data} layers={layers} />
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-73.99, 40.74], zoom: 11.5}}
+        data={data}
+        layers={layers}
+      />
     </div>
   );
 }
@@ -132,18 +193,42 @@ stay when the data changes.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const stations = {type: 'FeatureCollection', features: [
-  {type: 'Feature', properties: {code: 'WTC', name: 'World Trade Center'}, geometry: {type: 'Point', coordinates: [-74.0113, 40.7117]}},
-  {type: 'Feature', properties: {code: 'HOB', name: 'Hoboken'}, geometry: {type: 'Point', coordinates: [-74.0276, 40.7353]}},
-]};
+const stations = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {code: 'WTC', name: 'World Trade Center'},
+      geometry: {type: 'Point', coordinates: [-74.0113, 40.7117]},
+    },
+    {
+      type: 'Feature',
+      properties: {code: 'HOB', name: 'Hoboken'},
+      geometry: {type: 'Point', coordinates: [-74.0276, 40.7353]},
+    },
+  ],
+};
 
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.02, 40.72], zoom: 13},
   // The property `code` is the id of each feature.
-  sources: {stations: {type: 'geojson', data: {type: 'FeatureCollection', features: []}, promoteId: 'code'}},
+  sources: {
+    stations: {
+      type: 'geojson',
+      data: {type: 'FeatureCollection', features: []},
+      promoteId: 'code',
+    },
+  },
   data: {stations},
-  layers: [{id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 7, 'circle-color': '#2f7fd1'}}],
+  layers: [
+    {
+      id: 'stations',
+      type: 'circle',
+      source: 'stations',
+      paint: {'circle-radius': 7, 'circle-color': '#2f7fd1'},
+    },
+  ],
 });
 ```
 
@@ -163,8 +248,17 @@ const museums = [
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.97, 40.77], zoom: 12.5},
-  data: {museums: points(museums, {lngLat: r => [r.lng, r.lat], id: r => r.id})},
-  layers: [{id: 'museums', type: 'circle', source: 'museums', paint: {'circle-radius': 7, 'circle-color': '#d6453d'}}],
+  data: {
+    museums: points(museums, {lngLat: r => [r.lng, r.lat], id: r => r.id}),
+  },
+  layers: [
+    {
+      id: 'museums',
+      type: 'circle',
+      source: 'museums',
+      paint: {'circle-radius': 7, 'circle-color': '#d6453d'},
+    },
+  ],
 });
 ```
 
@@ -191,20 +285,43 @@ cluster feature has the properties `cluster: true`, `cluster_id` and `point_coun
 ```js [Main API]
 import {createMap} from '@map-jr/map-jr-gl';
 
+const earthquakes =
+  'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-103.6, 40.7], zoom: 3},
-  sources: {earthquakes: {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
+  sources: {
+    earthquakes: {
+      type: 'geojson',
+      cluster: true,
+      data: earthquakes,
+    },
+  },
   layers: [
-    {id: 'clusters', type: 'circle', source: 'earthquakes', filter: ['has', 'point_count'], paint: {'circle-radius': 14, 'circle-color': '#2f7fd1'}},
-    {id: 'earthquakes', type: 'circle', source: 'earthquakes', filter: ['!', ['has', 'point_count']], paint: {'circle-radius': 4, 'circle-color': '#d6453d'}},
+    {
+      id: 'clusters',
+      type: 'circle',
+      source: 'earthquakes',
+      filter: ['has', 'point_count'],
+      paint: {'circle-radius': 14, 'circle-color': '#2f7fd1'},
+    },
+    {
+      id: 'earthquakes',
+      type: 'circle',
+      source: 'earthquakes',
+      filter: ['!', ['has', 'point_count']],
+      paint: {'circle-radius': 4, 'circle-color': '#d6453d'},
+    },
   ],
   interactiveLayers: ['clusters'],
   onClick: async event => {
     const cluster = event.features[0];
     if (!cluster) return;
     // The zoom at which the cluster divides into smaller clusters or points.
-    const zoom = await map.clusterExpansionZoom('earthquakes', cluster.properties.cluster_id);
+    const zoom = await map.clusterExpansionZoom(
+      'earthquakes',
+      cluster.properties.cluster_id,
+    );
     map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
   },
 });
@@ -215,17 +332,42 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-103.6, 40.7], zoom: 3});
+const earthquakes =
+  'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-103.6, 40.7],
+  zoom: 3,
+});
 
 map.on('load', () => {
-  map.addSource('earthquakes', {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'});
-  map.addLayer({id: 'clusters', type: 'circle', source: 'earthquakes', filter: ['has', 'point_count'], paint: {'circle-radius': 14, 'circle-color': '#2f7fd1'}});
-  map.addLayer({id: 'earthquakes', type: 'circle', source: 'earthquakes', filter: ['!', ['has', 'point_count']], paint: {'circle-radius': 4, 'circle-color': '#d6453d'}});
+  map.addSource('earthquakes', {
+    type: 'geojson',
+    cluster: true,
+    data: earthquakes,
+  });
+  map.addLayer({
+    id: 'clusters',
+    type: 'circle',
+    source: 'earthquakes',
+    filter: ['has', 'point_count'],
+    paint: {'circle-radius': 14, 'circle-color': '#2f7fd1'},
+  });
+  map.addLayer({
+    id: 'earthquakes',
+    type: 'circle',
+    source: 'earthquakes',
+    filter: ['!', ['has', 'point_count']],
+    paint: {'circle-radius': 4, 'circle-color': '#d6453d'},
+  });
 });
 
 map.on('click', 'clusters', async event => {
   const cluster = event.features[0];
-  const zoom = await map.getSource('earthquakes').getClusterExpansionZoom(cluster.properties.cluster_id);
+  const zoom = await map
+    .getSource('earthquakes')
+    .getClusterExpansionZoom(cluster.properties.cluster_id);
   map.easeTo({center: cluster.geometry.coordinates, zoom});
 });
 ```
@@ -261,16 +403,32 @@ let selected;
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.97, 40.77], zoom: 12.5},
-  data: {museums: points(museums, {lngLat: r => [r.lng, r.lat], id: r => r.id})},
-  layers: [{id: 'museums', type: 'circle', source: 'museums', paint: {
-    'circle-radius': 8,
-    'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#d6453d', '#2f7fd1'],
-  }}],
+  data: {
+    museums: points(museums, {lngLat: r => [r.lng, r.lat], id: r => r.id}),
+  },
+  layers: [
+    {
+      id: 'museums',
+      type: 'circle',
+      source: 'museums',
+      paint: {
+        'circle-radius': 8,
+        'circle-color': [
+          'case',
+          ['boolean', ['feature-state', 'selected'], false],
+          '#d6453d',
+          '#2f7fd1',
+        ],
+      },
+    },
+  ],
   interactiveLayers: ['museums'],
   onClick: event => {
-    if (selected !== undefined) map.removeFeatureState({source: 'museums', id: selected}, 'selected');
+    if (selected !== undefined)
+      map.removeFeatureState({source: 'museums', id: selected}, 'selected');
     selected = event.features[0]?.id;
-    if (selected !== undefined) map.setFeatureState({source: 'museums', id: selected}, {selected: true});
+    if (selected !== undefined)
+      map.setFeatureState({source: 'museums', id: selected}, {selected: true});
   },
 });
 ```
@@ -280,24 +438,53 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const museums = {type: 'FeatureCollection', features: [
-  {type: 'Feature', id: 1, properties: {name: 'The Met'}, geometry: {type: 'Point', coordinates: [-73.9632, 40.7794]}},
-  {type: 'Feature', id: 2, properties: {name: 'MoMA'}, geometry: {type: 'Point', coordinates: [-73.9776, 40.7614]}},
-]};
+const museums = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      id: 1,
+      properties: {name: 'The Met'},
+      geometry: {type: 'Point', coordinates: [-73.9632, 40.7794]},
+    },
+    {
+      type: 'Feature',
+      id: 2,
+      properties: {name: 'MoMA'},
+      geometry: {type: 'Point', coordinates: [-73.9776, 40.7614]},
+    },
+  ],
+};
 let selected;
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.97, 40.77], zoom: 12.5});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.97, 40.77],
+  zoom: 12.5,
+});
 
 map.on('load', () => {
   map.addSource('museums', {type: 'geojson', data: museums});
-  map.addLayer({id: 'museums', type: 'circle', source: 'museums', paint: {
-    'circle-radius': 8,
-    'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#d6453d', '#2f7fd1'],
-  }});
+  map.addLayer({
+    id: 'museums',
+    type: 'circle',
+    source: 'museums',
+    paint: {
+      'circle-radius': 8,
+      'circle-color': [
+        'case',
+        ['boolean', ['feature-state', 'selected'], false],
+        '#d6453d',
+        '#2f7fd1',
+      ],
+    },
+  });
 });
 
 map.on('click', 'museums', event => {
-  if (selected !== undefined) map.removeFeatureState({source: 'museums', id: selected}, 'selected');
+  if (selected !== undefined)
+    map.removeFeatureState({source: 'museums', id: selected}, 'selected');
   selected = event.features[0].id;
   map.setFeatureState({source: 'museums', id: selected}, {selected: true});
 });

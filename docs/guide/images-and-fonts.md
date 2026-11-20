@@ -14,14 +14,22 @@ style itself, and how to draw labels with web fonts.
 ```js [Main API]
 import {createMap} from '@map-jr/map-jr-gl';
 
-const station = '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#0b6e4f" stroke="#fff" stroke-width="2"/></svg>';
+const station =
+  '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#0b6e4f" stroke="#fff" stroke-width="2"/></svg>';
 
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.9855, 40.758], zoom: 13},
   images: {station},
   data: {stations: {type: 'Point', coordinates: [-73.9855, 40.758]}},
-  layers: [{id: 'stations', type: 'symbol', source: 'stations', layout: {'icon-image': 'station'}}],
+  layers: [
+    {
+      id: 'stations',
+      type: 'symbol',
+      source: 'stations',
+      layout: {'icon-image': 'station'},
+    },
+  ],
 });
 ```
 
@@ -30,15 +38,30 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const station = '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#0b6e4f" stroke="#fff" stroke-width="2"/></svg>';
+const station =
+  '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#0b6e4f" stroke="#fff" stroke-width="2"/></svg>';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.9855, 40.758], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.9855, 40.758],
+  zoom: 13,
+});
 
 map.on('load', async () => {
-  // addImage of this library also accepts an SVG document as a string. It returns a promise.
+  // addImage of this library also accepts an SVG document as a string. It
+  // returns a promise.
   await map.addImage('station', station);
-  map.addSource('stations', {type: 'geojson', data: {type: 'Point', coordinates: [-73.9855, 40.758]}});
-  map.addLayer({id: 'stations', type: 'symbol', source: 'stations', layout: {'icon-image': 'station'}});
+  map.addSource('stations', {
+    type: 'geojson',
+    data: {type: 'Point', coordinates: [-73.9855, 40.758]},
+  });
+  map.addLayer({
+    id: 'stations',
+    type: 'symbol',
+    source: 'stations',
+    layout: {'icon-image': 'station'},
+  });
 });
 ```
 
@@ -74,9 +97,21 @@ import {createMap} from '@map-jr/map-jr-gl';
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.9855, 40.758], zoom: 13},
-  sprite: [{id: 'maki', url: 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite'}],
+  sprite: [
+    {
+      id: 'maki',
+      url: 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite',
+    },
+  ],
   data: {stations: {type: 'Point', coordinates: [-73.9855, 40.758]}},
-  layers: [{id: 'stations', type: 'symbol', source: 'stations', layout: {'icon-image': 'maki:rail_metro_11'}}],
+  layers: [
+    {
+      id: 'stations',
+      type: 'symbol',
+      source: 'stations',
+      layout: {'icon-image': 'maki:rail_metro_11'},
+    },
+  ],
 });
 ```
 
@@ -85,12 +120,28 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.9855, 40.758], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.9855, 40.758],
+  zoom: 13,
+});
 
 map.on('load', () => {
-  map.addSprite('maki', 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite');
-  map.addSource('stations', {type: 'geojson', data: {type: 'Point', coordinates: [-73.9855, 40.758]}});
-  map.addLayer({id: 'stations', type: 'symbol', source: 'stations', layout: {'icon-image': 'maki:rail_metro_11'}});
+  map.addSprite(
+    'maki',
+    'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite',
+  );
+  map.addSource('stations', {
+    type: 'geojson',
+    data: {type: 'Point', coordinates: [-73.9855, 40.758]},
+  });
+  map.addLayer({
+    id: 'stations',
+    type: 'symbol',
+    source: 'stations',
+    layout: {'icon-image': 'maki:rail_metro_11'},
+  });
 });
 ```
 
@@ -121,16 +172,37 @@ import {createMap} from '@map-jr/map-jr-gl';
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.99, 40.735], zoom: 12},
-  data: {lines: {type: 'FeatureCollection', features: [
-    {type: 'Feature', properties: {line: 4}, geometry: {type: 'Point', coordinates: [-73.9903, 40.7359]}},
-    {type: 'Feature', properties: {line: 6}, geometry: {type: 'Point', coordinates: [-73.9772, 40.7516]}},
-  ]}},
+  data: {
+    lines: {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {line: 4},
+          geometry: {type: 'Point', coordinates: [-73.9903, 40.7359]},
+        },
+        {
+          type: 'Feature',
+          properties: {line: 6},
+          geometry: {type: 'Point', coordinates: [-73.9772, 40.7516]},
+        },
+      ],
+    },
+  },
   // Each feature asks for the image "line-4", "line-6" and so on.
-  layers: [{id: 'lines', type: 'symbol', source: 'lines', layout: {'icon-image': ['concat', 'line-', ['get', 'line']]}}],
+  layers: [
+    {
+      id: 'lines',
+      type: 'symbol',
+      source: 'lines',
+      layout: {'icon-image': ['concat', 'line-', ['get', 'line']]},
+    },
+  ],
 });
 
 map.listen('styleimagemissing', event => {
-  // Leave out names that this code does not create, such as an icon that the sprite of the style lacks.
+  // Leave out names that this code does not create, such as an icon that the
+  // sprite of the style lacks.
   if (!event.id.startsWith('line-')) return;
   const number = event.id.slice(5);
   const badge = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#00933c"/><text x="12" y="17" font-family="sans-serif" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">${number}</text></svg>`;
@@ -147,7 +219,12 @@ has no `images`, `map.description.images` is `undefined`, and the spread adds no
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.99, 40.735], zoom: 12});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.99, 40.735],
+  zoom: 12,
+});
 
 map.on('styleimagemissing', event => {
   if (!event.id.startsWith('line-')) return;
@@ -157,11 +234,30 @@ map.on('styleimagemissing', event => {
 });
 
 map.on('load', () => {
-  map.addSource('lines', {type: 'geojson', data: {type: 'FeatureCollection', features: [
-    {type: 'Feature', properties: {line: 4}, geometry: {type: 'Point', coordinates: [-73.9903, 40.7359]}},
-    {type: 'Feature', properties: {line: 6}, geometry: {type: 'Point', coordinates: [-73.9772, 40.7516]}},
-  ]}});
-  map.addLayer({id: 'lines', type: 'symbol', source: 'lines', layout: {'icon-image': ['concat', 'line-', ['get', 'line']]}});
+  map.addSource('lines', {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {line: 4},
+          geometry: {type: 'Point', coordinates: [-73.9903, 40.7359]},
+        },
+        {
+          type: 'Feature',
+          properties: {line: 6},
+          geometry: {type: 'Point', coordinates: [-73.9772, 40.7516]},
+        },
+      ],
+    },
+  });
+  map.addLayer({
+    id: 'lines',
+    type: 'symbol',
+    source: 'lines',
+    layout: {'icon-image': ['concat', 'line-', ['get', 'line']]},
+  });
 });
 ```
 
@@ -183,7 +279,11 @@ draw them, and MapLibre GL JS ignores the key.
   "metadata": {
     "map-jr:images": {
       "station": "<svg viewBox=\"0 0 20 20\"><circle cx=\"10\" cy=\"10\" r=\"8\" fill=\"#0b6e4f\"/></svg>",
-      "station-large": {"image": "<svg viewBox=\"0 0 20 20\"><circle cx=\"10\" cy=\"10\" r=\"8\" fill=\"#0b6e4f\"/></svg>", "width": 30, "height": 30}
+      "station-large": {
+        "image": "<svg viewBox=\"0 0 20 20\"><circle cx=\"10\" cy=\"10\" r=\"8\" fill=\"#0b6e4f\"/></svg>",
+        "width": 30,
+        "height": 30
+      }
     }
   },
   "sources": {},
@@ -218,13 +318,22 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.9855, 40.758], zoom: 13},
   fonts: {
-    'Inter Semibold': 'https://cdn.jsdelivr.net/npm/@fontsource/inter@5.1.0/files/inter-latin-600-normal.woff2',
+    'Inter Semibold':
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter@5.1.0/files/inter-latin-600-normal.woff2',
   },
   data: {stations: {type: 'Point', coordinates: [-73.9855, 40.758]}},
-  layers: [{
-    id: 'stations', type: 'symbol', source: 'stations',
-    layout: {'text-field': 'Times Sq–42 St', 'text-font': ['Inter Semibold'], 'text-size': 16},
-  }],
+  layers: [
+    {
+      id: 'stations',
+      type: 'symbol',
+      source: 'stations',
+      layout: {
+        'text-field': 'Times Sq–42 St',
+        'text-font': ['Inter Semibold'],
+        'text-size': 16,
+      },
+    },
+  ],
 });
 ```
 
@@ -233,18 +342,33 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.9855, 40.758], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.9855, 40.758],
+  zoom: 13,
+});
 
 map.on('load', () => {
   // `font-faces` of the style: the same shape as `fonts` of the main API.
   map.setFontFaces({
     ...map.getFontFaces(),
-    'Inter Semibold': 'https://cdn.jsdelivr.net/npm/@fontsource/inter@5.1.0/files/inter-latin-600-normal.woff2',
+    'Inter Semibold':
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter@5.1.0/files/inter-latin-600-normal.woff2',
   });
-  map.addSource('stations', {type: 'geojson', data: {type: 'Point', coordinates: [-73.9855, 40.758]}});
+  map.addSource('stations', {
+    type: 'geojson',
+    data: {type: 'Point', coordinates: [-73.9855, 40.758]},
+  });
   map.addLayer({
-    id: 'stations', type: 'symbol', source: 'stations',
-    layout: {'text-field': 'Times Sq–42 St', 'text-font': ['Inter Semibold'], 'text-size': 16},
+    id: 'stations',
+    type: 'symbol',
+    source: 'stations',
+    layout: {
+      'text-field': 'Times Sq–42 St',
+      'text-font': ['Inter Semibold'],
+      'text-size': 16,
+    },
   });
 });
 ```
@@ -254,7 +378,10 @@ The map draws the label "Times Sq–42 St" in Inter at weight 600.
 A value of `fonts` is the URL of one font file, or a list with one item for each file of the font:
 
 ```ts
-type FontFaces = Record<string, string | {url: string; 'unicode-range'?: string[]}[]>;
+type FontFaces = Record<
+  string,
+  string | {url: string; 'unicode-range'?: string[]}[]
+>;
 ```
 
 `unicode-range` lists the characters that a file covers, such as `['U+0000-00FF']`, so that the browser loads only the

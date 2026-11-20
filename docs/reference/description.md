@@ -113,8 +113,18 @@ import {createMap} from '@map-jr/map-jr-gl';
 
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-  layers: [{id: 'routes', type: 'line', source: 'routes', before: 'water_name_line', paint: {'line-color': '#d6453d', 'line-width': 3}}],
+  sources: {
+    routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}},
+  },
+  layers: [
+    {
+      id: 'routes',
+      type: 'line',
+      source: 'routes',
+      before: 'water_name_line',
+      paint: {'line-color': '#d6453d', 'line-width': 3},
+    },
+  ],
 });
 ```
 
@@ -139,7 +149,10 @@ A change of `terrain` [loads the style again](#style). See [Terrain and elevatio
 `fonts` sets web fonts for the `text-font` names of the style.
 
 ```ts
-type FontFaces = Record<string, string | {url: string; 'unicode-range'?: string[]}[]>;
+type FontFaces = Record<
+  string,
+  string | {url: string; 'unicode-range'?: string[]}[]
+>;
 ```
 
 - Each key is a `text-font` name of the style, such as `Noto Sans Bold`.
@@ -155,11 +168,14 @@ import {createMap} from '@map-jr/map-jr-gl';
 createMap('map', {
   style: 'https://styles.map-jr.org/1/openfreemap-liberty.json',
   fonts: {
-    'Noto Sans Regular': 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.22/files/noto-sans-latin-400-normal.woff2',
-    'Noto Sans Bold': [{
-      url: 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.22/files/noto-sans-latin-700-normal.woff2',
-      'unicode-range': ['U+0000-00FF'],
-    }],
+    'Noto Sans Regular':
+      'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.22/files/noto-sans-latin-400-normal.woff2',
+    'Noto Sans Bold': [
+      {
+        url: 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.22/files/noto-sans-latin-700-normal.woff2',
+        'unicode-range': ['U+0000-00FF'],
+      },
+    ],
   },
 });
 ```
@@ -194,7 +210,13 @@ import {createMap} from '@map-jr/map-jr-gl';
 
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  initialView: {bounds: [[-74.05, 40.68], [-73.9, 40.82]], padding: 40},
+  initialView: {
+    bounds: [
+      [-74.05, 40.68],
+      [-73.9, 40.82],
+    ],
+    padding: 40,
+  },
 });
 ```
 
@@ -217,7 +239,10 @@ let view = {center: [-74.0065, 40.7085], zoom: 13.6};
 const describe = () => ({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   view,
-  onViewChange: next => { view = next; map.update(describe()); },
+  onViewChange: next => {
+    view = next;
+    map.update(describe());
+  },
 });
 const map = createMap('map', describe());
 
@@ -248,10 +273,25 @@ no other option.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const layers = [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}];
-const route = to => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], to]}});
+const layers = [
+  {
+    id: 'routes',
+    type: 'line',
+    source: 'routes',
+    paint: {'line-color': '#d6453d', 'line-width': 3},
+  },
+];
+const route = to => ({
+  type: 'Feature',
+  properties: {},
+  geometry: {type: 'LineString', coordinates: [[-74.01, 40.7], to]},
+});
 
-const map = createMap('map', {style, layers, data: {routes: route([-73.97, 40.75])}});
+const map = createMap('map', {
+  style,
+  layers,
+  data: {routes: route([-73.97, 40.75])},
+});
 
 // Other data: a new object for the key.
 map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
@@ -273,14 +313,22 @@ sprite that has the same name.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const pin = '<svg viewBox="0 0 24 31"><path fill="#d6453d" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="#d6453d" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
   images: {pin},
   data: {places: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}}],
+  layers: [
+    {
+      id: 'places',
+      type: 'symbol',
+      source: 'places',
+      layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'},
+    },
+  ],
 });
 ```
 
@@ -312,9 +360,21 @@ import {createMap} from '@map-jr/map-jr-gl';
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
-  sprite: [{id: 'maki', url: 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite'}],
+  sprite: [
+    {
+      id: 'maki',
+      url: 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite',
+    },
+  ],
   data: {places: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'maki:circle_11'}}],
+  layers: [
+    {
+      id: 'places',
+      type: 'symbol',
+      source: 'places',
+      layout: {'icon-image': 'maki:circle_11'},
+    },
+  ],
 });
 ```
 
@@ -377,7 +437,21 @@ const map = createMap('map', {
     version: 8,
     state: {season: {default: 'summer'}},
     sources: {},
-    layers: [{id: 'background', type: 'background', paint: {'background-color': ['match', ['global-state', 'season'], 'winter', '#eef3f7', '#dfe8d5']}}],
+    layers: [
+      {
+        id: 'background',
+        type: 'background',
+        paint: {
+          'background-color': [
+            'match',
+            ['global-state', 'season'],
+            'winter',
+            '#eef3f7',
+            '#dfe8d5',
+          ],
+        },
+      },
+    ],
   },
   globalState: {season: 'winter'},
 });
@@ -409,16 +483,44 @@ the feature state `hover: true` on the top feature of [`interactiveLayers`](#int
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const block = {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.009, 40.707], [-74.004, 40.707], [-74.004, 40.71], [-74.009, 40.71], [-74.009, 40.707]]]}};
+const block = {
+  type: 'Feature',
+  id: 1,
+  properties: {},
+  geometry: {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [-74.009, 40.707],
+        [-74.004, 40.707],
+        [-74.004, 40.71],
+        [-74.009, 40.71],
+        [-74.009, 40.707],
+      ],
+    ],
+  },
+};
 
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 15},
   data: {blocks: block},
-  layers: [{
-    id: 'blocks', type: 'fill', source: 'blocks',
-    paint: {'fill-color': '#2f7fd1', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]},
-  }],
+  layers: [
+    {
+      id: 'blocks',
+      type: 'fill',
+      source: 'blocks',
+      paint: {
+        'fill-color': '#2f7fd1',
+        'fill-opacity': [
+          'case',
+          ['boolean', ['feature-state', 'hover'], false],
+          0.9,
+          0.5,
+        ],
+      },
+    },
+  ],
   interactiveLayers: ['blocks'],
   hoverState: true,
 });
@@ -478,7 +580,10 @@ import {createMap} from '@map-jr/map-jr-gl';
 
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  locale: {'NavigationControl.ZoomIn': 'Zoom avant', 'NavigationControl.ZoomOut': 'Zoom arrière'},
+  locale: {
+    'NavigationControl.ZoomIn': 'Zoom avant',
+    'NavigationControl.ZoomOut': 'Zoom arrière',
+  },
 });
 ```
 
@@ -522,7 +627,9 @@ const token = sessionStorage.getItem('tiles-token');
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   transformRequest: (url, resourceType) =>
-    resourceType === 'Tile' && url.startsWith('https://tiles.example.com/') ? {url, headers: {Authorization: 'Bearer ' + token}} : undefined,
+    resourceType === 'Tile' && url.startsWith('https://tiles.example.com/')
+      ? {url, headers: {Authorization: 'Bearer ' + token}}
+      : undefined,
 });
 ```
 

@@ -14,7 +14,10 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      v-model:view="view"
+    />
   </div>
   <p>Zoom {{ view.zoom.toFixed(1) }}</p>
 </template>
@@ -100,7 +103,12 @@ camera, call [`moveTo`](../guide/view-and-camera.md#move-the-camera-from-code) o
 import {ref, useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
-const view = ref({center: [-74.0065, 40.7085], zoom: 13.6, bearing: 0, pitch: 0});
+const view = ref({
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+  bearing: 0,
+  pitch: 0,
+});
 const mapRef = useTemplateRef('mapRef');
 let stored = {...view.value};
 
@@ -116,7 +124,11 @@ function returnToStored() {
 
 <template>
   <div style="height: 400px">
-    <MapJr ref="mapRef" map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
+    <MapJr
+      ref="mapRef"
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      v-model:view="view"
+    />
   </div>
   <button @click="remember">Remember this view</button>
   <button @click="returnToStored">Back to the stored view</button>
@@ -135,18 +147,32 @@ import {shallowRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const places = shallowRef({type: 'FeatureCollection', features: []});
-const placesLayer = {id: 'places', type: 'circle', source: 'places', paint: {'circle-radius': 6, 'circle-color': '#d6453d'}};
+const placesLayer = {
+  id: 'places',
+  type: 'circle',
+  source: 'places',
+  paint: {'circle-radius': 6, 'circle-color': '#d6453d'},
+};
 
 function addPlace(event) {
-  const place = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: event.lngLat}};
+  const place = {
+    type: 'Feature',
+    properties: {},
+    geometry: {type: 'Point', coordinates: event.lngLat},
+  };
   places.value = {...places.value, features: [...places.value.features, place]};
 }
 </script>
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}"
-      :data="{places}" :layers="[placesLayer]" @click="addPlace" />
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}"
+      :data="{places}"
+      :layers="[placesLayer]"
+      @click="addPlace"
+    />
   </div>
 </template>
 ```
@@ -196,7 +222,10 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-slot="{state}">
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      v-slot="{state}"
+    >
       <p v-if="state && !state.loaded">Loading the map</p>
     </MapJr>
   </div>
@@ -234,11 +263,32 @@ const popupOpen = ref(true);
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: home, zoom: 14}">
-      <MapOverlay :lng-lat="home" anchor="bottom" draggable @dragend="home = $event">
-        <svg width="24" height="31" viewBox="0 0 24 31"><path fill="#d6453d" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: home, zoom: 14}"
+    >
+      <MapOverlay
+        :lng-lat="home"
+        anchor="bottom"
+        draggable
+        @dragend="home = $event"
+      >
+        <svg width="24" height="31" viewBox="0 0 24 31">
+          <path
+            fill="#d6453d"
+            d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"
+          />
+        </svg>
       </MapOverlay>
-      <MapOverlay v-if="popupOpen" :lng-lat="home" :offset="[0, -31]" anchor="bottom" popup @close="popupOpen = false">Home</MapOverlay>
+      <MapOverlay
+        v-if="popupOpen"
+        :lng-lat="home"
+        :offset="[0, -31]"
+        anchor="bottom"
+        popup
+        @close="popupOpen = false"
+        >Home</MapOverlay
+      >
     </MapJr>
   </div>
 </template>
@@ -274,19 +324,52 @@ only inside `MapJr`. A layer uses the image by its name in `icon-image`.
 <script setup>
 import {MapJr, MapImage} from '@map-jr/map-jr-gl/vue';
 
-const stations = {type: 'FeatureCollection', features: [
-  {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
-]};
+const stations = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {color: '#d6453d'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      properties: {color: '#2f7fd1'},
+      geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]},
+    },
+  ],
+};
 const sources = {stations: {type: 'geojson', data: stations}};
-const layers = [{id: 'stations', type: 'symbol', source: 'stations', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}];
+const layers = [
+  {
+    id: 'stations',
+    type: 'symbol',
+    source: 'stations',
+    layout: {
+      'icon-image': 'pin',
+      'icon-anchor': 'bottom',
+      'icon-allow-overlap': true,
+    },
+  },
+];
 </script>
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-73.996, 40.73], zoom: 11.5}" :sources="sources" :layers="layers">
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-73.996, 40.73], zoom: 11.5}"
+      :sources="sources"
+      :layers="layers"
+    >
       <MapImage name="pin" :params="['color']" v-slot="{color}">
-        <svg viewBox="0 0 24 31"><path :fill="color" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
+        <svg viewBox="0 0 24 31">
+          <path
+            :fill="color"
+            stroke="#fff"
+            d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"
+          />
+        </svg>
       </MapImage>
     </MapJr>
   </div>
@@ -322,7 +405,10 @@ const layers = [{id: 'stations', type: 'symbol', source: 'stations', layout: {'i
 function.
 
 ```ts
-useMapJr(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapDescription>): {map: ShallowRef<MapInstance | null>; state: ShallowRef<MapState | null>}
+useMapJr(
+  container: MaybeRefOrGetter<HTMLElement | null | undefined>,
+  spec: MaybeRefOrGetter<MapDescription>,
+): {map: ShallowRef<MapInstance | null>; state: ShallowRef<MapState | null>}
 ```
 
 | Parameter | Description |
@@ -340,11 +426,14 @@ import {computed, ref, useTemplateRef} from 'vue';
 import {useMapJr} from '@map-jr/map-jr-gl/vue';
 
 const measuring = ref(false);
-const {map, state} = useMapJr(useTemplateRef('el'), computed(() => ({
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
-  cursor: measuring.value ? 'crosshair' : undefined,
-})));
+const {map, state} = useMapJr(
+  useTemplateRef('el'),
+  computed(() => ({
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+    cursor: measuring.value ? 'crosshair' : undefined,
+  })),
+);
 </script>
 
 <template>
@@ -374,13 +463,29 @@ created, and also in a component outside `MapJr`.
 ## `useMapFeatures`
 
 ```ts
-useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options?: MaybeRefOrGetter<FeatureOptions>): ShallowRef<RenderedFeature[]>
+useMapFeatures(
+  at: MaybeRefOrGetter<FeaturePlace | undefined>,
+  options?: MaybeRefOrGetter<FeatureOptions>,
+): ShallowRef<RenderedFeature[]>
 ```
 
 ```ts
-type FeaturePlace = {x: number; y: number} | [lng: number, lat: number] | {x: number; y: number}[];
-interface FeatureOptions {layers?: string[]; filter?: FilterSpecification; radius?: number}
-interface SourceOptions {sourceLayers?: string[]; filter?: FilterSpecification; radius?: number; geometry?: boolean; zoom?: number}
+type FeaturePlace =
+  | {x: number; y: number}
+  | [lng: number, lat: number]
+  | {x: number; y: number}[];
+interface FeatureOptions {
+  layers?: string[];
+  filter?: FilterSpecification;
+  radius?: number;
+}
+interface SourceOptions {
+  sourceLayers?: string[];
+  filter?: FilterSpecification;
+  radius?: number;
+  geometry?: boolean;
+  zoom?: number;
+}
 ```
 
 - `FeaturePlace` is a point in CSS pixels, a position `[lng, lat]`, or the two corners of a rectangle of the screen.
@@ -398,7 +503,9 @@ options can be refs or functions. The example is a component that a page puts in
 import {useMapFeatures} from '@map-jr/map-jr-gl/vue';
 
 const props = defineProps({lng: Number, lat: Number});
-const buildings = useMapFeatures(() => [props.lng, props.lat], {layers: ['building']});
+const buildings = useMapFeatures(() => [props.lng, props.lat], {
+  layers: ['building'],
+});
 </script>
 
 <template>
@@ -409,7 +516,11 @@ const buildings = useMapFeatures(() => [props.lng, props.lat], {layers: ['buildi
 ## `useMapSource`
 
 ```ts
-useMapSource(sourceId: MaybeRefOrGetter<string>, at?: MaybeRefOrGetter<FeaturePlace | undefined>, options?: MaybeRefOrGetter<SourceOptions>): ShallowRef<QueriedFeature[]>
+useMapSource(
+  sourceId: MaybeRefOrGetter<string>,
+  at?: MaybeRefOrGetter<FeaturePlace | undefined>,
+  options?: MaybeRefOrGetter<SourceOptions>,
+): ShallowRef<QueriedFeature[]>
 ```
 
 **Returns** a ref with the features of the tile data of the source `sourceId` at `at`, kept up to date as

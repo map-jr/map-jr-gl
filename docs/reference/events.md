@@ -8,7 +8,9 @@ A map of `@map-jr/map-jr-gl` fires events when it loads, moves, renders and rece
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 const stop = map.listen('click', event => console.log(event.lngLat));
 ```
 
@@ -133,7 +135,9 @@ A listener that calls `preventDefault()` stops what the map does for the event, 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 map.listen('dblclick', event => event.preventDefault());
 ```
 

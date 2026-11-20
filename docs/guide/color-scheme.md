@@ -172,19 +172,49 @@ style reads it with `['global-state', 'color-scheme']`.
 import {createMap} from '@map-jr/map-jr-gl';
 
 // The dark colour when the scheme is dark, and the light colour otherwise.
-const scheme = (dark, light) => ['match', ['global-state', 'color-scheme'], 'dark', dark, light];
+const scheme = (dark, light) => [
+  'match',
+  ['global-state', 'color-scheme'],
+  'dark',
+  dark,
+  light,
+];
 
 const map = createMap('map', {
   style: {
     version: 8,
-    // The default is the value for MapLibre GL JS and the compat entry, which do not set the property.
+    // The default is the value for MapLibre GL JS and the compat entry, which
+    // do not set the property.
     state: {'color-scheme': {default: 'light'}},
     sources: {
-      parks: {type: 'geojson', data: {type: 'Polygon', coordinates: [[[-73.981, 40.768], [-73.958, 40.800], [-73.949, 40.797], [-73.973, 40.764], [-73.981, 40.768]]]}},
+      parks: {
+        type: 'geojson',
+        data: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-73.981, 40.768],
+              [-73.958, 40.8],
+              [-73.949, 40.797],
+              [-73.973, 40.764],
+              [-73.981, 40.768],
+            ],
+          ],
+        },
+      },
     },
     layers: [
-      {id: 'background', type: 'background', paint: {'background-color': scheme('#1b1d21', '#f4f1ea')}},
-      {id: 'parks', type: 'fill', source: 'parks', paint: {'fill-color': scheme('#2f5d3a', '#b9dca0')}},
+      {
+        id: 'background',
+        type: 'background',
+        paint: {'background-color': scheme('#1b1d21', '#f4f1ea')},
+      },
+      {
+        id: 'parks',
+        type: 'fill',
+        source: 'parks',
+        paint: {'fill-color': scheme('#2f5d3a', '#b9dca0')},
+      },
     ],
   },
   initialView: {center: [-73.965, 40.782], zoom: 12},
@@ -256,7 +286,11 @@ const styles = {
 
 <template>
   <div style="height: 400px">
-    <MapJr :map-style="styles" :initial-view="{center: [-74.0065, 40.7085], zoom: 13}" color-scheme="auto" />
+    <MapJr
+      :map-style="styles"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13}"
+      color-scheme="auto"
+    />
   </div>
 </template>
 ```
@@ -274,7 +308,11 @@ const styles = {
 export function CityMap() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle={styles} initialView={{center: [-74.0065, 40.7085], zoom: 13}} colorScheme="auto" />
+      <MapJr
+        mapStyle={styles}
+        initialView={{center: [-74.0065, 40.7085], zoom: 13}}
+        colorScheme="auto"
+      />
     </div>
   );
 }
@@ -298,10 +336,16 @@ MapLibre GL JS. A style that reads `color-scheme` follows the scheme when the pa
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13,
+});
 
 const dark = window.matchMedia('(prefers-color-scheme: dark)');
-const applyScheme = () => map.setGlobalStateProperty('color-scheme', dark.matches ? 'dark' : 'light');
+const applyScheme = () =>
+  map.setGlobalStateProperty('color-scheme', dark.matches ? 'dark' : 'light');
 map.on('load', applyScheme);
 dark.addEventListener('change', applyScheme);
 ```

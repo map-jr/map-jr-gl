@@ -17,16 +17,30 @@ import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13},
-  controls: [navigation(), scale({position: 'bottom-left'}), fullscreen({position: 'top-left'})],
+  controls: [
+    navigation(),
+    scale({position: 'bottom-left'}),
+    fullscreen({position: 'top-left'}),
+  ],
 });
 ```
 
 **MapLibre compat**
 
 ```js [MapLibre compat]
-import {Map, NavigationControl, ScaleControl, FullscreenControl} from '@map-jr/map-jr-gl/maplibre-compat';
+import {
+  Map,
+  NavigationControl,
+  ScaleControl,
+  FullscreenControl,
+} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13,
+});
 
 map.addControl(new NavigationControl());
 map.addControl(new ScaleControl(), 'bottom-left');
@@ -40,7 +54,11 @@ map.addControl(new FullscreenControl(), 'top-left');
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 
-const controls = [navigation(), scale({position: 'bottom-left'}), fullscreen({position: 'top-left'})];
+const controls = [
+  navigation(),
+  scale({position: 'bottom-left'}),
+  fullscreen({position: 'top-left'}),
+];
 </script>
 
 <template>
@@ -60,7 +78,11 @@ const controls = [navigation(), scale({position: 'bottom-left'}), fullscreen({po
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 
-const controls = [navigation(), scale({position: 'bottom-left'}), fullscreen({position: 'top-left'})];
+const controls = [
+  navigation(),
+  scale({position: 'bottom-left'}),
+  fullscreen({position: 'top-left'}),
+];
 
 export function CityMap() {
   return (
@@ -160,7 +182,11 @@ const map = createMap('map', {
 **MapLibre compat**
 
 ```js [MapLibre compat]
-import {Map, NavigationControl, FullscreenControl} from '@map-jr/map-jr-gl/maplibre-compat';
+import {
+  Map,
+  NavigationControl,
+  FullscreenControl,
+} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({
   container: 'map',
@@ -242,7 +268,10 @@ button.addEventListener('click', () => {
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13},
-  controls: [navigation(), custom({key: 'next-style', position: 'top-left', element: button})],
+  controls: [
+    navigation(),
+    custom({key: 'next-style', position: 'top-left', element: button}),
+  ],
 });
 ```
 
@@ -254,7 +283,8 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 const styles = ['elevation-zero', 'openfreemap-positron', 'openfreemap-dark'];
 let current = 0;
 
-// A control of MapLibre GL JS: an object with onAdd, which returns the element, and onRemove.
+// A control of MapLibre GL JS: an object with onAdd, which returns the element,
+// and onRemove.
 class NextStyleControl {
   onAdd(map) {
     this.container = document.createElement('div');
@@ -273,7 +303,12 @@ class NextStyleControl {
   }
 }
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13,
+});
 map.addControl(new NextStyleControl(), 'top-left');
 ```
 
@@ -289,11 +324,15 @@ const styles = ['elevation-zero', 'openfreemap-positron', 'openfreemap-dark'];
 const current = ref(0);
 const corner = shallowRef(null);
 const controls = shallowRef([navigation()]);
-// The element is created in the browser only, because `document` does not exist during server rendering.
+// The element is created in the browser only, because `document` does not exist
+// during server rendering.
 // The map puts it into its corner, and <Teleport> renders the button into it.
 onMounted(() => {
   corner.value = document.createElement('div');
-  controls.value = [navigation(), custom({key: 'next-style', position: 'top-left', element: corner.value})];
+  controls.value = [
+    navigation(),
+    custom({key: 'next-style', position: 'top-left', element: corner.value}),
+  ];
 });
 </script>
 
@@ -324,12 +363,17 @@ const styles = ['elevation-zero', 'openfreemap-positron', 'openfreemap-dark'];
 export function StyleSwitcher() {
   const [current, setCurrent] = useState(0);
   const [corner, setCorner] = useState(null);
-  // The element is created in the browser only, because `document` does not exist during server rendering.
+  // The element is created in the browser only, because `document` does not
+  // exist during server rendering.
   // The map puts it into its corner, and the portal renders the button into it.
   useEffect(() => setCorner(document.createElement('div')), []);
   const [controls, setControls] = useState([navigation()]);
   useEffect(() => {
-    if (corner) setControls([navigation(), custom({key: 'next-style', position: 'top-left', element: corner})]);
+    if (corner)
+      setControls([
+        navigation(),
+        custom({key: 'next-style', position: 'top-left', element: corner}),
+      ]);
   }, [corner]);
 
   return (
@@ -341,7 +385,13 @@ export function StyleSwitcher() {
           controls={controls}
         />
       </div>
-      {corner && createPortal(<button onClick={() => setCurrent((current + 1) % styles.length)}>Next style</button>, corner)}
+      {corner &&
+        createPortal(
+          <button onClick={() => setCurrent((current + 1) % styles.length)}>
+            Next style
+          </button>,
+          corner,
+        )}
     </>
   );
 }

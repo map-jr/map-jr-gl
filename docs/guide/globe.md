@@ -27,7 +27,12 @@ const map = createMap('map', {
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 // The page has <div id="map" style="height: 400px"></div>.
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [10, 30], zoom: 1.5});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [10, 30],
+  zoom: 1.5,
+});
 
 // Each new style sets its own projection, so set the globe after each one.
 map.on('style.load', () => map.setProjection({type: 'globe'}));
@@ -62,7 +67,11 @@ const projection = {type: 'globe'};
 export default function World() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={initialView} projection={projection} />
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={initialView}
+        projection={projection}
+      />
     </div>
   );
 }
@@ -102,19 +111,32 @@ const map = createMap('map', {
   controls: [navigation(), globe()],
 });
 
-map.listen('projectiontransition', e => console.log(`The map is now ${e.newProjection}`));
+map.listen('projectiontransition', e =>
+  console.log(`The map is now ${e.newProjection}`),
+);
 ```
 
 **MapLibre compat**
 
 ```js [MapLibre compat]
-import {Map, NavigationControl, GlobeControl} from '@map-jr/map-jr-gl/maplibre-compat';
+import {
+  Map,
+  NavigationControl,
+  GlobeControl,
+} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [10, 30], zoom: 1.5});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [10, 30],
+  zoom: 1.5,
+});
 map.addControl(new NavigationControl());
 map.addControl(new GlobeControl());
 
-map.on('projectiontransition', e => console.log(`The map is now ${e.newProjection}`));
+map.on('projectiontransition', e =>
+  console.log(`The map is now ${e.newProjection}`),
+);
 ```
 
 A `patch` of another field keeps the projection of a click. A `projection` that differs from that of the last

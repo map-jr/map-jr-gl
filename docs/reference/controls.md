@@ -13,7 +13,11 @@ import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13},
-  controls: [navigation(), scale({position: 'bottom-left'}), fullscreen({position: 'top-left'})],
+  controls: [
+    navigation(),
+    scale({position: 'bottom-left'}),
+    fullscreen({position: 'top-left'}),
+  ],
 });
 ```
 
@@ -47,7 +51,11 @@ turn it off.
 Every function accepts `position` with its other options: the corner of the map that the control is placed in.
 
 ```ts
-type ControlPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+type ControlPosition =
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
 ```
 
 The default is `'top-right'` for every control, `scale()` included.
@@ -101,7 +109,9 @@ The bar shows metres and kilometres with `unit: 'metric'`, feet and miles with `
 Creates a button that shows the map on the full screen, and a second click leaves it.
 
 ```ts
-fullscreen(options?: {position?: ControlPosition}): ControlSpec
+fullscreen(options?: {
+  position?: ControlPosition;
+}): ControlSpec
 ```
 
 Where the browser has no Fullscreen API, as Safari on iPhone, the container of the map receives the class
@@ -185,7 +195,9 @@ description whose `projection` differs from that of the description before it ov
 Creates a button that switches the map between the light and the dark colour scheme.
 
 ```ts
-colorScheme(options?: {position?: ControlPosition}): ControlSpec
+colorScheme(options?: {
+  position?: ControlPosition;
+}): ControlSpec
 ```
 
 The button shows a sun while the map is light and a moon while it is dark, also with `'auto'`. A click sets [`colorScheme`](description.md#colorscheme-and-oncolorschemechange)
@@ -199,8 +211,17 @@ the scheme opposite to that of the system, and the next click sets `'auto'` agai
 Creates a control from an element of your page, or from a control written for MapLibre GL JS.
 
 ```ts
-custom(options: {key: string; position?: ControlPosition; element: HTMLElement}): ControlSpec
-custom(options: {key: string; position?: ControlPosition; onAdd(map: Map): HTMLElement; onRemove(map: Map): void}): ControlSpec
+custom(options: {
+  key: string;
+  position?: ControlPosition;
+  element: HTMLElement;
+}): ControlSpec
+custom(options: {
+  key: string;
+  position?: ControlPosition;
+  onAdd(map: Map): HTMLElement;
+  onRemove(map: Map): void;
+}): ControlSpec
 ```
 
 | Name | Type | Description |
@@ -228,12 +249,16 @@ import {custom} from '@map-jr/map-jr-gl/controls';
 
 const button = document.createElement('button');
 button.textContent = 'Reset view';
-button.addEventListener('click', () => map.moveTo({center: [-74.0065, 40.7085], zoom: 13, duration: 500}));
+button.addEventListener('click', () =>
+  map.moveTo({center: [-74.0065, 40.7085], zoom: 13, duration: 500}),
+);
 
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13},
-  controls: [custom({key: 'reset-view', position: 'top-left', element: button})],
+  controls: [
+    custom({key: 'reset-view', position: 'top-left', element: button}),
+  ],
 });
 ```
 
@@ -284,7 +309,10 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [2.3522, 48.8566], zoom: 12},
   controls: [navigation(), scale()],
-  locale: {'NavigationControl.ZoomIn': 'Zoom avant', 'NavigationControl.ZoomOut': 'Zoom arrière'},
+  locale: {
+    'NavigationControl.ZoomIn': 'Zoom avant',
+    'NavigationControl.ZoomOut': 'Zoom arrière',
+  },
 });
 ```
 

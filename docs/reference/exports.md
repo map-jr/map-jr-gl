@@ -11,8 +11,20 @@ const stations = [{name: 'Bowling Green', lng: -74.0141, lat: 40.7047}];
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
-  sources: {stations: {type: 'geojson', data: points(stations, {lngLat: s => [s.lng, s.lat]})}},
-  layers: [{id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 6}}],
+  sources: {
+    stations: {
+      type: 'geojson',
+      data: points(stations, {lngLat: s => [s.lng, s.lat]}),
+    },
+  },
+  layers: [
+    {
+      id: 'stations',
+      type: 'circle',
+      source: 'stations',
+      paint: {'circle-radius': 6},
+    },
+  ],
 });
 ```
 
@@ -35,7 +47,10 @@ const map = createMap('map', {
 
 <!-- ref:MainExports.points:start -->
 ```ts
-points(records: readonly R[], options: PointsOptions<R>): PointCollection
+points(
+  records: readonly R[],
+  options: PointsOptions<R>,
+): PointCollection
 ```
 
 | Name | Type | Default | Description |
@@ -66,7 +81,10 @@ A record whose position is not two finite numbers is left out. The
 
 <!-- ref:MainExports.defaultPin:start -->
 ```ts
-defaultPin(options?: {color?: string; scale?: number}): HTMLElement
+defaultPin(options?: {
+  color?: string;
+  scale?: number;
+}): HTMLElement
 ```
 
 | Name | Type | Default | Description |
@@ -152,7 +170,10 @@ map reads `pmtiles://` URLs itself: `addProtocol('pmtiles', fn)` has no effect a
 import {addProtocol, createMap} from '@map-jr/map-jr-gl';
 
 addProtocol('styles', async ({url}, abort) => {
-  const response = await fetch(url.replace('styles://', 'https://styles.map-jr.org/'), {signal: abort.signal});
+  const response = await fetch(
+    url.replace('styles://', 'https://styles.map-jr.org/'),
+    {signal: abort.signal},
+  );
   return {data: await response.arrayBuffer()};
 });
 const map = createMap('map', {style: 'styles://1/elevation-zero.json'});
@@ -207,7 +228,9 @@ of the page uses workers of the same `workerUrl` or `createWorker`. See [Loading
 import {configure, createMap} from '@map-jr/map-jr-gl';
 
 configure({tileWorkers: 2});
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 ```
 
 ### `LoadOptions`

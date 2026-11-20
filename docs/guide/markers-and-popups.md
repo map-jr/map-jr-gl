@@ -25,23 +25,41 @@ at each point.
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 // {{color}} is a slot: each marker fills it from its property "color".
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 const places = [
   {id: 1, name: 'City Hall', lng: -74.006, lat: 40.7128, color: '#d6453d'},
-  {id: 2, name: 'Empire State Building', lng: -73.9857, lat: 40.7484, color: '#2f7fd1'},
+  {
+    id: 2,
+    name: 'Empire State Building',
+    lng: -73.9857,
+    lat: 40.7484,
+    color: '#2f7fd1',
+  },
 ];
-// A GeoJSON point for each record. The properties of a point are all the fields of its record.
-const toPoints = records => points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
+// A GeoJSON point for each record. The properties of a point are all the fields
+// of its record.
+const toPoints = records =>
+  points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
 
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {pin},
   data: {places: toPoints(places)},
-  layers: [{
-    id: 'places', type: 'symbol', source: 'places',
-    layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
-  }],
+  layers: [
+    {
+      id: 'places',
+      type: 'symbol',
+      source: 'places',
+      layout: {
+        'icon-image': 'pin',
+        'icon-anchor': 'bottom',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+    },
+  ],
 });
 ```
 
@@ -50,21 +68,48 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-// {{color}} is a slot: each marker fills it from its property "color". MapLibre GL JS has no such images.
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
-const places = {type: 'FeatureCollection', features: [
-  {type: 'Feature', id: 1, properties: {name: 'City Hall', color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  {type: 'Feature', id: 2, properties: {name: 'Empire State Building', color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
-]};
+// {{color}} is a slot: each marker fills it from its property "color". MapLibre
+// GL JS has no such images.
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      id: 1,
+      properties: {name: 'City Hall', color: '#d6453d'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      id: 2,
+      properties: {name: 'Empire State Building', color: '#2f7fd1'},
+      geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]},
+    },
+  ],
+};
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.996, 40.73], zoom: 11.5});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.996, 40.73],
+  zoom: 11.5,
+});
 
 map.on('load', async () => {
   await map.addImage('pin', pin);
   map.addSource('places', {type: 'geojson', data: places});
   map.addLayer({
-    id: 'places', type: 'symbol', source: 'places',
-    layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
+    id: 'places',
+    type: 'symbol',
+    source: 'places',
+    layout: {
+      'icon-image': 'pin',
+      'icon-anchor': 'bottom',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
   });
 });
 ```
@@ -78,17 +123,36 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
 
 // {{color}} is a slot: each marker fills it from its property "color".
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 const places = [
   {id: 1, name: 'City Hall', lng: -74.006, lat: 40.7128, color: '#d6453d'},
-  {id: 2, name: 'Empire State Building', lng: -73.9857, lat: 40.7484, color: '#2f7fd1'},
+  {
+    id: 2,
+    name: 'Empire State Building',
+    lng: -73.9857,
+    lat: 40.7484,
+    color: '#2f7fd1',
+  },
 ];
-// A GeoJSON point for each record, in a shallowRef: the map needs a new object to see a change.
-const data = shallowRef({places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id})});
-const layers = [{
-  id: 'places', type: 'symbol', source: 'places',
-  layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
-}];
+// A GeoJSON point for each record, in a shallowRef: the map needs a new object
+// to see a change.
+const data = shallowRef({
+  places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id}),
+});
+const layers = [
+  {
+    id: 'places',
+    type: 'symbol',
+    source: 'places',
+    layout: {
+      'icon-image': 'pin',
+      'icon-anchor': 'bottom',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  },
+];
 </script>
 
 <template>
@@ -112,17 +176,34 @@ import {MapJr} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';
 
 // {{color}} is a slot: each marker fills it from its property "color".
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 const images = {pin};
-const layers = [{
-  id: 'places', type: 'symbol', source: 'places',
-  layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
-}];
+const layers = [
+  {
+    id: 'places',
+    type: 'symbol',
+    source: 'places',
+    layout: {
+      'icon-image': 'pin',
+      'icon-anchor': 'bottom',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  },
+];
 
-// `places` is a list of records such as {id: 1, name: 'City Hall', lng: -74.006, lat: 40.7128, color: '#d6453d'}.
+// `places` is a list of records such as {id: 1, name: 'City Hall', lng:
+// -74.006, lat: 40.7128, color: '#d6453d'}.
 export function Places({places}) {
-  // A GeoJSON point for each record. The map needs a new object to see a change, and only then.
-  const data = useMemo(() => ({places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id})}), [places]);
+  // A GeoJSON point for each record. The map needs a new object to see a
+  // change, and only then.
+  const data = useMemo(
+    () => ({
+      places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id}),
+    }),
+    [places],
+  );
 
   return (
     <div style={{height: 400}}>
@@ -172,19 +253,31 @@ let places = [
   {id: 1, lng: -74.006, lat: 40.7128},
   {id: 2, lng: -73.9857, lat: 40.7484},
 ];
-const toPoints = records => points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
+const toPoints = records =>
+  points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
 
-// Circles keep this example short. Markers with an image change in the same way.
+// Circles keep this example short. Markers with an image change in the same
+// way.
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   data: {places: toPoints(places)},
-  layers: [{id: 'places', type: 'circle', source: 'places', paint: {'circle-radius': 7, 'circle-color': '#d6453d'}}],
+  layers: [
+    {
+      id: 'places',
+      type: 'circle',
+      source: 'places',
+      paint: {'circle-radius': 7, 'circle-color': '#d6453d'},
+    },
+  ],
 });
 
 function movePlace(id, lng, lat) {
-  places = places.map(place => place.id === id ? {...place, lng, lat} : place);
-  // toPoints() returns a new GeoJSON object. The map applies `data.places` only when it is a new object.
+  places = places.map(place =>
+    place.id === id ? {...place, lng, lat} : place,
+  );
+  // toPoints() returns a new GeoJSON object. The map applies `data.places` only
+  // when it is a new object.
   map.patch({data: {places: toPoints(places)}});
 }
 
@@ -199,22 +292,50 @@ function removePlaces() {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const places = {type: 'FeatureCollection', features: [
-  {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  {type: 'Feature', id: 2, properties: {}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
-]};
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      id: 1,
+      properties: {},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      id: 2,
+      properties: {},
+      geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]},
+    },
+  ],
+};
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.996, 40.73], zoom: 11.5});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.996, 40.73],
+  zoom: 11.5,
+});
 
-// Circles keep this example short. Markers with an image change in the same way.
+// Circles keep this example short. Markers with an image change in the same
+// way.
 map.on('load', () => {
   map.addSource('places', {type: 'geojson', data: places});
-  map.addLayer({id: 'places', type: 'circle', source: 'places', paint: {'circle-radius': 7, 'circle-color': '#d6453d'}});
+  map.addLayer({
+    id: 'places',
+    type: 'circle',
+    source: 'places',
+    paint: {'circle-radius': 7, 'circle-color': '#d6453d'},
+  });
 });
 
 function movePlace(id, lng, lat) {
-  places.features.find(feature => feature.id === id).geometry.coordinates = [lng, lat];
-  // setData() always applies the data, also when it is the same object as before.
+  places.features.find(feature => feature.id === id).geometry.coordinates = [
+    lng,
+    lat,
+  ];
+  // setData() always applies the data, also when it is the same object as
+  // before.
   map.getSource('places').setData(places);
 }
 
@@ -238,10 +359,17 @@ and `popup: true` shows the element in a popup. `MapOverlay` does the same in Vu
 ```js [Main API]
 import {createMap, points} from '@map-jr/map-jr-gl';
 
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 const places = [
   {id: 1, name: 'City Hall', lng: -74.006, lat: 40.7128, color: '#d6453d'},
-  {id: 2, name: 'Empire State Building', lng: -73.9857, lat: 40.7484, color: '#2f7fd1'},
+  {
+    id: 2,
+    name: 'Empire State Building',
+    lng: -73.9857,
+    lat: 40.7484,
+    color: '#2f7fd1',
+  },
 ];
 let popup = null;
 
@@ -250,10 +378,19 @@ const map = createMap('map', {
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {pin},
   data: {places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id})},
-  layers: [{
-    id: 'places', type: 'symbol', source: 'places',
-    layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
-  }],
+  layers: [
+    {
+      id: 'places',
+      type: 'symbol',
+      source: 'places',
+      layout: {
+        'icon-image': 'pin',
+        'icon-anchor': 'bottom',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+    },
+  ],
   // A click reports the features of these layers.
   interactiveLayers: ['places'],
   onClick: event => {
@@ -263,8 +400,16 @@ const map = createMap('map', {
     if (!place) return;
     const content = document.createElement('div');
     content.textContent = place.properties.name;
-    // `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0, -30] moves the tip of the popup to the top of the pin.
-    popup = map.overlay(content, {lngLat: place.geometry.coordinates, popup: true, offset: [0, -30], onClose: () => { popup = null; }});
+    // `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0,
+    // -30] moves the tip of the popup to the top of the pin.
+    popup = map.overlay(content, {
+      lngLat: place.geometry.coordinates,
+      popup: true,
+      offset: [0, -30],
+      onClose: () => {
+        popup = null;
+      },
+    });
   },
 });
 ```
@@ -274,27 +419,57 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
-const places = {type: 'FeatureCollection', features: [
-  {type: 'Feature', id: 1, properties: {name: 'City Hall', color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  {type: 'Feature', id: 2, properties: {name: 'Empire State Building', color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
-]};
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      id: 1,
+      properties: {name: 'City Hall', color: '#d6453d'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      id: 2,
+      properties: {name: 'Empire State Building', color: '#2f7fd1'},
+      geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]},
+    },
+  ],
+};
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.996, 40.73], zoom: 11.5});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-73.996, 40.73],
+  zoom: 11.5,
+});
 
 map.on('load', async () => {
   await map.addImage('pin', pin);
   map.addSource('places', {type: 'geojson', data: places});
   map.addLayer({
-    id: 'places', type: 'symbol', source: 'places',
-    layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
+    id: 'places',
+    type: 'symbol',
+    source: 'places',
+    layout: {
+      'icon-image': 'pin',
+      'icon-anchor': 'bottom',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
   });
 });
 
 map.on('click', 'places', event => {
   const place = event.features[0];
-  // As in MapLibre GL JS, a number as `offset` moves the popup that many pixels away from the position, here up.
-  new Popup({offset: 30}).setLngLat(place.geometry.coordinates).setText(place.properties.name).addTo(map);
+  // As in MapLibre GL JS, a number as `offset` moves the popup that many pixels
+  // away from the position, here up.
+  new Popup({offset: 30})
+    .setLngLat(place.geometry.coordinates)
+    .setText(place.properties.name)
+    .addTo(map);
 });
 ```
 
@@ -306,16 +481,34 @@ import {shallowRef} from 'vue';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
 
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 const places = [
   {id: 1, name: 'City Hall', lng: -74.006, lat: 40.7128, color: '#d6453d'},
-  {id: 2, name: 'Empire State Building', lng: -73.9857, lat: 40.7484, color: '#2f7fd1'},
+  {
+    id: 2,
+    name: 'Empire State Building',
+    lng: -73.9857,
+    lat: 40.7484,
+    color: '#2f7fd1',
+  },
 ];
-const data = shallowRef({places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id})});
-const layers = [{
-  id: 'places', type: 'symbol', source: 'places',
-  layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
-}];
+const data = shallowRef({
+  places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id}),
+});
+const layers = [
+  {
+    id: 'places',
+    type: 'symbol',
+    source: 'places',
+    layout: {
+      'icon-image': 'pin',
+      'icon-anchor': 'bottom',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  },
+];
 // The feature of the marker that the user clicked, or null.
 const selected = shallowRef(null);
 </script>
@@ -329,10 +522,19 @@ const selected = shallowRef(null);
       :data="data"
       :layers="layers"
       :interactive-layers="['places']"
-      @click="event => selected = event.features[0] ?? null"
+      @click="event => (selected = event.features[0] ?? null)"
     >
-      <!-- `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0, -30] moves the tip of the popup to the top of the pin. -->
-      <MapOverlay v-if="selected" :lng-lat="selected.geometry.coordinates" :offset="[0, -30]" popup @close="selected = null">
+      <!--
+        `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0,
+        -30] moves the tip of the popup to the top of the pin.
+      -->
+      <MapOverlay
+        v-if="selected"
+        :lng-lat="selected.geometry.coordinates"
+        :offset="[0, -30]"
+        popup
+        @close="selected = null"
+      >
         {{ selected.properties.name }}
       </MapOverlay>
     </MapJr>
@@ -347,16 +549,31 @@ import {useMemo, useState} from 'react';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';
 
-const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const pin =
+  '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 const images = {pin};
-const layers = [{
-  id: 'places', type: 'symbol', source: 'places',
-  layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
-}];
+const layers = [
+  {
+    id: 'places',
+    type: 'symbol',
+    source: 'places',
+    layout: {
+      'icon-image': 'pin',
+      'icon-anchor': 'bottom',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  },
+];
 const interactiveLayers = ['places'];
 
 export function Places({places}) {
-  const data = useMemo(() => ({places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id})}), [places]);
+  const data = useMemo(
+    () => ({
+      places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id}),
+    }),
+    [places],
+  );
   // The feature of the marker that the user clicked, or null.
   const [selected, setSelected] = useState(null);
 
@@ -373,7 +590,12 @@ export function Places({places}) {
       >
         {/* `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0, -30] moves the tip of the popup to the top of the pin. */}
         {selected && (
-          <MapOverlay lngLat={selected.geometry.coordinates} offset={[0, -30]} popup onClose={() => setSelected(null)}>
+          <MapOverlay
+            lngLat={selected.geometry.coordinates}
+            offset={[0, -30]}
+            popup
+            onClose={() => setSelected(null)}
+          >
             {selected.properties.name}
           </MapOverlay>
         )}
@@ -409,8 +631,16 @@ const map = createMap('map', {
 });
 
 let home = [-74.0065, 40.7085];
-const options = () => ({lngLat: home, anchor: 'bottom', draggable: true, onDragEnd: lngLat => { home = lngLat; }});
-// defaultPin() creates the pin of MapLibre GL JS. Any element of your own works in its place.
+const options = () => ({
+  lngLat: home,
+  anchor: 'bottom',
+  draggable: true,
+  onDragEnd: lngLat => {
+    home = lngLat;
+  },
+});
+// defaultPin() creates the pin of MapLibre GL JS. Any element of your own works
+// in its place.
 const marker = map.overlay(defaultPin({color: '#c0392b'}), options());
 
 function moveHome(lngLat) {
@@ -429,9 +659,16 @@ function removeHome() {
 ```js [MapLibre compat]
 import {Map, Marker} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 14});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 14,
+});
 
-const marker = new Marker({color: '#c0392b', draggable: true}).setLngLat([-74.0065, 40.7085]).addTo(map);
+const marker = new Marker({color: '#c0392b', draggable: true})
+  .setLngLat([-74.0065, 40.7085])
+  .addTo(map);
 marker.on('dragend', () => console.log(marker.getLngLat()));
 
 function moveHome(lngLat) {
@@ -455,9 +692,24 @@ const home = ref([-74.0065, 40.7085]);
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-74.0065, 40.7085], zoom: 14}">
-      <MapOverlay :lng-lat="home" anchor="bottom" draggable @dragend="home = $event">
-        <svg width="27" height="41" viewBox="0 0 27 41"><path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z" fill="#c0392b"/><circle cx="13.5" cy="13.5" r="5.5" fill="#fff"/></svg>
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 14}"
+    >
+      <MapOverlay
+        :lng-lat="home"
+        anchor="bottom"
+        draggable
+        @dragend="home = $event"
+      >
+        <svg width="27" height="41" viewBox="0 0 27 41">
+          <path
+            d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41
+              S27 23 27 13.5C27 6 21 0 13.5 0z"
+            fill="#c0392b"
+          />
+          <circle cx="13.5" cy="13.5" r="5.5" fill="#fff" />
+        </svg>
       </MapOverlay>
     </MapJr>
   </div>
@@ -478,13 +730,30 @@ export function Home() {
   return (
     <>
       <div style={{height: 400}}>
-        <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: start, zoom: 14}}>
-          <MapOverlay lngLat={home} anchor="bottom" draggable onDragEnd={setHome}>
-            <svg width="27" height="41" viewBox="0 0 27 41"><path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z" fill="#c0392b" /><circle cx="13.5" cy="13.5" r="5.5" fill="#fff" /></svg>
+        <MapJr
+          mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+          initialView={{center: start, zoom: 14}}
+        >
+          <MapOverlay
+            lngLat={home}
+            anchor="bottom"
+            draggable
+            onDragEnd={setHome}
+          >
+            <svg width="27" height="41" viewBox="0 0 27 41">
+              <path
+                d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41
+                  S27 23 27 13.5C27 6 21 0 13.5 0z"
+                fill="#c0392b"
+              />
+              <circle cx="13.5" cy="13.5" r="5.5" fill="#fff" />
+            </svg>
           </MapOverlay>
         </MapJr>
       </div>
-      <p>{home[0].toFixed(5)}, {home[1].toFixed(5)}</p>
+      <p>
+        {home[0].toFixed(5)}, {home[1].toFixed(5)}
+      </p>
     </>
   );
 }

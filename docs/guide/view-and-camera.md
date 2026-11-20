@@ -31,7 +31,13 @@ createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13.6, pitch: 30});
+new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+  pitch: 30,
+});
 ```
 
 **Vue**
@@ -43,7 +49,10 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6, pitch: 30}" />
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6, pitch: 30}"
+    />
   </div>
 </template>
 ```
@@ -56,7 +65,10 @@ import {MapJr} from '@map-jr/map-jr-gl/react';
 export function Harbor() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [-74.0065, 40.7085], zoom: 13.6, pitch: 30}} />
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-74.0065, 40.7085], zoom: 13.6, pitch: 30}}
+      />
     </div>
   );
 }
@@ -76,7 +88,13 @@ import {createMap} from '@map-jr/map-jr-gl';
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   // [[west, south], [east, north]]; [west, south, east, north] works too.
-  initialView: {bounds: [[-74.05, 40.68], [-73.9, 40.82]], padding: 40},
+  initialView: {
+    bounds: [
+      [-74.05, 40.68],
+      [-73.9, 40.82],
+    ],
+    padding: 40,
+  },
 });
 ```
 
@@ -88,7 +106,10 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 new Map({
   container: 'map',
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  bounds: [[-74.05, 40.68], [-73.9, 40.82]],
+  bounds: [
+    [-74.05, 40.68],
+    [-73.9, 40.82],
+  ],
   fitBoundsOptions: {padding: 40},
 });
 ```
@@ -140,7 +161,14 @@ function flyToParis() {
 }
 
 function showManhattan() {
-  map.moveTo({bounds: [[-74.05, 40.68], [-73.9, 40.82]], padding: 40, duration: 800});
+  map.moveTo({
+    bounds: [
+      [-74.05, 40.68],
+      [-73.9, 40.82],
+    ],
+    padding: 40,
+    duration: 800,
+  });
 }
 ```
 
@@ -149,7 +177,12 @@ function showManhattan() {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 12});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 12,
+});
 
 function zoomIn() {
   map.easeTo({zoom: map.getZoom() + 1, duration: 300});
@@ -160,7 +193,13 @@ function flyToParis() {
 }
 
 function showManhattan() {
-  map.fitBounds([[-74.05, 40.68], [-73.9, 40.82]], {padding: 40, duration: 800});
+  map.fitBounds(
+    [
+      [-74.05, 40.68],
+      [-73.9, 40.82],
+    ],
+    {padding: 40, duration: 800},
+  );
 }
 ```
 
@@ -171,14 +210,20 @@ function showManhattan() {
 import {useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
-// `map` of the component is the map of the main API, or null before the component is mounted.
+// `map` of the component is the map of the main API, or null before the
+// component is mounted.
 const component = useTemplateRef('component');
-const flyToParis = () => component.value.map.moveTo({center: [2.35, 48.86], zoom: 12, fly: true});
+const flyToParis = () =>
+  component.value.map.moveTo({center: [2.35, 48.86], zoom: 12, fly: true});
 </script>
 
 <template>
   <div style="height: 400px">
-    <MapJr ref="component" map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-74.0065, 40.7085], zoom: 12}" />
+    <MapJr
+      ref="component"
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 12}"
+    />
   </div>
   <button @click="flyToParis">Paris</button>
 </template>
@@ -191,14 +236,25 @@ import {useRef} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
 export function Places() {
-  // The ref is the map of the main API, or null before the component has created it.
+  // The ref is the map of the main API, or null before the component has
+  // created it.
   const map = useRef(null);
   return (
     <>
       <div style={{height: 400}}>
-        <MapJr ref={map} mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [-74.0065, 40.7085], zoom: 12}} />
+        <MapJr
+          ref={map}
+          mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+          initialView={{center: [-74.0065, 40.7085], zoom: 12}}
+        />
       </div>
-      <button onClick={() => map.current?.moveTo({center: [2.35, 48.86], zoom: 12, fly: true})}>Paris</button>
+      <button
+        onClick={() =>
+          map.current?.moveTo({center: [2.35, 48.86], zoom: 12, fly: true})
+        }
+      >
+        Paris
+      </button>
     </>
   );
 }
@@ -248,8 +304,12 @@ let view = {center: [-74.0065, 40.7085], zoom: 13.6};
 const describe = () => ({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   view,
-  // The map calls onViewChange only after createMap has returned, so `map` is set here.
-  onViewChange: next => { view = next; map.update(describe()); },
+  // The map calls onViewChange only after createMap has returned, so `map` is
+  // set here.
+  onViewChange: next => {
+    view = next;
+    map.update(describe());
+  },
 });
 const map = createMap('map', describe());
 
@@ -266,15 +326,25 @@ function showPier() {
 import {ref} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
-const view = ref({center: [-74.0065, 40.7085], zoom: 13.6, bearing: 0, pitch: 0});
+const view = ref({
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+  bearing: 0,
+  pitch: 0,
+});
 </script>
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      v-model:view="view"
+    />
   </div>
   <p>Zoom {{ view.zoom.toFixed(1) }}</p>
-  <button @click="view = {...view, center: [-74.0134, 40.7033], zoom: 16}">Pier A</button>
+  <button @click="view = {...view, center: [-74.0134, 40.7033], zoom: 16}">
+    Pier A
+  </button>
 </template>
 ```
 
@@ -289,10 +359,20 @@ export function Harbor() {
   return (
     <>
       <div style={{height: 400}}>
-        <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" view={view} onViewChange={setView} />
+        <MapJr
+          mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+          view={view}
+          onViewChange={setView}
+        />
       </div>
       <p>Zoom {view.zoom.toFixed(1)}</p>
-      <button onClick={() => setView({...view, center: [-74.0134, 40.7033], zoom: 16})}>Pier A</button>
+      <button
+        onClick={() =>
+          setView({...view, center: [-74.0134, 40.7033], zoom: 16})
+        }
+      >
+        Pier A
+      </button>
     </>
   );
 }
@@ -320,8 +400,12 @@ let view = {center: [-74.0065, 40.7085], zoom: 13.6};
 const describe = () => ({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   view,
-  // The map calls onViewChange only after createMap has returned, so `map` is set here.
-  onViewChange: next => { view = next; map.update(describe()); },
+  // The map calls onViewChange only after createMap has returned, so `map` is
+  // set here.
+  onViewChange: next => {
+    view = next;
+    map.update(describe());
+  },
 });
 const map = createMap('map', describe());
 let stored = view;
@@ -342,17 +426,29 @@ function backToStoredView() {
 import {ref, useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
-const view = ref({center: [-74.0065, 40.7085], zoom: 13.6, bearing: 0, pitch: 0});
+const view = ref({
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+  bearing: 0,
+  pitch: 0,
+});
 const component = useTemplateRef('component');
 // The page does not show the stored view, so it needs no ref.
 let stored = view.value;
-const rememberView = () => { stored = view.value; };
-const backToStoredView = () => component.value.map.moveTo({...stored, duration: 500});
+const rememberView = () => {
+  stored = view.value;
+};
+const backToStoredView = () =>
+  component.value.map.moveTo({...stored, duration: 500});
 </script>
 
 <template>
   <div style="height: 400px">
-    <MapJr ref="component" map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
+    <MapJr
+      ref="component"
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      v-model:view="view"
+    />
   </div>
   <button @click="rememberView">Remember this view</button>
   <button @click="backToStoredView">Back to where I was</button>
@@ -375,10 +471,25 @@ export function Harbor() {
   return (
     <>
       <div style={{height: 400}}>
-        <MapJr ref={map} mapStyle="https://styles.map-jr.org/1/elevation-zero.json" view={view} onViewChange={setView} />
+        <MapJr
+          ref={map}
+          mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+          view={view}
+          onViewChange={setView}
+        />
       </div>
-      <button onClick={() => { stored.current = view; }}>Remember this view</button>
-      <button onClick={() => map.current?.moveTo({...stored.current, duration: 500})}>Back to where I was</button>
+      <button
+        onClick={() => {
+          stored.current = view;
+        }}
+      >
+        Remember this view
+      </button>
+      <button
+        onClick={() => map.current?.moveTo({...stored.current, duration: 500})}
+      >
+        Back to where I was
+      </button>
     </>
   );
 }
