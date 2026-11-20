@@ -190,7 +190,10 @@ closing animation of a popup, and it does not call `onClose`. After `destroy`:
 
 <!-- ref:MapInstance.queryFeatures:start -->
 ```ts
-queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Promise<RenderedFeature[]>
+queryFeatures(
+  at?: FeaturePlace | FeatureOptions,
+  options?: FeatureOptions,
+): Promise<RenderedFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -259,7 +262,11 @@ for the other rejections.
 
 <!-- ref:MapInstance.querySource:start -->
 ```ts
-querySource(sourceId: string, at?: FeaturePlace | SourceOptions, options?: SourceOptions): Promise<QueriedFeature[]>
+querySource(
+  sourceId: string,
+  at?: FeaturePlace | SourceOptions,
+  options?: SourceOptions,
+): Promise<QueriedFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -317,7 +324,11 @@ effect: `layers`, `radius` for a box or the view, and `geometry: false` or `zoom
 
 <!-- ref:MapInstance.watchFeatures:start -->
 ```ts
-watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[]) => void): () => void
+watchFeatures(
+  at: FeaturePlace | undefined,
+  options: FeatureOptions,
+  listener: (features: RenderedFeature[]) => void,
+): () => void
 ```
 
 | Name | Type | Default | Description |
@@ -356,7 +367,12 @@ changes.
 
 <!-- ref:MapInstance.watchSource:start -->
 ```ts
-watchSource(sourceId: string, at: FeaturePlace | undefined, options: SourceOptions, listener: (features: QueriedFeature[]) => void): () => void
+watchSource(
+  sourceId: string,
+  at: FeaturePlace | undefined,
+  options: SourceOptions,
+  listener: (features: QueriedFeature[]) => void,
+): () => void
 ```
 
 | Name | Type | Default | Description |
@@ -392,7 +408,10 @@ const stop = map.watchSource(
 
 <!-- ref:MapInstance.setFeatureState:start -->
 ```ts
-setFeatureState(target: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>): void
+setFeatureState(
+  target: {source: string; sourceLayer?: string; id: number | string},
+  state: Record<string, unknown>,
+): void
 ```
 
 | Name | Type | Default | Description |
@@ -474,7 +493,10 @@ const map = createMap('map', {
 
 <!-- ref:MapInstance.removeFeatureState:start -->
 ```ts
-removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void
+removeFeatureState(
+  target: {source: string; sourceLayer?: string; id?: number | string},
+  key?: string,
+): void
 ```
 
 | Name | Type | Default | Description |
@@ -491,7 +513,9 @@ removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | 
 
 <!-- ref:MapInstance.queryElevation:start -->
 ```ts
-queryElevation(at: Position | {x: number; y: number}): Promise<number | null>
+queryElevation(
+  at: Position | {x: number; y: number},
+): Promise<number | null>
 ```
 
 | Name | Type | Default | Description |
@@ -541,7 +565,10 @@ document.body.append(
 
 <!-- ref:MapInstance.clusterExpansionZoom:start -->
 ```ts
-clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>
+clusterExpansionZoom(
+  sourceId: string,
+  clusterId: number,
+): Promise<number>
 ```
 
 | Name | Type | Default | Description |
@@ -599,7 +626,10 @@ const map = createMap('map', {
 
 <!-- ref:MapInstance.clusterChildren:start -->
 ```ts
-clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>
+clusterChildren(
+  sourceId: string,
+  clusterId: number,
+): Promise<ClusterFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -614,7 +644,11 @@ clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>
 
 <!-- ref:MapInstance.clusterLeaves:start -->
 ```ts
-clusterLeaves(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}): Promise<ClusterFeature[]>
+clusterLeaves(
+  sourceId: string,
+  clusterId: number,
+  options?: {limit?: number; offset?: number},
+): Promise<ClusterFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -706,7 +740,10 @@ The options of a flight, for `fly`, as in `flyTo` of MapLibre GL JS:
 
 <!-- ref:MapInstance.fitBounds:start -->
 ```ts
-fitBounds(bounds: Bounds, options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>): void
+fitBounds(
+  bounds: Bounds,
+  options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>,
+): void
 ```
 
 | Name | Type | Default | Description |
@@ -749,7 +786,10 @@ unproject(point: {x: number; y: number}): [number, number]
 
 <!-- ref:MapInstance.overlay:start -->
 ```ts
-overlay(element: HTMLElement, options: OverlayOptions): MapOverlay
+overlay(
+  element: HTMLElement,
+  options: OverlayOptions,
+): MapOverlay
 ```
 
 | Name | Type | Default | Description |
