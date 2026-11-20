@@ -23,7 +23,7 @@ map.moveTo({zoom: 15, duration: 500});
 | Name | Type | Description |
 |---|---|---|
 | [`update`](#update) | `(spec: `[`MapDescription`](description.md#mapdescription)`) => void` | Applies a new description to the map. |
-| [`patch`](#patch) | `(part: Partial<`[`MapDescription`](description.md#mapdescription)`>) => void` | Applies the fields of `part` and keeps the other fields of the current description. |
+| [`patch`](#patch) | `(part: Partial<Omit<`[`MapDescription`](description.md#mapdescription)`, 'data'>> & {data?: Record<string, GeoJSON \| string \| null>}) => void` | Applies the fields of `part` and keeps the other fields of the current description. |
 | [`description`](#description) (read only) | `Readonly<`[`MapDescription`](description.md#mapdescription)`>` | The description of the last `createMap`, `update` or `patch`. |
 | [`getResolvedDescription`](#getresolveddescription) | `() => `[`MapDescription`](description.md#mapdescription) | Returns the description with `style` as a copy of the style that the map loaded and `globalState` as the global state in effect. |
 | [`destroy`](#destroy) | `() => void` | Removes the map, its controls and its overlays from the page. |
@@ -109,18 +109,27 @@ it is created.
 
 <!-- ref:MapInstance.patch:start -->
 ```ts
-patch(part: Partial<MapDescription>): void
+patch(
+  part: Partial<Omit<MapDescription, 'data'>> & {
+    data?: Record<string, GeoJSON | string | null>;
+  },
+): void
 ```
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `part` **required** | `Partial<`[`MapDescription`](description.md#mapdescription)`>` | | The fields to change. |
+| `part` **required** | `Partial<Omit<`[`MapDescription`](description.md#mapdescription)`, 'data'>> & {data?: Record<string, GeoJSON \| string \| null>}` | | The fields to change. |
 
 **Returns:** `void`.
 <!-- ref:MapInstance.patch:end -->
 
 `map.patch(part)` has the effect of `map.update({...map.description, ...part})`. A field of `part` that is `undefined`
 is removed, as in `map.patch({cursor: undefined})`.
+
+`data` is merged by key. `map.patch({data: {pins}})` changes only the source `pins` and keeps the other keys of `data`,
+and a key that is `null` removes the data of its source, as in `map.patch({data: {pins: null}})`. Every other field,
+`layers` included, is replaced whole, because the order of `layers` matters. `map.description` holds the merged
+`data` afterwards, so `map.update(map.description)` gives the same map.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';

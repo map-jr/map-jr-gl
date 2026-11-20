@@ -189,7 +189,8 @@ export interface MapDescription extends MapSetup {
     onViewChange?: (view: View) => void;
     /**
      * GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. To change the data
-     * of a source, pass a new object; the same object again changes nothing.
+     * of a source, pass a new object; the same object again changes nothing. `patch` merges `data` by key: it changes only
+     * the keys that it passes, and a key that is `null` removes the data of that source.
      */
     data?: Record<string, GeoJSON | string>;
     /**
@@ -553,9 +554,11 @@ export interface MapInstance {
     update(spec: MapDescription): void;
     /**
      * Applies the fields of `part` and keeps the other fields of the current description. A field of `part` that is `undefined` is removed.
+     * `data` is merged by key: `patch({data: {a: x}})` changes only the source `a`, and a key that is `null` removes the
+     * data of that source. Every other field, `layers` included, is replaced whole.
      * @param part The fields to change.
      */
-    patch(part: Partial<MapDescription>): void;
+    patch(part: Partial<Omit<MapDescription, 'data'>> & {data?: Record<string, GeoJSON | string | null>}): void;
     /** The description of the last `createMap`, `update` or `patch`. To change the map, call `update` or `patch`. */
     readonly description: Readonly<MapDescription>;
     /**
@@ -1201,6 +1204,11 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         patch(part) {
             const next: any = {...now, ...part};
             for (const k in part) if ((part as any)[k] === undefined) delete next[k];
+            // (`data` is merged by key, and a key that is `null` is removed, #1160.)
+            if (part.data && typeof part.data === 'object') {
+                next.data = {...now.data};
+                for (const id in part.data) if (part.data[id] == null) delete next.data[id]; else next.data[id] = part.data[id];
+            }
             complete(next, 'patch', 'Do not set "style" to undefined.');
             if (alive) apply(next, now);
         },

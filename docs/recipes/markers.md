@@ -683,7 +683,7 @@ const always = {'icon-image': 'dot'};
 ### Change the colour of the markers
 
 Each point fills the slot `color` from its property `color`. To show other colours, pass new data.
-[`patch`](../reference/map.md#patch) replaces the whole field `data`, so pass both sources:
+[`patch`](../reference/map.md#patch) merges `data` by key, so pass the sources that change:
 
 ```js
 const grey = places.map(p => ({...p, props: {color: '#888'}}));
