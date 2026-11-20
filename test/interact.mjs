@@ -3732,6 +3732,26 @@ for (const mode of renderers) {
         // The times are at least the duration (the old defaults were 300 and 500 ms) and less than twice it, for a loaded machine.
         check('[main] maplibre-compat: zoomIn and zoomOut take 500 ms and resetNorth and resetNorthPitch 1000 ms by default, as in MapLibre GL JS (#1242)',
             [m1242.ml, m1242.compat].every(t => [500, 500, 1000, 1000].every((d, i) => t[i] >= d - 20 && t[i] < 2 * d)), JSON.stringify(m1242));
+        // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
+        const m1245 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const out = [];
+                for (const p of [-5, 70]) { try { m.setMinPitch(p); out.push(m.getMinPitch()); } catch { out.push('threw'); } }
+                m.setMinPitch(20); out.push(m.getMinPitch());
+                m.setMinPitch(null); out.push(m.getMinPitch());
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: setMinPitch throws for a value out of range and null restores 0, as in MapLibre GL JS (#1245)',
+            JSON.stringify(m1245.ml) === '["threw","threw",20,0]' && JSON.stringify(m1245.compat) === JSON.stringify(m1245.ml), JSON.stringify(m1245));
         // #1246: setMinZoom(null) and setMaxZoom(null) restore the defaults, as in MapLibre GL JS (served at /ml/).
         const m1246 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
