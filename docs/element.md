@@ -43,7 +43,8 @@ and about an element that has no style a second after it was put into the page.
 ## Attributes
 
 A field of the description with a string, number or boolean value has an attribute. The name of the attribute is the
-name of the field in kebab case. The element reads the attributes when it makes the map, and again after each change.
+name of the field in kebab case, and a field that is on by default has an attribute named `no-` and the field, which
+switches it off (`no-interactive`). The element reads the attributes when it makes the map, and again after each change.
 
 | Attribute | Field of the description | Value |
 |---|---|---|
@@ -56,7 +57,10 @@ name of the field in kebab case. The element reads the attributes when it makes 
 | `padding` | `padding` | A number of CSS pixels for each side. For different sides, set the property `padding`. |
 | `interactive-layers` | `interactiveLayers` | The ids of style layers with spaces between them. |
 | `projection` | `projection` | `globe` or `mercator`. |
-| `hover-state`, `cooperative-gestures` | `hoverState`, `cooperativeGestures` | A boolean attribute: it is on when it is there. |
+| `hover-state`, `cooperative-gestures`, `antialias` | `hoverState`, `cooperativeGestures`, `antialias` | A boolean attribute: present is `true`. |
+| `no-interactive` | `interactive` | A boolean attribute: present is `false`, so the user cannot move the map. |
+| `no-attribution` | `attribution` | A boolean attribute: present is `false`, which hides the attribution. |
+| `attribution-compact` | `attribution.compact` | A boolean attribute: present is `attribution: {compact: true}`. `no-attribution` wins over it. |
 | `hash` | `hash` | A boolean attribute, or the name of the parameter of the URL: `hash="map"`. |
 | `renderer`, `font-family`, `nonce` | `renderer`, `fontFamily`, `nonce` | A string. These are read when the map is made only. |
 
@@ -64,14 +68,16 @@ A change of `center`, `zoom`, `bearing` or `pitch` after the map is made moves t
 `moveTo`, as the fields of `initialView` cannot change the view of a map that exists. A change of another attribute
 updates the map.
 
-An attribute that the element cannot read, such as `zoom="near"`, `center="Berlin"` or `hover-state="false"`, is
+An attribute that the element cannot read, such as `zoom="near"` or `center="Berlin"`, is
 ignored, and the development build warns once for each element:
 
 ```
 [map-jr-gl] <map-jr>: the attribute zoom="near" cannot be read, so the element ignores it. Write a number, for example zoom="11".
 ```
 
-To switch off a boolean attribute, remove it: an HTML boolean attribute is on whatever its value is.
+A boolean attribute takes effect when it is there, whatever its value, as in HTML: `hover-state="false"` switches
+`hoverState` on. To undo a boolean attribute, remove it. The development build warns once for each element and
+attribute with the value `"false"`, and names the attribute to remove.
 
 Removing `map-style` from an element whose map exists, with no property `mapStyle`, keeps the style that the map has,
 and the development build warns. To change the style, give another URL or set `mapStyle`.
@@ -96,7 +102,7 @@ property `mapStyle`. Objects, lists and functions are properties only. A propert
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. |
 | `projection`, `globalState`, `locale`, `maxBounds`, `padding`, `transformRequest` | As in [the description](api.md#the-description). `locale` is an object of texts by the keys of MapLibre GL JS, not a language tag. |
 | `interactiveLayers`, `hoverState`, `minZoom`, `maxZoom`, `maxPitch`, `cursor`, `cooperativeGestures`, `colorScheme` | As the attributes of the same name. |
-| `renderer`, `fontFamily`, `interactive`, `antialias`, `attribution`, `hash`, `nonce` | Read when the map is made only (`MapSetup` in [the main API](api.md)). `interactive` and `antialias` are `true` by default, so they have no attribute: set the property to `false`. `nonce` is the property of every HTML element. |
+| `renderer`, `fontFamily`, `interactive`, `antialias`, `attribution`, `hash`, `nonce` | Read when the map is made only (`MapSetup` in [the main API](api.md)). The property `attribution` wins over `no-attribution` and `attribution-compact`. `nonce` is the property of every HTML element. |
 | `map` | The map (`MapInstance`), read only. `null` until the event `map-ready`, and again after the element is removed. Its methods (`queryFeatures`, `moveTo`, `overlay` and the others) are those of [the main API](api.md). |
 | `state` | The state of the map as a store (`map.state`), read only, or `null` while there is no map. |
 

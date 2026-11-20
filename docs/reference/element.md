@@ -43,8 +43,8 @@ after it is removed. An element that is moved in the page in one task keeps its 
 ## Attributes
 
 These fields of the description have an attribute. The name of an attribute is the name of its field in kebab case.
-`interactive`, `antialias`, `attribution` and the fields with an object, a list or a function as value have no
-attribute: set them as [properties](#mapjrelement).
+A field that is on by default has an attribute named `no-` and the field, which switches it off: `no-interactive`.
+The fields with an object, a list or a function as value have no attribute: set them as [properties](#mapjrelement).
 
 | Attribute | Field of the description | Value |
 |---|---|---|
@@ -57,7 +57,10 @@ attribute: set them as [properties](#mapjrelement).
 | `padding` | `padding` | A number of CSS pixels for each side. |
 | `interactive-layers` | `interactiveLayers` | The ids of style layers with spaces between them. |
 | `projection` | `projection` | `globe` or `mercator`. |
-| `hover-state`, `cooperative-gestures` | `hoverState`, `cooperativeGestures` | A boolean attribute. |
+| `hover-state`, `cooperative-gestures`, `antialias` | `hoverState`, `cooperativeGestures`, `antialias` | A boolean attribute: present is `true`. |
+| `no-interactive` | `interactive` | A boolean attribute: present is `false`. |
+| `no-attribution` | `attribution` | A boolean attribute: present is `false`, which hides the attribution. |
+| `attribution-compact` | `attribution.compact` | A boolean attribute: present is `attribution: {compact: true}`. `no-attribution` wins over it, and the property `attribution` wins over both. |
 | `hash` | `hash` | Present with no value for `true`, or the name of the parameter of the URL: `hash="map"`. Each value is a name, so `hash="false"` uses the parameter `false`. |
 | `renderer`, `font-family` | `renderer`, `fontFamily` | A string. |
 
@@ -71,8 +74,15 @@ A change of `center`, `zoom`, `bearing` or `pitch` after the map is created move
 animation, also when the element has the property `initialView`. A change of another attribute updates the map. The element writes nothing back to its attributes: the
 view that the user moves is in [`state`](#mapjrelement) and in the event `map-viewchange`.
 
-A boolean attribute is on when it is there. To switch it off, remove the attribute. The value `"false"` cannot be
-read: the element ignores the attribute, so the option is off, and the development build warns.
+A boolean attribute takes effect when it is there, whatever its value, as in HTML: `hover-state="false"` switches
+`hoverState` on, and `no-interactive="false"` switches `interactive` off. To undo a boolean attribute, remove it. The
+development build warns once for each element and attribute with the value `"false"`:
+
+```text
+[map-jr-gl] <map-jr>: the attribute hover-state="false" switches the option on all
+the same, because an attribute that is there takes effect, whatever its value. To
+switch it off, remove hover-state.
+```
 
 An attribute that the element cannot read, such as `zoom="near"`, is ignored, and the
 [development build](create-map.md#the-development-build) warns once for each element:

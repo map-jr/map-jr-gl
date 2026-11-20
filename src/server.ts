@@ -390,8 +390,9 @@ export async function renderElement(description: MapDescription, options: Elemen
     const d = description as MapDescription & Record<string, unknown>, quote = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const view: Record<string, unknown> = {...d.initialView, ...d.view}, attrs: string[] = [];
     for (const [field, kind] of Object.entries(ATTRIBUTES)) {
-        const v = VIEW_FIELDS.includes(field) ? view[field] : field === 'projection' ? (d.projection as {type?: string} | null)?.type : d[field];
-        const text = v === undefined || v === null || v === false || typeof v === 'object' && !Array.isArray(v) ? undefined
+        const v = VIEW_FIELDS.includes(field) ? view[field] : field === 'projection' ? (d.projection as {type?: string} | null)?.type
+            : field === 'attributionCompact' ? (d.attribution as {compact?: boolean} | undefined)?.compact : d[field];
+        const text = kind === 'o' ? (v === false ? '' : undefined) : v === undefined || v === null || v === false || typeof v === 'object' && !Array.isArray(v) ? undefined
             : kind === 'b' || v === true ? '' : Array.isArray(v) ? v.join(kind === 'l' ? ' ' : ',') : String(v);
         if (text !== undefined && readAttribute(kind, text) !== undefined) attrs.push(text ? `${attributeOf(field)}="${quote(text)}"` : attributeOf(field));
     }
