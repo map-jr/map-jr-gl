@@ -106,7 +106,6 @@ property `mapStyle`. The table lists the members that the description does not h
 | `mapStyle` | [`MapDescription`](description.md#mapdescription)`['style']` | | The `style` of the description: the URL of a style, a style object, or `{light, dark}`. |
 | `map` (read only) | [`MapInstance`](map.md#mapinstance)` \| null` | | The map (`MapInstance`), from the microtask after the element is in the page with a style until it is removed, or else `null`. |
 | `state` (read only) | [`MapInstance`](map.md#mapinstance)`['state'] \| null` | | The state of the map as a store (`map.state`), or `null` while there is no map. |
-| `addEventListener` | `(type: string, listener: EventListenerOrEventListenerObject, options?: boolean \| AddEventListenerOptions \| undefined) => void` | | Adds a listener, as on any element. |
 <!-- ref:MapJrElement:end -->
 
 The element applies all changes of one task to the map with one `update`, in the next microtask. Properties that the
@@ -170,9 +169,9 @@ Each event of the map is a `CustomEvent` that bubbles, named `map-` and the name
 
 The element writes each error to the console, unless a listener of `map-error` calls `event.preventDefault()`.
 
-The element forwards an event of the last row only after a listener for its name is added to the element itself with
-`addEventListener`, after the entry has loaded. A listener on the document receives these events only when the
-element also has one. To add a listener before the element is defined, first `await customElements.whenDefined('map-jr')`.
+The element dispatches every event of the table whenever the map fires it, also when no listener is on the element.
+A listener on the document or on an ancestor receives it, whenever the listener was added. This includes the events
+that come once per frame or per pointer move, such as `map-move`, `map-render` and `map-mousemove`.
 
 `map-ready` and `map-load` are dispatched once. A listener added later does not receive them: check `el.map`, which
 is not `null` once the map exists, and `el.state.get().loaded`.

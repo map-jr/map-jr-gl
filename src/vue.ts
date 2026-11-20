@@ -8,6 +8,7 @@
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapState, View, ViewInput, InitialView} from './host.ts';
+import {FORWARDED, type Forwarded} from './map-events.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
@@ -151,13 +152,6 @@ export const MapOverlay = defineComponent({
  * value of their own. The event `style.load` has the name `styleload` here: a dot in the name of an event is a
  * modifier in a template.)
  */
-type Forwarded = Exclude<keyof MapEvents, 'click' | 'load' | 'idle' | 'error'>;
-const FORWARDED = ['render', 'resize', 'remove', 'style.load', 'webglcontextlost', 'webglcontextrestored', 'movestart', 'move', 'moveend', 'zoomstart', 'zoom', 'zoomend',
-    'rotatestart', 'rotate', 'rotateend', 'pitchstart', 'pitch', 'pitchend', 'dragstart', 'drag', 'dragend', 'dblclick', 'contextmenu', 'mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout',
-    'touchstart', 'touchmove', 'touchend', 'touchcancel', 'styledata', 'sourcedata', 'data', 'styledataloading', 'sourcedataloading', 'dataloading', 'wheel',
-    'boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'stats', 'styleimagemissing', 'terrain', 'projectiontransition', 'geolocate'] as const satisfies readonly Forwarded[];
-// (The type check fails here when the map gets an event that the list does not have.)
-true satisfies (Forwarded extends typeof FORWARDED[number] ? true : false);
 type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
 const forwarded = Object.fromEntries(FORWARDED.map(name => [name.replace('.', ''), () => true])) as unknown as {[K in Forwarded as Undotted<K>]: (event: MapEvents[K]) => true};
 

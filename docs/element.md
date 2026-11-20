@@ -139,10 +139,9 @@ Each event is a `CustomEvent` that bubbles. Its name is `map-` and the name of t
 | Each other event of the map | The event of `listen` of the main API: `map-moveend`, `map-zoomend`, `map-styleimagemissing`, `map-sourcedata` and the others. See [Events](api.md#events) for the list. The event `style.load` is `map-styleload`. |
 
 The names have the prefix so that they cannot be the native events of the canvas, such as `click` and `wheel`. The
-element listens to an event of the map only after a listener for that name is added to the element itself with
-`addEventListener`, after the entry has loaded. A listener on the document gets the events of the element that the
-table names, but no other event of the map. A listener that was added before the element was defined is not seen:
-add it after `import` of the entry, or after `await customElements.whenDefined('map-jr')`.
+element dispatches every event of the table whenever the map fires it, whoever listens: a listener on the element, on
+an ancestor or on the document receives it, also when it was added before the entry loaded. The events that come once
+per frame or per pointer move, such as `map-move`, `map-render` and `map-mousemove`, are dispatched too.
 
 ```html
 <map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="13.4,52.52" zoom="11"
