@@ -4,12 +4,13 @@
 // functions of Vue.
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const boundaryFile = 'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads the tiles that it needs with HTTP
 // range requests.
 const boundaries = {
   sources: {
-    admin: {type: 'vector', url: 'pmtiles://https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles'},
+    admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
   },
   layers: [
     {id: 'zips', type: 'line', source: 'admin', 'source-layer': 'zip_features', minzoom: 9,

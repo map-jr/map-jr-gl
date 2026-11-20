@@ -41,7 +41,8 @@ const describe = () => ({
   attribution: {compact: true},
   onClick: async e => {
     const metres = await map.queryElevation(e.lngLat);
-    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${(metres * 3.28084).toFixed(0)} ft) above sea level`;
+    const feet = metres * 3.28084;
+    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   },
 });
 const map = createMap(container, describe());

@@ -173,7 +173,7 @@ async function ask(event) {
     .catch(() => null);
   // An earlier click can get its answer after a later click. Only the last
   // click is shown.
-  if (click === clicks) found.value = {features, first: features?.slice(0, 8)};
+  if (click === clicks) found.value = {features};
 }
 </script>
 
@@ -186,7 +186,7 @@ async function ask(event) {
     @click="ask"
   >
     <div v-if="found" :style="box">
-      <div v-for="f in found.first">
+      <div v-for="f in found.features?.slice(0, 8)">
         <b>{{ f.sourceLayer }}</b> {{ f.properties.name ?? f.properties.class }}
       </div>
       <div v-if="!found.features">The tile data did not load</div>
@@ -221,15 +221,6 @@ const box = {
   boxShadow: '0 1px 6px #0004',
 };
 
-// The source layer and the name of a feature.
-function Feature({f}) {
-  return (
-    <>
-      <b>{f.sourceLayer}</b> {f.properties.name ?? f.properties.class}
-    </>
-  );
-}
-
 export default function Query() {
   const map = useRef(null);
   const [found, setFound] = useState(null);
@@ -263,7 +254,7 @@ export default function Query() {
         <div style={box}>
           {found.features?.slice(0, 8).map((f, i) => (
             <div key={i}>
-              <Feature f={f} />
+              <b>{f.sourceLayer}</b> {f.properties.name ?? f.properties.class}
             </div>
           ))}
           {!found.features
@@ -364,12 +355,15 @@ export default function Query() {
 <!doctype html>
 <meta charset="utf-8" />
 <title>Ask the map what is at a position</title>
-<!-- The answer to a click shows in a
-     box on the map, and a line of
-     text below the map counts the
-     features. The box takes no
-     pointer events, so a click on it
-     reaches the map. -->
+<!--
+  The answer to a click shows in a
+  box on the map, and a line of
+  text below the
+  map counts the features. The box
+  takes no pointer events, so a
+  click on it
+  reaches the map.
+-->
 <map-jr
   id="map"
   map-style="https://styles.map-jr.org/1/elevation-zero.json"
@@ -411,22 +405,25 @@ export default function Query() {
   let clicks = 0;
   map.addEventListener('map-click', async event => {
     const click = ++clicks;
-    // `querySource` reads the tile
-    // data of one source within 8
-    // pixels of the click. It also
-    // finds features that the style
-    // does not draw. "openmaptiles"
-    // is the id of the vector
-    // source in this style. A query
-    // fails when its tile cannot be
-    // loaded: the answer is then
-    // `null` here.
+    // `querySource` reads the
+    // tile data of one source
+    // within 8 pixels of the
+    // click. It also finds
+    // features that the
+    // style does not draw.
+    // "openmaptiles" is the id of
+    // the vector source in this
+    // style. A query fails when
+    // its tile
+    // cannot be loaded: the
+    // answer is then `null` here.
     const features = await map.map
       .querySource('openmaptiles', event.detail.lngLat, {radius: 8})
       .catch(() => null);
-    // An earlier click can get its
-    // answer after a later click.
-    // Only the last click is shown.
+    // An earlier click can get
+    // its answer after a later
+    // click. Only the last click
+    // is shown.
     if (click !== clicks) return;
 
     box.replaceChildren();

@@ -43,7 +43,8 @@
 
   map.addEventListener('map-click', async event => {
     const metres = await map.map.queryElevation(event.detail.lngLat);
-    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${(metres * 3.28084).toFixed(0)} ft) above sea level`;
+    const feet = metres * 3.28084;
+    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   });
   units.onclick = () => {
     unit = unit === 'ft' ? 'm' : 'ft';
