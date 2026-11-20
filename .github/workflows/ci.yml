@@ -59,6 +59,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Prettier of website/: the recipes check and the format check of docs-lint skip without it.
+      - run: pnpm --dir website install --frozen-lockfile
       # Type check, build, and the type declarations that the package publishes.
       - run: pnpm build
       # The tarball that npm would publish: publint, the files that package.json names, and the source maps.
