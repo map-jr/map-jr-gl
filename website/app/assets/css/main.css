@@ -81,6 +81,11 @@
   --site-sheet: #ffffff;
 }
 
+/* The light page is white (#1332). Surfaces that use --ui-bg (the header, the cards) keep the paper. */
+:root:not(.dark) body {
+  background-color: #ffffff;
+}
+
 /*
  * The night map. Contrast on the night (#17181a): body text 13.6, muted text 6.8, dimmed text 4.1, the survey
  * colour 7.1. The ink of the day (#1d1d1f) on a solid survey button is 6.8.
