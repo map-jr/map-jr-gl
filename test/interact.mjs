@@ -3176,6 +3176,21 @@ for (const mode of renderers) {
             button: [true, 'Enable globe', 'false'], clicked: ['globe', true, true, false, 'Disable globe', 'true'], back: ['mercator', true], style: {type: 'globe'}, warnings: 0};
         check('[main] maplibre-compat: getProjection, setProjection, projectiontransition and GlobeControl follow MapLibre GL JS, and a globe writes no warning', JSON.stringify(projection) === JSON.stringify(want), JSON.stringify(projection));
     }
+    // getLight() returns only the fields of the light that the style sets, as MapLibre GL JS does (#1243).
+    if (mode === 'main') {
+        const lights = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            try {
+                await new Promise(r => m.once('load', r));
+                const none = m.getLight();
+                m.setLight({anchor: 'map', intensity: 0.3});
+                return [none, m.getLight()];
+            } finally { m.remove(); el.remove(); }
+        }).catch(e => ({error: String(e)}));
+        check('[main] maplibre-compat: getLight() returns only the fields that the style sets, as MapLibre GL JS does', JSON.stringify(lights) === JSON.stringify([{}, {anchor: 'map', intensity: 0.3}]), JSON.stringify(lights));
+    }
     // ScaleControl.setUnit() changes the unit, and 'nautical' shows nautical miles, as in MapLibre GL JS (#204).
     if (mode === 'main') {
         const texts = await page.evaluate(async () => {
