@@ -135,13 +135,13 @@ library" names a member that MapLibre GL JS does not have.
 | `setZoom` | `(zoom: number, eventData?: EventData \| undefined) => Map` | Sets the zoom level without an animation, as in MapLibre GL JS. |
 | `setBearing` | `(bearing: number, eventData?: EventData \| undefined) => Map` | Sets the bearing in degrees without an animation, as in MapLibre GL JS. |
 | `setPitch` | `(pitch: number, eventData?: EventData \| undefined) => Map` | Sets the pitch in degrees without an animation, as in MapLibre GL JS. |
-| `resetNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 with an animation of 500 ms unless `o` sets `duration`; MapLibre GL JS takes 1000 ms. |
-| `resetNorthPitch` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 and pitch 0 with an animation of 500 ms unless `o` sets `duration`; MapLibre GL JS takes 1000 ms. |
+| `resetNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 with an animation of 1000 ms unless `o` sets `duration`, as in MapLibre GL JS. |
+| `resetNorthPitch` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 and pitch 0 with an animation of 1000 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `panTo` | `(center: LngLatLike, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Moves the map center to a position with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `panBy` | `(offset: [number, number], o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Moves the map by `offset` in CSS pixels with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `zoomTo` | `(zoom: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the zoom level with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
-| `zoomIn` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Increases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`; MapLibre GL JS takes 500 ms. |
-| `zoomOut` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Decreases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`; MapLibre GL JS takes 500 ms. |
+| `zoomIn` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Increases the zoom level by 1 with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
+| `zoomOut` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Decreases the zoom level by 1 with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `rotateTo` | `(bearing: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of MapLibre GL JS has no effect. |
 | `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
