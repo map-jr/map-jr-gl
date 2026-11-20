@@ -172,7 +172,7 @@ Each event of the map is a `CustomEvent` that bubbles, named `map-` and the name
 | `map-idle` | `null`, each time the camera is still and nothing loads. |
 | `map-click` | `{point, lngLat, features}`, with the features of `interactive-layers` at the point. |
 | `map-hover` | The features of `interactive-layers` under the pointer, the top one first, when they change. |
-| `map-viewchange` | The view, `{center, zoom, bearing, pitch, bounds}`: once with the first view, right after the map is made and before `map-load`, and then at each change of the view. A listener that is added later misses the first one; read `state` then. |
+| `map-viewchange` | The view, `{center, zoom, bearing, pitch, bounds}`: once with the first view before `map-load`, and then at each change of the view. |
 | `map-colorschemechange` | The `colorScheme` that the control `colorScheme()` set. |
 | `map-error` | Each error of the map, an `Error`. |
 | `map-` and the name of each other event | The event object of [`listen`](map.md#listen): `map-moveend`, `map-sourcedata` and the others. `style.load` is `map-styleload`. |
@@ -184,7 +184,8 @@ A listener on the document or on an ancestor receives it, whenever the listener 
 that come once per frame or per pointer move, such as `map-move`, `map-render` and `map-mousemove`.
 
 `map-ready` and `map-load` are dispatched once. A listener added later does not receive them: check `el.map`, which
-is not `null` once the map exists, and `el.state.get().loaded`.
+is not `null` once the map exists, and `el.state.get().loaded`. In the same way, a listener of `map-viewchange` that
+is added later misses the first view: read `el.state` then.
 
 ```html
 <map-jr
