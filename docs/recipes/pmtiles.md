@@ -393,10 +393,9 @@ export default function Boundaries() {
 <!--
   A legend is on the map, and a
   line of text below the map lists
-  what a click
-  finds. The legend takes no
-  pointer events, so a click on it
-  reaches the map.
+  what a click finds. The legend
+  takes no pointer events, so a
+  click on it reaches the map.
 -->
 <map-jr
   id="map"

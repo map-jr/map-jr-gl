@@ -422,8 +422,8 @@ export default function Images() {
 <!--
   The map shows four places. Each
   has an SVG image in the colour
-  of its kind,
-  and its name beside it.
+  of its kind, and its name beside
+  it.
 -->
 <map-jr
   id="map"

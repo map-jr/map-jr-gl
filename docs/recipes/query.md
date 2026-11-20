@@ -354,10 +354,9 @@ export default function Query() {
 <!--
   The answer to a click shows in a
   box on the map, and a line of
-  text below the
-  map counts the features. The box
-  takes no pointer events, so a
-  click on it
+  text below the map counts the
+  features. The box takes no
+  pointer events, so a click on it
   reaches the map.
 -->
 <map-jr
