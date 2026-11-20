@@ -179,8 +179,11 @@ for (const renderer of renderers) {
             t.host.update({...t.spec, padding: {right: 300}});
             const spec = at();
             t.host.moveTo({bounds: b, fitPadding: {left: 400, top: 10, right: 10, bottom: 10}, bearing: 20, pitch: 30});
-            await wait(300);
-            const v = t.host.state.get().view, bounds = {bearing: Math.round(v.bearing), pitch: Math.round(v.pitch)};
+            // (The state store follows the engine, which reports a jump with its next frame: that frame comes more than 300 ms
+            // after the command on a slow machine without a GPU, #1335. Wait for the view that was asked for.)
+            const asked = performance.now();
+            for (let i = 0; i < 250 && !(Math.round(t.host.state.get().view.bearing) === 20 && Math.round(t.host.state.get().view.pitch) === 30); i++) await wait(20);
+            const v = t.host.state.get().view, bounds = {bearing: Math.round(v.bearing), pitch: Math.round(v.pitch), first: Math.round(performance.now() - asked)};
             t.host.moveTo({center: mid, bearing: 0, pitch: 0});
             const kept = at();
             t.host.update({...t.spec, padding: {right: 300}});
