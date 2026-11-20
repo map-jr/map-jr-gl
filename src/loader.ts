@@ -37,7 +37,8 @@ export interface LoadOptions {
      */
     createWorker?: () => Worker;
     /**
-     * The number of workers that parse tiles, shared by all maps of the page.
+     * The number of workers that parse tiles, shared by all maps of the page. A change has no effect while a map of the
+     * page uses workers of the same `workerUrl` or `createWorker`.
      * @default the number of CPU cores less 2, from 1 to 4
      */
     tileWorkers?: number;

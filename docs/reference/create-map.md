@@ -36,8 +36,8 @@ The map fills the container, and draws nothing while the container has a height 
 | Case | Message |
 |---|---|
 | The description has no `style`. | `[map-jr-gl] createMap(): the description has no "style". Pass the URL of a style or a style object as "style".` |
-| `container` is `null` or `undefined`. | `[map-jr-gl] createMap(): the container is null. In a framework, make the map after the element is mounted.` |
-| No element has the id `container`. | `[map-jr-gl] createMap(): no element with the id "map".` |
+| `container` is `null` or `undefined`. | `[map-jr-gl] createMap(): the container is null. In a framework, make the map after the element is mounted.`, with `undefined` in place of `null` for `undefined`. |
+| `container` is a string, and no element has that id. | `[map-jr-gl] createMap(): no element with the id "map".`, with the string that was passed. |
 
 The map writes a warning to the console when the container already has a map. The two maps then leave two canvases
 in the container. Call `destroy()` on the first map before you create the second.
@@ -45,7 +45,7 @@ in the container. Call `destroy()` on the first map before you create the second
 ## A browser without WebGL2
 
 The map requires WebGL2. In a browser without it, the map does not load, and it reports one error to
-[`onError`](description.md#mapdescription) with this message:
+[`onError`](events.md#mapevents) with this message:
 
 ```text
 [map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and show other content when it returns false.
@@ -83,9 +83,9 @@ warning with `console.warn` once for each map and each mistake. The production b
 | A bundler that builds for production | No |
 | Node.js with `--conditions=development` | Yes |
 | The file `dist/map-jr-gl.js` by URL, with no bundler | No. Load `dist/map-jr-gl.dev.js` instead while you develop. |
-| The standalone file, `@map-jr/map-jr-gl/standalone` | Yes |
+| The standalone file, `@map-jr/map-jr-gl/standalone`, which contains the worker | Yes, also in production |
 
-The development build warns in these cases:
+The development build warns in many cases. These are some of them:
 
 - The container is in the page, is not hidden, and has a height of 0 one second after the map is created.
 - An id in `interactiveLayers`, an id in `layers` of `queryFeatures`, or the source of `querySource` is not in the

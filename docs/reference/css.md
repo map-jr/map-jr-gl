@@ -14,8 +14,8 @@ on an element above it. The rules of the library have no specificity, so a rule 
 ```
 
 The controls, the attribution, the scale and the popup have a translucent background with a blur, and the buttons
-are round. A browser without `backdrop-filter` and CSS nesting (before Safari 18, Chrome 120 and Firefox 121) shows
-opaque controls with corners of 6 pixels. A map of `@map-jr/map-jr-gl/maplibre-compat` keeps the look of MapLibre GL JS.
+are round. A browser that lacks `backdrop-filter` or CSS nesting (before Safari 18, Chrome 120 and Firefox 121) shows opaque controls with
+corners of 6 pixels. A map of `@map-jr/map-jr-gl/maplibre-compat` keeps the look of MapLibre GL JS.
 
 ## Custom properties
 
@@ -24,11 +24,11 @@ opaque controls with corners of 6 pixels. A map of `@map-jr/map-jr-gl/maplibre-c
 | `--map-control-opacity` | The opacity of the background of the controls, from 0 to 1. The popup has 0.1 more. | `.55`, dark `.45` |
 | `--map-control-radius` | The radius of the controls. The popup has three quarters of it, and the attribution and the scale have half. | half of `--map-control-size` |
 | `--map-control-background` | The background of a group of buttons and of the compact attribution. It overrides `--map-control-opacity`. | white at `.55`, dark `rgb(30 30 34)` at `.45` |
-| `--map-control-color` | The colour of the icons and the text of the controls. | `#222`, dark `#e6e6e6` |
+| `--map-control-color` | The colour of the icons and the text of the controls. | `rgb(0 0 0 / .62)`, dark `rgb(255 255 255 / .66)`; without `backdrop-filter`, `#222` and dark `#e6e6e6` |
 | `--map-control-size` | The width and the height of a button. | `32px`, `44px` on a touch screen |
 | `--map-control-focus` | The colour of the focus outline of a button and of the map. | `#2f7fd1` |
 | `--map-attribution-background` | The background of the attribution and the scale. | as the controls |
-| `--map-popup-background` | The background of a popup. | white at `.65`, dark `rgb(30 30 34)` at `.55` |
+| `--map-popup-background` | The background of a popup. | white at `.65`, dark `rgb(43 43 43)` at `.55` |
 | `--map-popup-color` | The colour of the text of a popup. | `#222`, dark `#e6e6e6` |
 
 The dark defaults apply while the resolved [`colorScheme`](description.md#colorscheme-and-oncolorschemechange) is

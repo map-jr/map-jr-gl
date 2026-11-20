@@ -27,8 +27,15 @@ const stop = map.state.subscribe(state => state.hover, buildings => console.log(
 | `subscribe` | `(fn: (value: T) => void) => () => void` | Calls `fn` after each change. |
 <!-- ref:Readable:end -->
 
-`subscribe` accepts a selector as its first argument: `subscribe(select, fn)` calls `fn` only when the part that
-`select` returns changes, compared with `Object.is`. `fn` receives the part and the state. Both forms return a function
+`subscribe` has a second form, with a selector:
+
+```ts
+interface Readable<T> {
+  subscribe<S>(select: (value: T) => S, fn: (part: S, value: T) => void): () => void;
+}
+```
+
+It calls `fn` only when the part that `select` returns changes, compared with `Object.is`. `fn` receives the part and the state. Both forms return a function
 that stops the calls.
 
 A state object never changes. Each change creates a new object, and a part that did not change is the same object as
@@ -58,7 +65,7 @@ before. React reads such a store with `useSyncExternalStore`, Vue with a `shallo
   therefore called at each move: subscribe to `state => state.pointer` where only the pointer matters.
 - `colorScheme` resolves `'auto'` with the media query `prefers-color-scheme`.
 
-The state has no field for errors. To receive each error of the map, set [`onError`](description.md#mapdescription) in
+The state has no field for errors. To receive each error of the map, set [`onError`](events.md#mapevents) in
 the description or call [`map.listen('error', fn)`](events.md#mapevents).
 
 ## `View`

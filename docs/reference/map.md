@@ -4,6 +4,9 @@ The map (`MapInstance`) is the object that [`createMap`](create-map.md) of `@map
 apply a new [description](description.md), move the camera, query the features that the map shows, and place elements
 of the page on the map. Its [state](state.md) is a store that code can read and watch.
 
+The examples on this page are ES modules, as `<script type="module">` and a bundler run them, so they use `await` at
+the top level.
+
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
@@ -90,8 +93,13 @@ A changed paint value of a layer that stays in the style transitions from the ol
 `*-transition` property of the layer, the `transition` of the style, or 300 ms. A new style that differs in more than
 its layers loads again, and its values change at once.
 
-`update` throws an `Error` when `spec` has no `style`:
-`[map-jr-gl] update(): the description has no "style". Pass the complete description.` The
+`update` throws an `Error` when `spec` has no `style`, for example for `map.update({cursor: 'crosshair'})`:
+
+```text
+[map-jr-gl] update(): the description has no "style". update() takes the complete description, not only the changed fields. Write map.patch({cursor: …}) to change only some fields.
+```
+
+The
 [development build](create-map.md#the-development-build) warns when `spec` changes a field that the map reads only when
 it is created.
 
@@ -189,7 +197,15 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 **Returns:** `Promise<`[`RenderedFeature`](types.md#renderedfeature)`[]>`. A promise of the features.
 <!-- ref:MapInstance.queryFeatures:end -->
 
-`at` accepts these forms:
+### `FeaturePlace`
+
+`FeaturePlace` is the type of a place of a query:
+
+```ts
+type FeaturePlace = {x: number; y: number} | readonly number[] | readonly {x: number; y: number}[];
+```
+
+For `queryFeatures`, `at` accepts these forms:
 
 | `at` | Where the query looks |
 |---|---|
@@ -246,7 +262,8 @@ querySource(sourceId: string, at?: FeaturePlace | SourceOptions, options?: Sourc
 <!-- ref:MapInstance.querySource:end -->
 
 `querySource` reads the tile data of one source, so it finds features that no style layer draws. At a position, the
-map loads the tile when it does not have it, so the position need not be in the view. `at` accepts these forms:
+map loads the tile when it does not have it, so the position need not be in the view. `at` is a
+[`FeaturePlace`](#featureplace) or the options, in these forms:
 
 | `at` | Where the query looks |
 |---|---|
@@ -448,6 +465,8 @@ toBlob(type?: string, quality?: number): Promise<Blob>
 **Returns:** `Promise<Blob>`. A promise of the image. It rejects when the map is destroyed first.
 <!-- ref:MapInstance.toBlob:end -->
 
+`type` defaults to `'image/png'`. Without `quality`, the browser uses its default quality.
+
 The image has the size of the canvas in device pixels: the CSS size times `devicePixelRatio`. Markers, popups,
 controls and the attribution are elements of the page, so the image does not have them. To print the map, put the
 image in an `<img>`, because the canvas itself can print blank.
@@ -475,8 +494,13 @@ clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>
 **Returns:** `Promise<number>`. A promise that rejects when the source has no clusters or the cluster does not exist.
 <!-- ref:MapInstance.clusterExpansionZoom:end -->
 
-The three cluster methods reject with an `Error` whose message starts with `[map-jr-gl]` and the name of the method
-when the source is not a GeoJSON source, when it has no clusters, or when no cluster has the id.
+The three cluster methods reject with an `Error` in these cases, shown for `clusterExpansionZoom`:
+
+| Case | Message |
+|---|---|
+| The source is not a GeoJSON source of the style. | `[map-jr-gl] clusterExpansionZoom(): "parks" is not a GeoJSON source of the style.` |
+| The source has no `cluster: true`. | `[map-jr-gl] clusterExpansionZoom(): Source "parks" has no clusters.` |
+| No cluster has the id. | `[map-jr-gl] clusterExpansionZoom(): No cluster with the specified id.` |
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -568,7 +592,8 @@ When the system asks for reduced motion, the camera jumps to the target. The dev
 
 ### `MoveToOptions`
 
-These members set how the camera moves:
+`MoveToOptions` accepts `center`, `zoom`, `bearing` and `pitch` of [`ViewInput`](types.md#viewinput), `bounds`,
+`padding` and `maxZoom` of [`InitialView`](types.md#initialview), and these members, which set how the camera moves:
 
 <!-- ref:MoveToOptions:start -->
 | Name | Type | Default | Description |
@@ -586,12 +611,14 @@ The options of a flight, for `fly`, as in `flyTo` of MapLibre GL JS:
 |---|---|---|---|
 | `curve` | `number` | `1.42` | How far the camera zooms out on the way: a larger value zooms out further. |
 | `speed` | `number` | `1.2` | The average speed of the flight, relative to `curve`. |
-| `screenSpeed` | `number` | | The average speed of the flight in screens per second, in place of `speed`. |
+| `screenSpeed` | `number` | | The average speed of the flight in screens per second. |
 | `minZoom` | `number` | | The zoom level at the top of the flight. |
-| `maxDuration` | `number` | | The longest duration of the flight in milliseconds: a longer flight jumps to the target instead. |
+| `maxDuration` | `number` | | The longest duration of the flight in milliseconds, without `duration`: a longer flight jumps to the target instead. |
 <!-- ref:FlyOptions:end -->
 
 ## `fitBounds`
+
+`options` accepts `bearing`, `pitch`, `padding`, `maxZoom`, `duration` and `fly` of [`MoveToOptions`](#movetooptions).
 
 <!-- ref:MapInstance.fitBounds:start -->
 ```ts
@@ -700,10 +727,13 @@ the focus returns to the element of the map that had it before.
 
 ### `MapOverlay`
 
+`overlay` returns a `MapOverlay`. Its `update` replaces all options of the overlay with its argument, so pass the
+complete options each time.
+
 <!-- ref:MapOverlay:start -->
 | Name | Type | Description |
 |---|---|---|
-| [`update`](#update) | `(options: `[`OverlayOptions`](#overlayoptions)`) => void` | Replaces the options of the overlay. |
+| [`update`](#update) | `(options: `[`OverlayOptions`](#overlayoptions)`) => void` | Replaces all options of the overlay with `options`. |
 | `remove` | `() => void` | Removes the element from the map. |
 <!-- ref:MapOverlay:end -->
 
@@ -722,7 +752,8 @@ listen(type: K, fn: (event: MapEvents[K]) => void): () => void
 **Returns:** `() => void`. A function that stops the calls.
 <!-- ref:MapInstance.listen:end -->
 
-[Events](events.md) lists the types and what each event has. In TypeScript, the parameter of `fn` has the type of the
+`K` is the name of an event, one of the keys of [`MapEvents`](events.md#mapevents). [Events](events.md) lists the
+types and what each event has. In TypeScript, the parameter of `fn` has the type of the
 event, and a type that is not in `MapEvents` does not compile.
 
 ```js
@@ -749,7 +780,7 @@ once(type: K): Promise<MapEvents[K]>
 **Returns:** `Promise<`[`MapEvents`](events.md#mapevents)`[K]>`. A promise of the event. It rejects when the map is destroyed first.
 <!-- ref:MapInstance.once:end -->
 
-`once('load')` on a map that has loaded resolves at once, with an event that has only `type` and `target`. So code
+`K` is the name of an event, as for [`listen`](#listen). `once('load')` on a map that has loaded resolves at once, with an event that has only `type` and `target`. So code
 that waits for `load` need not read [`state.loaded`](state.md#mapstate) first.
 
 ```js

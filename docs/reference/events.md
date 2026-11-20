@@ -2,7 +2,8 @@
 
 A map of `@map-jr/map-jr-gl` fires events when it loads, moves, renders and receives input. To receive them, call
 [`map.listen(type, fn)`](map.md#listen) or [`map.once(type)`](map.md#once). For the common needs, read
-[the state](state.md) or set `onClick`, `onViewChange` and `onError` in the [description](description.md).
+[the state](state.md) or set `onClick`, `onViewChange` and `onError` in the [description](description.md#mapdescription).
+`onError` is `(error: Error) => void`, and it receives the errors of the `error` event.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -72,6 +73,8 @@ const stop = map.listen('click', event => console.log(event.lngLat));
 A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, north]]`.
 
 - `load` fires once, before the first `idle`.
+- `style.load` fires each time that a new style has loaded.
+- `remove` fires during [`destroy()`](map.md#destroy), before the pending queries reject.
 - `idle` waits for the tiles of the view. A tile whose request fails is requested again after 0.5 s, 1 s and 2 s.
   After the fourth failure, the map is idle without the tile. Each failure fires `error`.
 - `data` fires with each `styledata` and `sourcedata`, and `dataloading` with each `styledataloading` and
@@ -88,7 +91,8 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
 
 When the browser takes the WebGL context away, the map fires `webglcontextlost`, starts again on a new canvas with
 the same view and data, and fires `webglcontextrestored`. A map with the worker renderer starts again on the main
-thread, and writes one warning, in these cases:
+thread in these cases. With `renderer: 'worker'` it writes a warning, and with `'auto'` the development build writes
+a note with `console.info`:
 
 - the worker loses the context before its first frame;
 - the worker loses the context twice within 10 seconds;

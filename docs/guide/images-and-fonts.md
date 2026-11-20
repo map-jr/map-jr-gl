@@ -138,7 +138,7 @@ map.listen('styleimagemissing', event => {
 });
 ```
 
-[`map.patch`](../api.md#change-the-map) replaces the field `images` whole, so the listener passes the images that the
+[`map.patch`](../reference/map.md#patch) replaces the field `images` whole, so the listener passes the images that the
 map has (`map.description.images`, the `images` of the last description) with the new one. Where the description
 has no `images`, `map.description.images` is `undefined`, and the spread adds nothing.
 

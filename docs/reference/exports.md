@@ -23,7 +23,7 @@ const map = createMap('map', {
 |---|---|---|
 | `createMap` | `(container: HTMLElement \| string, spec: `[`MapDescription`](description.md#mapdescription)`) => `[`MapInstance`](map.md#mapinstance) | Creates a map in an element of the page from a description. |
 | [`points`](#points) | `<R>(records: readonly R[], options: `[`PointsOptions`](#pointsoptions)`<R>) => PointCollection` | A `FeatureCollection` with a point for each record. |
-| [`defaultPin`](#defaultpin) | `(options?: {color?: string; scale?: number}) => HTMLElement` | The default pin of `Marker`: a `div` with an SVG drop, 27 by 41 pixels at `scale` 1, filled with `color` (default `'#3fb1ce'`). |
+| [`defaultPin`](#defaultpin) | `(options?: {color?: string; scale?: number}) => HTMLElement` | A pin for `overlay`, the default pin of `Marker` in the compat entry: a `div` with an SVG drop, 27 by 41 pixels at `scale` 1, filled with `color` (default `'#3fb1ce'`). |
 | [`createStore`](#createstore) | `<T extends object>(value: T) => `[`Store`](#createstore)`<T>` | Creates a store of the kind that `state` of a map is, with `get`, `subscribe` and `set`. |
 | [`addProtocol`](#addprotocol) | `(name: string, fn: ProtocolFunction) => void` | Loads each URL that starts with `name://` through `fn`, for every map of the page. |
 | [`removeProtocol`](#removeprotocol) | `(name: string) => void` | Removes a protocol that `addProtocol` added. |
@@ -133,7 +133,7 @@ type ProtocolFunction = (
 ) => Promise<{data: unknown}>;
 ```
 
-- `request.url` is the URL as the style or the TileJSON has it, also when it has another URL inside, such as
+- `request.url` is the URL as the style or the TileJSON has it, after [`transformRequest`](description.md#transformrequest), also when it has another URL inside, such as
   `cog://https://example.com/a.tif`.
 - `abort` is aborted when the map is removed, and when a newer `setData` of a GeoJSON source replaces the request. A
   tile request that is no longer needed is not aborted. After an abort, the map ignores the result of `fn`.
@@ -200,7 +200,8 @@ configure(options: LoadOptions): void
 **Returns:** `void`.
 <!-- ref:MainExports.configure:end -->
 
-`renderer` of a description overrides `renderer` of `configure`. See [Loading](../loading.md) for the worker file.
+`renderer` of a description overrides `renderer` of `configure`. A change of `tileWorkers` has no effect while a map
+of the page uses workers of the same `workerUrl` or `createWorker`. See [Loading](../loading.md) for the worker file.
 
 ```js
 import {configure, createMap} from '@map-jr/map-jr-gl';

@@ -214,7 +214,7 @@ export interface MapDescription extends MapSetup {
      * in `state` of the style. A name that is left out or set to `null` uses the default of the style.
      */
     globalState?: Record<string, unknown>;
-    /** The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](docs/api.md#the-state) and in `onClick`. */
+    /** The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](docs/reference/state.md#mapstate) and in `onClick`. */
     interactiveLayers?: string[];
     /**
      * Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for
@@ -382,7 +382,7 @@ export interface OverlayOptions {
 }
 /** An element that `overlay` placed on the map. */
 export interface MapOverlay {
-    /** Replaces the options of the overlay. The element moves only when `lngLat` changes, so a dragged element stays where it was dropped. */
+    /** Replaces all options of the overlay with `options`. The element moves only when `lngLat` changes, so a dragged element stays where it was dropped. */
     update(options: OverlayOptions): void;
     /** Removes the element from the map. */
     remove(): void;

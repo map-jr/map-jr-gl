@@ -83,7 +83,7 @@ With `projection: null` or no field, the map uses the root property `projection`
 the style has none.
 
 A new `projection` switches the projection without loading the style again. Pass it to
-[`update`](../api.md#change-the-map) with the complete description, or to `patch` with only the fields that change. When the map switches from the flat map to the globe, it shows the flat map until the tiles of the view
+[`update`](../reference/map.md#update) with the complete description, or to `patch` with only the fields that change. When the map switches from the flat map to the globe, it shows the flat map until the tiles of the view
 are ready for the globe, for at most 1 second.
 
 ## Let the user switch to the globe

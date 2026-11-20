@@ -131,9 +131,9 @@ A feature that [`querySource`](map.md#querysource) returns. It has no style laye
 | `sourceLayer` **required** | `string` | | The layer of the vector tile. |
 | `id` | `number \| string` | | The id of the feature in its source, if it has one. |
 | `type` **required** | `'Point' \| 'LineString' \| 'Polygon'` | | The type of the geometry. |
-| `layer` | `string` | | For a rendered-features query: the id of the style layer that draws the feature. |
+| `layer` | `string` | | Not set by `querySource`. |
 | `properties` **required** | `Record<string, unknown>` | | The properties of the feature. |
-| `geometry` | `{type: string; coordinates: unknown}` | | The geometry as GeoJSON, in longitude and latitude: with `geometry: true`, and in a query of the view. |
+| `geometry` | `{type: string; coordinates: unknown}` | | The geometry as GeoJSON, in longitude and latitude. |
 <!-- ref:QueriedFeature:end -->
 
 ## `ClusterFeature`
@@ -179,7 +179,7 @@ const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero
 | Type | What it is |
 |---|---|
 | `MapPointer` | The argument of [`onClick`](description.md#onclick). |
-| `FeaturePlace` | The place of a query: see [`queryFeatures`](map.md#queryfeatures). |
+| [`FeaturePlace`](map.md#featureplace) | A point, a position or a box of the screen, for a query. |
 | [`FeatureOptions`](map.md#featureoptions), [`SourceOptions`](map.md#sourceoptions) | The options of the queries. |
 | [`MoveToOptions`](map.md#movetooptions), [`FlyOptions`](map.md#flyoptions) | The argument of `moveTo` and its flight. |
 | [`OverlayOptions`](map.md#overlayoptions), [`MapOverlay`](map.md#mapoverlay), `Anchor` | The options and the result of `overlay`. |

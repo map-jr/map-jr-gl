@@ -33,7 +33,7 @@ const map = createMap('map', {
 | [`controls`](#controls) | `ControlSpec[]` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
 | [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`, in place of the `projection` of the style. |
 | [`globalState`](#globalstate) | `Record<string, unknown>` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
-| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](../api.md#the-state) and in `onClick`. |
+| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](state.md#mapstate) and in `onClick`. |
 | [`hoverState`](#hoverstate) | `boolean` | `false` | Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for `feature-state` expressions. |
 | [`onClick`](#onclick) | `(event: MapPointer) => void` | | Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. |
 | `onError` | `(error: Error) => void` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |

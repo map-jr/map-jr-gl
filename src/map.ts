@@ -2167,11 +2167,11 @@ export interface FlyOptions {
      * @default 1.2
      */
     speed?: number;
-    /** The average speed of the flight in screens per second, in place of `speed`. */
+    /** The average speed of the flight in screens per second. It overrides `speed`. */
     screenSpeed?: number;
-    /** The zoom level at the top of the flight. */
+    /** The zoom level at the top of the flight. It overrides `curve`. */
     minZoom?: number;
-    /** The longest duration of the flight in milliseconds: a longer flight jumps to the target instead. */
+    /** The longest duration of the flight in milliseconds, without `duration`: a longer flight jumps to the target instead. */
     maxDuration?: number;
 }
 export type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};

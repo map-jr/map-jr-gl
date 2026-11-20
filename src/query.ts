@@ -14,11 +14,11 @@ export interface QueriedFeature {
     id?: number | string;
     /** The type of the geometry. */
     type: 'Point' | 'LineString' | 'Polygon';
-    /** For a rendered-features query: the id of the style layer that draws the feature. */
+    /** Not set by `querySource`. */
     layer?: string;
     /** The properties of the feature. */
     properties: Record<string, unknown>;
-    /** The geometry as GeoJSON, in longitude and latitude: with `geometry: true`, and in a query of the view. */
+    /** The geometry as GeoJSON, in longitude and latitude. A query of the view always sets it, and a query at a place sets it with `geometry: true`. */
     geometry?: {type: string; coordinates: unknown};
 }
 export interface TileQuery {
