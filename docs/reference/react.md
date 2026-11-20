@@ -35,7 +35,8 @@ The map as a component. It fills its parent element, so give the parent a height
 
 Every field of the [description](description.md#mapdescription) is a prop with the same name and the same value,
 except `style`, which is the prop `mapStyle`. The prop `style` is the CSS style of the element. The table lists the
-props that the description does not have, and those whose meaning differs.
+props that the description does not have, and `onViewChange`, a field of the description that the table also
+lists.
 
 <!-- ref:ReactMapJrProps:start -->
 | Name | Type | Default | Description |
@@ -89,7 +90,8 @@ export function Stations({stations}) {
 
 Each event of the map has a prop: `on` and the name of the event with a capital first letter, such as `onMoveend`,
 `onZoomend`, `onSourcedata` and `onStyleimagemissing`. The prop for `style.load` is `onStyleload`. The handler
-receives the event object of [`listen`](../api.md#events), which lists the events.
+receives the event object of [`listen`](../api.md#events) of the map. See [Events](../api.md#events) for the list of
+events.
 
 `onLoad`, `onIdle`, `onError` and `onHover` are props of the table above, and `onClick` and `onViewChange` are
 fields of the description. These six props receive the value that their entry states, not an event object of
@@ -99,13 +101,13 @@ Without `onError`, the map writes each error to the console. With `onError`, the
 
 ### The ref
 
-A ref on `MapJr` receives the map, a [`MapInstance`](../api.md) of the main API, for methods such as `queryFeatures`
+A ref on `MapJr` receives the map, a [`MapInstance`](../api.md#make-a-map) of the main API, for methods such as `queryFeatures`
 and `moveTo`. It is not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: to animate the camera, call
 `moveTo({...view, duration: 500})` in place of `flyTo`.
 
-The component creates the map in an effect. The ref is `null` during the first render and in the effects of the
-parent that run when it mounts. Read it in an event handler or after `onLoad`, or call [`useMap`](#usemap) in a
-child component.
+The component creates the map in an effect and sets the ref in the render after that. The ref is therefore `null`
+during the first render, and also in the effects of the parent that run when it mounts. Read it in an event handler
+or in `onLoad`, or call [`useMap`](#usemap) in a child component.
 
 ```jsx
 import {useRef} from 'react';
@@ -125,12 +127,14 @@ export function ZoomToCity() {
 ### `firstView`
 
 `firstView` shows a first view that a server rendered, before the map in the browser has drawn. Its value is the
-HTML that [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server` returns. The component reads
-the prop on its first render only, and the map removes the HTML when it has loaded the tiles of its first view. In
-the browser the prop can be left out, so that the HTML is not sent to the browser a second time.
+HTML that [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server` returns. On the server,
+`MapJr` renders its element with this HTML inside. In the browser, the component reads the prop on its first render
+only, and React reports no hydration mismatch for the HTML. The map removes the HTML when it has loaded the tiles of
+its first view.
 
 The entry has no `'use client'` directive. In the App Router of Next.js, render `MapJr` in a file of your own that
-starts with `'use client'`, and pass `firstView` to it from a server component.
+starts with `'use client'`, and pass `firstView` to it from a server component. Next.js also sends the props of a
+client component to the browser, so the page contains the HTML of `firstView` twice.
 
 ```jsx
 'use client';
@@ -171,11 +175,26 @@ See [Show the first view before the script runs](../guide/server-rendering.md#sh
 ## `MapOverlay`
 
 `MapOverlay` places its React children at a position of the map, as a marker or a popup. Use it inside `MapJr`. Its
-props are the options of [`overlay`](../api.md#elements-of-the-page-on-the-map) of the map, such as `lngLat`
-(required), `anchor`, `offset`, `popup`, `onClose` and `draggable`.
+props are the options of [`overlay`](../api.md#elements-of-the-page-on-the-map) of the map, and `children`. The map
+applies the props of each render.
 
-With `draggable`, the user can move the element. After a drag, the element stays where the user dropped it until
-`lngLat` changes. To keep the position, set it in `onDragEnd`, which receives `[lng, lat]`.
+<!-- ref:OverlayOptions:start -->
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `lngLat` **required** | `Position` | | The position of the element, `[lng, lat]`. |
+| `anchor` | `Anchor` | `'center'` | The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
+| `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
+| `popup` | `boolean` | `false` | Whether the element is shown in a box with a tip that points to the position (a popup). |
+| `onClose` | `() => void` | | Called when the user closes the popup. |
+| `draggable` | `boolean` | `false` | Whether the user can drag the element. |
+| `onDragStart` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, when a drag starts. |
+| `onDrag` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, at each move of a drag. |
+| `onDragEnd` | `(lngLat: Position) => void` | | Called with the position where the element was dropped, `[lng, lat]`. |
+<!-- ref:OverlayOptions:end -->
+
+With `onClose`, the popup has a button that closes it, and a popup cannot be dragged. After a drag, the element
+stays where the user dropped it until `lngLat` changes. To keep the position, set it in
+`onDragEnd`.
 
 ```jsx
 import {useState} from 'react';
@@ -215,10 +234,15 @@ each point.
 | `children` | `ReactNode \| ((params: Record<P, string>) => ReactNode)` | | An `<svg>` element, or a function that receives the parameters and returns one. |
 <!-- ref:ReactMapImageProps:end -->
 
+In the table, `P` is `string`: the names that `params` lists.
+
+Without `width` and `height`, an SVG has the size of its `viewBox`, or else of its `width` and `height` attributes.
+An image from `src` has its own size.
+
 The children can be a function that receives the parameters of `params` and returns an `<svg>` element. Each
 parameter is a slot of an [image template](description.md#images), not a value of React. The map fills it for each
-feature of the layer, from the property of the feature with the name of the parameter. With TypeScript, a parameter
-that is not in `params` is a type error.
+feature of the layer: from the property of the feature with the name of the parameter, or from `params` of the
+`image` expression of the layer. With TypeScript, a parameter that is not in `params` is a type error.
 
 ```jsx
 import {MapJr, MapImage} from '@map-jr/map-jr-gl/react';
@@ -279,8 +303,9 @@ changes.
 **Returns** the value of `select`, or `undefined` until the map is created.
 
 The component renders again when `select` returns a value that is not identical to the last one. Return a part of
-the state as it is (`state.hover`, `state.view`). A new object or list in each call renders the component at each
-change of the state.
+the state as it is (`state.hover`, `state.view`), or a number or a string. A `select` that returns a new object or
+array at each call makes React render without end, and React unmounts the tree with an error. To combine several
+parts, call `useMapState` once for each part.
 
 ```jsx
 import {MapJr, useMap, useMapState} from '@map-jr/map-jr-gl/react';

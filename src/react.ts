@@ -59,7 +59,7 @@ export const useMap = () => useContext(Host);
 /**
  * Returns a part of the state of the map, and renders the component again when that part changes:
  * `const zoom = useMapState(s => s.view.zoom)`.
- * @param select A function that returns a part of the state as it is. A new object at each call renders at each change of the state.
+ * @param select A function that returns a part of the state as it is, or a number or a string. A new object or array at each call makes React render without end.
  * @param map The map to read. Without it, the map of the `MapJr` that the component is in.
  * @returns The part of the state, or `undefined` until the map has started.
  */

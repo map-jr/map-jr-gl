@@ -66,7 +66,7 @@ export class MapJrElement extends Base {
         for (const k of PROPERTIES) if (Object.hasOwn(this, k)) { const v = this[k]; delete this[k]; this[k] = v as never; }
     }
 
-    /** The map (`MapInstance`), from the microtask after the element is added to the page until it is removed, or else `null`. */
+    /** The map (`MapInstance`), from the microtask after the element is in the page with a style until it is removed, or else `null`. */
     get map(): MapInstance | null { return this.made; }
     /** The state of the map as a store (`map.state`), or `null` while there is no map. */
     get state(): MapInstance['state'] | null { return this.made?.state ?? null; }

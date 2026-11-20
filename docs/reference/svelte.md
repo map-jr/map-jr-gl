@@ -2,8 +2,8 @@
 
 The entry `@map-jr/map-jr-gl/svelte` creates a map of `@map-jr/map-jr-gl` in a Svelte page. `mapJr` is an action
 that creates the map in an element from a [description](description.md), and `mapState` returns the
-[state of the map](../api.md#the-state) as a Svelte store. The entry does not import Svelte, so it works with each
-version of Svelte that has actions. The entry has no component.
+[state of the map](../api.md#the-state) as a Svelte store. The entry does not import Svelte and has no component. The
+examples on this page use the runes of Svelte 5 (`$state`, `$derived`, `$props`).
 
 ```svelte
 <script>
@@ -39,13 +39,14 @@ Creates a map in `node` with `options.description`, and calls `options.ready` wi
 | `ready` | `(map: MapInstance) => void` | | Called with the map once it is created. |
 <!-- ref:SvelteMapAction:end -->
 
-When `options` is a new object, Svelte calls `update`, and the map applies `description` as
-[`update`](../api.md#change-the-map) of the main API does. The map then applies what is different. A new object or
+When the value of `use:mapJr` changes, Svelte calls `update`, and the map applies `description` as
+[`update`](../api.md#change-the-map) of the main API does. To change the map, pass a new description object, for
+example from `$derived`, as in the example below. The map then applies what is different. A new object or
 list with the same content does no work, and the map compares each value of [`data`](description.md#data) by
 identity. `update` reads `description` only: a new `ready` is not called. When the element is removed, the map is
 destroyed.
 
-`ready` is the only way to reach the map, a [`MapInstance`](../api.md) of the main API. Call its methods there:
+`ready` is the only way to reach the map, a [`MapInstance`](../api.md#make-a-map) of the main API. Call its methods there:
 `map.listen(type, fn)` for an event of the map ([Events](../api.md#events)), and `map.overlay(element, options)`
 for a marker or a popup ([Elements of the page on the map](../api.md#elements-of-the-page-on-the-map)).
 
@@ -92,9 +93,9 @@ after each change. In a component, read it with `$`: `$live.view.zoom`.
 
 ## A first view from the server
 
-The entry has no option for server rendering. Render the HTML on the server with
-[`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server`, and put it into the element of the
-action with `{@html firstView}`. The map removes it when it has loaded the tiles of its first view.
+The entry has no option for server rendering. [`renderFirstView`](server.md#renderfirstview) of
+`@map-jr/map-jr-gl/server` returns the HTML of a first view, and [Server rendering](../guide/server-rendering.md)
+shows how a page uses it.
 
 ## See also
 
