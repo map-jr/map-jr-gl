@@ -24,7 +24,7 @@ const OWN = new Set(['onViewChange', 'onClick', 'onHover', 'onLoad', 'onIdle', '
 export interface MapJrProps extends Omit<MapDescription, 'style' | 'onViewChange'>, MapEventProps {
     /** The style: a style object, the URL of a style, or `{light, dark}`. The prop `style` is the CSS style of the element. */
     mapStyle: MapDescription['style'];
-    /** Called with the new view at each change of the view. To control the view, pass the value back to `view`. */
+    /** Called with the first view once, before `load`, and then with the new view at each change of the view. To control the view, pass the value back to `view`. */
     onViewChange?: (view: View) => void;
     /** Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. */
     onHover?: (features: RenderedFeature[]) => void;

@@ -7,7 +7,8 @@ states: a field that it leaves out is reset to its default.
 
 Every optional field accepts `null`, and `null` means the same as leaving the field out, so a description that is
 parsed from JSON does not need to delete keys. The one exception is [`terrain`](#terrain), where `null` turns off the
-terrain of the style.
+terrain of the style. The rule is for the fields of the description, not for the keys inside a field: in
+[`patch`](map.md#patch), a key of `data` that is `null` removes that source.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -30,7 +31,7 @@ const map = createMap('map', {
 | [`fonts`](#fonts) | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | [`initialView`](#initialview) | [`InitialView`](types.md#initialview)` \| null` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | [`view`](#view-and-onviewchange) | [`ViewInput`](types.md#viewinput)` \| null` | | A view that the application controls. |
-| [`onViewChange`](#view-and-onviewchange) | `((view: `[`View`](state.md#view)`) => void) \| null` | | Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
+| [`onViewChange`](#view-and-onviewchange) | `((view: `[`View`](state.md#view)`) => void) \| null` | | Called with the first view once, right after `createMap` returns (before `load`), and then with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
 | [`data`](#data) | `Record<string, GeoJSON \| string> \| null` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
 | [`images`](#images) | `Record<string, ImageInput> \| null` | | Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
 | [`sprite`](#sprite) | `{id: string; url: string}[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
@@ -235,6 +236,8 @@ Two other fields can override `initialView` when the map is created:
 
 When the description has `view`, the application controls the view. The application stores each view that
 `onViewChange` reports and passes it back in the next description. To move the map, it passes a different view.
+`onViewChange` receives the first view once, right after `createMap` returns and before `load`, and then each change.
+A view that it reported does not move the map when it comes back in `view`.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';

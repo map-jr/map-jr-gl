@@ -43,6 +43,7 @@ for (const renderer of renderers) {
             const t = window.t = {lib, style, views: [], seen: [], clicks: []};
             t.spec = {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onViewChange: v => t.views.push(v)};
             t.host = lib.createMap(el, t.spec);
+            t.sync = t.views.length; // (the first view comes after createMap returns)
             t.host.state.subscribe(s => s.loaded, loaded => t.seen.push('loaded:' + loaded));
             t.host.state.subscribe(s => s.view.zoom, zoom => t.seen.push('zoom'));
             t.host.listen('load', () => t.seen.push('load:idle=' + t.host.state.get().idle));
@@ -53,6 +54,20 @@ for (const renderer of renderers) {
             return {before: before.loaded, loaded: s.loaded, renderer: s.renderer, zoom: s.view.zoom, seen: t.seen, canvas: !!el.querySelector('canvas')};
         }, renderer);
         check(`[${renderer}] createMap: the map loads, and the state says so`, !start.before && start.loaded && (start.renderer === renderer || (renderer === 'worker' && start.renderer === 'main' /* a browser that cannot draw in a worker */)) && start.zoom === 14.3 && start.seen.includes('loaded:true') && start.seen.indexOf('load:idle=false') >= 0 && start.seen.indexOf('load:idle=false') < start.seen.indexOf('idle') && start.canvas, JSON.stringify(start));
+
+        // 1a. The first view is reported once, after createMap returns, and giving it back to `view` moves nothing (#1135).
+        const first = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), moves = [];
+            const stop = t.host.listen('move', () => moves.push(1));
+            const views = t.views.length, v = t.views[0];
+            t.host.update({...t.spec, view: v});
+            await wait(300);
+            stop();
+            t.host.update(t.spec); // (the later steps do not own the view)
+            return {sync: t.sync, views, zoom: v?.zoom, center: v?.center, bounds: !!v?.bounds, moves: moves.length, after: t.views.length};
+        });
+        check(`[${renderer}] onViewChange: the first view is reported once, after createMap returns, and giving it back moves nothing`,
+            first.sync === 0 && first.views === 1 && first.zoom === 14.3 && first.bounds && first.moves === 0 && first.after === 1, JSON.stringify(first));
 
         // 1b. once: a promise of the next event; `load` on a loaded map resolves at once.
         const once = await page.evaluate(async () => {
@@ -823,7 +838,7 @@ for (const renderer of renderers) {
         check(`[${renderer}] patch keeps the other fields, undefined removes a field, and description is the last description`,
             JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true, pitch: [90, 1, 60]}), JSON.stringify(patched));
 
-        // 3b3. `null` in an optional field means "not set" (#1146): a description from JSON with `null` in every optional
+        // 3b4. `null` in an optional field means "not set" (#1146): a description from JSON with `null` in every optional
         // field except `terrain` draws the same map as one without those keys, in createMap and in update, and warns nothing.
         const nulls = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
@@ -851,6 +866,32 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] null in every optional field draws the same map as a description without those keys, and warns nothing`,
             nulls.same === true && nulls.warned.length === 0, JSON.stringify(nulls).slice(0, 2000));
+
+        // 3b3. `patch` merges `data` by key, and a key that is `null` removes its source; `layers` is replaced whole (#1160).
+        const merged = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const wait = ms => new Promise(r => setTimeout(r, ms)), pt = c => ({type: 'Point', coordinates: c});
+            const circle = id => ({id, type: 'circle', source: id});
+            const host = t.lib.createMap(el, {style: t.style, renderer, attribution: false, data: {a: pt([0, 0])}, layers: [circle('a')]});
+            await new Promise(r => host._map.once('load', r));
+            const out = {};
+            host.patch({data: {b: pt([1, 1])}, layers: [circle('a'), circle('b')]});
+            out.both = [Object.keys(host.description.data), !!host._map.getSource('a'), !!host._map.getSource('b')];
+            host.patch({data: {a: null}, layers: [circle('b')]});
+            await wait(50);
+            out.removed = [Object.keys(host.description.data), !!host._map.getSource('a'), !!host._map.getSource('b'), !!host._map.getLayer('a'), !!host._map.getLayer('b')];
+            host.update(host.description);
+            out.same = [Object.keys(host.description.data), !!host._map.getSource('a'), !!host._map.getSource('b')];
+            // A field that is null is "not set" (#1146), while a key of `data` that is null still removes its source.
+            host.patch({data: {c: pt([2, 2])}, cursor: 'crosshair'});
+            host.patch({data: {c: null}, cursor: null});
+            await wait(50);
+            out.nulls = [Object.keys(host.description.data), !!host._map.getSource('c'), 'cursor' in host.description, el.querySelector('canvas').style.cursor];
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] patch merges data by key, null removes a source, and layers is replaced whole`,
+            JSON.stringify(merged) === JSON.stringify({both: [['a', 'b'], true, true], removed: [['b'], false, true, false, true], same: [['b'], false, true], nulls: [['b'], false, false, '']}), JSON.stringify(merged));
 
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.

@@ -190,11 +190,15 @@ export interface MapDescription extends MapSetup {
      * receives back to `view`. The map applies a new `view` with no animation; to animate the camera, call `moveTo`.
      */
     view?: ViewInput | null;
-    /** Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. */
+    /**
+     * Called with the first view once, right after `createMap` returns (before `load`), and then with the new view at each
+     * change of the view, also during a movement, and also when the change comes from `view` or `moveTo`.
+     */
     onViewChange?: ((view: View) => void) | null;
     /**
      * GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. To change the data
-     * of a source, pass a new object; the same object again changes nothing.
+     * of a source, pass a new object; the same object again changes nothing. `patch` merges `data` by key: it changes only
+     * the keys that it passes, and a key that is `null` removes the data of that source.
      */
     data?: Record<string, GeoJSON | string> | null;
     /**
@@ -558,9 +562,11 @@ export interface MapInstance {
     update(spec: MapDescription): void;
     /**
      * Applies the fields of `part` and keeps the other fields of the current description. A field of `part` that is `undefined` is removed.
+     * `data` is merged by key: `patch({data: {a: x}})` changes only the source `a`, and a key that is `null` removes the
+     * data of that source. Every other field, `layers` included, is replaced whole.
      * @param part The fields to change.
      */
-    patch(part: Partial<MapDescription>): void;
+    patch(part: Partial<Omit<MapDescription, 'data'>> & {data?: Record<string, GeoJSON | string | null>}): void;
     /** The description of the last `createMap`, `update` or `patch`. To change the map, call `update` or `patch`. */
     readonly description: Readonly<MapDescription>;
     /**
@@ -919,6 +925,14 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     map.on('move', () => moved(true));
     map.on('moveend', () => moved(false));
     map.on('resize', () => moved(state.get().moving));
+    // The first view is reported once, after `createMap` has returned, unless a move has reported a view before (#1135).
+    queueMicrotask(() => {
+        if (!alive || reported.length) return;
+        const view = viewOf();
+        reported.push(view);
+        state.set({view});
+        now.onViewChange?.(view);
+    });
 
     // The features under the pointer: one query at a time and at most one in a frame (#694). The moves of a frame make
     // one query for the last of them, and the last position is asked again when it has changed during a query.
@@ -1208,6 +1222,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         patch(part) {
             const next: any = {...now, ...part};
             for (const k in part) if ((part as any)[k] === undefined) delete next[k];
+            // (`data` is merged by key, and a key that is `null` is removed, #1160.)
+            if (part.data && typeof part.data === 'object') {
+                next.data = {...now.data};
+                for (const id in part.data) if (part.data[id] == null) delete next.data[id]; else next.data[id] = part.data[id];
+            }
             complete(next, 'patch', 'Do not set "style" to undefined.');
             if (alive) apply(next, now);
         },

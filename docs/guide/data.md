@@ -158,8 +158,9 @@ export function Route({to}) {
 
 The map compares the value of each key with the last one by identity. A change inside the old object, such as
 `features.push(feature)`, has no effect, so pass a new object. In the main API,
-[`map.patch`](../reference/map.md#patch) replaces the fields that it is passed and keeps the other fields of the
-description.
+[`map.patch`](../reference/map.md#patch) merges `data` by key: `map.patch({data: {route: next}})` changes only the
+source `route` and keeps the other keys, and `map.patch({data: {route: null}})` removes the source `route`. The
+adapters pass the complete description, so with an adapter pass the whole object `data`.
 
 When the style changes, the map keeps the data, and it creates the sources of the keys of `data` again in the new
 style.

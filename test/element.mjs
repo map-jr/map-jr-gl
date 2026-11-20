@@ -198,6 +198,8 @@ try {
     // 4. Two elements on one page.
     page = await open('/two');
     await page.waitForFunction(() => window.seen.filter(e => e.name === 'map-load').length === 2, null, {timeout: 60000});
+    const firstViews = await page.evaluate(() => window.seen.filter(e => e.name === 'map-viewchange').map(e => e.on).join());
+    check('browser: each element reports its first view once with map-viewchange, before any move (#1135)', firstViews === 'a,b' || firstViews === 'b,a', firstViews);
     const two = await page.evaluate(async () => {
         const a = document.getElementById('a'), b = document.getElementById('b');
         window.seen.length = 0;

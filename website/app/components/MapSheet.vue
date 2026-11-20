@@ -14,10 +14,6 @@ function onView(next: View) {
     view.value = {center: next.center, zoom: next.zoom};
     bounds.value = next.bounds;
 }
-// `update:view` comes when the view changes, so the corners of the first view are read from the state at `load`.
-function onLoad(map: {state: {get(): {view: View}}}) {
-    onView(map.state.get().view);
-}
 </script>
 
 <template>
@@ -35,7 +31,6 @@ function onLoad(map: {state: {get(): {view: View}}}) {
           :controls="controls"
           cooperative-gestures
           @update:view="onView"
-          @load="onLoad"
           @idle="state = 'idle'"
           @error="state = 'error'"
         />
