@@ -273,7 +273,7 @@ each point.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `name` **required** | `string` | | The name of the image, for `icon-image` of a style layer. |
-| `params` | `readonly P[]` | | The names of the parameters of the image. |
+| `params` | `readonly string[]` | | The names of the parameters of the image. |
 | `src` | `string` | | The URL of an image, in place of an SVG in `children`. |
 | `width` | `number` | | The width in CSS pixels. |
 | `height` | `number` | | The height in CSS pixels. |

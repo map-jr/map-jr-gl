@@ -71,7 +71,7 @@ new `key`.
 | `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| {compact?: boolean; customAttribution?: string \| string[]}` | | The options of the built-in attribution, or `false` to hide it. |
 | `hash` | `string \| boolean` | `false` | Whether the view is kept in the hash of the URL; a string is the name of the parameter. |
-| [`ssr`](#ssr) | `boolean \| {width?: number; height?: number; overrides?: false \| Record<string, `[`SSROverrides`](server.md#overrides)`>; attribution?: string \| string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]; tileZoomOffset?: number}` | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
+| [`ssr`](#ssr) | `boolean \| `[`MapJrSSROptions`](server.md#the-ssr-prop-of-mapjr) | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
 <!-- ref:VueMapJrProps:end -->
 
 ### `mapStyle`
@@ -380,7 +380,7 @@ const layers = [
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `name` **required** | `string` | | The name of the image, for `icon-image` of a style layer. |
-| `params` | `readonly P[]` | | The names of the parameters of the image, as an array of strings. |
+| `params` | `readonly string[]` | | The names of the parameters of the image, as an array of strings. |
 | `src` | `string` | | The URL of an image, in place of an SVG in the slot. |
 | `width` | `number` | | The width in CSS pixels. |
 | `height` | `number` | | The height in CSS pixels. |

@@ -123,7 +123,11 @@ const typeText = (member, optional, node, getter = false) => {
         const param = p => `${p.dotDotDotToken ? '...' : ''}${p.name.getText()}${p.questionToken || p.initializer ? '?' : ''}${p.type ? ': ' + p.type.getText() : ''}`;
         return flat(`${generics}(${node.parameters.map(param).join(', ')}) => ${node.type.getText()}`);
     }
-    if (node?.type) return flat(node.type.getText());
+    // (A type that names a type parameter of its interface, such as `readonly P[]`, is printed as the checker sees it
+    // in the type of types.ts, with the type that the reader passes in place of `P`, #1248.)
+    // (A function type keeps the text of the source, where the checker would print the parameter as `unknown`.)
+    const generic = !/=>/.test(node?.type?.getText() ?? '') && node?.parent?.typeParameters?.some(p => new RegExp(`\\b${p.name.getText()}\\b`).test(node.type.getText()));
+    if (node?.type && !generic) return flat(node.type.getText());
     let text = checker.typeToString(checker.getTypeOfSymbol(member), undefined, NodeBuilderFlags.NoTruncation).replace(/"([^"']*)"/g, "'$1'").replace(/\{ /g, '{').replace(/;? \}/g, '}');
     // (A prop of Vue has no annotation. Where the checker shortens a long type, take the type of its `PropType<…>`.)
     const prop = /PropType<(.*)>/s.exec(node?.getText() ?? '');
@@ -145,7 +149,7 @@ function defaultOf(member) {
     const target = members(link[1])?.find(m => m.member.name === link[2]);
     return target ? defaultOf(target.member) : text;
 }
-const slug = heading => heading.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().replace(/\s/g, '-');
+const slug = heading => heading.toLowerCase().replace(/`[^`]*`/g, m => m.replace(/[<>]/g, '')).replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().replace(/\s/g, '-');
 
 /** The anchors of the headings of a page, by each name in backticks that a heading has. */
 function anchors(text) {
@@ -175,6 +179,44 @@ function typeCell(text, page, self) {
     if (at < text.length) out.push(cell(code(text.slice(at))));
     return out.join('');
 }
+/** The longest table cell that scripts/docs-lint.mjs allows. */
+const LIMIT = 200;
+/** The length of a cell as docs-lint counts it: without the targets of links, and `\\|` as one character. */
+const size = text => text.replace(/\\\|/g, '|').replace(/\]\([^)]*\)/g, ']').length;
+/**
+ * A Type cell that fits the limit, and a sentence for the Description cell (#1260). Over the limit, the largest inline
+ * object type `{…}` becomes `object`, one at a time, and the sentence names the members of each.
+ */
+function shortType(text, page, self) {
+    const notes = [];
+    let out = typeCell(text, page, self);
+    while (size(out) > LIMIT) {
+        // (The outermost braces, the largest first.)
+        const spans = [];
+        let depth = 0, start = 0;
+        for (const [i, c] of [...text].entries()) {
+            if (c === '{') { if (!depth++) start = i; } else if (c === '}' && !--depth) spans.push([start, i + 1]);
+        }
+        if (!spans.length) break;
+        const [a, b] = spans.sort((x, y) => (y[1] - y[0]) - (x[1] - x[0]))[0];
+        const keys = [];
+        let d = 0, part = '';
+        // (The `>` of an arrow `=>` closes nothing.)
+        for (const c of text.slice(a + 1, b - 1) + ';') {
+            if ('{([<'.includes(c)) d++; else if ('})]>'.includes(c) && !(c === '>' && part.endsWith('='))) d--;
+            if (c === ';' && !d) { const k = /^\s*(\w+)\??:/.exec(part)?.[1]; if (k) keys.push(code(k)); part = ''; } else part += c;
+        }
+        const list = keys.length > 1 ? keys.slice(0, -1).join(', ') + ' and ' + keys.at(-1) : keys[0];
+        notes.push(`The ${notes.length ? 'next ' : ''}\`object\` has the members ${list}.`);
+        text = text.slice(0, a) + 'object' + text.slice(b);
+        out = typeCell(text, page, self);
+    }
+    if (size(out) > LIMIT) problems.push(`${page}: the Type cell "${text.slice(0, 40)}…" has ${size(out)} characters, over the ${LIMIT} of docs-lint. Give the type a name in src/.`);
+    return {type: out, note: notes.join(' ')};
+}
+/** A Description cell with the sentence of `shortType`. */
+// (When the sentence would make the Description cell too long, it is left out, and the Description says what the object has.)
+const withNote = (description, note) => note && size(description) + note.length < LIMIT ? `${description} ${note}`.trim() : description;
 /** A Description cell. A link of the TSDoc to a file of the repository (`docs/loading.md#…`) is made relative to the page. */
 const describe = (text, page) => cell(text.replace(/\]\(((?:docs\/|README\.md)[^)\s]*)\)/g, (_, target) => {
     const [file, anchor = ''] = target.split(/(?=#)/);
@@ -196,7 +238,7 @@ function table(name, links, page) {
         const label = code(member.name), linked = links.has(member.name) ? `[${label}](${links.get(member.name)})` : label;
         const marks = [input && !optional && !method && !readonly ? ' **required**' : '', readonly ? ' (read only)' : ''].join('');
         const fallback = defaultOf(member);
-        const type = typeCell(typeText(member, optional, node, getter), page, name), description = describe(firstSentence(doc), page);
+        const {type, note} = shortType(typeText(member, optional, node, getter), page, name), description = withNote(describe(firstSentence(doc), page), note);
         rows.push(line(input ? [linked + marks, type, fallback ? cell(/^`.*`$/.test(fallback) || /\s/.test(fallback.replace(/'[^']*'/g, '')) ? fallback : code(fallback)) : '', description] : [linked + marks, type, description]));
     }
     return rows.join('\n');
@@ -221,7 +263,8 @@ function method(name, page) {
             out.push('| Name | Type | Default | Description |\n|---|---|---|---|\n' + params.map(p => {
                 const text = tags.find(t => t.name === 'param' && t.text?.trim().split(/\s/)[0] === p.name)?.text?.trim().slice(p.name.length).replace(/^\s*-?\s*/, '') ?? '';
                 if (!text) problems.push(`ref:${name}: the parameter \`${p.name}\` has no @param text.`);
-                return line([code(p.name) + (p.optional ? '' : ' **required**'), typeCell(p.type, page), '', describe(firstSentence(text), page)]);
+                const {type, note} = shortType(p.type, page);
+                return line([code(p.name) + (p.optional ? '' : ' **required**'), type, '', withNote(describe(firstSentence(text), page), note)]);
             }).join('\n'));
         }
     }
