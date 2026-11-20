@@ -1,11 +1,12 @@
-// Checks the output of `pnpm generate` in Chromium, behind the plain static server of scripts/serve.mjs.
+// Checks the output of `pnpm generate` in Chromium, and the table of contents on a phone also in WebKit, behind the
+// plain static server of scripts/serve.mjs.
 //
 // Usage: node scripts/check.mjs [--no-map] [--screenshots=<path and start of the file names>]
 //   --no-map       does not wait for the map of the home page. The map needs the style and the tiles of other hosts.
 //   --screenshots  also saves pictures of the home page and of one docs page (light and dark), of the install block
 //                  and of the code of /reference/server, each 1440 and 390 wide.
 import {readFileSync} from 'node:fs';
-import {chromium} from 'playwright';
+import {chromium, devices, webkit} from 'playwright';
 import {serve} from './serve.mjs';
 
 const withMap = !process.argv.includes('--no-map');
@@ -331,6 +332,56 @@ try {
             }
             await close();
         }
+    }
+
+    // A long table of contents on a phone, in Chromium and in WebKit with touch, scrolls to its last entry, which is
+    // in the window and takes the reader to its heading (#1312). The list is as high as the window without the
+    // toolbars of the browser (`dvh`); Playwright has no toolbars, so Safari on iOS needs a check on the device.
+    // Chromium scrolls the list with a swipe. Playwright cannot swipe or turn the wheel in WebKit with touch, so there
+    // the list is scrolled by its `scrollTop`.
+    for (const type of [chromium, webkit]) {
+        const engine = type === chromium ? browser : await type.launch();
+        for (const path of ['/reference/map', '/reference/description']) {
+            const name = `table of contents of ${path} on a phone in ${type.name()}`;
+            const context = await engine.newContext(devices['iPhone 13']);
+            const page = await context.newPage();
+            await page.goto(base + path, {waitUntil: 'networkidle'});
+            const trigger = page.getByRole('button', {name: 'On this page'});
+            const list = page.locator('nav').filter({has: trigger});
+            const entries = list.locator('[data-slot="content"][data-state="open"] a');
+            await trigger.tap();
+            await entries.first().waitFor();
+            await page.waitForTimeout(300);
+            const box = await list.boundingBox();
+            const swipe = type === chromium && await context.newCDPSession(page);
+            for (let last = -1; ;) {
+                if (swipe) await swipe.send('Input.synthesizeScrollGesture', {x: box.x + box.width / 2, y: box.y + box.height - 40, yDistance: -400, gestureSourceType: 'touch'});
+                else await list.evaluate(element => element.scrollBy(0, 400));
+                await page.waitForTimeout(100);
+                const top = await list.evaluate(element => element.scrollTop);
+                if (top === last) break;
+                last = top;
+            }
+            const place = await list.evaluate(element => {
+                const links = element.querySelectorAll('[data-slot="content"][data-state="open"] a');
+                return {
+                    entries: links.length,
+                    list: Math.round(element.getBoundingClientRect().bottom),
+                    last: Math.round(links[links.length - 1].getBoundingClientRect().bottom),
+                    window: innerHeight,
+                    scrolled: element.scrollTop > 0 && element.scrollTop >= element.scrollHeight - element.clientHeight - 1,
+                };
+            });
+            check(`${name}: the list is longer than the window and scrolls to its end`, place.scrolled, JSON.stringify(place));
+            check(`${name}: the last entry is in the window`, place.last <= place.list && place.list <= place.window, JSON.stringify(place));
+            const lastEntry = entries.last();
+            const id = decodeURIComponent((await lastEntry.getAttribute('href')).slice(1));
+            await lastEntry.tap();
+            await page.waitForTimeout(1000);
+            check(`${name}: a tap on the last entry goes to "${id}"`, decodeURIComponent(new URL(page.url()).hash.slice(1)) === id, page.url());
+            await context.close();
+        }
+        if (engine !== browser) await engine.close();
     }
 
     // The table of contents (useTocActive) marks exactly one entry: the section that the reader is in (#1251).

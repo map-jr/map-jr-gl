@@ -37,6 +37,9 @@ export default defineAppConfig({
         },
         contentToc: {
             slots: {
+                // The height that the browser shows, without its toolbars (`dvh`). With `vh`, the end of a long list
+                // was below the toolbar of Safari on iOS and could not be reached (#1312).
+                root: 'max-h-[calc(100dvh-var(--ui-header-height))]',
                 container: 'lg:py-0 lg:my-8 legend-box',
                 trigger: 'legend-title',
                 link: 'legend-link',
