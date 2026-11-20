@@ -986,8 +986,9 @@ for (const renderer of renderers) {
             const fitted = t.host._map.getZoom();
             t.host.moveTo({bounds: small, maxZoom: 5});
             const movedOld = t.host._map.getZoom();
-            t.host.fitBounds(small, {padding: 10});
-            const padded = t.host._map.getPadding();
+            t.host.fitBounds(small, {padding: {left: 300}});
+            const p = t.host._map.project([-74.01005, 40.71005]), rect = document.getElementById('host').getBoundingClientRect();
+            const padded = Math.round(p.x - rect.width / 2);
             await wait(500);
             old.destroy(); el.remove();
             console.warn = warn;
@@ -998,7 +999,7 @@ for (const renderer of renderers) {
             check(`[${renderer}] fitMaxZoom limits the fit in initialView, moveTo and fitBounds (#1147)`,
                 F.initial === 4 && F.moved === 5 && F.fitted === 6, JSON.stringify(F));
             check(`[${renderer}] padding and maxZoom of initialView, moveTo and fitBounds warn with the new name and have no effect (#1147)`,
-                F.initialOld > 4 && F.movedOld > 5 && F.padded.left === 0 && said('initialView', 'maxZoom') && said('initialView', 'padding') && said('moveTo()', 'maxZoom') && said('fitBounds()', 'padding'), JSON.stringify(F));
+                F.initialOld > 4 && F.movedOld > 5 && Math.abs(F.padded) <= 2 && said('initialView', 'maxZoom') && said('initialView', 'padding') && said('moveTo()', 'maxZoom') && said('fitBounds()', 'padding'), JSON.stringify(F));
         }
 
         check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
