@@ -92,6 +92,7 @@ engine and read the same styles, so the map looks the same.
    const map = createMap('map', {
      style: 'https://styles.map-jr.org/1/elevation-zero.json',
      initialView: {center: [-74.0065, 40.7085], zoom: 13},
+     data: {stations: {type: 'FeatureCollection', features: []}},
      layers: [station('#d6453d')],
    });
 
