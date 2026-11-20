@@ -338,6 +338,60 @@ try {
         }
     }
 
+    // A long table of contents on a phone, in Chromium and in WebKit with touch, scrolls to its last entry, which is
+    // in the window and takes the reader to its heading (#1312). The list is as high as the window without the
+    // toolbars of the browser (`dvh`); Playwright has no toolbars, so Safari on iOS needs a check on the device.
+    // Chromium scrolls the list with the wheel: a synthesized touch swipe scrolls nothing in headless Chromium on Linux,
+    // not even the page. Playwright cannot swipe or turn the wheel in WebKit with touch, so there the list is scrolled
+    // by its `scrollTop`.
+    for (const type of [chromium, webkit]) {
+        const engine = type === chromium ? browser : await type.launch();
+        for (const path of ['/reference/map', '/reference/description']) {
+            const name = `table of contents of ${path} on a phone in ${type.name()}`;
+            const context = await engine.newContext(devices['iPhone 13']);
+            const page = await context.newPage();
+            await page.goto(base + path, {waitUntil: 'networkidle'});
+            const trigger = page.getByRole('button', {name: 'On this page'});
+            const list = page.locator('nav').filter({has: trigger});
+            const entries = list.locator('[data-slot="content"][data-state="open"] a');
+            await trigger.tap();
+            await entries.first().waitFor();
+            await page.waitForTimeout(300);
+            const box = await list.boundingBox();
+            if (type === chromium) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            for (let last = -1; ;) {
+                if (type === chromium) await page.mouse.wheel(0, 400);
+                else await list.evaluate(element => element.scrollBy(0, 400));
+                await page.waitForTimeout(100);
+                const top = await list.evaluate(element => element.scrollTop);
+                if (top === last) break;
+                last = top;
+            }
+            const place = await list.evaluate(element => {
+                const links = element.querySelectorAll('[data-slot="content"][data-state="open"] a');
+                return {
+                    entries: links.length,
+                    list: Math.round(element.getBoundingClientRect().bottom),
+                    last: Math.round(links[links.length - 1].getBoundingClientRect().bottom),
+                    window: innerHeight,
+                    page: scrollY,
+                    scrolled: element.scrollTop > 0 && element.scrollTop >= element.scrollHeight - element.clientHeight - 1,
+                };
+            });
+            check(`${name}: the list is longer than the window and scrolls to its end`, place.scrolled, JSON.stringify(place));
+            check(`${name}: the last entry is in the window`, place.last <= place.list && place.list <= place.window, JSON.stringify(place));
+            // The last turn of the wheel in the loop is past the end of the list.
+            if (type === chromium) check(`${name}: the wheel past the end of the list does not scroll the page`, place.page === 0, JSON.stringify(place));
+            const lastEntry = entries.last();
+            const id = decodeURIComponent((await lastEntry.getAttribute('href')).slice(1));
+            await lastEntry.tap();
+            await page.waitForTimeout(1000);
+            check(`${name}: a tap on the last entry goes to "${id}"`, decodeURIComponent(new URL(page.url()).hash.slice(1)) === id, page.url());
+            await context.close();
+        }
+        if (engine !== browser) await engine.close();
+    }
+
     // The table of contents (useTocActive) marks exactly one entry: the section that the reader is in (#1251).
     {
         const tocPage = '/guide/view-and-camera';
