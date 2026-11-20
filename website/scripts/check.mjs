@@ -2,7 +2,8 @@
 //
 // Usage: node scripts/check.mjs [--no-map] [--screenshots=<path and start of the file names>]
 //   --no-map       does not wait for the map of the home page. The map needs the style and the tiles of other hosts.
-//   --screenshots  also saves pictures of the home page and of one docs page: light and dark, 1440 and 390 wide.
+//   --screenshots  also saves pictures of the home page and of one docs page (light and dark), of the install block
+//                  and of a long line of code, each 1440 and 390 wide.
 import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
 import {serve} from './serve.mjs';
@@ -257,6 +258,48 @@ try {
         check(`reference table at ${width}: a link to a row shows it below the header`, top > 0 && top < 300, `${Math.round(top)} px`);
         check(`reference table at ${width}: no failed request and no error`, problems.length === 0, problems.join(' | '));
         await close();
+    }
+
+    // Long lines of code (#1250): from 1440 a line stays whole and its block scrolls sideways; at 390 the lines wrap
+    // and the page does not scroll sideways.
+    for (const path of [installPage, '/reference/server']) {
+        for (const width of [1440, 390]) {
+            const {page, problems, close} = await open(path, {width, height: width === 390 ? 844 : 900});
+            // The longest visible line of the page, with the number of its line boxes and the scroll of its block.
+            const longest = await page.locator('main pre').evaluateAll(blocks => {
+                let found = null;
+                for (const block of blocks) {
+                    if (!block.checkVisibility()) continue;
+                    for (const line of block.querySelectorAll('.line')) {
+                        const length = line.textContent.length;
+                        if (found && length <= found.length) continue;
+                        const range = document.createRange();
+                        range.selectNodeContents(line);
+                        const tops = new Set([...range.getClientRects()].map(rect => Math.round(rect.top)));
+                        found = {length, boxes: tops.size, scrolls: block.scrollWidth > block.clientWidth, text: line.textContent.slice(0, 40)};
+                    }
+                }
+                return found;
+            });
+            const detail = longest ? `${longest.length} characters, ${longest.boxes} line boxes, scrolls ${longest.scrolls}: ${longest.text}` : 'no line';
+            if (width === 1440) {
+                check(`long code at 1440 on ${path}: the longest line is one line box and its block scrolls sideways`, !!longest && longest.boxes === 1 && longest.scrolls, detail);
+            } else {
+                check(`long code at 390 on ${path}: the longest line wraps and its block does not scroll`, !!longest && longest.boxes > 1 && !longest.scrolls, detail);
+            }
+            const beyond = await page.locator('main pre').evaluateAll(blocks => blocks.filter(block => block.checkVisibility() && block.getBoundingClientRect().right > document.documentElement.clientWidth).length);
+            check(`long code at ${width} on ${path}: no code block reaches past the page`, beyond === 0, `${beyond} blocks`);
+            // /reference/server has a table of options that is wider than a phone, which is not a code block.
+            if (path === installPage) check(`long code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
+            check(`long code at ${width} on ${path}: no failed request and no error`, problems.length === 0, problems.join(' | '));
+            if (screenshots && path === '/reference/server') {
+                await page.locator('main pre').filter({hasText: longest?.text ?? ''}).first().scrollIntoViewIfNeeded();
+                const file = `${screenshots}-long-code-${width}.png`;
+                await page.screenshot({path: file});
+                console.log('screenshot', file);
+            }
+            await close();
+        }
     }
 
     // The raw Markdown of a page is the file of docs/.
