@@ -337,8 +337,9 @@ try {
     // A long table of contents on a phone, in Chromium and in WebKit with touch, scrolls to its last entry, which is
     // in the window and takes the reader to its heading (#1312). The list is as high as the window without the
     // toolbars of the browser (`dvh`); Playwright has no toolbars, so Safari on iOS needs a check on the device.
-    // Chromium scrolls the list with a swipe. Playwright cannot swipe or turn the wheel in WebKit with touch, so there
-    // the list is scrolled by its `scrollTop`.
+    // Chromium scrolls the list with the wheel: a synthesized touch swipe scrolls nothing in headless Chromium on Linux,
+    // not even the page. Playwright cannot swipe or turn the wheel in WebKit with touch, so there the list is scrolled
+    // by its `scrollTop`.
     for (const type of [chromium, webkit]) {
         const engine = type === chromium ? browser : await type.launch();
         for (const path of ['/reference/map', '/reference/description']) {
@@ -353,9 +354,9 @@ try {
             await entries.first().waitFor();
             await page.waitForTimeout(300);
             const box = await list.boundingBox();
-            const swipe = type === chromium && await context.newCDPSession(page);
+            if (type === chromium) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
             for (let last = -1; ;) {
-                if (swipe) await swipe.send('Input.synthesizeScrollGesture', {x: box.x + box.width / 2, y: box.y + box.height - 40, yDistance: -400, gestureSourceType: 'touch'});
+                if (type === chromium) await page.mouse.wheel(0, 400);
                 else await list.evaluate(element => element.scrollBy(0, 400));
                 await page.waitForTimeout(100);
                 const top = await list.evaluate(element => element.scrollTop);
