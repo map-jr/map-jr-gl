@@ -21,17 +21,31 @@ export interface Map {
     on<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     on(type: string, listener: (e: any) => void): this;
     on(type: string, layerId: string | string[], listener: (e: any) => void): this;
+    /**
+     * Calls `listener` one time, for the next event of `type`, as in MapLibre GL JS. With `layerId`, the event is one of a
+     * layer (`click` on that layer, for example). Without `listener`, `once` returns a promise of the event.
+     */
     once<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     once(type: string, listener: (e: any) => void): this;
     once<T extends keyof MapLayerEventType>(type: T, layerId: string | string[], listener: (e: MapLayerEventType[T]) => void): this;
     once<T extends keyof MapEventType>(type: T, layerId?: string | string[]): Promise<MapEventType[T]>;
     once(type: string, layerId?: string | string[]): Promise<any>;
+    /** Removes a listener that `on` added, as in MapLibre GL JS. Pass the same type, layer id and function as to `on`. */
     off<T extends keyof MapLayerEventType>(type: T, layerId: string | string[], listener: (e: MapLayerEventType[T]) => void): this;
     off<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     off(type: string, listener: (e: any) => void): this;
     off(type: string, layerId: string | string[], listener: (e: any) => void): this;
+    /**
+     * Returns the specification of the source with this id and the methods of its type, or `undefined` when the style has
+     * no such source. MapLibre GL JS returns an object of a source class; see "Source methods" in docs/maplibre-compatibility.md for the methods.
+     */
     getSource<T extends Source = Source>(id: string): T | undefined;
+    /** Moves the camera to a view with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     easeTo(o: EaseToOptions, eventData?: EventData): this;
+    /**
+     * Replaces the style with a style URL or a style object, and returns a promise that settles when the new style has
+     * loaded. MapLibre GL JS returns the map.
+     */
     setStyle(style: unknown, options?: StyleSwapOptions): Promise<void>;
     /** The style, as in MapLibre GL JS. It is `undefined` before the map has a style. */
     getStyle(): StyleSpecification;
@@ -146,11 +160,18 @@ export class Map extends CoreMap {
         this.warned.add(name);
         console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md.`);
     }
+    /** Has no effect, and `false` warns once: the map always draws copies of the world side by side. */
     setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
+    /** Has no effect, and a value other than 0 warns once: the camera has no roll. */
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
+    /** Has no effect, and a value other than 36.87 warns once: the vertical field of view stays at 36.87 degrees. */
     setVerticalFieldOfView(fov?: number) { return this.unsupported('setVerticalFieldOfView', fov === undefined || Math.abs(fov - 36.87) < 0.01); }
+    /** Returns 36.87, the vertical field of view of the camera in degrees, which is the default of MapLibre GL JS. */
     getVerticalFieldOfView() { return 36.87; }
-    /** The tiles that cover the view, as MapLibre GL JS gives them: `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`. */
+    /**
+     * Returns the tiles that cover the view as plain objects `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`; MapLibre GL JS
+     * returns `OverscaledTileID` objects. `minzoom` is 0 and `maxzoom` 30 when they are left out.
+     */
     coveringTiles(o: {tileSize: number, minzoom?: number, maxzoom?: number, roundZoom?: boolean}) {
         return this.tr.tileCover(o.minzoom ?? 0, o.maxzoom ?? 30, o.tileSize, o.roundZoom).map(({z, x, y, w, key}) =>
             ({canonical: {z, x, y, key}, wrap: w, overscaledZ: z, key: `${w}/${key}`}));
@@ -191,12 +212,18 @@ export class Map extends CoreMap {
         tr.setLocationAt(lng, lat, px, py);
         return {center: new LngLat(tr.lng, tr.lat), zoom: tr.zoom};
     }
+    /** Has no effect, and `false` warns once: the map center is always on the ground. */
     setCenterClampedToGround(clamped?: boolean) { return this.unsupported('setCenterClampedToGround(false)', clamped !== false); }
+    /** Returns `true`: the map center is always on the ground. */
     getCenterClampedToGround() { return true; }
+    /** Has no effect, and a value other than 0 warns once: the map center is always on the ground. */
     setCenterElevation(elevation?: number) { return this.unsupported('setCenterElevation', !elevation); }
+    /** Has no effect, and gives no warning for any value. */
     setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
+    /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
     getAnisotropicFilterPitch() { return 20; }
     /**
+     * Has no effect on the camera that the map draws, and warns once when the function changes the camera of a movement.
      * MapLibre GL JS calls this function before each frame and draws the camera that it returns. This library does not:
      * it calls the function after each `move` and warns once when the function changes the camera, because only then
      * does the map draw something else than the function asks for. react-map-gl gives a function for each map; it
@@ -228,18 +255,37 @@ export class Map extends CoreMap {
         console.warn('[map-jr-gl] setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.');
     }
     // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
+    /**
+     * Has no effect, and setting it to `true` warns once: the map does not draw tile borders. Reading it returns the value that was set.
+     * @default false
+     */
     get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
     set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
+    /**
+     * Has no effect, and setting it to `true` warns once: the map does not draw the padding. Reading it returns the value that was set.
+     * @default false
+     */
     get showPadding() { return !!this.debugDraw.showPadding; }
     set showPadding(v: boolean) { this.setDebug('showPadding', v); }
+    /**
+     * Has no effect, and setting it to `true` warns once: the map does not draw collision boxes. Reading it returns the value that was set.
+     * @default false
+     */
     get showCollisionBoxes() { return !!this.debugDraw.showCollisionBoxes; }
     set showCollisionBoxes(v: boolean) { this.setDebug('showCollisionBoxes', v); }
+    /**
+     * Has no effect, and setting it to `true` warns once: the map has no overdraw view. Reading it returns the value that was set.
+     * @default false
+     */
     get showOverdrawInspector() { return !!this.debugDraw.showOverdrawInspector; }
     set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
     private debugDraw: Record<string, boolean> = {};
     private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
 
-    /** Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS. */
+    /**
+     * Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS.
+     * A value below 1 counts as 1, and an id that the style does not have throws an error.
+     */
     setSourceTileLodParams(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string) {
         if (sourceId && !this.getSource(sourceId)) throw new Error(`[map-jr-gl] setSourceTileLodParams: there is no source "${sourceId}". Add the source first, or leave out the ID for all sources.`);
         this.post({type: 'lod', sources: sourceId ? [sourceId] : Object.keys(this.resolved?.sources ?? {}), lod: [Math.max(1, maxZoomLevelsOnScreen), Math.max(1, tileCountMaxMinRatio)]});
@@ -267,6 +313,7 @@ export class Map extends CoreMap {
      * goes to the nearest multiple of it, and `cameraForBounds` (and so `fitBounds`) to the multiple below.
      */
     setZoomSnap(snap: number) { this.zoomSnap = snap; return this; }
+    /** Returns the step of the zoom that the option `zoomSnap` or `setZoomSnap` set, or 0 when the zoom does not snap. */
     getZoomSnap() { return this.zoomSnap; }
     private zoomSnap = 0;
     private snapped<T extends {zoom?: number}>(o: T, down?: boolean): T {
@@ -384,10 +431,18 @@ export class Map extends CoreMap {
         return this;
     }
     // A value that is not a control fires `error`, as in MapLibre GL JS. A bad position throws, as there (from the core).
+    /**
+     * Adds a control to a corner of the map, as in MapLibre GL JS. A value that has no `onAdd` method fires `error` and adds nothing, and a position that is not a corner throws an error.
+     * @param position `'top-left'`, `'top-right'`, `'bottom-left'` or `'bottom-right'`. When it is left out, the corner that `getDefaultPosition()` of the control returns, or else `'top-right'`.
+     */
     addControl(control: Parameters<CoreMap['addControl']>[0], position?: Parameters<CoreMap['addControl']>[1]) {
         // (The core adds the attribution in its constructor, before the fields of this class exist: hence `??=`.)
         return (control as {onAdd?: unknown} | undefined)?.onAdd ? ((this.added ??= []).push(control), super.addControl(control, position)) : this.refused('addControl(): the argument is not a control. Pass an object with onAdd and onRemove methods.');
     }
+    /**
+     * Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS.
+     * A layer whose id the style has already, or that names a source that the style does not have, fires `error` and adds nothing. A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise it fires `error`.
+     */
     addLayer(layer: AddLayerObject, beforeId?: string) {
         let one: {id: string; source?: unknown} = layer;
         if (layer.type === 'custom') {
@@ -413,6 +468,7 @@ export class Map extends CoreMap {
     }
     /** As in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels around each tile (the main entry keeps 16). */
     protected geojsonBuffer() { return 128; }
+    /** Removes a style layer, as in MapLibre GL JS. */
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;
     /** The URL given as the option `style` or to the latest call of `setStyle`, as it was written; `null` when that was an object or nothing. */
@@ -439,15 +495,18 @@ export class Map extends CoreMap {
             return {...next, layers};
         }});
     }
+    /** Adds a source to the style, as in MapLibre GL JS. An id that the style has already fires `error` and adds nothing. */
     addSource(id: string, source: object) {
         return this.rawStyle?.sources[id] ? this.refused(`addSource: the style has a source with the id "${id}" already. Remove that source first, or use another id.`) : super.addSource(id, source);
     }
+    /** Removes a source from the style, as in MapLibre GL JS. A source that a layer uses fires `error` and stays. */
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l.source === id);
         return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
     /**
+     * Moves the camera to a view without an animation, as in MapLibre GL JS.
      * As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom,
      * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls easeTo) keeps it.
      */
@@ -455,13 +514,19 @@ export class Map extends CoreMap {
     easeTo(o: EaseToOptions, eventData?: EventData) {
         return this.camera(eventData, () => super.easeTo(this.snapped(o)));
     }
+    /**
+     * Moves the camera to fit a box with an animation of 800 ms unless `o` sets `duration`; MapLibre GL JS flies there for a time that `speed` sets.
+The options `speed`, `curve` and `linear` have no effect and warn once.
+     * @param eventData Fields that the events of this move carry.
+     */
     fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) {
         this.unsupported('The options speed, curve and linear of fitBounds', o?.speed === undefined && o?.curve === undefined && o?.linear === undefined);
         return this.camera(eventData, () => super.fitBounds(bounds, o));
     }
     /**
-     * Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`,
-     * by the method of MapLibre GL JS 6.17. The options are those of `fitBounds`.
+     * Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`, with an
+     * animation of 800 ms unless `o` sets `duration`. The method is that of MapLibre GL JS 6.17, and the options are those of
+     * `fitBounds`: `speed`, `curve` and `linear` have no effect and warn once.
      */
     fitScreenCoordinates(p0: PointLike, p1: PointLike, bearing: number, o: FitBoundsOptions = {}, eventData?: EventData) {
         this.unsupported('The options speed, curve and linear of fitScreenCoordinates', o.speed === undefined && o.curve === undefined && o.linear === undefined);
@@ -484,39 +549,64 @@ export class Map extends CoreMap {
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
         return this.camera(eventData, () => super.flyTo(this.snapped(o)));
     }
-    /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
+    /** Sets the padding in CSS pixels: the space at the edges that other things cover, such as a side panel. The map center moves to the middle of the rest. */
     setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }
+    /** Returns the padding of the map in CSS pixels, as `{top, right, bottom, left}`. */
     getPadding() { const [top, right, bottom, left] = this.tr.padding; return {top, right, bottom, left}; }
+    /** Moves the map center to a position without an animation, as in MapLibre GL JS. */
     setCenter(center: LngLatLike, eventData?: EventData) { return this.jumpTo({center}, eventData); }
+    /** Sets the zoom level without an animation, as in MapLibre GL JS. */
     setZoom(zoom: number, eventData?: EventData) { return this.jumpTo({zoom}, eventData); }
+    /** Sets the bearing in degrees without an animation, as in MapLibre GL JS. */
     setBearing(bearing: number, eventData?: EventData) { return this.jumpTo({bearing}, eventData); }
+    /** Sets the pitch in degrees without an animation, as in MapLibre GL JS. */
     setPitch(pitch: number, eventData?: EventData) { return this.jumpTo({pitch}, eventData); }
+    /** Turns the map to bearing 0 with an animation of 500 ms unless `o` sets `duration`; MapLibre GL JS takes 1000 ms. */
     resetNorth(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing: 0, ...o}, eventData); }
+    /** Turns the map to bearing 0 and pitch 0 with an animation of 500 ms unless `o` sets `duration`; MapLibre GL JS takes 1000 ms. */
     resetNorthPitch(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing: 0, pitch: 0, ...o}, eventData); }
+    /** Moves the map center to a position with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     panTo(center: LngLatLike, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({center, ...o}, eventData); }
+    /** Moves the map by `offset` in CSS pixels with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     panBy(offset: [number, number], o: {duration?: number} = {}, eventData?: EventData) {
         return this.easeTo({center: this.unproject([this.tr.cx + offset[0], this.tr.cy + offset[1]]), ...o}, eventData);
     }
+    /** Changes the zoom level with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     zoomTo(zoom: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom, ...o}, eventData); }
+    /** Increases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`; MapLibre GL JS takes 500 ms. */
     zoomIn(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300, ...o}, eventData); }
+    /** Decreases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`; MapLibre GL JS takes 500 ms. */
     zoomOut(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300, ...o}, eventData); }
+    /** Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     rotateTo(bearing: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing, ...o}, eventData); }
+    /** Turns the map to bearing 0 when the bearing is less than 7 degrees from north, and else does nothing. The option `bearingSnap` of MapLibre GL JS has no effect. */
     snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o, eventData) : this; }
+    /** Returns `true`: the map always draws copies of the world. */
     getRenderWorldCopies() { return true; }
+    /** Returns 0: the camera has no roll. */
     getRoll() { return 0; }
-    /** With 3D terrain: the (exaggerated) height of the ground at the map centre in metres; otherwise 0. */
+    /** Returns the elevation of the ground at the map center in metres, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. */
     getCenterElevation() { return this.tr.elevation; }
+    /** Returns the elevation of the ground at the map center in metres, as `getCenterElevation` does. */
     getCameraTargetElevation() { return this.tr.elevation; }
+    /** Whether the zoom level changes now, by the user or by a camera method. */
     isZooming() { return this.zooming; }
+    /** Whether the bearing changes now, by the user or by a camera method. */
     isRotating() { return this.rotating; }
+    /** Returns `false`: the camera has no roll. */
     isRolling() { return false; }
+    /** Whether the pitch changes now, by the user or by a camera method. */
     isPitching() { return this.pitching; }
+    /** Returns the container of the map. MapLibre GL JS returns an element inside the container, which this library does not have. */
     getCanvasContainer() { return this.container; }
+    /** Removes the map and its controls from the page, as in MapLibre GL JS. */
     remove() { super.remove(); this.getContainer().classList.remove('maplibregl-map'); }
+    /** Draws the map again in the next frame. */
     redraw() { this.triggerRepaint(); return this; }
     // react-map-gl and other wrappers read these private members of the MapLibre map. They are here only so that
     // those wrappers work: `style._loaded` tells them that sources and layers can be added, and Maputnik reads the
     // source layers of each vector source in `tileManagers[id]._source.vectorLayerIds` (`sourceCaches` in MapLibre 5).
+    /** For wrappers that read the private `style` of MapLibre GL JS: `_loaded`, and `tileManagers` (also `sourceCaches`) with the id, type and `vectorLayerIds` of each source. It is `undefined` before the map has a style. */
     get style() {
         if (!this.resolved) return undefined;
         const tileManagers: Record<string, {_source: {id: string; type: string; vectorLayerIds?: string[]}}> = {};
@@ -525,25 +615,35 @@ export class Map extends CoreMap {
     }
     _render() { this.triggerRepaint(); }
     _update() { this.triggerRepaint(); }
-    getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
+    /** Returns the light of the style with the defaults filled in for the fields that the style does not set; MapLibre GL JS returns only the fields that the style sets. */
+    getLight(): {anchor?: string; position?: number[]; color?: string; intensity?: number} { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
     /** The style, as in MapLibre GL JS: without its custom layers. */
     getStyle() { const style = super.getStyle(); if (style) style.layers = style.layers.filter((l: {type: string}) => l.type !== 'custom'); return style; }
+    /** Returns the ids of the style layers, from the bottom layer up. */
     getLayersOrder(): string[] { return this.rawStyle?.layers.map((l: any) => l.id) ?? []; }
-    getPaintProperty(layerId: string, name: string) { return this.getLayer(layerId)?.paint?.[name]; }
-    getLayoutProperty(layerId: string, name: string) { return this.getLayer(layerId)?.layout?.[name]; }
-    getFilter(layerId: string) { return this.getLayer(layerId)?.filter; }
+    /** Returns the value of a paint property as the style sets it, or `undefined` when the style does not set it. */
+    getPaintProperty(layerId: string, name: string): unknown { return this.getLayer(layerId)?.paint?.[name]; }
+    /** Returns the value of a layout property as the style sets it, or `undefined` when the style does not set it. */
+    getLayoutProperty(layerId: string, name: string): unknown { return this.getLayer(layerId)?.layout?.[name]; }
+    /** Returns the filter of a style layer, or `undefined` when it has none. */
+    getFilter(layerId: string): unknown { return this.getLayer(layerId)?.filter; }
+    /** Moves a style layer below the layer `beforeId`, or to the top when `beforeId` is left out. */
     moveLayer(id: string, beforeId?: string) {
         return this.editStyle(s => {
             const [layer] = s.layers.splice(this.layerIndex(s, id), 1);
             s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer);
         });
     }
-    getSprite() { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
+    /** Returns the sprites of the style as `{id, url}` objects. A sprite that the style gives as one URL has the id `'default'`. */
+    getSprite(): {id: string; url: string}[] { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
+    /** Replaces the sprites of the style, or removes them with `null`. */
     setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
-    /** Adds a sprite sheet. Its icons have the names `id:name`. */
+    /** Adds a sprite sheet with an id and a URL to the style, as in MapLibre GL JS. Its images have the names `id:name`. */
     addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
+    /** Removes the sprite sheet with this id from the style. */
     removeSprite(id: string) { const rest = this.getSprite().filter((s: {id: string}) => s.id !== id); return this.setSprite(rest.length ? rest : null); }
-    getGlyphs() { return this.rawStyle?.glyphs ?? null; }
+    /** Returns the URL of the glyph files of the style, or `null` when the style has none. */
+    getGlyphs(): string | null { return this.rawStyle?.glyphs ?? null; }
     /** Sets the URL of the glyph files of the style. The map loads them from this URL. */
     setGlyphs(url: string | null) { return this.editStyle(s => { if (url) s.glyphs = url; else delete s.glyphs; }); }
     /**
@@ -583,10 +683,13 @@ export class Map extends CoreMap {
         const source = {minzoom, maxzoom, tiles, ...spec, ...more, id, setTiles: (t: string[]) => set('tiles', t, Array.isArray(t) && t.every(x => typeof x === 'string')), setUrl: (u: string) => set('url', u, typeof u === 'string'), reload: () => { this.refreshTiles(id); }};
         return source;
     }
-    getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
+    /** Returns the `font-faces` of the style, or `{}` when the style has none, where MapLibre GL JS returns `null`. */
+    getFontFaces(): Record<string, unknown> { return this.rawStyle?.['font-faces'] ?? {}; }
+    /** Replaces the `font-faces` of the style, or removes them with `null`. */
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
-    /** As in MapLibre GL JS, the feature can come without an `id` (a feature of a query); then nothing changes and the map warns once. */
+    /** Merges `state` into the feature state of one feature. A feature without an `id` changes nothing and warns once, where MapLibre GL JS fires `error`. */
     setFeatureState(feature: FeatureIdentifier, state: Record<string, unknown>) { return this.hasId(feature, 'setFeatureState') ? super.setFeatureState(feature, state) : this; }
+    /** Returns the feature state of one feature. A feature without an `id` returns `{}` and warns once, where MapLibre GL JS fires `error`. */
     getFeatureState(feature: FeatureIdentifier) { return this.hasId(feature, 'getFeatureState') ? super.getFeatureState(feature) : {}; }
     private hasId(f: FeatureIdentifier, name: string): f is FeatureIdentifier & {id: string | number} {
         if (f.id != null) return true;
@@ -594,7 +697,7 @@ export class Map extends CoreMap {
         return false;
     }
     /**
-     * The image that addImage was given, with its options, or undefined. Raw pixels and drawable sources (canvas, image,
+     * Returns `{data, pixelRatio, sdf}` and the other options of an image that `addImage` added, or `undefined`. Raw pixels and drawable sources (canvas, image,
      * bitmap) come back as `{width, height, data}` with RGBA pixels, as in MapLibre; a URL or SVG text comes back as given.
      */
     getImage(name: string) {
@@ -613,8 +716,9 @@ export class Map extends CoreMap {
         }
         return {pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1], data};
     }
+    /** Returns the names of the images that the map has. */
     listImages() { return [...this.imageNames]; }
-    /** Fetches and decodes an image, in the shape MapLibre returns it. */
+    /** Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. */
     async loadImage(url: string) {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Failed to load image ${url}: ${res.status}`);
@@ -640,7 +744,9 @@ export class Map extends CoreMap {
     }
     private geoKept = new globalThis.Map<string, {from: string; data?: object}>();
     /**
-     * The features of a source in the tiles of the present view, as in MapLibre: all the features of those tiles, also
+     * Returns the features of a source in the tiles of the present view, as an array that is also a promise; MapLibre GL JS
+     * returns only the array. The features are all the features of those tiles, as in MapLibre GL JS, and
+     * also
      * those that no layer draws and those outside the view. As with `queryRenderedFeatures`, the result is an array
      * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too),
      * and for other sources the last answer of the engine for the same source and options; awaited, it has the
@@ -684,8 +790,9 @@ export class Map extends CoreMap {
     }
 
     /**
-     * The features that the style layers draw at a point or in a rectangle of the screen (the whole map when no
-     * geometry is given), from the top layer down. The arguments and the features are those of MapLibre GL JS.
+     * Returns the features that the style layers draw at a point or in a box of the screen, the top layer first, as an
+     * array that is also a promise; MapLibre GL JS returns only the array. With no geometry, the box is the whole map.
+     * The arguments and the features are those of MapLibre GL JS.
      *
      * The tile data is in a worker, so the complete result is a promise: `await map.queryRenderedFeatures(...)`.
      * The value is also an array, for code that uses the result at once as MapLibre permits. As an array it has the

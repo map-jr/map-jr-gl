@@ -30,6 +30,18 @@ const links = computed(() => {
         {label: 'Report a problem with this page', icon: 'i-lucide-flag', to: `${site.repository}/issues/new?${report}`, target: '_blank'},
     ];
 });
+// One active entry in the table of contents (#1251). The classes of each link replace the ones that the scroll-spy of
+// `UContentToc` gives, which marks every heading on the screen.
+type TocLink = {id: string; text: string; class?: string; children?: TocLink[]};
+const {active: activeHeading, choose: chooseHeading} = useTocActive(() => page.value?.body?.toc?.links as TocLink[] | undefined);
+const tocLinks = computed(() => {
+    const mark = (list: TocLink[]): TocLink[] => list.map(link => ({
+        ...link,
+        class: link.id === activeHeading.value ? 'text-primary toc-active' : 'text-muted hover:text-default',
+        children: link.children && mark(link.children),
+    }));
+    return mark((page.value?.body?.toc?.links ?? []) as TocLink[]);
+});
 const firstWithPages = computed(() => sections.value.find(candidate => candidate.pages.length));
 
 const title = computed(() => page.value?.title ?? section.value!.title);
@@ -49,7 +61,7 @@ useSeoMeta({title, ogTitle: title, description: () => page.value?.description ??
     </UPageBody>
 
     <template v-if="page.body?.toc?.links?.length" #right>
-      <UContentToc :links="page.body.toc.links" title="On this page">
+      <UContentToc :links="tocLinks" title="On this page" @move="chooseHeading">
         <template #bottom>
           <UPageLinks title="This page" :links="links" :ui="{title: 'label-text font-medium text-muted', link: 'text-[0.8125rem] items-start', linkLeadingIcon: 'size-4 mt-0.5', linkLabel: () => 'min-w-0', linkLabelExternalIcon: 'hidden'}" />
         </template>
