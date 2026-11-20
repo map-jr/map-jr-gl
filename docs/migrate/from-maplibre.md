@@ -83,9 +83,9 @@ that this page lists. The page is written for an application that uses MapLibre 
    });
    ```
 
-5. Create the map with `strict: true`, and run your application. With `strict: true`, the map throws an error for
-   an option or a method that has no effect in this library, where it otherwise writes a warning. Remove
-   `strict: true` after the migration.
+5. Create the map with `strict: true`, and run your application. With `strict: true`, an option or a call that the
+   map cannot carry out throws an error, so the application stops where it relies on one: see
+   [`strict`](../reference/maplibre-compat.md#strict). Remove `strict: true` after the migration.
 
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -97,9 +97,9 @@ that this page lists. The page is written for an application that uses MapLibre 
    });
    ```
 
-6. Read the console of the browser. The map writes a warning for a layer type and for an expression that it does
-   not support. It does not draw such a layer, and such an expression returns `null`. See
-   [What is not available](#what-is-not-available) for the list.
+6. Compare the layer types and the expressions of your style with [What is not available](#what-is-not-available).
+   The map does not draw a layer type that it does not support, and an expression that it does not support returns
+   `null`.
 
 7. If a wrapper or a plugin imports `maplibre-gl` itself, set an alias for that name: see
    [Wrappers and plugins](wrappers.md).
@@ -111,13 +111,13 @@ that this page lists. The page is written for an application that uses MapLibre 
 | `'maplibre-gl'` | `'@map-jr/map-jr-gl/maplibre-compat'` | It exports `Map`, `Marker`, `Popup`, the control classes, `LngLat`, `LngLatBounds`, `Point`, `addProtocol` and `setWorkerUrl`, and a default export with the same names. |
 | Other exports, such as `Evented`, `Hash`, `addSourceType` and `prewarm` | None | An import of a name that the entry does not export fails when the application is built. |
 | `maplibre-gl/dist/maplibre-gl.css` | None | The map adds its styles to the page. |
-| `setWorkerUrl(url)`, `workerUrl` of react-map-gl | None | A URL of the worker file of MapLibre GL JS is ignored with one warning. |
+| `setWorkerUrl(url)`, `workerUrl` of react-map-gl | None | A URL of the worker file of MapLibre GL JS is ignored. |
 | `map.queryRenderedFeatures(...)` | `await map.queryRenderedFeatures(...)` | The arguments and the features are the same. |
 | `map.querySourceFeatures(...)` | `await map.querySourceFeatures(...)` | The arguments and the features are the same. |
 | `map.getCanvas().toDataURL()` with `preserveDrawingBuffer` | `await map.toBlob()` | See [Read the canvas with `toBlob`](#read-the-canvas-with-toblob). |
 | `map.addImage(name, image)` | `map.addImage(name, image)` | It also accepts an SVG document or a URL as the image, and returns a promise that resolves when the image is loaded. |
-| `maxPitch` up to 180 | `maxPitch` up to 90 | A higher value is limited to 90, with one warning. The default is 60 in both. |
-| `setRoll`, `setVerticalFieldOfView` | None | Accepted with no effect. A value other than the default warns once. |
+| `maxPitch` up to 180 | `maxPitch` up to 90 | A higher value is limited to 90. The default is 60 in both. |
+| `setRoll`, `setVerticalFieldOfView` | None | Accepted with no effect. |
 | The `pmtiles` protocol of the PMTiles library | None | A source URL that starts with `pmtiles://` works with no plugin. |
 | `setRTLTextPlugin(...)` | None | Accepted with no effect. The browser shapes right-to-left text. |
 | `maplibregl-*` class names | `maplibregl-*` and `map-jr-*` | Every element has both names, so the CSS of an application still matches. |
@@ -150,7 +150,7 @@ map.on('mousemove', async event => {
 
 ### Read the canvas with `toBlob`
 
-`canvasContextAttributes: {preserveDrawingBuffer: true}` has no effect and warns once. To read the image of the
+`canvasContextAttributes: {preserveDrawingBuffer: true}` has no effect. To read the image of the
 map, call `map.toBlob(type, quality)`. It waits until the map is idle and resolves to a `Blob` of the canvas.
 
 ```js
@@ -174,7 +174,7 @@ async function download() {
 ### A custom layer needs the main-thread renderer
 
 The map draws in a worker where the browser permits it, and a custom layer (`type: 'custom'`) cannot draw there.
-Create the map with `renderer: 'main'`. Without it, `addLayer` fires an `error` event and adds nothing.
+Create the map with `renderer: 'main'`. Without it, `addLayer` adds nothing.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -198,9 +198,7 @@ map.on('load', () => map.addLayer(overlay));
 ### Private members do not exist
 
 The map has no `map.transform` and no `map.painter`. A plugin that reads private members of MapLibre GL JS does not
-work, and a plugin that uses only public methods usually does. The development build, which a bundler uses in
-development (see [Change the map](../api.md#change-the-map)), warns once for each public member of MapLibre GL JS
-that the code reads and this library does not have.
+work, and a plugin that uses only public methods usually does.
 
 Before:
 
@@ -228,9 +226,9 @@ map.on('moveend', () => console.log(map.getZoom()));
 
 ### The style is not validated
 
-The library does not validate the style and does not check the types of expressions. It warns only for a layer type
-or an expression that it does not support. Any other mistake that MapLibre GL JS reports with an `error` event gets
-no message here. Validate a style that you write yourself with `@maplibre/maplibre-gl-style-spec`.
+The library does not validate the style and does not check the types of expressions. A mistake in the style that
+MapLibre GL JS reports with an `error` event, such as the wrong name of a property, has no effect here and fires no
+`error` event. Validate a style that you write yourself with `@maplibre/maplibre-gl-style-spec`.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -246,8 +244,8 @@ map.on('load', () => {
     type: 'geojson',
     data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
   });
-  // 'circle-colour' is not a paint property. No error event and no warning
-  // come: the circle has the default colour.
+  // 'circle-colour' is not a paint property. The map fires no error event,
+  // and the circle has the default colour.
   map.addLayer({
     id: 'stops',
     type: 'circle',

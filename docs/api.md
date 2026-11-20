@@ -768,44 +768,8 @@ A control written for MapLibre GL JS (an object with `onAdd(map)` and `onRemove(
 application gets the core map. The default
 `position` is `'top-right'`.
 
-In React and Vue, make the element once and render your component into it. In React use a portal
-(`@map-jr/map-jr-gl/react`):
-
-```jsx
-import {useMemo} from 'react';
-import {createPortal} from 'react-dom';
-import {MapJr} from '@map-jr/map-jr-gl/react';
-import {navigation, custom} from '@map-jr/map-jr-gl/controls';
-
-export function App() {
-  const corner = useMemo(() => document.createElement('div'), []);
-  const controls = useMemo(() => [navigation(), custom({key: 'styles', position: 'top-right', element: corner})], [corner]);
-  return <>
-    <div style={{height: 400}}><MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" controls={controls} /></div>
-    {createPortal(<button onClick={() => console.log('switch the style')}>Styles</button>, corner)}
-  </>;
-}
-```
-
-In Vue use `<Teleport>` (`@map-jr/map-jr-gl/vue`):
-
-```vue
-<script setup>
-import {MapJr} from '@map-jr/map-jr-gl/vue';
-import {navigation, custom} from '@map-jr/map-jr-gl/controls';
-
-const corner = document.createElement('div');
-const controls = [navigation(), custom({key: 'styles', position: 'top-right', element: corner})];
-</script>
-
-<template>
-  <div style="height: 400px"><MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :controls="controls" /></div>
-  <Teleport :to="corner"><button @click="console.log('switch the style')">Styles</button></Teleport>
-</template>
-```
-
-With server rendering, make the element in the browser only (in `useEffect` or `onMounted`), because
-`document` does not exist on the server.
+In React and Vue, make the element once in the browser and render your component into it, with a portal in React and
+`<Teleport>` in Vue. The recipe [Add a control of your own](recipes/control.md) has the code for each framework.
 
 The attribution of the data shows without a control of your own. To change it or to turn it off, see `attribution`
 in [The description](#the-description).
@@ -1036,22 +1000,8 @@ returns a promise:
 | `clusterChildren(sourceId, clusterId)` | The clusters and points that the cluster divides into, as GeoJSON features (`ClusterFeature[]`). |
 | `clusterLeaves(sourceId, clusterId, {limit, offset})` | The points of the cluster, as GeoJSON features. `limit` defaults to 10 and `offset` to 0. A `limit` of `Infinity` gives all of them. |
 
-```js
-import {createMap} from '@map-jr/map-jr-gl';
-
-const map = createMap(document.getElementById('map'), {
-    style: 'https://demotiles.maplibre.org/style.json',
-    sources: {points: {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
-    layers: [{id: 'clusters', type: 'circle', source: 'points', paint: {'circle-radius': 12}}],
-    interactiveLayers: ['clusters'],
-    onClick: async e => {
-        const cluster = e.features[0];
-        if (!cluster?.properties.cluster) return;
-        const zoom = await map.clusterExpansionZoom('points', cluster.properties.cluster_id);
-        map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
-    },
-});
-```
+The recipe [Group points into clusters](recipes/clusters.md) zooms in to a cluster on a click with
+`clusterExpansionZoom`.
 
 The promise rejects with an `Error` whose message starts with `[map-jr-gl]` and the name of the method when the source
 is not a GeoJSON source of the style, when it has no clusters, or when no cluster has that id. These are the methods

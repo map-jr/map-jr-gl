@@ -303,8 +303,8 @@ an `error` event with a `[map-jr-gl]` message. A map object kept in the data of 
 ## Your own controls
 
 To put your own component into a control corner, give the map `custom({key, position, element})` from
-`@map-jr/map-jr-gl/controls` and render the component into `element` with `<Teleport>`. The example is in
-[A control of your own](api.md#a-control-of-your-own).
+`@map-jr/map-jr-gl/controls` and render the component into `element` with `<Teleport>`. The example is in the recipe
+[Add a control of your own](recipes/control.md).
 
 ## The composable
 
@@ -396,55 +396,8 @@ const MapJr = defineAsyncComponent({loader: () => import('@map-jr/map-jr-gl/vue'
 
 ### `MapJr` in a component test
 
-A component test usually replaces `MapJr` with a stub, because the test environment (happy-dom or jsdom) has no
-WebGL. Replace the export `MapJr` of `@map-jr/map-jr-gl/vue` with `vi.mock` of Vitest. This works with the module
-for Nuxt and without it, because the module registers `MapJr` from that same module name.
-
-`mockComponent('MapJr', ...)` of `@nuxt/test-utils` does not work with the module: it replaces the default export of
-the file that registers the component, but the module registers the named export `MapJr`. The test then fails with
-`No "MapJr" export is defined on the "@map-jr/map-jr-gl/vue" mock`.
-
-The component under test, `app/components/StoreMap.vue`:
-
-```vue
-<template>
-  <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" />
-  </div>
-</template>
-```
-
-A test with `@nuxt/test-utils` (environment `nuxt` in `vitest.config.ts`):
-
-```ts
-// test/StoreMap.test.ts
-import {describe, expect, it, vi} from 'vitest';
-import {mountSuspended} from '@nuxt/test-utils/runtime';
-import StoreMap from '../app/components/StoreMap.vue';
-
-// The stub replaces only MapJr. The other exports of the adapter stay as they are.
-vi.mock('@map-jr/map-jr-gl/vue', async importOriginal => {
-    const {defineComponent, h} = await import('vue');
-    return {
-        ...await importOriginal<typeof import('@map-jr/map-jr-gl/vue')>(),
-        MapJr: defineComponent({
-            props: {mapStyle: String},
-            setup: (props, {slots}) => () => h('div', {'data-test': 'map', 'data-style': props.mapStyle}, slots.default?.()),
-        }),
-    };
-});
-
-describe('StoreMap', () => {
-    it('passes the style to the map', async () => {
-        const wrapper = await mountSuspended(StoreMap);
-        expect(wrapper.find('[data-test="map"]').attributes('data-style')).toBe('https://styles.map-jr.org/1/elevation-zero.json');
-    });
-});
-```
-
-In plain Vitest without Nuxt, the `vi.mock` call is the same. Mount the component with `mount` of `@vue/test-utils`
-instead of `mountSuspended`. The stub renders the default slot of `MapJr`. It declares only the props that the test reads, and
-Vue passes the other props (here `initial-view`) on as attributes of the `div`.
+A component test replaces `MapJr` with a stub, because the test environment (happy-dom or jsdom) has no WebGL. The
+recipe [Test a component that has a map](recipes/stores.md) has a test with Vitest, also for Nuxt.
 
 ## Plugins that need a MapLibre map
 

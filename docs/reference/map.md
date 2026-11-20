@@ -93,18 +93,6 @@ A changed paint value of a layer that stays in the style transitions from the ol
 `*-transition` property of the layer, the `transition` of the style, or 300 ms. A new style that differs in more than
 its layers loads again, and its values change at once.
 
-`update` throws an `Error` when `spec` has no `style`, for example for `map.update({cursor: 'crosshair'})`:
-
-```text
-[map-jr-gl] update(): the description has no "style". update() takes the
-complete description, not only the changed fields. Write map.patch({cursor: …})
-to change only some fields.
-```
-
-The
-[development build](create-map.md#the-development-build) warns when `spec` changes a field that the map reads only when
-it is created.
-
 ## `patch`
 
 <!-- ref:MapInstance.patch:start -->
@@ -252,10 +240,8 @@ const nearby = await map.queryFeatures(
 const all = await map.queryFeatures({layers: ['building-3d']});
 ```
 
-The promise rejects when `at` is not one of the forms. The [development build](create-map.md#the-development-build)
-warns once for an option that has no effect: `radius` for a box or the whole map, and the options of `querySource`
-(`sources`, `sourceLayers`, `geometry`, `zoom`). See [`destroy`](#destroy) and [A lost WebGL context](#a-lost-webgl-context)
-for the other rejections.
+See [`destroy`](#destroy) and [A lost WebGL context](#a-lost-webgl-context) for the cases in which the promise
+rejects.
 
 ### `FeatureOptions`
 
@@ -314,9 +300,6 @@ const atPosition = await map.querySource('openmaptiles', [-74.0065, 40.7085], {
 const inView = await map.querySource('openmaptiles', {sourceLayers: ['park']});
 ```
 
-The promise rejects when `sourceId` is not a string. The development build warns once for an option that has no
-effect: `layers`, `radius` for a box or the view, and `zoom` in a query of the view.
-
 ### `SourceOptions`
 
 <!-- ref:SourceOptions:start -->
@@ -368,9 +351,7 @@ const stop = map.watchFeatures(
 ```
 
 A watch asks again by itself after a lost WebGL context, and it stops after [`destroy`](#destroy). When the listener
-throws, the browser reports the error as an unhandled rejection, and the watch goes on. When the question is wrong,
-for example a place of the wrong form, the map fires an [`error` event](events.md#mapevents) once until the result
-changes.
+throws, the browser reports the error as an unhandled rejection, and the watch goes on.
 
 ## `watchSource`
 
@@ -585,16 +566,8 @@ clusterExpansionZoom(
 | `sourceId` **required** | `string` | | The id of a GeoJSON source with `cluster: true`. |
 | `clusterId` **required** | `number` | | `properties.cluster_id` of the cluster feature. |
 
-**Returns:** `Promise<number>`. A promise that rejects when the source has no clusters or the cluster does not exist.
+**Returns:** `Promise<number>`. A promise that rejects when the source has no cluster with this id.
 <!-- ref:MapInstance.clusterExpansionZoom:end -->
-
-The three cluster methods reject with an `Error` in these cases, shown for `clusterExpansionZoom`:
-
-| Case | Message |
-|---|---|
-| The source is not a GeoJSON source of the style. | `[map-jr-gl] clusterExpansionZoom(): "parks" is not a GeoJSON source of the style.` |
-| The source has no `cluster: true`. | `[map-jr-gl] clusterExpansionZoom(): Source "parks" has no clusters.` |
-| No cluster has the id. | `[map-jr-gl] clusterExpansionZoom(): No cluster with the specified id.` |
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -646,7 +619,7 @@ clusterChildren(
 | `sourceId` **required** | `string` | | The id of a GeoJSON source with `cluster: true`. |
 | `clusterId` **required** | `number` | | `properties.cluster_id` of the cluster feature. |
 
-**Returns:** `Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>`. A promise that rejects when the source has no clusters or the cluster does not exist.
+**Returns:** `Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>`. A promise that rejects when the source has no cluster with this id.
 <!-- ref:MapInstance.clusterChildren:end -->
 
 ## `clusterLeaves`
@@ -666,7 +639,7 @@ clusterLeaves(
 | `clusterId` **required** | `number` | | `properties.cluster_id` of the cluster feature. |
 | `options` | `{limit?: number; offset?: number}` | | `limit` is the largest number of points (default 10), and `offset` the number to skip (default 0). |
 
-**Returns:** `Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>`. A promise that rejects when the source has no clusters or the cluster does not exist.
+**Returns:** `Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>`. A promise that rejects when the source has no cluster with this id.
 <!-- ref:MapInstance.clusterLeaves:end -->
 
 A `limit` of `Infinity` returns all points of the cluster.
@@ -714,9 +687,7 @@ function showManhattan() {
 }
 ```
 
-When the system asks for reduced motion, the camera jumps to the target. The development build warns once when
-`fitPadding` or `fitMaxZoom` has no `bounds`, and when `view` has `padding` or `maxZoom`, which are options of the
-description and not of a fit.
+When the system asks for reduced motion, the camera jumps to the target.
 
 ### `MoveToOptions`
 

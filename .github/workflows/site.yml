@@ -45,10 +45,11 @@ jobs:
           path: website/.output/public
           include-hidden-files: true
           retention-days: 14
-      # The check does not wait for the map of the home page, which needs the style and the tiles of other hosts.
-      - name: Install Chromium
+      # The check does not wait for the map of the home page, which needs the style and the tiles of other hosts. It
+      # checks the table of contents on a phone also in WebKit.
+      - name: Install Chromium and WebKit
         working-directory: website
-        run: for i in 1 2 3; do pnpm exec playwright install --with-deps chromium && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
+        run: for i in 1 2 3; do pnpm exec playwright install --with-deps chromium webkit && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
       - run: pnpm check --no-map
         working-directory: website
       - name: Deploy to Cloudflare

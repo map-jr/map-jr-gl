@@ -86,7 +86,7 @@ The map accepts three projections:
 | `'vertical-perspective'` | A globe at every zoom. |
 
 `type` can also be an `interpolate` expression of `["zoom"]` between two of these names, as in the MapLibre style
-specification. Another name writes one warning, and the map draws `mercator`.
+specification.
 
 With `projection: null` or no field, the map uses the root property `projection` of the style, and `mercator` when
 the style has none.
@@ -139,7 +139,7 @@ map.on('projectiontransition', e =>
 );
 ```
 
-A `patch` of another field keeps the projection of a click. A `projection` that differs from that of the last
+A `patch` of another field keeps the projection that the last click on the globe button set. A `projection` that differs from that of the last
 description replaces it, and so does a new `style`. The map then uses the `projection` of the description, or the
 projection of the style when the description has none. While the projection is
 `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`.
