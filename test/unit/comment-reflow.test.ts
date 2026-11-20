@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-ignore: a JavaScript module of the site without types.
-import {reflowComments, desktopWidth, phoneWidth} from '../../website/build/format.mjs';
+import {reflowComments, formatCode, isVerbatim, desktopWidth, phoneWidth} from '../../website/build/format.mjs';
 
 const words = (text: string) => text.replace(/\/\/|\/\*\*?|\*\/|<!--|-->|^\s*\*/gm, ' ').split(/\s+/).filter(Boolean);
 
@@ -124,4 +124,15 @@ test('an html fence re-flows "<!-- -->" with paragraphs kept apart (#1271)', () 
         '-->',
         '<div id="map"></div>',
     ].join('\n'));
+});
+
+test('a text fence keeps its lines at both widths (#1271)', async () => {
+    const code = '[map-jr-gl] <map-jr>: the attribute hover-state="false" switches the option on all\nthe same.';
+    for (const language of ['text', 'txt', 'console', 'output']) {
+        assert.ok(isVerbatim(language), language);
+        for (const width of [desktopWidth, phoneWidth]) {
+            assert.equal(reflowComments(code, language, width), code);
+            assert.equal(await formatCode(code, language, width) ?? code, code);
+        }
+    }
 });
