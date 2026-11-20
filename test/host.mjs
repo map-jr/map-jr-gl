@@ -149,12 +149,16 @@ for (const renderer of renderers) {
             let low = 99;
             const off = t.host.state.subscribe(s => s.view.zoom, z => { low = Math.min(low, z); });
             t.host.moveTo({center: [-73.9, 40.75], zoom: start.zoom, fly: {speed: 0.6}});
-            await wait(200);
+            // (The state sees the flight when the engine has drawn its first frame, which on a slow machine without a GPU comes
+            // more than 200 ms after the command: wait for the start, as for the end, and report how long it took, #1335.)
+            const began = performance.now();
+            for (let i = 0; i < 250 && !t.host.state.get().moving; i++) await wait(20);
+            const first = Math.round(performance.now() - began);
             for (let i = 0; i < 100 && t.host.state.get().moving; i++) await wait(100);
             off();
             const end = t.host.state.get().view;
             t.host.moveTo({center: start.center, zoom: start.zoom});
-            return {low, start: start.zoom, end: [+end.center[0].toFixed(3), end.zoom]};
+            return {low, start: start.zoom, end: [+end.center[0].toFixed(3), end.zoom], first};
         });
         check(`[${renderer}] moveTo with fly zooms out on the way and ends at the view (#43)`,
             fly.low < fly.start - 0.5 && fly.end[0] === -73.9 && fly.end[1] === fly.start, JSON.stringify(fly));
@@ -215,10 +219,15 @@ for (const renderer of renderers) {
             const jumped = zoom();
             t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
             t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]], {duration: 800});
-            await wait(150);
-            const during = zoom(), moving = t.host.state.get().moving;
+            // (The engine reports the move with its first frame, which on a slow machine without a GPU comes more than 150 ms
+            // after the command, while the animation runs from the command. Read the view at that first report, and not at a fixed
+            // time. A read that comes too early fails this check, and the animation that goes on is then cancelled by the padding
+            // of an update() of check 3, so that four more checks run with the map at zoom 3, #1335.)
+            const began = performance.now();
+            for (let i = 0; i < 250 && !t.host.state.get().moving; i++) await wait(20);
+            const first = Math.round(performance.now() - began), during = zoom(), moving = t.host.state.get().moving;
             for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
-            return {jumped, during, moving, end: zoom()};
+            return {jumped, during, moving, end: zoom(), first};
         });
         check(`[${renderer}] fitBounds jumps without a duration and animates with duration 800 (#1154)`,
             fitJump.jumped > 12 && fitJump.moving && fitJump.during < fitJump.jumped - 1 && Math.abs(fitJump.end - fitJump.jumped) < 0.25, JSON.stringify(fitJump));
