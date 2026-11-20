@@ -11,7 +11,9 @@
 //   <!-- ref:MapInstance.update:end -->
 //
 // A row takes the first sentence of the TSDoc of the member, and `@default`. The name links to a heading of the page
-// that has the name in backticks (`## \`style\``). A member that is not optional is **required** in a type that has
+// that has the name in backticks (`## \`style\``) and belongs to the type that declares the member: the heading holds a
+// block `ref:Type.member`, or a table of the type comes before it in the same or an outer section. A name in a Type
+// cell links to the block of the type that the name resolves to where the member is declared (#1249). A member that is not optional is **required** in a type that has
 // optional members (a type that the application writes). A block inside a code fence is an example and stays as it is.
 import {readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -95,7 +97,12 @@ for (const statement of typesFile.statements) {
 const lifecycle = new Set(['connectedCallback', 'disconnectedCallback', 'connectedMoveCallback', 'adoptedCallback', 'attributeChangedCallback']);
 
 /** The members of a type of types.ts that src/ declares and that are not private, in the order of the source. */
+const memberCache = new Map();
 function members(name) {
+    if (!memberCache.has(name)) memberCache.set(name, readMembers(name));
+    return memberCache.get(name);
+}
+function readMembers(name) {
     const symbol = checker.resolveName(name, SymbolFlags.Type, typesFile);
     if (!symbol) return null;
     const type = checker.getDeclaredTypeOfSymbol(symbol), self = keyOf(type.getSymbol()?.declarations?.[0]);
@@ -119,7 +126,7 @@ function members(name) {
         if (parent && parent !== self && named.has(parent)) continue;
         // (A getter without a setter is read only, and its type is the type that it returns.)
         const getter = /^(\w+\s+)*get\s/.test(node?.getText() ?? ''), setter = member.declarations.some(d => /^(\w+\s+)*set\s/.test(d.resolve(project)?.getText() ?? ''));
-        list.push({member, node, getter, file: String(handle.path), index: handle.index, readonly: modifiers.includes('readonly') || (getter && !setter)});
+        list.push({member, node, getter, file: String(handle.path), index: handle.index, key: `${handle.path}:${handle.index}`, readonly: modifiers.includes('readonly') || (getter && !setter)});
     }
     // (A type can join the members of several files, for example an interface that extends one of another file.)
     const files = [...new Set(list.map(m => m.file))];
@@ -171,25 +178,67 @@ function defaultOf(member) {
 }
 const slug = heading => heading.toLowerCase().replace(/`[^`]*`/g, m => m.replace(/[<>]/g, '')).replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().replace(/\s/g, '-');
 
-/** The anchors of the headings of a page, by each name in backticks that a heading has. */
+/**
+ * The anchors of the member headings of a page, by the declaration of the member (`file:index`). A heading names a
+ * member of a type when its section holds the block `ref:Type.name`, or when a table `ref:Type` of a type with a member
+ * of that name comes before it in the same section or an outer one (the nearest such table). A heading that names no
+ * declared member that way gives no link.
+ */
 function anchors(text) {
-    const found = new Map();
-    for (const [, heading] of text.matchAll(/^#{2,6} (.+)$/gm)) {
-        for (const [, name] of heading.matchAll(/`([^`]+)`/g)) if (!found.has(name)) found.set(name, '#' + slug(heading));
-    }
+    const found = new Map(), headings = [];
+    for (const m of text.matchAll(/^(#{2,6}) (.+)$/gm)) headings.push({level: m[1].length, heading: m[2], at: m.index});
+    const marks = blocks(text).map(b => ({name: b.name, at: b.start}));
+    headings.forEach((h, i) => {
+        const end = headings[i + 1]?.at ?? text.length;
+        const own = marks.filter(b => b.at > h.at && b.at < end);
+        // (The tables before the heading, the nearest first, in sections that are not deeper than the heading's.)
+        const scope = [];
+        let limit = h.level;
+        for (let j = i - 1; j >= 0; j--) {
+            const g = headings[j];
+            if (g.level > limit) continue;
+            limit = g.level;
+            const next = headings[j + 1].at;
+            scope.push(...marks.filter(b => b.at > g.at && b.at < next && !b.name.includes('.')).reverse());
+        }
+        for (const [, name] of h.heading.matchAll(/`([^`]+)`/g)) {
+            const method = own.find(b => b.name.endsWith('.' + name));
+            const types = method ? [method.name.split('.')[0]] : scope.map(b => b.name);
+            for (const type of types) {
+                const entry = members(type)?.find(m => m.member.name === name);
+                if (!entry) continue;
+                if (!found.has(entry.key)) found.set(entry.key, '#' + slug(h.heading));
+                break;
+            }
+        }
+    });
     return found;
 }
 
-/** The page and the anchor of each block, by the name of its type: a Type cell links a type that has a block. */
+/** The page and the anchor of each block, by the declaration of its type (`keyOf`): a Type cell links a type that has a block. */
 const homes = new Map();
+const named_ = key => key.endsWith('#undefined') ? '' : key;
+/** The declaration of the type that `name` names at `context` (a node of src/), or '' when it names none. */
+function declarationOf(name, context) {
+    if (!context) return '';
+    let symbol = checker.resolveName(name, SymbolFlags.Type | SymbolFlags.Alias, context);
+    if (symbol && symbol.flags & SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+    return named_(keyOf(symbol?.declarations?.[0]));
+}
+/** The declaration of the type of a block of types.ts. */
+function blockDeclaration(name) {
+    const symbol = checker.resolveName(name, SymbolFlags.Type, typesFile);
+    return symbol ? named_(keyOf(checker.getDeclaredTypeOfSymbol(symbol).getSymbol()?.declarations?.[0])) : '';
+}
 const hrefFrom = (page, target, anchor) => (target === page ? '' : path.posix.relative(path.posix.dirname(page), target)) + anchor;
 /** A Type cell: the type in code, where each name of a type with a block is a link to it. */
-function typeCell(text, page, self) {
+function typeCell(text, page, self, context) {
     const out = [];
     let at = 0;
     for (const m of text.matchAll(/\b[A-Z]\w*\b/g)) {
         // (A page of the docs links only to the docs: the tables of the fixture are not for readers.)
-        const home = m[0] !== self && homes.get(m[0]);
+        const key = declarationOf(m[0], context);
+        const home = key && key !== self && homes.get(key);
         if (home && home.page.startsWith('test/') && home.page !== page) continue;
         if (!home) continue;
         if (m.index > at) out.push(cell(code(text.slice(at, m.index))));
@@ -207,9 +256,9 @@ const size = text => text.replace(/\\\|/g, '|').replace(/\]\([^)]*\)/g, ']').len
  * A Type cell that fits the limit, and a sentence for the Description cell (#1260). Over the limit, the largest inline
  * object type `{…}` becomes `object`, one at a time, and the sentence names the members of each.
  */
-function shortType(text, page, self) {
+function shortType(text, page, self, context) {
     const notes = [];
-    let out = typeCell(text, page, self);
+    let out = typeCell(text, page, self, context);
     while (size(out) > LIMIT) {
         // (The outermost braces, the largest first.)
         const spans = [];
@@ -229,7 +278,7 @@ function shortType(text, page, self) {
         const list = keys.length > 1 ? keys.slice(0, -1).join(', ') + ' and ' + keys.at(-1) : keys[0];
         notes.push(`The ${notes.length ? 'next ' : ''}\`object\` has the members ${list}.`);
         text = text.slice(0, a) + 'object' + text.slice(b);
-        out = typeCell(text, page, self);
+        out = typeCell(text, page, self, context);
     }
     if (size(out) > LIMIT) problems.push(`${page}: the Type cell "${text.slice(0, 40)}…" has ${size(out)} characters, over the ${LIMIT} of docs-lint. Give the type a name in src/.`);
     return {type: out, note: notes.join(' ')};
@@ -251,14 +300,15 @@ function table(name, links, page) {
     // (A type that the application only reads, such as the methods of the map or its events, has no defaults: its
     // table has no column Default.)
     const rows = input ? ['| Name | Type | Default | Description |', '|---|---|---|---|'] : ['| Name | Type | Description |', '|---|---|---|'];
-    for (const {member, node, getter, readonly} of list) {
+    const self = blockDeclaration(name);
+    for (const {member, node, getter, readonly, key} of list) {
         const optional = !!(member.flags & SymbolFlags.Optional), method = !!(member.flags & SymbolFlags.Method);
         const doc = docOf(member);
         if (!doc) problems.push(`ref:${name}: the member \`${member.name}\` has no TSDoc comment. Add one in ${path.relative(root, list.find(m => m.member === member).file)}.`);
-        const label = code(member.name), linked = links.has(member.name) ? `[${label}](${links.get(member.name)})` : label;
+        const label = code(member.name), linked = links.has(key) ? `[${label}](${links.get(key)})` : label;
         const marks = [input && !optional && !method && !readonly ? ' **required**' : '', readonly ? ' (read only)' : ''].join('');
         const fallback = defaultOf(member);
-        const {type, note} = shortType(typeText(member, optional, node, getter), page, name), description = withNote(describe(firstSentence(doc), page), note);
+        const {type, note} = shortType(typeText(member, optional, node, getter), page, self, node), description = withNote(describe(firstSentence(doc), page), note);
         rows.push(line(input ? [linked + marks, type, fallback ? cell(/^`.*`$/.test(fallback) || /\s/.test(fallback.replace(/'[^']*'/g, '')) ? fallback : code(fallback)) : '', description] : [linked + marks, type, description]));
     }
     return rows.join('\n');
@@ -283,14 +333,14 @@ function method(name, page) {
             out.push('| Name | Type | Default | Description |\n|---|---|---|---|\n' + params.map(p => {
                 const text = tags.find(t => t.name === 'param' && t.text?.trim().split(/\s/)[0] === p.name)?.text?.trim().slice(p.name.length).replace(/^\s*-?\s*/, '') ?? '';
                 if (!text) problems.push(`ref:${name}: the parameter \`${p.name}\` has no @param text.`);
-                const {type, note} = shortType(p.type, page);
+                const {type, note} = shortType(p.type, page, '', signature);
                 return line([code(p.name) + (p.optional ? '' : ' **required**'), type, '', withNote(describe(firstSentence(text), page), note)]);
             }).join('\n'));
         }
     }
     const returns = tags.find(t => t.name === 'returns')?.text?.trim();
     const result = flat(signatures[0].type?.getText() ?? 'void');
-    out.push(`**Returns:** ${typeCell(result, page)}${returns ? '. ' + describe(returns, page) : '.'}`);
+    out.push(`**Returns:** ${typeCell(result, page, '', signatures[0])}${returns ? '. ' + describe(returns, page) : '.'}`);
     return out.join('\n\n');
 }
 
@@ -300,11 +350,14 @@ const all = pages();
 for (const page of all) {
     const text = readFileSync(path.join(root, page), 'utf8');
     for (const block of blocks(text)) {
-        if (block.name.includes('.') || homes.has(block.name)) continue;
+        const key = !block.name.includes('.') && blockDeclaration(block.name);
+        if (!key || homes.has(key)) continue;
         const heading = [...text.slice(0, block.start).matchAll(/^#{2,6} (.+)$/gm)].at(-1)?.[1];
-        homes.set(block.name, {page, anchor: heading ? '#' + slug(heading) : ''});
+        homes.set(key, {page, anchor: heading ? '#' + slug(heading) : ''});
     }
 }
+/** The links of a block, as `[name](target)`. */
+const linksOf = text => [...text.matchAll(/\[`+ ?([^`\]]+?) ?`+\]\(([^)]*)\)/g)].map(m => `[\`${m[1]}\`](${m[2]})`);
 const stale = [];
 let count = 0;
 for (const page of all) {
@@ -316,6 +369,13 @@ for (const page of all) {
         count++;
         const raw = block.name.includes('.') ? method(block.name, page) : table(block.name, links, page);
         const body = raw === null ? null : await formatFences(raw);
+        // (A link of the page that the table no longer makes points to another declaration, or to none.)
+        if (check && body !== null) {
+            const made = new Set(linksOf(body));
+            for (const link of linksOf(text.slice(block.start, block.end))) {
+                if (!made.has(link)) problems.push(`${page} (ref:${block.name}): the link ${link} points to a declaration other than the one that the name stands for there. Run \`node scripts/reference.mjs --write\`.`);
+            }
+        }
         out += text.slice(at, block.start) + (body === null ? text.slice(block.start, block.end) : body + '\n');
         at = block.end;
     }
