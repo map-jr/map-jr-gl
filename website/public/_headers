@@ -1,0 +1,5 @@
+# The headers of the published site (Cloudflare reads this file; scripts/serve.mjs too).
+# The map frames of the recipes and of /play have an opaque origin (app/utils/map-frame.ts), so the files of the
+# library need CORS.
+/lib/*
+  Access-Control-Allow-Origin: *
