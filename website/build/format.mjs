@@ -66,47 +66,120 @@ function commentLines(indent, marker, text, width) {
     return [`${indent}<!--`, ...wrapWords(text, width - indent.length - 2).map(part => `${indent}  ${part}`), `${indent}-->`];
 }
 
-// Re-flows each comment of a line that is longer than `width`. A comment after code goes on the lines above it.
+// The paragraphs of the text of a comment that spans several lines (#1281). An empty line separates paragraphs. A line
+// that starts with "-", "*", "+", "1." or "@" starts a list item, and the lines after it that are indented under its
+// text continue it. Any other indented line keeps its form, as code in a comment does.
+function paragraphs(texts) {
+    const out = [];
+    let current;
+    for (const text of texts) {
+        if (!text.trim()) { out.push({blank: true}); current = undefined; continue; }
+        const item = /^([-*+]|\d+[.)]|@\S+)\s+/.exec(text);
+        const lead = text.match(/^\s*/)[0].length;
+        if (item) current = {prefix: item[1].startsWith('@') ? '' : item[0], words: [item[1].startsWith('@') ? text : text.slice(item[0].length)]};
+        else if (lead && current?.prefix && lead >= current.prefix.length) { current.words.push(text); continue; }
+        else if (lead) current = {pre: text};
+        else if (current && !current.pre) { current.words.push(text); continue; }
+        else current = {prefix: '', words: [text]};
+        out.push(current);
+        if (current.pre) current = undefined;
+    }
+    return out;
+}
+
+// The lines of the paragraphs at `room` columns of text, without markers; an empty string is an empty comment line.
+function paragraphLines(paras, room) {
+    return paras.flatMap(para => {
+        if (para.blank) return [''];
+        if (para.pre) return [para.pre];
+        const pad = ' '.repeat(para.prefix.length);
+        return wrapWords(para.words.join(' '), room - para.prefix.length).map((part, i) => (i ? pad : para.prefix) + part);
+    });
+}
+
+// The comment that starts at line `i` and spans several lines, as {end, render(width)}, or undefined: consecutive
+// lines of "//" or "#" at one indentation, a block of "/* */" or an HTML comment.
+function commentGroup(lines, kinds, i) {
+    const kind = kinds[i], line = lines[i];
+    const lineMarker = kind === 'sh' ? '#' : kind === 'js' ? '//' : undefined;
+    const pattern = lineMarker === '#' ? /^(\s*)#(?!!)( ?)(.*)$/ : /^(\s*)\/\/( ?)(.*)$/;
+    const first = lineMarker && pattern.exec(line);
+    if (first) {
+        const texts = [];
+        let end = i;
+        for (let m; end < lines.length && kinds[end] === kind && (m = pattern.exec(lines[end])) && m[1] === first[1]; end++) texts.push(m[3]);
+        if (end - i < 2) return undefined;
+        const indent = first[1];
+        return {end, render: width => paragraphLines(paragraphs(texts), width - indent.length - lineMarker.length - 1)
+            .map(part => part ? `${indent}${lineMarker} ${part}` : `${indent}${lineMarker}`)};
+    }
+    const open = kind === 'js' ? /^(\s*)(\/\*\*?)(.*)$/.exec(line) : kind === 'html' ? /^(\s*)(<!--)(.*)$/.exec(line) : null;
+    if (!open) return undefined;
+    const close = open[2] === '<!--' ? '-->' : '*/';
+    if (open[3].includes(close)) return undefined;
+    let end = i + 1;
+    while (end < lines.length && !lines[end].includes(close)) end++;
+    // Code after the end of the comment keeps the comment as written.
+    if (end >= lines.length || lines[end].indexOf(close) + close.length < lines[end].trimEnd().length) return undefined;
+    const indent = open[1];
+    const texts = [open[3].trim(), ...lines.slice(i + 1, end + 1).map((text, k, all) => {
+        if (k === all.length - 1) text = text.slice(0, text.indexOf(close));
+        if (close === '*/') return text.replace(/^\s*\*? ?/, '').trimEnd();
+        // In an HTML comment, the lines are often aligned under the text after "<!--": the indentation is not text.
+        return text.trim();
+    })];
+    while (texts.length && !texts[0].trim()) texts.shift();
+    while (texts.length && !texts[texts.length - 1].trim()) texts.pop();
+    return {end: end + 1, render: width => close === '*/'
+        ? [`${indent}${open[2]}`, ...paragraphLines(paragraphs(texts), width - indent.length - 3).map(part => part ? `${indent} * ${part}` : `${indent} *`), `${indent} */`]
+        : [`${indent}<!--`, ...paragraphLines(paragraphs(texts), width - indent.length - 2).map(part => part ? `${indent}  ${part}` : ''), `${indent}-->`]};
+}
+
+// Re-flows each comment that has a line longer than `width`. A comment that spans several lines is re-flowed as a
+// whole, by paragraphs (#1281). A comment after code goes on the lines above it.
 export function reflowComments(code, language, width) {
     const base = commentKinds[language?.toLowerCase()];
     if (!base) return code;
-    let inScript = false, inComment = false;
-    return code.split('\n').flatMap(line => {
-        let kind = base;
-        if (base === 'vue') {
-            if (/^\s*<script\b/.test(line)) inScript = true;
-            kind = inScript || /^\s*<style\b/.test(line) ? 'js' : 'html';
-            if (/^\s*<\/script>/.test(line)) inScript = false;
-        }
-        // A line inside an HTML comment that spans several lines wraps as text.
-        const wasInComment = inComment;
-        if (kind === 'html' || kind === 'vue') {
-            if (inComment && line.includes('-->')) inComment = false;
-            else if (!inComment && line.includes('<!--') && !line.includes('-->')) inComment = true;
-        }
-        if (line.length <= width) return [line];
-        if (wasInComment && inComment) {
-            const indent = line.match(/^\s*/)[0];
-            return wrapWords(line.trim(), width - indent.length).map(part => indent + part);
-        }
-        const indent = line.match(/^\s*/)[0];
-        // A plain text fence, such as a message of the library, wraps at the spaces.
-        if (kind === 'text') return wrapWords(line.trim(), width - indent.length).map(part => indent + part);
-        // A line inside a block comment that starts with "*".
-        const star = /^(\s*)\* (.*)$/.exec(line);
-        if (kind === 'js' && star && !star[2].includes('*/')) return commentLines(star[1], '*', star[2], width);
-        const start = commentStart(line, kind);
-        if (!start) return [line];
-        const [index, marker] = start;
-        let text = line.slice(index + marker.length);
-        if (marker === '/*' || marker === '<!--') {
-            const end = marker === '/*' ? '*/' : '-->';
-            if (!text.trimEnd().endsWith(end)) return [line];
-            text = text.trimEnd().slice(0, -end.length);
-        }
-        const before = line.slice(0, index).trimEnd();
-        return [...commentLines(indent, marker, text.trim(), width), ...(before.trim() ? [before] : [])];
-    }).join('\n');
+    const lines = code.split('\n');
+    let inScript = false;
+    const kinds = lines.map(line => {
+        if (base !== 'vue') return base;
+        if (/^\s*<script\b/.test(line)) inScript = true;
+        const kind = inScript || /^\s*<style\b/.test(line) ? 'js' : 'html';
+        if (/^\s*<\/script>/.test(line)) inScript = false;
+        return kind;
+    });
+    const out = [];
+    for (let i = 0; i < lines.length;) {
+        const group = commentGroup(lines, kinds, i);
+        const own = group && lines.slice(i, group.end);
+        if (group) out.push(...(own.some(line => line.length > width) ? group.render(width) : own));
+        else out.push(...reflowLine(lines[i], kinds[i], width));
+        i = group ? group.end : i + 1;
+    }
+    return out.join('\n');
+}
+
+// Re-flows the comment of one line that is longer than `width`.
+function reflowLine(line, kind, width) {
+    if (line.length <= width) return [line];
+    const indent = line.match(/^\s*/)[0];
+    // A plain text fence, such as a message of the library, wraps at the spaces.
+    if (kind === 'text') return wrapWords(line.trim(), width - indent.length).map(part => indent + part);
+    // A line inside a block comment that starts with "*".
+    const star = /^(\s*)\* (.*)$/.exec(line);
+    if (kind === 'js' && star && !star[2].includes('*/')) return commentLines(star[1], '*', star[2], width);
+    const start = commentStart(line, kind);
+    if (!start) return [line];
+    const [index, marker] = start;
+    let text = line.slice(index + marker.length);
+    if (marker === '/*' || marker === '<!--') {
+        const end = marker === '/*' ? '*/' : '-->';
+        if (!text.trimEnd().endsWith(end)) return [line];
+        text = text.trimEnd().slice(0, -end.length);
+    }
+    const before = line.slice(0, index).trimEnd();
+    return [...commentLines(indent, marker, text.trim(), width), ...(before.trim() ? [before] : [])];
 }
 
 // The code at `width` columns, without the newline at the end, or undefined when the site does not format the

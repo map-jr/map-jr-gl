@@ -541,8 +541,7 @@ export default function Terrain() {
 <!--
   Below the map, a line of text
   gives the elevation at a click,
-  and two buttons
-  change the map.
+  and two buttons change the map.
 -->
 <map-jr
   id="map"

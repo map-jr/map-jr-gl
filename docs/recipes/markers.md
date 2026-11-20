@@ -527,8 +527,7 @@ export default function Markers() {
 <!--
   A line of text below the map
   gives the frame rate. A click on
-  a marker opens a
-  popup.
+  a marker opens a popup.
 -->
 <map-jr
   id="map"

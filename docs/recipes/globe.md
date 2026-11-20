@@ -200,9 +200,8 @@ export default function Globe() {
 <!--
   A line of text below the map
   names the projection. The globe
-  turns into
-  Mercator between zoom 11 and 12,
-  as in MapLibre GL JS.
+  turns into Mercator between zoom
+  11 and 12, as in MapLibre GL JS.
 -->
 <map-jr
   id="map"

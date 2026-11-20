@@ -419,8 +419,7 @@ export default function Reactive() {
 <!--
   Below the map, a line of text
   gives the state of the map, and
-  two buttons
-  change the map.
+  two buttons change the map.
 -->
 <map-jr
   id="map"
