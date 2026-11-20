@@ -47,7 +47,10 @@ const map = createMap('map', {
 
 <!-- ref:MainExports.points:start -->
 ```ts
-points(records: readonly R[], options: PointsOptions<R>): PointCollection
+points(
+  records: readonly R[],
+  options: PointsOptions<R>,
+): PointCollection
 ```
 
 | Name | Type | Default | Description |
@@ -78,7 +81,10 @@ A record whose position is not two finite numbers is left out. The
 
 <!-- ref:MainExports.defaultPin:start -->
 ```ts
-defaultPin(options?: {color?: string; scale?: number}): HTMLElement
+defaultPin(options?: {
+  color?: string;
+  scale?: number;
+}): HTMLElement
 ```
 
 | Name | Type | Default | Description |

@@ -21,6 +21,26 @@ import {API, NodeBuilderFlags, SymbolFlags} from 'typescript/unstable/sync';
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const write = process.argv.includes('--write'), check = process.argv.includes('--check');
 if (write === check) { console.error('Usage: node scripts/reference.mjs --write | --check'); process.exit(2); }
+// The fences of signatures take the form of the docs formatter at 80 columns (website/build/format.mjs), the form
+// that `docs-lint --fix` writes (#1277). Without the packages of website/, `--write` stops, and `--check` compares
+// the fences with their spaces, line breaks, commas and semicolons ignored.
+const format = await import('../website/build/format.mjs').catch(() => undefined);
+if (!format && write) {
+    console.error('FAIL  reference: website/ has no packages, so the code fences cannot be formatted. Run `pnpm install` in website/, then run this again.');
+    process.exit(1);
+}
+const fences = /^```(\w+)\n([\s\S]*?)\n```$/gm;
+async function formatFences(body) {
+    if (!format) return body;
+    let out = '', at = 0;
+    for (const match of body.matchAll(fences)) {
+        const formatted = await format.formatCode(match[2], match[1], format.desktopWidth) ?? match[2];
+        out += body.slice(at, match.index) + '```' + match[1] + '\n' + formatted + '\n```';
+        at = match.index + match[0].length;
+    }
+    return out + body.slice(at);
+}
+const loose = text => text.replace(fences, (_, language, code) => '```' + language + '\n' + code.replace(/[\s,;]+/g, '') + '\n```');
 
 /** The pages that can have blocks: README.md, every Markdown file of docs/, and the fixture of the tables. */
 function pages() {
@@ -294,12 +314,13 @@ for (const page of all) {
     let out = '', at = 0;
     for (const block of found) {
         count++;
-        const body = block.name.includes('.') ? method(block.name, page) : table(block.name, links, page);
+        const raw = block.name.includes('.') ? method(block.name, page) : table(block.name, links, page);
+        const body = raw === null ? null : await formatFences(raw);
         out += text.slice(at, block.start) + (body === null ? text.slice(block.start, block.end) : body + '\n');
         at = block.end;
     }
     out += text.slice(at);
-    if (out === text) continue;
+    if (out === text || (!format && loose(out) === loose(text))) continue;
     if (write) writeFileSync(file, out); else stale.push(page);
 }
 api.close();
@@ -307,4 +328,4 @@ api.close();
 if (problems.length) console.error('FAIL  reference: the types lack what a table needs:\n' + problems.map(p => '  - ' + p).join('\n'));
 if (stale.length) console.error(`FAIL  reference: the tables of ${stale.join(', ')} are out of date. Run \`node scripts/reference.mjs --write\`.`);
 if (problems.length || stale.length) process.exit(1);
-console.log(`ok    reference: ${count} blocks ${write ? 'written' : 'up to date'}`);
+console.log(`ok    reference: ${count} blocks ${write ? 'written' : 'up to date'}${format ? '' : ' (fences compared without their format, because website/ has no packages)'}`);
