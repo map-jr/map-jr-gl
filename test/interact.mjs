@@ -3720,6 +3720,29 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: zoomSnap snaps the zoom of camera calls and fitBounds, and setEventedParent passes events to the parent, as in MapLibre (#1019)',
             m1019.ml.length === m1019.compat.length && m1019.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1019.compat[i]) < 1e-9 : v === m1019.compat[i]), JSON.stringify(m1019));
+        // #1198: fitBounds and fitScreenCoordinates with `pitch` end at that pitch and fit the box as seen from above, and
+        // without `pitch` keep the pitch of the map, as in MapLibre GL JS (served at /ml/).
+        const m1198 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const view = () => [m.getCenter().lng, m.getCenter().lat, m.getZoom(), m.getPitch(), m.getBearing()];
+                const out = [];
+                m.fitBounds([[0, 40], [10, 50]], {pitch: 30, padding: 10, duration: 0}); out.push(view());
+                m.fitBounds([[5, 40], [20, 45]], {duration: 0}); out.push(view());
+                m.jumpTo({center: [10, 45], zoom: 4, pitch: 0});
+                m.fitScreenCoordinates([50, 40], [250, 160], 20, {pitch: 40, duration: 0}); out.push(view());
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: fitBounds and fitScreenCoordinates end at the pitch of the options, or keep the pitch, as in MapLibre GL JS (#1198)',
+            m1198.ml.length === 3 && m1198.ml.every((v, i) => v.every((x, j) => Math.abs(x - m1198.compat[i][j]) < 1e-4)), JSON.stringify(m1198));
         // #565: isSourceLoaded(id) answers for one source and fires `error` for an id that the style does not have, and
         // isActive() of a handler is true during its gesture, as in MapLibre GL JS (served at /ml/).
         const m565 = {};
