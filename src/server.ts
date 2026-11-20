@@ -9,6 +9,7 @@ import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots,
 import {renderSVG, cleanCredits} from './svg.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
 import type {MapDescription} from './host.ts';
+import {unset, type Given} from './unset.ts';
 import {compileFor, pickImage} from './expr.ts';
 import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
@@ -369,7 +370,7 @@ export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'col
  * @returns A promise of the HTML. When the render fails, the element has no first view and the error is written to the console.
  */
 export async function renderElement(description: MapDescription, options: ElementRenderOptions = {}): Promise<string> {
-    const d = description as MapDescription & Record<string, unknown>, quote = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const d = unset(description) as Given & Record<string, unknown>, quote = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const view: Record<string, unknown> = {...d.initialView, ...d.view}, attrs: string[] = [];
     for (const [field, kind] of Object.entries(ATTRIBUTES)) {
         const v = VIEW_FIELDS.includes(field) ? view[field] : field === 'projection' ? (d.projection as {type?: string} | null)?.type

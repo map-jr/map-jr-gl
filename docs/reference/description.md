@@ -5,6 +5,11 @@ style, the data, the view and the controls. To change the map, pass a new descri
 [`update`](map.md#update), and the map applies what is different. The map shows what the last description
 states: a field that it leaves out is reset to its default.
 
+Every optional field accepts `null`, and `null` means the same as leaving the field out, so a description that is
+parsed from JSON does not need to delete keys. The one exception is [`terrain`](#terrain), where `null` turns off the
+terrain of the style. The rule is for the fields of the description, not for the keys inside a field: in
+[`patch`](map.md#patch), a key of `data` that is `null` removes that source.
+
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
@@ -20,33 +25,33 @@ const map = createMap('map', {
 | Name | Type | Default | Description |
 |---|---|---|---|
 | [`style`](#style) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark colour scheme. |
-| [`sources`](#sources) | `Record<string, SourceSpecification>` | | Sources to add to the style, by id. |
-| [`layers`](#layers) | `LayerInput[]` | | Layers to add to the style, in order. |
+| [`sources`](#sources) | `Record<string, SourceSpecification> \| null` | | Sources to add to the style, by id. |
+| [`layers`](#layers) | `LayerInput[] \| null` | | Layers to add to the style, in order. |
 | [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`, in place of the `terrain` of the style. |
-| [`fonts`](#fonts) | `FontFaces` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
-| [`initialView`](#initialview) | [`InitialView`](types.md#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
-| [`view`](#view-and-onviewchange) | [`ViewInput`](types.md#viewinput) | | A view that the application controls. |
-| [`onViewChange`](#view-and-onviewchange) | `(view: `[`View`](state.md#view)`) => void` | | Called with the first view once, right after `createMap` returns (before `load`), and then with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
-| [`data`](#data) | `Record<string, GeoJSON \| string>` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
-| [`images`](#images) | `Record<string, ImageInput>` | | Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
-| [`sprite`](#sprite) | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
-| [`controls`](#controls) | `ControlSpec[]` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
+| [`fonts`](#fonts) | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
+| [`initialView`](#initialview) | [`InitialView`](types.md#initialview)` \| null` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
+| [`view`](#view-and-onviewchange) | [`ViewInput`](types.md#viewinput)` \| null` | | A view that the application controls. |
+| [`onViewChange`](#view-and-onviewchange) | `((view: `[`View`](state.md#view)`) => void) \| null` | | Called with the first view once, right after `createMap` returns (before `load`), and then with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
+| [`data`](#data) | `Record<string, GeoJSON \| string> \| null` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
+| [`images`](#images) | `Record<string, ImageInput> \| null` | | Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
+| [`sprite`](#sprite) | `{id: string; url: string}[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
+| [`controls`](#controls) | `ControlSpec[] \| null` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
 | [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`, in place of the `projection` of the style. |
-| [`globalState`](#globalstate) | `Record<string, unknown>` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
-| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](state.md#mapstate) and in `onClick`. |
-| [`hoverState`](#hoverstate) | `boolean` | `false` | Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for `feature-state` expressions. |
-| [`onClick`](#onclick) | `(event: MapPointer) => void` | | Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. |
-| `onError` | `(error: Error) => void` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
-| `minZoom` | `number` | `-2` | The smallest zoom level of the map. |
-| `maxZoom` | `number` | `22` | The largest zoom level of the map. |
-| `maxPitch` | `number` | `60` | The largest pitch of the map in degrees, at most 90 (a larger value is limited to 90). |
+| [`globalState`](#globalstate) | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
+| [`interactiveLayers`](#interactivelayers) | `string[] \| null` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](state.md#mapstate) and in `onClick`. |
+| [`hoverState`](#hoverstate) | `boolean \| null` | `false` | Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for `feature-state` expressions. |
+| [`onClick`](#onclick) | `((event: MapPointer) => void) \| null` | | Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. |
+| `onError` | `((error: Error) => void) \| null` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
+| `minZoom` | `number \| null` | `-2` | The smallest zoom level of the map. |
+| `maxZoom` | `number \| null` | `22` | The largest zoom level of the map. |
+| `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 90 (a larger value is limited to 90). |
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
-| `cursor` | `string` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
-| [`cooperativeGestures`](#cooperativegestures) | `boolean` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark'` | `'light'` | The colour scheme of the controls, the popup and the attribution. |
-| [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `(colorScheme: 'auto' \| 'light' \| 'dark') => void` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
-| [`locale`](#locale) | `Record<string, string>` | | The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
-| [`padding`](#padding) | `PaddingInput` | `0` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` with 0 for a side that is left out. |
+| `cursor` | `string \| null` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
+| [`cooperativeGestures`](#cooperativegestures) | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
+| [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark' \| null` | `'light'` | The colour scheme of the controls, the popup and the attribution. |
+| [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `((colorScheme: 'auto' \| 'light' \| 'dark') => void) \| null` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
+| [`locale`](#locale) | `Record<string, string> \| null` | | The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
+| [`padding`](#padding) | `PaddingInput \| null` | `0` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` with 0 for a side that is left out. |
 | [`transformRequest`](#transformrequest) | `RequestTransform \| null` | | A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. |
 <!-- ref:MapDescription:end -->
 
@@ -58,13 +63,13 @@ ignores a change in a later description. To change one, destroy the map and crea
 <!-- ref:MapSetup:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`renderer`](#renderer) | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders the map. |
-| `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`. |
-| `interactive` | `boolean` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
-| `antialias` | `boolean` | `false` | Whether the canvas uses multisample antialiasing. |
-| [`attribution`](#attribution) | `false \| `[`AttributionOptions`](#attributionoptions) | | The options of the built-in attribution (`{compact, customAttribution}`), or `false` to hide it when the page shows the credits itself. |
-| [`hash`](#hash) | `boolean \| string` | `false` | `true` keeps the view in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), and a string keeps it in the parameter of that name. |
-| `nonce` | `string` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. |
+| [`renderer`](#renderer) | `'auto' \| 'worker' \| 'main' \| null` | `'auto'` | The thread that renders the map. |
+| `fontFamily` | `string \| null` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`. |
+| `interactive` | `boolean \| null` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
+| `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
+| [`attribution`](#attribution) | `false \| `[`AttributionOptions`](#attributionoptions)` \| null` | | The options of the built-in attribution (`{compact, customAttribution}`), or `false` to hide it when the page shows the credits itself. |
+| [`hash`](#hash) | `boolean \| string \| null` | `false` | `true` keeps the view in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), and a string keeps it in the parameter of that name. |
+| `nonce` | `string \| null` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. |
 <!-- ref:MapSetup:end -->
 
 ## `style`

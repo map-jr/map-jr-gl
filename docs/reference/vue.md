@@ -42,12 +42,12 @@ new `key`.
 | [`mapStyle`](#mapstyle) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. |
 | [`view`](#view) | [`ViewInput`](types.md#viewinput) | | The view that the application controls, for `v-model:view`. |
 | `initialView` | [`InitialView`](types.md#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
-| `sources` | `Record<string, SourceSpecification>` | | Sources to add to the style, by id. |
-| `layers` | `LayerInput[]` | | Layers to add to the style. |
+| `sources` | `Record<string, SourceSpecification> \| null` | | Sources to add to the style, by id. |
+| `layers` | `LayerInput[] \| null` | | Layers to add to the style. |
 | `terrain` | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
-| `images` | `Record<string, ImageInput>` | | Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
-| `sprite` | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. |
-| [`data`](#data) | `Record<string, string \| GeoJSON>` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
+| `images` | `Record<string, ImageInput> \| null` | | Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
+| `sprite` | `{id: string; url: string}[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. |
+| [`data`](#data) | `Record<string, string \| GeoJSON> \| null` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
 | `interactiveLayers` | `string[]` | | The ids of the style layers that respond to the pointer: their features are in the events `click` and `hover`. |
 | `hoverState` | `boolean` | `false` | Whether the top feature of `interactive-layers` under the pointer has the feature state `hover: true`. |
 | `minZoom` | `number` | `-2` | The smallest zoom level of the map. |
@@ -56,15 +56,15 @@ new `key`.
 | `maxBounds` | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string` | | The CSS cursor over the map. |
 | `cooperativeGestures` | `boolean` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| `colorScheme` | `'auto' \| 'dark' \| 'light'` | `'light'` | The colour scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
-| `locale` | `Record<string, string>` | | The texts of the controls by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
-| `padding` | `PaddingInput` | `0` | Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. |
+| `colorScheme` | `'auto' \| 'dark' \| 'light' \| null` | `'light'` | The colour scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
+| `locale` | `Record<string, string> \| null` | | The texts of the controls by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
+| `padding` | `PaddingInput \| null` | `0` | Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. |
 | `controls` | `ControlSpec[]` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
 | `projection` | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`. |
-| `globalState` | `Record<string, unknown>` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
+| `globalState` | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
 | `transformRequest` | `RequestTransform \| null` | | A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. |
 | `renderer` | `'auto' \| 'main' \| 'worker'` | `'auto'` | The thread that renders the map. |
-| `fonts` | `FontFaces` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
+| `fonts` | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels whose `text-font` names no loaded font. |
 | `interactive` | `boolean` | `true` | Whether the user can move the map. |
 | `antialias` | `boolean` | `false` | Whether the canvas uses multisample antialiasing. |

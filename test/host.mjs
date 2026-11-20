@@ -838,6 +838,35 @@ for (const renderer of renderers) {
         check(`[${renderer}] patch keeps the other fields, undefined removes a field, and description is the last description`,
             JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true, pitch: [90, 1, 60]}), JSON.stringify(patched));
 
+        // 3b4. `null` in an optional field means "not set" (#1146): a description from JSON with `null` in every optional
+        // field except `terrain` draws the same map as one without those keys, in createMap and in update, and warns nothing.
+        const nulls = await page.evaluate(async renderer => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const idle = async host => { await wait(100); for (let i = 0; i < 200 && !host.state.get().idle; i++) await wait(50); };
+            const fields = ['fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'sources', 'layers', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale'];
+            const plain = {style: t.style, renderer};
+            const withNulls = JSON.parse(JSON.stringify({...plain, ...Object.fromEntries(fields.map(k => [k, null]))}));
+            const warned = [], warn = console.warn, error = console.error;
+            console.warn = (...a) => { warned.push(String(a[0])); warn(...a); }; console.error = (...a) => { warned.push(String(a[0])); error(...a); };
+            const look = async (spec, again) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const host = t.lib.createMap(el, spec);
+                await idle(host);
+                if (again) { host.update(again); await idle(host); }
+                const m = host._map, v = host.state.get().view;
+                const out = {style: JSON.stringify(m.getStyle()), view: [v.center.map(n => n.toFixed(6)), v.zoom, v.bearing, v.pitch], limits: [m.getMinZoom(), m.getMaxZoom(), m.getMaxPitch(), m.getMaxBounds()],
+                    cursor: el.querySelector('canvas').style.cursor, controls: el.querySelectorAll('.maplibregl-ctrl').length, scheme: host.state.get().colorScheme, keys: Object.keys(host.description).sort()};
+                host.destroy(); el.remove();
+                return out;
+            };
+            try {
+                const a = await look(plain), b = await look(withNulls), c = await look(plain, withNulls);
+                return {same: JSON.stringify(a) === JSON.stringify(b) && JSON.stringify(a) === JSON.stringify(c), a, b, c, warned: warned.filter(w => w.includes('map-jr-gl'))};
+            } finally { console.warn = warn; console.error = error; }
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] null in every optional field draws the same map as a description without those keys, and warns nothing`,
+            nulls.same === true && nulls.warned.length === 0, JSON.stringify(nulls).slice(0, 2000));
+
         // 3b3. `patch` merges `data` by key, and a key that is `null` removes its source; `layers` is replaced whole (#1160).
         const merged = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
@@ -853,11 +882,16 @@ for (const renderer of renderers) {
             out.removed = [Object.keys(host.description.data), !!host._map.getSource('a'), !!host._map.getSource('b'), !!host._map.getLayer('a'), !!host._map.getLayer('b')];
             host.update(host.description);
             out.same = [Object.keys(host.description.data), !!host._map.getSource('a'), !!host._map.getSource('b')];
+            // A field that is null is "not set" (#1146), while a key of `data` that is null still removes its source.
+            host.patch({data: {c: pt([2, 2])}, cursor: 'crosshair'});
+            host.patch({data: {c: null}, cursor: null});
+            await wait(50);
+            out.nulls = [Object.keys(host.description.data), !!host._map.getSource('c'), 'cursor' in host.description, el.querySelector('canvas').style.cursor];
             host.destroy(); el.remove();
             return out;
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] patch merges data by key, null removes a source, and layers is replaced whole`,
-            JSON.stringify(merged) === JSON.stringify({both: [['a', 'b'], true, true], removed: [['b'], false, true, false, true], same: [['b'], false, true]}), JSON.stringify(merged));
+            JSON.stringify(merged) === JSON.stringify({both: [['a', 'b'], true, true], removed: [['b'], false, true, false, true], same: [['b'], false, true], nulls: [['b'], false, false, '']}), JSON.stringify(merged));
 
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
