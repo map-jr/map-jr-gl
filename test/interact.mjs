@@ -3766,12 +3766,12 @@ for (const mode of renderers) {
             };
             return {ml: await run(ml), compat: await run(compat)};
         });
-        // (The flight dips more than one zoom level below its end; the linear fit does not go below the zoom where it starts, 5.)
+        // (The flight dips more than one zoom level below its end. The linear fit moves 40 degrees at one zoom and does not dip.)
         check('[main] maplibre-compat: fitBounds flies with a duration from speed, and eases with linear, as in MapLibre GL JS (#1235)',
             ['fly', 'linear'].every(k => {
                 const a = m1235.ml[k], b = m1235.compat[k];
                 return a.end.every((x, i) => Math.abs(x - b.end[i]) < 1e-4) && Math.abs(a.low - b.low) < 0.05 && b.ms > a.ms * 0.6 && b.ms < a.ms * 1.6;
-            }) && m1235.ml.fly.low < m1235.ml.fly.end[2] - 1 && m1235.ml.linear.low > 4.99, JSON.stringify(m1235));
+            }) && m1235.ml.fly.low < m1235.ml.fly.end[2] - 1 && m1235.ml.linear.low > m1235.ml.fly.end[2] - 0.01, JSON.stringify(m1235));
         // #565: isSourceLoaded(id) answers for one source and fires `error` for an id that the style does not have, and
         // isActive() of a handler is true during its gesture, as in MapLibre GL JS (served at /ml/).
         const m565 = {};
