@@ -151,7 +151,7 @@ for (const renderer of renderers) {
         check(`[${renderer}] moveTo with fly zooms out on the way and ends at the view (#43)`,
             fly.low < fly.start - 0.5 && fly.end[0] === -73.9 && fly.end[1] === fly.start, JSON.stringify(fly));
 
-        // 2b. Padding per side (#212): fitBounds and moveTo with bounds take {top, right, bottom, left} for the fit, and
+        // 2b. Padding per side (#212): fitBounds and moveTo with bounds take {top, right, bottom, left} as fitPadding for the fit, and
         // the description has the padding of the map. moveTo leaves the padding of the map as the description gave it (#501).
         const padding = await page.evaluate(async () => {
             const t = window.t, m = t.host._map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
@@ -159,21 +159,21 @@ for (const renderer of renderers) {
             const at = () => { const p = m.project(mid); return [Math.round(p.x), Math.round(p.y)]; };
             const warned = [], warn = console.warn;
             console.warn = (...a) => warned.push(a.join(' '));
-            t.host.fitBounds(b, {padding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
+            t.host.fitBounds(b, {fitPadding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
             const fit = at();
-            t.host.moveTo({center: mid, padding: {left: 300}});
+            t.host.moveTo({center: mid, fitPadding: {left: 300}});
             const ignored = at();
             await wait(300);
             t.host.update({...t.spec, padding: {right: 300}});
             const spec = at();
-            t.host.moveTo({bounds: b, padding: {left: 400, top: 10, right: 10, bottom: 10}, bearing: 20, pitch: 30});
+            t.host.moveTo({bounds: b, fitPadding: {left: 400, top: 10, right: 10, bottom: 10}, bearing: 20, pitch: 30});
             await wait(300);
             const v = t.host.state.get().view, bounds = {bearing: Math.round(v.bearing), pitch: Math.round(v.pitch)};
             t.host.moveTo({center: mid, bearing: 0, pitch: 0});
             const kept = at();
             t.host.update({...t.spec, padding: {right: 300}});
             const same = at();
-            t.host.moveTo({bounds: b, padding: 20, fly: true, duration: 300});
+            t.host.moveTo({bounds: b, fitPadding: 20, fly: true, duration: 300});
             await wait(200);
             for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
             const flown = at();
@@ -193,7 +193,7 @@ for (const renderer of renderers) {
         const P = padding, near = (a, b) => Math.abs(a - b) <= 2, half = P.w / 2, rest = (P.w - 300) / 2;
         check(`[${renderer}] padding per side: fitBounds takes {top, right, bottom, left}, and padding of the description moves the centre`,
             near(P.fit[0], 400 + (P.w - 410) / 2) && near(P.spec[0], rest) && near(P.cleared[0], half), JSON.stringify(padding));
-        check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and padding without bounds warns once (#501)`,
+        check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and fitPadding without bounds warns once (#501)`,
             near(P.ignored[0], half) && near(P.ignored[1], P.h / 2) && near(P.kept[0], rest) && near(P.same[0], rest) && P.warned === 1, JSON.stringify(padding));
         check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
             padding.bounds.bearing === 20 && padding.bounds.pitch === 30 && near(P.flown[0], rest) && near(P.flown[1], P.h / 2) && padding.detached === 'ok', JSON.stringify(padding));
@@ -967,13 +967,47 @@ for (const renderer of renderers) {
             const rejected = await later.then(() => 'resolved', e => e.message);
             return {type: b.type, w: bmp.width, centre: px(0.5, 0.5), corner: px(0.02, 0.02), jpeg: jpeg.type, rejected};
         }, renderer);
+        // 2c. The options of a fit are fitPadding and fitMaxZoom in initialView, moveTo and fitBounds, and the old names
+        // padding and maxZoom warn in the development build and have no effect there (#1147).
+        const fitNames = await page.evaluate(async renderer => {
+            const t = window.t, small = [[-74.0101, 40.7101], [-74.01, 40.71]];
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const first = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {bounds: small, fitMaxZoom: 4}, renderer, attribution: false});
+            const initial = Math.round(first.state.get().view.zoom * 100) / 100;
+            first.destroy();
+            const old = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {bounds: small, maxZoom: 4, padding: 10}, renderer, attribution: false});
+            const initialOld = old.state.get().view.zoom;
+            t.host.moveTo({bounds: small, fitMaxZoom: 5});
+            const moved = t.host._map.getZoom();
+            t.host.fitBounds(small, {fitMaxZoom: 6});
+            const fitted = t.host._map.getZoom();
+            t.host.moveTo({bounds: small, maxZoom: 5});
+            const movedOld = t.host._map.getZoom();
+            t.host.fitBounds(small, {padding: 10});
+            const padded = t.host._map.getPadding();
+            await wait(500);
+            old.destroy(); el.remove();
+            console.warn = warn;
+            return {initial, initialOld, moved, fitted, movedOld, padded, warned: warned.filter(w => w.includes('is not an option of a fit'))};
+        }, renderer);
+        {
+            const F = fitNames, said = (where, name) => F.warned.some(w => w.startsWith(`[map-jr-gl] ${where}: "${name}"`) && w.includes(`"fit${name[0].toUpperCase() + name.slice(1)}"`));
+            check(`[${renderer}] fitMaxZoom limits the fit in initialView, moveTo and fitBounds (#1147)`,
+                F.initial === 4 && F.moved === 5 && F.fitted === 6, JSON.stringify(F));
+            check(`[${renderer}] padding and maxZoom of initialView, moveTo and fitBounds warn with the new name and have no effect (#1147)`,
+                F.initialOld > 4 && F.movedOld > 5 && F.padded.left === 0 && said('initialView', 'maxZoom') && said('initialView', 'padding') && said('moveTo()', 'maxZoom') && said('fitBounds()', 'padding'), JSON.stringify(F));
+        }
+
         check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
             blob.type === 'image/png' && blob.w >= 200 && blob.centre[2] > 200 && blob.centre[0] < 50 && blob.corner[0] > 200 && blob.corner[2] < 50 && blob.jpeg === 'image/jpeg' && /toBlob\(\): the map was removed/.test(blob.rejected), JSON.stringify(blob));
 
-        // 3d. `initialView` takes bounds with padding, and `state.view.bounds` follows moves and a new size (#266).
+        // 3d. `initialView` takes bounds with fitPadding, and `state.view.bounds` follows moves and a new size (#266).
         const viewBounds = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
-            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {bounds: [[-10, -5], [10, 5]], padding: 20}, renderer, attribution: false});
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {bounds: [[-10, -5], [10, 5]], fitPadding: 20}, renderer, attribution: false});
             const first = host.state.get().view;
             const changed = () => new Promise(r => { host.state.subscribe(s => s.view.bounds, () => r()); setTimeout(r, 3000); });
             let wait = changed();
@@ -990,7 +1024,7 @@ for (const renderer of renderers) {
         {
             const {first, moved, wider} = viewBounds, [[w, s], [e, n]] = first.bounds ?? [[0, 0], [0, 0]];
             // The box of 20° by 10° fits the width less 40 px of padding: 160 px for 20°, so 200 px show 25°.
-            check(`[${renderer}] initialView with bounds and padding fits the box, and state.view.bounds is the visible box`,
+            check(`[${renderer}] initialView with bounds and fitPadding fits the box, and state.view.bounds is the visible box`,
                 Math.abs(first.center[0]) < 1e-6 && Math.abs(first.center[1]) < 1e-6 && Math.abs(w + 12.5) < 0.01 && Math.abs(e - 12.5) < 0.01 && s < -5 && n > 5, JSON.stringify(first));
             check(`[${renderer}] state.view.bounds follows a move and a new size of the map`,
                 !!moved && moved[0][0] < 30 && moved[1][0] > 30 && !!wider && wider[1][0] - wider[0][0] > 1.9 * (moved[1][0] - moved[0][0]), JSON.stringify({moved, wider}));
