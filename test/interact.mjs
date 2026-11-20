@@ -3683,6 +3683,27 @@ for (const mode of renderers) {
             m1021.readd.ml === m1021.readd.base && m1021.readd.ml !== m1021['2,1'].ml && m1021.readd.main === m1021.readd.cbase && m1021.readd.worker === m1021.readd.cbase && m1021.readd.cbase !== m1021['2,1'].main, JSON.stringify(m1021.readd));
         check('[main] maplibre-compat: setStyle that replaces a source with one of the same id drops its setSourceTileLodParams values, as in MapLibre GL JS (#1059)',
             m1021.restyle.ml === m1021.readd.base && m1021.restyle.main === m1021.readd.cbase && m1021.restyle.worker === m1021.readd.cbase, JSON.stringify(m1021.restyle));
+        // #1242: zoomIn and zoomOut take 500 ms and resetNorth and resetNorthPitch 1000 ms by default, as in MapLibre GL JS (served at /ml/).
+        const m1242 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const time = async f => { const t = performance.now(); const end = new Promise(r => m.once('moveend', r)); f(); await end; return performance.now() - t; };
+                const out = [await time(() => m.zoomIn()), await time(() => m.zoomOut())];
+                m.jumpTo({bearing: 40}); out.push(await time(() => m.resetNorth()));
+                m.jumpTo({bearing: 40, pitch: 30}); out.push(await time(() => m.resetNorthPitch()));
+                m.remove(); el.remove();
+                return out.map(Math.round);
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        // The times are at least the duration (the old defaults were 300 and 500 ms) and less than twice it, for a loaded machine.
+        check('[main] maplibre-compat: zoomIn and zoomOut take 500 ms and resetNorth and resetNorthPitch 1000 ms by default, as in MapLibre GL JS (#1242)',
+            [m1242.ml, m1242.compat].every(t => [500, 500, 1000, 1000].every((d, i) => t[i] >= d - 20 && t[i] < 2 * d)), JSON.stringify(m1242));
         // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
         const m1019 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
