@@ -2,228 +2,8 @@
 
 `scripts/reference.mjs` fills the blocks of this file, and `pnpm test:consistency` runs `--check` on it. The blocks
 cover the types that the reference pages do not have yet, so that a member without TSDoc fails here first: the
-events of the map, the members of the map, one method, and the props of the Vue component. Do not edit the tables
-by hand: change the comment in `src/` and run `node scripts/reference.mjs --write`.
-
-## `MapInstance`
-
-<!-- ref:MapInstance:start -->
-| Name | Type | Description |
-|---|---|---|
-| `update` | `(spec: `[`MapDescription`](../../docs/reference/description.md#mapdescription)`) => void` | Applies a new description to the map. |
-| `patch` | `(part: Partial<`[`MapDescription`](../../docs/reference/description.md#mapdescription)`>) => void` | Applies the fields of `part` and keeps the other fields of the current description. |
-| `description` (read only) | `Readonly<`[`MapDescription`](../../docs/reference/description.md#mapdescription)`>` | The description of the last `createMap`, `update` or `patch`. |
-| `getResolvedDescription` | `() => `[`MapDescription`](../../docs/reference/description.md#mapdescription) | Returns the description with `style` as a copy of the style that the map loaded and `globalState` as the global state in effect. |
-| `destroy` | `() => void` | Removes the map, its controls and its overlays from the page. |
-| `state` (read only) | `Readable<`[`MapState`](#mapstate)`>` | A store of the state of the map (`MapState`): `state.get()` returns it, and `state.subscribe(fn)` calls `fn` at each change. |
-| `queryFeatures` | `(at?: FeaturePlace \| FeatureOptions, options?: FeatureOptions) => Promise<RenderedFeature[]>` | Returns the features that the style layers render at a place, the top one first. |
-| `querySource` | `(sourceId: string, at?: FeaturePlace \| SourceOptions, options?: SourceOptions) => Promise<QueriedFeature[]>` | Returns the features of the tile data of a source, with no need of a style layer. |
-| `watchFeatures` | `(at: FeaturePlace \| undefined, options: FeatureOptions, listener: (features: RenderedFeature[]) => void) => () => void` | Calls `listener` with the result of `queryFeatures` now and again each time that the result changes. |
-| `watchSource` | `(sourceId: string, at: FeaturePlace \| undefined, options: SourceOptions, listener: (features: QueriedFeature[]) => void) => () => void` | Calls `listener` with the result of `querySource` now and again each time that the result changes. |
-| `setFeatureState` | `(target: {source: string; sourceLayer?: string; id: number \| string}, state: Record<string, unknown>) => void` | Merges `state` into the feature state of one feature, which `feature-state` expressions read. |
-| `removeFeatureState` | `(target: {source: string; sourceLayer?: string; id?: number \| string}, key?: string) => void` | Removes one key of the feature state of a feature, or its whole state when `key` is left out. |
-| `queryElevation` | `(at: Position \| {x: number; y: number}) => Promise<number \| null>` | Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, from the terrain source. |
-| `toBlob` | `(type?: string, quality?: number) => Promise<Blob>` | Returns the map as an image once the map is idle, in the size of the canvas in device pixels. |
-| `clusterExpansionZoom` | `(sourceId: string, clusterId: number) => Promise<number>` | Returns the zoom level at which a cluster of a GeoJSON source with `cluster: true` divides. |
-| `clusterChildren` | `(sourceId: string, clusterId: number) => Promise<ClusterFeature[]>` | Returns the clusters and points that a cluster divides into at the next zoom level. |
-| `clusterLeaves` | `(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}) => Promise<ClusterFeature[]>` | Returns the points of a cluster. |
-| `moveTo` | `(view: `[`MoveToOptions`](#movetooptions)`) => void` | Moves the camera to a view or to `bounds`, with an animation when `duration` is more than 0 or `fly` is set. |
-| `fitBounds` | `(bounds: Bounds, options?: Omit<`[`MoveToOptions`](#movetooptions)`, 'bounds' \| 'center' \| 'zoom'>) => void` | Moves the camera to fit a box, as `moveTo({bounds, ...options})` with `duration` 800 ms unless `options` sets it. |
-| `project` | `(lngLat: Position) => {x: number; y: number}` | Converts a position to a point of the screen. |
-| `unproject` | `(point: {x: number; y: number}) => [number, number]` | Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. |
-| `overlay` | `(element: HTMLElement, options: OverlayOptions) => MapOverlay` | Places an element of the page at a position of the map, as a marker, a label or a popup; the element moves with the map. |
-| `listen` | `<K extends keyof `[`MapEvents`](#mapevents)`>(type: K, fn: (event: `[`MapEvents`](#mapevents)`[K]) => void) => () => void` | Calls `fn` for each event of a type of `MapEvents`. |
-| `once` | `<K extends keyof `[`MapEvents`](#mapevents)`>(type: K) => Promise<`[`MapEvents`](#mapevents)`[K]>` | Waits for the next event of a type of `MapEvents`. |
-| `container` (read only) | `HTMLElement` | The element that holds the map. |
-<!-- ref:MapInstance:end -->
-
-## `MapInstance.queryFeatures`
-
-<!-- ref:MapInstance.queryFeatures:start -->
-```ts
-queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Promise<RenderedFeature[]>
-```
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `at` | `FeaturePlace \| FeatureOptions` | | A point of the screen (`{x, y}`), a position (`[lng, lat]`), a box of the screen (two points), or nothing for the whole map. |
-| `options` | `FeatureOptions` | | `layers` (the ids of style layers), `filter` (a filter expression) and `radius` (in CSS pixels around a point). |
-
-**Returns:** `Promise<RenderedFeature[]>`. A promise of the features.
-<!-- ref:MapInstance.queryFeatures:end -->
-
-## `MapState`
-
-<!-- ref:MapState:start -->
-| Name | Type | Description |
-|---|---|---|
-| `loaded` | `boolean` | Whether the style and the tiles of the view have loaded for the first time. |
-| `idle` | `boolean` | Whether the camera is still and nothing loads. |
-| `moving` | `boolean` | Whether the camera moves. |
-| `view` | [`View`](#view) | The current view. |
-| `hover` | `RenderedFeature[]` | The features of `interactiveLayers` under the pointer, the top one first. |
-| `pointer` | [`PointerPosition`](#pointerposition)` \| null` | Where the pointer is over the map, or `null` when it is not over the map. |
-| `renderer` | `'worker' \| 'main' \| undefined` | The thread that renders the map, or `undefined` until `loaded` is `true`. |
-| `colorScheme` | `'light' \| 'dark'` | The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. |
-<!-- ref:MapState:end -->
-
-## `View`
-
-<!-- ref:View:start -->
-| Name | Type | Description |
-|---|---|---|
-| `center` | `[number, number]` | The center of the view, `[lng, lat]`. |
-| `zoom` | `number` | The zoom level. |
-| `bearing` | `number` | The bearing in degrees clockwise from north. |
-| `pitch` | `number` | The pitch in degrees from straight down. |
-| `bounds` | `[[number, number], [number, number]]` | The smallest box that contains the visible map, `[[west, south], [east, north]]`. |
-<!-- ref:View:end -->
-
-## `PointerPosition`
-
-<!-- ref:PointerPosition:start -->
-| Name | Type | Description |
-|---|---|---|
-| `point` | `{x: number; y: number}` | The point in CSS pixels from the top left corner of the map. |
-| `lngLat` | `[number, number]` | The position under the pointer, `[lng, lat]`. |
-<!-- ref:PointerPosition:end -->
-
-## `MapEvents`
-
-<!-- ref:MapEvents:start -->
-| Name | Type | Description |
-|---|---|---|
-| `load` | [`MapEventBase`](#mapeventbase)`<'load'>` | The style and the first tiles have loaded. |
-| `idle` | [`MapEventBase`](#mapeventbase)`<'idle'>` | Nothing moves and nothing loads. |
-| `render` | [`MapEventBase`](#mapeventbase)`<'render'>` | The map has drawn a frame. |
-| `resize` | [`MapEventBase`](#mapeventbase)`<'resize'>` | The size of the map has changed. |
-| `remove` | [`MapEventBase`](#mapeventbase)`<'remove'>` | The map is removed. |
-| `style.load` | [`MapEventBase`](#mapeventbase)`<'style.load'>` | A complete style has loaded. |
-| `webglcontextlost` | [`MapEventBase`](#mapeventbase)`<'webglcontextlost'>` | The browser has taken the WebGL context away. |
-| `webglcontextrestored` | [`MapEventBase`](#mapeventbase)`<'webglcontextrestored'>` | The map has a WebGL context again after `webglcontextlost`. |
-| `movestart` | [`MapEventBase`](#mapeventbase)`<'movestart'>` | The view starts to change. |
-| `move` | [`MapEventBase`](#mapeventbase)`<'move'>` | The view changes. |
-| `moveend` | [`MapEventBase`](#mapeventbase)`<'moveend'>` | The view has stopped changing. |
-| `zoomstart` | [`MapEventBase`](#mapeventbase)`<'zoomstart'>` | The zoom starts to change. |
-| `zoom` | [`MapEventBase`](#mapeventbase)`<'zoom'>` | The zoom changes. |
-| `zoomend` | [`MapEventBase`](#mapeventbase)`<'zoomend'>` | The zoom has stopped changing. |
-| `rotatestart` | [`MapEventBase`](#mapeventbase)`<'rotatestart'>` | The bearing starts to change. |
-| `rotate` | [`MapEventBase`](#mapeventbase)`<'rotate'>` | The bearing changes. |
-| `rotateend` | [`MapEventBase`](#mapeventbase)`<'rotateend'>` | The bearing has stopped changing. |
-| `pitchstart` | [`MapEventBase`](#mapeventbase)`<'pitchstart'>` | The pitch starts to change. |
-| `pitch` | [`MapEventBase`](#mapeventbase)`<'pitch'>` | The pitch changes. |
-| `pitchend` | [`MapEventBase`](#mapeventbase)`<'pitchend'>` | The pitch has stopped changing. |
-| `dragstart` | [`MapDragEvent`](#mapdragevent) | The user starts to drag the map. |
-| `drag` | [`MapDragEvent`](#mapdragevent) | The user drags the map. |
-| `dragend` | [`MapDragEvent`](#mapdragevent) | The user stops dragging the map. |
-| `dblclick` | [`MapPointerEvent`](#mappointerevent)`<'dblclick'>` | A double click on the map. |
-| `contextmenu` | [`MapPointerEvent`](#mappointerevent)`<'contextmenu'>` | The browser asks for a context menu over the map, usually after a click with the right mouse button. |
-| `mousedown` | [`MapPointerEvent`](#mappointerevent)`<'mousedown'>` | A mouse button is pressed over the map. |
-| `mousemove` | [`MapPointerEvent`](#mappointerevent)`<'mousemove'>` | The mouse moves over the map. |
-| `mouseup` | [`MapPointerEvent`](#mappointerevent)`<'mouseup'>` | A mouse button is released over the map. |
-| `mouseover` | [`MapPointerEvent`](#mappointerevent)`<'mouseover'>` | The mouse enters the map. |
-| `mouseout` | [`MapPointerEvent`](#mappointerevent)`<'mouseout'>` | The mouse leaves the map. |
-| `touchstart` | [`MapTouchEvent`](#maptouchevent)`<'touchstart'>` | A finger touches the map. |
-| `touchmove` | [`MapTouchEvent`](#maptouchevent)`<'touchmove'>` | A finger moves on the map. |
-| `touchend` | [`MapTouchEvent`](#maptouchevent)`<'touchend'>` | A finger leaves the map. |
-| `touchcancel` | [`MapTouchEvent`](#maptouchevent)`<'touchcancel'>` | The browser cancels a touch on the map. |
-| `styledata` | [`MapDataEvent`](#mapdataevent)`<'styledata'>` | The style has changed. |
-| `sourcedata` | [`MapDataEvent`](#mapdataevent)`<'sourcedata'>` | A source has new data. |
-| `data` | [`MapDataEvent`](#mapdataevent)`<'data'>` | Each time that `styledata` or `sourcedata` fires. |
-| `styledataloading` | [`MapDataEvent`](#mapdataevent)`<'styledataloading'>` | The style starts to load. |
-| `sourcedataloading` | [`MapDataEvent`](#mapdataevent)`<'sourcedataloading'>` | A source starts to load. |
-| `dataloading` | [`MapDataEvent`](#mapdataevent)`<'dataloading'>` | Each time that `styledataloading` or `sourcedataloading` fires. |
-| `click` | [`MapPointerEvent`](#mappointerevent)`<'click'>` | A click on the map. |
-| `wheel` | [`MapPointerEvent`](#mappointerevent)`<'wheel', WheelEvent>` | A turn of the mouse wheel over the map. |
-| `boxzoomstart` | [`MapEventBase`](#mapeventbase)`<'boxzoomstart'> & {originalEvent: PointerEvent}` | A zoom to a box drawn with the Shift key and a drag starts. |
-| `boxzoomcancel` | [`MapEventBase`](#mapeventbase)`<'boxzoomcancel'> & {originalEvent: Event}` | A zoom to a box is cancelled. |
-| `boxzoomend` | [`MapEventBase`](#mapeventbase)`<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: [[number, number], [number, number]]}` | A zoom to a box ends, with the bounds of the box as `boxZoomBounds`. |
-| `stats` | [`MapEventBase`](#mapeventbase)`<'stats'> & {fps: number; frameMs: number; labels: number}` | About once a second while the map renders: the frames per second, the CPU time of a frame in milliseconds on the thread that renders, and the number of labels placed. |
-| `styleimagemissing` | [`MapEventBase`](#mapeventbase)`<'styleimagemissing'> & {id: string}` | The style names an image (`id`) that the map does not have. |
-| `terrain` | [`MapEventBase`](#mapeventbase)`<'terrain'> & {terrain: {source: string; exaggeration?: number} \| null}` | The terrain changed. |
-| `projectiontransition` | [`MapEventBase`](#mapeventbase)`<'projectiontransition'> & {newProjection: string}` | The projection was applied, by a new style or a change of the projection type. |
-| `geolocate` | [`MapEventBase`](#mapeventbase)`<'geolocate'> & {coords: GeolocationCoordinates}` | The geolocate control of `@map-jr/map-jr-gl/controls` received a position. |
-| `error` | [`MapEventBase`](#mapeventbase)`<'error'> & {error: unknown}` | An error of the map. |
-<!-- ref:MapEvents:end -->
-
-## `MapEventBase`
-
-<!-- ref:MapEventBase:start -->
-| Name | Type | Description |
-|---|---|---|
-| `type` | `T` | The name of the event. |
-| `target` | [`MapInstance`](#mapinstance) | The map that fired the event, as `createMap` returned it. |
-<!-- ref:MapEventBase:end -->
-
-## `MapPointerEvent`
-
-<!-- ref:MapPointerEvent:start -->
-| Name | Type | Description |
-|---|---|---|
-| `point` | `{x: number; y: number}` | The point in CSS pixels from the top left corner of the map. |
-| `lngLat` | `[number, number]` | The position under the pointer, `[lng, lat]`. |
-| `originalEvent` | `E` | The DOM event. |
-| `preventDefault` | `() => void` | Stops what the map does for this event. |
-| `defaultPrevented` (read only) | `boolean` | Whether a listener called `preventDefault()`. |
-<!-- ref:MapPointerEvent:end -->
-
-## `MapDragEvent`
-
-<!-- ref:MapDragEvent:start -->
-| Name | Type | Description |
-|---|---|---|
-| `originalEvent` | `MouseEvent \| TouchEvent` | The mouse or touch event that moved the map. |
-<!-- ref:MapDragEvent:end -->
-
-## `MapTouchEvent`
-
-<!-- ref:MapTouchEvent:start -->
-| Name | Type | Description |
-|---|---|---|
-| `points` | `{x: number; y: number}[]` | The point of each finger on the map, in CSS pixels from the top left corner of the map. |
-| `lngLats` | `[number, number][]` | The position of each finger on the map, `[lng, lat]`. |
-<!-- ref:MapTouchEvent:end -->
-
-## `MapDataEvent`
-
-<!-- ref:MapDataEvent:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `dataType` **required** | `'source' \| 'style'` | | Whether the event concerns the style or one source. |
-| `sourceId` | `string` | | The id of the source, for `dataType: 'source'`. |
-| `isSourceLoaded` | `boolean` | | Whether the tiles of the source for the view have loaded, for `dataType: 'source'`. |
-| `source` | `unknown` | | The source as the style specifies it, for `dataType: 'source'`. |
-<!-- ref:MapDataEvent:end -->
-
-## `ViewInput`
-
-<!-- ref:ViewInput:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `center` | `Position` | | The center of the view, `[lng, lat]`. |
-| `zoom` | `number` | | The zoom level. |
-| `bearing` | `number` | | The bearing in degrees clockwise from north. |
-| `pitch` | `number` | | The pitch in degrees from straight down. |
-<!-- ref:ViewInput:end -->
-
-## `InitialView`
-
-<!-- ref:InitialView:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `bounds` | `Bounds` | | A box to fit into the map. |
-| `padding` | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. |
-| `maxZoom` | `number` | | The largest zoom level of the fit of `bounds`, for a small box. |
-<!-- ref:InitialView:end -->
-
-## `MoveToOptions`
-
-<!-- ref:MoveToOptions:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `duration` | `number` | `0` | The duration of the animation in milliseconds. |
-| `fly` | `boolean \| FlyOptions` | `false` | Whether the camera zooms out and back in on the way. |
-<!-- ref:MoveToOptions:end -->
+props of the Vue component, and the options of a control. Do not edit the tables by hand: change the comment in
+`src/` and run `node scripts/reference.mjs --write`.
 
 ## `VueMapJrProps`
 
@@ -231,8 +11,8 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `mapStyle` **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. |
-| `view` | [`ViewInput`](#viewinput) | | The view that the application controls, for `v-model:view`. |
-| `initialView` | [`InitialView`](#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
+| `view` | [`ViewInput`](../../docs/reference/types.md#viewinput) | | The view that the application controls, for `v-model:view`. |
+| `initialView` | [`InitialView`](../../docs/reference/types.md#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | `sources` | `Record<string, SourceSpecification>` | | Sources to add to the style, by id. |
 | `layers` | `LayerInput[]` | | Layers to add to the style. |
 | `terrain` | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
@@ -304,7 +84,7 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `getZoomSnap` | `() => number` | Returns the step of the zoom that the option `zoomSnap` or `setZoomSnap` set, or 0 when the zoom does not snap. |
 | `cameraForBounds` | `(bounds: LngLatBoundsInput, o?: {padding?: PaddingInput; maxZoom?: number} \| undefined) => {center: {lng: number; lat: number}; zoom: number; bearing: number}` | The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. |
 | `setEventedParent` | `(parent?: {fire(e: object): unknown; listens?(type: string): boolean} \| null \| undefined, data?: object \| (() => object) \| undefined) => Map` | As in MapLibre GL JS: each event of the map also goes to `parent.fire`, as one object with the fields of `data` (or of what the function `data` returns), while `parent.listens(type)` is true. |
-| `fire` | `(type: string \| {type: string}, data: Record<string, unknown> = {}) => void \| PromiseLike<unknown>` | Calls the listeners of the event `type` with `data` as the event, as in MapLibre GL JS. |
+| `fire` | `(type: string \| {type: string}, data?: Record<string, unknown>) => void \| PromiseLike<unknown>` | Calls the listeners of the event `type` with `data` as the event, as in MapLibre GL JS. |
 | `setMissingStyleImageResolver` | `(resolver: ((id: string) => void \| Promise<void>) \| null) => Map` | Sets a function that supplies images on demand, as in MapLibre GL JS. |
 | `addImage` | `(name: string, source: string \| ImageData \| {width: number; height: number; data: Uint8Array<ArrayBufferLike> \| Uint8ClampedArray<ArrayBufferLike>} \| CanvasImageSource, options?: `[`ImageOptions`](../../docs/reference/server.md#imageoptions)` \| undefined) => Promise<Map>` | Makes an image available to `icon-image` under `name`, and returns a promise of the map; MapLibre GL JS returns the map. |
 | `addControl` | `(control: Control, position?: ControlPosition \| undefined) => Map` | Adds a control to a corner of the map, as in MapLibre GL JS. |
@@ -317,7 +97,7 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `jumpTo` | `(o: CameraInput, eventData?: EventData \| undefined) => Map` | Moves the camera to a view without an animation, as in MapLibre GL JS. |
 | `fitBounds` | `(bounds: LngLatBoundsInput, o?: FitBoundsOptions \| undefined, eventData?: EventData \| undefined) => Map` | Moves the camera to fit a box with an animation of 800 ms unless `o` sets `duration`; MapLibre GL JS flies there for a time that `speed` sets. |
 | `fitScreenCoordinates` | `(p0: PointLike, p1: PointLike, bearing: number, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`, with an animation of 800 ms unless `o` sets `duration`. |
-| `flyTo` | `(o: Omit<CameraOptions, 'padding'> & {padding?: PaddingInput} & {duration?: number; around?: [number, number]; essential?: boolean; offset?: {x: number; y: number} \| [number, number] \| undefined; easing?: ((t: number) => number)} & FlyOptions, eventData?: EventData \| undefined) => Map` | Moves the camera along a curve that zooms out and back in (van Wijk and Nuij), with the options of `flyTo` of MapLibre GL JS 6.17 (`curve` 1.42, `speed` 1.2, `screenSpeed`, `minZoom`, `maxDuration`; without `duration`, the duration follows from the distance). |
+| `flyTo` | `(o: Omit<CameraOptions, 'padding'> & {padding?: PaddingInput} & {duration?: number; around?: [number, number]; essential?: boolean; offset?: {x: number; y: number} \| [number, number] \| undefined; easing?: ((t: number) => number)} & `[`FlyOptions`](../../docs/reference/map.md#flyoptions)`, eventData?: EventData \| undefined) => Map` | Moves the camera along a curve that zooms out and back in (van Wijk and Nuij), with the options of `flyTo` of MapLibre GL JS 6.17 (`curve` 1.42, `speed` 1.2, `screenSpeed`, `minZoom`, `maxDuration`; without `duration`, the duration follows from the distance). |
 | `setPadding` | `(padding: PaddingInput, eventData?: EventData \| undefined) => Map` | Sets the padding in CSS pixels: the space at the edges that other things cover, such as a side panel. |
 | `getPadding` | `() => {top: number; right: number; bottom: number; left: number}` | Returns the padding of the map in CSS pixels, as `{top, right, bottom, left}`. |
 | `setCenter` | `(center: LngLatLike, eventData?: EventData \| undefined) => Map` | Moves the map center to a position without an animation, as in MapLibre GL JS. |
@@ -364,7 +144,7 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `getImage` | `(name: string) => {pixelRatio: number; sdf: boolean; data: unknown; width?: number; height?: number; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'proportional' \| 'stretchOnly' \| 'stretchOrShrink'; textFitHeight?: 'proportional' \| 'stretchOnly' \| 'stretchOrShrink'} \| undefined` | Returns `{data, pixelRatio, sdf}` and the other options of an image that `addImage` added, or `undefined`. |
 | `listImages` | `() => string[]` | Returns the names of the images that the map has. |
 | `loadImage` | `(url: string) => Promise<{data: ImageBitmap}>` | Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. |
-| `querySourceFeatures` | `(sourceId: string, options: QuerySourceFeatureOptions = {}) => GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>` | Returns the features of a source in the tiles of the present view, as an array that is also a promise; MapLibre GL JS returns only the array. |
+| `querySourceFeatures` | `(sourceId: string, options?: QuerySourceFeatureOptions) => GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>` | Returns the features of a source in the tiles of the present view, as an array that is also a promise; MapLibre GL JS returns only the array. |
 | `queryRenderedFeatures` | `(geometry?: PointLike \| [PointLike, PointLike] \| RenderedQueryOptions, options?: RenderedQueryOptions) => MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]>` | Returns the features that the style layers draw at a point or in a box of the screen, the top layer first, as an array that is also a promise; MapLibre GL JS returns only the array. |
 | `refreshTiles` | `(sourceId: string) => Map` | Loads the tiles of a source again, for example after the data behind its URL changed. |
 | `dragPan` (read only) | `InteractionHandler` | A drag with the mouse or one finger moves the map. |
@@ -387,7 +167,7 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `getMaxZoom` | `() => number` | Returns the largest zoom level that the user can reach. |
 | `getContainer` | `() => HTMLElement` | Returns the element that holds the map. |
 | `getCanvas` | `() => HTMLCanvasElement` | Returns the canvas that the map draws on. |
-| `toBlob` | `(type = 'image/png', quality?: number) => Promise<Blob>` | Only in this library: returns a promise of the map as an image. |
+| `toBlob` | `(type?, quality?: number) => Promise<Blob>` | Only in this library: returns a promise of the map as an image. |
 | `loaded` | `() => boolean` | As in MapLibre: `false` from a call of `setStyle`, a style edit, a source change or a camera move until the next complete frame (the frame that fires `idle`). |
 | `isMoving` | `() => boolean` | Whether the camera moves now, by the user or by a camera method. |
 | `unproject` | `(point: {x: number; y: number} \| [number, number]) => LngLat` | Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. |
@@ -430,9 +210,9 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `removeImage` | `(name: string) => Map` | Removes an image that `addImage` added. |
 | `updateImage` | `(name: string, source: string \| ImageData \| {width: number; height: number; data: Uint8Array<ArrayBufferLike> \| Uint8ClampedArray<ArrayBufferLike>} \| CanvasImageSource) => Promise<Map>` | Replaces the pixels of an image added earlier, keeps its options (stretch, content, sdf) and returns a promise of the map; MapLibre GL JS returns the map. |
 | `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
-| `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| FeatureOptions, o: FeatureOptions = {}) => Promise<RenderedFeature[]>` | Only in this library: returns a promise of the features that the style layers draw, the top one first. |
-| `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| SourceOptions, o: SourceOptions = {}) => Promise<QueriedFeature[]>` | Only in this library: returns a promise of the features of the tile data of the source `sourceId`. |
-| `queryElevation` | `(at: LngLatLike \| {x: number; y: number}, options: {source?: string; zoom?: number} = {}) => Promise<number \| null>` | Only in this library: returns a promise of the elevation of the ground in metres at a position, from the raster-dem source of the style, or `null` where it has no data. |
+| `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| `[`FeatureOptions`](../../docs/reference/map.md#featureoptions)`, o?: `[`FeatureOptions`](../../docs/reference/map.md#featureoptions)`) => Promise<`[`RenderedFeature`](../../docs/reference/types.md#renderedfeature)`[]>` | Only in this library: returns a promise of the features that the style layers draw, the top one first. |
+| `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| `[`SourceOptions`](../../docs/reference/map.md#sourceoptions)`, o?: `[`SourceOptions`](../../docs/reference/map.md#sourceoptions)`) => Promise<`[`QueriedFeature`](../../docs/reference/types.md#queriedfeature)`[]>` | Only in this library: returns a promise of the features of the tile data of the source `sourceId`. |
+| `queryElevation` | `(at: LngLatLike \| {x: number; y: number}, options?: {source?: string; zoom?: number}) => Promise<number \| null>` | Only in this library: returns a promise of the elevation of the ground in metres at a position, from the raster-dem source of the style, or `null` where it has no data. |
 | `getAttributions` | `() => string[]` | Only in this library: returns the attribution texts of the sources of the style as they are written, which can be HTML that the attribution control shows. |
 <!-- ref:CompatMap:end -->
 

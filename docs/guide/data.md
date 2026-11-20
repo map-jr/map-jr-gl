@@ -97,7 +97,7 @@ export function Route({to}) {
 
 The map compares the value of each key with the last one by identity. A change inside the old object, such as
 `features.push(feature)`, has no effect, so pass a new object. In the main API,
-[`map.patch`](../api.md#change-the-map) replaces the fields that it is passed and keeps the other fields of the
+[`map.patch`](../reference/map.md#patch) replaces the fields that it is passed and keeps the other fields of the
 description.
 
 When the style changes, the map keeps the data, and it creates the sources of the keys of `data` again in the new
@@ -176,7 +176,7 @@ const map = createMap('map', {
 
 Set `id` from a field of the record that stays the same, not from the index: the index of a record changes when a
 record before it is removed. A string of decimal digits that is a safe integer, such as `'12'`, becomes the number
-`12` in the features that [`queryFeatures`](../api.md#queries) returns and in `state.hover`.
+`12` in the features that [`queryFeatures`](../reference/map.md#queryfeatures) returns and in `state.hover`.
 
 A record whose position is not two finite numbers, such as `['2.3', '48.8']`, is left out. The
 [development build](../api.md#make-a-map) warns once with the index of the first such record.
@@ -314,7 +314,7 @@ A click on a circle turns it red, and the circle that was red before turns blue.
 
 - `source` is the id of the source.
 - `sourceLayer` is the layer of the tiles, and it is required for a vector source.
-- `id` is the `id` of the feature, as [`queryFeatures`](../api.md#queries) and `event.features` return it. A
+- `id` is the `id` of the feature, as [`queryFeatures`](../reference/map.md#queryfeatures) and `event.features` return it. A
   vector source needs a numeric id. In a GeoJSON source, the id is a number or a string, or the value of the
   property that `promoteId` names.
 
@@ -329,7 +329,7 @@ style with the same id draws the state that was set for the old source. The stat
 
 - [`data`](../reference/description.md#data), [`sources`](../reference/description.md#sources) and
   [`hoverState`](../reference/description.md#hoverstate) in the reference of the description.
-- [Change the map](../api.md#change-the-map) for `update` and `patch`.
+- [`update` and `patch`](../reference/map.md#update) for `update` and `patch`.
 - [Markers and popups](markers-and-popups.md) for points with an image.
 - [Query what is at a position](../recipes/query.md) to find the features at a click.
 - [Changes inside the data of a source](../vue.md#changes-inside-the-data-of-a-source) for Vue.

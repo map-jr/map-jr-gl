@@ -42,8 +42,8 @@ lists.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `mapStyle` **required** | [`MapDescription`](description.md#mapdescription)`['style']` | | The style: a style object, the URL of a style, or `{light, dark}`. |
-| `onViewChange` | `(view: View) => void` | | Called with the new view at each change of the view. |
-| `onHover` | `(features: RenderedFeature[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
+| `onViewChange` | `(view: `[`View`](state.md#view)`) => void` | | Called with the new view at each change of the view. |
+| `onHover` | `(features: `[`RenderedFeature`](types.md#renderedfeature)`[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
 | `onError` | `(error: Error) => void` | | Called with each error of the map. |
@@ -90,7 +90,7 @@ export function Stations({stations}) {
 
 Each event of the map has a prop: `on` and the name of the event with a capital first letter, such as `onMoveend`,
 `onZoomend`, `onSourcedata` and `onStyleimagemissing`. The prop for `style.load` is `onStyleload`. The handler
-receives the event object of [`listen`](../api.md#events) of the map. See [Events](../api.md#events) for the list of
+receives the event object of [`listen`](map.md#listen) of the map. See [Events](events.md#mapevents) for the list of
 events.
 
 `onLoad`, `onIdle`, `onError` and `onHover` are props of the table above, and `onClick` and `onViewChange` are
@@ -101,7 +101,7 @@ Without `onError`, the map writes each error to the console. With `onError`, the
 
 ### The ref
 
-A ref on `MapJr` receives the map, a [`MapInstance`](../api.md#make-a-map) of the main API, for methods such as `queryFeatures`
+A ref on `MapJr` receives the map, a [`MapInstance`](map.md#mapinstance) of the main API, for methods such as `queryFeatures`
 and `moveTo`. It is not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: to animate the camera, call
 `moveTo({...view, duration: 500})` in place of `flyTo`.
 
@@ -175,22 +175,8 @@ See [Show the first view before the script runs](../guide/server-rendering.md#sh
 ## `MapOverlay`
 
 `MapOverlay` places its React children at a position of the map, as a marker or a popup. Use it inside `MapJr`. Its
-props are the options of [`overlay`](../api.md#elements-of-the-page-on-the-map) of the map, and `children`. The map
+props are the options of [`overlay`](map.md#overlay) of the map ([`OverlayOptions`](map.md#overlayoptions)), and `children`. The map
 applies the props of each render.
-
-<!-- ref:OverlayOptions:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `lngLat` **required** | `Position` | | The position of the element, `[lng, lat]`. |
-| `anchor` | `Anchor` | `'center'` | The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
-| `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
-| `popup` | `boolean` | `false` | Whether the element is shown in a box with a tip that points to the position (a popup). |
-| `onClose` | `() => void` | | Called when the user closes the popup. |
-| `draggable` | `boolean` | `false` | Whether the user can drag the element. |
-| `onDragStart` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, when a drag starts. |
-| `onDrag` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, at each move of a drag. |
-| `onDragEnd` | `(lngLat: Position) => void` | | Called with the position where the element was dropped, `[lng, lat]`. |
-<!-- ref:OverlayOptions:end -->
 
 With `onClose`, the popup has a button that closes it, and a popup cannot be dragged. After a drag, the element
 stays where the user dropped it until `lngLat` changes. To keep the position, set it in
@@ -274,7 +260,7 @@ React renders the SVG once, outside the page, and the map draws it once for each
 component inside the SVG can change it, and the map then uses the new SVG. An image of `MapImage` overrides an image
 of the prop `images` with the same name.
 
-The [development build](../api.md#make-a-map) warns when `MapImage` is not inside `MapJr`, and when it has neither an `<svg>`
+The [development build](create-map.md#the-development-build) warns when `MapImage` is not inside `MapJr`, and when it has neither an `<svg>`
 element nor `src` one second after it mounts.
 
 ## `useMap`
@@ -292,7 +278,7 @@ component inside `MapJr`.
 useMapState<T>(select: (state: MapState) => T, map?: MapInstance | null): T | undefined
 ```
 
-Returns a part of the [state of the map](../api.md#the-state), and renders the component again when that part
+Returns a part of the [state of the map](state.md#mapstate), and renders the component again when that part
 changes.
 
 | Parameter | Type | Description |

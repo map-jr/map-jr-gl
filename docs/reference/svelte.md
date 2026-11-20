@@ -2,7 +2,7 @@
 
 The entry `@map-jr/map-jr-gl/svelte` creates a map of `@map-jr/map-jr-gl` in a Svelte page. `mapJr` is an action
 that creates the map in an element from a [description](description.md), and `mapState` returns the
-[state of the map](../api.md#the-state) as a Svelte store. The entry does not import Svelte and has no component. The
+[state of the map](state.md#mapstate) as a Svelte store. The entry does not import Svelte and has no component. The
 examples on this page use the runes of Svelte 5 (`$state`, `$derived`, `$props`).
 
 ```svelte
@@ -36,19 +36,19 @@ Creates a map in `node` with `options.description`, and calls `options.ready` wi
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `description` **required** | [`MapDescription`](description.md#mapdescription) | | The description of the map. |
-| `ready` | `(map: MapInstance) => void` | | Called with the map once it is created. |
+| `ready` | `(map: `[`MapInstance`](map.md#mapinstance)`) => void` | | Called with the map once it is created. |
 <!-- ref:SvelteMapAction:end -->
 
 When the value of `use:mapJr` changes, Svelte calls `update`, and the map applies `description` as
-[`update`](../api.md#change-the-map) of the main API does. To change the map, pass a new description object, for
+[`update`](map.md#update) of the main API does. To change the map, pass a new description object, for
 example from `$derived`, as in the example below. The map then applies what is different. A new object or
 list with the same content does no work, and the map compares each value of [`data`](description.md#data) by
 identity. `update` reads `description` only: a new `ready` is not called. When the element is removed, the map is
 destroyed.
 
-`ready` is the only way to reach the map, a [`MapInstance`](../api.md#make-a-map) of the main API. Call its methods there:
-`map.listen(type, fn)` for an event of the map ([Events](../api.md#events)), and `map.overlay(element, options)`
-for a marker or a popup ([Elements of the page on the map](../api.md#elements-of-the-page-on-the-map)).
+`ready` is the only way to reach the map, a [`MapInstance`](map.md#mapinstance) of the main API. Call its methods there:
+`map.listen(type, fn)` for an event of the map ([Events](events.md#mapevents)), and `map.overlay(element, options)`
+for a marker or a popup ([Elements of the page on the map](map.md#overlay)).
 
 ```svelte
 <script>
@@ -100,4 +100,4 @@ shows how a page uses it.
 ## See also
 
 - [The description](description.md) for every field of `description`.
-- [The state](../api.md#the-state) for the members of the store of `mapState`.
+- [The state](state.md#mapstate) for the members of the store of `mapState`.

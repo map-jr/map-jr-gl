@@ -386,7 +386,7 @@ export function Harbor() {
 
 ## Read the view
 
-In the main API, [`map.state`](../api.md#the-state) holds the current view in `view`, with one more member, `bounds`.
+In the main API, [`map.state`](../reference/state.md#mapstate) holds the current view in `view`, with one more member, `bounds`.
 `bounds` is the smallest box `[[west, south], [east, north]]` that contains the visible map, also when the map is
 rotated or pitched. It changes when the map moves and when the size of the map changes.
 

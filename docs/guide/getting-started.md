@@ -152,7 +152,7 @@ The map shows the streets around City Hall, and the console or the paragraph sho
   components of Vue and React and the element set the fields of the same description as props and attributes.
 - The style is `style` in the description. The components and the element name it `map-style`, and React names it
   `mapStyle`, because `style` is already an attribute of every element.
-- [`map.state`](../api.md#the-state) is the state of the map. `subscribe` returns a function that stops the calls.
+- [`map.state`](../reference/state.md#mapstate) is the state of the map. `subscribe` returns a function that stops the calls.
 - In Vue, [`v-model:view`](../vue.md#the-view-of-v-modelview) sets the view of the map and receives each new view.
   React does the same with `view` and `onViewChange`.
 - The Nuxt module registers `MapJr`, `MapOverlay` and `MapImage`. See

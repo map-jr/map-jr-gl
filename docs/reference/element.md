@@ -72,7 +72,7 @@ A boolean attribute is on when it is there. To switch it off, remove the attribu
 read: the element ignores the attribute, so the option is off, and the development build warns.
 
 An attribute that the element cannot read, such as `zoom="near"`, is ignored, and the
-[development build](../api.md#make-a-map) warns once for each element:
+[development build](create-map.md#the-development-build) warns once for each element:
 
 ```text
 [map-jr-gl] <map-jr>: the attribute zoom="near" cannot be read, so the element ignores it. Write a number, for example zoom="11".
@@ -100,8 +100,8 @@ property `mapStyle`. The table lists the members that the description does not h
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `mapStyle` | [`MapDescription`](description.md#mapdescription)`['style']` | | The `style` of the description: the URL of a style, a style object, or `{light, dark}`. |
-| `map` (read only) | `MapInstance \| null` | | The map (`MapInstance`), from the microtask after the element is in the page with a style until it is removed, or else `null`. |
-| `state` (read only) | `MapInstance['state'] \| null` | | The state of the map as a store (`map.state`), or `null` while there is no map. |
+| `map` (read only) | [`MapInstance`](map.md#mapinstance)` \| null` | | The map (`MapInstance`), from the microtask after the element is in the page with a style until it is removed, or else `null`. |
+| `state` (read only) | [`MapInstance`](map.md#mapinstance)`['state'] \| null` | | The state of the map as a store (`map.state`), or `null` while there is no map. |
 | `addEventListener` | `(type: string, listener: EventListenerOrEventListenerObject, options?: boolean \| AddEventListenerOptions \| undefined) => void` | | Adds a listener, as on any element. |
 <!-- ref:MapJrElement:end -->
 
@@ -125,7 +125,7 @@ el.layers = [{id: 'offices', type: 'circle', source: 'offices', paint: {'circle-
 document.body.append(el);
 ```
 
-The element compares the description field by field, as [`update`](../api.md#change-the-map) does. To change
+The element compares the description field by field, as [`update`](map.md#update) does. To change
 `data` or `layers`, set a new object or list: a change inside the object that the element has is not applied.
 
 A property that the page sets before the entry has loaded is applied when the element is defined.
@@ -144,7 +144,7 @@ Each event of the map is a `CustomEvent` that bubbles, named `map-` and the name
 | `map-viewchange` | The new view, `{center, zoom, bearing, pitch, bounds}`, at each change of the view. |
 | `map-colorschemechange` | The `colorScheme` that the control `colorScheme()` set. |
 | `map-error` | Each error of the map, an `Error`. |
-| `map-` and the name of each other event | The event object of [`listen`](../api.md#events): `map-moveend`, `map-sourcedata` and the others. `style.load` is `map-styleload`. |
+| `map-` and the name of each other event | The event object of [`listen`](map.md#listen): `map-moveend`, `map-sourcedata` and the others. `style.load` is `map-styleload`. |
 
 The element writes each error to the console, unless a listener of `map-error` calls `event.preventDefault()`.
 
@@ -173,7 +173,7 @@ is not `null` once the map exists, and `el.state.get().loaded`.
 
 ## Markers and popups
 
-The element has no component for a marker or a popup. Call [`overlay`](../api.md#elements-of-the-page-on-the-map) of
+The element has no component for a marker or a popup. Call [`overlay`](map.md#overlay) of
 the map after `map-ready`.
 
 ```html
