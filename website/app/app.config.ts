@@ -42,6 +42,9 @@ export default defineAppConfig({
                 link: 'legend-link',
                 linkText: () => 'min-w-0 text-pretty',
                 listWithChildren: 'legend-sublist',
+                // On a phone, the list of entries leaves at once when it closes, so that useTocActive can scroll to
+                // the chosen heading in the next frame (#1311).
+                content: 'data-[state=closed]:animate-none',
             },
         },
         prose: {

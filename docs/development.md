@@ -193,7 +193,20 @@ pnpm check                            # checks that output in Chromium (once: pn
 `pnpm check` opens a docs page, uses the navigation, the search and the colour mode, loads the pages at the width
 of a phone (390 px), and waits until the map of the home page is idle. `--no-map` leaves the map out, as the
 workflow does, because the map needs the style and the tiles of other hosts. `--screenshots=<path>` also saves
-pictures of the home page and of one docs page.
+pictures of the home page and of one docs page. It also edits and runs the code of a recipe and of `/play`, in the
+browsers that `--browsers=chromium,firefox,webkit` names (Chromium by default; the workflow uses Chromium). Run it
+with all three after a change of the map frames or of the editor.
+
+The maps of the recipes and of `/play` run code that the reader can change:
+
+- `website/app/components/MapFrame.vue` runs the code in an iframe with the sandbox `allow-scripts`
+  (`website/app/utils/map-frame.ts`). The iframe has an opaque origin, so the code cannot reach the site. An import
+  map gives it the development build of the library of this commit, which `website/build/library.ts` copies to
+  `/lib/`. `website/public/_headers` gives those files the CORS header that the opaque origin needs.
+- `website/app/components/content/LiveExample.vue` shows the map of the code of an example above the code.
+  `website/build/markdown.ts` makes it from the marks `example:<id>:start` and `example:<id>:end` of a recipe.
+- `website/app/components/CodeEditor.vue` is the editor (CodeMirror 6). The pages load it as `<LazyCodeEditor>`, so
+  that its code is a file of its own that a page loads only when the editor shows.
 
 Which files are pages:
 

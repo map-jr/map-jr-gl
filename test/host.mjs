@@ -3091,6 +3091,55 @@ for (const code of ['core', 'compat']) {
     } catch (e) { check(`examples, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The examples hover, back and fit (#1119), in each form that the harness page runs: the line of text names the landing
+// under the pointer; Back returns to the view before the click on a landing; the map starts with every landing in the
+// view, and the button fits them again after a move.
+for (const code of ['core', 'compat', 'svelte', 'element']) {
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}}), errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    // (A map of the compat entry has getZoom and project as in MapLibre GL JS; the other forms give a map of the main API.)
+    const settled = id => page.waitForFunction(id => { const m = window.maps?.[id]; return m && (m.loaded ? m.loaded() && !m.isMoving() : m.state.get().idle && !m.state.get().moving); }, id, {timeout: 30000});
+    const zoomOf = id => page.evaluate(id => { const m = window.maps[id]; return m.getZoom ? m.getZoom() : m.state.get().view.zoom; }, id);
+    const screenOf = (id, lngLat) => page.evaluate(([id, lngLat]) => { const p = window.maps[id].project(lngLat), r = document.querySelector('.live').getBoundingClientRect(); return [r.x + p.x, r.y + p.y]; }, [id, lngLat]);
+    const readout = () => page.evaluate(() => document.querySelector('.readout').textContent);
+    const open = async id => { await page.goto(`${origin}/gallery/examples/run.html?id=${id}&form=${code}`); await settled(id); await page.waitForTimeout(300); };
+    const whitehall = [-74.0131, 40.7013], landings = [whitehall, [-74.0067, 40.7034], [-74.0181, 40.7147], [-73.9946, 40.7036], [-74.0189, 40.6928], [-73.9785, 40.7116], [-73.9997, 40.6930]];
+    const allInside = () => page.evaluate(landings => { const m = window.maps.fit, r = document.querySelector('.live').getBoundingClientRect(); return landings.every(l => { const p = m.project(l); return p.x >= 20 && p.y >= 20 && p.x <= r.width - 20 && p.y <= r.height - 20; }); }, landings);
+    try {
+        await open('hover');
+        await page.mouse.move(...await screenOf('hover', whitehall));
+        const named = await page.waitForFunction(() => document.querySelector('.readout').textContent === 'Whitehall Terminal', null, {timeout: 5000}).then(() => true, () => false);
+        // The state `hover` of the landing, as a query of the layer reports it.
+        const hoverOf = () => page.evaluate(async lngLat => { const m = window.maps.hover, found = await (m.queryRenderedFeatures ? m.queryRenderedFeatures(m.project(lngLat), {layers: ['landings']}) : m.queryFeatures(lngLat, {layers: ['landings']})); return found[0]?.state.hover ?? null; }, whitehall);
+        const stateOver = await hoverOf();
+        await page.mouse.move(5, 5);
+        const left = await page.waitForFunction(() => /^Move the pointer/.test(document.querySelector('.readout').textContent), null, {timeout: 5000}).then(() => true, () => false);
+        const stateAfter = await hoverOf();
+        check(`examples, hover example (${code}): the landing under the pointer has the state hover and its name in the line of text, and neither after the pointer leaves it`,
+            named && stateOver === true && left && !stateAfter, JSON.stringify({text: await readout(), stateOver, stateAfter}));
+
+        await open('back');
+        const before = await zoomOf('back');
+        await page.mouse.click(...await screenOf('back', whitehall));
+        await page.waitForFunction(() => /^Whitehall Terminal\./.test(document.querySelector('.readout').textContent), null, {timeout: 5000});
+        await page.waitForTimeout(1200); await settled('back');
+        const zoomedIn = await zoomOf('back');
+        await page.click('.actions button');
+        await page.waitForTimeout(1200); await settled('back');
+        const after = await zoomOf('back');
+        check(`examples, back example (${code}): a click on a landing zooms to it, and Back returns to the zoom before the click`, zoomedIn > 16.9 && Math.abs(after - before) < 0.01, JSON.stringify({before, zoomedIn, after}));
+
+        await open('fit');
+        const atStart = await allInside();
+        await page.evaluate(() => { const m = window.maps.fit, to = {center: [-73.95, 40.75], zoom: 16}; if (m.jumpTo) m.jumpTo(to); else m.moveTo(to); });
+        const moved = !(await allInside());
+        await page.click('.actions button');
+        await page.waitForTimeout(1000); await settled('fit');
+        check(`examples, fit example (${code}): the map starts with every landing in the view, and the button fits them again after a move`, atStart && moved && await allInside(), JSON.stringify({atStart, moved}));
+    } catch (e) { check(`examples, hover, back and fit examples (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    check(`examples, hover, back and fit examples (${code}): no error on the page`, !errors.length, errors.join(' | '));
+    await page.close();
+}
 // The harness page and the gallery (#1114). The harness page says which forms it runs when it is asked for a form that
 // it does not run, and for an example that no file has. The gallery has one row for each example and a live map in the
 // first row.
@@ -3104,8 +3153,8 @@ for (const code of ['core', 'compat']) {
         await page.goto(`${origin}/gallery/?code=vue`);
         await page.waitForFunction(() => window.maps?.basic, null, {timeout: 60000});
         const rows = await page.evaluate(() => [...document.querySelectorAll('#rows > article')].map(a => `${a.id}:${a.querySelector('code').textContent.length > 100 && !!a.querySelector('.live, .pair') && !!a.querySelector('.readout') && !!a.querySelector('.actions')}`).join(' '));
-        check('gallery: one row for each of the nine examples and the server row, each with its code, and a live map in the first row (#1114)',
-            rows === ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'pmtiles', 'server'].map(id => id + ':true').join(' '), rows);
+        check('gallery: one row for each of the twelve examples and the server row, each with its code, and a live map in the first row (#1114)',
+            rows === ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles', 'server'].map(id => id + ':true').join(' '), rows);
     } catch (e) { check('examples, harness page and gallery (#1114): the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -3116,7 +3165,7 @@ for (const form of ['svelte', 'element']) {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     try {
-        for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'pmtiles']) {
+        for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles']) {
             await page.goto(`${origin}/gallery/examples/run.html?id=${id}&form=${form}`);
             const idle = await page.waitForFunction(id => window.exampleError || window.maps?.[id]?.state.get().idle, id, {timeout: 30000}).then(() => true, () => false);
             const [error, buttons, inStage] = await page.evaluate(() => [window.exampleError, document.querySelectorAll('.actions button').length, !!document.querySelector('.live canvas')]);
@@ -3124,7 +3173,7 @@ for (const form of ['svelte', 'element']) {
         }
     } catch (e) { results.push(String(e.message).split('\n')[0]); }
     check(`examples, harness page: the ${form} form of each example runs in the stage and reaches idle (#1115)`,
-        results.join(' ') === 'basic:ok reactive:ok/2 markers:ok draggable:ok images:ok terrain:ok/2 globe:ok query:ok pmtiles:ok' && !errors.length, `${results.join(' ')} ${errors.join(' | ')}`);
+        results.join(' ') === 'basic:ok reactive:ok/2 markers:ok draggable:ok images:ok terrain:ok/2 globe:ok query:ok hover:ok fit:ok/1 back:ok/1 pmtiles:ok' && !errors.length, `${results.join(' ')} ${errors.join(' | ')}`);
     await page.close();
 }
 // Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested

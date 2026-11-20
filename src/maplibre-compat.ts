@@ -22,7 +22,7 @@ import {toLngLat, type LngLatLike as Where} from './geo.ts';
 import type {Map as CoreMap} from './map.ts';
 /**
  * The popup of the core with the options `focusAfterOpen`, `closeOnMove`, `trackPointer` and `subpixelPositioning` of
- * MapLibre GL JS. `locationOccludedOpacity` warns once.
+ * MapLibre GL JS. `locationOccludedOpacity` has no effect.
  */
 export class Popup extends CorePopup {
     /** The pointer position while the popup follows the pointer, `null` before the first mouse move, `undefined` otherwise. */

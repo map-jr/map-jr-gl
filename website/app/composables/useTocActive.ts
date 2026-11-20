@@ -8,6 +8,9 @@
 // - the last heading at the end of the page, when the last section is too short to reach that place.
 // After a click on an entry, that entry stays active until the reader scrolls again.
 //
+// `open` is the state of the list of entries on a phone, where it opens above the page. A choice of an entry closes
+// it (#1311).
+//
 // The id is null on the server and until the page is mounted, so that hydration matches and a page without
 // JavaScript has no highlight.
 type TocLink = {id: string; children?: TocLink[]};
@@ -16,6 +19,7 @@ const offset = 8;
 
 export function useTocActive(links: () => TocLink[] | undefined) {
     const active = ref<string | null>(null);
+    const open = ref(false);
     let held: string | null = null;
     let frame = 0;
 
@@ -49,6 +53,11 @@ export function useTocActive(links: () => TocLink[] | undefined) {
     function choose(id: string) {
         held = id;
         active.value = id;
+        if (!open.value) return;
+        // The open list is in the flow above the page, so closing it moves the heading. A browser without scroll
+        // anchoring (Safari before 27) leaves the heading above the screen: scroll to it again once the list is gone.
+        open.value = false;
+        nextTick(() => requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView()));
     }
 
     const releaseEvents = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
@@ -67,5 +76,5 @@ export function useTocActive(links: () => TocLink[] | undefined) {
     // Another page of the same layout keeps this component: start again from its headings.
     watch(links, () => { held = null; nextTick(schedule); });
 
-    return {active, choose};
+    return {active, open, choose};
 }

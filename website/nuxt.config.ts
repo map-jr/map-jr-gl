@@ -1,6 +1,7 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {formatFences, transformPage, repositoryUrl} from './build/markdown';
+import {formatFences, liveExamples, transformPage, repositoryUrl} from './build/markdown';
+import {libraryFolder} from './build/library';
 import {docsDir, navFile, readNav, routeOf} from './build/nav';
 import {variantHeadScript} from './build/variants';
 
@@ -57,7 +58,12 @@ export default defineNuxtConfig({
         ],
     },
     icon: {clientBundle: {scan: true}},
+    // The library for the map frames of the recipes and of /play (app/utils/map-frame.ts). The frames have an opaque
+    // origin, so the files need CORS: public/_headers sets the header on the published site, and the rule below in
+    // `nuxt dev`.
+    routeRules: {'/lib/**': {headers: {'access-control-allow-origin': '*'}}},
     nitro: {
+        publicAssets: [{dir: libraryFolder(), baseURL: '/lib', maxAge: 0}],
         hooks: {
             // /raw/<page>.md serves the markdown of the page for agents (Nuxt Content writes it from the parsed page,
             // with the changes of build/markdown.ts). The site writes the source file in its place, unchanged.
@@ -76,12 +82,17 @@ export default defineNuxtConfig({
         },
     },
     hooks: {
-        // The desktop and the phone form of the code (build/format.mjs).
+        // The desktop and the phone form of the code (build/format.mjs), and the blocks of the examples.
         async 'content:file:beforeParse'(ctx) {
-            if (ctx.file.extension === '.md' && typeof ctx.file.body === 'string') ctx.file.body = await formatFences(ctx.file.body);
+            if (ctx.file.extension === '.md' && typeof ctx.file.body === 'string') ctx.file.body = liveExamples(await formatFences(ctx.file.body));
         },
         'content:file:afterParse'(ctx) {
             transformPage(ctx as any, nav);
+        },
+        // A page does not prefetch the editor (CodeMirror) and the map frames: the editor loads when the reader asks for
+        // it, and the frames only on a page that shows one (#1121).
+        'build:manifest'(manifest) {
+            for (const entry of Object.values(manifest)) if (['CodeEditor', 'MapFrame', 'LiveExample'].includes(entry.name ?? '')) entry.prefetch = false;
         },
     },
 });
