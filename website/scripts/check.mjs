@@ -244,7 +244,28 @@ try {
         }));
         check('package managers: a reload with a stored choice has no layout shift', shift < 0.01, `CLS ${shift}`);
         check('package managers page: no failed request and no error', problems.length === 0, problems.join(' | '));
-        if (screenshots) {
+        // Each example of /play runs without an error (#1339): the map reaches idle and the frame shows no error. The
+    // examples load the style and tiles of other hosts, so this runs with the map only.
+    if (withMap) {
+        const {page, problems, close} = await open('/play');
+        const examplesButton = page.getByRole('button', {name: 'Examples', exact: true});
+        await examplesButton.click();
+        const labels = (await page.getByRole('menuitem').allTextContents()).map(label => label.trim());
+        await page.keyboard.press('Escape');
+        for (const label of labels) {
+            await examplesButton.click();
+            await page.getByRole('menuitem', {name: label, exact: true}).click();
+            const idle = await page.locator('[data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
+            await page.waitForTimeout(1500);
+            const log = page.locator('.map-frame [role="log"]');
+            const logged = await log.count() ? await log.textContent() : '';
+            check(`/play example "${label}": the map reaches idle with no error`, idle && !logged.trim(), logged.trim().slice(0, 200) || (idle ? '' : 'no idle'));
+        }
+        check('/play examples: no error of the page', problems.length === 0, problems.join(' | '));
+        await close();
+    }
+
+    if (screenshots) {
             for (const width of [1440, 390]) {
                 await page.setViewportSize({width, height: width === 390 ? 844 : 900});
                 await group.scrollIntoViewIfNeeded();
@@ -511,6 +532,35 @@ try {
         check(`${engine}: /play: a copied address shows the same code`, text.trim() === changed, text.slice(0, 80));
         const view = new URLSearchParams(new URL(second.url()).hash.slice(1)).get('view');
         check(`${engine}: /play: a copied address shows the same view`, view === '7/48.9/2.4/20/30', view);
+        // The examples are one menu, and it fits a phone (#1339). Each item puts its code into the editor.
+        const examplesButton = page.getByRole('button', {name: 'Examples', exact: true});
+        const menuItems = page.getByRole('menuitem');
+        const chosen = [];
+        await examplesButton.click();
+        const labels = (await shown(menuItems.first()) ? await menuItems.allTextContents() : []).map(label => label.trim());
+        await page.keyboard.press('Escape');
+        check(`${engine}: /play: the examples menu has 10 or more examples`, labels.length >= 10, labels.join(', '));
+        for (const label of labels) {
+            await examplesButton.click();
+            await page.getByRole('menuitem', {name: label, exact: true}).click();
+            await page.waitForTimeout(300);
+            const code = await textOf(playEditor);
+            const duplicate = chosen.includes(code);
+            chosen.push(code);
+            check(`${engine}: /play: the example "${label}" puts a description into the editor`, /export default \{/.test(code) && !duplicate, code.split('\n').slice(0, 3).join(' ').slice(0, 80));
+        }
+        {
+            const phone = await own.newContext({viewport: {width: 390, height: 700}});
+            const small = await phone.newPage();
+            await small.goto(base + '/play', {waitUntil: 'load'});
+            await small.getByRole('button', {name: 'Examples', exact: true}).click();
+            await small.getByRole('menuitem').first().waitFor();
+            const box = await small.locator('[role="menu"]').evaluate(menu => { const {left, right, top, bottom} = menu.getBoundingClientRect(); return {left, right, top, bottom, width: innerWidth, height: innerHeight}; });
+            check(`${engine}: /play: at 390 the examples menu is inside the window`, box.left >= 0 && box.right <= box.width && box.top >= 0 && box.bottom <= box.height, JSON.stringify(box));
+            await small.getByRole('menuitem').last().scrollIntoViewIfNeeded();
+            check(`${engine}: /play: at 390 the last example can be reached`, await small.getByRole('menuitem').last().isVisible());
+            await phone.close();
+        }
         check(`${engine}: /play: no error of the page`, problems.length === 0, problems.join(' | '));
         await context.close();
         if (own !== browser) await own.close();
