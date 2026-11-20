@@ -3,6 +3,7 @@ import {launch, browserName, workerRenders, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
 import {guard} from './suite-guard.mjs';
 import {checkCustomLayers} from './custom-layers.mjs';
+import {solidPNG} from './png.mjs';
 const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
@@ -1730,13 +1731,16 @@ for (const mode of renderers) {
     // an image when a layer asks for it. setStyle to a style without the key removes them.
     // (In worker mode it also runs with a worker that has no WebGL2: the images of the style stay images of the style
     // after the fall back to the main thread; #853.)
+    // (The style has a sprite with a yellow image "box" too: the image of the style takes its place, #1199.)
+    await page.route(/\/test-sprite-1199\//, r => r.request().url().includes('.json') ? r.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 40, height: 40, pixelRatio: 1}})})
+        : r.fulfill({contentType: 'image/png', body: solidPNG(40, [0xff, 0xff, 0x00])}));
     for (const fall of mode === 'worker' ? [false, true] : [false]) {
         const r = await page.evaluate(async ([mode, fall]) => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(res => setTimeout(res, ms));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const bg = {id: 'bg', type: 'background', paint: {'background-color': '#fff'}};
             const icon = (id, image) => ({id, type: 'symbol', source: 'spot', layout: {'icon-image': image, 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
-            const style = {version: 8, metadata: {'map-jr:images': {pin: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="{{c}}"/></svg>', box: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#00f"/></svg>', unused: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}},
+            const style = {version: 8, metadata: {'map-jr:images': {pin: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="{{c}}"/></svg>', box: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#00f"/></svg>', unused: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}}, sprite: location.origin + '/test-sprite-1199/s',
                 sources: {spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
                 layers: [bg, icon('pin', ['image', 'pin', {params: {c: '#f00'}}]), {...icon('box', 'box'), layout: {...icon('box', 'box').layout, 'icon-offset': [0, 40]}}, {...icon('other', 'other'), layout: {...icon('other', 'other').layout, 'icon-offset': [0, -40]}}]};
             const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
@@ -1753,16 +1757,16 @@ for (const mode of renderers) {
             const had = ['pin', 'box', 'unused'].map(n => m.hasImage(n));
             const other = await until('other', () => at(-40), v => v === '0,255,0');
             // (An image that the page adds under the name of an image of the style wins, and a new style keeps it.)
-            await m.addImage('box', square('#ff0'));
-            box = await until('addImage', () => at(40), v => v === '255,255,0');
+            await m.addImage('box', square('#f0f'));
+            box = await until('addImage', () => at(40), v => v === '255,0,255');
             m.setStyle({version: 8, sources: {}, layers: [bg]});
             await until('setStyle', async () => m.hasImage('pin'), v => !v); // (the image of addImage, box, stays)
             const after = ['pin', 'box', 'other'].map(n => m.hasImage(n));
             m.remove(); el.remove();
             return {renderer: m.renderer, pin, box, other, had, after, resolved, took};
         }, [mode, fall]);
-        check(`[${mode}${fall ? ', fell back' : ''}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
-            (!fall || r.renderer === 'main') && r.pin === '255,0,0' && r.box === '255,255,0' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
+        check(`[${mode}${fall ? ', fell back' : ''}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of the style wins over the sprite image of the same name (#1199), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
+            (!fall || r.renderer === 'main') && r.pin === '255,0,0' && r.box === '255,0,255' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
     }
     // #591: the textures of colour ramps (heatmap, line-gradient, color-relief) are deleted when their layer goes. The
     // probe counts live textures whose image is one pixel high (only ramps are), in the page or in the drawing worker.

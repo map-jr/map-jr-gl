@@ -301,8 +301,10 @@ A value is an SVG document or the URL of an image, as a string, or `{image, widt
 - The map draws an image of the style only when a layer asks for it. An image that no layer in view uses costs no
   time.
 - An image of `images` of the description, or of `addImage` in the compat entry, overrides the image of the style with
-  the same name. An image of the sprite overrides the image of the style with the same name: the map uses an image of
-  the style only for a name that the sprite does not have.
+  the same name. An image of the style overrides the image of the sprite with the same name. The order is: `images`
+  of the description (or `addImage`), then the images of the style, then the sprite.
+- In the browser, a name that the style lists is never taken from the sprite, also when the map leaves the image of the style out
+  because it breaks one of the rules above. The icon is then missing.
 - A new style removes the images of the old style.
 
 ## Draw labels with web fonts
