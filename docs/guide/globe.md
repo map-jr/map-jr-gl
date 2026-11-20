@@ -139,7 +139,7 @@ map.on('projectiontransition', e =>
 );
 ```
 
-A `patch` of another field keeps the projection of a click. A `projection` that differs from that of the last
+A `patch` of another field keeps the projection that the last click on the globe button set. A `projection` that differs from that of the last
 description replaces it, and so does a new `style`. The map then uses the `projection` of the description, or the
 projection of the style when the description has none. While the projection is
 `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`.

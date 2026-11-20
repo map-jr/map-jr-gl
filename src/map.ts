@@ -1665,7 +1665,7 @@ export class Map {
     hasControl(control: Control) { return this.controls.has(control); }
 
     // ---- fonts and images ----
-    /** Only in this library: loads more web fonts for labels after the map is made. See the option `fonts`. */
+    /** Only in this library: loads more web fonts for labels after the map is created. See the option `fonts`. */
     addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
 
     /**

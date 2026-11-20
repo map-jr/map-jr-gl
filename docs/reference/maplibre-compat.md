@@ -33,8 +33,8 @@ These differences change the code of most applications:
   limited to 90. The default is 60 in both.
 - The camera has no roll, and its field of view is fixed. `setRoll` and `setVerticalFieldOfView` have no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
-- The library does not validate the style, and the option `validate` has no effect. It does not draw a layer type or
-  an expression that it does not support: see
+- The library does not validate the style, and the option `validate` has no effect. It does not draw a layer type
+  that it does not support, and an expression that it does not support returns `null`: see
   [The style is not validated](../migrate/from-maplibre.md#the-style-is-not-validated).
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
   `error` with that error and shows a message in the container. Call `supported()` before you create the map.
@@ -49,16 +49,29 @@ available, and of the types that differ.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders the map: see [`renderer`](description.md#renderer) of the main API for each value. |
-| `strict` | `boolean` | `false` | Whether an option or a method with no effect, and each `error` event, throws an error. |
+| [`strict`](#strict) | `boolean` | `false` | Whether an option or a call that the map cannot carry out throws an error. |
 | `fonts` | `FontSource[]` | | Web fonts for labels, for example `[{family: 'Open Sans', src: '/fonts/open-sans.woff2', weight: '300 800'}]`. |
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font. |
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
-These options of MapLibre GL JS have no effect, and throw an error with `strict: true`:
-`renderWorldCopies: false`, `canvasContextAttributes` other than `antialias`, `logoPosition`, `validate` with any
-value, `fadeDuration` other than 300, `pitchWithRotate: false`, and `projection` other than `'mercator'`.
+These options of MapLibre GL JS have no effect: `renderWorldCopies: false`, `canvasContextAttributes` other than
+`antialias`, `logoPosition`, `validate` with any value, `fadeDuration` other than 300, `pitchWithRotate: false`, and
+`projection` other than `'mercator'`.
 
 A custom layer (`type: 'custom'`) needs `renderer: 'main'`. With `'auto'` or `'worker'`, `addLayer` adds nothing.
+
+### `strict`
+
+With `strict: true`, the map throws an error in these cases, and otherwise the call or the option does nothing:
+
+- an option of the list above, with the value that the list names;
+- a method or a member of [`Map`](#map) that has no effect, with a value other than the default of MapLibre GL JS,
+  such as `setRoll(10)` or `showTileBoundaries = true`;
+- `setTransformConstrain` with a function, when the map does not draw on the main thread;
+- a change of the style that the map refuses and reports with an `error` event, such as `addLayer` with a custom
+  layer and without `renderer: 'main'`. Without `strict`, the map fires `error`.
+
+A call that has no effect for any value, such as `setAnisotropicFilterPitch` or `setRTLTextPlugin`, does not throw.
 
 ## `Map`
 
@@ -91,7 +104,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setCenterElevation` | `(elevation?: number \| undefined) => Map` | Has no effect: the map center is always on the ground. |
 | `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
-| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect on the camera that the map draws during a movement. |
+| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect: the map does not draw the camera that the function returns. |
 | `showTileBoundaries` | `boolean` | Has no effect: the map does not draw tile borders. |
 | `showPadding` | `boolean` | Has no effect: the map does not draw the padding. |
 | `showCollisionBoxes` | `boolean` | Has no effect: the map does not draw collision boxes. |
@@ -224,7 +237,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setFilter` | `(layerId: string, filter: unknown) => Map` | Sets the filter of a style layer. |
 | `removeControl` | `(control: Control) => Map` | Removes a control that `addControl` added. |
 | `hasControl` | `(control: Control) => boolean` | Whether the map has this control. |
-| `addFonts` | `(fonts: FontSource[]) => Map` | Only in this library: loads more web fonts for labels after the map is made. |
+| `addFonts` | `(fonts: FontSource[]) => Map` | Only in this library: loads more web fonts for labels after the map is created. |
 | `removeImage` | `(name: string) => Map` | Removes an image that `addImage` added. |
 | `updateImage` | `(name: string, source: string \| ImageData \| {width: number; height: number; data: Uint8Array<ArrayBufferLike> \| Uint8ClampedArray<ArrayBufferLike>} \| CanvasImageSource) => Promise<Map>` | Replaces the pixels of an image added earlier, keeps its options (stretch, content, sdf) and returns a promise of the map; MapLibre GL JS returns the map. |
 | `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
@@ -277,9 +290,18 @@ setStyle(
 ): Promise<void>
 ```
 
-The sources and layers that `addSource` and `addLayer` added are removed with the old style, as in MapLibre GL JS.
-To keep them, return a style with them from `transformStyle`, which receives the old and the new style. The option
-`diff` has no effect: the map always replaces the whole style.
+The sources and layers that `addSource` and `addLayer` added are removed with the old style, as in MapLibre GL JS,
+except the custom layers with `diff: true`. To keep them, return a style with them from `transformStyle`, which
+receives the old and the new style.
+
+With `diff: true`, the default, the map changes as little as it can:
+
+- A style that is equal to the current one, apart from the camera, changes nothing and fires no event.
+- A source that is equal to a source of the old style keeps its data, and the map does not request it again.
+- Paint values that changed transition to the new values.
+- A custom layer stays in the new style.
+
+With `diff: false`, the new values apply at once, and the custom layers leave the map.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';

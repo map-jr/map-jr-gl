@@ -223,10 +223,8 @@ export class Map extends CoreMap {
     /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
     getAnisotropicFilterPitch() { return 20; }
     /**
-     * Has no effect on the camera that the map draws during a movement. When the function changes the camera, the map
-     * draws that camera only when the movement ends. MapLibre GL JS calls this function before each frame and draws the
-     * camera that it returns. react-map-gl passes a function for each map; it changes the camera only when the `onMove`
-     * of a controlled map does not set `viewState` to the camera of the event.
+     * Has no effect: the map does not draw the camera that the function returns. MapLibre GL JS calls this function
+     * before each frame and draws the camera that it returns.
      */
     setTransformCameraUpdate(fn?: ((tr: CameraLike) => CameraChanges | undefined) | null) {
         this.cameraUpdate = typeof fn == 'function' ? fn : undefined;
@@ -440,7 +438,7 @@ export class Map extends CoreMap {
     }
     /**
      * Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS.
-     * A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise the map does not add it. A custom layer is not drawn on the globe: the map draws it in Mercator.
+     * A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise the map does not add it. The map draws a custom layer only while the projection is Mercator.
      */
     addLayer(layer: AddLayerObject, beforeId?: string) {
         let one: {id: string; source?: unknown} = layer;
@@ -494,11 +492,11 @@ export class Map extends CoreMap {
             return {...next, layers};
         }});
     }
-    /** Adds a source to the style, as in MapLibre GL JS. An id that the style has already fires `error` and adds nothing. */
+    /** Adds a source to the style, as in MapLibre GL JS. */
     addSource(id: string, source: object) {
         return this.rawStyle?.sources[id] ? this.refused(`addSource: the style has a source with the id "${id}" already. Remove that source first, or use another id.`) : super.addSource(id, source);
     }
-    /** Removes a source from the style, as in MapLibre GL JS. A source that a layer uses fires `error` and stays. */
+    /** Removes a source from the style, as in MapLibre GL JS. */
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l.source === id);
         return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));

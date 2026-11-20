@@ -151,7 +151,8 @@ map.addControl(new TerrainControl({source: 'terrarium', exaggeration: 1.5}));
 To turn the terrain on and off from your own code, pass a new `terrain` to
 [`patch`](../reference/map.md#patch) with the main API, or call `map.setTerrain(null)` with the MapLibre compat entry.
 With the main API, a change of `terrain` [loads the style again](../reference/description.md#style). A click on the
-control changes the terrain without loading the style. A `patch` of another field keeps the terrain of a click. A new
+control changes the terrain without loading the style. A `patch` of another field keeps the terrain that the last
+click on the control set. A new
 `terrain` or a new `style` replaces it.
 
 **Main API**
@@ -506,8 +507,11 @@ tiles that it reads.
 
 `queryElevation` returns a promise of the height of the ground in metres above sea level, at a position
 (`[lng, lat]`) or at a point of the screen (`{x, y}`). Over the sea, the elevation tiles of `elevation.json` give 0.
-The promise resolves to `null` when the source has no tile at the position. The query needs a `raster-dem` source in
-the style or in `sources`, and it does not need 3D terrain. The position can be outside the view.
+The query does not need 3D terrain, and the position can be outside the view.
+
+The promise resolves to `null` when the source has no tile at the position. It rejects when the style has no
+`raster-dem` source, for example after a change to a style without one. A `raster-dem` source of `sources` counts as
+a source of the style.
 
 **Main API**
 

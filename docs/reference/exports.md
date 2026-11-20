@@ -220,7 +220,8 @@ configure(options: LoadOptions): void
 <!-- ref:MainExports.configure:end -->
 
 `renderer` of a description overrides `renderer` of `configure`. A change of `tileWorkers` has no effect while a map
-of the page uses workers of the same `workerUrl` or `createWorker`. See [Loading](../loading.md) for the worker file.
+of the page uses workers of the same `workerUrl` or `createWorker`. To change it, destroy every map of the page, call
+`configure`, and create the maps again. See [Loading](../loading.md) for the worker file.
 
 ```js
 import {configure, createMap} from '@map-jr/map-jr-gl';

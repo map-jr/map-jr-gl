@@ -251,7 +251,7 @@ export interface MapJrSSROptions {
  * What a template ref on `MapJr` holds: the members of the map (`MapInstance`), as the ref of the React component
  * holds them. Call them as `mapRef.value.queryFeatures(…)`, and read the state as `mapRef.value.state.get()`.
  *
- * The code of the map loads after the component is mounted, and every member is `undefined` until then. Call the
+ * The code of the map loads after the component is mounted, and the members cannot be used until then. Call the
  * members from `@load` or later, or use `useMapInstance()` in a component inside `MapJr`.
  */
 export type MapJrExposed = MapInstance;

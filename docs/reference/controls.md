@@ -231,7 +231,7 @@ custom(options: {
 | `onAdd` | `(map) => HTMLElement` | Called when the map adds the control, and returns the element to place. |
 | `onRemove` | `(map) => void` | Called when the map removes the control. |
 
-Pass `element`, or `onAdd` with `onRemove`.
+Pass `element`, or `onAdd` with `onRemove`. When both are passed, the map uses `element`.
 
 - The element shows at once. It does not wait for the code of the other controls.
 - The map adds the class `map-jr-ctrl` to `element`, and an element without it receives no clicks. An assignment to
@@ -239,7 +239,8 @@ Pass `element`, or `onAdd` with `onRemove`.
 - The map keeps the element that it received first for a `key`. To show another element, pass it with a new `key`.
 - `onAdd` receives the map on which the main API is built (`Map`), and not the object that `createMap` returns. Its
   methods `on`, `off`, `getContainer`, `getCanvas`, `project`, `unproject`, `getZoom`, `getCenter` and `getBearing`
-  work as in MapLibre GL JS. A control that calls another method works only in the compat entry.
+  work as in MapLibre GL JS. Another method can be missing or differ from MapLibre GL JS. To move the map from such a
+  control, call the methods of the map that `createMap` returns, as the example below does.
 
 The button of this example calls [`map.moveTo`](../api.md#the-camera) on a click, after `createMap` has returned.
 

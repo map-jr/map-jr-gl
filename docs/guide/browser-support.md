@@ -47,7 +47,7 @@ The worker renderer draws the map in a worker, and the main-thread renderer draw
 
 The map also changes to the main thread after it started, when the worker loses its WebGL context before its first
 frame, loses it twice in 10 seconds, or draws nothing in the 5 seconds after its start. With `renderer: 'worker'`, it
-then writes a warning, as it does at the start.
+then writes a warning, as at the start: see [When a worker cannot start](loading.md#when-a-worker-cannot-start).
 
 To read the renderer that the map uses, read `map.state.get().renderer` in `@map-jr/map-jr-gl`, or `map.renderer` in
 `@map-jr/map-jr-gl/maplibre-compat`. Read it after the map has loaded: before that, `state.renderer` is `undefined`

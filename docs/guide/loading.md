@@ -34,7 +34,8 @@ export it. In `@map-jr/map-jr-gl/maplibre-compat`, each option is also an option
 | `tileWorkers` | `number` | Two fewer than the processor cores, from 1 to 4 | The number of tile workers. While a map with the same worker file exists, a new value is ignored. |
 | `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that draws the map. See [What each renderer needs](browser-support.md#what-each-renderer-needs). |
 
-To change `tileWorkers`, call `remove()` on every map of the page, then `configure`, then create the maps again.
+To change `tileWorkers`, destroy every map of the page (`destroy()` in `@map-jr/map-jr-gl`, `remove()` in
+`@map-jr/map-jr-gl/maplibre-compat`), then call `configure`, then create the maps again.
 
 In `@map-jr/map-jr-gl`, `renderer` is also a field of the [description](../reference/description.md), and the field
 overrides `configure` for that map.
@@ -98,7 +99,8 @@ With `renderer: 'auto'`, a browser that cannot draw WebGL2 in a worker gets no w
 [Browser support](browser-support.md#what-each-renderer-needs) lists what each renderer needs.
 
 The page script and the worker file must come from the same version of the package. When a CDN or a cache serves
-a worker file of another version, the map still starts, but it can fail later.
+a worker file of another version, the map still starts, but it can fail later. Serve both files from the same
+version, or set `workerUrl` to the worker file of the version of the page script.
 
 ## Preload the parts of the page script
 
@@ -213,8 +215,8 @@ Two things of the application need `style-src 'unsafe-inline'`, because the poli
 ## Vite in development
 
 In development, Vite 5 serves the library from its cache of dependencies, which does not contain the worker file.
-The map then draws on the main thread and warns "Workers are unavailable". This is not checked with Vite 5, 6 and 7;
-Vite 8 needs no setting for the library alone. Exclude the library from the cache:
+The map then draws on the main thread. Vite 8 needs no setting for the library alone, and Vite 6 and 7 are not
+tested. With Vite 5, exclude the library from the cache:
 
 ```js
 // vite.config.js
@@ -293,7 +295,7 @@ export default nextConfig;
 ```
 
 In Next.js 14.2, the Turbopack setting is `experimental: {turbo: {resolveAlias: {...}}}`. The alias does not change
-the types that TypeScript reads: see [Wrappers and plugins](../migrate/from-maplibre.md#wrappers-and-plugins).
+the types that TypeScript reads: see [Types](../migrate/wrappers.md#types) for the types to import.
 
 ## Frameworks that render on the server
 

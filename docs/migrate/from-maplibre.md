@@ -83,9 +83,9 @@ that this page lists. The page is written for an application that uses MapLibre 
    });
    ```
 
-5. Create the map with `strict: true`, and run your application. With `strict: true`, an option or a method that has
-   no effect in this library throws an error, so the application stops where it relies on one. Remove `strict: true`
-   after the migration.
+5. Create the map with `strict: true`, and run your application. With `strict: true`, an option or a call that the
+   map cannot carry out throws an error, so the application stops where it relies on one: see
+   [`strict`](../reference/maplibre-compat.md#strict). Remove `strict: true` after the migration.
 
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
