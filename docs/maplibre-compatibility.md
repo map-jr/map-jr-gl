@@ -88,7 +88,6 @@ The [status table](../README.md#status) gives the current test results.
 | Durations of camera methods | `zoomIn` and `zoomOut` take 500 ms, and `resetNorth` and `resetNorthPitch` take 1000 ms. | `zoomIn` and `zoomOut` take 300 ms, and `resetNorth` and `resetNorthPitch` take 500 ms, unless the options set `duration`. |
 | `snapToNorth` | Turns the map north when the bearing is within the option `bearingSnap` (7 degrees by default). | Turns the map north when the bearing is within 7 degrees. The option `bearingSnap` has no effect. |
 | `setMinPitch` | Throws an error for a value below 0 or above the largest pitch. | Limits the value to between 0 and the largest pitch, with no error. |
-| `setMinZoom(null)`, `setMaxZoom(null)` | Restores the default zoom level. | Stores `null`. Call the method with no argument to restore the default. |
 | `getLight` | Returns the fields that the style sets. | Returns the light of the style with the defaults filled in for the fields that it does not set. |
 | `getFontFaces` | Returns `null` when the style has no `font-faces`. | Returns `{}`. |
 | `setStyle` | Returns the map. | Returns a promise that settles when the new style has loaded. |
