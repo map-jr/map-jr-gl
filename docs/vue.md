@@ -115,9 +115,10 @@ The slot renders again at each change of the state only when it reads `state`. `
 of the mouse, so a slot that reads `state` renders at each move. A component that needs only one part can read it
 from `map.state.subscribe` with a selector instead.
 
-A template ref on the component also has `map` (the map, `null` until it is made) and `state`. In TypeScript,
-type the ref as `InstanceType<typeof MapJr>`: `useTemplateRef<InstanceType<typeof MapJr>>('map')`. The type
-`MapJrExposed` of `@map-jr/map-jr-gl/vue` has only these two members. A template ref on `LazyMapJr` of Nuxt with a
+A template ref on the component holds the members of the map, as the ref of React does: `mapRef.value.moveTo(…)`.
+Until the map has loaded, every member is `undefined`; in the development build, a method throws an error that names it. In TypeScript, type the ref as
+`InstanceType<typeof MapJr>`: `useTemplateRef<InstanceType<typeof MapJr>>('map')`. The type `MapJrExposed` of
+`@map-jr/map-jr-gl/vue` is `MapInstance`. A template ref on `LazyMapJr` of Nuxt with a
 `hydrate-*` prop does not reach them (see [The module for Nuxt](#the-module-for-nuxt)).
 
 ### Elements of the page on the map
@@ -379,7 +380,7 @@ With the module, a page uses the components without an import:
   does not bring the map code into the page. The file `vue.js` and what it imports are about 3 KB (gzip). The `map`
   of `useMapJr` is `null` until that code has loaded, also in `onMounted`.
 - A template ref on `LazyMapJr` with `hydrate-on-visible` (or another `hydrate-*` prop) is the lazy wrapper that
-  Nuxt puts around `MapJr`, and it has no `map` and no `state`, also after hydration. Without a `hydrate-*` prop,
+  Nuxt puts around `MapJr`, and it has none of the members of the map, also after hydration. Without a `hydrate-*` prop,
   the ref on `LazyMapJr` has them. To reach the map of a lazily hydrated map, use one of these:
   - `@load`, which gets the map: `<LazyMapJr hydrate-on-visible @load="instance => (map = instance)" ... />`.
   - The default slot, which gets `map` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{map}">`.

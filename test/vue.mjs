@@ -85,7 +85,7 @@ const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true)
 // (A component inside the SVG of an image: its own change must reach the map.)
 const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
 const t = window.t = {view, data, pinLayers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: [], projection: ref(null)};
-const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), data: data.value, layers: pinLayers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.map.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
+const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), data: data.value, layers: pinLayers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
   // An image that the style asks for and the map does not have: the application adds it to the prop images.
   onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => (t.renders = (t.renders ?? 0) + 1, [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
@@ -120,7 +120,7 @@ try {
     const early = await page.evaluate(() => ({svg: !!document.querySelector('svg[data-map-jr-ssr]')}));
     await page.waitForFunction(() => window.t.loads > 0, null, {timeout: 60000});
     await page.waitForTimeout(1000);
-    const late = await page.evaluate(() => ({svg: !!document.querySelector('svg[data-map-jr-ssr]'), canvas: !!document.querySelector('#frame canvas'), loaded: window.t.map.value.state.loaded}));
+    const late = await page.evaluate(() => ({svg: !!document.querySelector('svg[data-map-jr-ssr]'), canvas: !!document.querySelector('#frame canvas'), loaded: window.t.map.value.state.get().loaded}));
     // No layout shift: the element of the map has its size from the page, and the takeover changes nothing around it.
     // (The browser reports shifts in Chromium only. The position of the text after the map is compared in each browser.)
     const shift = await page.evaluate(() => ({shifts: window.shifts, after: Math.round(document.getElementById('after').getBoundingClientRect().top), frame: (r => [r.width, r.height])(document.getElementById('frame').getBoundingClientRect())}));
@@ -148,9 +148,10 @@ try {
     await page.waitForFunction(() => window.t.order.includes('idle'), null, {timeout: 60000});
     const order = await page.evaluate(() => window.t.order.slice(0, 2));
     check('browser: the component emits load before the first idle, and the map is not idle yet at load', order[0] === 'load:false' && order[1] === 'idle', JSON.stringify(order));
-    check('browser: load gives the map, the same as the map of a template ref (#265)', await page.evaluate(() => !!window.t.loadHost && window.t.loadHost === window.t.map.value.map && typeof window.t.loadHost.moveTo === 'function'));
+    const exposed = await page.evaluate(() => { const r = window.t.map.value, m = window.t.loadHost; return {members: typeof r.queryFeatures === 'function' && typeof r.moveTo === 'function' && 'queryFeatures' in r, store: r.state === m.state && r.description === m.description, noMap: !('map' in r) && r.map === undefined, same: r.queryFeatures === r.queryFeatures, keys: Object.keys(r).includes('queryFeatures') && Object.keys(r).includes('state'), gives: typeof m.moveTo === 'function'}; });
+    check('browser: the template ref exposes the members of the map that load gives, and has no member map (#265, #1151)', exposed.members && exposed.store && exposed.noMap && exposed.same && exposed.keys && exposed.gives, JSON.stringify(exposed));
     const model = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.map;
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value;
         host.moveTo({zoom: 15, duration: 200});
         for (let i = 0; i < 80 && !(t.view.value.zoom === 15 && !host.state.get().moving); i++) await wait(100);
         const followed = t.view.value.zoom;
@@ -185,7 +186,7 @@ try {
     check('browser: an event of the map is an event of the component (moveend), and an image that the style asks for (styleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
     // The prop projection is the field `projection` of the description (#463).
     const projected = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.map, events = [];
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value, events = [];
         const stop = host.listen('projectiontransition', e => events.push(e.newProjection));
         t.projection.value = {type: 'globe'};
         await wait(300);
@@ -198,11 +199,11 @@ try {
     check('browser: the prop projection sets the projection of the map, and null gives back that of the style', JSON.stringify(projected) === JSON.stringify({on: 'globe', off: 'none', events: ['globe', 'mercator']}), JSON.stringify(projected));
     check('browser: v-model:view follows the map and moves it; the points of data, the layers and the images follow their props', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
     // A component without the prop terrain gives `undefined` to the description, which keeps the terrain of the style; `null` would make the map flat (#1104).
-    const unsetTerrain = await page.evaluate(() => { const d = t.map.value.map.description; return d.terrain === undefined ? 'undefined' : JSON.stringify(d.terrain); });
+    const unsetTerrain = await page.evaluate(() => { const d = t.map.value.description; return d.terrain === undefined ? 'undefined' : JSON.stringify(d.terrain); });
     check('browser: without the prop terrain, the description has terrain undefined, so the map keeps the terrain of the style (#1104)', unsetTerrain === 'undefined', unsetTerrain);
     // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.map._map, add = map.addImage, given = [];
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value._map, add = map.addImage, given = [];
         const first = ['arrow', 'photo', 'maybe', 'nested'].map(name => map.hasImage(name)).join();
         // (The SVG is not in the page: its <style> is no style of the page, and its id is no id of the page.)
         const p = document.body.appendChild(document.createElement('p')), apart = !document.querySelector('svg[viewBox="0 0 8 8"]') && !document.getElementById('in-image') && getComputedStyle(p).color !== 'rgb(1, 2, 3)';
@@ -234,7 +235,7 @@ try {
         && /^nested <svg[^>]*><circle cx="4" cy="4" r="3"\/?>(<\/circle>)?<\/svg>$/.test(child.nested) && child.kept && child.gone && child.emptied, JSON.stringify(child));
     // Elements of the page on the map: a marker with own content and a popup, as child components.
     const overlays = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.map;
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value;
         const where = id => { const r = document.getElementById(id)?.getBoundingClientRect(); return r && r.width ? [Math.round(r.x + r.width / 2), Math.round(r.bottom)] : null; };
         host.moveTo({center: [-74.0065, 40.7085], zoom: 14}); await wait(600);
         const frame = document.getElementById('frame').getBoundingClientRect(), at = host.project([-74.0065, 40.7085]);
@@ -275,7 +276,7 @@ try {
     const before = await page.evaluate(() => window.t.renders);
     for (let i = 1; i <= 20; i++) await page.mouse.move(400 + i, 250);
     await page.waitForTimeout(300);
-    const moved = await page.evaluate(b => ({renders: window.t.renders - b, pointer: window.t.map.value.map.state.get().pointer}), before);
+    const moved = await page.evaluate(b => ({renders: window.t.renders - b, pointer: window.t.map.value.state.get().pointer}), before);
     check('browser: 20 moves of the pointer change state.pointer and do not render the content of the component again', moved.renders === 0 && moved.pointer?.point.x === 420, JSON.stringify(moved));
     await page.mouse.click(400, 250); await page.waitForTimeout(600);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
@@ -367,9 +368,9 @@ try {
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
         const app = createApp({render: () => { const sources = {v: {type: 'geojson', data: fc([])}}; made.push(sources.v); return h(MapJr, {ref: mapRef, mapStyle: '/style.json', initialView: {center: c, zoom: 14}, attribution: false, sources, data: data.value, layers: [{id: 'v', type: 'circle', source: 'v'}], style: 'height:200px'}); }});
         app.mount(el);
-        for (let i = 0; i < 80 && !mapRef.value?.map?.state.get().loaded; i++) await wait(100);
+        for (let i = 0; i < 80 && !mapRef.value?.state?.get().loaded; i++) await wait(100);
         await wait(500);
-        const map = mapRef.value.map._map;
+        const map = mapRef.value._map;
         let restyled = 0;
         map.on('style.load', () => restyled++);
         data.value = {v: fc([c, [c[0] + 0.001, c[1]]])};
@@ -380,6 +381,24 @@ try {
         app.unmount(); el.remove();
         return {restyled, unchanged, renders: made.length};
     });
+    // Before the map has loaded (#1151): in the production build the members are undefined, as the ref of React is null;
+    // in the development build a method throws a message that names it.
+    const beforeLoad = await page.evaluate(async () => {
+        const {createApp, h, ref} = await import('vue'), out = {};
+        for (const file of ['vue.js', 'vue.dev.js']) {
+            const {MapJr} = await import('/dist/' + file), mapRef = ref();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const app = createApp({render: () => h(MapJr, {ref: mapRef, mapStyle: '/style.json', attribution: false})});
+            app.mount(el);
+            let threw = '';
+            try { mapRef.value.moveTo({zoom: 1}); } catch (e) { threw = e.message; }
+            out[file] = ['moveTo' in mapRef.value, typeof mapRef.value.moveTo, typeof mapRef.value.state, Object.keys(mapRef.value).length, threw].map(String);
+            app.unmount(); el.remove();
+        }
+        return out;
+    });
+    check('browser: before the map has loaded, the members of the template ref are undefined, and in the development build a method throws a message that names it (#1151)',
+        JSON.stringify(beforeLoad['vue.js'].slice(0, 4)) === JSON.stringify(['false', 'undefined', 'undefined', '0']) && JSON.stringify(beforeLoad['vue.dev.js'].slice(0, 4)) === JSON.stringify(['true', 'function', 'undefined', '0']) && beforeLoad['vue.dev.js'][4].startsWith('[map-jr-gl] <MapJr>: the template ref has no method "moveTo" until the map has loaded.'), JSON.stringify(beforeLoad));
     check('browser: :sources in the render and :data from a shallowRef: new data is no new style, and the source objects of the render are unchanged (#857)',
         declared.restyled === 0 && declared.unchanged && declared.renders >= 3, JSON.stringify(declared));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries

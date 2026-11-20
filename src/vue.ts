@@ -7,6 +7,7 @@
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
+import {earlyMethod, mistake} from './mistakes.ts';
 import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapState, View, ViewInput, InitialView} from './host.ts';
 import {FORWARDED, type Forwarded} from './map-events.ts';
 import type {SSROverrides} from './style.ts';
@@ -246,13 +247,16 @@ export interface MapJrSSROptions {
     tileZoomOffset?: number;
 }
 
-/** What a template ref on `MapJr` holds. */
-export interface MapJrExposed {
-    /** The map, or `null` until the code of the map has loaded after the component is mounted. */
-    readonly map: MapInstance | null;
-    /** The state of the map, or `null` until the code of the map has loaded after the component is mounted. */
-    readonly state: MapState | null;
-}
+/**
+ * What a template ref on `MapJr` holds: the members of the map (`MapInstance`), as the ref of the React component
+ * holds them. Call them as `mapRef.value.queryFeatures(…)`, and read the state as `mapRef.value.state.get()`.
+ *
+ * The code of the map loads after the component is mounted. Until then, every member is `undefined`, so a call such
+ * as `mapRef.value.moveTo(…)` throws a `TypeError`. In the development build (the `development` export condition),
+ * a method is a function that throws an error that names the method instead.
+ * Call the members from `@load` or later, or use `useMapInstance()` in a component inside `MapJr`.
+ */
+export type MapJrExposed = MapInstance;
 
 const MapJrComponent = defineComponent({
     name: 'MapJr',
@@ -437,7 +441,23 @@ const MapJrComponent = defineComponent({
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
-        expose({map: host, state});
+        // The members of the map, read when they are used. Before the map has loaded, the members are undefined; in the
+        // development build, a method is a function that throws a message. (Functions are bound to the map, because Vue calls them on its
+        // own proxy, and each one is bound once for each map, so that a read gives the same function again.)
+        const target = {} as Record<PropertyKey, unknown>;
+        let bound = new Map<PropertyKey, unknown>(), of: MapInstance | null = null;
+        const read = (k: PropertyKey) => {
+            const m = host.value as any;
+            if (m !== of) { of = m; bound = new Map(); }
+            if (!bound.has(k)) bound.set(k, m ? (typeof m[k] === 'function' ? m[k].bind(m) : undefined) : (__DEV__ && earlyMethod(k) ? () => { throw new Error(mistake(1151, String(k))); } : undefined));
+            return bound.get(k) ?? m?.[k];
+        };
+        expose(new Proxy(target, {
+            has: (t, k) => k in t || (host.value ? k in host.value : __DEV__ && earlyMethod(k)),
+            get: (t, k) => k in t ? t[k] : read(k),
+            ownKeys: t => [...new Set([...Reflect.ownKeys(t), ...(host.value ? Reflect.ownKeys(host.value) : [])])],
+            getOwnPropertyDescriptor: (t, k) => k in t ? Reflect.getOwnPropertyDescriptor(t, k) : host.value && k in host.value ? {value: read(k), enumerable: true, configurable: true, writable: false} : undefined,
+        }));
 
         // The first view from the server: the SVG and the credits. On the server they are made here. In the browser,
         // when the page came from the server, they are read from the element that is there already: the component then
@@ -472,6 +492,6 @@ const MapJrComponent = defineComponent({
         ]);
     },
 });
-// (Vue unwraps the exposed refs on the instance, but the type of `defineComponent` does not name them: the type adds
-// them, so that `InstanceType<typeof MapJr>['map']` is `MapInstance | null`.)
+// (The type of `defineComponent` does not name the exposed members: the type adds them, so that
+// `InstanceType<typeof MapJr>['queryFeatures']` is the method of the map.)
 export const MapJr = MapJrComponent as typeof MapJrComponent & (new (...args: any[]) => InstanceType<typeof MapJrComponent> & MapJrExposed);

@@ -3,7 +3,7 @@
  * `src/host.ts` loads this file on demand after the map has started, so the page script does not carry it.
  */
 import type {Map} from './map.ts';
-import type {FeatureOptions, MapDescription, SourceOptions} from './host.ts';
+import type {FeatureOptions, MapDescription, MapInstance, SourceOptions} from './host.ts';
 import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
@@ -39,6 +39,11 @@ const texts: (((a: string, b: string) => string) | undefined)[] = [
 // A new text, and a new kind of check (below), takes the number of its issue, for example texts[544]; a second one for
 // the same issue takes that number plus 10000. Branches that run at the same time then cannot take the same number,
 // and `pnpm test:consistency` fails when a number is taken twice. The production build has none of these numbers.
+texts[1151] = a => `<MapJr>: the template ref has no method "${a}" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`;
+// The methods of the map (`MapInstance`): a template ref of the Vue component has them before the map has loaded.
+type Method = {[K in keyof MapInstance]: MapInstance[K] extends Function ? K : never}[keyof MapInstance];
+const methods = {update: 1, patch: 1, getResolvedDescription: 1, destroy: 1, queryFeatures: 1, querySource: 1, watchFeatures: 1, watchSource: 1, setFeatureState: 1, removeFeatureState: 1, queryElevation: 1, toBlob: 1, clusterExpansionZoom: 1, clusterChildren: 1, clusterLeaves: 1, moveTo: 1, fitBounds: 1, project: 1, unproject: 1, overlay: 1, listen: 1, once: 1} satisfies Record<Method, 1>;
+export const earlyMethod = (k: PropertyKey) => Object.hasOwn(methods, k);
 texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
 texts[685] = a => `locale: ${a}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
 texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;

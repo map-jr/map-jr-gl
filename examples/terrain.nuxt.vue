@@ -34,7 +34,7 @@ const additions = computed(() => elevation(unit.value, terrain.value));
 const map = useTemplateRef('map');
 
 async function read(event) {
-  height.value = await map.value.map.queryElevation(event.lngLat);
+  height.value = await map.value.queryElevation(event.lngLat);
 }
 </script>
 
