@@ -141,7 +141,7 @@ export type FlyToOptions = EaseToOptions;
 export type FitBoundsOptions = NonNullable<Parameters<CoreMap['fitBounds']>[1]> & {pitch?: number; essential?: boolean; speed?: number; curve?: number; linear?: boolean};
 /** The camera of a map. `padding` is a number or an object with `top`, `right`, `bottom` and `left`, in pixels. */
 export type CameraOptions = CameraInput;
-/** A feature for `setFeatureState` and `getFeatureState`. Without an `id`, the methods write a warning and do nothing. */
+/** A feature for `setFeatureState` and `getFeatureState`. Without an `id`, the methods do nothing. */
 export type FeatureIdentifier = {source: string; sourceLayer?: string; id?: string | number};
 export type CameraForBoundsOptions = NonNullable<Parameters<Map['cameraForBounds']>[1]>;
 export type CenterZoomBearing = Pick<CoreCameraOptions, 'center' | 'zoom' | 'bearing'>;
@@ -310,7 +310,7 @@ export type CanvasSourceSpecification = {type: 'canvas'; coordinates: Coordinate
  * An image for `map.addImage` as an object with pixels. The map reads `data` (RGBA, `width` × `height` × 4 bytes) once,
  * when the image is added. `render`, `onAdd` and `onRemove` have no effect: the map does not call them, so an image
  * cannot change itself. Call `map.updateImage` to change it. A `data` that is not pixels (the WebGL form of MapLibre GL
- * JS) throws.
+ * JS) is not supported.
  */
 export interface StyleImageInterface {
     width: number; height: number; data: Uint8Array | Uint8ClampedArray;

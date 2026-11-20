@@ -324,9 +324,7 @@ The map draws the style of the scheme that it shows.
   the `sources`, `layers`, `data` and `images` of the description, stay.
 - A style that reads `color-scheme` changes its colours without a request. Prefer it when you can write or edit the
   style.
-- A pair with only one of the two values uses that style for both schemes, and the
-  development build warns once. The development build is the build of the `development` export condition, which
-  bundlers such as Vite use in their development server.
+- A pair with only one of the two values uses that style for both schemes.
 
 ## In the compat entry
 

@@ -1122,7 +1122,7 @@ export class Map {
     setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
     declare private pitchWarned?: boolean;
     /**
-     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90 and warns once.
+     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
      * @param p The pitch. `undefined` or `null` restores the default, 60.
      */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
@@ -1665,7 +1665,7 @@ export class Map {
     hasControl(control: Control) { return this.controls.has(control); }
 
     // ---- fonts and images ----
-    /** Only in this library: loads more web fonts for labels after the map is made. See the option `fonts`. */
+    /** Only in this library: loads more web fonts for labels after the map is created. See the option `fonts`. */
     addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
 
     /**

@@ -65,32 +65,21 @@ The fields with an object, a list or a function as value have no attribute: set 
 | `renderer`, `font-family` | `renderer`, `fontFamily` | A string. |
 
 The defaults and the meaning of each value are those of the field in [`MapDescription`](description.md#mapdescription).
-The map reads `renderer`, `font-family` and `hash` only when it is created, as every field of
-[`MapSetup`](description.md#mapsetup). The `nonce` of the element, set as an attribute or as a property, sets `nonce` of the description.
+The map reads `renderer`, `font-family`, `no-interactive`, `antialias`, `no-attribution`, `attribution-compact`,
+`hash` and `nonce` only when it is created, as every field of [`MapSetup`](description.md#mapsetup). The `nonce` of
+the element, set as an attribute or as a property, sets `nonce` of the description.
 
 ### Change an attribute
 
 A change of `center`, `zoom`, `bearing` or `pitch` after the map is created moves the camera to the new value with no
-animation, also when the element has the property `initialView`. A change of another attribute updates the map. The element writes nothing back to its attributes: the
+animation, also when the element has the property `initialView`. A change of another attribute updates the map,
+except a change of an attribute that the map reads only when it is created. The element writes nothing back to its attributes: the
 view that the user moves is in [`state`](#mapjrelement) and in the event `map-viewchange`.
 
 A boolean attribute takes effect when it is there, whatever its value, as in HTML: `hover-state="false"` switches
-`hoverState` on, and `no-interactive="false"` switches `interactive` off. To undo a boolean attribute, remove it. The
-development build warns once for each element and attribute with the value `"false"`:
+`hoverState` on, and `no-interactive="false"` switches `interactive` off. To undo a boolean attribute, remove it.
 
-```text
-[map-jr-gl] <map-jr>: the attribute hover-state="false" switches the option on all
-the same, because an attribute that is there takes effect, whatever its value. To
-switch it off, remove hover-state.
-```
-
-An attribute that the element cannot read, such as `zoom="near"`, is ignored, and the
-[development build](create-map.md#the-development-build) warns once for each element:
-
-```text
-[map-jr-gl] <map-jr>: the attribute zoom="near" cannot be read, so the element
-ignores it. Write a number, for example zoom="11".
-```
+An attribute that the element cannot read, such as `zoom="near"`, is ignored.
 
 When `map-style` is removed from an element whose map exists, and the element has no property `mapStyle`, the map
 keeps the style that it has, and the element applies no other change to the map until it has a style again. To
@@ -172,7 +161,7 @@ Each event of the map is a `CustomEvent` that bubbles, named `map-` and the name
 | `map-idle` | `null`, each time the camera is still and nothing loads. |
 | `map-click` | `{point, lngLat, features}`, with the features of `interactive-layers` at the point. |
 | `map-hover` | The features of `interactive-layers` under the pointer, the top one first, when they change. |
-| `map-viewchange` | The view, `{center, zoom, bearing, pitch, bounds}`: once with the first view, right after the map is made and before `map-load`, and then at each change of the view. A listener that is added later misses the first one; read `state` then. |
+| `map-viewchange` | The view, `{center, zoom, bearing, pitch, bounds}`: once with the first view, right after the map is created and before `map-load`, and then at each change of the view. A listener that is added later misses the first one; read `state` then. |
 | `map-colorschemechange` | The `colorScheme` that the control `colorScheme()` set. |
 | `map-error` | Each error of the map, an `Error`. |
 | `map-` and the name of each other event | The event object of [`listen`](map.md#listen): `map-moveend`, `map-sourcedata` and the others. `style.load` is `map-styleload`. |

@@ -32,8 +32,8 @@ The map shows the controls of the last description, and each item of `controls` 
   description. It removes a control that the new list does not have. A control whose options changed is a
   different control: the map removes the old one and adds the new one last in its corner.
 - **`custom`.** Two items of [`custom`](#custom) are the same control when they have the same `key`. A new
-  `position` with the same `key` has no effect and no warning. To move the control, pass a new `key`.
-- **A duplicate.** When the list has the same control twice, the map shows it once. It gives no warning.
+  `position` with the same `key` has no effect. To move the control, pass a new `key`.
+- **A duplicate.** When the list has the same control twice, the map shows it once.
 - **Order.** When the map is created, the first control of a corner in the list is nearest to the corner. A control
   that a later description adds goes after the controls that the corner has.
 - **Loading.** Each control except [`custom`](#custom) appears a moment after the map adds it, because the map
@@ -231,7 +231,7 @@ custom(options: {
 | `onAdd` | `(map) => HTMLElement` | Called when the map adds the control, and returns the element to place. |
 | `onRemove` | `(map) => void` | Called when the map removes the control. |
 
-Pass `element`, or `onAdd` with `onRemove`.
+Pass `element`, or `onAdd` with `onRemove`. When both are passed, the map uses `element`.
 
 - The element shows at once. It does not wait for the code of the other controls.
 - The map adds the class `map-jr-ctrl` to `element`, and an element without it receives no clicks. An assignment to
@@ -239,7 +239,8 @@ Pass `element`, or `onAdd` with `onRemove`.
 - The map keeps the element that it received first for a `key`. To show another element, pass it with a new `key`.
 - `onAdd` receives the map on which the main API is built (`Map`), and not the object that `createMap` returns. Its
   methods `on`, `off`, `getContainer`, `getCanvas`, `project`, `unproject`, `getZoom`, `getCenter` and `getBearing`
-  work as in MapLibre GL JS. A control that calls another method works only in the compat entry.
+  work as in MapLibre GL JS. Another method can be missing or differ from MapLibre GL JS. To move the map from such a
+  control, call the methods of the map that `createMap` returns, as the example below does.
 
 The button of this example calls [`map.moveTo`](../api.md#the-camera) on a click, after `createMap` has returned.
 
@@ -261,9 +262,6 @@ const map = createMap('map', {
   ],
 });
 ```
-
-In the development build, `custom()` without a `key`, or with neither `element` nor `onAdd`, throws an error that
-shows both forms.
 
 ## The texts of the controls
 
