@@ -201,7 +201,7 @@ for (const renderer of renderers) {
         // 2c. fitBounds jumps by default like moveTo, and animates with a duration (#1154).
         const fitJump = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
-            const zoom = () => t.host.state.get().view.zoom;
+            const zoom = () => t.host._map.getZoom(); // (the state store follows the map a frame later)
             t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
             t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]]);
             const jumped = zoom();
