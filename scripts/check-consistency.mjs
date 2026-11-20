@@ -62,10 +62,10 @@ for (const [, list] of read('src/index.ts').matchAll(/^export \{([^}]*)\}/gm)) {
     for (const name of list.split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type '))) if (!api.includes('`' + name + '`') && !api.includes(name + '(')) fail('docs/api.md', `the export \`${name}\` of src/index.ts is not mentioned`);
 }
 
-// 4. Each row of the gallery has its four forms.
-const examples = readdirSync(path.join(root, 'examples')).filter(f => /\.(js|vue|jsx)$/.test(f));
+// 4. Each row of the gallery has its seven forms (#1115). (run.html is the harness page, not an example.)
+const examples = readdirSync(path.join(root, 'examples')).filter(f => /\.(js|vue|jsx|svelte|html)$/.test(f) && f !== 'run.html');
 for (const row of new Set(examples.map(f => f.split('.')[0]))) {
-    for (const ext of ['.js', '.vue', '.jsx', '.compat.js']) if (!examples.includes(row + ext)) fail('examples', `the example "${row}" has no ${ext} form`);
+    for (const ext of ['.js', '.compat.js', '.vue', '.nuxt.vue', '.jsx', '.svelte', '.html']) if (!examples.includes(row + ext)) fail('examples', `the example "${row}" has no ${ext} form`);
 }
 
 // 5. Each entry of the package has its source file, and a document names it.

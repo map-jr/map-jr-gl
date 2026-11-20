@@ -1,11 +1,13 @@
-// Checks the example files of the gallery that the gallery shows as text and does not run (examples/*.vue and
-// *.jsx): each must compile, and must import only names that the adapters and the other example files have.
+// Checks the example files of the gallery (examples/*): each must compile, and must import only names that the
+// entries of the library have. A Svelte form compiles with no warning, a <map-jr> form (.html) has the element and
+// one module script, and a Nuxt form (.nuxt.vue) uses only the names that the module for Nuxt registers.
 //   node test/examples.mjs   (after pnpm build)
 import {readFileSync, readdirSync} from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {parse, compileScript, compileTemplate} from 'vue/compiler-sfc';
+import {compile as compileSvelte} from 'svelte/compiler';
 
 const dir = path.resolve(import.meta.dirname, '../examples'), dist = path.resolve(import.meta.dirname, '../dist');
 const {transformSync} = createRequire(import.meta.url)('esbuild');
@@ -14,14 +16,39 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 
 // The names that each entry of the library has, from its built file.
 const exportsOf = file => { const code = readFileSync(path.join(dist, file), 'utf8'), last = [...code.matchAll(/export\s*\{([^}]*)\}/g)].flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+as\s+/).pop())); return new Set(last.filter(Boolean)); };
-const entries = {'@map-jr/map-jr-gl': exportsOf('map-jr-gl.js'), '@map-jr/map-jr-gl/vue': exportsOf('vue.js'), '@map-jr/map-jr-gl/react': exportsOf('react.js'), '@map-jr/map-jr-gl/controls': exportsOf('controls.js'), '@map-jr/map-jr-gl/maplibre-compat': exportsOf('map-jr-gl-maplibre-compat.js')};
+const entries = {'@map-jr/map-jr-gl': exportsOf('map-jr-gl.js'), '@map-jr/map-jr-gl/vue': exportsOf('vue.js'), '@map-jr/map-jr-gl/react': exportsOf('react.js'), '@map-jr/map-jr-gl/svelte': exportsOf('svelte.js'), '@map-jr/map-jr-gl/element': exportsOf('element.js'), '@map-jr/map-jr-gl/controls': exportsOf('controls.js'), '@map-jr/map-jr-gl/maplibre-compat': exportsOf('map-jr-gl-maplibre-compat.js')};
 const unknownImports = code => [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(@map-jr\/map-jr-gl[^']*)'/g)].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => n && !entries[m[2]]?.has(n)).map(n => `${n} from ${m[2]}`));
 
+// The names that the module for Nuxt (src/nuxt.ts) registers: the components, and the controls as <name>Control.
+const nuxtModule = readFileSync(path.resolve(import.meta.dirname, '../src/nuxt.ts'), 'utf8');
+const nuxtList = pattern => [...(nuxtModule.match(pattern)?.[1] ?? '').matchAll(/'(\w+)'/g)].map(m => m[1]);
+const nuxtComponents = new Set(nuxtList(/for \(const name of \[([^\]]*)\]\) addComponent/).flatMap(n => [n, 'Lazy' + n]));
+const nuxtControls = new Set(nuxtList(/addImports\(\[([^\]]*)\]\.map\(name => \(\{name, as: name \+ 'Control'/).map(n => n + 'Control'));
+/** What is wrong with a Nuxt form: it imports what the module or Nuxt imports, or uses a name that the module does not register. */
+const nuxtProblems = code => [
+    ...[...code.matchAll(/from '(vue|@map-jr\/map-jr-gl\/vue|@map-jr\/map-jr-gl\/controls)'/g)].map(m => `imports from ${m[1]}, which Nuxt and the module import`),
+    ...[...code.matchAll(/\b(\w+Control)\(/g)].filter(m => !nuxtControls.has(m[1])).map(m => `${m[1]} is not a control of the module for Nuxt`),
+    ...[...code.matchAll(/<((?:Lazy)?Map[A-Z]\w*)/g)].filter(m => !nuxtComponents.has(m[1])).map(m => `<${m[1]}> is not a component of the module for Nuxt`),
+];
+
 // (The folder also has the harness page, run.html, and its folder: only the example files are checked.)
-for (const file of readdirSync(dir).filter(f => /\.(js|vue|jsx)$/.test(f)).sort()) {
+for (const file of readdirSync(dir).filter(f => /\.(js|vue|jsx|svelte|html)$/.test(f) && f !== 'run.html').sort()) {
     const code = readFileSync(path.join(dir, file), 'utf8'), problems = unknownImports(code);
     try {
-        if (file.endsWith('.vue')) {
+        if (file.endsWith('.svelte')) {
+            const {warnings} = compileSvelte(code, {filename: file, generate: 'client'});
+            problems.push(...warnings.map(w => `${w.code}: ${w.message.split('\n')[0]}`));
+        } else if (file.endsWith('.html')) {
+            // The <map-jr> form: a page with the element and one module script.
+            const scripts = [...code.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map(m => m[1]);
+            if (scripts.length !== 1) problems.push(`has ${scripts.length} module scripts, not one`);
+            if (!/<map-jr[\s>]/.test(code)) problems.push('has no <map-jr> element');
+            for (const script of scripts) {
+                if (!script.includes("import '@map-jr/map-jr-gl/element';")) problems.push("does not import '@map-jr/map-jr-gl/element'");
+                transformSync(script, {loader: 'js'});
+            }
+        } else if (file.endsWith('.vue')) {
+            if (file.endsWith('.nuxt.vue')) problems.push(...nuxtProblems(code));
             const {descriptor, errors} = parse(code, {filename: file});
             problems.push(...errors.map(e => e.message));
             const script = compileScript(descriptor, {id: file}), template = compileTemplate({source: descriptor.template.content, filename: file, id: file, compilerOptions: {bindingMetadata: script.bindings}});

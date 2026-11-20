@@ -1,0 +1,40 @@
+<script>
+  import {mapJr} from '@map-jr/map-jr-gl/svelte';
+
+  let map = null, clicks = 0;
+  // The answer to the last click: `{features}`, where `features` is `null` when the query failed.
+  let found = $state.raw(null);
+  const description = {
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    initialView: {center: [-74.0065, 40.7085], zoom: 16.2},
+    attribution: {compact: true},
+    cursor: 'crosshair',   // a click asks about one position
+    onClick: async e => {
+      const click = ++clicks;
+      // `querySource` reads the tile data of one source within 8 pixels of the click. It also finds features that the
+      // style does not draw. "openmaptiles" is the id of the vector source in this style. A query fails when its tile
+      // cannot be loaded: the answer is then `null` here.
+      const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8}).catch(() => null);
+      // An earlier click can get its answer after a later click. Only the last click is shown.
+      if (click === clicks) found = {features};
+    },
+  };
+</script>
+
+<!-- The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map. -->
+<div use:mapJr={{description, ready: instance => map = instance}} style="height: 500px">
+  {#if found}
+    <div class="answer">
+      {#each found.features?.slice(0, 8) ?? [] as f}
+        <div><b>{f.sourceLayer}</b> {f.properties.name ?? f.properties.class ?? ''}</div>
+      {:else}
+        {found.features ? 'Nothing here' : 'The tile data did not load'}
+      {/each}
+    </div>
+  {/if}
+</div>
+<p>{found ? (found.features ? `${found.features.length} features within 8 pixels` : 'The query failed') : 'Click the map to list what is there.'}</p>
+
+<style>
+  .answer { position: absolute; top: 8px; left: 8px; z-index: 1; pointer-events: none; max-width: 240px; padding: 8px 10px; border-radius: 8px; background: #fff; color: #222; font: 12px/1.5 system-ui, sans-serif; box-shadow: 0 1px 6px #0004; }
+</style>
