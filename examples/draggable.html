@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A pin that the user moves</title>
+<!-- A line of text below the map gives the position of the pin. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="14"
+        style="height: 500px"></map-jr>
+<p id="readout"></p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {defaultPin} from '@map-jr/map-jr-gl';
+
+  const NYC = [-74.0065, 40.7085];
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  const at = ([lng, lat]) => `${lng.toFixed(5)}, ${lat.toFixed(5)}`;
+  map.attribution = {compact: true};
+
+  // The default pin of Marker, which the user can move. The tip of the pin is at the position.
+  map.addEventListener('map-ready', event => {
+    event.detail.overlay(defaultPin({color: '#d6453d'}), {
+      lngLat: NYC, anchor: 'bottom', draggable: true,
+      onDrag: lngLat => { readout.textContent = `Moving: ${at(lngLat)}`; },
+      onDragEnd: lngLat => { readout.textContent = `Dropped at ${at(lngLat)}`; },
+    });
+  });
+  readout.textContent = `Drag the pin. It is at ${at(NYC)}`;
+</script>

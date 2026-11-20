@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A MapLibre style, drawn off the main thread</title>
+<!-- A line of text below the map says which thread draws it. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13.6"
+        style="height: 500px"></map-jr>
+<p id="readout">Starting</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  // Objects are properties of the element. Set before the map starts, they are part of the first description.
+  map.controls = [navigation(), scale({position: 'bottom-left'}), fullscreen({position: 'top-left'})];
+  map.attribution = {compact: true};
+
+  // The thread that draws is known when the map has started.
+  map.addEventListener('map-ready', () => {
+    map.state.subscribe(state => state.renderer, renderer => { readout.textContent = `${renderer} rendering`; });
+  });
+  map.addEventListener('map-stats', event => {
+    readout.textContent = `${map.state.get().renderer} rendering, ${event.detail.fps.toFixed(0)} frames per second`;
+  });
+</script>
