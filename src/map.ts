@@ -103,22 +103,84 @@ type StyleChange = (previous: any, next: any) => any;
 export type PointLike = {x: number; y: number} | [number, number];
 /** Where `queryFeatures` looks: a point of the screen, a position (`[lng, lat]`), or the two corners of a rectangle of the screen. */
 export type FeaturePlace = {x: number; y: number} | readonly number[] | readonly {x: number; y: number}[];
-/** The options of `queryFeatures`. See "Queries" in `docs/api.md`. */
-export interface FeatureOptions { layers?: string[]; filter?: FilterSpecification; radius?: number }
-/** The options of `querySource`. See "Queries" in `docs/api.md`. */
-export interface SourceOptions { sourceLayers?: string[]; filter?: FilterSpecification; radius?: number; geometry?: boolean; zoom?: number }
+/** The options of `queryFeatures`. */
+export interface FeatureOptions {
+    /** The ids of the style layers to look in. Without it, the query looks in all style layers. */
+    layers?: string[];
+    /** A filter expression of the MapLibre style specification: the query returns only the features that pass it. */
+    filter?: FilterSpecification;
+    /**
+     * At a point or a position, the distance in CSS pixels around the place within which a feature is found. It has no effect for a box or the whole map.
+     * @default 0
+     */
+    radius?: number;
+}
+/** The options of `querySource`. */
+export interface SourceOptions {
+    /** The names of the layers of a vector tile source to look in. Without it, the query looks in all of them. */
+    sourceLayers?: string[];
+    /** A filter expression of the MapLibre style specification: the query returns only the features that pass it. */
+    filter?: FilterSpecification;
+    /**
+     * At a point or a position, the distance in CSS pixels around the place within which a feature is found.
+     * @default 3
+     */
+    radius?: number;
+    /**
+     * At a point or a position, whether each feature has `geometry`. In a query of the view, each feature has it either way.
+     * @default false
+     */
+    geometry?: boolean;
+    /**
+     * At a point or a position, the zoom level of the tiles to read, rounded down and kept between `minzoom` and `maxzoom` of the source.
+     * @default the zoom of the map
+     */
+    zoom?: number;
+}
 /** True for the options of a query given in the place of `at`: an object that is not a point, a position or a list. */
 export const isOptions = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && !['x', 'y', 'lng', 'lat', 'lon'].some(k => k in v);
 export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; validate?: boolean }
 /** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
 export interface RenderedFeature {
-    type: 'Feature'; id?: number | string; geometry: {type: string; coordinates: unknown}; properties: Record<string, unknown>;
-    source: string; sourceLayer?: string; /** The style layer that draws the feature. */ layer: StyleLayer; state: Record<string, unknown>;
+    /** Always `'Feature'`. */
+    type: 'Feature';
+    /** The id of the feature in its source, if it has one. */
+    id?: number | string;
+    /** The geometry as GeoJSON, in longitude and latitude. */
+    geometry: {type: string; coordinates: unknown};
+    /** The properties of the feature. */
+    properties: Record<string, unknown>;
+    /** The id of the source. */
+    source: string;
+    /** The layer of the vector tile, for a vector source. */
+    sourceLayer?: string;
+    /** The style layer that draws the feature. */
+    layer: StyleLayer;
+    /** The feature state, as `setFeatureState` set it. */
+    state: Record<string, unknown>;
 }
 /** A layer of the style, as the style has it (the MapLibre style specification). */
 export interface StyleLayer {
-    id: string; type: string; source?: string; 'source-layer'?: string; minzoom?: number; maxzoom?: number; filter?: unknown;
-    layout?: Record<string, unknown>; paint?: Record<string, unknown>; metadata?: unknown;
+    /** The id of the layer. */
+    id: string;
+    /** The type of the layer, such as `'fill'` or `'symbol'`. */
+    type: string;
+    /** The id of the source of the layer. */
+    source?: string;
+    /** The layer of the vector tile that the layer draws. */
+    'source-layer'?: string;
+    /** The smallest zoom level at which the layer is drawn. */
+    minzoom?: number;
+    /** The zoom level from which the layer is no longer drawn. */
+    maxzoom?: number;
+    /** The filter of the layer. */
+    filter?: unknown;
+    /** The layout properties of the layer. */
+    layout?: Record<string, unknown>;
+    /** The paint properties of the layer. */
+    paint?: Record<string, unknown>;
+    /** The `metadata` of the layer. */
+    metadata?: unknown;
 }
 
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
@@ -2150,7 +2212,24 @@ export class Map {
 export type {PaddingInput} from './geo.ts';
 import type {PaddingInput} from './geo.ts';
 /** The options of `flyTo` that `easeTo` does not have, as in MapLibre GL JS. */
-export interface FlyOptions {curve?: number; speed?: number; screenSpeed?: number; minZoom?: number; maxDuration?: number}
+export interface FlyOptions {
+    /**
+     * How far the camera zooms out on the way: a larger value zooms out further.
+     * @default 1.42
+     */
+    curve?: number;
+    /**
+     * The average speed of the flight, relative to `curve`.
+     * @default 1.2
+     */
+    speed?: number;
+    /** The average speed of the flight in screens per second. It overrides `speed`. */
+    screenSpeed?: number;
+    /** The zoom level at the top of the flight. It overrides `curve`. */
+    minZoom?: number;
+    /** The longest duration of the flight in milliseconds, without `duration`: a longer flight jumps to the target instead. */
+    maxDuration?: number;
+}
 export type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};
 function paddingOf(p: PaddingInput): [number, number, number, number] {
     return typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];

@@ -24,22 +24,36 @@ export function supported(): boolean {
     return canDraw;
 }
 
+/** How the library loads its workers, for `configure`. */
 export interface LoadOptions {
-    /** URL of the worker script (map-jr-gl-worker.js). Defaults to the file beside the library's own module. */
+    /**
+     * The URL of the worker file, `map-jr-gl-worker.js`.
+     * @default the file next to the module of the library
+     */
     workerUrl?: string | URL;
     /**
-     * Creates a worker yourself, for full control: bundler-specific imports (`new Worker(new URL(...), ...)`,
-     * Vite's `?worker`), a nonce, or a pre-warmed worker. Takes precedence over `workerUrl`.
+     * A function that creates the worker, for a bundler that imports workers its own way (`new Worker(new URL(...))`,
+     * `?worker` of Vite). It overrides `workerUrl`.
      */
     createWorker?: () => Worker;
-    /** How many workers parse tiles, shared by all maps on the page. Defaults to 1-4 depending on the device. */
+    /**
+     * The number of workers that parse tiles, shared by all maps of the page. A change has no effect while a map of the
+     * page uses workers of the same `workerUrl` or `createWorker`.
+     * @default the number of CPU cores less 2, from 1 to 4
+     */
     tileWorkers?: number;
-    /** The thread that draws, for maps that do not say it themselves: `'auto'` (the default), `'worker'` or `'main'`. */
+    /**
+     * The thread that renders a map whose description has no `renderer`.
+     * @default 'auto'
+     */
     renderer?: 'auto' | 'worker' | 'main';
 }
 
 export const defaults: LoadOptions = {};
-/** Sets page-wide defaults for how workers are loaded. Individual maps can still override them. */
+/**
+ * Sets how the library loads its workers, for the maps that are created after the call.
+ * @param options The options to set. An option that is left out keeps its value.
+ */
 export function configure(options: LoadOptions) { Object.assign(defaults, options); }
 
 /** The worker file's URL, or nothing when a `createWorker` function or the standalone build makes the worker. */

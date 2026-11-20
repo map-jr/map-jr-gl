@@ -2,7 +2,7 @@
 
 The description (`MapDescription`) is one object that states everything that a map of `@map-jr/map-jr-gl` shows: the
 style, the data, the view and the controls. To change the map, pass a new description to
-[`update`](../api.md#change-the-map), and the map applies what is different. The map shows what the last description
+[`update`](map.md#update), and the map applies what is different. The map shows what the last description
 states: a field that it leaves out is reset to its default.
 
 ```js
@@ -24,16 +24,16 @@ const map = createMap('map', {
 | [`layers`](#layers) | `LayerInput[]` | | Layers to add to the style, in order. |
 | [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`, in place of the `terrain` of the style. |
 | [`fonts`](#fonts) | `FontFaces` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
-| [`initialView`](#initialview) | `InitialView` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
-| [`view`](#view-and-onviewchange) | `ViewInput` | | A view that the application controls. |
-| [`onViewChange`](#view-and-onviewchange) | `(view: View) => void` | | Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
+| [`initialView`](#initialview) | [`InitialView`](types.md#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
+| [`view`](#view-and-onviewchange) | [`ViewInput`](types.md#viewinput) | | A view that the application controls. |
+| [`onViewChange`](#view-and-onviewchange) | `(view: `[`View`](state.md#view)`) => void` | | Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
 | [`data`](#data) | `Record<string, GeoJSON \| string>` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
 | [`images`](#images) | `Record<string, ImageInput>` | | Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
 | [`sprite`](#sprite) | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
 | [`controls`](#controls) | `ControlSpec[]` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
 | [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`, in place of the `projection` of the style. |
 | [`globalState`](#globalstate) | `Record<string, unknown>` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
-| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](../api.md#the-state) and in `onClick`. |
+| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](state.md#mapstate) and in `onClick`. |
 | [`hoverState`](#hoverstate) | `boolean` | `false` | Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for `feature-state` expressions. |
 | [`onClick`](#onclick) | `(event: MapPointer) => void` | | Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. |
 | `onError` | `(error: Error) => void` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
@@ -119,7 +119,7 @@ createMap('map', {
 ```
 
 The map applies a change of `layers` in place. A new paint value transitions from the old value: see
-[Paint transitions](../api.md#paint-transitions). Only a new `type`, `source` or `source-layer` of a layer
+[`update`](map.md#update). Only a new `type`, `source` or `source-layer` of a layer
 [loads the style again](#style).
 
 ## `terrain`
@@ -177,7 +177,7 @@ createMap('map', {
 ## `initialView`
 
 `initialView` (`InitialView`) sets the camera once, when the map is created. After that, the user moves the map. To
-move it from code, call [`map.moveTo`](../api.md#the-camera) or set [`view`](#view-and-onviewchange).
+move it from code, call [`map.moveTo`](map.md#moveto) or set [`view`](#view-and-onviewchange).
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -227,7 +227,7 @@ map.update(describe());
 ```
 
 `view` (`ViewInput`) has `center`, `zoom`, `bearing` and `pitch`. Each is optional. The map applies a new `view`
-with no animation. To animate the camera, call [`map.moveTo`](../api.md#the-camera) with `duration` in milliseconds or with
+with no animation. To animate the camera, call [`map.moveTo`](map.md#moveto) with `duration` in milliseconds or with
 `fly: true`: `map.moveTo({...view, duration: 500})`.
 
 `onViewChange` receives a `View`: the same four members and `bounds`. `bounds` is the smallest box
@@ -394,7 +394,7 @@ pointer or under a click only when one of these layers draws it. The value is a 
 
 The features reach your code in these ways:
 
-- [`state.hover`](../api.md#the-state) is the list of the features under the pointer, the top feature first.
+- [`state.hover`](state.md#mapstate) is the list of the features under the pointer, the top feature first.
 - [`onClick`](#onclick) receives the features under a click.
 - [`hoverState`](#hoverstate) marks the top feature under the pointer, so that the style can highlight it.
 
@@ -430,7 +430,7 @@ The map can set the state only on a feature that has an id. For a GeoJSON source
 ## `onClick`
 
 The map calls `onClick` with one object (`MapPointer`) for each click on the map. It does not call `onClick` for a
-click on a control or on an element that [`map.overlay`](../api.md#elements-of-the-page-on-the-map) placed on the map.
+click on a control or on an element that [`map.overlay`](map.md#overlay) placed on the map.
 
 | Name | Type | Description |
 |---|---|---|
@@ -454,7 +454,7 @@ shows a hint. Set the text of the hint in [`locale`](#locale).
 
 `colorScheme` sets whether the map is light or dark. `'auto'` follows the browser (`prefers-color-scheme`) and
 changes while the page is open. The resolved scheme is
-`colorScheme` of [the state of the map](../api.md#the-state), and it has these effects:
+`colorScheme` of [the state of the map](state.md#mapstate), and it has these effects:
 
 - The controls, the popup and the attribution have the colours of the scheme, and the container has the class
   `map-jr-dark` while the scheme is dark.
@@ -539,7 +539,7 @@ does not treat a new function as a change, so a framework can pass a new functio
 | `'worker'` | As `'auto'`, and the map warns once when it draws on the main thread instead. |
 | `'main'` | On the main thread. |
 
-`renderer` of [the state of the map](../api.md#the-state) is the thread that draws. See [Loading](../loading.md) for the worker file and how the map loads it.
+`renderer` of [the state of the map](state.md#mapstate) is the thread that draws. See [Loading](../loading.md) for the worker file and how the map loads it.
 
 ## `attribution`
 
@@ -587,7 +587,7 @@ writes `#map=zoom/lat/lng`.
 
 ## See also
 
-- [Change the map](../api.md#change-the-map) for `update` and `patch`.
-- [Types](../api.md#types) for `Position`, `Bounds`, `LayerInput` and the style types.
+- [The map](map.md) for `update` and `patch`.
+- [Types](types.md) for `Position`, `Bounds`, `LayerInput` and the style types.
 - [Vue and Nuxt](../vue.md), [React](../react.md) and [Svelte](../svelte.md): the components accept the fields of the
   description as props.

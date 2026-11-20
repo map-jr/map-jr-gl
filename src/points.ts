@@ -18,6 +18,9 @@ export interface PointCollection<P = Record<string, unknown>> { type: 'FeatureCo
 /**
  * A `FeatureCollection` with a point for each record. A record whose position is not two finite numbers is left out,
  * and the development build warns once with the index of the first such record.
+ * @param records The records of the application, such as rows of a table.
+ * @param options How each record becomes a feature.
+ * @returns A `FeatureCollection` of points.
  */
 export function points<R>(records: readonly R[], options: PointsOptions<R>): PointCollection {
     const features: PointFeature[] = [];
