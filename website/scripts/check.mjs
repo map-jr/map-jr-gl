@@ -563,6 +563,10 @@ try {
             await phone.close();
         }
         check(`${engine}: /play: no error of the page`, problems.length === 0, problems.join(' | '));
+        // The button reads "Copy link", and a popover says what the link keeps.
+        check(`${engine}: /play: the button reads "Copy link"`, await page.getByRole('button', {name: 'Copy link', exact: true}).count() === 1);
+        await page.getByRole('button', {name: 'What the link keeps'}).click();
+        check(`${engine}: /play: a popover says that the link keeps the code and the view`, await shown(page.getByText('The link keeps the code and the view of the map')));
         await context.close();
         if (own !== browser) await own.close();
     }
