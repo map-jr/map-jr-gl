@@ -6,56 +6,16 @@
 -->
 <script setup lang="ts">
 import type {FrameView} from '~/utils/map-frame';
+import {firstPlayExample, playGroups} from '~/utils/play-examples';
 
 useSeoMeta({title: 'Play', description: 'Edit the description of a map and see the map change.'});
 
-const controls = `import {navigation, scale} from '@map-jr/map-jr-gl/controls';`;
-const starts = [
-    {label: 'New York', code: `${controls}
-
-// The description of the map (MapDescription). The map changes when you change it.
-export default {
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
-  controls: [navigation(), scale({position: 'bottom-left'})],
-  attribution: {compact: true},
-};
-`},
-    {label: 'Pitch 85', code: `${controls}
-
-// Lower Manhattan at pitch 85. maxPitch is 60 when the description leaves it out.
-export default {
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  initialView: {center: [-74.0119, 40.7069], zoom: 16, pitch: 85, bearing: 30},
-  maxPitch: 85,
-  controls: [navigation({visualizePitch: true}), scale({position: 'bottom-left'})],
-  attribution: {compact: true},
-};
-`},
-    {label: 'Terrain', code: `${controls}
-
-// The Matterhorn in 3D. The style has the elevation source "terrarium".
-export default {
-  style: 'https://styles.map-jr.org/1/elevation.json',
-  terrain: {source: 'terrarium', exaggeration: 1.5},
-  initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60, bearing: 25},
-  controls: [navigation({visualizePitch: true}), scale({position: 'bottom-left'})],
-  attribution: {compact: true},
-};
-`},
-    {label: 'Globe', code: `import {navigation, globe} from '@map-jr/map-jr-gl/controls';
-
-// The world as a globe. Past zoom 12 the globe turns into the flat map.
-export default {
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  projection: {type: 'globe'},
-  initialView: {center: [10, 30], zoom: 1.5},
-  controls: [navigation(), globe()],
-  attribution: {compact: true},
-};
-`},
-];
-const first = starts[0]!.code;
+const first = firstPlayExample;
+// The menu of the examples: a label for each group, and the examples of the group below it.
+const menu = playGroups.map(group => [
+    {type: 'label' as const, label: group.label},
+    ...group.examples.map(example => ({label: example.label, icon: example.icon, onSelect: () => begin(example.code)})),
+]);
 
 // The longest code that the address can give, in characters. The address comes from anyone who sends a link.
 const longest = 100_000;
@@ -167,8 +127,9 @@ onBeforeUnmount(() => {
     <section class="flex min-h-0 min-w-0 flex-col border-muted lg:border-e">
       <div class="flex flex-wrap items-center gap-2 border-b border-muted px-4 py-3">
         <h1 class="me-auto font-display text-2xl text-highlighted">Play</h1>
-        <span class="text-sm text-muted">Start from</span>
-        <UButton v-for="item in starts" :key="item.label" size="sm" color="neutral" variant="outline" @click="begin(item.code)">{{ item.label }}</UButton>
+        <UDropdownMenu :items="menu" :content="{align: 'start'}">
+          <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-layout-list" trailing-icon="i-lucide-chevron-down">Examples</UButton>
+        </UDropdownMenu>
         <UButton size="sm" icon="i-lucide-link" @click="copy">Copy the link</UButton>
       </div>
       <p v-if="problem" class="border-b border-muted px-4 py-2 text-sm text-error" role="status">{{ problem }}</p>
