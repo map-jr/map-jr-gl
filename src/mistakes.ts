@@ -34,7 +34,7 @@ const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
     /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
-    /* 23 */ () => 'moveTo(): "padding" and "maxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.',
+    /* 23 */ () => 'moveTo(): "fitPadding" and "fitMaxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.',
 ];
 // A new text, and a new kind of check (below), takes the number of its issue, for example texts[544]; a second one for
 // the same issue takes that number plus 10000. Branches that run at the same time then cannot take the same number,
@@ -44,6 +44,7 @@ texts[1151] = a => `<MapJr>: the template ref has no method "${a}" until the map
 type Method = {[K in keyof MapInstance]: MapInstance[K] extends Function ? K : never}[keyof MapInstance];
 const methods = {update: 1, patch: 1, getResolvedDescription: 1, destroy: 1, queryFeatures: 1, querySource: 1, watchFeatures: 1, watchSource: 1, setFeatureState: 1, removeFeatureState: 1, queryElevation: 1, toBlob: 1, clusterExpansionZoom: 1, clusterChildren: 1, clusterLeaves: 1, moveTo: 1, fitBounds: 1, project: 1, unproject: 1, overlay: 1, listen: 1, once: 1} satisfies Record<Method, 1>;
 export const earlyMethod = (k: PropertyKey) => Object.hasOwn(methods, k);
+texts[1147] = (a, b) => `${a}: "${b}" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit${b[0].toUpperCase() + b.slice(1)}". "${b}" of the description applies to the map for good.`;
 texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
 texts[685] = a => `locale: ${a}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
 texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
@@ -106,7 +107,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
  * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 9, a feature with no id under the pointer in the layer `a`
- * with `hoverState`; 7, `moveTo` with `padding` or `maxZoom` and no `bounds`.
+ * with `hoverState`; 7, `moveTo` with `fitPadding` or `fitMaxZoom` and no `bounds`; 1147, `padding` or `maxZoom` (the old names) in the options `b` of `a` (`initialView`, `moveTo()` or `fitBounds()`).
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -169,6 +170,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 9) warn(30, a);
     else if (kind === 7) warn(23);
+    else if (kind === 1147) { for (const k of ['padding', 'maxZoom']) if (k in b) warn(1147, a, k); }
     else {
         slots(a.layers, b?.layers);
         for (const l of [...a.layers, ...b?.layers ?? []]) for (const group of [l.paint, l.layout]) for (const k in group) if (badZoomCurve(group[k])) warn(1057, l.id, k);

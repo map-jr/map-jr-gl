@@ -64,8 +64,8 @@ A view that the application passes, for [`view`](description.md#view-and-onviewc
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `bounds` | `Bounds` | | A box to fit into the map. |
-| `padding` | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. |
-| `maxZoom` | `number` | | The largest zoom level of the fit of `bounds`, for a small box. |
+| `fitPadding` | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. |
+| `fitMaxZoom` | `number` | | The largest zoom level of the fit of `bounds`, for a small box. |
 <!-- ref:InitialView:end -->
 
 ## `GeoJSON`

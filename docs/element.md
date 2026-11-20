@@ -93,7 +93,7 @@ property `mapStyle`. Objects, lists and functions are properties only. A propert
 | Property | Meaning |
 |---|---|
 | `mapStyle` | A style object or the URL of a style, or a pair `{light, dark}`. |
-| `initialView` | The view at the start: a view, or `{bounds, padding}`. Its fields come before those of the attributes `center`, `zoom`, `bearing` and `pitch`. Read when the map is made only. |
+| `initialView` | The view at the start: a view, or `{bounds, fitPadding}`. Its fields come before those of the attributes `center`, `zoom`, `bearing` and `pitch`. Read when the map is made only. |
 | `view` | A view that the application owns. Write each `map-viewchange` back to it, or change it to move the map. |
 | `sources`, `layers`, `terrain` | Sources, layers and terrain to add to the style. See [Your own layers on a style from a URL](api.md#your-own-layers-on-a-style-from-a-url). |
 | `data` | GeoJSON data for sources, by the id of the source. Each value is compared by identity: give a new object to change it. |

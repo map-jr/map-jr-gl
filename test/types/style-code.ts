@@ -26,7 +26,7 @@ const described = createMap(document.body, {
     maxBounds: box,
 });
 described.fitBounds([-74.1, 40.6, -73.8, 40.9]);
-described.moveTo({bounds: box, padding: 20, duration: 500});
+described.moveTo({bounds: box, fitPadding: 20, duration: 500});
 described.queryFeatures({filter: ['==', ['get', 'kind'], 'park']});
 // @ts-expect-error a layer of the description has a layer type that the library draws
 createMap(document.body, {style: 'https://demotiles.maplibre.org/style.json', layers: [{id: 'x', type: 'filll', source: 'parks'}]});

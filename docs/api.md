@@ -163,7 +163,7 @@ This holds for both entries: a new value in `update()` or `patch()` (in the styl
 | `sources` | Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
 | `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer of the style with that id, and a layer without it goes on top. A change in `update()` (other properties, a new order, a new or removed layer, another `before`) edits the layers and loads no style; a change of `type`, `source`, `source-layer`, `minzoom` or `maxzoom` of a layer loads the style again. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
 | `terrain` | 3D terrain in place of the terrain of the style: `{source: 'dem', exaggeration: 1.5}`. `null` means no 3D terrain (a flat map), also when the style has a `terrain`. No field, or `undefined`, means the terrain of the style. |
-| `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `padding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0) and `maxZoom` as the largest zoom of the fit. See [The camera](#the-camera). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
+| `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `fitPadding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0) and `fitMaxZoom` as the largest zoom of the fit. See [The camera](#the-camera). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. A key with no source of that id makes a GeoJSON source with the default options. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
@@ -885,12 +885,13 @@ The fields are `center` (`[lng, lat]`), `zoom`, `bearing` (degrees) and `pitch` 
 `zoom`, `initialView` and `moveTo` take `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`):
 the map fits that box into the view, and turns to bearing 0 unless `bearing` is given. Two fields belong to the fit:
 
-- `padding` is the space around the box in CSS pixels, a number or `{top, right, bottom, left}` (default 0). It adds
+- `fitPadding` is the space around the box in CSS pixels, a number or `{top, right, bottom, left}` (default 0). It adds
   to the `padding` of the description for this one fit, and it does not change the padding of the map.
-- `maxZoom` is the largest zoom of the fit (default: the `maxZoom` of the map).
+- `fitMaxZoom` is the largest zoom of the fit (default: the `maxZoom` of the map).
 
-Without `bounds`, `padding` and `maxZoom` have no effect, and the development build warns once. The padding of the
-map belongs to the description only (`padding`); `moveTo` does not change it.
+Without `bounds`, `fitPadding` and `fitMaxZoom` have no effect, and the development build warns once. The
+development build also warns for `padding` and `maxZoom` in `initialView`, `moveTo` and `fitBounds`, which are names
+of the description and have no effect there. The padding of the map belongs to the description only (`padding`); `moveTo` does not change it.
 
 `moveTo` also takes `duration` and `fly`. With `duration` (milliseconds, default 0), the camera eases to the target
 (as `easeTo` of MapLibre GL JS). With `fly`, the camera moves as `flyTo` of MapLibre GL JS does: it zooms out and back
@@ -903,7 +904,7 @@ jumps.
 // @map-jr/map-jr-gl
 map.moveTo({zoom: 15, duration: 500});
 map.moveTo({center: [2.35, 48.86], zoom: 12, fly: true});
-map.moveTo({bounds: [[-74.05, 40.68], [-73.9, 40.82]], padding: 40, pitch: 30, duration: 800});
+map.moveTo({bounds: [[-74.05, 40.68], [-73.9, 40.82]], fitPadding: 40, pitch: 30, duration: 800});
 ```
 
 `map.fitBounds(bounds, options)` is the short form of `map.moveTo({bounds, ...options})`. Like `moveTo`, it jumps
@@ -1157,7 +1158,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | `description` | The description of the last `createMap`, `update` or `patch` (read only). |
 | `getResolvedDescription()` | The description with `style` and `globalState` resolved, for reading (see below). |
 | `destroy()` | Removes the map and frees its memory. It also removes the elements of `overlay()` from the page at once, without the closing animation of a popup, and it does not call `onClose`. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
-| `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `padding` and `maxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
+| `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `fitPadding` and `fitMaxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
 | `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`. The camera jumps unless the options set `duration` or `fly`. |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find the features that the style layers draw, one time or kept up to date. See [Queries](#queries). |
 | `querySource(sourceId, at, options)`, `watchSource(sourceId, at, options, listener)` | Find the features of the tile data of one source, one time or kept up to date. See [Queries](#queries). |

@@ -107,9 +107,9 @@ export interface InitialView extends ViewInput {
      * Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. It has no effect without `bounds`.
      * @default 0
      */
-    padding?: PaddingInput;
+    fitPadding?: PaddingInput;
     /** The largest zoom level of the fit of `bounds`, for a small box. It has no effect without `bounds`, and it does not change `maxZoom` of the description. */
-    maxZoom?: number;
+    fitMaxZoom?: number;
 }
 /** The argument of `moveTo`: a view or `bounds` as in `InitialView`, and how the camera moves there. */
 export interface MoveToOptions extends InitialView {
@@ -755,11 +755,11 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
     if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
-    const {bounds, padding, maxZoom, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
+    const {bounds, fitPadding, fitMaxZoom, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding, maxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
+        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
@@ -789,6 +789,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
     const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
+    if (spec.initialView) check(1147, 'initialView', spec.initialView);
     // The data that each source has from the description: the GeoJSON of `data`.
     const sent = new globalThis.Map<string, unknown>();
     // `cooperativeGestures`: the handler of the compat entry (cooperative-gestures.ts) loads on demand. Until it has
@@ -1127,10 +1128,12 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     };
     apply(spec);
 
-    const moveTo: MapInstance['moveTo'] = ({duration, fly, bounds, padding, maxZoom, ...view}) => {
-        // (`padding` is space for this one fit; the padding of the map belongs to the description.)
-        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding, maxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
-        else if (padding !== undefined || maxZoom !== undefined) check(7);
+    const moveTo = ({duration, fly, bounds, fitPadding, fitMaxZoom, ...view}: MoveToOptions, name = 'moveTo') => {
+        // (`fitPadding` is space for this one fit; the padding of the map belongs to the description.)
+        // (The old names of the two options of a fit are left out, so that `padding` does not reach the camera; #1147.)
+        if ('padding' in view || 'maxZoom' in view) { check(1147, name + '()', view); const {padding: _p, maxZoom: _m, ...rest} = view as MoveToOptions & {padding?: unknown; maxZoom?: unknown}; view = rest; }
+        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding: fitPadding, maxZoom: fitMaxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
+        else if (fitPadding !== undefined || fitMaxZoom !== undefined) check(7);
         if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
     };
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
@@ -1220,7 +1223,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         queryElevation: at => map.queryElevation(at),
         toBlob: (type, quality) => map.toBlob(type, quality),
         moveTo,
-        fitBounds: (bounds, o = {}) => moveTo({...o, bounds}),
+        fitBounds: (bounds, o = {}) => moveTo({...o, bounds}, 'fitBounds'),
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
         overlay(element, o) {

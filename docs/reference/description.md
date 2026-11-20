@@ -202,8 +202,8 @@ move it from code, call [`map.moveTo`](map.md#moveto) or set [`view`](#view-and-
 | `bearing` | `number` | `0` | The bearing in degrees. |
 | `pitch` | `number` | `0` | The pitch in degrees. |
 | `bounds` | `Bounds` | | A box that the map fits into the view: `[[west, south], [east, north]]` or `[west, south, east, north]`. It overrides `center` and `zoom`. |
-| `padding` | `PaddingInput` | `0` | Space around `bounds` in CSS pixels: a number, or `{top, right, bottom, left}`. |
-| `maxZoom` | `number` | `maxZoom` of the description | The highest zoom of the fit to `bounds`. |
+| `fitPadding` | `PaddingInput` | `0` | Space around `bounds` in CSS pixels: a number, or `{top, right, bottom, left}`. |
+| `fitMaxZoom` | `number` | `maxZoom` of the description | The highest zoom of the fit to `bounds`. |
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -608,8 +608,8 @@ createMap('map', {
 });
 ```
 
-The `padding` of [`initialView`](#initialview) and of `moveTo` is a different value: the space around `bounds` for
-one fit. A fit of `moveTo` adds it to the `padding` of the description. The fit of `initialView` does not.
+The space around `bounds` for one fit is `fitPadding` of [`initialView`](#initialview) and of `moveTo`. A fit of
+`moveTo` adds it to the `padding` of the description. The fit of `initialView` does not.
 
 ## `transformRequest`
 

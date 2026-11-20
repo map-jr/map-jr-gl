@@ -203,7 +203,7 @@ Two things go wrong most often:
 
 - The server and the map have different styles or views. The page then shows one map and replaces it with
   another. Pass the server the same `style`, `sources`, `layers`, `data`, `images` and `colorScheme` as the map. Pass
-  `center`, `zoom` and `bearing` of `initialView` (or its `bounds` and `padding`) as options of the same names. The
+  `center`, `zoom` and `bearing` of `initialView` as options of the same names, and its `bounds` and `fitPadding` as `bounds` and `padding`. The
   Vue component and `renderElement` pass all of them themselves.
 - The element of the map has no `position`. The SVG is positioned at `inset: 0`, so the element needs
   `position: relative` or another position that is not `static`. The Vue and React components and `<map-jr>` set it.

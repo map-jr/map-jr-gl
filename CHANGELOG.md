@@ -14,6 +14,9 @@ no pull requests.
 - `@map-jr/map-jr-gl`: `terrain: null` in the description draws a flat map, also when the style has a `terrain`, as
   `setTerrain(null)` does in MapLibre GL JS. No field, or `undefined`, keeps the terrain of the style. Code that passed
   `null` to keep the terrain of the style leaves the field out instead ([#1105]).
+- `@map-jr/map-jr-gl`: the options of a fit of `bounds` in `initialView`, `moveTo` and `fitBounds` are now
+  `fitPadding` and `fitMaxZoom`. `padding` and `maxZoom` there have no effect, and the development build warns and
+  names the new option. `padding` and `maxZoom` of the description keep their meaning (#1147).
 
 [#1105]: https://github.com/map-jr/map-jr-gl/pull/1105
 

@@ -118,8 +118,8 @@ Two options belong to the fit:
 
 | Option | Main API | MapLibre compat | Default | Effect |
 |---|---|---|---|---|
-| `padding` | in `initialView` | in `fitBoundsOptions` | `0` | The space in CSS pixels between the box and the edges of the map, for this fit only. |
-| `maxZoom` | in `initialView` | in `fitBoundsOptions` | `maxZoom` of the map | The largest zoom of the fit. |
+| `fitPadding` | in `initialView` | `padding` in `fitBoundsOptions` | `0` | The space in CSS pixels between the box and the edges of the map, for this fit only. |
+| `fitMaxZoom` | in `initialView` | `maxZoom` in `fitBoundsOptions` | `maxZoom` of the map | The largest zoom of the fit. |
 
 The fit of `initialView` does not add the [`padding`](../reference/description.md#padding) of the description.
 
@@ -133,7 +133,7 @@ Two settings override `initialView`:
 ## Move the camera from code
 
 In the main API, [`map.moveTo`](../api.md#the-camera) moves the camera each time that it is called. It accepts the
-members of the view, or `bounds` with `padding` and `maxZoom` as in `initialView`, and two members for the movement:
+members of the view, or `bounds` with `fitPadding` and `fitMaxZoom` as in `initialView`, and two members for the movement:
 
 | Member | Type | Default | Effect |
 |---|---|---|---|
@@ -265,7 +265,7 @@ A member that `moveTo` is not passed keeps its value, so `{zoom: 15}` keeps the 
 - The map turns to bearing 0 unless `bearing` is set.
 - `pitch` does not change the fit. The map computes the centre and the zoom of the fit at the current pitch, so with
   a different `pitch` the box can extend past the edges of the map. To fit a box at a pitch, set the pitch first.
-- The `padding` of `moveTo` is added to the [`padding`](../reference/description.md#padding) of the description.
+- The `fitPadding` of `moveTo` is added to the [`padding`](../reference/description.md#padding) of the description.
   `moveTo` does not change the `padding` of the description.
 
 When the system asks for reduced motion (`prefers-reduced-motion: reduce`), the camera jumps.

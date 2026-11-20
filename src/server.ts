@@ -388,7 +388,7 @@ export async function renderElement(description: MapDescription, options: Elemen
     let first = '';
     try {
         const fit = !d.view && d.initialView?.bounds;
-        first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.padding,
+        first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
             width, height, images: d.images as RenderOptions['images'], sources: d.sources, layers: d.layers as RenderOptions['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
             attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light'});
     } catch (cause) {

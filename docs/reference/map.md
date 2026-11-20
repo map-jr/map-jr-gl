@@ -698,7 +698,7 @@ function showManhattan() {
       [-74.05, 40.68],
       [-73.9, 40.82],
     ],
-    padding: 40,
+    fitPadding: 40,
     pitch: 30,
     duration: 800,
   });
@@ -706,12 +706,13 @@ function showManhattan() {
 ```
 
 When the system asks for reduced motion, the camera jumps to the target. The development build warns once when
-`padding` or `maxZoom` has no `bounds`.
+`fitPadding` or `fitMaxZoom` has no `bounds`, and when `view` has `padding` or `maxZoom`, which are options of the
+description and not of a fit.
 
 ### `MoveToOptions`
 
 `MoveToOptions` accepts `center`, `zoom`, `bearing` and `pitch` of [`ViewInput`](types.md#viewinput), `bounds`,
-`padding` and `maxZoom` of [`InitialView`](types.md#initialview), and these members, which set how the camera moves:
+`fitPadding` and `fitMaxZoom` of [`InitialView`](types.md#initialview), and these members, which set how the camera moves:
 
 <!-- ref:MoveToOptions:start -->
 | Name | Type | Default | Description |
@@ -736,7 +737,7 @@ The options of a flight, for `fly`, as in `flyTo` of MapLibre GL JS:
 
 ## `fitBounds`
 
-`options` accepts `bearing`, `pitch`, `padding`, `maxZoom`, `duration` and `fly` of [`MoveToOptions`](#movetooptions).
+`options` accepts `bearing`, `pitch`, `fitPadding`, `fitMaxZoom`, `duration` and `fly` of [`MoveToOptions`](#movetooptions).
 
 <!-- ref:MapInstance.fitBounds:start -->
 ```ts
