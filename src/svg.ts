@@ -61,7 +61,10 @@ export interface SVGScene {
     label?: string;
 }
 
-/** Serialises one frame as a standalone SVG document. Pure string building: runs on any JavaScript server. */
+/**
+ * Serialises one frame as a standalone SVG document. Pure string building: runs on any JavaScript server.
+ * @internal Used by `renderToSVG` of `@map-jr/map-jr-gl/server`; not exported from any entry.
+ */
 export function renderSVG(s: SVGScene): string {
     const {tr} = s, zoom = tr.zoom;
     const defs: string[] = [], body: string[] = [];
@@ -225,4 +228,23 @@ export function renderSVG(s: SVGScene): string {
 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${tr.width}" height="${tr.height}" viewBox="0 0 ${tr.width} ${tr.height}" role="img" aria-label="${escapeXML(s.label ?? 'Map')}"${s.rootAttrs ? ' ' + s.rootAttrs : ''}>` +
         `<defs>${defs.join('')}</defs>${body.join('')}</svg>`;
+}
+
+/**
+ * Returns HTML of credits that is safe to put into a page: the text, escaped, and links to http and https URLs. Every other tag is removed.
+ * @returns The cleaned HTML.
+ * @internal Used by `renderToHTML` of `@map-jr/map-jr-gl/server`; not exported from any entry.
+ */
+export function cleanCredits(html: string): string {
+    const text = (t: string) => t.replace(/&(?!#?\w+;)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    let out = '', open = 0;
+    for (const [part] of html.matchAll(/<a\b[^>]*>|<\/a\s*>|<[^>]*>?|[^<]+/gi)) {
+        if (part[0] !== '<') out += text(part);
+        else if (/^<\/a/i.test(part)) { if (open) { open--; out += '</a>'; } }
+        else if (/^<a\b/i.test(part) && part.endsWith('>')) {
+            const href = /href\s*=\s*(?:"(https?:\/\/[^"]*)"|'(https?:\/\/[^']*)')/i.exec(part);
+            if (href) { open++; out += `<a href="${text(href[1] ?? href[2])}">`; }
+        }
+    }
+    return out + '</a>'.repeat(open);
 }
