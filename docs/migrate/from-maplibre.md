@@ -88,7 +88,7 @@ that this page lists. The page is written for an application that uses MapLibre 
    [What is not available](#what-is-not-available) for the list.
 
 7. If a wrapper or a plugin imports `maplibre-gl` itself, set an alias for that name: see
-   [Wrappers and plugins](#wrappers-and-plugins).
+   [Wrappers and plugins](wrappers.md).
 
 ## Names that change
 
@@ -208,36 +208,9 @@ map.on('load', () => {
 
 ## Wrappers and plugins
 
-A wrapper (react-map-gl, for example) or a plugin imports `maplibre-gl` itself. Map that name to this library in your
-bundler. The alias must match the name `maplibre-gl` exactly. An alias that also matches `maplibre-gl/dist/...`
-makes the bundler look for those files in this package, which does not have them, and the build stops.
-
-```js
-// vite.config.js
-import {defineConfig} from 'vite';
-
-export default defineConfig({
-  resolve: {
-    alias: [{find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'}],
-  },
-});
-```
-
-Without a bundler, use an import map:
-
-```html
-<script type="importmap">{"imports": {"maplibre-gl": "/node_modules/@map-jr/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}</script>
-```
-
-| Case | What to do |
-|---|---|
-| Next.js | See [Next.js](../loading.md#nextjs) for the alias in webpack and in Turbopack. |
-| Vite 5 in development | See [Vite in development](../loading.md#vite-in-development) for the option `optimizeDeps` that it needs. |
-| react-map-gl 8 (`react-map-gl/maplibre`, `@vis.gl/react-maplibre`) | It works through the alias. |
-| react-map-gl 7 | It does not work, because it reads `map.transform`. Upgrade to version 8 first. |
-| TypeScript with a wrapper | Keep `maplibre-gl` installed for its types. Values that are typed with `maplibre-gl` fit the types of this library, but not always the reverse. |
-
-See [Ecosystem](../ecosystem.md) for the plugins and wrappers that are tested.
+A wrapper (react-map-gl, for example) or a plugin imports `maplibre-gl` itself. Map that name to this library with an
+alias in your bundler or an import map. See [Wrappers and plugins](wrappers.md) for the alias in each bundler, the
+wrappers and plugins that run with this library, and their types.
 
 ## What is not available
 
@@ -250,8 +223,8 @@ The library does not have these parts of MapLibre GL JS, among others:
 - Roll, a field of view other than the default, and a pitch above 90 degrees.
 - Custom layers with the worker renderer.
 
-See [MapLibre compatibility](../maplibre-compatibility.md) for the full list of differences, for every method of
-`Map`, and for everything that is not available.
+See [MapLibre compatibility](../maplibre-compatibility.md) for the full list of differences and of everything that
+is not available, and [The compat entry](../reference/maplibre-compat.md) for every member of `Map`.
 
 ## See also
 

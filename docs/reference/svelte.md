@@ -1,4 +1,4 @@
-# Svelte
+# The Svelte action and store
 
 The entry `@map-jr/map-jr-gl/svelte` creates a map of `@map-jr/map-jr-gl` in a Svelte page. `mapJr` is an action
 that creates the map in an element from a [description](description.md), and `mapState` returns the

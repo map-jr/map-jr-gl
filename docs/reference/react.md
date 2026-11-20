@@ -1,4 +1,4 @@
-# React
+# React components and hooks
 
 The entry `@map-jr/map-jr-gl/react` renders a map of `@map-jr/map-jr-gl` as a React component, for React 18 and 19.
 The component `MapJr` passes its props to the map as one [description](description.md) after each render, and the
