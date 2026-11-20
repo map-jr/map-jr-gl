@@ -865,7 +865,7 @@ complete options each time.
 <!-- ref:MapOverlay:start -->
 | Name | Type | Description |
 |---|---|---|
-| [`update`](#update) | `(options: `[`OverlayOptions`](#overlayoptions)`) => void` | Replaces all options of the overlay with `options`. |
+| `update` | `(options: `[`OverlayOptions`](#overlayoptions)`) => void` | Replaces all options of the overlay with `options`. |
 | `remove` | `() => void` | Removes the element from the map. |
 <!-- ref:MapOverlay:end -->
 

@@ -350,13 +350,13 @@ the first view, writes the error to the console of the server, and emits it as `
 |---|---|---|---|
 | `width` | `number` | `800` | The width in CSS pixels that the map has on most screens. |
 | `height` | `number` | `500` | The height in CSS pixels that the map has on most screens. |
-| [`overrides`](#overrides) | `false \| Record<string, `[`SSROverrides`](#overrides)`>` | | Changes for the server render, for each id of a style layer, as `overrides` of `renderToSVG`. |
+| `overrides` | `false \| Record<string, `[`SSROverrides`](#overrides)`>` | | Changes for the server render, for each id of a style layer, as `overrides` of `renderToSVG`. |
 | `attribution` | `string \| string[]` | the attribution of the sources | The attribution to show, as HTML. |
 | `timeout` | `number` | `30000` | The time in milliseconds that all requests of the render can take together, as `timeout` of `renderToSVG`. |
 | `requestTimeout` | `number` | `10000` | The time in milliseconds that one request can take, as `requestTimeout` of `renderToSVG`. |
 | `maxBytes` | `number` | `0` | The largest body of one response in bytes, after decompression, as `maxBytes` of `renderToSVG`. |
 | `allowHosts` | `string[]` | | The host names that the render can request, as `allowHosts` of `renderToSVG`. |
-| [`tileZoomOffset`](#tilezoomoffset) | `number` | `0` | The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. |
+| `tileZoomOffset` | `number` | `0` | The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. |
 <!-- ref:MapJrSSROptions:end -->
 
 The prop `:attribution="false"` overrides `attribution` and shows none.
