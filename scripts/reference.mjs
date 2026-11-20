@@ -129,7 +129,8 @@ const typeText = (member, optional, node, getter = false) => {
     const prop = /PropType<(.*)>/s.exec(node?.getText() ?? '');
     if (text.includes('...') && prop) {
         let depth = 0, end = 0;
-        for (const [i, c] of [...prop[1]].entries()) { if (c === '<') depth++; else if (c === '>') { if (!depth) { end = i; break; } depth--; } end = i + 1; }
+        // (The `>` of an arrow `=>` closes nothing.)
+        for (const [i, c] of [...prop[1]].entries()) { if (c === '<') depth++; else if (c === '>' && prop[1][i - 1] !== '=') { if (!depth) { end = i; break; } depth--; } end = i + 1; }
         text = flat(prop[1].slice(0, end));
     }
     // (`| undefined` of an optional member says what `?` says, also for the members of an object type inside it.)

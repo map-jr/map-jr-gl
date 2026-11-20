@@ -39,6 +39,8 @@ sections:
       - types.md
       - css.md
       - controls.md
+      - vue.md
+      - nuxt.md
       - server.md
   - title: Migrate
     folder: migrate
