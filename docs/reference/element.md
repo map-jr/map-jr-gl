@@ -75,22 +75,9 @@ animation, also when the element has the property `initialView`. A change of ano
 view that the user moves is in [`state`](#mapjrelement) and in the event `map-viewchange`.
 
 A boolean attribute takes effect when it is there, whatever its value, as in HTML: `hover-state="false"` switches
-`hoverState` on, and `no-interactive="false"` switches `interactive` off. To undo a boolean attribute, remove it. The
-development build warns once for each element and attribute with the value `"false"`:
+`hoverState` on, and `no-interactive="false"` switches `interactive` off. To undo a boolean attribute, remove it.
 
-```text
-[map-jr-gl] <map-jr>: the attribute hover-state="false" switches the option on all
-the same, because an attribute that is there takes effect, whatever its value. To
-switch it off, remove hover-state.
-```
-
-An attribute that the element cannot read, such as `zoom="near"`, is ignored, and the
-[development build](create-map.md#the-development-build) warns once for each element:
-
-```text
-[map-jr-gl] <map-jr>: the attribute zoom="near" cannot be read, so the element
-ignores it. Write a number, for example zoom="11".
-```
+An attribute that the element cannot read, such as `zoom="near"`, is ignored.
 
 When `map-style` is removed from an element whose map exists, and the element has no property `mapStyle`, the map
 keeps the style that it has, and the element applies no other change to the map until it has a style again. To

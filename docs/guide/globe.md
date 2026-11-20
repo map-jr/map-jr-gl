@@ -86,7 +86,7 @@ The map accepts three projections:
 | `'vertical-perspective'` | A globe at every zoom. |
 
 `type` can also be an `interpolate` expression of `["zoom"]` between two of these names, as in the MapLibre style
-specification. Another name writes one warning, and the map draws `mercator`.
+specification.
 
 With `projection: null` or no field, the map uses the root property `projection` of the style, and `mercator` when
 the style has none.

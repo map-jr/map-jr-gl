@@ -32,8 +32,8 @@ The map shows the controls of the last description, and each item of `controls` 
   description. It removes a control that the new list does not have. A control whose options changed is a
   different control: the map removes the old one and adds the new one last in its corner.
 - **`custom`.** Two items of [`custom`](#custom) are the same control when they have the same `key`. A new
-  `position` with the same `key` has no effect and no warning. To move the control, pass a new `key`.
-- **A duplicate.** When the list has the same control twice, the map shows it once. It gives no warning.
+  `position` with the same `key` has no effect. To move the control, pass a new `key`.
+- **A duplicate.** When the list has the same control twice, the map shows it once.
 - **Order.** When the map is created, the first control of a corner in the list is nearest to the corner. A control
   that a later description adds goes after the controls that the corner has.
 - **Loading.** Each control except [`custom`](#custom) appears a moment after the map adds it, because the map
@@ -261,9 +261,6 @@ const map = createMap('map', {
   ],
 });
 ```
-
-In the development build, `custom()` without a `key`, or with neither `element` nor `onAdd`, throws an error that
-shows both forms.
 
 ## The texts of the controls
 

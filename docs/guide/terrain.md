@@ -283,8 +283,7 @@ map.on('load', () => {
 `hillshade-illumination-altitude` is the height of the light above the horizon, in degrees from 0 to 90. The default
 is 45. With `multidirectional`, the four properties of the example each accept one value or a list with a value for
 each light. A list that is shorter than the longest list repeats its last value. The layer draws at most 8 lights.
-The other methods use the first value of a list. A `hillshade-method` that is not one of the five writes one warning,
-and the layer uses `standard`.
+The other methods use the first value of a list.
 
 ## Colour the ground by its height
 
@@ -507,9 +506,8 @@ tiles that it reads.
 
 `queryElevation` returns a promise of the height of the ground in metres above sea level, at a position
 (`[lng, lat]`) or at a point of the screen (`{x, y}`). Over the sea, the elevation tiles of `elevation.json` give 0.
-The promise resolves to `null` when the source has no tile at the position. It rejects with the error
-`No elevation (raster-dem) source in the style` when the style and `sources` have no `raster-dem` source. The query does not need 3D terrain, and the
-position can be outside the view.
+The promise resolves to `null` when the source has no tile at the position. The query needs a `raster-dem` source in
+the style or in `sources`, and it does not need 3D terrain. The position can be outside the view.
 
 **Main API**
 

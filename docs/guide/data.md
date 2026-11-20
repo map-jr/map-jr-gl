@@ -169,9 +169,8 @@ Three things often go wrong:
 
 - A key is removed from `data`, and a layer still uses its source. The map removes the source, and the layer draws
   nothing. Remove the layer in the same description.
-- A key names a source of the style that is not a GeoJSON source, such as a vector source. The data has no effect,
-  and the map calls `onError` of the description with an `Error` that names the key. Without `onError`, the map
-  writes the error to the console.
+- A key names a source of the style that is not a GeoJSON source, such as a vector source. The data has no effect.
+  Use a key that no source of the style has, or the id of a GeoJSON source of the style.
 - A wide line is cut off at the edges of the tiles. Set a larger `buffer` on the source, as in the table below.
 
 `buffer` is the margin around each tile in which a GeoJSON source keeps the features that cross the edge of the
@@ -273,8 +272,7 @@ Set `id` from a field of the record that stays the same, not from the index: the
 record before it is removed. A string of decimal digits that is a safe integer, such as `'12'`, becomes the number
 `12` in the features that [`queryFeatures`](../reference/map.md#queryfeatures) returns and in `state.hover`.
 
-A record whose position is not two finite numbers, such as `['2.3', '48.8']`, is left out. The
-[development build](../api.md#make-a-map) warns once with the index of the first such record.
+A record whose position is not two finite numbers, such as `['2.3', '48.8']`, is left out.
 
 ## Group points into clusters
 

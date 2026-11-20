@@ -31,7 +31,7 @@ export it. In `@map-jr/map-jr-gl/maplibre-compat`, each option is also an option
 |---|---|---|---|
 | `workerUrl` | `string \| URL` | The worker file next to the page script | The URL of `map-jr-gl-worker.js`. |
 | `createWorker` | `() => Worker` | | A function that starts the worker, for the worker syntax of a bundler. It overrides `workerUrl`. |
-| `tileWorkers` | `number` | Two fewer than the processor cores, from 1 to 4 | The number of tile workers. While a map with the same worker file exists, a new value is ignored with no warning. |
+| `tileWorkers` | `number` | Two fewer than the processor cores, from 1 to 4 | The number of tile workers. While a map with the same worker file exists, a new value is ignored. |
 | `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that draws the map. See [What each renderer needs](browser-support.md#what-each-renderer-needs). |
 
 To change `tileWorkers`, call `remove()` on every map of the page, then `configure`, then create the maps again.
@@ -94,18 +94,11 @@ The map draws on the main thread when the worker file is not at its URL, when a 
 allow workers, or when the browser cannot draw WebGL2 in a worker. It then loads the renderer as one more file and
 writes a warning to the console that says what to change.
 
-With `renderer: 'auto'`, a browser that cannot draw WebGL2 in a worker gets no warning in the production build. The
-development build writes the same text with `console.info`. [Browser support](browser-support.md#what-each-renderer-needs) lists what each renderer needs.
+With `renderer: 'auto'`, a browser that cannot draw WebGL2 in a worker gets no warning.
+[Browser support](browser-support.md#what-each-renderer-needs) lists what each renderer needs.
 
 The page script and the worker file must come from the same version of the package. When a CDN or a cache serves
-a worker file of another version, the map writes this warning once and still starts, but it can fail later:
-
-```text
-[map-jr-gl] The worker file is version 0.1.0 and the page file is version 0.2.0.
-Serve map-jr-gl-worker.js from the
-same version of the package as the page file, or pass `workerUrl` with the URL
-of that file.
-```
+a worker file of another version, the map still starts, but it can fail later.
 
 ## Preload the parts of the page script
 

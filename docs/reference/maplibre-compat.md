@@ -30,11 +30,11 @@ These differences change the code of most applications:
 - [`setStyle`](#setstyle), [`addImage`](#addimage) and `updateImage` return a promise where MapLibre GL JS returns
   the map.
 - `maxPitch` and `setMaxPitch` accept at most 90 degrees, where MapLibre GL JS accepts up to 180. A higher value is
-  limited to 90, with one warning. The default is 60 in both.
+  limited to 90. The default is 60 in both.
 - The camera has no roll, and its field of view is fixed. `setRoll` and `setVerticalFieldOfView` have no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
-- The library does not validate the style, and the option `validate` has no effect. It warns for a layer type or an
-  expression that it does not draw, and does not draw them. Another mistake in the style gets no message: see
+- The library does not validate the style, and the option `validate` has no effect. It does not draw a layer type or
+  an expression that it does not support: see
   [The style is not validated](../migrate/from-maplibre.md#the-style-is-not-validated).
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
   `error` with that error and shows a message in the container. Call `supported()` before you create the map.
@@ -49,17 +49,16 @@ available, and of the types that differ.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders the map: see [`renderer`](description.md#renderer) of the main API for each value. |
-| `strict` | `boolean` | `false` | Whether each warning of an option or a method with no effect, and each `error` event, is an error that is thrown. |
+| `strict` | `boolean` | `false` | Whether an option or a method with no effect, and each `error` event, throws an error. |
 | `fonts` | `FontSource[]` | | Web fonts for labels, for example `[{family: 'Open Sans', src: '/fonts/open-sans.woff2', weight: '300 800'}]`. |
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font. |
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
-These options of MapLibre GL JS have no effect and write one warning, or throw it with `strict: true`:
+These options of MapLibre GL JS have no effect, and throw an error with `strict: true`:
 `renderWorldCopies: false`, `canvasContextAttributes` other than `antialias`, `logoPosition`, `validate` with any
 value, `fadeDuration` other than 300, `pitchWithRotate: false`, and `projection` other than `'mercator'`.
 
-A custom layer (`type: 'custom'`) needs `renderer: 'main'`. With `'auto'` or `'worker'`, `addLayer` fires `error` and
-adds nothing.
+A custom layer (`type: 'custom'`) needs `renderer: 'main'`. With `'auto'` or `'worker'`, `addLayer` adds nothing.
 
 ## `Map`
 
@@ -79,24 +78,24 @@ library" names a member that MapLibre GL JS does not have.
 | `cooperativeGestures` (read only) | `{enable(): void; disable: () => void; isEnabled: () => boolean; isActive: () => boolean}` | As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. |
 | `project` | `(lngLat: LngLatLike) => Point` | As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. |
 | `version` (read only) | `string` | The version of this library, as the member `version` of a map of MapLibre GL JS. |
-| `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Has no effect, and `false` warns once: the map always draws copies of the world side by side. |
-| `setRoll` | `(roll?: number \| undefined) => Map` | Has no effect, and a value other than 0 warns once: the camera has no roll. |
-| `setVerticalFieldOfView` | `(fov?: number \| undefined) => Map` | Has no effect, and a value other than 36.87 warns once: the vertical field of view stays at 36.87 degrees. |
+| `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Has no effect: the map always draws copies of the world side by side. |
+| `setRoll` | `(roll?: number \| undefined) => Map` | Has no effect: the camera has no roll. |
+| `setVerticalFieldOfView` | `(fov?: number \| undefined) => Map` | Has no effect: the vertical field of view stays at 36.87 degrees. |
 | `getVerticalFieldOfView` | `() => number` | Returns 36.87, the vertical field of view of the camera in degrees, which is the default of MapLibre GL JS. |
 | `coveringTiles` | `(o: {tileSize: number; minzoom?: number; maxzoom?: number; roundZoom?: boolean}) => {canonical: {z: number; x: number; y: number; key: string}; wrap: number; overscaledZ: number; key: string}[]` | Returns the tiles that cover the view as plain objects `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`; MapLibre GL JS returns `OverscaledTileID` objects. |
 | `calculateCameraOptionsFromTo` | `(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; pitch: number; bearing: number}` | The camera options that look from `from` at `altitudeFrom` metres to `to` at `altitudeTo` metres, as in MapLibre GL JS. |
 | `calculateCameraOptionsFromCameraLngLatAltRotation` | `(cameraLngLat: LngLatLike, cameraAlt: number, bearing: number, pitch: number, roll?: number \| undefined) => object` | The camera options that put the camera at `cameraLngLat` and `cameraAlt` metres with this rotation, as in MapLibre GL JS. |
 | `calculateAnchoredCameraOptions` | `(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) => {center: LngLat; zoom: number}` | The centre and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. |
-| `setCenterClampedToGround` | `(clamped?: boolean \| undefined) => Map` | Has no effect, and `false` warns once: the map center is always on the ground. |
+| `setCenterClampedToGround` | `(clamped?: boolean \| undefined) => Map` | Has no effect: the map center is always on the ground. |
 | `getCenterClampedToGround` | `() => boolean` | Returns `true`: the map center is always on the ground. |
-| `setCenterElevation` | `(elevation?: number \| undefined) => Map` | Has no effect, and a value other than 0 warns once: the map center is always on the ground. |
-| `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect, and gives no warning for any value. |
+| `setCenterElevation` | `(elevation?: number \| undefined) => Map` | Has no effect: the map center is always on the ground. |
+| `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
-| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect on the camera that the map draws, and warns once when the function changes the camera of a movement. |
-| `showTileBoundaries` | `boolean` | Has no effect, and setting it to `true` warns once: the map does not draw tile borders. |
-| `showPadding` | `boolean` | Has no effect, and setting it to `true` warns once: the map does not draw the padding. |
-| `showCollisionBoxes` | `boolean` | Has no effect, and setting it to `true` warns once: the map does not draw collision boxes. |
-| `showOverdrawInspector` | `boolean` | Has no effect, and setting it to `true` warns once: the map has no overdraw view. |
+| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect on the camera that the map draws during a movement. |
+| `showTileBoundaries` | `boolean` | Has no effect: the map does not draw tile borders. |
+| `showPadding` | `boolean` | Has no effect: the map does not draw the padding. |
+| `showCollisionBoxes` | `boolean` | Has no effect: the map does not draw collision boxes. |
+| `showOverdrawInspector` | `boolean` | Has no effect: the map has no overdraw view. |
 | `setSourceTileLodParams` | `(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string \| undefined) => Map` | Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS. |
 | `setTransformConstrain` | `(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) \| null \| undefined) => Map` | As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. |
 | `setZoomSnap` | `(snap: number) => Map` | Sets the step of the zoom, as in MapLibre GL JS: above 0, a camera method ends at the nearest multiple of it. |
@@ -238,9 +237,8 @@ library" names a member that MapLibre GL JS does not have.
 ## `queryRenderedFeatures`
 
 `queryRenderedFeatures` and `querySourceFeatures` take the arguments of MapLibre GL JS and return an array that is
-also a promise. Await it: the promise resolves to the complete result. Code that reads the array without `await`
-gets no error and no warning, but the array can lack the features of tile sources. `await` also works with
-MapLibre GL JS, so the same code runs with both libraries.
+also a promise. Await it: the promise resolves to the complete result. The array without `await` can lack the
+features of tile sources. `await` also works with MapLibre GL JS, so the same code runs with both libraries.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -281,8 +279,7 @@ setStyle(
 
 The sources and layers that `addSource` and `addLayer` added are removed with the old style, as in MapLibre GL JS.
 To keep them, return a style with them from `transformStyle`, which receives the old and the new style. The option
-`diff` has no effect: the map always replaces the whole style, and `diff: true`, the default of MapLibre GL JS,
-writes no warning.
+`diff` has no effect: the map always replaces the whole style.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -332,8 +329,7 @@ map.on('load', async () => {
 });
 ```
 
-An image that draws itself with WebGL (`renderWithWebGL`) is not supported: the promise rejects with an error that
-names the image.
+An image that draws itself with WebGL (`renderWithWebGL`) is not supported, and the promise rejects.
 
 ## Other exports
 
@@ -347,7 +343,7 @@ names the image.
 | `addProtocol`, `removeProtocol` | Add and remove a function of the page that loads the URLs that start with a name. |
 | `supported()` | Only in this library: returns `false` in a browser without WebGL2. |
 | `configure(options)` | Only in this library: sets how the library loads its workers. See [Loading](../loading.md). |
-| `setWorkerUrl`, `getWorkerUrl` | Set and read the URL of the worker file of this library. A URL of the worker file of MapLibre GL JS is ignored with one warning. |
+| `setWorkerUrl`, `getWorkerUrl` | Set and read the URL of the worker file of this library. A URL of the worker file of MapLibre GL JS is ignored. |
 | `setWorkerCount`, `getWorkerCount` | Set and read the number of tile workers. |
 | `setMaxParallelImageRequests`, `setRTLTextPlugin` | Accepted with no effect, with the getters `getMaxParallelImageRequests` and `getRTLTextPluginStatus`. |
 | `getVersion()` | Returns the version of this library. |

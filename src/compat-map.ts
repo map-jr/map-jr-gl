@@ -160,11 +160,11 @@ export class Map extends CoreMap {
         this.warned.add(name);
         console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md.`);
     }
-    /** Has no effect, and `false` warns once: the map always draws copies of the world side by side. */
+    /** Has no effect: the map always draws copies of the world side by side. */
     setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
-    /** Has no effect, and a value other than 0 warns once: the camera has no roll. */
+    /** Has no effect: the camera has no roll. */
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
-    /** Has no effect, and a value other than 36.87 warns once: the vertical field of view stays at 36.87 degrees. */
+    /** Has no effect: the vertical field of view stays at 36.87 degrees. */
     setVerticalFieldOfView(fov?: number) { return this.unsupported('setVerticalFieldOfView', fov === undefined || Math.abs(fov - 36.87) < 0.01); }
     /** Returns 36.87, the vertical field of view of the camera in degrees, which is the default of MapLibre GL JS. */
     getVerticalFieldOfView() { return 36.87; }
@@ -212,22 +212,21 @@ export class Map extends CoreMap {
         tr.setLocationAt(lng, lat, px, py);
         return {center: new LngLat(tr.lng, tr.lat), zoom: tr.zoom};
     }
-    /** Has no effect, and `false` warns once: the map center is always on the ground. */
+    /** Has no effect: the map center is always on the ground. */
     setCenterClampedToGround(clamped?: boolean) { return this.unsupported('setCenterClampedToGround(false)', clamped !== false); }
     /** Returns `true`: the map center is always on the ground. */
     getCenterClampedToGround() { return true; }
-    /** Has no effect, and a value other than 0 warns once: the map center is always on the ground. */
+    /** Has no effect: the map center is always on the ground. */
     setCenterElevation(elevation?: number) { return this.unsupported('setCenterElevation', !elevation); }
-    /** Has no effect, and gives no warning for any value. */
+    /** Has no effect. */
     setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
     /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
     getAnisotropicFilterPitch() { return 20; }
     /**
-     * Has no effect on the camera that the map draws, and warns once when the function changes the camera of a movement.
-     * MapLibre GL JS calls this function before each frame and draws the camera that it returns. This library does not:
-     * it calls the function after each `move` and warns once when the function changes the camera, because only then
-     * does the map draw something else than the function asks for. react-map-gl gives a function for each map; it
-     * changes the camera only when the `onMove` of a controlled map does not set `viewState` to the camera of the event.
+     * Has no effect on the camera that the map draws during a movement. When the function changes the camera, the map
+     * draws that camera only when the movement ends. MapLibre GL JS calls this function before each frame and draws the
+     * camera that it returns. react-map-gl passes a function for each map; it changes the camera only when the `onMove`
+     * of a controlled map does not set `viewState` to the camera of the event.
      */
     setTransformCameraUpdate(fn?: ((tr: CameraLike) => CameraChanges | undefined) | null) {
         this.cameraUpdate = typeof fn == 'function' ? fn : undefined;
@@ -256,25 +255,25 @@ export class Map extends CoreMap {
     }
     // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
     /**
-     * Has no effect, and setting it to `true` warns once: the map does not draw tile borders. Reading it returns the value that was set.
+     * Has no effect: the map does not draw tile borders. Reading it returns the value that was set.
      * @default false
      */
     get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
     set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
     /**
-     * Has no effect, and setting it to `true` warns once: the map does not draw the padding. Reading it returns the value that was set.
+     * Has no effect: the map does not draw the padding. Reading it returns the value that was set.
      * @default false
      */
     get showPadding() { return !!this.debugDraw.showPadding; }
     set showPadding(v: boolean) { this.setDebug('showPadding', v); }
     /**
-     * Has no effect, and setting it to `true` warns once: the map does not draw collision boxes. Reading it returns the value that was set.
+     * Has no effect: the map does not draw collision boxes. Reading it returns the value that was set.
      * @default false
      */
     get showCollisionBoxes() { return !!this.debugDraw.showCollisionBoxes; }
     set showCollisionBoxes(v: boolean) { this.setDebug('showCollisionBoxes', v); }
     /**
-     * Has no effect, and setting it to `true` warns once: the map has no overdraw view. Reading it returns the value that was set.
+     * Has no effect: the map has no overdraw view. Reading it returns the value that was set.
      * @default false
      */
     get showOverdrawInspector() { return !!this.debugDraw.showOverdrawInspector; }
@@ -284,7 +283,7 @@ export class Map extends CoreMap {
 
     /**
      * Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS.
-     * A value below 1 counts as 1, and an id that the style does not have throws an error.
+     * A value below 1 counts as 1.
      */
     setSourceTileLodParams(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string) {
         if (sourceId && !this.getSource(sourceId)) throw new Error(`[map-jr-gl] setSourceTileLodParams: there is no source "${sourceId}". Add the source first, or leave out the ID for all sources.`);
@@ -338,8 +337,8 @@ export class Map extends CoreMap {
     }
 
     /**
-     * The options of MapLibre GL JS that this library does not have give one warning each, so that a change from that
-     * library does not look complete when it is not.
+     * Creates a map with the options of MapLibre GL JS, and the options `renderer`, `strict`, `fonts`, `fontFamily` and
+     * `nonce` of this library.
      */
     // (The first signature takes a variable of the type `MapOptions`; the second takes other options of MapLibre GL JS.)
     constructor(options: MapOptions & {strict?: boolean});
@@ -432,7 +431,7 @@ export class Map extends CoreMap {
     }
     // A value that is not a control fires `error`, as in MapLibre GL JS. A bad position throws, as there (from the core).
     /**
-     * Adds a control to a corner of the map, as in MapLibre GL JS. A value that has no `onAdd` method fires `error` and adds nothing, and a position that is not a corner throws an error.
+     * Adds a control to a corner of the map, as in MapLibre GL JS.
      * @param position `'top-left'`, `'top-right'`, `'bottom-left'` or `'bottom-right'`. When it is left out, the corner that `getDefaultPosition()` of the control returns, or else `'top-right'`.
      */
     addControl(control: Parameters<CoreMap['addControl']>[0], position?: Parameters<CoreMap['addControl']>[1]) {
@@ -441,7 +440,7 @@ export class Map extends CoreMap {
     }
     /**
      * Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS.
-     * A layer whose id the style has already, or that names a source that the style does not have, fires `error` and adds nothing. A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise it fires `error`. A custom layer is not drawn on the globe: the map writes one warning and draws it again in Mercator.
+     * A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise the map does not add it. A custom layer is not drawn on the globe: the map draws it in Mercator.
      */
     addLayer(layer: AddLayerObject, beforeId?: string) {
         let one: {id: string; source?: unknown} = layer;
@@ -526,7 +525,7 @@ The options `speed`, `curve` and `linear` have no effect and warn once.
     /**
      * Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`, with an
      * animation of 800 ms unless `o` sets `duration`. The method is that of MapLibre GL JS 6.17, and the options are those of
-     * `fitBounds`: `speed`, `curve` and `linear` have no effect and warn once.
+     * `fitBounds`: `speed`, `curve` and `linear` have no effect.
      */
     fitScreenCoordinates(p0: PointLike, p1: PointLike, bearing: number, o: FitBoundsOptions = {}, eventData?: EventData) {
         this.unsupported('The options speed, curve and linear of fitScreenCoordinates', o.speed === undefined && o.curve === undefined && o.linear === undefined);
@@ -690,9 +689,9 @@ The options `speed`, `curve` and `linear` have no effect and warn once.
     getFontFaces(): Record<string, unknown> { return this.rawStyle?.['font-faces'] ?? {}; }
     /** Replaces the `font-faces` of the style, or removes them with `null`. */
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
-    /** Merges `state` into the feature state of one feature. A feature without an `id` changes nothing and warns once, where MapLibre GL JS fires `error`. */
+    /** Merges `state` into the feature state of one feature. A feature without an `id` changes nothing. */
     setFeatureState(feature: FeatureIdentifier, state: Record<string, unknown>) { return this.hasId(feature, 'setFeatureState') ? super.setFeatureState(feature, state) : this; }
-    /** Returns the feature state of one feature. A feature without an `id` returns `{}` and warns once, where MapLibre GL JS fires `error`. */
+    /** Returns the feature state of one feature. A feature without an `id` returns `{}`. */
     getFeatureState(feature: FeatureIdentifier) { return this.hasId(feature, 'getFeatureState') ? super.getFeatureState(feature) : {}; }
     private hasId(f: FeatureIdentifier, name: string): f is FeatureIdentifier & {id: string | number} {
         if (f.id != null) return true;
