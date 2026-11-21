@@ -58,7 +58,7 @@ type ControlPosition =
   | 'bottom-right';
 ```
 
-The default is `'top-right'` for every control, `scale()` included.
+The default is `'top-right'`, except for `scale()`, whose default is `'bottom-left'`.
 
 ## `navigation()`
 

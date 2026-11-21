@@ -14,13 +14,15 @@ import type {ControlSpec, MapInstance} from './host.ts';
 // that imports a control function before it makes the map then does not download the map with it (#160).
 // `create()` stays synchronous: it returns a stand-in, which puts the element of the real control in its place once
 // the file has loaded.
-const spec = <O extends object, M = typeof More>(name: string, make: (m: M, options: O, instance?: () => MapInstance) => Control, load: () => Promise<M> = () => import('./controls-more.ts') as Promise<M>) => (options: O & {position?: ControlPosition} = {} as O) => {
+const spec = <O extends object, M = typeof More>(name: string, make: (m: M, options: O, instance?: () => MapInstance) => Control, load: () => Promise<M> = () => import('./controls-more.ts') as Promise<M>, corner: ControlPosition = 'top-right') => (options: O & {position?: ControlPosition} = {} as O) => {
     const {position, ...rest} = options;
     const create = (instance?: () => MapInstance): Control => {
         let real: Control | undefined, added = 0;
         const slot = document.createElement('div');
         slot.hidden = true;
         return {
+            // The stand-in answers for the real control, which is not loaded yet when the map asks for the corner.
+            getDefaultPosition: () => corner,
             onAdd(map: Map) {
                 const now = ++added;
                 load().then(m => {
@@ -42,11 +44,11 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
  */
 export const navigation = spec('navigation', (m, o: NavigationOptions) => new m.NavigationControl(o));
 /**
- * Creates a scale bar. The control is placed at `'top-right'` unless `position` sets it.
+ * Creates a scale bar. The control is placed at `'bottom-left'` unless `position` sets it.
  * @param options The options of `ScaleOptions`, and `position`.
  * @returns A control for `controls` of the description.
  */
-export const scale = spec('scale', (m, o: ScaleOptions) => new m.ScaleControl(o));
+export const scale = spec('scale', (m, o: ScaleOptions) => new m.ScaleControl(o), undefined, 'bottom-left');
 /**
  * Creates a button that shows the map on the full screen. The control is placed at `'top-right'` unless `position` sets it.
  * @returns A control for `controls` of the description.
