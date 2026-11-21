@@ -1,0 +1,4483 @@
+{
+ "name": "darwin-webkit",
+ "os": "darwin 25.6.0 arm64",
+ "cpu": "Apple M1 (Virtual)",
+ "browser": "webkit",
+ "date": "2026-11-21T19:52:45.017Z",
+ "commit": "a223ec5adb70a686177d7a8d13eeebc727d71546",
+ "checks": [
+  {
+   "mode": "worker",
+   "loaded": true,
+   "renderer": "worker",
+   "zoom": 15.3,
+   "features": 8,
+   "terrain": true,
+   "elevation": 10,
+   "ms": 5627,
+   "screenshotBytes": 844064,
+   "errors": []
+  },
+  {
+   "mode": "main",
+   "loaded": true,
+   "renderer": "main",
+   "zoom": 15.3,
+   "features": 8,
+   "terrain": true,
+   "elevation": 10,
+   "ms": 5541,
+   "screenshotBytes": 844975,
+   "errors": []
+  }
+ ],
+ "bench": [
+  {
+   "scenario": "load",
+   "scenarioName": "Load to idle",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Load to idle: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "load": 2181,
+      "firstFrame": 304,
+      "loadEvent": 2096
+     },
+     "steps": {
+      "style": -11,
+      "tileReq": 163,
+      "tileAns": 802,
+      "tileLast": 2008,
+      "tiles": 4,
+      "sprite": 104,
+      "glyphs": 691,
+      "glyphLast": 692,
+      "worker": 42,
+      "frame": 304,
+      "lastFrame": 2181,
+      "load": 2096,
+      "idle": 2181
+     }
+    },
+    {
+     "values": {
+      "load": 1164,
+      "firstFrame": 141,
+      "loadEvent": 1129
+     },
+     "steps": {
+      "style": -13,
+      "tileReq": 125,
+      "tileAns": 759,
+      "tileLast": 1048,
+      "tiles": 4,
+      "sprite": 105,
+      "glyphs": 512,
+      "glyphLast": 513,
+      "worker": 77,
+      "frame": 141,
+      "lastFrame": 1163,
+      "load": 1129,
+      "idle": 1163
+     }
+    }
+   ],
+   "load": 1672.5,
+   "firstFrame": 222.5,
+   "loadEvent": 1612.5
+  },
+  {
+   "scenario": "load",
+   "scenarioName": "Load to idle",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Load to idle: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "load": 626,
+      "firstFrame": 106,
+      "loadEvent": 626
+     },
+     "steps": {
+      "style": -3,
+      "tileReq": 87,
+      "tileAns": 309,
+      "tileLast": 508,
+      "tileNet": 171,
+      "tileUp": 605,
+      "tiles": 4,
+      "sprite": 32,
+      "glyphs": 110,
+      "glyphLast": 115,
+      "worker": 18,
+      "frame": 106,
+      "lastFrame": 626,
+      "load": 626,
+      "idle": 626
+     }
+    },
+    {
+     "values": {
+      "load": 698,
+      "firstFrame": 107,
+      "loadEvent": 698
+     },
+     "steps": {
+      "style": -4,
+      "tileReq": 78,
+      "tileAns": 353,
+      "tileLast": 550,
+      "tileNet": 180,
+      "tileUp": 665,
+      "tiles": 4,
+      "sprite": 33,
+      "glyphs": 97,
+      "glyphLast": 101,
+      "worker": 16,
+      "frame": 107,
+      "lastFrame": 697,
+      "load": 698,
+      "idle": 698
+     }
+    }
+   ],
+   "load": 662,
+   "firstFrame": 106.5,
+   "loadEvent": 662
+  },
+  {
+   "scenario": "load",
+   "scenarioName": "Load to idle",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Load to idle: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "load": 574,
+      "firstFrame": 81,
+      "loadEvent": 573
+     },
+     "steps": {
+      "style": -3,
+      "tileReq": 59,
+      "tileAns": 344,
+      "tileLast": 435,
+      "tileNet": 100,
+      "tileUp": 484,
+      "tiles": 4,
+      "frame": 81,
+      "lastFrame": 569,
+      "load": 573,
+      "idle": 573
+     }
+    },
+    {
+     "values": {
+      "load": 888,
+      "firstFrame": 163,
+      "loadEvent": 888
+     },
+     "steps": {
+      "style": -9,
+      "tileReq": 118,
+      "tileAns": 519,
+      "tileLast": 806,
+      "tileNet": 174,
+      "tileUp": 816,
+      "tiles": 4,
+      "frame": 163,
+      "lastFrame": 860,
+      "load": 888,
+      "idle": 888
+     }
+    }
+   ],
+   "load": 731,
+   "firstFrame": 122,
+   "loadEvent": 730.5
+  },
+  {
+   "scenario": "terrain",
+   "scenarioName": "3D terrain",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "3D terrain: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "load": 3415,
+      "panFps": 55.1654964894684,
+      "panGap": 17,
+      "panP90": 21,
+      "panWorst": 65
+     }
+    },
+    {
+     "values": {
+      "load": 1308,
+      "panFps": 54.08112168252378,
+      "panGap": 17,
+      "panP90": 23,
+      "panWorst": 104
+     }
+    }
+   ],
+   "load": 2361.5,
+   "panFps": 54.62330908599609,
+   "panGap": 17,
+   "panP90": 22,
+   "panWorst": 84.5
+  },
+  {
+   "scenario": "terrain",
+   "scenarioName": "3D terrain",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "3D terrain: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "load": 767,
+      "panFps": 58.86773547094188,
+      "panGap": 17,
+      "panP90": 20,
+      "panWorst": 75
+     }
+    },
+    {
+     "values": {
+      "load": 921,
+      "panFps": 58.20371299548419,
+      "panGap": 17,
+      "panP90": 20,
+      "panWorst": 60
+     }
+    }
+   ],
+   "load": 844,
+   "panFps": 58.53572423321303,
+   "panGap": 17,
+   "panP90": 20,
+   "panWorst": 67.5
+  },
+  {
+   "scenario": "terrain",
+   "scenarioName": "3D terrain",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "3D terrain: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "load": 1813,
+      "panFps": 54.609218436873746,
+      "panGap": 17,
+      "panP90": 21,
+      "panWorst": 57
+     }
+    },
+    {
+     "values": {
+      "load": 867,
+      "panFps": 51.309748852281935,
+      "panGap": 19,
+      "panP90": 24,
+      "panWorst": 30
+     }
+    }
+   ],
+   "load": 1340,
+   "panFps": 52.959483644577844,
+   "panGap": 18,
+   "panP90": 22.5,
+   "panWorst": 43.5
+  },
+  {
+   "scenario": "sky",
+   "scenarioName": "Pitch 85 with sky",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Pitch 85 with sky: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "load": 1258,
+      "turnFps": 44.79114242576749,
+      "turnGap": 17,
+      "turnP90": 34,
+      "turnWorst": 247
+     }
+    },
+    {
+     "values": {
+      "load": 1187,
+      "turnFps": 48.22908816880181,
+      "turnGap": 17,
+      "turnP90": 33,
+      "turnWorst": 106
+     }
+    }
+   ],
+   "load": 1222.5,
+   "turnFps": 46.51011529728465,
+   "turnGap": 17,
+   "turnP90": 33.5,
+   "turnWorst": 176.5
+  },
+  {
+   "scenario": "sky",
+   "scenarioName": "Pitch 85 with sky",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Pitch 85 with sky: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "load": 2205,
+      "turnFps": 48.51684263448969,
+      "turnGap": 18,
+      "turnP90": 33,
+      "turnWorst": 80
+     }
+    },
+    {
+     "values": {
+      "load": 1628,
+      "turnFps": 53.015075376884425,
+      "turnGap": 17,
+      "turnP90": 28,
+      "turnWorst": 78
+     }
+    }
+   ],
+   "load": 1916.5,
+   "turnFps": 50.76595900568706,
+   "turnGap": 17.5,
+   "turnP90": 30.5,
+   "turnWorst": 79
+  },
+  {
+   "scenario": "sky",
+   "scenarioName": "Pitch 85 with sky",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Pitch 85 with sky: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "load": 1578,
+      "turnFps": 42.86434694906707,
+      "turnGap": 18,
+      "turnP90": 40,
+      "turnWorst": 95
+     }
+    },
+    {
+     "values": {
+      "load": 1226,
+      "turnFps": 54.11527812735968,
+      "turnGap": 17,
+      "turnP90": 27,
+      "turnWorst": 55
+     }
+    }
+   ],
+   "load": 1402,
+   "turnFps": 48.48981253821337,
+   "turnGap": 17.5,
+   "turnP90": 33.5,
+   "turnWorst": 75
+  },
+  {
+   "scenario": "globe",
+   "scenarioName": "Globe",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Globe: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "load": 2959,
+      "turnFps": 54.2907180385289,
+      "turnGap": 17,
+      "turnP90": 27,
+      "turnWorst": 87
+     }
+    },
+    {
+     "values": {
+      "load": 1453,
+      "turnFps": 59.664076209576336,
+      "turnGap": 16,
+      "turnP90": 20,
+      "turnWorst": 46
+     }
+    }
+   ],
+   "load": 2206,
+   "turnFps": 56.977397124052615,
+   "turnGap": 16.5,
+   "turnP90": 23.5,
+   "turnWorst": 66.5
+  },
+  {
+   "scenario": "globe",
+   "scenarioName": "Globe",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Globe: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "load": 1199,
+      "turnFps": 48.75,
+      "turnGap": 17,
+      "turnP90": 35,
+      "turnWorst": 105
+     }
+    },
+    {
+     "values": {
+      "load": 544,
+      "turnFps": 59.694005517933284,
+      "turnGap": 17,
+      "turnP90": 20,
+      "turnWorst": 42
+     }
+    }
+   ],
+   "load": 871.5,
+   "turnFps": 54.22200275896664,
+   "turnGap": 17,
+   "turnP90": 27.5,
+   "turnWorst": 73.5
+  },
+  {
+   "scenario": "globe",
+   "scenarioName": "Globe",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Globe: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "load": 650,
+      "turnFps": 54.44054189663823,
+      "turnGap": 18,
+      "turnP90": 22,
+      "turnWorst": 39
+     }
+    },
+    {
+     "values": {
+      "load": 417,
+      "turnFps": 49.88718977187265,
+      "turnGap": 20,
+      "turnP90": 25,
+      "turnWorst": 39
+     }
+    }
+   ],
+   "load": 533.5,
+   "turnFps": 52.16386583425544,
+   "turnGap": 19,
+   "turnP90": 23.5,
+   "turnWorst": 39
+  },
+  {
+   "scenario": "camera",
+   "scenarioName": "Camera",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Camera: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "ratio": 1,
+      "staticFps": 59.900166389351085,
+      "staticGap": 17,
+      "staticP90": 19,
+      "staticWorst": 24,
+      "panFps": 57.094878253568424,
+      "panGap": 16.5,
+      "panP90": 20,
+      "panWorst": 54,
+      "blocked": 0,
+      "rotateFps": 59.958071278826004,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 22,
+      "zoomFps": 38.655462184873954,
+      "zoomGap": 16,
+      "zoomP90": 50,
+      "zoomWorst": 304
+     }
+    },
+    {
+     "values": {
+      "ratio": 1,
+      "staticFps": 58.09128630705394,
+      "staticGap": 17,
+      "staticP90": 19,
+      "staticWorst": 77,
+      "panFps": 58.4524810765349,
+      "panGap": 17,
+      "panP90": 21,
+      "panWorst": 40,
+      "blocked": 0,
+      "rotateFps": 60.134566862910006,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 22,
+      "zoomFps": 52.49895002099959,
+      "zoomGap": 17,
+      "zoomP90": 22,
+      "zoomWorst": 112
+     }
+    }
+   ],
+   "staticFps": 58.99572634820251,
+   "staticGap": 17,
+   "staticP90": 19,
+   "staticWorst": 50.5,
+   "panFps": 57.77367966505166,
+   "panGap": 16.75,
+   "panP90": 20.5,
+   "panWorst": 47,
+   "rotateFps": 60.04631907086801,
+   "rotateGap": 17,
+   "rotateP90": 20,
+   "rotateWorst": 22,
+   "zoomFps": 45.57720610293677,
+   "zoomGap": 16.5,
+   "zoomP90": 36,
+   "zoomWorst": 208,
+   "blocked": 0,
+   "ratio": 1
+  },
+  {
+   "scenario": "camera",
+   "scenarioName": "Camera",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Camera: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "ratio": 1,
+      "staticFps": 59.9250936329588,
+      "staticGap": 17,
+      "staticP90": 19,
+      "staticWorst": 25,
+      "panFps": 59.78947368421053,
+      "panGap": 17,
+      "panP90": 20,
+      "panWorst": 42,
+      "blocked": 0,
+      "rotateFps": 59.96621621621622,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 32,
+      "zoomFps": 60.0335852225021,
+      "zoomGap": 17,
+      "zoomP90": 20,
+      "zoomWorst": 34
+     }
+    },
+    {
+     "values": {
+      "ratio": 1,
+      "staticFps": 60.10016694490818,
+      "staticGap": 17,
+      "staticP90": 20,
+      "staticWorst": 21,
+      "panFps": 59.83986514959966,
+      "panGap": 17,
+      "panP90": 20,
+      "panWorst": 33,
+      "blocked": 0,
+      "rotateFps": 60.0083927822073,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 34,
+      "zoomFps": 60.0335852225021,
+      "zoomGap": 17,
+      "zoomP90": 19,
+      "zoomWorst": 38
+     }
+    }
+   ],
+   "staticFps": 60.012630288933494,
+   "staticGap": 17,
+   "staticP90": 19.5,
+   "staticWorst": 23,
+   "panFps": 59.81466941690509,
+   "panGap": 17,
+   "panP90": 20,
+   "panWorst": 37.5,
+   "rotateFps": 59.98730449921176,
+   "rotateGap": 17,
+   "rotateP90": 20,
+   "rotateWorst": 33,
+   "zoomFps": 60.0335852225021,
+   "zoomGap": 17,
+   "zoomP90": 19.5,
+   "zoomWorst": 36,
+   "blocked": 0,
+   "ratio": 1
+  },
+  {
+   "scenario": "camera",
+   "scenarioName": "Camera",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Camera: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "ratio": 1,
+      "staticFps": 48.26418289585097,
+      "staticGap": 17.5,
+      "staticP90": 34,
+      "staticWorst": 38,
+      "panFps": 52.10084033613445,
+      "panGap": 18,
+      "panP90": 24,
+      "panWorst": 60,
+      "blocked": 0,
+      "rotateFps": 50.377833753148614,
+      "rotateGap": 20,
+      "rotateP90": 24,
+      "rotateWorst": 30,
+      "zoomFps": 55.25324403516116,
+      "zoomGap": 18,
+      "zoomP90": 23,
+      "zoomWorst": 26
+     }
+    },
+    {
+     "values": {
+      "ratio": 1,
+      "staticFps": 50.8637236084453,
+      "staticGap": 17,
+      "staticP90": 33,
+      "staticWorst": 37,
+      "panFps": 50.755033557046985,
+      "panGap": 20,
+      "panP90": 25,
+      "panWorst": 31,
+      "blocked": 0,
+      "rotateFps": 51.34680134680135,
+      "rotateGap": 20,
+      "rotateP90": 24,
+      "rotateWorst": 31,
+      "zoomFps": 56.09447490510333,
+      "zoomGap": 17,
+      "zoomP90": 22,
+      "zoomWorst": 30
+     }
+    }
+   ],
+   "staticFps": 49.56395325214814,
+   "staticGap": 17.25,
+   "staticP90": 33.5,
+   "staticWorst": 37.5,
+   "panFps": 51.42793694659072,
+   "panGap": 19,
+   "panP90": 24.5,
+   "panWorst": 45.5,
+   "rotateFps": 50.86231754997498,
+   "rotateGap": 20,
+   "rotateP90": 24,
+   "rotateWorst": 30.5,
+   "zoomFps": 55.67385947013224,
+   "zoomGap": 17.5,
+   "zoomP90": 22.5,
+   "zoomWorst": 28,
+   "blocked": 0,
+   "ratio": 1
+  },
+  {
+   "scenario": "camera2",
+   "scenarioName": "Camera at pixel ratio 2",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Camera at pixel ratio 2: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "ratio": 2,
+      "staticFps": 59.95004163197335,
+      "staticGap": 17,
+      "staticP90": 20,
+      "staticWorst": 43,
+      "panFps": 49.57983193277311,
+      "panGap": 17,
+      "panP90": 24,
+      "panWorst": 193,
+      "blocked": 0,
+      "rotateFps": 60.058798824023526,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 26,
+      "zoomFps": 54.224464060529634,
+      "zoomGap": 17,
+      "zoomP90": 24,
+      "zoomWorst": 91
+     }
+    },
+    {
+     "values": {
+      "ratio": 2,
+      "staticFps": 53.638253638253644,
+      "staticGap": 16,
+      "staticP90": 20,
+      "staticWorst": 267,
+      "panFps": 57.16687683900798,
+      "panGap": 17,
+      "panP90": 21,
+      "panWorst": 85,
+      "blocked": 0,
+      "rotateFps": 60.0335852225021,
+      "rotateGap": 17,
+      "rotateP90": 19,
+      "rotateWorst": 23,
+      "zoomFps": 54.6218487394958,
+      "zoomGap": 17,
+      "zoomP90": 21,
+      "zoomWorst": 67
+     }
+    }
+   ],
+   "staticFps": 56.7941476351135,
+   "staticGap": 16.5,
+   "staticP90": 20,
+   "staticWorst": 155,
+   "panFps": 53.37335438589055,
+   "panGap": 17,
+   "panP90": 22.5,
+   "panWorst": 139,
+   "rotateFps": 60.04619202326281,
+   "rotateGap": 17,
+   "rotateP90": 19.5,
+   "rotateWorst": 24.5,
+   "zoomFps": 54.423156400012715,
+   "zoomGap": 17,
+   "zoomP90": 22.5,
+   "zoomWorst": 79,
+   "blocked": 0,
+   "ratio": 2
+  },
+  {
+   "scenario": "camera2",
+   "scenarioName": "Camera at pixel ratio 2",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Camera at pixel ratio 2: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "ratio": 2,
+      "staticFps": 59.8503740648379,
+      "staticGap": 17,
+      "staticP90": 20,
+      "staticWorst": 23,
+      "panFps": 59.26860025220681,
+      "panGap": 16,
+      "panP90": 21,
+      "panWorst": 40,
+      "blocked": 0,
+      "rotateFps": 59.56907477820025,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 29,
+      "zoomFps": 59.613769941225854,
+      "zoomGap": 17,
+      "zoomP90": 19,
+      "zoomWorst": 41
+     }
+    },
+    {
+     "values": {
+      "ratio": 2,
+      "staticFps": 60.01655629139073,
+      "staticGap": 17,
+      "staticP90": 18,
+      "staticWorst": 22,
+      "panFps": 59.54391891891892,
+      "panGap": 17,
+      "panP90": 21,
+      "panWorst": 37,
+      "blocked": 0,
+      "rotateFps": 59.991550485847064,
+      "rotateGap": 16,
+      "rotateP90": 20,
+      "rotateWorst": 34,
+      "zoomFps": 60.08403361344538,
+      "zoomGap": 17,
+      "zoomP90": 20,
+      "zoomWorst": 27
+     }
+    }
+   ],
+   "staticFps": 59.93346517811432,
+   "staticGap": 17,
+   "staticP90": 19,
+   "staticWorst": 22.5,
+   "panFps": 59.406259585562864,
+   "panGap": 16.5,
+   "panP90": 21,
+   "panWorst": 38.5,
+   "rotateFps": 59.78031263202366,
+   "rotateGap": 16.5,
+   "rotateP90": 20,
+   "rotateWorst": 31.5,
+   "zoomFps": 59.84890177733561,
+   "zoomGap": 17,
+   "zoomP90": 19.5,
+   "zoomWorst": 34,
+   "blocked": 0,
+   "ratio": 2
+  },
+  {
+   "scenario": "camera2",
+   "scenarioName": "Camera at pixel ratio 2",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Camera at pixel ratio 2: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "ratio": 2,
+      "staticFps": 48.238255033557046,
+      "staticGap": 17,
+      "staticP90": 35,
+      "staticWorst": 39,
+      "panFps": 52.035249685270664,
+      "panGap": 18.5,
+      "panP90": 23,
+      "panWorst": 61,
+      "blocked": 0,
+      "rotateFps": 54.07689057879172,
+      "rotateGap": 19,
+      "rotateP90": 23,
+      "rotateWorst": 41,
+      "zoomFps": 54.270088346655456,
+      "zoomGap": 18,
+      "zoomP90": 22,
+      "zoomWorst": 42
+     }
+    },
+    {
+     "values": {
+      "ratio": 2,
+      "staticFps": 49.517415023080154,
+      "staticGap": 17,
+      "staticP90": 34,
+      "staticWorst": 62,
+      "panFps": 53.73635600335852,
+      "panGap": 18.5,
+      "panP90": 22,
+      "panWorst": 33,
+      "blocked": 0,
+      "rotateFps": 55.905842791088695,
+      "rotateGap": 17,
+      "rotateP90": 22,
+      "rotateWorst": 31,
+      "zoomFps": 53.119730185497474,
+      "zoomGap": 19,
+      "zoomP90": 23,
+      "zoomWorst": 30
+     }
+    }
+   ],
+   "staticFps": 48.8778350283186,
+   "staticGap": 17,
+   "staticP90": 34.5,
+   "staticWorst": 50.5,
+   "panFps": 52.8858028443146,
+   "panGap": 18.5,
+   "panP90": 22.5,
+   "panWorst": 47,
+   "rotateFps": 54.9913666849402,
+   "rotateGap": 18,
+   "rotateP90": 22.5,
+   "rotateWorst": 36,
+   "zoomFps": 53.694909266076465,
+   "zoomGap": 18.5,
+   "zoomP90": 22.5,
+   "zoomWorst": 36,
+   "blocked": 0,
+   "ratio": 2
+  },
+  {
+   "scenario": "camera3",
+   "scenarioName": "Camera at pixel ratio 3",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Camera at pixel ratio 3: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "ratio": 3,
+      "staticFps": 58.77448937057107,
+      "staticGap": 17,
+      "staticP90": 20,
+      "staticWorst": 35,
+      "panFps": 53.40622371740959,
+      "panGap": 17,
+      "panP90": 21,
+      "panWorst": 69,
+      "blocked": 0,
+      "rotateFps": 60.40268456375839,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 32,
+      "zoomFps": 53.3837746952501,
+      "zoomGap": 17,
+      "zoomP90": 22,
+      "zoomWorst": 76
+     }
+    },
+    {
+     "values": {
+      "ratio": 3,
+      "staticFps": 59.67675093244924,
+      "staticGap": 17,
+      "staticP90": 19,
+      "staticWorst": 30,
+      "panFps": 56.231640788921524,
+      "panGap": 17,
+      "panP90": 20,
+      "panWorst": 46,
+      "blocked": 0,
+      "rotateFps": 60.058798824023526,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 26,
+      "zoomFps": 54.1334452370961,
+      "zoomGap": 17,
+      "zoomP90": 21,
+      "zoomWorst": 104
+     }
+    }
+   ],
+   "staticFps": 59.22562015151016,
+   "staticGap": 17,
+   "staticP90": 19.5,
+   "staticWorst": 32.5,
+   "panFps": 54.818932253165556,
+   "panGap": 17,
+   "panP90": 20.5,
+   "panWorst": 57.5,
+   "rotateFps": 60.23074169389096,
+   "rotateGap": 17,
+   "rotateP90": 20,
+   "rotateWorst": 29,
+   "zoomFps": 53.7586099661731,
+   "zoomGap": 17,
+   "zoomP90": 21.5,
+   "zoomWorst": 90,
+   "blocked": 0,
+   "ratio": 3
+  },
+  {
+   "scenario": "camera3",
+   "scenarioName": "Camera at pixel ratio 3",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Camera at pixel ratio 3: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "ratio": 3,
+      "staticFps": 59.95004163197335,
+      "staticGap": 17,
+      "staticP90": 19,
+      "staticWorst": 22,
+      "panFps": 56.98607007176023,
+      "panGap": 17,
+      "panP90": 24,
+      "panWorst": 57,
+      "blocked": 0,
+      "rotateFps": 60.08403361344538,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 28,
+      "zoomFps": 60.0083927822073,
+      "zoomGap": 17,
+      "zoomP90": 20,
+      "zoomWorst": 28
+     }
+    },
+    {
+     "values": {
+      "ratio": 3,
+      "staticFps": 60.02501042100875,
+      "staticGap": 17,
+      "staticP90": 18,
+      "staticWorst": 25,
+      "panFps": 60.0335852225021,
+      "panGap": 16,
+      "panP90": 19,
+      "panWorst": 34,
+      "blocked": 0,
+      "rotateFps": 59.56375838926175,
+      "rotateGap": 17,
+      "rotateP90": 20,
+      "rotateWorst": 35,
+      "zoomFps": 59.06996229576875,
+      "zoomGap": 17,
+      "zoomP90": 20,
+      "zoomWorst": 47
+     }
+    }
+   ],
+   "staticFps": 59.987526026491054,
+   "staticGap": 17,
+   "staticP90": 18.5,
+   "staticWorst": 23.5,
+   "panFps": 58.50982764713116,
+   "panGap": 16.5,
+   "panP90": 21.5,
+   "panWorst": 45.5,
+   "rotateFps": 59.82389600135356,
+   "rotateGap": 17,
+   "rotateP90": 20,
+   "rotateWorst": 31.5,
+   "zoomFps": 59.53917753898803,
+   "zoomGap": 17,
+   "zoomP90": 20,
+   "zoomWorst": 37.5,
+   "blocked": 0,
+   "ratio": 3
+  },
+  {
+   "scenario": "camera3",
+   "scenarioName": "Camera at pixel ratio 3",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Camera at pixel ratio 3: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "ratio": 3,
+      "staticFps": 47.340425531914896,
+      "staticGap": 20,
+      "staticP90": 30,
+      "staticWorst": 78,
+      "panFps": 33.92705682782019,
+      "panGap": 25,
+      "panP90": 54,
+      "panWorst": 65,
+      "blocked": 0,
+      "rotateFps": 36.41691084135622,
+      "rotateGap": 24,
+      "rotateP90": 44,
+      "rotateWorst": 62,
+      "zoomFps": 49.1183879093199,
+      "zoomGap": 19,
+      "zoomP90": 29,
+      "zoomWorst": 72
+     }
+    },
+    {
+     "values": {
+      "ratio": 3,
+      "staticFps": 51.160587399336805,
+      "staticGap": 17,
+      "staticP90": 33,
+      "staticWorst": 36,
+      "panFps": 44.388609715242886,
+      "panGap": 20,
+      "panP90": 35,
+      "panWorst": 60,
+      "blocked": 0,
+      "rotateFps": 48.53556485355648,
+      "rotateGap": 19,
+      "rotateP90": 29,
+      "rotateWorst": 62,
+      "zoomFps": 53.299492385786806,
+      "zoomGap": 19,
+      "zoomP90": 22,
+      "zoomWorst": 27
+     }
+    }
+   ],
+   "staticFps": 49.25050646562585,
+   "staticGap": 18.5,
+   "staticP90": 31.5,
+   "staticWorst": 57,
+   "panFps": 39.15783327153154,
+   "panGap": 22.5,
+   "panP90": 44.5,
+   "panWorst": 62.5,
+   "rotateFps": 42.476237847456346,
+   "rotateGap": 21.5,
+   "rotateP90": 36.5,
+   "rotateWorst": 62,
+   "zoomFps": 51.20894014755335,
+   "zoomGap": 19,
+   "zoomP90": 25.5,
+   "zoomWorst": 49.5,
+   "blocked": 0,
+   "ratio": 3
+  },
+  {
+   "scenario": "markers1000",
+   "scenarioName": "1,000 markers",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "1,000 markers: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "add": 100,
+      "panFps": 38.827655310621246,
+      "panP90": 32,
+      "panWorst": 269
+     }
+    },
+    {
+     "values": {
+      "add": 72,
+      "panFps": 38.24861600402617,
+      "panP90": 39,
+      "panWorst": 158
+     }
+    }
+   ],
+   "add": 86,
+   "panFps": 38.53813565732371,
+   "panP90": 35.5,
+   "panWorst": 213.5
+  },
+  {
+   "scenario": "markers1000",
+   "scenarioName": "1,000 markers",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "1,000 markers: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "add": 7,
+      "panFps": 59.91476560541489,
+      "panP90": 21,
+      "panWorst": 33
+     }
+    },
+    {
+     "values": {
+      "add": 2,
+      "panFps": 59.783973875910576,
+      "panP90": 20,
+      "panWorst": 41
+     }
+    }
+   ],
+   "add": 4.5,
+   "panFps": 59.84936974066274,
+   "panP90": 20.5,
+   "panWorst": 37
+  },
+  {
+   "scenario": "markers1000",
+   "scenarioName": "1,000 markers",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "1,000 markers: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "add": 1,
+      "panFps": 53.463855421686745,
+      "panP90": 22,
+      "panWorst": 79
+     }
+    },
+    {
+     "values": {
+      "add": 0,
+      "panFps": 51.97087622395179,
+      "panP90": 24,
+      "panWorst": 33
+     }
+    }
+   ],
+   "add": 0.5,
+   "panFps": 52.71736582281927,
+   "panP90": 23,
+   "panWorst": 56
+  },
+  {
+   "scenario": "markers10000",
+   "scenarioName": "10,000 markers",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "10,000 markers: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "add": 829,
+      "panFps": 2.2488755622188905,
+      "panP90": 781,
+      "panWorst": 781
+     }
+    },
+    {
+     "values": {
+      "add": 550,
+      "panFps": 4.3397396156230625,
+      "panP90": 281,
+      "panWorst": 399
+     }
+    }
+   ],
+   "add": 689.5,
+   "panFps": 3.2943075889209767,
+   "panP90": 531,
+   "panWorst": 590
+  },
+  {
+   "scenario": "markers10000",
+   "scenarioName": "10,000 markers",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "10,000 markers: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "add": 2,
+      "panFps": 59.679037111334004,
+      "panP90": 21,
+      "panWorst": 36
+     }
+    },
+    {
+     "values": {
+      "add": 1,
+      "panFps": 59.62264150943396,
+      "panP90": 20,
+      "panWorst": 43
+     }
+    }
+   ],
+   "add": 1.5,
+   "panFps": 59.65083931038399,
+   "panP90": 20.5,
+   "panWorst": 39.5
+  },
+  {
+   "scenario": "markers10000",
+   "scenarioName": "10,000 markers",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "10,000 markers: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "add": 1,
+      "panFps": 54.31229570027659,
+      "panP90": 23,
+      "panWorst": 35
+     }
+    },
+    {
+     "values": {
+      "add": 1,
+      "panFps": 52.43351731058705,
+      "panP90": 24,
+      "panWorst": 28
+     }
+    }
+   ],
+   "add": 1,
+   "panFps": 53.37290650543182,
+   "panP90": 23.5,
+   "panWorst": 31.5
+  },
+  {
+   "scenario": "geojson",
+   "scenarioName": "GeoJSON setData",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "GeoJSON setData: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "add": 358,
+      "fps": 26.789635485287658,
+      "calls": 45.41666666666667,
+      "worst": 113,
+      "after": 79
+     }
+    },
+    {
+     "values": {
+      "add": 278,
+      "fps": 35.57483731019523,
+      "calls": 48.333333333333336,
+      "worst": 93,
+      "after": 115
+     }
+    }
+   ],
+   "add": 318,
+   "fps": 31.18223639774144,
+   "calls": 46.875,
+   "worst": 103,
+   "after": 97
+  },
+  {
+   "scenario": "geojson",
+   "scenarioName": "GeoJSON setData",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "GeoJSON setData: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "add": 106,
+      "fps": 40.57480980557904,
+      "calls": 48.333333333333336,
+      "worst": 75,
+      "after": 68
+     }
+    },
+    {
+     "values": {
+      "add": 141,
+      "fps": 37.92074989348104,
+      "calls": 40.41666666666667,
+      "worst": 81,
+      "after": 57
+     }
+    }
+   ],
+   "add": 123.5,
+   "fps": 39.24777984953003,
+   "calls": 44.375,
+   "worst": 78,
+   "after": 62.5
+  },
+  {
+   "scenario": "geojson",
+   "scenarioName": "GeoJSON setData",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "GeoJSON setData: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "add": 389,
+      "fps": 35.50295857988166,
+      "calls": 45,
+      "worst": 71,
+      "after": 77
+     }
+    },
+    {
+     "values": {
+      "add": 279,
+      "fps": 44.669195111672984,
+      "calls": 50.41666666666667,
+      "worst": 42,
+      "after": 113
+     }
+    }
+   ],
+   "add": 334,
+   "fps": 40.08607684577732,
+   "calls": 47.708333333333336,
+   "worst": 56.5,
+   "after": 95
+  },
+  {
+   "scenario": "edits",
+   "scenarioName": "Run-time edits",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Run-time edits: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "paintFrames": 1952,
+      "paintTask": 1,
+      "paintTaskIdle": 336,
+      "hover": 502,
+      "reorder": 35
+     }
+    },
+    {
+     "values": {
+      "paintFrames": 2025,
+      "paintTask": 1,
+      "paintTaskIdle": 336,
+      "hover": 498,
+      "reorder": 35
+     }
+    }
+   ],
+   "paintFrames": 1988.5,
+   "paintTask": 1,
+   "paintTaskIdle": 336,
+   "hover": 500,
+   "reorder": 35
+  },
+  {
+   "scenario": "edits",
+   "scenarioName": "Run-time edits",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Run-time edits: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "paintFrames": 2027,
+      "paintTask": 0,
+      "paintTaskIdle": 317,
+      "hover": 519,
+      "reorder": 21
+     }
+    },
+    {
+     "values": {
+      "paintFrames": 1968,
+      "paintTask": 1,
+      "paintTaskIdle": 318,
+      "hover": 511,
+      "reorder": 16
+     }
+    }
+   ],
+   "paintFrames": 1997.5,
+   "paintTask": 0.5,
+   "paintTaskIdle": 317.5,
+   "hover": 515,
+   "reorder": 18.5
+  },
+  {
+   "scenario": "edits",
+   "scenarioName": "Run-time edits",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Run-time edits: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "paintFrames": 1995,
+      "paintTask": 0,
+      "paintTaskIdle": 336,
+      "hover": 533,
+      "reorder": 32
+     }
+    },
+    {
+     "values": {
+      "paintFrames": 1962,
+      "paintTask": 0,
+      "paintTaskIdle": 344,
+      "hover": 530,
+      "reorder": 33
+     }
+    }
+   ],
+   "paintFrames": 1978.5,
+   "paintTask": 0,
+   "paintTaskIdle": 340,
+   "hover": 531.5,
+   "reorder": 32.5
+  },
+  {
+   "scenario": "images",
+   "scenarioName": "Images",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Images: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "add": 685,
+      "fps": 59.15826911677534,
+      "worst": 93,
+      "frames": 8454,
+      "task": 1,
+      "taskIdle": 14
+     }
+    },
+    {
+     "values": {
+      "add": 651,
+      "fps": 59.903961584633855,
+      "worst": 46,
+      "frames": 8348,
+      "task": 0,
+      "taskIdle": 16
+     }
+    }
+   ],
+   "add": 668,
+   "frames": 8401,
+   "fps": 59.531115350704596,
+   "worst": 69.5,
+   "task": 0.5,
+   "taskIdle": 15
+  },
+  {
+   "scenario": "images",
+   "scenarioName": "Images",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Images: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "add": 282,
+      "fps": 59.263657957244654,
+      "worst": 70,
+      "frames": 8437,
+      "task": 0,
+      "taskIdle": 14
+     }
+    },
+    {
+     "values": {
+      "add": 249,
+      "fps": 58.96254283351058,
+      "worst": 64,
+      "frames": 8480,
+      "task": 0,
+      "taskIdle": 16
+     }
+    }
+   ],
+   "add": 265.5,
+   "frames": 8458.5,
+   "fps": 59.113100395377614,
+   "worst": 67,
+   "task": 0,
+   "taskIdle": 15
+  },
+  {
+   "scenario": "images",
+   "scenarioName": "Images",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Images: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "add": 292,
+      "fps": 53.26295585412668,
+      "worst": 43,
+      "frames": 8399,
+      "task": 2,
+      "taskIdle": 33
+     }
+    },
+    {
+     "values": {
+      "add": 293,
+      "fps": 51.37769221513657,
+      "worst": 40,
+      "frames": 8349,
+      "task": 0,
+      "taskIdle": 34
+     }
+    }
+   ],
+   "add": 292.5,
+   "frames": 8374,
+   "fps": 52.320324034631625,
+   "worst": 41.5,
+   "task": 1,
+   "taskIdle": 33.5
+  },
+  {
+   "scenario": "lifecycle",
+   "scenarioName": "Lifecycle",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Lifecycle: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "create": 827,
+      "remove": 5,
+      "workers": 0,
+      "two": 1586,
+      "twoFps": 55.76488671383032,
+      "twoWorst": 87
+     }
+    },
+    {
+     "values": {
+      "create": 834.5,
+      "remove": 7,
+      "workers": 0,
+      "two": 1282,
+      "twoFps": 58.16446667681071,
+      "twoWorst": 50
+     }
+    }
+   ],
+   "create": 830.75,
+   "remove": 6,
+   "workers": 0,
+   "two": 1434,
+   "twoFps": 56.96467669532052,
+   "twoWorst": 68.5
+  },
+  {
+   "scenario": "lifecycle",
+   "scenarioName": "Lifecycle",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Lifecycle: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "create": 563,
+      "remove": 14,
+      "workers": 0,
+      "two": 975,
+      "twoFps": 58.74968986947287,
+      "twoWorst": 47
+     }
+    },
+    {
+     "values": {
+      "create": 520,
+      "remove": 14.5,
+      "workers": 0,
+      "two": 834,
+      "twoFps": 59.57019823785763,
+      "twoWorst": 35
+     }
+    }
+   ],
+   "create": 541.5,
+   "remove": 14.25,
+   "workers": 0,
+   "two": 904.5,
+   "twoFps": 59.15994405366525,
+   "twoWorst": 41
+  },
+  {
+   "scenario": "lifecycle",
+   "scenarioName": "Lifecycle",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Lifecycle: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "create": 608,
+      "remove": 1,
+      "workers": 0,
+      "two": 961,
+      "twoFps": 53.228128858380956,
+      "twoWorst": 51
+     }
+    },
+    {
+     "values": {
+      "create": 582.5,
+      "remove": 1,
+      "workers": 0,
+      "two": 899,
+      "twoFps": 54.79452141338811,
+      "twoWorst": 71
+     }
+    }
+   ],
+   "create": 595.25,
+   "remove": 1,
+   "workers": 0,
+   "two": 930,
+   "twoFps": 54.01132513588453,
+   "twoWorst": 61
+  },
+  {
+   "scenario": "cold",
+   "scenarioName": "Cold start",
+   "lib": "maplibre",
+   "libName": "MapLibre GL JS",
+   "name": "Cold start: MapLibre GL JS",
+   "runs": [
+    {
+     "values": {
+      "tileReq": 506,
+      "firstFrame": 397,
+      "idle": 1460,
+      "requests": 8,
+      "cached": 0
+     },
+     "order": "style → worker → TileJSON → sprite → tiles → glyphs"
+    },
+    {
+     "values": {
+      "tileReq": 556,
+      "firstFrame": 403,
+      "idle": 1468,
+      "requests": 8,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → tiles → glyphs"
+    },
+    {
+     "values": {
+      "tileReq": 518,
+      "firstFrame": 369,
+      "idle": 1455,
+      "requests": 8,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → tiles → glyphs"
+    },
+    {
+     "values": {
+      "tileReq": 514,
+      "firstFrame": 374,
+      "idle": 1441,
+      "requests": 8,
+      "cached": 0
+     },
+     "order": "style → worker → TileJSON → sprite → tiles → glyphs"
+    },
+    {
+     "values": {
+      "tileReq": 518,
+      "firstFrame": 358,
+      "idle": 1395,
+      "requests": 8,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → tiles → glyphs"
+    }
+   ],
+   "tileReq": 518,
+   "firstFrame": 374,
+   "idle": 1455,
+   "requests": 8,
+   "cached": 0
+  },
+  {
+   "scenario": "cold",
+   "scenarioName": "Cold start",
+   "lib": "main",
+   "libName": "This library, main thread",
+   "name": "Cold start: This library, main thread",
+   "runs": [
+    {
+     "values": {
+      "tileReq": 504,
+      "firstFrame": 525,
+      "idle": 1114,
+      "requests": 16,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 506,
+      "firstFrame": 528,
+      "idle": 1140,
+      "requests": 16,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 488,
+      "firstFrame": 510,
+      "idle": 1082,
+      "requests": 16,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 468,
+      "firstFrame": 486,
+      "idle": 1139,
+      "requests": 16,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 483,
+      "firstFrame": 504,
+      "idle": 1046,
+      "requests": 16,
+      "cached": 0
+     },
+     "order": "style → worker → sprite → TileJSON → glyphs → tiles"
+    }
+   ],
+   "tileReq": 488,
+   "firstFrame": 510,
+   "idle": 1114,
+   "requests": 16,
+   "cached": 0
+  },
+  {
+   "scenario": "cold",
+   "scenarioName": "Cold start",
+   "lib": "worker",
+   "libName": "This library, worker",
+   "name": "Cold start: This library, worker",
+   "runs": [
+    {
+     "values": {
+      "tileReq": 492,
+      "firstFrame": 518,
+      "idle": 1132,
+      "requests": 12,
+      "cached": 0
+     },
+     "order": "style → worker → TileJSON → sprite → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 461,
+      "firstFrame": 489,
+      "idle": 1121,
+      "requests": 12,
+      "cached": 0
+     },
+     "order": "style → worker → TileJSON → sprite → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 490,
+      "firstFrame": 516,
+      "idle": 1165,
+      "requests": 12,
+      "cached": 0
+     },
+     "order": "style → worker → TileJSON → sprite → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 505,
+      "firstFrame": 540,
+      "idle": 1197,
+      "requests": 12,
+      "cached": 0
+     },
+     "order": "style → worker → TileJSON → sprite → glyphs → tiles"
+    },
+    {
+     "values": {
+      "tileReq": 509,
+      "firstFrame": 541,
+      "idle": 1136,
+      "requests": 12,
+      "cached": 0
+     },
+     "order": "style → worker → TileJSON → sprite → glyphs → tiles"
+    }
+   ],
+   "tileReq": 492,
+   "firstFrame": 518,
+   "idle": 1136,
+   "requests": 12,
+   "cached": 0
+  }
+ ],
+ "errors": [],
+ "version": "27.2",
+ "env": "GPU: Apple GPU · screen pixel ratio 1 · map-jr-gl 0.9.0, commit unknown · MapLibre GL JS 6.17.0 · AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+ "table": [
+  [
+   "Scenario",
+   "Library",
+   "Measure",
+   "Median",
+   "Range",
+   "Runs"
+  ],
+  [
+   "Load to idle",
+   "MapLibre GL JS",
+   "Load to idle",
+   "1673 ms",
+   "1164–2181",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "MapLibre GL JS",
+   "First frame",
+   "223 ms",
+   "141–304",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "MapLibre GL JS",
+   "load event",
+   "1613 ms",
+   "1129–2096",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "This library, main thread",
+   "Load to idle",
+   "662 ms",
+   "626–698",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "This library, main thread",
+   "First frame",
+   "107 ms",
+   "106–107",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "This library, main thread",
+   "load event",
+   "662 ms",
+   "626–698",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "This library, worker",
+   "Load to idle",
+   "731 ms",
+   "574–888",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "This library, worker",
+   "First frame",
+   "122 ms",
+   "81–163",
+   "2"
+  ],
+  [
+   "Load to idle",
+   "This library, worker",
+   "load event",
+   "731 ms",
+   "573–888",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "MapLibre GL JS",
+   "Load to idle",
+   "2362 ms",
+   "1308–3415",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "MapLibre GL JS",
+   "Pan: frames per second",
+   "54.6 fps",
+   "54.1–55.2",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "MapLibre GL JS",
+   "Pan: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "MapLibre GL JS",
+   "Pan: 90th percentile frame gap",
+   "22.0 ms",
+   "21.0–23.0",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "MapLibre GL JS",
+   "Pan: worst frame gap",
+   "85 ms",
+   "65–104",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, main thread",
+   "Load to idle",
+   "844 ms",
+   "767–921",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, main thread",
+   "Pan: frames per second",
+   "58.5 fps",
+   "58.2–58.9",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, main thread",
+   "Pan: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, main thread",
+   "Pan: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, main thread",
+   "Pan: worst frame gap",
+   "68 ms",
+   "60–75",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, worker",
+   "Load to idle",
+   "1340 ms",
+   "867–1813",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, worker",
+   "Pan: frames per second",
+   "53.0 fps",
+   "51.3–54.6",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, worker",
+   "Pan: median frame gap",
+   "18.0 ms",
+   "17.0–19.0",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, worker",
+   "Pan: 90th percentile frame gap",
+   "22.5 ms",
+   "21.0–24.0",
+   "2"
+  ],
+  [
+   "3D terrain",
+   "This library, worker",
+   "Pan: worst frame gap",
+   "44 ms",
+   "30–57",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "MapLibre GL JS",
+   "Load to idle",
+   "1223 ms",
+   "1187–1258",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "MapLibre GL JS",
+   "Turn: frames per second",
+   "46.5 fps",
+   "44.8–48.2",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "MapLibre GL JS",
+   "Turn: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "MapLibre GL JS",
+   "Turn: 90th percentile frame gap",
+   "33.5 ms",
+   "33.0–34.0",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "MapLibre GL JS",
+   "Turn: worst frame gap",
+   "177 ms",
+   "106–247",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, main thread",
+   "Load to idle",
+   "1917 ms",
+   "1628–2205",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, main thread",
+   "Turn: frames per second",
+   "50.8 fps",
+   "48.5–53.0",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, main thread",
+   "Turn: median frame gap",
+   "17.5 ms",
+   "17.0–18.0",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, main thread",
+   "Turn: 90th percentile frame gap",
+   "30.5 ms",
+   "28.0–33.0",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, main thread",
+   "Turn: worst frame gap",
+   "79 ms",
+   "78–80",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, worker",
+   "Load to idle",
+   "1402 ms",
+   "1226–1578",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, worker",
+   "Turn: frames per second",
+   "48.5 fps",
+   "42.9–54.1",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, worker",
+   "Turn: median frame gap",
+   "17.5 ms",
+   "17.0–18.0",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, worker",
+   "Turn: 90th percentile frame gap",
+   "33.5 ms",
+   "27.0–40.0",
+   "2"
+  ],
+  [
+   "Pitch 85 with sky",
+   "This library, worker",
+   "Turn: worst frame gap",
+   "75 ms",
+   "55–95",
+   "2"
+  ],
+  [
+   "Globe",
+   "MapLibre GL JS",
+   "Load to idle",
+   "2206 ms",
+   "1453–2959",
+   "2"
+  ],
+  [
+   "Globe",
+   "MapLibre GL JS",
+   "Turn: frames per second",
+   "57.0 fps",
+   "54.3–59.7",
+   "2"
+  ],
+  [
+   "Globe",
+   "MapLibre GL JS",
+   "Turn: median frame gap",
+   "16.5 ms",
+   "16.0–17.0",
+   "2"
+  ],
+  [
+   "Globe",
+   "MapLibre GL JS",
+   "Turn: 90th percentile frame gap",
+   "23.5 ms",
+   "20.0–27.0",
+   "2"
+  ],
+  [
+   "Globe",
+   "MapLibre GL JS",
+   "Turn: worst frame gap",
+   "67 ms",
+   "46–87",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, main thread",
+   "Load to idle",
+   "872 ms",
+   "544–1199",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, main thread",
+   "Turn: frames per second",
+   "54.2 fps",
+   "48.8–59.7",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, main thread",
+   "Turn: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, main thread",
+   "Turn: 90th percentile frame gap",
+   "27.5 ms",
+   "20.0–35.0",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, main thread",
+   "Turn: worst frame gap",
+   "74 ms",
+   "42–105",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, worker",
+   "Load to idle",
+   "534 ms",
+   "417–650",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, worker",
+   "Turn: frames per second",
+   "52.2 fps",
+   "49.9–54.4",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, worker",
+   "Turn: median frame gap",
+   "19.0 ms",
+   "18.0–20.0",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, worker",
+   "Turn: 90th percentile frame gap",
+   "23.5 ms",
+   "22.0–25.0",
+   "2"
+  ],
+  [
+   "Globe",
+   "This library, worker",
+   "Turn: worst frame gap",
+   "39 ms",
+   "39–39",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Static repaint: frames per second",
+   "59.0 fps",
+   "58.1–59.9",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Static repaint: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Static repaint: 90th percentile frame gap",
+   "19.0 ms",
+   "19.0–19.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Static repaint: worst frame gap",
+   "51 ms",
+   "24–77",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Pan: frames per second",
+   "57.8 fps",
+   "57.1–58.5",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Pan: median frame gap",
+   "16.8 ms",
+   "16.5–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Pan: 90th percentile frame gap",
+   "20.5 ms",
+   "20.0–21.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Pan: worst frame gap",
+   "47 ms",
+   "40–54",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Rotation: frames per second",
+   "60.0 fps",
+   "60.0–60.1",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Rotation: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Rotation: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Rotation: worst frame gap",
+   "22 ms",
+   "22–22",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Zoom: frames per second",
+   "45.6 fps",
+   "38.7–52.5",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Zoom: median frame gap",
+   "16.5 ms",
+   "16.0–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Zoom: 90th percentile frame gap",
+   "36.0 ms",
+   "22.0–50.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Zoom: worst frame gap",
+   "208 ms",
+   "112–304",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera",
+   "MapLibre GL JS",
+   "Pixel ratio of the drawing buffer",
+   "1.00",
+   "1.00–1.00",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Static repaint: frames per second",
+   "60.0 fps",
+   "59.9–60.1",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Static repaint: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Static repaint: 90th percentile frame gap",
+   "19.5 ms",
+   "19.0–20.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Static repaint: worst frame gap",
+   "23 ms",
+   "21–25",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Pan: frames per second",
+   "59.8 fps",
+   "59.8–59.8",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Pan: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Pan: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Pan: worst frame gap",
+   "38 ms",
+   "33–42",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Rotation: frames per second",
+   "60.0 fps",
+   "60.0–60.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Rotation: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Rotation: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Rotation: worst frame gap",
+   "33 ms",
+   "32–34",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Zoom: frames per second",
+   "60.0 fps",
+   "60.0–60.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Zoom: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Zoom: 90th percentile frame gap",
+   "19.5 ms",
+   "19.0–20.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Zoom: worst frame gap",
+   "36 ms",
+   "34–38",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, main thread",
+   "Pixel ratio of the drawing buffer",
+   "1.00",
+   "1.00–1.00",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Static repaint: frames per second",
+   "49.6 fps",
+   "48.3–50.9",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Static repaint: median frame gap",
+   "17.3 ms",
+   "17.0–17.5",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Static repaint: 90th percentile frame gap",
+   "33.5 ms",
+   "33.0–34.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Static repaint: worst frame gap",
+   "38 ms",
+   "37–38",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Pan: frames per second",
+   "51.4 fps",
+   "50.8–52.1",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Pan: median frame gap",
+   "19.0 ms",
+   "18.0–20.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Pan: 90th percentile frame gap",
+   "24.5 ms",
+   "24.0–25.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Pan: worst frame gap",
+   "46 ms",
+   "31–60",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Rotation: frames per second",
+   "50.9 fps",
+   "50.4–51.3",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Rotation: median frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Rotation: 90th percentile frame gap",
+   "24.0 ms",
+   "24.0–24.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Rotation: worst frame gap",
+   "31 ms",
+   "30–31",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Zoom: frames per second",
+   "55.7 fps",
+   "55.3–56.1",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Zoom: median frame gap",
+   "17.5 ms",
+   "17.0–18.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Zoom: 90th percentile frame gap",
+   "22.5 ms",
+   "22.0–23.0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Zoom: worst frame gap",
+   "28 ms",
+   "26–30",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera",
+   "This library, worker",
+   "Pixel ratio of the drawing buffer",
+   "1.00",
+   "1.00–1.00",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Static repaint: frames per second",
+   "56.8 fps",
+   "53.6–60.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Static repaint: median frame gap",
+   "16.5 ms",
+   "16.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Static repaint: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Static repaint: worst frame gap",
+   "155 ms",
+   "43–267",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Pan: frames per second",
+   "53.4 fps",
+   "49.6–57.2",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Pan: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Pan: 90th percentile frame gap",
+   "22.5 ms",
+   "21.0–24.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Pan: worst frame gap",
+   "139 ms",
+   "85–193",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Rotation: frames per second",
+   "60.0 fps",
+   "60.0–60.1",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Rotation: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Rotation: 90th percentile frame gap",
+   "19.5 ms",
+   "19.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Rotation: worst frame gap",
+   "25 ms",
+   "23–26",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Zoom: frames per second",
+   "54.4 fps",
+   "54.2–54.6",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Zoom: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Zoom: 90th percentile frame gap",
+   "22.5 ms",
+   "21.0–24.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Zoom: worst frame gap",
+   "79 ms",
+   "67–91",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "MapLibre GL JS",
+   "Pixel ratio of the drawing buffer",
+   "2.00",
+   "2.00–2.00",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Static repaint: frames per second",
+   "59.9 fps",
+   "59.9–60.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Static repaint: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Static repaint: 90th percentile frame gap",
+   "19.0 ms",
+   "18.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Static repaint: worst frame gap",
+   "23 ms",
+   "22–23",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Pan: frames per second",
+   "59.4 fps",
+   "59.3–59.5",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Pan: median frame gap",
+   "16.5 ms",
+   "16.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Pan: 90th percentile frame gap",
+   "21.0 ms",
+   "21.0–21.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Pan: worst frame gap",
+   "39 ms",
+   "37–40",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Rotation: frames per second",
+   "59.8 fps",
+   "59.6–60.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Rotation: median frame gap",
+   "16.5 ms",
+   "16.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Rotation: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Rotation: worst frame gap",
+   "32 ms",
+   "29–34",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Zoom: frames per second",
+   "59.8 fps",
+   "59.6–60.1",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Zoom: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Zoom: 90th percentile frame gap",
+   "19.5 ms",
+   "19.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Zoom: worst frame gap",
+   "34 ms",
+   "27–41",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, main thread",
+   "Pixel ratio of the drawing buffer",
+   "2.00",
+   "2.00–2.00",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Static repaint: frames per second",
+   "48.9 fps",
+   "48.2–49.5",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Static repaint: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Static repaint: 90th percentile frame gap",
+   "34.5 ms",
+   "34.0–35.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Static repaint: worst frame gap",
+   "51 ms",
+   "39–62",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Pan: frames per second",
+   "52.9 fps",
+   "52.0–53.7",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Pan: median frame gap",
+   "18.5 ms",
+   "18.5–18.5",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Pan: 90th percentile frame gap",
+   "22.5 ms",
+   "22.0–23.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Pan: worst frame gap",
+   "47 ms",
+   "33–61",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Rotation: frames per second",
+   "55.0 fps",
+   "54.1–55.9",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Rotation: median frame gap",
+   "18.0 ms",
+   "17.0–19.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Rotation: 90th percentile frame gap",
+   "22.5 ms",
+   "22.0–23.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Rotation: worst frame gap",
+   "36 ms",
+   "31–41",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Zoom: frames per second",
+   "53.7 fps",
+   "53.1–54.3",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Zoom: median frame gap",
+   "18.5 ms",
+   "18.0–19.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Zoom: 90th percentile frame gap",
+   "22.5 ms",
+   "22.0–23.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Zoom: worst frame gap",
+   "36 ms",
+   "30–42",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 2",
+   "This library, worker",
+   "Pixel ratio of the drawing buffer",
+   "2.00",
+   "2.00–2.00",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Static repaint: frames per second",
+   "59.2 fps",
+   "58.8–59.7",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Static repaint: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Static repaint: 90th percentile frame gap",
+   "19.5 ms",
+   "19.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Static repaint: worst frame gap",
+   "33 ms",
+   "30–35",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Pan: frames per second",
+   "54.8 fps",
+   "53.4–56.2",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Pan: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Pan: 90th percentile frame gap",
+   "20.5 ms",
+   "20.0–21.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Pan: worst frame gap",
+   "58 ms",
+   "46–69",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Rotation: frames per second",
+   "60.2 fps",
+   "60.1–60.4",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Rotation: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Rotation: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Rotation: worst frame gap",
+   "29 ms",
+   "26–32",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Zoom: frames per second",
+   "53.8 fps",
+   "53.4–54.1",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Zoom: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Zoom: 90th percentile frame gap",
+   "21.5 ms",
+   "21.0–22.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Zoom: worst frame gap",
+   "90 ms",
+   "76–104",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "MapLibre GL JS",
+   "Pixel ratio of the drawing buffer",
+   "3.00",
+   "3.00–3.00",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Static repaint: frames per second",
+   "60.0 fps",
+   "60.0–60.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Static repaint: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Static repaint: 90th percentile frame gap",
+   "18.5 ms",
+   "18.0–19.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Static repaint: worst frame gap",
+   "24 ms",
+   "22–25",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Pan: frames per second",
+   "58.5 fps",
+   "57.0–60.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Pan: median frame gap",
+   "16.5 ms",
+   "16.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Pan: 90th percentile frame gap",
+   "21.5 ms",
+   "19.0–24.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Pan: worst frame gap",
+   "46 ms",
+   "34–57",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Rotation: frames per second",
+   "59.8 fps",
+   "59.6–60.1",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Rotation: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Rotation: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Rotation: worst frame gap",
+   "32 ms",
+   "28–35",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Zoom: frames per second",
+   "59.5 fps",
+   "59.1–60.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Zoom: median frame gap",
+   "17.0 ms",
+   "17.0–17.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Zoom: 90th percentile frame gap",
+   "20.0 ms",
+   "20.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Zoom: worst frame gap",
+   "38 ms",
+   "28–47",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, main thread",
+   "Pixel ratio of the drawing buffer",
+   "3.00",
+   "3.00–3.00",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Static repaint: frames per second",
+   "49.3 fps",
+   "47.3–51.2",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Static repaint: median frame gap",
+   "18.5 ms",
+   "17.0–20.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Static repaint: 90th percentile frame gap",
+   "31.5 ms",
+   "30.0–33.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Static repaint: worst frame gap",
+   "57 ms",
+   "36–78",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Pan: frames per second",
+   "39.2 fps",
+   "33.9–44.4",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Pan: median frame gap",
+   "22.5 ms",
+   "20.0–25.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Pan: 90th percentile frame gap",
+   "44.5 ms",
+   "35.0–54.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Pan: worst frame gap",
+   "63 ms",
+   "60–65",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Rotation: frames per second",
+   "42.5 fps",
+   "36.4–48.5",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Rotation: median frame gap",
+   "21.5 ms",
+   "19.0–24.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Rotation: 90th percentile frame gap",
+   "36.5 ms",
+   "29.0–44.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Rotation: worst frame gap",
+   "62 ms",
+   "62–62",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Zoom: frames per second",
+   "51.2 fps",
+   "49.1–53.3",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Zoom: median frame gap",
+   "19.0 ms",
+   "19.0–19.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Zoom: 90th percentile frame gap",
+   "25.5 ms",
+   "22.0–29.0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Zoom: worst frame gap",
+   "50 ms",
+   "27–72",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Main thread blocked (long tasks) in the pan",
+   "0 ms",
+   "0–0",
+   "2"
+  ],
+  [
+   "Camera at pixel ratio 3",
+   "This library, worker",
+   "Pixel ratio of the drawing buffer",
+   "3.00",
+   "3.00–3.00",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "MapLibre GL JS",
+   "Add the markers",
+   "86 ms",
+   "72–100",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "MapLibre GL JS",
+   "Pan: frames per second",
+   "38.5 fps",
+   "38.2–38.8",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "MapLibre GL JS",
+   "Pan: 90th percentile frame gap",
+   "35.5 ms",
+   "32.0–39.0",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "MapLibre GL JS",
+   "Pan: worst frame gap",
+   "214 ms",
+   "158–269",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, main thread",
+   "Add the markers",
+   "5 ms",
+   "2–7",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, main thread",
+   "Pan: frames per second",
+   "59.8 fps",
+   "59.8–59.9",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, main thread",
+   "Pan: 90th percentile frame gap",
+   "20.5 ms",
+   "20.0–21.0",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, main thread",
+   "Pan: worst frame gap",
+   "37 ms",
+   "33–41",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, worker",
+   "Add the markers",
+   "1 ms",
+   "0–1",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, worker",
+   "Pan: frames per second",
+   "52.7 fps",
+   "52.0–53.5",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, worker",
+   "Pan: 90th percentile frame gap",
+   "23.0 ms",
+   "22.0–24.0",
+   "2"
+  ],
+  [
+   "1,000 markers",
+   "This library, worker",
+   "Pan: worst frame gap",
+   "56 ms",
+   "33–79",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "MapLibre GL JS",
+   "Add the markers",
+   "690 ms",
+   "550–829",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "MapLibre GL JS",
+   "Pan: frames per second",
+   "3.3 fps",
+   "2.2–4.3",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "MapLibre GL JS",
+   "Pan: 90th percentile frame gap",
+   "531.0 ms",
+   "281.0–781.0",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "MapLibre GL JS",
+   "Pan: worst frame gap",
+   "590 ms",
+   "399–781",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, main thread",
+   "Add the markers",
+   "2 ms",
+   "1–2",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, main thread",
+   "Pan: frames per second",
+   "59.7 fps",
+   "59.6–59.7",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, main thread",
+   "Pan: 90th percentile frame gap",
+   "20.5 ms",
+   "20.0–21.0",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, main thread",
+   "Pan: worst frame gap",
+   "40 ms",
+   "36–43",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, worker",
+   "Add the markers",
+   "1 ms",
+   "1–1",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, worker",
+   "Pan: frames per second",
+   "53.4 fps",
+   "52.4–54.3",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, worker",
+   "Pan: 90th percentile frame gap",
+   "23.5 ms",
+   "23.0–24.0",
+   "2"
+  ],
+  [
+   "10,000 markers",
+   "This library, worker",
+   "Pan: worst frame gap",
+   "32 ms",
+   "28–35",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "MapLibre GL JS",
+   "addSource to idle",
+   "318 ms",
+   "278–358",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "MapLibre GL JS",
+   "Frames per second during the updates",
+   "31.2 fps",
+   "26.8–35.6",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "MapLibre GL JS",
+   "setData calls per second",
+   "46.9 /s",
+   "45.4–48.3",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "MapLibre GL JS",
+   "Worst frame gap",
+   "103 ms",
+   "93–113",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "MapLibre GL JS",
+   "Last setData to idle",
+   "97 ms",
+   "79–115",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, main thread",
+   "addSource to idle",
+   "124 ms",
+   "106–141",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, main thread",
+   "Frames per second during the updates",
+   "39.2 fps",
+   "37.9–40.6",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, main thread",
+   "setData calls per second",
+   "44.4 /s",
+   "40.4–48.3",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, main thread",
+   "Worst frame gap",
+   "78 ms",
+   "75–81",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, main thread",
+   "Last setData to idle",
+   "63 ms",
+   "57–68",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, worker",
+   "addSource to idle",
+   "334 ms",
+   "279–389",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, worker",
+   "Frames per second during the updates",
+   "40.1 fps",
+   "35.5–44.7",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, worker",
+   "setData calls per second",
+   "47.7 /s",
+   "45.0–50.4",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, worker",
+   "Worst frame gap",
+   "57 ms",
+   "42–71",
+   "2"
+  ],
+  [
+   "GeoJSON setData",
+   "This library, worker",
+   "Last setData to idle",
+   "95 ms",
+   "77–113",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "MapLibre GL JS",
+   "100 × setPaintProperty, one per frame: first call to idle",
+   "1989 ms",
+   "1952–2025",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "MapLibre GL JS",
+   "100 × setPaintProperty in one task: the calls",
+   "1.0 ms",
+   "1.0–1.0",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "MapLibre GL JS",
+   "100 × setPaintProperty in one task: first call to idle",
+   "336 ms",
+   "336–336",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "MapLibre GL JS",
+   "30 hover steps of setFeatureState, one per frame: first step to idle",
+   "500 ms",
+   "498–502",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "MapLibre GL JS",
+   "Layer reorder (this library: update() of the main API; MapLibre GL JS: moveLayer): to idle",
+   "35 ms",
+   "35–35",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, main thread",
+   "100 × setPaintProperty, one per frame: first call to idle",
+   "1998 ms",
+   "1968–2027",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, main thread",
+   "100 × setPaintProperty in one task: the calls",
+   "0.5 ms",
+   "0.0–1.0",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, main thread",
+   "100 × setPaintProperty in one task: first call to idle",
+   "318 ms",
+   "317–318",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, main thread",
+   "30 hover steps of setFeatureState, one per frame: first step to idle",
+   "515 ms",
+   "511–519",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, main thread",
+   "Layer reorder (this library: update() of the main API; MapLibre GL JS: moveLayer): to idle",
+   "19 ms",
+   "16–21",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, worker",
+   "100 × setPaintProperty, one per frame: first call to idle",
+   "1979 ms",
+   "1962–1995",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, worker",
+   "100 × setPaintProperty in one task: the calls",
+   "0.0 ms",
+   "0.0–0.0",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, worker",
+   "100 × setPaintProperty in one task: first call to idle",
+   "340 ms",
+   "336–344",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, worker",
+   "30 hover steps of setFeatureState, one per frame: first step to idle",
+   "532 ms",
+   "530–533",
+   "2"
+  ],
+  [
+   "Run-time edits",
+   "This library, worker",
+   "Layer reorder (this library: update() of the main API; MapLibre GL JS: moveLayer): to idle",
+   "33 ms",
+   "32–33",
+   "2"
+  ],
+  [
+   "Images",
+   "MapLibre GL JS",
+   "addImage and the icon layer: to idle",
+   "668 ms",
+   "651–685",
+   "2"
+  ],
+  [
+   "Images",
+   "MapLibre GL JS",
+   "500 × updateImage, one per frame: first call to idle",
+   "8401 ms",
+   "8348–8454",
+   "2"
+  ],
+  [
+   "Images",
+   "MapLibre GL JS",
+   "Frames per second during the updates",
+   "59.5 fps",
+   "59.2–59.9",
+   "2"
+  ],
+  [
+   "Images",
+   "MapLibre GL JS",
+   "Worst frame gap during the updates",
+   "70 ms",
+   "46–93",
+   "2"
+  ],
+  [
+   "Images",
+   "MapLibre GL JS",
+   "500 × updateImage in one task: the calls",
+   "0.5 ms",
+   "0.0–1.0",
+   "2"
+  ],
+  [
+   "Images",
+   "MapLibre GL JS",
+   "500 × updateImage in one task: first call to idle",
+   "15 ms",
+   "14–16",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, main thread",
+   "addImage and the icon layer: to idle",
+   "266 ms",
+   "249–282",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, main thread",
+   "500 × updateImage, one per frame: first call to idle",
+   "8459 ms",
+   "8437–8480",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, main thread",
+   "Frames per second during the updates",
+   "59.1 fps",
+   "59.0–59.3",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, main thread",
+   "Worst frame gap during the updates",
+   "67 ms",
+   "64–70",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, main thread",
+   "500 × updateImage in one task: the calls",
+   "0.0 ms",
+   "0.0–0.0",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, main thread",
+   "500 × updateImage in one task: first call to idle",
+   "15 ms",
+   "14–16",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, worker",
+   "addImage and the icon layer: to idle",
+   "293 ms",
+   "292–293",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, worker",
+   "500 × updateImage, one per frame: first call to idle",
+   "8374 ms",
+   "8349–8399",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, worker",
+   "Frames per second during the updates",
+   "52.3 fps",
+   "51.4–53.3",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, worker",
+   "Worst frame gap during the updates",
+   "42 ms",
+   "40–43",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, worker",
+   "500 × updateImage in one task: the calls",
+   "1.0 ms",
+   "0.0–2.0",
+   "2"
+  ],
+  [
+   "Images",
+   "This library, worker",
+   "500 × updateImage in one task: first call to idle",
+   "34 ms",
+   "33–34",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "MapLibre GL JS",
+   "Create to idle, median of 8",
+   "831 ms",
+   "827–835",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "MapLibre GL JS",
+   "remove(), median of 8",
+   "6.0 ms",
+   "5.0–7.0",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "MapLibre GL JS",
+   "Workers started by the 8 maps and not ended",
+   "0",
+   "0–0",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "MapLibre GL JS",
+   "Two maps: create both to both idle",
+   "1434 ms",
+   "1282–1586",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "MapLibre GL JS",
+   "Two maps: frames per second of each in a pan",
+   "57.0 fps",
+   "55.8–58.2",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "MapLibre GL JS",
+   "Two maps: worst frame gap",
+   "69 ms",
+   "50–87",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, main thread",
+   "Create to idle, median of 8",
+   "542 ms",
+   "520–563",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, main thread",
+   "remove(), median of 8",
+   "14.3 ms",
+   "14.0–14.5",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, main thread",
+   "Workers started by the 8 maps and not ended",
+   "0",
+   "0–0",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, main thread",
+   "Two maps: create both to both idle",
+   "905 ms",
+   "834–975",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, main thread",
+   "Two maps: frames per second of each in a pan",
+   "59.2 fps",
+   "58.7–59.6",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, main thread",
+   "Two maps: worst frame gap",
+   "41 ms",
+   "35–47",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, worker",
+   "Create to idle, median of 8",
+   "595 ms",
+   "583–608",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, worker",
+   "remove(), median of 8",
+   "1.0 ms",
+   "1.0–1.0",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, worker",
+   "Workers started by the 8 maps and not ended",
+   "0",
+   "0–0",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, worker",
+   "Two maps: create both to both idle",
+   "930 ms",
+   "899–961",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, worker",
+   "Two maps: frames per second of each in a pan",
+   "54.0 fps",
+   "53.2–54.8",
+   "2"
+  ],
+  [
+   "Lifecycle",
+   "This library, worker",
+   "Two maps: worst frame gap",
+   "61 ms",
+   "51–71",
+   "2"
+  ],
+  [
+   "Cold start",
+   "MapLibre GL JS",
+   "First tile request",
+   "518 ms",
+   "506–556",
+   "5"
+  ],
+  [
+   "Cold start",
+   "MapLibre GL JS",
+   "First frame",
+   "374 ms",
+   "358–403",
+   "5"
+  ],
+  [
+   "Cold start",
+   "MapLibre GL JS",
+   "Idle",
+   "1455 ms",
+   "1395–1468",
+   "5"
+  ],
+  [
+   "Cold start",
+   "MapLibre GL JS",
+   "Requests before idle (the page, and the workers of this library)",
+   "8",
+   "8–8",
+   "5"
+  ],
+  [
+   "Cold start",
+   "MapLibre GL JS",
+   "Of these, answered from the HTTP cache",
+   "0",
+   "0–0",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, main thread",
+   "First tile request",
+   "488 ms",
+   "468–506",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, main thread",
+   "First frame",
+   "510 ms",
+   "486–528",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, main thread",
+   "Idle",
+   "1114 ms",
+   "1046–1140",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, main thread",
+   "Requests before idle (the page, and the workers of this library)",
+   "16",
+   "16–16",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, main thread",
+   "Of these, answered from the HTTP cache",
+   "0",
+   "0–0",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, worker",
+   "First tile request",
+   "492 ms",
+   "461–509",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, worker",
+   "First frame",
+   "518 ms",
+   "489–541",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, worker",
+   "Idle",
+   "1136 ms",
+   "1121–1197",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, worker",
+   "Requests before idle (the page, and the workers of this library)",
+   "12",
+   "12–12",
+   "5"
+  ],
+  [
+   "Cold start",
+   "This library, worker",
+   "Of these, answered from the HTTP cache",
+   "0",
+   "0–0",
+   "5"
+  ]
+ ],
+ "runs": 2,
+ "coldLoads": 15,
+ "minutes": 11.9
+}

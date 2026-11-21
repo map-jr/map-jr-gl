@@ -1,0 +1,125 @@
+{
+ "name": "win32-webkit",
+ "os": "win32 10.0.26100 x64",
+ "cpu": "AMD EPYC 9V74 80-Core Processor                ",
+ "browser": "webkit",
+ "date": "2026-11-21T19:52:58.633Z",
+ "commit": "a223ec5adb70a686177d7a8d13eeebc727d71546",
+ "checks": [
+  {
+   "mode": "worker",
+   "loaded": true,
+   "renderer": "main",
+   "zoom": 15.3,
+   "features": 8,
+   "terrain": true,
+   "elevation": 0,
+   "ms": 5603,
+   "screenshotBytes": 754792,
+   "errors": []
+  },
+  {
+   "mode": "main",
+   "loaded": true,
+   "renderer": "main",
+   "zoom": 15.3,
+   "features": 8,
+   "terrain": true,
+   "elevation": 0,
+   "ms": 5656,
+   "screenshotBytes": 756783,
+   "errors": []
+  }
+ ],
+ "bench": [],
+ "errors": [
+  "bench: run 1 of the page did not end within 15 min; the page says: Running 4 of 39, run 1 of 1: 3D terrain: MapLibre GL JS"
+ ],
+ "version": "27.2",
+ "env": "GPU: Apple GPU · screen pixel ratio 1 · map-jr-gl 0.9.0, commit unknown · MapLibre GL JS 6.17.0 · AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+ "table": [
+  [
+   "Scenario",
+   "Library",
+   "Measure",
+   "Median",
+   "Range",
+   "Runs"
+  ],
+  [
+   "Load to idle",
+   "MapLibre GL JS",
+   "Load to idle",
+   "1292 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "MapLibre GL JS",
+   "First frame",
+   "167 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "MapLibre GL JS",
+   "load event",
+   "1223 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "This library, main thread",
+   "Load to idle",
+   "831 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "This library, main thread",
+   "First frame",
+   "133 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "This library, main thread",
+   "load event",
+   "831 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "This library, worker",
+   "Load to idle",
+   "720 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "This library, worker",
+   "First frame",
+   "86 ms",
+   "",
+   "1"
+  ],
+  [
+   "Load to idle",
+   "This library, worker",
+   "load event",
+   "720 ms",
+   "",
+   "1"
+  ]
+ ],
+ "runs": 0,
+ "coldLoads": 0,
+ "minutes": 15
+}
