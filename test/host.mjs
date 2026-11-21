@@ -127,17 +127,19 @@ for (const renderer of renderers) {
             for (let i = 0; i < 100 && !(Math.abs(t.host.state.get().view.zoom - 15) < 1e-6 && !t.host.state.get().moving); i++) await wait(100); // (a slow machine)
             await wait(300);
             const reported = t.views.length, last = t.views.at(-1), old = t.views[Math.max(0, t.views.length - 4)];
+            const warned = [], warn = console.warn; console.warn = (...a) => warned.push(a.join(' '));
             t.host.update(t.spec = {...t.spec, view: old}); // an application that owns the view gives back an older report
             await wait(300);
+            console.warn = warn;
             const afterEcho = t.host.state.get().view.zoom;
             t.host.update(t.spec = {...t.spec, view: {center: [-74.0, 40.71], zoom: 13.5, bearing: 20, pitch: 0}});
             for (let i = 0; i < 80 && t.host.state.get().view.zoom !== 13.5; i++) await wait(100); // (a slow machine)
             await wait(300);
             const s = t.host.state.get().view;
-            return {reported, last: last?.zoom, afterEcho, moved: [s.zoom, s.bearing, +s.center[0].toFixed(3)], zoomEvents: t.seen.filter(x => x === 'zoom').length};
+            return {reported, last: last?.zoom, afterEcho, said: warned.filter(w => w.includes('update(): "view" is a view that the map reported earlier') && w.includes('moveTo(view)')).length, moved: [s.zoom, s.bearing, +s.center[0].toFixed(3)], zoomEvents: t.seen.filter(x => x === 'zoom').length};
         });
-        check(`[${renderer}] the view: changes are reported, a reported view is not applied again, a new view moves the map`,
-            view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
+        check(`[${renderer}] the view: changes are reported, a reported view is not applied again and warns once in the development build (#1190), a new view moves the map`,
+            view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.said === 1 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
 
         // 2a. moveTo with `fly` (#43) zooms out and back in on the way, as flyTo of MapLibre GL JS. (For these 1650 pixels
         // at zoom 13.5 in a view of 900 pixels, the curve goes down by 1.07 zoom levels; the state sees some frames of it.)

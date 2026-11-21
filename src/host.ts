@@ -1112,7 +1112,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             for (const name in next.fonts) if (differ(next.fonts[name], before?.fonts?.[name])) changed[name] = next.fonts[name];
             map.addFonts(fontFaces(absolute(changed)));
         }
-        if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
+        if (next.view && !same(next.view, before?.view) && before) {
+            if (!reported.some(v => same(next.view, v))) map.jumpTo(next.view);
+            // (A view that the map reported is not applied. At rest, it is not an echo of a slow application, so it is a stored view: #1190.)
+            else if (__DEV__ && !state.get().moving && !same(next.view, state.get().view)) check(1190);
+        }
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
