@@ -25,7 +25,7 @@ console.log(attribution);
 ```
 
 [`renderToSVG`](../reference/server.md#rendertosvg) loads the style, its tiles and its sprite, and returns the SVG,
-the tile URLs of the view and the attribution of the sources. The attribution is a list of HTML strings, and a page
+the tile URLs of the view and the attribution of the sources that a visible layer uses at the zoom of the view. The attribution is a list of HTML strings, and a page
 or an image that shows the map must show it too.
 
 The SVG links to raster tiles and to the sprite. Set [`inlineImages: true`](../reference/server.md#renderoptions) to
@@ -239,7 +239,9 @@ and `attribution` of the description, and no option is needed. With React or Sve
 `attribution` options are `attributionOptions`).
 
 - The scale has the length that it has at the centre of the first view. The compass shows the bearing of the view.
-- A button of the first view does nothing until the map takes over. A control from `custom()` is left out, because
+- A button of the first view does nothing until the map takes over. When the map never takes over (the style does not
+  load, or the script does not run), the markup stays, its buttons stay without effect, and the buttons of the map stay
+  hidden. The map fires `error` for a style that does not load, and the page can listen for it and remove the markup. A control from `custom()` is left out, because
   the server cannot draw an element that the page makes.
 - The server cannot know the width of the element, so it folds the attribution to a button when `width` is 640 or
   less, as the map does for an element of that size. When the element has another width, the map replaces the
@@ -247,7 +249,8 @@ and `attribution` of the description, and no option is needed. With React or Sve
 - With `colorScheme: 'auto'`, the style sheet follows the colour scheme of the browser, and the control `colorScheme()`
   has both icons, of which the browser shows one. The style of the first view is the `light` style of a pair.
 - With a [Content Security Policy](../loading.md#content-security-policy), pass the `nonce` of the description. The
-  markup of the controls has no `style` attribute, so a policy with `style-src 'nonce-…'` allows it.
+  markup of the controls has no `style` attribute, and its style sheet has the nonce. The `style` attribute of the SVG
+  is not covered by this, so a strict policy still blocks it.
 - Each map carries its own copy of the style sheet of the controls, so the output for a page with several maps grows
   with each map.
 

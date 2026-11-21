@@ -94,7 +94,16 @@ const server = http.createServer((req, res) => {
   const a = document.querySelector('map-jr');
   // Each frame from now on: the buttons that are visible, and where the zoom buttons are.
   window.frames = [];
-  const watch = () => { const v = [...a.querySelectorAll('.map-jr-ctrl-zoom-in')].filter(b => getComputedStyle(b).visibility === 'visible'); const r = v[0]?.getBoundingClientRect(); window.frames.push({n: v.length, at: r && [r.x, r.y, r.width, r.height].join(), all: [...a.querySelectorAll('button')].filter(b => getComputedStyle(b).visibility === 'visible').length}); requestAnimationFrame(watch); };
+  const names = {'zoom-in': '.map-jr-ctrl-zoom-in', 'zoom-out': '.map-jr-ctrl-zoom-out', compass: '.map-jr-ctrl-compass', scale: '.map-jr-ctrl-scale', fullscreen: '.map-jr-ctrl-fullscreen', geolocate: '.map-jr-ctrl-geolocate', globe: '.map-jr-ctrl-globe, .map-jr-ctrl-globe-enabled', terrain: '.map-jr-ctrl-terrain', 'color-scheme': '.map-jr-ctrl-color-scheme', attribution: '.map-jr-ctrl-attrib'};
+  const watch = () => {
+    const missing = [], at = [];
+    for (const [name, selector] of Object.entries(names)) {
+      const v = [...a.querySelectorAll(selector)].filter(b => getComputedStyle(b).visibility === 'visible');
+      if (v.length !== 1) missing.push(name + ':' + v.length); else { const r = v[0].getBoundingClientRect(); at.push([name, r.x, r.y, r.width, r.height].join()); }
+    }
+    window.frames.push({n: missing.length ? 0 : 1, missing, at: at.join(';')});
+    requestAnimationFrame(watch);
+  };
   watch();
   window.idle = false;
   a.addEventListener('map-idle', () => { window.idle = true; });
@@ -349,7 +358,17 @@ try {
     const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
     const frames = state.frames, shown = frames.filter(f => f.n === 1), at = new Set(shown.map(f => f.at));
     check('browser: the corners of the first view with controls and of the idle map are equal (up to 20 of the 40,000 pixels of each 200 by 200 corner)', corners.every(c => diff[c].differ <= 20) && diff['top-right'].ink > 500 && diff['bottom-right'].ink > 100 && diff['bottom-left'].ink > 100, JSON.stringify(diff));
-    check('browser: the controls are visible in every frame from the page script on, once, and the zoom buttons do not move', frames.length > 5 && frames.every(f => f.n === 1) && at.size === 1, JSON.stringify({frames: frames.length, none: frames.filter(f => f.n !== 1).length, at: [...at]}));
+    check('browser: the controls are visible in every frame from the page script on, once each (zoom in and out, compass, scale, fullscreen, geolocate, globe, terrain, colour scheme, attribution), and none of them moves', frames.length > 5 && frames.every(f => f.n === 1) && at.size === 1, JSON.stringify({frames: frames.length, none: frames.filter(f => f.n !== 1).length, missing: frames.find(f => f.n !== 1)?.missing, at: at.size}));
+    check('browser: the attribution of the first view has its own width limit in each of two maps on one page', await (async () => {
+        const long = {...desc, attribution: {compact: false, customAttribution: 'A long line of credits that needs more than three hundred pixels to fit on one line'}};
+        const wide = await renderElement(long, {width: 900, height: 200, attributes: {id: 'w', style: 'width:900px;height:200px'}});
+        const narrow = await renderElement(long, {width: 300, height: 200, attributes: {id: 'n', style: 'width:300px;height:200px'}});
+        const two = await browser.newPage({viewport: {width: 1000, height: 600}, javaScriptEnabled: false});
+        await two.setContent(`<body style="margin:0">${wide}${narrow}`);
+        const widths = await two.evaluate(() => ['w', 'n'].map(id => Math.round(document.querySelector(`#${id} .map-jr-ctrl-attrib`).getBoundingClientRect().width)));
+        await two.close();
+        return widths[1] <= 283 && widths[0] > 400 ? true : (console.log(widths), false);
+    })(), '');
     check('browser: the map removes the first view with its style sheet, and its own controls remain', !state.svg && !state.style && state.buttons >= 7 && !page.errors.length, JSON.stringify({...state, frames: undefined, errors: page.errors}));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }

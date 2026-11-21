@@ -202,7 +202,7 @@ const html = await renderElement(
 |---|---|
 | `width`, `height` | The size in CSS pixels that the element has on most screens. The default is 800 by 500. |
 | `attributes` | More attributes of the element, by name. A name that starts with `on` (an event handler attribute) throws. The text of `style` comes after `display:block;position:relative;overflow:hidden`, which the first view needs before the script runs. |
-| `attribution` | The credits to show, when the server must not take them from the sources of the style. |
+| `attribution` | The credits to show, when the server must not take them from the sources that a visible layer uses at the zoom of the view. |
 | `overrides`, `timeout`, `requestTimeout`, `maxBytes`, `allowHosts` and the other options of `renderToSVG` | See [Server rendering](server-rendering.md#options). |
 
 The description can have every field: the server renders `sources`, `layers`, `terrain`, `data`, `images` and

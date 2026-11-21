@@ -345,7 +345,7 @@ const {svg} = await renderToSVG({
 ## The first view for a framework
 
 `renderFirstView` takes the options of `renderToSVG` and returns HTML for the element of the map: the SVG, and the
-credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The option `colorScheme` gives the colours of
+credits of the sources that a visible layer uses over it. The option `attribution` gives other credits; `false` shows none. The option `colorScheme` gives the colours of
 the credits: `'light'` (the default) or `'dark'`. The server cannot read the scheme of the browser, so `'auto'`
 writes both colours with the CSS function `light-dark()`, and a browser without that function shows the light
 colours. The Vue component passes its prop `color-scheme`, with `'light'` when the prop is not set. The Vue component

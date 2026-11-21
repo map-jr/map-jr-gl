@@ -115,8 +115,8 @@ export function controlsMarkup(o: FirstViewControls): string {
     const credits = o.credits ? [...new Set([...o.credits, ...[o.attribution?.customAttribution ?? []].flat().map(a => a.trim()).filter(Boolean)])].map(cleanCredits).filter(Boolean).join(' | ') : '';
     if (credits) {
         const compact = o.attribution?.compact ?? o.width <= 640;
-        rule(`.map-jr-ssr-m{max-width:${Math.max(0, o.width - 30)}px}`);
-        (corners['bottom-right'] ??= []).unshift(`<div class="${cls('ctrl', 'ctrl-attrib')}${compact ? ' ' + cls('compact', 'compact-show') : ''} map-jr-ssr-m"><button class="${cls('ctrl-attrib-button')}" type="button" title="${ui('AttributionControl.ToggleAttribution', 'Map data credits')}" aria-label="${ui('AttributionControl.ToggleAttribution', 'Toggle map data credits')}"${compact ? ' aria-expanded="true"' : ''}>i</button><div class="${cls('ctrl-attrib-inner')}">${credits.replace(/<a href="([^"]*)">/g, '<a href="$1" target="_blank" rel="noopener noreferrer">')}</div></div>`);
+        rule(`.map-jr-ssr-m${name(o.width)}{max-width:${Math.max(0, o.width - 30)}px}`);
+        (corners['bottom-right'] ??= []).unshift(`<div class="${cls('ctrl', 'ctrl-attrib')}${compact ? ' ' + cls('compact', 'compact-show') : ''} map-jr-ssr-m${name(o.width)}"><button class="${cls('ctrl-attrib-button')}" type="button" title="${ui('AttributionControl.ToggleAttribution', 'Map data credits')}" aria-label="${ui('AttributionControl.ToggleAttribution', 'Toggle map data credits')}"${compact ? ' aria-expanded="true"' : ''}>i</button><div class="${cls('ctrl-attrib-inner')}">${credits.replace(/<a href="([^"]*)">/g, '<a href="$1" target="_blank" rel="noopener noreferrer">')}</div></div>`);
     }
     const own = ['.map-jr-ssr-layer{position:absolute;inset:0;pointer-events:none}', '.map-jr-ssr-nav{display:flex;flex-direction:column;gap:10px;align-items:center}', '.map-jr-ssr-g{transform-origin:12px 12px}',
         // The controls of the map are in the same places, under the first view, from the start of the map: they stay out of sight until the map removes the first view.
