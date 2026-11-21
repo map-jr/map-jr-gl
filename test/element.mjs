@@ -242,7 +242,7 @@ try {
     // Errors: two GeoJSON sources whose URLs answer 404, for each way of listening to map-error.
     const errors = await page.evaluate(async () => {
         const logged = [], error = console.error;
-        console.error = (...args) => { if (String(args[0]).startsWith('[map-jr-gl]')) logged.push(String(args[0])); return error(...args); };
+        console.error = (...args) => { if (/^(Error: )?\[map-jr-gl\]/.test(String(args[0]))) logged.push(String(args[0])); return error(...args); };
         const run = async listen => {
             const a = document.createElement('map-jr');
             a.style.cssText = 'width:200px;height:150px';

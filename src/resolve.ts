@@ -1,6 +1,7 @@
 // The part of style handling that the page needs: types, and turning a style into one that is ready for the
 // engine (its sources and sprite found, its layers checked). The page script loads this file, so it must not import
 // the expression compiler or the text shaper: those are for the engine and the tile workers.
+import {httpError} from './requests.ts';
 import type {GeoJSONOptions} from './geojson.ts';
 // (The reader for PMTiles archives is loaded only for a style that has one: the page script stays small.)
 const PM_PREFIX = 'pmtiles://';
@@ -156,7 +157,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     if (typeof style === 'string') {
         const url = absolute(style, base);
         const res = await fetchFn(url);
-        if (!res.ok) throw new Error(`Failed to load style ${url}: ${res.status}`);
+        if (!res.ok) throw httpError('style', url, res.status);
         base = url;
         style = await res.json();
     }
@@ -169,7 +170,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                 const url = absolute(data, base);
                 data = await get(raw, url, async () => {
                     const res = await fetchFn(url);
-                    if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
+                    if (!res.ok) throw httpError('GeoJSON', url, res.status);
                     return res.json();
                 });
                 if (data === SKIP) return;
@@ -200,7 +201,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             const url = absolute(src.url, base);
             const json = await get(raw, url, async () => {
                 const res = await fetchFn(url);
-                if (!res.ok) throw new Error(`Failed to load source ${url}: ${res.status}`);
+                if (!res.ok) throw httpError('source', url, res.status);
                 return res.json();
             });
             if (json === SKIP) return;
@@ -290,7 +291,7 @@ export interface Sprite { icons: Record<string, SpriteIcon>; image: string; widt
 export async function loadSprite(url: string, highDensity: boolean, fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<Sprite> {
     const base = url + (highDensity ? '@2x' : '');
     const res = await fetchFn(base + '.json');
-    if (!res.ok) throw new Error(`Failed to load sprite ${base}.json: ${res.status}`);
+    if (!res.ok) throw httpError('sprite', base + '.json', res.status);
     const icons = await res.json() as Record<string, SpriteIcon>;
     let width = 0, height = 0;
     for (const i of Object.values(icons)) { width = Math.max(width, i.x + i.width); height = Math.max(height, i.y + i.height); }
