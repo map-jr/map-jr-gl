@@ -510,12 +510,15 @@ try {
         await replace(editor, code + "\ndocument.body.append(Object.assign(document.createElement('output'), {id: 'edited'}));\n");
         await page.getByRole('button', {name: 'Run', exact: true}).click();
         check(`${engine}: recipe: a changed example runs`, await shown(frame.locator('#edited'), 'attached') && await frame.locator('#map canvas').count() > 0);
-        await page.goto(base + '/recipes/fit', {waitUntil: 'load'});
-        const ownButton = page.frameLocator('.live-example iframe').getByRole('button', {name: 'Show all landings'});
+        // On a page of its own, so that the later checks keep the page and the editor of the recipe "basic".
+        const fitPage = await context.newPage();
+        await fitPage.goto(base + '/recipes/fit', {waitUntil: 'load'});
+        const ownButton = fitPage.frameLocator('.live-example iframe').getByRole('button', {name: 'Show all landings'});
         check(`${engine}: recipe: a button of the example code keeps the style of the frame`, await shown(ownButton) && await ownButton.evaluate(button => {
             const style = getComputedStyle(button);
             return style.marginLeft === '12px' && style.paddingLeft === '10px' && style.borderTopWidth === '1px';
         }));
+        await fitPage.close();
         check(`${engine}: recipe: no error of the page`, problems.length === 0, problems.join(' | '));
         await replace(editor, "import {createMap} from '@map-jr/map-jr-gl';\nconst map = createMap(;\n");
         await page.keyboard.press('ControlOrMeta+Enter');
