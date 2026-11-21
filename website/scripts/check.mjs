@@ -940,6 +940,41 @@ try {
         }
     }
     if (withMap) {
+        // The swap from the first paint to the map (#1416): a log of every animation frame from the start of the page to idle. The first
+        // paint covers the live canvas and the live controls while it shows (it is later in the document and has a higher z-index
+        // than the child of the stage that holds them), and when it is gone the map has drawn its first view (`idle`).
+        const log = `(() => {
+            window.__frames = [];
+            const tick = () => {
+                const stage = document.querySelector('[data-home-map]');
+                if (stage) {
+                    const child = element => { let node = element; while (node && node.parentElement !== stage) node = node.parentElement; return node; };
+                    const first = stage.querySelector('[data-home-first]');
+                    const live = [...stage.querySelectorAll('canvas, .map-jr-ctrl, .maplibregl-ctrl')].map(element => child(element)).filter(Boolean);
+                    const z = element => Number.parseInt(getComputedStyle(element).zIndex) || 0;
+                    const order = (a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING;
+                    window.__frames.push({first: !!first, state: stage.dataset.mapState, live: live.length,
+                        uncovered: first ? live.filter(element => element !== first && !(z(first) > z(element) || (z(first) === z(element) && order(first, element)))).length : 0});
+                    if (stage.dataset.mapState === 'idle' && window.__frames.length > 5 && !first) { window.__frames.done = true; return; }
+                }
+                requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        })()`;
+        for (const [width, height] of [[390, 844], [1024, 768], [1440, 900]]) {
+            const {page, close} = await open('/', {width, height, init: log});
+            await page.waitForFunction(() => window.__frames?.done, null, {timeout: 90000}).catch(() => {});
+            const frames = await page.evaluate(() => window.__frames ?? []);
+            const live = frames.filter(frame => frame.live > 0).length;
+            const uncovered = frames.filter(frame => frame.first && frame.uncovered > 0).length;
+            const bare = frames.filter(frame => !frame.first && frame.state !== 'idle').length;
+            const swap = frames.findIndex(frame => !frame.first);
+            check(`home page at ${width} px: the first paint covers the live map and its controls in every frame, and the map is idle when it goes`, frames.length > 5 && live > 0 && swap > 0 && uncovered === 0 && bare === 0,
+                `${frames.length} frames, ${live} with the live map, ${uncovered} where it shows through the first paint, ${bare} without the first paint and not idle, swap in frame ${swap}`);
+            await close();
+        }
+    }
+    if (withMap) {
         // A reader who prefers reduced motion gets a cut.
         const {page, close} = await open('/', {reducedMotion: 'reduce'});
         await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});

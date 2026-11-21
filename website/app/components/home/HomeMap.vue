@@ -54,12 +54,17 @@ const root = useTemplateRef<HTMLElement & {__homeMap?: unknown}>('root');
 function onLoad() {
     ready = true;
     if (root.value) root.value.__homeMap = map.value;
-    showFirst.value = false;
-    move(props.scene.camera);
+    // The map is at its first view already. A flight here would show a half-drawn map under the first paint.
+    const now = props.scene.camera;
+    if (now.center[0] === first.center[0] && now.center[1] === first.center[1] && now.zoom === first.zoom && (now.bearing ?? 0) === (first.bearing ?? 0) && (now.pitch ?? 0) === (first.pitch ?? 0)) return;
+    move(now);
 }
 
 function onIdle() {
     state.value = 'idle';
+    // The first paint covers the map and its controls until the map has drawn its first view. It goes in the same frame
+    // as the idle state, so the map and the controls show together (#1416).
+    showFirst.value = false;
     if (measured) return;
     measured = true;
     // The files of the library: the chunks of the build that keep "map-jr-gl" in their names (nuxt.config.ts) and the worker
@@ -96,11 +101,6 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
 
 <template>
   <div ref="root" class="absolute inset-0" :class="exploring ? '' : 'pointer-events-none'" :inert="!exploring" data-home-map :data-map-state="state" :data-camera="how">
-    <!-- eslint-disable-next-line vue/no-v-html -- a file of the repository, not input -->
-    <div v-if="showFirst" class="absolute inset-0 overflow-hidden">
-      <div class="home-first-wide" role="img" aria-label="Map" />
-      <div class="absolute inset-0" v-html="firstPaint" />
-    </div>
     <p v-if="unsupported" class="absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] border border-accented bg-default/90 px-3 py-1 text-center text-sm text-muted">This browser has no WebGL 2, so the map is a still picture.</p>
     <MapJr
       v-if="!unsupported"
@@ -114,6 +114,11 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
       @idle="onIdle"
       @error="state = 'error'"
     />
+    <!-- eslint-disable-next-line vue/no-v-html -- a file of the repository, not input -->
+    <div v-if="showFirst" class="absolute inset-0 z-10 overflow-hidden" data-home-first>
+      <div class="home-first-wide" role="img" aria-label="Map" />
+      <div class="absolute inset-0" v-html="firstPaint" />
+    </div>
   </div>
 </template>
 
