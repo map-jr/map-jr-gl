@@ -21,7 +21,7 @@ export function launch() {
     const firefoxUserPrefs = {'webgl.force-enabled': true, 'webgl.disable-fail-if-major-performance-caveat': true, 'webgl.enable-webgl2': true, 'gfx.webrender.software': true};
     // Firefox without a window draws a few frames each second on the page's thread, which makes each test time out.
     // HEADED=1 opens a window (on Linux that needs a display, for example xvfb-run).
-    const started = type.launch(browserName === 'firefox' ? {firefoxUserPrefs, headless: !process.env.HEADED} : {args, executablePath: '/opt/pw-browsers/chromium'});
+    const started = type.launch(browserName === 'firefox' ? {firefoxUserPrefs, headless: !process.env.HEADED} : {args});
     return process.env.NO_WORKER_WEBGL ? started.then(withoutWorkerWebGL) : started;
 }
 
