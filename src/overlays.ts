@@ -95,7 +95,11 @@ export interface PopupOptions {
     trackPointer?: boolean;
     /** maplibre-compat only: places the popup on fractions of a pixel instead of whole pixels (default `false`). */
     subpixelPositioning?: boolean;
-    /** Accepted for MapLibre GL JS, with no effect: the library has no globe or terrain that can hide the map position. */
+    /**
+     * Accepted for MapLibre GL JS, with no effect: the popup keeps its full opacity when the globe or terrain hides its
+     * map position, where MapLibre GL JS dims it to this value. The compat entry writes one warning per page when it is
+     * given.
+     */
     locationOccludedOpacity?: number | string;
 }
 

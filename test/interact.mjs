@@ -288,6 +288,58 @@ for (const mode of renderers) {
         return r;
     });
     check(`[${mode}] controls inherit the container's font; the canvas shows grab`, css.ctrl === 'monospace' && css.cursor === 'grab', JSON.stringify(css));
+    // #1356: each rule of the library's CSS that names an element (button, a, svg, path) has the specificity of one class, so element rules of the page (`button`, `a`,
+    // `svg`) leave the controls alone, and a page rule with two classes still wins. Both entries, light and dark.
+    if (mode === 'main' && browserName === 'chromium') {
+        for (const entry of ['host', 'compat']) {
+            const r = await page.evaluate(async entry => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:100px;top:100px;width:600px;height:400px;z-index:1000'}));
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, credit = '<a href="https://example.com/">credit</a>';
+                let m;
+                if (entry === 'host') {
+                    const {createMap} = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
+                    m = createMap(el, {renderer: 'main', style, initialView: {center: [0, 0], zoom: 3}, controls: [navigation()], attribution: {compact: true, customAttribution: credit}});
+                    m.overlay(Object.assign(document.createElement('div'), {textContent: 'Popup'}), {lngLat: [0, 0], popup: true, onClose() {}});
+                } else {
+                    const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                    m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style, center: [0, 0], zoom: 3});
+                    new mod.Popup().setLngLat([0, 0]).setText('Popup').addTo(m);
+                    m.addControl(new mod.NavigationControl(), 'top-right');
+                    m.addControl(new mod.AttributionControl({compact: true, customAttribution: credit}), 'bottom-right');
+                }
+                await new Promise(res => setTimeout(res, 500));
+                const look = () => {
+                    const b = el.querySelector('.map-jr-ctrl-group button'), a = el.querySelector('.map-jr-ctrl-attrib a'), g = el.querySelector('.map-jr-ctrl-group'), icon = el.querySelector('.map-jr-ctrl-group .map-jr-ctrl-icon, .map-jr-ctrl-group svg');
+                    const pick = (e, props) => props.map(k => getComputedStyle(e)[k]).join('|');
+                    return [pick(b, ['marginTop', 'marginLeft', 'paddingLeft', 'borderTopWidth', 'borderTopLeftRadius', 'backgroundColor', 'width', 'height', 'display']), pick(a, ['color', 'textDecorationLine']), pick(g, ['backgroundColor', 'borderTopLeftRadius']), pick(icon, ['width', 'height', 'display', 'marginLeft']), pick(el.querySelector('.map-jr-ctrl-attrib-button'), ['marginLeft', 'paddingLeft', 'borderTopWidth', 'borderTopLeftRadius', 'width', 'height', 'display']), pick(el.querySelector('.map-jr-popup-close-button'), ['marginLeft', 'paddingLeft', 'borderTopWidth', 'width', 'height', 'display'])].join(' || ');
+                };
+                const out = {};
+                const sheet = document.head.appendChild(document.createElement('style'));
+                for (const scheme of ['light', 'dark']) {
+                    el.classList.toggle('map-jr-dark', scheme === 'dark');
+                    sheet.textContent = '';
+                    out[scheme] = {plain: look()};
+                    sheet.textContent = 'button{margin:0 0 8px 12px;padding:4px 10px;border:1px solid red;border-radius:0;background:red;width:99px;height:99px;display:block} a{color:red;text-decoration:underline;margin-left:5px;padding-left:5px;display:block} svg,div{width:50px;height:50px;display:block;margin-left:4px}';
+                    out[scheme].elements = look();
+                    sheet.textContent = '.page-x .map-jr-ctrl-group button{margin-left:7px;background:rgb(1,2,3)} .page-x .map-jr-ctrl-attrib a{color:rgb(4,5,6)}';
+                    el.classList.add('page-x');
+                    const b = el.querySelector('.map-jr-ctrl-group button'), a = el.querySelector('.map-jr-ctrl-attrib a');
+                    out[scheme].two = [getComputedStyle(b).marginLeft, getComputedStyle(b).backgroundColor, getComputedStyle(a).color].join('|');
+                    el.classList.remove('page-x');
+                    // A page rule with one class on a container (the group, the attribution) wins: those rules have no specificity.
+                    sheet.textContent = '.map-jr-ctrl-group,.maplibregl-ctrl-group{background:rgb(1,1,1)} .map-jr-ctrl-attrib,.maplibregl-ctrl-attrib{background:rgb(1,1,1)}';
+                    out[scheme].one = [getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backgroundColor, getComputedStyle(el.querySelector('.map-jr-ctrl-attrib')).backgroundColor].join('|');
+                }
+                sheet.remove();
+                if (entry === 'host') m.destroy(); else m.remove();
+                el.remove();
+                return out;
+            }, entry);
+            const same = s => r[s].plain === r[s].elements, two = s => r[s].two === '7px|rgb(1, 2, 3)|rgb(4, 5, 6)' && r[s].one === 'rgb(1, 1, 1)|rgb(1, 1, 1)';
+            check(`[main] ${entry === 'host' ? 'createMap' : 'maplibre-compat'}: page rules for button, a, svg and div leave the controls, the compact attribution button and the popup close button unchanged, a page rule with two classes wins, and a page rule with one class on the group and the attribution wins, in light and dark (#1356)`,
+                same('light') && same('dark') && two('light') && two('dark') && /^\d/.test(r.light.plain), JSON.stringify(r));
+        }
+    }
     // Marker hit testing and events.
     const pt = await page.evaluate(() => window.map.project([-74.0060, 40.7127]));
     await page.mouse.move(pt.x, pt.y - 20);
