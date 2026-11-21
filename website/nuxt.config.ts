@@ -7,6 +7,10 @@ import {variantHeadScript} from './build/variants';
 
 const nav = readNav();
 const library = JSON.parse(readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8'));
+// The download of MapLibre GL JS that the home page shows (docs/status.json, written by `pnpm status`): the page script
+// with its CSS and the worker file, in bytes (gzip).
+const status = JSON.parse(readFileSync(resolve(import.meta.dirname, '../docs/status.json'), 'utf8'));
+const maplibreBytes = status.sizes.find((row: {file: string}) => row.file.startsWith('Page script and worker file of `@map-jr/map-jr-gl`')).maplibreBytes as number;
 
 export default defineNuxtConfig({
     compatibilityDate: '2026-11-01',
@@ -30,7 +34,32 @@ export default defineNuxtConfig({
             description: 'A small, fast map library for the web. It reads MapLibre styles.',
             repository: repositoryUrl,
             version: library.version as string,
+            maplibre: {version: status.maplibre as string, bytes: maplibreBytes},
             sections: nav,
+        },
+    },
+    // Each file of dist/ is a chunk of its own with "map-jr-gl" in its name, so that the home page can count the files that
+    // it fetched for the map (app/components/home/HomeMap.vue). The code of the site and of Vue stays in other chunks.
+    vite: {
+        build: {
+            rollupOptions: {
+                output: {
+                    advancedChunks: {
+                        groups: [
+                            // Vue is its own chunk, so that the chunk of the adapter holds only the adapter.
+                            {name: 'vue-runtime', test: /\/node_modules\/(@vue\/[\w-]+|vue)\//, priority: 20},
+                            {
+                                name: (id: string) => {
+                                    const file = /\/dist\/([\w.-]+)\.js$/.exec(id.split('?')[0]!)?.[1];
+                                    return file && (!id.includes('/node_modules/') || id.includes('/node_modules/@map-jr/map-jr-gl/dist/')) ? 'map-jr-gl-' + file.replace(/^map-jr-gl-?/, '') : null;
+                                },
+                                priority: 10,
+                            },
+                        ],
+                    },
+                    chunkFileNames: (chunk: {name: string}) => chunk.name.startsWith('map-jr-gl-') ? '_nuxt/[name]-[hash].js' : '_nuxt/[hash].js',
+                },
+            },
         },
     },
     // A change of the manifest starts the development server again, because the collection is made from it.
