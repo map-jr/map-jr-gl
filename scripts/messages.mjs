@@ -88,7 +88,10 @@ for (const file of files) {
                 node.expressions.forEach((e, i) => { out = cross(cross(out, render(e, depth + 1)), [node.quasis[i + 1].value.cooked]); });
                 return out;
             }
-            case 'BinaryExpression': return node.operator === '+' ? cross(render(node.left, depth + 1), render(node.right, depth + 1)) : [PH('value')];
+            case 'BinaryExpression':
+                // `x[0].toUpperCase() + x.slice(1)` is the value of x with a capital letter.
+                if (node.operator === '+' && /^(\w+)\[0\]\.toUpperCase\(\) \+ \1\.slice\(1\)$/.test(text(node))) return [PH(node.right.callee.object.name)];
+                return node.operator === '+' ? cross(render(node.left, depth + 1), render(node.right, depth + 1)) : [PH('value')];
             case 'ConditionalExpression': return limit([...render(node.consequent, depth + 1), ...render(node.alternate, depth + 1)]);
             case 'LogicalExpression': return node.left.type === 'MemberExpression' && node.left.computed ? render(node.left, depth + 1) : [PH(name(node.left))];
             case 'MemberExpression':
@@ -214,8 +217,10 @@ for (const file of files) {
         for (const [n, arrow] of arrows) {
             const body = arrow.body;
             for (const v of render(body)) {
-                // (The parameters `a` and `b` are the names that the user wrote and the other value of the check.)
-                const message = clean(v.replace(/\u0001([ab])\u0002/g, (_, x) => PH(x === 'a' ? 'name' : 'value')));
+                // (A parameter of the text names what it stands for in camel case, for example `layerId`: the entry shows `<layer id>`.)
+                const params = new Set(arrow.params.map(x => x.name));
+                for (const x of params) if (/^[ab]$/.test(x)) { problems.push(`${file}: text ${n} names a parameter "${x}". Name what it stands for, for example "layerId", so that docs/reference/messages.md shows <layer id>.`); break; }
+                const message = clean(v.replace(/\u0001([^\u0002]*)\u0002/g, (all, x) => params.has(x) ? PH(x.replace(/[A-Z]/g, c => ' ' + c.toLowerCase())) : all));
                 if (!/[a-z]{3}/.test(bare(message))) continue;
                 messages.push({section: /^<map-jr>/.test(message) ? 'element' : /^<MapJr>/.test(message) ? 'vue' : 'main', message: PREFIX + ' ' + message, kind: thrown.has(Number(n)) ? 'Error' : 'Warning', dev: true, file, at: Number(n)});
             }
