@@ -17,6 +17,11 @@ import type {Scene} from '~/utils/home-scenes';
 // the repository, so the build needs no network (#1391).
 import firstPaint from '~/assets/home-first-paint.html?raw';
 
+// Windows up to 1000 px wide and 1060 px high have a stage of at most 1000 by 1000 and take the inline SVG of 1000 by 1000. Other
+// windows take the SVG of 2560 by 1600 from public/, which starts to load with the HTML only for them (scripts/first-paint.mjs).
+const small = '(max-width: 1000px) and (max-height: 1060px)';
+useHead({link: [{rel: 'preload', as: 'image', href: '/home-first-paint-wide.svg', media: `not all and ${small}`}]});
+
 const props = defineProps<{scene: Scene; exploring: boolean}>();
 const emit = defineEmits<{measure: [{idleMs: number; bytes: number; files: number}]; state: [string]}>();
 
@@ -92,7 +97,10 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
 <template>
   <div ref="root" class="absolute inset-0" :class="exploring ? '' : 'pointer-events-none'" :inert="!exploring" data-home-map :data-map-state="state" :data-camera="how">
     <!-- eslint-disable-next-line vue/no-v-html -- a file of the repository, not input -->
-    <div v-if="showFirst" class="absolute inset-0 overflow-hidden" v-html="firstPaint" />
+    <div v-if="showFirst" class="absolute inset-0 overflow-hidden">
+      <div class="home-first-wide" role="img" aria-label="Map" />
+      <div class="absolute inset-0" v-html="firstPaint" />
+    </div>
     <p v-if="unsupported" class="absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] border border-accented bg-default/90 px-3 py-1 text-center text-sm text-muted">This browser has no WebGL 2, so the map is a still picture.</p>
     <MapJr
       v-if="!unsupported"
@@ -108,3 +116,9 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
     />
   </div>
 </template>
+
+<style>
+.home-first-wide { position: absolute; inset: 0; background: url('/home-first-paint-wide.svg') 50% 50% / 2560px 1600px no-repeat; }
+@media (max-width: 1000px) and (max-height: 1060px) { .home-first-wide { display: none; } }
+@media not all and (max-width: 1000px) and (max-height: 1060px) { .home-first-small { display: none; } }
+</style>
