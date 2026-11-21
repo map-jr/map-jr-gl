@@ -184,8 +184,8 @@ The element is in the light DOM of `<map-jr>`, so the CSS of the page styles it.
 
 `renderElement(description, options)` of `@map-jr/map-jr-gl/server` returns the markup of the element for a
 description: an attribute for each field that has one, and the first view (the result of `renderFirstView`) as the
-children of the element. The browser shows the first view before any script runs, and the map removes it after its
-first frame, as with the Vue and React components.
+children of the element, with the `controls` of the description as static markup. The browser shows the first view
+before any script runs, and the map removes it after its first frame, as with the Vue and React components.
 
 ```js
 import {renderElement} from '@map-jr/map-jr-gl/server';

@@ -201,7 +201,7 @@ names the option.
 |---|---|---|
 | `svg` | `string` | The SVG document of the render. |
 | `tiles` | `string[]` | The URLs of the tiles of the view. |
-| `attribution` | `string[]` | The credits of the sources of the style, as HTML. |
+| `attribution` | `string[]` | The credits of the sources that a visible layer uses at the zoom of the view, as HTML. |
 <!-- ref:RenderResult:end -->
 
 The SVG has the attribute `data-map-jr-ssr`, and its style is `position: absolute; inset: 0; width: 100%;
@@ -211,26 +211,49 @@ height: 100%`. A map of `@map-jr/map-jr-gl` or of `@map-jr/map-jr-gl/maplibre-co
 ## `renderFirstView`
 
 ```ts
-renderFirstView(
-  options: RenderOptions & {attribution?: string | string[] | false},
-): Promise<string>
+renderFirstView(options: FirstViewOptions): Promise<string>
 ```
 
 Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
-right. Put the HTML into the element of the map, which needs a `position` that is not `static`.
+right. With `controls`, it also returns the controls of the map and their style sheet. Put the HTML into the
+element of the map, which needs a `position` that is not `static`.
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `options` **required** | [`RenderOptions`](#renderoptions) and `attribution` | | The options of `renderToSVG`, and the attribution to show. |
+| `options` **required** | [`FirstViewOptions`](#firstviewoptions) | | The options of `renderToSVG`, the attribution to show, and the controls. |
+
+### `FirstViewOptions`
+
+`FirstViewOptions` has the options of [`RenderOptions`](#renderoptions), and these:
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `attribution` | `string \| string[] \| false` | the attribution of the sources | The attribution as HTML. `false` shows none. |
-| `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colours of the attribution box, and the [style](#style) of a pair `{light, dark}`. |
+| `attribution` | `string \| string[] \| false` | the attribution of the sources that a visible layer uses | The attribution as HTML. `false` shows none, also with `controls`. |
+| `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colours of the attribution and the controls, and the [style](#style) of a pair `{light, dark}`. |
+| `controls` | `ControlSpec[]` | | The controls of the description, for example `[navigation(), scale()]`. With the option (also `[]`), the HTML has these controls and the attribution as markup. `custom()` controls are left out. |
+| `locale` | `Record<string, string>` | | The texts of the controls, as `locale` of the description. It has an effect with `controls`. |
+| `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'` for the style sheet of the controls. It has an effect with `controls`. |
+| `minZoom`, `maxZoom` | `number` | `-2`, `22` | The limits of the zoom of the description. At a limit, the zoom button is disabled. They have an effect with `controls`. |
+| `projection` | `{type?: string}` | | The projection of the description. With `{type: 'globe'}`, the globe control is on. It has an effect with `controls`. |
+| `attributionOptions` | `{compact?: boolean; customAttribution?: string \| string[]}` | | The options of the attribution, as `attribution` of the description. It has an effect with `controls`. |
 
-The HTML keeps only the text and the links to `http` and `https` URLs of the attribution. With `'auto'`, the box
-follows the colour scheme of the browser with the CSS function `light-dark()`, and the render uses the `light` style.
-A browser without `light-dark()` shows the light colours.
+The HTML keeps only the text and the links to `http` and `https` URLs of the attribution. Without `controls`, and with
+`'auto'`, the box of the credits follows the colour scheme of the browser with the CSS function `light-dark()`, and the
+render uses the `light` style. A browser without `light-dark()` shows the light colours. With `controls`, the style
+sheet has a copy of the dark rules inside `@media (prefers-color-scheme: dark)`.
+
+Without `controls`, the HTML has the credits in a plain box and no controls. With `controls`, it has:
+
+- The markup of the attribution and the controls, in the corners and the look of the map, and the style sheet of the
+  controls. The markup has no `style` attribute.
+- The scale with the length that it has at the centre of the view, and the compass with the bearing of the view.
+- The attribution folded to a button when `width` is 640 or less, as the map folds it for an element of that size.
+  `attributionOptions.compact` sets it.
+- The attribute `data-map-jr-ssr` on the SVG, the style sheet and the markup. The map removes them together when it
+  takes over. Until then the controls of the map are hidden, and they are in the same places as the markup.
+
+The buttons of the markup do nothing until the map takes over. The
+[guide](../guide/server-rendering.md#controls-in-the-first-view) shows an example.
 
 **Returns** a promise of the HTML as a string. The promise rejects in the cases of [`renderToSVG`](#rendertosvg).
 
@@ -253,7 +276,8 @@ Returns the markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element`, wit
 The element has an attribute for each field of the description that has one. The page sets each other field, such
 as `layers`, `data` or a style object, as a property of the element, with the same value. The render uses `style`,
 the view of `view` or `initialView`, `sources`, `layers`, `terrain`, `sprite`, `data`, `images`, `fontFamily`,
-`colorScheme` and `attribution: false` of the description.
+`colorScheme`, `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection` and `attribution` of the description,
+so the first view has its controls (see [`renderFirstView`](#renderfirstview)).
 
 **Returns** a promise of the markup as a string. When the render fails, the promise resolves to the element without
 the first view, and the console of the server has the error.

@@ -353,13 +353,19 @@ uses this function for its `ssr` prop. For a pair `{light, dark}` in `style`, th
 style: `'dark'` uses `dark`, and each other value uses `light`. With React, call it on the server and give the result to the component. See
 [Vue and Nuxt](vue.md) and [React](react.md).
 
+With the option `controls` (the `controls` of the description), the HTML also has the attribution and the built-in
+controls as static markup with the style sheet of the controls, in the places and the look that the map gives them, so
+that the map takes over with no visible change. The Vue component and `renderElement` pass the `controls`, `locale`,
+`nonce`, `minZoom`, `maxZoom`, `projection` and `attribution` of the description themselves. See
+[Controls in the first view](guide/server-rendering.md#controls-in-the-first-view).
+
 `renderElement(description, options)` returns the markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element`:
 the attributes from the description (`MapDescription`) and the result of `renderFirstView` as the children of the
 element. See [Server rendering](element.md#server-rendering) in the document of the web component.
 
 ## Credits
 
-The result of `renderToSVG` has `attribution`: the credits of the sources of the style, as a list of HTML strings.
+The result of `renderToSVG` has `attribution`: the credits of the sources that a visible layer uses at the zoom of the view, as a list of HTML strings.
 Show them with the render. (The Vue component does this.)
 
 ## Fonts

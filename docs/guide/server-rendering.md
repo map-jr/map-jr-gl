@@ -35,7 +35,8 @@ embed them as data instead, for an SVG that is opened as a file or shown with an
 
 [`renderFirstView`](../reference/server.md#renderfirstview) returns HTML for the element of the map: the SVG, and the
 attribution over it. The page shows this HTML at once. The map then starts in the same element, and it removes the
-HTML when it has loaded the tiles of its first view. The controls appear at that moment, because the HTML has none.
+HTML when it has loaded the tiles of its first view. With the option `controls`, the HTML also has the controls of
+the map, so that they are on the page from the first paint (see [Controls in the first view](#controls-in-the-first-view)).
 
 **Main API**
 
@@ -209,6 +210,50 @@ Two things go wrong most often:
 
 The SVG is scaled to the size of the element. Set `width` and `height` to the size that the element has on most
 screens, so that the labels have the size of those of the live map.
+
+## Controls in the first view
+
+Pass the `controls` of the description to `renderFirstView`, and the HTML has the attribution and the built-in
+controls (`navigation()`, `scale()`, `fullscreen()`, `geolocate()`, `globe()`, `terrain()` and `colorScheme()` of
+`@map-jr/map-jr-gl/controls`) as static markup, with the style sheet of the controls. Each control has the classes,
+the corner and the look that it has in the map, so the map takes over with no visible change: the map removes the
+markup and its style sheet together with the SVG, and shows its own controls in the same places.
+
+```js
+import {renderFirstView} from '@map-jr/map-jr-gl/server';
+import {navigation, scale} from '@map-jr/map-jr-gl/controls';
+
+const firstView = await renderFirstView({
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+  width: 800,
+  height: 500,
+  controls: [navigation(), scale()],
+});
+```
+
+The Vue component and `renderElement` do this with the `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection`
+and `attribution` of the description, and no option is needed. With React or Svelte, pass the same fields to
+`renderFirstView` (`attribution: false` of the description is `attribution: false` there, and its other
+`attribution` options are `attributionOptions`).
+
+- The scale has the length that it has at the centre of the first view. The compass shows the bearing of the view.
+- A button of the first view does nothing until the map takes over. A control from `custom()` is left out, because
+  the server cannot draw an element that the page makes.
+- The server cannot know the width of the element, so it folds the attribution to a button when `width` is 640 or
+  less, as the map does for an element of that size. When the element has another width, the map replaces the
+  attribution at the take-over.
+- With `colorScheme: 'auto'`, the style sheet follows the colour scheme of the browser, and the control `colorScheme()`
+  has both icons, of which the browser shows one. The style of the first view is the `light` style of a pair.
+- With a [Content Security Policy](../loading.md#content-security-policy), pass the `nonce` of the description. The
+  markup of the controls has no `style` attribute, so a policy with `style-src 'nonce-…'` allows it.
+- Each map carries its own copy of the style sheet of the controls, so the output for a page with several maps grows
+  with each map.
+
+The entry `@map-jr/map-jr-gl/maplibre-compat` has no description, so it has no server render of its own. Its controls
+also have another look than those of the main API, which the markup has, so the markup of `controls` does not match
+the controls of a map of that entry.
 
 ## Load the tiles while the script loads
 
