@@ -554,8 +554,8 @@ map.update({style: url, layers, data: {routes: routes(1)}});
 - The data of each source is compared by identity. Give a new object to change it.
 - Only the data goes to the map. A style with the data inside it would be compared and sent as a whole.
 - The data stays when the style changes, and the sources that keys of `data` made are made again in the new style.
-- A source that needs options (`cluster`, `promoteId`, `attribution`) is declared in the style or in `sources`,
-  with no features, and `data` gives it the features.
+- A source that needs options (`cluster`, `promoteId`, `attribution`) is declared in the style or in `sources`, and
+  `data` gives it the features. A GeoJSON source in `sources` whose id is a key of `data` needs no `data` of its own.
 - A key that leaves `data` removes the source that the key made. A layer that still names it draws nothing, and the
   development build writes a warning.
 - A key that is the id of a source of another type, such as a vector source, is an error of the map (`onError`), and

@@ -90,6 +90,8 @@ The functions of `@map-jr/map-jr-gl` and the map that they make.
   Warning, development build only.
 - `[map-jr-gl] <name>: "<value>" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit<value><value>". "<value>" of the description applies to the map for good.`
   Warning, development build only.
+- `[map-jr-gl] sources: the GeoJSON source "<name>" has no "data", and "data" of the description has no key "<name>", so the source has no features. Give the source its own "data", or write the features as "data: {<name>: geojson}".`
+  Warning, development build only.
 - `[map-jr-gl] hoverState: a feature of the layer "<name>" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`
   Warning, development build only.
 - `[map-jr-gl] locale: <name>. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`

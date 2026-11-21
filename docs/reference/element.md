@@ -119,9 +119,6 @@ el.style.height = '400px';
 el.mapStyle = 'https://styles.map-jr.org/1/elevation-zero.json';
 el.initialView = {center: [-74.0065, 40.7085], zoom: 13.6};
 el.controls = [navigation()];
-el.sources = {
-  offices: {type: 'geojson', data: {type: 'FeatureCollection', features: []}},
-};
 el.data = {
   offices: {
     type: 'FeatureCollection',
