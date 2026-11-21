@@ -791,13 +791,17 @@ try {
         await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: base});
         const page = await context.newPage();
         await page.goto(base + '/recipes/query', {waitUntil: 'networkidle'});
-        await page.getByRole('button', {name: 'Copy page as markdown'}).first().click();
-        await page.getByRole('button', {name: 'Copied'}).first().waitFor({timeout: 5000}).catch(() => {});
-        const page_ = await page.evaluate(() => navigator.clipboard.readText());
+        // The label "Copied" stays for two seconds, so it cannot tell the second copy from the first. The clipboard is
+        // emptied before each click, and the check waits until it has text.
+        const copy = async name => {
+            await page.evaluate(() => navigator.clipboard.writeText(''));
+            await page.getByRole('button', {name}).first().click();
+            await page.waitForFunction(async () => (await navigator.clipboard.readText()) !== '', null, {timeout: 5000}).catch(() => {});
+            return page.evaluate(() => navigator.clipboard.readText());
+        };
+        const page_ = await copy('Copy page as markdown');
         check('"Copy page as markdown" copies the file of docs/', page_ === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'), `${page_.length} characters`);
-        await page.getByRole('button', {name: 'Copy migration prompt'}).first().click();
-        await page.getByRole('button', {name: 'Copied'}).first().waitFor({timeout: 5000}).catch(() => {});
-        const copiedPrompt = await page.evaluate(() => navigator.clipboard.readText());
+        const copiedPrompt = await copy('Copy migration prompt');
         check('"Copy migration prompt" copies the block of the prompt', copiedPrompt === block, `${copiedPrompt.length} characters`);
         await context.close();
     }
