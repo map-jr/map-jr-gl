@@ -62,8 +62,8 @@ in the bundler or in an import map. The code of the wrapper does not change.
 | react-map-gl | 7 | Does not work: it reads the private `map.transform` and throws a `TypeError`. Upgrade to version 8. |
 | `@indoorequal/vue-maplibre-gl` | 9.0.1 | Runs with a map, a source, a layer, a marker and a control. |
 | `vue-maplibre-gl` | 5.6.1 | Not run. It calls `setRenderWorldCopies`, which has no effect here. |
-| `svelte-maplibre` | 2.0.1 | Not run. It imports `config`, which the entry does not export. |
-| `svelte-maplibre-gl` | 2.2.1 | Not run. It imports `Hash`, `Event` and the source classes, which the entry does not export. |
+| `svelte-maplibre` | 2.0.1 | Not run. It builds and the `config` that it reads exists. Its `pmtiles://` sources call `addProtocol('pmtiles')`, which warns once because the library reads those URLs itself. |
+| `svelte-maplibre-gl` | 2.2.1 | Builds, and `Hash` works. The map does not start: the wrapper reads `map.style._loaded` and `map.transform`, which are missing here. |
 | `@maplibre/ngx-maplibre-gl` | 22.3.1 | Not run. It calls `setRenderWorldCopies`, `setAnisotropicFilterPitch` and `setCenterElevation`, which have no effect here. |
 | `@maptiler/sdk` | 4.2.1 | Not run. It calls `setRoll`, which has no effect here. |
 

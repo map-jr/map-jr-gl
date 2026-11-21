@@ -12,7 +12,7 @@ import {pluginsBlock} from './report.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), dir = path.join(root, '.cache/plugins'), scenarios = path.join(import.meta.dirname, 'plugins');
 const PACKAGES = {draw: '@mapbox/mapbox-gl-draw', 'terra-draw': 'terra-draw terra-draw-maplibre-gl-adapter', compare: '@maplibre/maplibre-gl-compare', 'sync-move': '@mapbox/mapbox-gl-sync-move',
-    pmtiles: 'pmtiles', opacity: 'maplibre-gl-opacity', inspect: '@maplibre/maplibre-gl-inspect', export: '@watergis/maplibre-gl-export', react: '@vis.gl/react-maplibre react react-dom', 'react-controlled': '@vis.gl/react-maplibre react react-dom', vue: '@indoorequal/vue-maplibre-gl vue', deck: '@deck.gl/mapbox @deck.gl/layers @deck.gl/core', geocoder: '@maplibre/maplibre-gl-geocoder', directions: '@maplibre/maplibre-gl-directions', language: '@mapbox/mapbox-gl-language', geoman: '@geoman-io/maplibre-geoman-free'};
+    pmtiles: 'pmtiles', opacity: 'maplibre-gl-opacity', inspect: '@maplibre/maplibre-gl-inspect', export: '@watergis/maplibre-gl-export', react: '@vis.gl/react-maplibre react react-dom', 'react-controlled': '@vis.gl/react-maplibre react react-dom', vue: '@indoorequal/vue-maplibre-gl vue', deck: '@deck.gl/mapbox @deck.gl/layers @deck.gl/core', geocoder: '@maplibre/maplibre-gl-geocoder', directions: '@maplibre/maplibre-gl-directions', language: '@mapbox/mapbox-gl-language', geoman: '@geoman-io/maplibre-geoman-free', 'svelte-gl': 'svelte-maplibre-gl svelte esbuild-svelte'};
 const only = process.argv.slice(2).filter(a => !a.startsWith('--')), names = Object.keys(PACKAGES).filter(n => !only.length || only.includes(n));
 // (The folder also has shims/, which is not a scenario.)
 
@@ -26,9 +26,13 @@ const {build} = createRequire(import.meta.url)('esbuild'), bundles = {};
 // A scenario and its plugin must get the same copy of a framework: the one that was installed with the plugins. (The
 // project has React and Vue also, for its own adapters.)
 const one = Object.fromEntries(['react', 'react-dom', 'vue'].filter(n => existsSync(path.join(dir, 'node_modules', n))).map(n => [n, path.join(dir, 'node_modules', n)]));
+// The Svelte wrappers ship .svelte files: esbuild-svelte compiles them (it is installed with the wrapper).
+// (The scenario and the wrapper must get one copy of `svelte`, the one installed with the wrapper.)
+const oneSvelte = {name: 'one-svelte', setup: b => b.onResolve({filter: /^svelte(\/|$)/}, async args => args.pluginData ? undefined : b.resolve(args.path, {resolveDir: dir, kind: args.kind, pluginData: 1}))};
+const svelte = names.includes('svelte-gl') ? [oneSvelte, createRequire(path.join(dir, 'package.json'))('esbuild-svelte')({compilerOptions: {css: 'injected'}})] : [];
 for (const n of names) {
-    const out = await build({entryPoints: [path.join(scenarios, n + '.js')], bundle: true, format: 'esm', write: false, external: ['maplibre-gl'], nodePaths: [path.join(dir, 'node_modules')], alias: {events: path.join(scenarios, 'shims/events.js'), ...one},
-        loader: {'.css': 'empty', '.svg': 'dataurl', '.png': 'dataurl'}, define: {'process.env.NODE_ENV': '"production"', global: 'globalThis'}, logLevel: 'silent'}).catch(e => ({error: e.message.split('\n')[0]}));
+    const out = await build({plugins: svelte, conditions: ['svelte', 'browser'], mainFields: ['svelte', 'browser', 'module', 'main'], entryPoints: [path.join(scenarios, n + '.js')], bundle: true, format: 'esm', write: false, external: ['maplibre-gl'], nodePaths: [path.join(dir, 'node_modules')], alias: {events: path.join(scenarios, 'shims/events.js'), ...one},
+        loader: {'.css': 'empty', '.svg': 'dataurl', '.png': 'dataurl'}, define: {'process.env.NODE_ENV': '"production"', global: 'globalThis'}, logLevel: 'silent'}).catch(e => ({error: e.message.split('\n')[0] + (e.errors?.[0] ? ' ' + e.errors[0].text + ' ' + e.errors[0].location?.file : '')}));
     bundles[n] = out.error ? out : out.outputFiles[0].text;
 }
 
