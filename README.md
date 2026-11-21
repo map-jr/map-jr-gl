@@ -93,7 +93,7 @@ npm install @map-jr/map-jr-gl
 
 Then import from `@map-jr/map-jr-gl`, or from `@map-jr/map-jr-gl/maplibre-compat` for the API of MapLibre GL JS.
 
-Until then, build the package from this repository:
+To use a build of the current source instead of the release on npm, build the package from this repository:
 
 ```bash
 git clone https://github.com/map-jr/map-jr-gl.git
