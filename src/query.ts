@@ -3,6 +3,7 @@ import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {compileFilter} from './expr.ts';
 import type {TileLayers} from './tile.ts';
+import type {GeoJSONGeometry} from './host.ts';
 
 /** A feature found by a query. It comes straight from the tile data, whether or not any style layer draws it. */
 export interface QueriedFeature {
@@ -19,7 +20,7 @@ export interface QueriedFeature {
     /** The properties of the feature. */
     properties: Record<string, unknown>;
     /** The geometry as GeoJSON, in longitude and latitude. `querySource` sets it only with `geometry: true`. */
-    geometry?: {type: string; coordinates: unknown};
+    geometry?: Exclude<GeoJSONGeometry, {type: 'GeometryCollection'}>;
 }
 export interface TileQuery {
     source: string; z: number; x: number; y: number;
