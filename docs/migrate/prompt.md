@@ -60,12 +60,12 @@ Main API (see `migrate/compat-to-main-api.md` for the full table):
 
 ## 5. Do not
 
-- Do not remove `maplibre-gl` from `package.json` while a wrapper, a plugin or the types of the project still import it. When nothing imports it any more, remove it with the package manager: this is part of the migration, and it is not a rewrite of the application.
+- Do not remove `maplibre-gl` while a wrapper, a plugin or the types of the project still import it. Step 7 says when to remove it.
 - Do not use an API that the docs do not list. Look up each name in `reference/` or in `maplibre-compatibility.md`; do not guess a method from MapLibre GL JS.
 - Do not write an alias that matches `maplibre-gl/dist/...`. The build stops.
 - Do not copy the style of a layer that the library cannot draw (video and canvas sources, `within` and `distance`, MapLibre Tiles). Report it to the user.
-- Do not rewrite the application. Change imports, calls and options only, and leave the structure of the code. Removing a package that nothing imports any more is allowed.
-- Do not add `strict: true` or a workaround to the final code. Remove `strict: true` after the check in step 6.
+- Do not rewrite the application. Change imports, calls and options only, and leave the structure of the code. The removals in step 7 are part of the migration.
+- Do not leave `strict: true` or a workaround in the final code. Step 7 removes `strict: true`.
 - Do not mark the work as done before the checks in step 6 pass.
 
 ## 6. Check the result
@@ -76,9 +76,17 @@ Main API (see `migrate/compat-to-main-api.md` for the full table):
    If you cannot run a browser, say so in the report instead of skipping the check in silence.
 4. Confirm that the map reaches the `idle` event (`map.on('idle', ...)` in the compat entry, or the `idle` event of `map.listen` in the main API). Then confirm that it draws: call `queryRenderedFeatures()` and check that each layer that the project adds has features, and take a screenshot when you can. Trigger each interaction that the application has once (a click that opens a popup, a marker, a control) and check the result in the page, not only the absence of errors. Do not report the work as checked when you only reached `idle`.
 
-## 7. Report
+## 7. Before you report
 
-End with a list of the files that you changed, the entry that you chose, each warning that remains, and each part of MapLibre GL JS that the project uses and that the library does not have.
+Carry out each of these steps. They are not suggestions, and the report in step 8 must say that you did each one.
+
+1. Remove `strict: true` from the code (compat entry). Search the source for `strict` to be sure.
+2. Search the source for `maplibre-gl`. When no file, wrapper, plugin or type imports it, run `npm uninstall maplibre-gl` (or the equivalent of the package manager of the project) so that it leaves `package.json`. Do not leave it for the user to decide.
+3. Run the build once more, and open the page once more if the code changed after step 6.
+
+## 8. Report
+
+End with a list of the files that you changed, the entry that you chose, and a line for each of the three steps of section 7 that says what you did. Add each warning that remains, each failed request with its URL, and each part of MapLibre GL JS that the project uses and that the library does not have.
 ```
 
 The block above is also served as plain markdown at `https://map-jr.org/raw/migrate/prompt.md`.
