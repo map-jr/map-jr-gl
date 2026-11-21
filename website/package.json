@@ -8,7 +8,8 @@
     "generate": "nuxt generate",
     "serve": "node scripts/serve.mjs",
     "check": "node scripts/check.mjs",
-    "contours": "node scripts/contours.mjs"
+    "contours": "node scripts/contours.mjs",
+    "first-paint": "node scripts/first-paint.mjs"
   },
   "dependencies": {
     "@codemirror/lang-html": "6.4.12",

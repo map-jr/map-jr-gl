@@ -842,6 +842,9 @@ try {
     {
         const html = await (await fetch(base + '/')).text();
         check('home page: the first paint is the SVG of the server renderer', /<svg[^>]*data-map-jr-ssr/.test(html));
+        // The page has the committed file whole (app/assets/home-first-paint.html, written by `pnpm first-paint`): the build needs no network.
+        const committed = readFileSync(new URL('../app/assets/home-first-paint.html', import.meta.url), 'utf8');
+        check('home page: the first paint is the committed file of app/assets', html.includes(committed), `${committed.length} bytes`);
     }
     if (withMap) {
         const {page, problems, close} = await open('/');
@@ -882,6 +885,59 @@ try {
         check('home page: the camera flies to the next stop', flight === 'fly', flight);
         check('home page: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
+    }
+    if (withMap) {
+        // The first paint has the scale and the centre of the live map at every size of the window (#1393). The labels of places in
+        // the SVG (the page without JavaScript) are where the places of the idle map are: every label has the same horizontal
+        // distance (within 3 px) to its place, so the scale and the centre agree, and most labels have the same vertical
+        // distance to their place, which is the offset of the label from the dot. (A label of two lines has another offset.)
+        // Windows up to 1000 by 1060 px have the inline SVG of 1000 by 1000. The others have the SVG of 2560 by 1600 from /home-first-paint-wide.svg
+        // as the background of the stage; the check puts that file where the style puts it (centred on the stage, 1:1) and measures it.
+        const wideSvg = await (await fetch(base + '/home-first-paint-wide.svg')).text();
+        for (const [width, height] of [[390, 844], [768, 1024], [1024, 768], [1440, 900]]) {
+            const plain = await browser.newContext({viewport: {width, height}, javaScriptEnabled: false});
+            const first = await plain.newPage();
+            await first.goto(base + '/');
+            const painted = await first.evaluate(wideSvg => {
+                const background = getComputedStyle(document.querySelector('.home-first-wide'));
+                const stage = document.querySelector('[data-home-map]').getBoundingClientRect();
+                if (background.display !== 'none') {
+                    // The style of the wide picture: centred, 2560 by 1600, no repeat.
+                    if (background.backgroundSize !== '2560px 1600px' || background.backgroundRepeat !== 'no-repeat' || background.backgroundPositionX !== '50%' || background.backgroundPositionY !== '50%') return {wrong: `${background.backgroundSize} ${background.backgroundRepeat} ${background.backgroundPosition}`};
+                    const holder = document.createElement('div');
+                    holder.style.cssText = `position:absolute;left:${stage.x + stage.width / 2 - 1280}px;top:${stage.y + stage.height / 2 - 800}px;width:2560px;height:1600px`;
+                    holder.innerHTML = wideSvg;
+                    document.body.append(holder);
+                }
+                return {wide: background.display !== 'none', stage: [stage.width, stage.height], labels: Object.fromEntries([...document.querySelectorAll('svg text')].map(label => {
+                    const box = label.getBoundingClientRect();
+                    return [label.textContent.trim(), [box.x + box.width / 2, box.y + box.height / 2]];
+                }))};
+            }, wideSvg);
+            check(`home page at ${width} px: the first paint is the ${painted.wide ? 'wide' : 'inline'} picture, centred at 1:1 and larger than the stage`, !painted.wrong && (painted.wide ? 2560 >= painted.stage[0] && 1600 >= painted.stage[1] : 1000 >= painted.stage[0] && 1000 >= painted.stage[1]), painted.wrong ?? `stage ${painted.stage?.map(Math.round).join(' x ')}`);
+            await plain.close();
+            const {page, close} = await open('/', {width, height});
+            await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});
+            const live = await page.evaluate(async () => {
+                const map = document.querySelector('[data-home-map]').__homeMap;
+                const places = {};
+                for (const feature of await map.queryFeatures()) {
+                    const name = feature.properties?.['name:en'] ?? feature.properties?.name;
+                    if (name && feature.geometry.type === 'Point' && String(feature.layer?.id ?? feature.layer).startsWith('place_') && !places[name]) places[name] = map.project(feature.geometry.coordinates);
+                }
+                return places;
+            });
+            const fetchedWide = await page.evaluate(() => performance.getEntriesByType('resource').some(entry => entry.name.endsWith('/home-first-paint-wide.svg')));
+            check(`home page at ${width} px: the wide first paint is ${painted.wide ? '' : 'not '}fetched`, fetchedWide === painted.wide);
+            const matches = Object.keys(live).filter(name => painted.labels?.[name]).map(name => ({name, dx: painted.labels[name][0] - live[name].x, dy: painted.labels[name][1] - live[name].y}));
+            const dys = matches.map(match => match.dy).sort((x, y) => x - y);
+            const median = dys[Math.floor(dys.length / 2)];
+            const wide = matches.filter(match => Math.abs(match.dx) > 3);
+            const same = matches.filter(match => Math.abs(match.dy - median) <= 3).length;
+            check(`home page at ${width} px: the places of the first paint are where the idle map has them`, matches.length >= 6 && wide.length === 0 && same >= matches.length * 0.7,
+                `${matches.length} places, ${wide.length} off by more than 3 px across (${wide.map(match => `${match.name} ${match.dx.toFixed(1)}`).join(', ')}), ${same} with the usual offset of ${median?.toFixed(1)} px down`);
+            await close();
+        }
     }
     if (withMap) {
         // A reader who prefers reduced motion gets a cut.
