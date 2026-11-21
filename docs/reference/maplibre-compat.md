@@ -369,6 +369,9 @@ An image that draws itself with WebGL (`renderWithWebGL`) is not supported, and 
 | `setWorkerCount`, `getWorkerCount` | Set and read the number of tile workers. |
 | `setMaxParallelImageRequests`, `setRTLTextPlugin` | Accepted with no effect, with the getters `getMaxParallelImageRequests` and `getRTLTextPluginStatus`. |
 | `getVersion()` | Returns the version of this library. |
+| `Hash` | Keeps the camera in the fragment of the URL, like the `hash` option. See [Hash](#hash-and-config). |
+| `config` | The settings object of MapLibre GL JS, with three fields. See [Hash](#hash-and-config). |
+| `Evented`, `EXTENT` | The class with `on`, `off`, `once` and `fire` that `Marker`, `Popup` and `FullscreenControl` use for their own events, and the tile size 8192. |
 | `GPUInitializationError` | The error of the `error` event when the map cannot start. The constructor does not throw it. |
 | `MapLibreMap` | Another name of `Map`. |
 | `InteractionHandler` | Only in this library: the class of `map.dragPan` and the other handlers. |
@@ -376,7 +379,18 @@ An image that draws itself with WebGL (`renderWithWebGL`) is not supported, and 
 
 The entry also exports the types of MapLibre GL JS under their names, such as `MapOptions`, `StyleSpecification`
 and `MapMouseEvent`. An event type or a source type, such as `MapMouseEvent` or `GeoJSONSource`, is a type only, so
-`new` and `instanceof` do not work with it.
+`new` and `instanceof` do not work with it. `Event`, `CanvasSource` and `VideoSource` are types for the same reason.
+
+## Hash and config
+
+`new Hash(name?).addTo(map)` keeps the camera in the fragment of the URL (`#zoom/lat/lng/bearing/pitch`, or
+`#name=zoom/lat/lng` with a name), as the `hash` option does. `remove()` stops it. Wrappers use it. The code that reads
+and writes the fragment loads on demand, so the fragment moves the map a moment after `addTo`. `getHashString` does not
+exist.
+
+`config` has three fields. `REGISTERED_PROTOCOLS` is a copy of the protocols that `addProtocol` added, so write with
+`addProtocol`. `MAX_PARALLEL_IMAGE_REQUESTS` has no effect, like `setMaxParallelImageRequests`. `WORKER_URL` sets the
+worker URL like `setWorkerUrl`. The other fields of MapLibre GL JS are not there.
 
 ## Exports of `maplibre-gl` that the entry lacks
 
@@ -384,9 +398,9 @@ An import of a name in this list fails when the application is built, and `mapli
 time. The last table of [Types](../maplibre-compatibility.md#types) says why each group of names is missing.
 
 <!-- exports:start -->
-**A type here, not a value** (17): `ErrorEvent`, `GeoJSONSource`, `ImageSource`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`.
+**A type here, not a value** (20): `CanvasSource`, `ErrorEvent`, `Event`, `GeoJSONSource`, `ImageSource`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource`.
 
-**Not exported** (42): `AJAXError`, `BoxZoomHandler`, `CanvasSource`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `EXTENT`, `EdgeInsets`, `Event`, `Evented`, `FullscreenEvent`, `GeolocateErrorEvent`, `GeolocateEvent`, `GeolocatePositionEvent`, `Hash`, `KeyboardHandler`, `MapStyleLoadEvent`, `MapTerrainEvent`, `MarkerClickEvent`, `MarkerDragEvent`, `PopupEvent`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `VideoSource`, `addProjection`, `addSourceType`, `clearPrewarmedResources`, `config`, `createTileMesh`, `getGlobalDispatcher`, `importScriptInWorkers`, `isTimeFrozen`, `now`, `prewarm`, `removeProjection`, `restoreNow`, `setNow`.
+**Not exported** (35): `AJAXError`, `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `EdgeInsets`, `FullscreenEvent`, `GeolocateErrorEvent`, `GeolocateEvent`, `GeolocatePositionEvent`, `KeyboardHandler`, `MapStyleLoadEvent`, `MapTerrainEvent`, `MarkerClickEvent`, `MarkerDragEvent`, `PopupEvent`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addProjection`, `addSourceType`, `clearPrewarmedResources`, `createTileMesh`, `getGlobalDispatcher`, `importScriptInWorkers`, `isTimeFrozen`, `now`, `prewarm`, `removeProjection`, `restoreNow`, `setNow`.
 
 <!-- exports:end -->
 

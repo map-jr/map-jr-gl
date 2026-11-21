@@ -86,6 +86,7 @@ export class Popup extends CorePopup {
 }
 import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
+export {Evented};
 /** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
 export class Marker extends CoreMarker {
     constructor(options: MarkerOptions = {}) { super(options); }
@@ -142,6 +143,7 @@ export type * from './compat-types.ts';
 // Functions that code for MapLibre GL JS calls on the module. Here they set the same things through `configure`, or
 // they do nothing because the library has no need of them.
 import {configure as set, supported} from './loader.ts';
+import {protocols} from './protocols.ts';
 declare const __VERSION__: string; // the version of package.json, set by the build
 let workerUrl = '', workerCount = 0, imageRequests = 16;
 /** The version of this library. */
@@ -165,6 +167,45 @@ export const getMaxParallelImageRequests = () => imageRequests;
 /** Accepted for compatibility. The browser draws right-to-left text; no plugin is loaded. */
 export const setRTLTextPlugin = (_url: string, _lazy?: boolean) => Promise.resolve();
 export const getRTLTextPluginStatus = () => 'loaded';
+/**
+ * The settings object of MapLibre GL JS. `REGISTERED_PROTOCOLS` lists the protocols of `addProtocol` (a copy: write
+ * with `addProtocol`). The other two are read and written like `getMaxParallelImageRequests` and `getWorkerUrl`.
+ */
+export const config = {
+    get REGISTERED_PROTOCOLS() { return Object.fromEntries(protocols); },
+    get MAX_PARALLEL_IMAGE_REQUESTS() { return imageRequests; },
+    set MAX_PARALLEL_IMAGE_REQUESTS(count: number) { imageRequests = count; },
+    get WORKER_URL() { return workerUrl; },
+    set WORKER_URL(url: string) { setWorkerUrl(url); },
+};
+/** The size of a tile in tile units, as in MapLibre GL JS. */
+export const EXTENT = 8192;
+/**
+ * The control of MapLibre GL JS that keeps the camera in the fragment of the URL (`#zoom/lat/lng/bearing/pitch`, or
+ * `#name=zoom/lat/lng` with a name). Wrappers use it as `new Hash().addTo(map)`. The map loads the code that reads and
+ * writes the fragment on demand, so the fragment moves the map a moment after `addTo`. `getHashString` is not provided.
+ */
+export class Hash {
+    private map?: CoreMap;
+    private token?: object;
+    private stop?: () => void;
+    constructor(private hashName?: string) {}
+    addTo(map: CoreMap) {
+        this.remove();
+        const token = this.token = {}, found = this._onHashChange();
+        this.map = map;
+        import('./hash.ts').then(m => { if (this.token === token) this.stop = m.watchHash(map, this.hashName || true, !found, found); });
+        return this;
+    }
+    remove() { this.stop?.(); this.stop = this.token = this.map = undefined; return this; }
+    /** Wrappers call this. It tells whether the fragment has a camera, which the map takes when the hash code has loaded. */
+    _onHashChange() {
+        const all = location.hash.slice(1), p = (this.hashName ? new URLSearchParams(all).get(this.hashName) ?? '' : all).split('/').map(Number);
+        return p.length > 2 && !p.some(isNaN);
+    }
+    /** Wrappers call this. The code that loads in `addTo` writes the camera into a fragment that has none, so this does nothing. */
+    _updateHash() {}
+}
 
 // The default export is for plugins only. Some plugins of MapLibre GL JS contain `import maplibregl from 'maplibre-gl'`
 // (4 of the 15 in test/conformance/plugins.mjs), and an application cannot change that line: it can only map the name
@@ -179,7 +220,7 @@ import {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoC
 import {GPUInitializationError} from './gpu-error.ts';
 export default {
     GPUInitializationError,
-    Map, MapLibreMap: Map, Point, MercatorCoordinate, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
+    Map, MapLibreMap: Map, Point, MercatorCoordinate, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set, Hash, config, Evented, EXTENT,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };

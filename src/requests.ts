@@ -12,6 +12,16 @@ export type Ask = (url: string, kind: string, signal?: AbortSignal | null) => Pr
 
 /** A `fetch` that follows the rules: it asks first when the page has something to say about the request. */
 export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind = 'Tile'): typeof fetch {
+    const run = fetchRules(rules, ask, kind);
+    // A request that fails (no network, a blocked origin) says which resource and URL it was for. The URL is cut, because it comes from a style.
+    return (input, init) => run(input, init).catch(e => {
+        if (e?.name === 'AbortError' || String(e?.message).startsWith('[map-jr-gl]')) throw e;
+        const url = String(input);
+        throw new Error(`[map-jr-gl] the request for the ${KINDS[kind] ?? kind} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${e?.message ?? e}`, {cause: e});
+    });
+}
+const KINDS: Record<string, string> = {Tile: 'tile', RasterTile: 'tile', SpriteJSON: 'sprite', SpriteImage: 'sprite image', Glyphs: 'glyphs', Font: 'font', Image: 'image'};
+function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: string): typeof fetch {
     return async (input, init) => {
         const url = String(input), r = rules();
         if (!r || !(r.transform || r.protocols.includes(url.slice(0, url.indexOf(':'))))) return fetch(input, init);

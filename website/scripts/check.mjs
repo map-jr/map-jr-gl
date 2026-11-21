@@ -791,18 +791,31 @@ try {
         await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: base});
         const page = await context.newPage();
         await page.goto(base + '/recipes/query', {waitUntil: 'networkidle'});
-        // The label "Copied" stays for two seconds, so it cannot tell the second copy from the first. The clipboard is
-        // emptied before each click, and the check waits until it has text.
-        const copy = async name => {
-            await page.evaluate(() => navigator.clipboard.writeText(''));
+        // What the button did: a tab that it opened (its fallback when the copy fails) and the warning that it wrote.
+        const events = [];
+        context.on('page', opened => events.push('opened a tab: ' + opened.url()));
+        page.on('console', message => { if (message.text().includes('[map-jr site]')) events.push(message.text().slice(0, 200)); });
+        // The check waits until the clipboard holds the expected text, and does not rely on the clipboard having been
+        // emptied: a write with a promise of the text can leave the clipboard empty until the promise resolves. On a
+        // timeout it reports the length of the last text that it read, and the events.
+        const copy = async (name, expected) => {
+            const started = Date.now();
             await page.getByRole('button', {name}).first().click();
-            await page.waitForFunction(async () => (await navigator.clipboard.readText()) !== '', null, {timeout: 5000}).catch(() => {});
-            return page.evaluate(() => navigator.clipboard.readText());
+            const arrived = await page.waitForFunction(async expected => {
+                window.__lastClipboard = await navigator.clipboard.readText();
+                return window.__lastClipboard === expected;
+            }, expected, {timeout: 5000, polling: 100}).then(() => true, () => false);
+            const last = await page.evaluate(() => window.__lastClipboard ?? null);
+            return {ok: arrived, detail: arrived ? `${expected.length} characters in ${Date.now() - started} ms` : `the clipboard has ${last === null ? 'no read' : last.length + ' characters'} after ${Date.now() - started} ms; ${events.join(' | ') || 'the button did nothing visible'}`};
         };
-        const page_ = await copy('Copy page as markdown');
-        check('"Copy page as markdown" copies the file of docs/', page_ === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'), `${page_.length} characters`);
-        const copiedPrompt = await copy('Copy migration prompt');
-        check('"Copy migration prompt" copies the block of the prompt', copiedPrompt === block, `${copiedPrompt.length} characters`);
+        const first = await copy('Copy page as markdown', readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'));
+        check('"Copy page as markdown" copies the file of docs/', first.ok, first.detail);
+        // The labels change back after two seconds. The second click waits for that, so that a render of the buttons
+        // cannot fall between its press and its release.
+        const reverted = await page.getByRole('button', {name: 'Copy page as markdown'}).waitFor({timeout: 5000}).then(() => true, () => false);
+        check('"Copied" changes back to "Copy page as markdown"', reverted);
+        const second = await copy('Copy migration prompt', block);
+        check('"Copy migration prompt" copies the block of the prompt', second.ok, second.detail);
         await context.close();
     }
 
