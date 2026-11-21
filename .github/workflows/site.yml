@@ -99,12 +99,7 @@ jobs:
             echo "::warning::The version was uploaded, but wrangler printed no preview URL. Turn on Preview URLs for the worker map-jr-site in the Cloudflare dashboard."
             exit 0
           fi
-          body=$(printf '%s\n' \
-            "Preview of the docs site at ${GITHUB_SHA::8}: $url" \
-            "" \
-            "The URL stays the same for this pull request and shows the latest commit. <!-- map-jr-site-preview -->" \
-            "" \
-            "🤖 Generated with [Claude Code](https://claude.com/claude-code)")
+          body="Preview of the docs site at ${GITHUB_SHA::8}: $url <!-- map-jr-site-preview -->"
           echo "Preview: $url" >> "$GITHUB_STEP_SUMMARY"
           id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[] | select(.body | contains("map-jr-site-preview")) | .id' | head -1)
           if [ -n "$id" ]; then
