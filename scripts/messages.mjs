@@ -7,7 +7,8 @@
 // A message is a text that starts with `[map-jr-gl]` or that goes through a helper that adds the prefix (`warnOnce`,
 // `refused`, `reject`, and `warn` in the check of the projection), and the numbered texts of src/mistakes.ts. The script
 // reads src/ with a parser, so a new message appears in the page after `--write`, and `--check` fails until then. A
-// piece of a message that the source builds at run time is written `<name>`.
+// piece of a message that the source builds at run time is written `<words>`, with the words of `placeholderNames` or the
+// name of the variable. A placeholder that is only `name`, `value` or `v` fails the check.
 // A place that adds the prefix to a text that the script cannot read fails the check: add it to `prefixHelpers`.
 import {readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -27,6 +28,48 @@ const helperCalls = {refused: 0, warnOnce: 0, warn: 1, reject: 2};
 const prefixHelpers = new Set([
     'expr.ts warnOnce', 'compat-map.ts refused', 'map.ts warn', 'host.ts reject', 'map.ts logError', 'mistakes.ts mistake', 'host.ts cluster',
 ]);
+
+/**
+ * The words that a placeholder shows for a piece of a text that the source builds at run time. The key is the text of the
+ * expression in the template (with the name of the file in front when the same expression means two things). A piece with no
+ * entry shows the name of its variable, and a variable named `name`, `value` or `v` fails the check: the entry here, or a
+ * clearer name in src/, says what it stands for.
+ */
+const placeholderNames = [
+    // [file, text of the expression, a pattern for the template that it is in (or null), the words of the placeholder]
+    ['compat-map.ts', 'name', /has no effect/, 'member'],
+    ['compat-map.ts', 'name', /the result was used without/, 'method'],
+    ['compat-map.ts', 'name', /the feature has no "id"/, 'method'],
+    ['compat-style-images.ts', 'name', /the image "/, 'image name'],
+    ['host.ts', 'name', /the image "/, 'image name'],
+    ['host.ts', 'name', /\}\(\): \$\{/, 'method'],
+    ['host.ts', 'e?.message?.replace(/^\\[map-jr-gl\\] /, "")', null, 'cause'],
+    ['host.ts', 'Object.keys(next ?? {})[0]', null, 'field'],
+    ['control-specs.ts', 'name', /The control "/, 'control name'],
+    ['engine.ts', 'name', /The source "/, 'source name'],
+    ['engine.ts', 'f.name', null, 'font name'],
+    ['expr.ts', 'JSON.stringify({ locale: l, "min-fraction-digits": mn, "max-fraction-digits": mx, currency: cur, unit: u })', null, 'options'],
+    ['loader.ts', 'v', /The worker file is version/, 'worker version'],
+    ['map.ts', 'name', /addImage\("/, 'image name'],
+    ['map.ts', 'this.resolved.unsupported.join(", ")', null, 'layer types'],
+    ['mistakes.ts', 'name', /MapLibre GL JS|not available in/, 'member'],
+    ['mistakes.ts', 'privateState[key]', null, 'advice'],
+    ['pmtiles.ts', 'Math.round(n / 1048576)', null, 'file size'],
+    ['react.ts', 'name', /MapImage "/, 'image name'],
+    ['vue.ts', 'props.name', /MapImage "/, 'image name'],
+    ['requests.ts', 'url.slice(0, 200)', null, 'url'],
+    ['requests.ts', 'what', null, 'resource'],
+    ['resolve.ts', 'name', /The source "/, 'source name'],
+    ['server.ts', 'name', /server render: "/, 'option name'],
+    ['server.ts', 'v', /server render: "/, 'option value'],
+    ['server.ts', 'name', /renderElement\(\): "/, 'attribute name'],
+    ['server.ts', 'cause?.message', null, 'cause'],
+    ['vue.ts', 'cause?.message', null, 'cause'],
+    ['style.ts', 'JSON.stringify(name)', /hillshade-method/, 'hillshade method'],
+    ['style-images.ts', 'name', /the image "/, 'image name'],
+];
+/** The placeholders that say nothing about what they stand for. A piece of a message that gets one of these fails the check. */
+const genericNames = new Set(['name', 'value', 'v']);
 
 const sections = [
     ['main', 'Main API', 'The functions of `@map-jr/map-jr-gl` and the map that they make.'],
@@ -78,9 +121,19 @@ for (const file of files) {
     const stringy = node => node && (node.type === 'Literal' && typeof node.value === 'string' || node.type === 'TemplateLiteral' || node.type === 'BinaryExpression' && node.operator === '+' || node.type === 'ConditionalExpression');
     const name = node => node.type === 'Identifier' ? node.name.replace(/(?<=[a-z]{3})\d+$/, '') : node.type === 'MemberExpression' && !node.computed ? node.property.name
         : node.type === 'CallExpression' ? (node.arguments[0] ? name(node.arguments[0]) : 'value') : 'value';
+    /** The placeholder for an expression: the name that `placeholderNames` gives to the text of the expression, else the name of the variable. */
+    const label = (node, fallback) => {
+        let template = node.parent;
+        while (template && template.type !== 'TemplateLiteral') template = template.parent;
+        const whole = template ? text(template) : '';
+        const own = placeholderNames.find(([f, expr, pattern]) => f === file && (expr === null ? template && template.expressions.includes(node) : expr === text(node).replace(/\s+/g, ' ').replace(/(?<=[a-z]{3})\d+\b/g, '')) && (!pattern || pattern.test(whole)));
+        const result = own ? own[3] : fallback ?? name(node);
+        if (genericNames.has(result)) problems.push(`${file}: the placeholder for "${text(node).slice(0, 50)}" says nothing about what it stands for. Add it to placeholderNames in scripts/messages.mjs, or name the variable in src/.`);
+        return result;
+    };
     /** The texts that an expression can give, each piece that is not known written as a placeholder. */
     const render = (node, depth = 0) => {
-        if (depth > 6) return [PH('value')];
+        if (depth > 6) return [PH(label(node, 'value'))];
         switch (node.type) {
             case 'Literal': return [String(node.value)];
             case 'TemplateLiteral': {
@@ -91,19 +144,19 @@ for (const file of files) {
             case 'BinaryExpression':
                 // `x[0].toUpperCase() + x.slice(1)` is the value of x with a capital letter.
                 if (node.operator === '+' && /^(\w+)\[0\]\.toUpperCase\(\) \+ \1\.slice\(1\)$/.test(text(node))) return [PH(node.right.callee.object.name)];
-                return node.operator === '+' ? cross(render(node.left, depth + 1), render(node.right, depth + 1)) : [PH('value')];
+                return node.operator === '+' ? cross(render(node.left, depth + 1), render(node.right, depth + 1)) : [PH(label(node, 'value'))];
             case 'ConditionalExpression': return limit([...render(node.consequent, depth + 1), ...render(node.alternate, depth + 1)]);
-            case 'LogicalExpression': return node.left.type === 'MemberExpression' && node.left.computed ? render(node.left, depth + 1) : [PH(name(node.left))];
+            case 'LogicalExpression': return node.left.type === 'MemberExpression' && node.left.computed ? render(node.left, depth + 1) : [PH(label(node.left))];
             case 'MemberExpression':
                 if (node.computed && node.object.type === 'ObjectExpression') return limit(node.object.properties.filter(p => stringy(p.value)).flatMap(p => render(p.value, depth + 1)));
-                return [PH(name(node))];
+                return [PH(label(node))];
             case 'Identifier': {
                 const init = declared.get(node.name);
                 if (init && counts.get(node.name) === 1 && stringy(init) && /[a-z]{3}/.test(bare(render(init, depth + 1)[0]))) return render(init, depth + 1);
-                return [PH(name(node))];
+                return [PH(label(node))];
             }
-            case 'CallExpression': return [PH(name(node))];
-            default: return [PH('value')];
+            case 'CallExpression': return [PH(label(node))];
+            default: return [PH(label(node, 'value'))];
         }
     };
     const clean = s => s.replace(/\u0001([^\u0002]*)\u0002/g, '<$1>').replace(/\s*\n\s*/g, ' ').trim();
@@ -183,7 +236,7 @@ for (const file of files) {
         }
         // A function that adds its name and the prefix to the error of the function that it calls.
         if (node.type === 'NewExpression' && /Error$/.test(calleeName(node.callee)) && file === 'host.ts' && functionOf(node) === 'cluster' && stringy(node.arguments[0]) && !text(node.arguments[0]).includes('[map-jr-gl]'))
-            for (const v of render(node.arguments[0])) add(node, PREFIX + ' <name>(): ' + v, {kind: 'Error'});
+            for (const v of render(node.arguments[0])) add(node, PREFIX + ' <method>(): ' + v, {kind: 'Error'});
         // `complete(spec, method, fix)` of host.ts: the message has the name of the method and the text of the call.
         if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'complete' && file === 'host.ts' && node.arguments[1]?.type === 'Literal' && stringy(node.arguments[2]))
             for (const v of render(node.arguments[2])) add(node, `${PREFIX} ${node.arguments[1].value}(): the description has no "style". ${v}`, {kind: 'Error', section: 'main'});
