@@ -618,6 +618,22 @@ for (const mode of renderers) {
     await page.waitForFunction(() => window.arrayEvents.some(e => e.startsWith('click:')), null, {timeout: 5000}).catch(() => {});
     const arrayEvents = await page.evaluate(() => window.arrayEvents.join());
     check(`[${mode}] on, once and off with an array of layer ids; a wrong argument gives a message`, arrayEvents === 'message,enter,click:first', arrayEvents);
+    // The pointer that leaves the canvas fires mouseleave for the layer that it was over, and the layer can be entered again (#1326).
+    await page.evaluate(async () => { // (the data of the source is the point of setData above: put the polygon back)
+        const box = {type: 'Feature', properties: {name: 'first'}, geometry: {type: 'Polygon', coordinates: [[[-74.012, 40.706], [-74.004, 40.706], [-74.004, 40.711], [-74.012, 40.711], [-74.012, 40.706]]]}};
+        await window.map.getSource('zones').setData({type: 'FeatureCollection', features: [box]}); await new Promise(r => setTimeout(r, 800));
+    });
+    await page.evaluate(() => { window.leaves = []; window.map.on('mouseleave', 'zones-fill', e => window.leaves.push('leave:' + e.features.length)); window.map.on('mouseenter', 'zones-fill', () => window.leaves.push('enter')); });
+    // (A mousemove that arrives while the query of the one before it runs is dropped, so the pointer settles on the point with a last move.)
+    const hoverTo = async () => { await page.mouse.move(760, 90); await page.mouse.move(gj.inside.x, gj.inside.y, {steps: 3}); await page.waitForTimeout(800); await page.mouse.move(gj.inside.x + 1, gj.inside.y); };
+    await hoverTo();
+    await page.waitForFunction(() => window.leaves.includes('enter'), null, {timeout: 5000}).catch(() => {});
+    // (Read at once: without the fix the next mousemove, which finds nothing under the pointer, would fire the mouseleave late.)
+    const atOnce = await page.evaluate(() => { window.map.getCanvas().dispatchEvent(new PointerEvent('pointerleave', {pointerId: window.mouseId ?? 1, pointerType: 'mouse', bubbles: false})); return window.leaves.join(); });
+    await hoverTo();
+    await page.waitForFunction(() => window.leaves.length >= 3, null, {timeout: 5000}).catch(() => {});
+    const leaves = await page.evaluate(() => window.leaves.join());
+    check(`[${mode}] layer mouseleave fires when the pointer leaves the canvas`, atOnce === 'enter,leave:0' && leaves === 'enter,leave:0,enter', atOnce + ' / ' + leaves);
     // MapLibre's updateData: add, change and remove features of a GeoJSON source by their id.
     const diff = await page.evaluate(async () => {
         const m = window.map, source = m.getSource('zones'), point = (id, name, lng) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [lng, 40.7085]}});
