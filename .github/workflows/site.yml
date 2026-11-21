@@ -4,6 +4,11 @@
 # One-time setup by the owner: the repository secrets CLOUDFLARE_API_TOKEN (a token with the permission
 # "Edit Cloudflare Workers" for the account) and CLOUDFLARE_ACCOUNT_ID, and the zone map-jr.org in that account.
 # Without the secrets, the deploy step writes a notice and the job passes.
+#
+# A pull request from a branch of this repository also uploads a preview version of the site
+# (`wrangler versions upload --preview-alias pr-<number>`) and keeps one comment on the pull request with its URL. This
+# needs "Preview URLs" turned on for the worker map-jr-site (Workers & Pages, Settings, Domains & Routes), and the token
+# needs the same permission as the deploy. A pull request from a fork has no secrets and gets no preview.
 name: Docs site
 on:
   pull_request:
@@ -22,6 +27,10 @@ jobs:
   site:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    permissions:
+      contents: read
+      # Only for the comment with the preview URL; the token of a pull request from a fork is read-only anyway.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -70,3 +79,36 @@ jobs:
             exit 0
           fi
           pnpm exec wrangler deploy
+      - name: Preview on Cloudflare
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        working-directory: website
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::No preview was uploaded: the repository has no secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
+            exit 0
+          fi
+          export WRANGLER_OUTPUT_FILE_PATH="$RUNNER_TEMP/wrangler-output.ndjson"
+          pnpm exec wrangler versions upload --preview-alias "pr-$PR" --message "Pull request #$PR, ${GITHUB_SHA::8}"
+          url=$(jq -rs 'map(select(.type == "version-upload")) | last | .preview_alias_url // empty' "$WRANGLER_OUTPUT_FILE_PATH")
+          if [ -z "$url" ]; then
+            echo "::warning::The version was uploaded, but wrangler printed no preview URL. Turn on Preview URLs for the worker map-jr-site in the Cloudflare dashboard."
+            exit 0
+          fi
+          body=$(printf '%s\n' \
+            "Preview of the docs site at ${GITHUB_SHA::8}: $url" \
+            "" \
+            "The URL stays the same for this pull request and shows the latest commit. <!-- map-jr-site-preview -->" \
+            "" \
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code)")
+          echo "Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[] | select(.body | contains("map-jr-site-preview")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
+          fi
