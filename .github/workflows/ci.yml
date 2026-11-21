@@ -146,14 +146,21 @@ jobs:
           exit $status
 
   # The required check. It passes when every browser job passed, or when "changes" skipped them for a pull request
-  # that changes only documents. It fails when one of them failed, was cancelled or timed out.
+  # that changes only documents. It fails when one of them failed or timed out. When they were cancelled (a newer
+  # push cancels the run) and none failed, it cancels the run again, so that this job ends as cancelled and not as a
+  # failure: a cancelled job never passes a required check, and a failure then always means a failed test.
   browser:
     needs: [changes, browser-part]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: write
     steps:
       - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
           CHANGES: ${{ needs.changes.result }}
           WANTED: ${{ needs.changes.outputs.browser }}
           PARTS: ${{ needs.browser-part.result }}
@@ -161,6 +168,11 @@ jobs:
           echo "changes: $CHANGES, browser wanted: $WANTED, browser jobs: $PARTS" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$CHANGES" != success ]; then echo "::error::the job changes did not succeed"; exit 1; fi
           if [ "$WANTED" != true ] && [ "$PARTS" = skipped ]; then exit 0; fi
+          if [ "$PARTS" = cancelled ]; then
+            echo "the browser jobs were cancelled; cancelling this job too"
+            gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/force-cancel" || true
+            sleep 120
+          fi
           if [ "$PARTS" != success ]; then echo "::error::a browser job did not succeed ($PARTS)"; exit 1; fi
 
   # MapLibre's own render tests, against a floor (see "test:render" in package.json). A change that makes fewer
