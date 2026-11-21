@@ -869,6 +869,41 @@ try {
         await close();
     }
     if (withMap) {
+        // The first paint has the scale and the centre of the live map at every size of the window (#1393). The labels of places in
+        // the SVG (the page without JavaScript) are where the places of the idle map are: every label has the same horizontal
+        // distance (within 3 px) to its place, so the scale and the centre agree, and most labels have the same vertical
+        // distance to their place, which is the offset of the label from the dot. (A label of two lines has another offset.)
+        for (const [width, height] of [[390, 844], [1024, 768], [1440, 900]]) {
+            const plain = await browser.newContext({viewport: {width, height}, javaScriptEnabled: false});
+            const first = await plain.newPage();
+            await first.goto(base + '/');
+            const painted = await first.evaluate(() => Object.fromEntries([...document.querySelectorAll('svg[data-map-jr-ssr] text')].map(label => {
+                const box = label.getBoundingClientRect();
+                return [label.textContent.trim(), [box.x + box.width / 2, box.y + box.height / 2]];
+            })));
+            await plain.close();
+            const {page, close} = await open('/', {width, height});
+            await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});
+            const live = await page.evaluate(async () => {
+                const map = document.querySelector('[data-home-map]').__homeMap;
+                const places = {};
+                for (const feature of await map.queryFeatures()) {
+                    const name = feature.properties?.['name:en'] ?? feature.properties?.name;
+                    if (name && feature.geometry.type === 'Point' && String(feature.layer?.id ?? feature.layer).startsWith('place_') && !places[name]) places[name] = map.project(feature.geometry.coordinates);
+                }
+                return places;
+            });
+            const matches = Object.keys(live).filter(name => painted[name]).map(name => ({name, dx: painted[name][0] - live[name].x, dy: painted[name][1] - live[name].y}));
+            const dys = matches.map(match => match.dy).sort((x, y) => x - y);
+            const median = dys[Math.floor(dys.length / 2)];
+            const wide = matches.filter(match => Math.abs(match.dx) > 3);
+            const same = matches.filter(match => Math.abs(match.dy - median) <= 3).length;
+            check(`home page at ${width} px: the places of the first paint are where the idle map has them`, matches.length >= 6 && wide.length === 0 && same >= matches.length * 0.7,
+                `${matches.length} places, ${wide.length} off by more than 3 px across (${wide.map(match => `${match.name} ${match.dx.toFixed(1)}`).join(', ')}), ${same} with the usual offset of ${median?.toFixed(1)} px down`);
+            await close();
+        }
+    }
+    if (withMap) {
         // A reader who prefers reduced motion gets a cut.
         const {page, close} = await open('/', {reducedMotion: 'reduce'});
         await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});

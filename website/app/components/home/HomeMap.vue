@@ -44,8 +44,11 @@ function move(camera: Scene['camera']) {
 }
 watch(() => props.scene, scene => move(scene.camera));
 
+// The checks read the map through the element (`__homeMap`) to compare its places with those of the first paint.
+const root = useTemplateRef<HTMLElement & {__homeMap?: unknown}>('root');
 function onLoad() {
     ready = true;
+    if (root.value) root.value.__homeMap = map.value;
     showFirst.value = false;
     move(props.scene.camera);
 }
@@ -87,7 +90,7 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
 </script>
 
 <template>
-  <div class="absolute inset-0" :class="exploring ? '' : 'pointer-events-none'" :inert="!exploring" data-home-map :data-map-state="state" :data-camera="how">
+  <div ref="root" class="absolute inset-0" :class="exploring ? '' : 'pointer-events-none'" :inert="!exploring" data-home-map :data-map-state="state" :data-camera="how">
     <!-- eslint-disable-next-line vue/no-v-html -- a file of the repository, not input -->
     <div v-if="showFirst" class="absolute inset-0 overflow-hidden" v-html="firstPaint" />
     <p v-if="unsupported" class="absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] border border-accented bg-default/90 px-3 py-1 text-center text-sm text-muted">This browser has no WebGL 2, so the map is a still picture.</p>
