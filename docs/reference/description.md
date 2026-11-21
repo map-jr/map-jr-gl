@@ -229,8 +229,8 @@ Two other fields can override `initialView` when the map is created:
 
 - When the description also has [`view`](#view-and-onviewchange), each member of `view` overrides the same member of
   `initialView`, and the map ignores `bounds`.
-- With [`hash`](#hash), a view in the URL of the page overrides `center`, `zoom`, `bearing` and `pitch`. It does not
-  override `bounds`.
+- With [`hash`](#hash), a view in the URL of the page overrides `center`, `zoom`, `bearing`, `pitch` and
+  `bounds`. The map then does not fit `bounds`.
 
 ## `view` and `onViewChange`
 
@@ -694,8 +694,9 @@ With `hash: true`, the map writes the view into the fragment of the URL of the p
 | Is pitched | `#zoom/lat/lng/bearing/pitch` |
 
 The map updates the fragment when a movement ends, and moves when the fragment changes. When the page loads with a
-view in the fragment, that view overrides `center`, `zoom`, `bearing` and `pitch` of [`initialView`](#initialview)
-and of [`view`](#view-and-onviewchange). It does not override `bounds` of `initialView`.
+view in the fragment, that view overrides `center`, `zoom`, `bearing`, `pitch` and `bounds` of [`initialView`](#initialview)
+and of [`view`](#view-and-onviewchange). A fragment without a view leaves them as they are. This is the same rule as in
+MapLibre GL JS, in both entries.
 
 With a name such as `'map'`, the map writes the view under that name, so that the fragment can hold other values: `hash: 'map'`
 writes `#map=zoom/lat/lng`.
