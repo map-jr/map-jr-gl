@@ -2,7 +2,9 @@
 
 A map of `@map-jr/map-jr-gl` adds its own style sheet, so a page loads no CSS file for it. To change the look of the
 controls, the attribution, the scale and the popup, set the custom properties below on the container of the map or
-on an element above it. The rules of the library have no specificity, so a rule of the page overrides each of them.
+on an element above it.
+
+Each rule of the library has the specificity of one class, so a rule of the page with a selector of two or more classes (`.page .map-jr-ctrl-group button`) overrides it, and the rules for `button`, `a`, `svg` or `div` of a page, such as a CSS reset, do not change the controls. A rule of the page with one class has the same specificity, and the rule of the library wins, because its style sheet comes after the sheets of the page. Prefer the custom properties.
 
 ```css
 #map {
