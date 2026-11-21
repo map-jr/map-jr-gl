@@ -4,8 +4,8 @@
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
     "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api && pnpm test:spec && pnpm test:size && pnpm test:examples && pnpm test:consistency",
-    "test:consistency": "node scripts/check-consistency.mjs && node scripts/recipes.mjs --check && node scripts/reference.mjs --check && node scripts/docs-lint.mjs",
-    "test:examples": "node test/examples.mjs",
+    "test:consistency": "node scripts/check-consistency.mjs && node scripts/recipes.mjs --check && node scripts/reference.mjs --check && node scripts/messages.mjs --check && node scripts/docs-lint.mjs --strict",
+    "test:examples": "node test/examples.mjs && node test/doc-snippets.mjs",
     "test:size": "node scripts/size-check.mjs",
     "test:package": "node scripts/check-package.mjs",
     "build": "tsc -p . && node build.mjs",
@@ -219,7 +219,9 @@
     "LICENSE",
     "ACKNOWLEDGEMENTS.md",
     "THIRD-PARTY-LICENSES.md",
-    "docs/*.md"
+    "AGENTS.md",
+    "docs/**/*.md",
+    "!docs/agents"
   ],
   "sideEffects": [
     "./dist/element.js",

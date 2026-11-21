@@ -283,7 +283,8 @@ The library has seven ways to write the same map. A page shows a variant when it
 
 - Keep the order of the table, and put no other text between the fences of one group (lint).
 - Leave out a variant whose code would be the same as another one. Leave out `[Nuxt]` when it differs from `[Vue]`
-  only in the imports, and say once on the page for Nuxt that the imports are not needed.
+  only in the imports. Do not write that Nuxt or its module imports or registers anything for the page (auto-imports).
+  Neither the text of a page nor a comment of an example mentions them.
 - A page about one entry (`reference/vue.md`) has no labels.
 
 An install command is written for each package manager, with the same rules for the labels, the bold lines and the
@@ -318,7 +319,7 @@ Do not mix the labels of the two tables in one group.
 
 The comment on a public member is the row of the reference and the text that an editor shows on hover.
 
-```ts
+```ts nocheck
 /**
  * The largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
  * @default 60

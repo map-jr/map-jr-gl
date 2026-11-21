@@ -492,6 +492,12 @@ try {
         await page.goto(base + '/recipes/basic', {waitUntil: 'load'});
         const frame = page.frameLocator('.live-example iframe');
         check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
+        // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
+        const controlButton = frame.locator('.map-jr-ctrl-group button').first();
+        check(`${engine}: recipe: a button of a map control has no margin, padding or border from the frame`, await shown(controlButton) && await controlButton.evaluate(button => {
+            const style = getComputedStyle(button);
+            return [style.marginLeft, style.marginBottom, style.paddingTop, style.paddingLeft, style.borderTopWidth].every(value => value === '0px');
+        }));
         const before = await loaded();
         check(`${engine}: recipe: the page loads no code of the editor before "Edit"`, !before.editor, `${(before.bytes / 1024).toFixed(1)} KB of scripts`);
         await page.getByRole('button', {name: 'Edit the Main API code'}).click();
@@ -504,6 +510,15 @@ try {
         await replace(editor, code + "\ndocument.body.append(Object.assign(document.createElement('output'), {id: 'edited'}));\n");
         await page.getByRole('button', {name: 'Run', exact: true}).click();
         check(`${engine}: recipe: a changed example runs`, await shown(frame.locator('#edited'), 'attached') && await frame.locator('#map canvas').count() > 0);
+        // On a page of its own, so that the later checks keep the page and the editor of the recipe "basic".
+        const fitPage = await context.newPage();
+        await fitPage.goto(base + '/recipes/fit', {waitUntil: 'load'});
+        const ownButton = fitPage.frameLocator('.live-example iframe').getByRole('button', {name: 'Show all landings'});
+        check(`${engine}: recipe: a button of the example code keeps the style of the frame`, await shown(ownButton) && await ownButton.evaluate(button => {
+            const style = getComputedStyle(button);
+            return style.marginLeft === '12px' && style.paddingLeft === '10px' && style.borderTopWidth === '1px';
+        }));
+        await fitPage.close();
         check(`${engine}: recipe: no error of the page`, problems.length === 0, problems.join(' | '));
         await replace(editor, "import {createMap} from '@map-jr/map-jr-gl';\nconst map = createMap(;\n");
         await page.keyboard.press('ControlOrMeta+Enter');
@@ -756,6 +771,39 @@ try {
     {
         const raw = await fetch(base + '/raw/recipes/query.md').then(response => response.text());
         check('/raw/recipes/query.md: equals docs/recipes/query.md', raw === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'));
+    }
+
+    // For agents: llms.txt, llms-full.txt, the prompt of the migration and the buttons that copy markdown.
+    {
+        const text = async path => { const response = await fetch(base + path); return {status: response.status, body: await response.text()}; };
+        const llms = await text('/llms.txt');
+        check('/llms.txt: answers with the title and a link to the raw prompt', llms.status === 200 && llms.body.startsWith('# Map Jr. GL') && llms.body.includes('/raw/migrate/prompt.md'), String(llms.status));
+        const full = await text('/llms-full.txt');
+        check('/llms-full.txt: answers with the text of the pages', full.status === 200 && full.body.length > 100000 && full.body.includes('Migration prompt'), `${full.status}, ${full.body.length} characters`);
+        const prompt = await text('/raw/migrate/prompt.md');
+        const source = readFileSync(new URL('../../docs/migrate/prompt.md', import.meta.url), 'utf8');
+        check('/raw/migrate/prompt.md: equals docs/migrate/prompt.md', prompt.body === source);
+        const block = /^```[^\n]*\n([\s\S]*?)\n```$/m.exec(source)?.[1] ?? '';
+        check('docs/migrate/prompt.md: the prompt is between 2,000 and 8,000 characters (about 2,000 tokens at most)', block.length >= 2000 && block.length <= 8000, `${block.length} characters`);
+
+        // The clipboard needs its own context with the permission, and a page of its own.
+        const context = await browser.newContext({viewport: {width: 1440, height: 900}});
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: base});
+        const page = await context.newPage();
+        await page.goto(base + '/recipes/query', {waitUntil: 'networkidle'});
+        // The label "Copied" stays for two seconds, so it cannot tell the second copy from the first. The clipboard is
+        // emptied before each click, and the check waits until it has text.
+        const copy = async name => {
+            await page.evaluate(() => navigator.clipboard.writeText(''));
+            await page.getByRole('button', {name}).first().click();
+            await page.waitForFunction(async () => (await navigator.clipboard.readText()) !== '', null, {timeout: 5000}).catch(() => {});
+            return page.evaluate(() => navigator.clipboard.readText());
+        };
+        const page_ = await copy('Copy page as markdown');
+        check('"Copy page as markdown" copies the file of docs/', page_ === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'), `${page_.length} characters`);
+        const copiedPrompt = await copy('Copy migration prompt');
+        check('"Copy migration prompt" copies the block of the prompt', copiedPrompt === block, `${copiedPrompt.length} characters`);
+        await context.close();
     }
 
     // The map of the home page.

@@ -1,7 +1,5 @@
 <script setup>
-// A page of a Nuxt app whose nuxt.config.ts has modules: ['@map-jr/map-jr-gl/nuxt']. The module imports MapJr and
-// the other components, the composables and the controls (as navigationControl() and so on), and Nuxt imports the
-// functions of Vue.
+// A page of a Nuxt app whose nuxt.config.ts has modules: ['@map-jr/map-jr-gl/nuxt'].
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];

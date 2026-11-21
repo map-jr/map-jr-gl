@@ -93,7 +93,7 @@ npm install @map-jr/map-jr-gl
 
 Then import from `@map-jr/map-jr-gl`, or from `@map-jr/map-jr-gl/maplibre-compat` for the API of MapLibre GL JS.
 
-Until then, build the package from this repository:
+To use a build of the current source instead of the release on npm, build the package from this repository:
 
 ```bash
 git clone https://github.com/map-jr/map-jr-gl.git
@@ -202,6 +202,9 @@ The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `ne
 4. Start your application and read the browser console. The library writes a warning for each style layer or
    property that it cannot draw.
 5. Read [MapLibre compatibility](docs/maplibre-compatibility.md) for the differences.
+
+To let a coding agent do these steps, give it the [migration prompt](docs/migrate/prompt.md). The package contains the
+docs as markdown in `node_modules/@map-jr/map-jr-gl/docs/` and an `AGENTS.md` for agents.
 
 A plugin or a wrapper (react-map-gl, for example) that was written for MapLibre GL JS imports `maplibre-gl` itself.
 Map that name to this library in your bundler or in an import map. The alias must match the name `maplibre-gl`

@@ -1,8 +1,7 @@
 # Nuxt
 
 The module `@map-jr/map-jr-gl/nuxt` sets up the [Vue components and composables](vue.md) of `@map-jr/map-jr-gl/vue`
-in Nuxt. With the module, a page uses them without an import, and Vite loads the tile workers in development. The
-module requires `@nuxt/kit` 3 or 4 as a peer dependency. The module has no options: a key `mapJr` in
+in Nuxt. With the module, Vite loads the tile workers in development. The module requires `@nuxt/kit` 3 or 4 as a peer dependency. The module has no options: a key `mapJr` in
 `nuxt.config.ts` is accepted and has no effect.
 
 ```ts
@@ -25,7 +24,7 @@ export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 </template>
 ```
 
-## What the module registers
+## Components, composables and controls
 
 | Name | Kind | Source |
 |---|---|---|
@@ -79,8 +78,7 @@ Nuxt puts around `MapJr`. It has none of the members of the map, also after hydr
 
 ```vue
 <script setup>
-// Nuxt imports `shallowRef` itself. A shallowRef keeps the map as it is, with
-// no reactive proxy around it.
+// A shallowRef keeps the map as it is, with no reactive proxy around it.
 const map = shallowRef(null);
 </script>
 

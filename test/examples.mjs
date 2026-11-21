@@ -9,15 +9,12 @@ import {spawnSync} from 'node:child_process';
 import {parse, compileScript, compileTemplate} from 'vue/compiler-sfc';
 import {compile as compileSvelte} from 'svelte/compiler';
 
-const dir = path.resolve(import.meta.dirname, '../examples'), dist = path.resolve(import.meta.dirname, '../dist');
+const dir = path.resolve(import.meta.dirname, '../examples');
 const {transformSync} = createRequire(import.meta.url)('esbuild');
 let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
 
-// The names that each entry of the library has, from its built file.
-const exportsOf = file => { const code = readFileSync(path.join(dist, file), 'utf8'), last = [...code.matchAll(/export\s*\{([^}]*)\}/g)].flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+as\s+/).pop())); return new Set(last.filter(Boolean)); };
-const entries = {'@map-jr/map-jr-gl': exportsOf('map-jr-gl.js'), '@map-jr/map-jr-gl/vue': exportsOf('vue.js'), '@map-jr/map-jr-gl/react': exportsOf('react.js'), '@map-jr/map-jr-gl/svelte': exportsOf('svelte.js'), '@map-jr/map-jr-gl/element': exportsOf('element.js'), '@map-jr/map-jr-gl/controls': exportsOf('controls.js'), '@map-jr/map-jr-gl/maplibre-compat': exportsOf('map-jr-gl-maplibre-compat.js')};
-const unknownImports = code => [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(@map-jr\/map-jr-gl[^']*)'/g)].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => n && !entries[m[2]]?.has(n)).map(n => `${n} from ${m[2]}`));
+import {entries, unknownImports} from './entry-exports.mjs';
 
 // The names that the module for Nuxt (src/nuxt.ts) registers: the components, and the controls as <name>Control.
 const nuxtModule = readFileSync(path.resolve(import.meta.dirname, '../src/nuxt.ts'), 'utf8');
