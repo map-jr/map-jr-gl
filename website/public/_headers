@@ -3,6 +3,10 @@
 # library need CORS.
 /lib/*
   Access-Control-Allow-Origin: *
-# The wide first paint of the home page (scripts/first-paint.mjs). The file changes only when the script writes it again.
+# The wide and the dark first paints of the home page (scripts/first-paint.mjs). The file changes only when the script writes it again.
 /home-first-paint-wide.svg
+  Cache-Control: public, max-age=86400
+/home-first-paint-wide-dark.svg
+  Cache-Control: public, max-age=86400
+/home-first-paint-dark.svg
   Cache-Control: public, max-age=86400

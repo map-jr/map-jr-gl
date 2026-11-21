@@ -961,7 +961,10 @@ try {
                         const box = found?.getBoundingClientRect();
                         if (box) rects[name] = [box.x, box.y, box.width, box.height];
                     }
-                    window.__frames.push({first: !!first, state: stage.dataset.mapState, live: live.length, rects,
+                    // The scheme of the page and of the first paint (the controls layer that shows has the class of its scheme).
+                    const shown = first && [...first.querySelectorAll('.map-jr-ssr-layer')].find(element => element.getClientRects().length > 0);
+                    window.__frames.push({first: !!first, state: stage.dataset.mapState, live: live.length, rects, page: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+                        paint: first ? (shown ? (shown.classList.contains('map-jr-dark') ? 'dark' : 'light') : 'none') : '',
                         uncovered: first ? live.filter(element => element !== first && !(z(first) > z(element) || (z(first) === z(element) && order(first, element)))).length : 0});
                     if (stage.dataset.mapState === 'idle' && window.__frames.length > 5 && !first) { window.__frames.done = true; return; }
                 }
@@ -969,10 +972,30 @@ try {
             };
             requestAnimationFrame(tick);
         })()`;
-        for (const [width, height] of [[390, 844], [1024, 768], [1440, 900]]) {
-            const {page, close} = await open('/', {width, height, init: log});
+        // The first paint has the scheme of the page (#1422): the colour mode of the site sets the class `dark` on <html> in the head, from
+        // the stored choice or else from `prefers-color-scheme`. `stored` is the choice in localStorage, and `system` the media query.
+        const stores = value => `try { localStorage.setItem('nuxt-color-mode', '${value}'); } catch {}`;
+        const cases = [
+            ...['light', 'dark'].flatMap(scheme => [[390, 844], [1024, 768], [1440, 900]].map(([width, height]) => ({scheme, width, height, system: scheme, expect: scheme}))),
+            {scheme: 'dark', width: 1024, height: 768, system: 'light', stored: 'dark', expect: 'dark'},
+            {scheme: 'light', width: 1024, height: 768, system: 'dark', stored: 'light', expect: 'light'},
+        ];
+        for (const {width, height, system, stored, expect} of cases) {
+            const {page, close} = await open('/', {width, height, scheme: system, init: (stored ? stores(stored) + ';' : '') + log});
             await page.waitForFunction(() => window.__frames?.done, null, {timeout: 90000}).catch(() => {});
             const frames = await page.evaluate(() => window.__frames ?? []);
+            const label = `home page at ${width} px in ${expect}${stored ? ` (stored, system ${system})` : ''}`;
+            // Every frame with the first paint has the scheme of the page, and the page has the expected scheme from the first frame.
+            const wrongScheme = frames.filter(frame => frame.page !== expect || (frame.first && frame.paint !== expect));
+            check(`${label}: the first paint has the colours of the page in every frame`, frames.length > 5 && wrongScheme.length === 0,
+                `${frames.length} frames, ${wrongScheme.length} wrong (${[...new Set(wrongScheme.map(frame => `page ${frame.page}, paint ${frame.paint}`))].join('; ')})`);
+            // The page fetches the pictures of its scheme only. The inline picture of the light scheme is part of the HTML.
+            const fetchedPictures = (await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname))).filter(path => path.startsWith('/home-first-paint'));
+            const small = width <= 1000 && height <= 1060;
+            const picture = scheme => scheme === 'dark' ? [small ? '/home-first-paint-dark.svg' : '/home-first-paint-wide-dark.svg'] : small ? [] : ['/home-first-paint-wide.svg'];
+            // A stored choice that differs from the system has the preload of the system's picture too: the preload reads the media query and not the class.
+            const wanted = [...new Set([...picture(expect), ...picture(system)])].sort();
+            check(`${label}: it fetches ${wanted.join(' ') || 'no picture file'}`, [...new Set(fetchedPictures)].sort().join(' ') === wanted.join(' '), [...new Set(fetchedPictures)].join(' ') || 'none');
             const live = frames.filter(frame => frame.live > 0).length;
             const uncovered = frames.filter(frame => frame.first && frame.uncovered > 0).length;
             const bare = frames.filter(frame => !frame.first && frame.state !== 'idle').length;
@@ -981,9 +1004,9 @@ try {
             const before = frames[swap - 1]?.rects ?? {}, after = frames[swap]?.rects ?? {};
             const names = ['zoom-in', 'zoom-out', 'compass', 'scale', 'attrib'];
             const moved = names.filter(name => !before[name] || !after[name] || before[name].some((value, index) => Math.abs(value - after[name][index]) > 2));
-            check(`home page at ${width} px: the controls of the first paint are where the live controls are after the swap`, swap > 0 && moved.length === 0,
+            check(`${label}: the controls of the first paint are where the live controls are after the swap`, swap > 0 && moved.length === 0,
                 moved.length ? moved.map(name => `${name} ${JSON.stringify(before[name]?.map(Math.round))} -> ${JSON.stringify(after[name]?.map(Math.round))}`).join('; ') : `${names.length} controls within 2 px`);
-            check(`home page at ${width} px: the first paint covers the live map and its controls in every frame, and the map is idle when it goes`, frames.length > 5 && live > 0 && swap > 0 && uncovered === 0 && bare === 0,
+            check(`${label}: the first paint covers the live map and its controls in every frame, and the map is idle when it goes`, frames.length > 5 && live > 0 && swap > 0 && uncovered === 0 && bare === 0,
                 `${frames.length} frames, ${live} with the live map, ${uncovered} where it shows through the first paint, ${bare} without the first paint and not idle, swap in frame ${swap}`);
             await close();
         }
