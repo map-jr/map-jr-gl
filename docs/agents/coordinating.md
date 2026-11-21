@@ -35,7 +35,8 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
 - Start each worker with `isolation: "worktree"` and low effort (90,000 to 160,000 tokens for an issue).
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
-- On the cloud VM (4 cores), more than about six workers that run browser suites at once make timing tests fail.
+- On the cloud VM (4 cores), run about four workers that run browser suites at once; docs-only workers do not count.
+  Six gave a load of about 35 and 15 failures in one local run of `test/interact.mjs` (#1387).
 
 ## While the workers run
 
@@ -45,7 +46,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   issue to a new worker with what is known, and tell the first one to stop its servers.
 - **Watch the checks** with `node scripts/agents/prs.mjs --watch` in a `Monitor` (it prints one line when the checks
   of a head finish, also for CI on `main`, which sends no event), or with `subscribe_pr_activity` when the repository
-  is in the session. A Monitor ends after 30 minutes; start it again.
+  is in the session. In a cloud session the script fails until #1404; use `subscribe_pr_activity` for each pull request
+  there, and read CI on `main` with `gh api 'repos/map-jr/map-jr-gl/actions/runs?branch=main&per_page=5'`. A Monitor
+  ends after 30 minutes; start it again.
 - **Send a CI failure, a review finding or a decision of the owner to the worker that opened the pull request**
   (`SendMessage`): the failure and the check run, not the task again. A follow-up costs 10,000 to 20,000 tokens and a
   new worker about 100,000. A worker that ended with no change has lost its worktree (it is removed when nothing
@@ -65,7 +68,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   ask the owner with the question tool before you act on it (the release of 0.7.0 on 2026-11-17).
 - **Ask the owner with the question tool** (`AskUserQuestion`; see "How work goes" in `CLAUDE.md`) for each pull
   request that waits for the owner and each decision, with the recommendation as the first option. Ask several
-  decisions in one call. An update says what happened and does not hold a question.
+  decisions in one call. An update says what happened and does not hold a question. Measure each option before you
+  ask, and give the numbers: the first question of #1356 ("pages override with 2+ classes") came before a one-class
+  page rule was measured, which loses, and had to be asked twice.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
@@ -83,7 +88,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   decides.
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
-  (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite.
+  (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
+  check that fails in some runs gets three runs of its CI job before the merge: the first fix of #1369/#1372 passed 20
+  local runs and CI still found the race.
 - **`Fixes #N` closes the issue at the merge, also when a part is left.** After each merge, check the state of the
   issue, and reopen it with a body that says what is left (#532, #555 and #637 on 2026-11-17).
 - **Merge one pull request in each command.** A loop that merged two pull requests in one command was refused by the
@@ -100,6 +107,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   fault of the pull request. File the check at once and give it to one worker with a narrow brief; the CI logs were
   enough to fix the three of 2026-11-16, which did not fail on the Mac even with the CPU throttled 40 times. Do not
   start a failed job again in the hope of a lucky run.
+- **The `browser` summary job reports a cancelled run as failed** until it is changed, so each re-push sends a false
+  failure event for the old head. Read whether the head is current before you act on a failure event.
+- **A cloud session cannot delete merged branches** (`git push origin --delete` gives 403).
 - **A pull request with no CI after 5 minutes** (`prs.mjs --watch` says so) missed its event: close it and open it
   again.
 - **A run of merges cancels CI on `main`,** because each push cancels the run before it. After several merges, let
@@ -158,6 +168,9 @@ alone cannot.
 - **The order of 2026-11-17 worked:** a worker writes the section of `CHANGELOG.md` and the version in a pull request
   while the last fixes merge; then the status pull request merges; then the release pull request is updated from
   `main` and merges on green CI. Read the results of the `Browsers` workflow for the commit before the release.
+- **Docs that ship in the package reach users only with a release.** npm 0.9.0 had no `docs/migrate/` when the
+  migration prompt went live (#1366). List the docs that the package carries in the release, or say on the page which
+  version has them.
 - **Ask other sessions to hold their merges** from the status run until npm has the version, and tell them the
   version when it is there. npm showed 0.7.0 about six minutes after the workflow `Release` had published it.
 
@@ -176,6 +189,14 @@ alone cannot.
 
 ## Traps of the shell and of `gh`
 
+- In cloud sessions GraphQL is blocked, so `gh issue list`, `gh issue view`, `gh pr list`, `gh pr view` and
+  `gh pr create` fail. Use REST:
+  - Issues: `gh api 'repos/map-jr/map-jr-gl/issues?state=open&per_page=100' -q '.[] | select(.pull_request|not)'`
+    (the issues endpoint also lists pull requests).
+  - Search: `gh api -X GET search/issues -f q='repo:map-jr/map-jr-gl is:issue <words>'`. The query needs `is:issue` or
+    `is:pull-request`, or the answer is HTTP 422.
+  - Merge: `gh api -X PUT repos/map-jr/map-jr-gl/pulls/N/merge -f merge_method=squash -f sha=<head>`.
+  - Re-run one job: `gh api -X POST repos/map-jr/map-jr-gl/actions/jobs/ID/rerun`.
 - `gh pr edit` and `gh issue view --comments` fail on this repository with an error about Projects (classic). Use
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file` and `gh issue view N --json body,comments`.
 - `gh pr edit --add-label` fails in the same way: add a label with
