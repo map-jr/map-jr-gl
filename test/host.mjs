@@ -126,7 +126,7 @@ for (const renderer of renderers) {
             t.host.moveTo({zoom: 15, duration: 300});
             for (let i = 0; i < 100 && !(Math.abs(t.host.state.get().view.zoom - 15) < 1e-6 && !t.host.state.get().moving); i++) await wait(100); // (a slow machine)
             await wait(300);
-            const reported = t.views.length, last = t.views.at(-1), old = t.views[Math.max(0, t.views.length - 4)];
+            const reported = t.views.length, last = t.views.at(-1), old = t.views.at(-2); // (an intermediate view of the latest movement)
             const warned = [], warn = console.warn; console.warn = (...a) => warned.push(a.join(' '));
             const said = () => warned.filter(w => w.includes('update(): "view" is a view that the map reported earlier') && w.includes('moveTo(view)')).length;
             t.host.update(t.spec = {...t.spec, view: old}); // a late echo: a view of the latest movement, passed after its end
