@@ -953,7 +953,15 @@ try {
                     const live = [...stage.querySelectorAll('canvas, .map-jr-ctrl, .maplibregl-ctrl')].map(element => child(element)).filter(Boolean);
                     const z = element => Number.parseInt(getComputedStyle(element).zIndex) || 0;
                     const order = (a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING;
-                    window.__frames.push({first: !!first, state: stage.dataset.mapState, live: live.length,
+                    // The place of each control: in the first paint while it shows, and in the live map after it.
+                    const rects = {};
+                    for (const name of ['zoom-in', 'zoom-out', 'compass', 'scale', 'attrib']) {
+                        const within = first ?? stage;
+                        const found = [...within.querySelectorAll('.map-jr-ctrl-' + name)].find(element => element.getClientRects().length > 0 && (first || !element.closest('[data-home-first]')));
+                        const box = found?.getBoundingClientRect();
+                        if (box) rects[name] = [box.x, box.y, box.width, box.height];
+                    }
+                    window.__frames.push({first: !!first, state: stage.dataset.mapState, live: live.length, rects,
                         uncovered: first ? live.filter(element => element !== first && !(z(first) > z(element) || (z(first) === z(element) && order(first, element)))).length : 0});
                     if (stage.dataset.mapState === 'idle' && window.__frames.length > 5 && !first) { window.__frames.done = true; return; }
                 }
@@ -969,6 +977,12 @@ try {
             const uncovered = frames.filter(frame => frame.first && frame.uncovered > 0).length;
             const bare = frames.filter(frame => !frame.first && frame.state !== 'idle').length;
             const swap = frames.findIndex(frame => !frame.first);
+            // The controls are at the same places before and after the swap (the last frame with the first paint, and the first without it).
+            const before = frames[swap - 1]?.rects ?? {}, after = frames[swap]?.rects ?? {};
+            const names = ['zoom-in', 'zoom-out', 'compass', 'scale', 'attrib'];
+            const moved = names.filter(name => !before[name] || !after[name] || before[name].some((value, index) => Math.abs(value - after[name][index]) > 2));
+            check(`home page at ${width} px: the controls of the first paint are where the live controls are after the swap`, swap > 0 && moved.length === 0,
+                moved.length ? moved.map(name => `${name} ${JSON.stringify(before[name]?.map(Math.round))} -> ${JSON.stringify(after[name]?.map(Math.round))}`).join('; ') : `${names.length} controls within 2 px`);
             check(`home page at ${width} px: the first paint covers the live map and its controls in every frame, and the map is idle when it goes`, frames.length > 5 && live > 0 && swap > 0 && uncovered === 0 && bare === 0,
                 `${frames.length} frames, ${live} with the live map, ${uncovered} where it shows through the first paint, ${bare} without the first paint and not idle, swap in frame ${swap}`);
             await close();
