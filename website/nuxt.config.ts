@@ -38,6 +38,30 @@ export default defineNuxtConfig({
             sections: nav,
         },
     },
+    // Each file of dist/ is a chunk of its own with "map-jr-gl" in its name, so that the home page can count the files that
+    // it fetched for the map (app/components/home/HomeMap.vue). The code of the site and of Vue stays in other chunks.
+    vite: {
+        build: {
+            rollupOptions: {
+                output: {
+                    advancedChunks: {
+                        groups: [
+                            // Vue is its own chunk, so that the chunk of the adapter holds only the adapter.
+                            {name: 'vue-runtime', test: /\/node_modules\/(@vue\/[\w-]+|vue)\//, priority: 20},
+                            {
+                                name: (id: string) => {
+                                    const file = /\/dist\/([\w.-]+)\.js$/.exec(id.split('?')[0]!)?.[1];
+                                    return file && (!id.includes('/node_modules/') || id.includes('/node_modules/@map-jr/map-jr-gl/dist/')) ? 'map-jr-gl-' + file.replace(/^map-jr-gl-?/, '') : null;
+                                },
+                                priority: 10,
+                            },
+                        ],
+                    },
+                    chunkFileNames: (chunk: {name: string}) => chunk.name.startsWith('map-jr-gl-') ? '_nuxt/[name]-[hash].js' : '_nuxt/[hash].js',
+                },
+            },
+        },
+    },
     // A change of the manifest starts the development server again, because the collection is made from it.
     watch: [navFile],
     // The native connector needs no build of better-sqlite3.

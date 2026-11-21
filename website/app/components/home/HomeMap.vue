@@ -7,9 +7,8 @@
   the system asks for reduced motion. `data-map-state` is "idle" when the map is drawn and ready, "error" when it
   cannot be shown (the SVG stays), and the checks read it.
 
-  When the map is idle, the component sends `measure`: the time from the load of the page to idle, and the bytes of the
-  scripts that the browser fetched from the moment that this component mounted. The page script of the map and the
-  worker file are among them.
+  When the map is idle, the component sends `measure`: the time from the load of the page to idle, and the size of the
+  files of the library that the browser fetched: its chunks (the page script) and the worker file, each counted once.
 -->
 <script setup lang="ts">
 import type {MapJrExposed} from '@map-jr/map-jr-gl/vue';
@@ -26,7 +25,6 @@ const controls = [navigationControl(), scaleControl()];
 // The camera of the first scene is the first view of the map, and a later scene moves the camera.
 const first = props.scene.camera;
 let ready = false;
-let mountedAt = 0;
 let measured = false;
 // How the last move went, "fly" or "cut" (the checks read it).
 const how = ref('');
@@ -52,9 +50,16 @@ function onIdle() {
     state.value = 'idle';
     if (measured) return;
     measured = true;
-    const scripts = performance.getEntriesByType('resource').filter(entry => entry.startTime >= mountedAt - 1 && new URL(entry.name, location.href).pathname.endsWith('.js')) as PerformanceResourceTiming[];
-    const bytes = scripts.reduce((sum, entry) => sum + (entry.transferSize || entry.encodedBodySize), 0);
-    emit('measure', {idleMs: Math.round(performance.now()), bytes, files: scripts.length});
+    // The files of the library: the chunks of the build that keep "map-jr-gl" in their names (nuxt.config.ts) and the worker
+    // file. A file is counted once, also when the browser lists it twice (a preload and an import). The number is the
+    // size of the body as the server sent it (`encodedBodySize`): gzip on a server that compresses.
+    const scripts = new Map<string, number>();
+    for (const entry of performance.getEntriesByType('resource') as PerformanceResourceTiming[]) {
+        const path = new URL(entry.name, location.href).pathname;
+        if (path.startsWith('/_nuxt/map-jr-gl') && path.endsWith('.js')) scripts.set(path, entry.encodedBodySize);
+    }
+    const bytes = [...scripts.values()].reduce((sum, size) => sum + size, 0);
+    emit('measure', {idleMs: Math.round(performance.now()), bytes, files: scripts.size});
 }
 
 // Without WebGL 2 the map cannot start, and the library would replace the first paint with a message. The page keeps the
@@ -69,7 +74,6 @@ function hasWebGL2() {
     } catch { return false; }
 }
 onMounted(() => {
-    mountedAt = performance.now();
     if (hasWebGL2()) return;
     holder.value?.append(...document.querySelectorAll('[data-home-map] [data-map-jr-ssr]'));
     unsupported.value = true;

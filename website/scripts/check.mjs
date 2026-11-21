@@ -835,6 +835,15 @@ try {
         await page.locator('[data-home-measure][data-state="measured"]').waitFor({timeout: 30000}).catch(() => {});
         const bytes = await page.locator('[data-home-bytes]').textContent();
         check('home page: the scale bar shows the bytes of the map in KB', /^\d[\d,]* KB$/.test(bytes ?? ''), bytes ?? '');
+        // The number counts the library files (gzip, as the server sent them). `pnpm status` measures the same files in dist/: the
+        // page script and the worker file of the main entry are in docs/status.json. The home page also loads the controls and
+        // the adapter, so the number is allowed to differ by 10%.
+        const measured = Number(await page.locator('[data-home-bytes]').getAttribute('data-bytes'));
+        const status = JSON.parse(readFileSync(new URL('../../docs/status.json', import.meta.url), 'utf8'));
+        const expected = status.sizes.find(row => row.file.startsWith('Page script and worker file of `@map-jr/map-jr-gl`')).bytes;
+        check('home page: the bytes of the map are within 10% of the page script and the worker file of docs/status.json', Math.abs(measured - expected) <= expected * 0.1, `${measured} B measured, ${expected} B in docs/status.json`);
+        const fetched = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname));
+        check('home page: no development file of the library is fetched', !fetched.some(path => /\.dev\.js$|mistakes/.test(path)), fetched.filter(path => /\.dev\.js$|mistakes/.test(path)).join(' '));
 
         // The map does not take the wheel before "Explore the map": the wheel scrolls the page, and the map is inert.
         check('home page: the map is inert before the button', await page.locator('[data-home-map]').evaluate(element => element.inert));
@@ -880,10 +889,17 @@ try {
         const {page, problems, close} = await open('/', {width: 390, height: 844});
         const idle = await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
         check('home page at 390 px: the map reaches idle', idle);
+        const unreachable = [];
         for (const name of ['scale', 'compat', 'play', 'showcase', 'limits', 'install']) {
             await page.evaluate(name => document.querySelector(`[data-stop="${name}"]`).scrollIntoView({block: 'center'}), name);
             await page.waitForTimeout(300);
+            const reachable = await page.evaluate(() => {
+                const box = document.querySelector('[data-explore]').getBoundingClientRect();
+                return !!document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest('[data-explore]') && box.top >= 0 && box.bottom <= innerHeight;
+            });
+            if (!reachable) unreachable.push(name);
         }
+        check('home page at 390 px: the button "Explore the map" is in the window and nothing covers it at each stop', unreachable.length === 0, unreachable.join(' '));
         const wide = await overflow(page);
         check('home page at 390 px: no horizontal scroll', wide <= 0, String(wide));
         check('home page at 390 px: no failed request and no error', problems.length === 0, problems.join(' | '));

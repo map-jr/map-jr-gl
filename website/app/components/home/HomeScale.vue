@@ -14,10 +14,10 @@ const width = (bytes: number) => Math.max(1, Math.min(100, bytes / site.maplibre
 <template>
   <div data-home-measure :data-state="measure ? 'measured' : 'measuring'">
     <h2 class="font-display text-3xl font-medium tracking-tight text-highlighted">Check the size on this page</h2>
-    <p class="mt-3 text-toned">The first bar is the JavaScript that this page fetched for the map you see, as your browser measured it. It includes the page script and the worker file.</p>
+    <p class="mt-3 text-toned">The first bar is the size of the library files that this page fetched for the map you see, as your browser measured it: the page script, the chunks that it loaded and the worker file. The bar counts the body of each file as the server sent it.</p>
     <div class="mt-5 space-y-4 figure-text">
       <div>
-        <div class="flex justify-between gap-3"><span class="text-highlighted">Map Jr. GL, on this page</span><span data-home-bytes>{{ measure ? kb(measure.bytes) : 'measuring…' }}</span></div>
+        <div class="flex justify-between gap-3"><span class="text-highlighted">Map Jr. GL, on this page</span><span data-home-bytes :data-bytes="measure?.bytes">{{ measure ? kb(measure.bytes) : 'measuring…' }}</span></div>
         <div class="mt-1 h-3 border border-inverted"><div class="h-full bg-primary" :style="{width: measure ? width(measure.bytes) : '0%'}" /></div>
       </div>
       <div>
@@ -30,7 +30,7 @@ const width = (bytes: number) => Math.max(1, Math.min(100, bytes / site.maplibre
       <template v-else>The time to idle appears when the map is ready.</template>
     </p>
     <p class="mt-2 text-sm text-muted">
-      The MapLibre GL JS figure is gzip: its page script with its CSS plus its worker file, from <a class="underline" :href="`${site.repository}/blob/main/docs/status.json`">docs/status.json</a>, which <code>pnpm status</code> writes. Your figure is what the browser transferred, so a server without compression shows a larger number.
+      The MapLibre GL JS figure is gzip: its page script with its CSS plus its worker file, from <a class="underline" :href="`${site.repository}/blob/main/docs/status.json`">docs/status.json</a>, which <code>pnpm status</code> writes. Your figure is the size of the bodies that the server sent, so a server without compression shows a larger number.
     </p>
   </div>
 </template>
