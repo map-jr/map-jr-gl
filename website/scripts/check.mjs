@@ -31,6 +31,19 @@ function check(name, ok, detail = '') {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? ': ' + detail : ''}`);
 }
 
+// Launches a browser other than Chromium. Where it is not installed, the checks that need it print one `skip` line each
+// and the others run (#1389). In CI (the variable CI is set) a launch that fails is an error, so that a broken install
+// of the browser is not hidden.
+async function launchOther(type, what) {
+    try {
+        return await type.launch();
+    } catch (error) {
+        if (process.env.CI) throw error;
+        console.log(`skip ${what}: ${type.name()} cannot be launched (${error.message.split('\n')[0].slice(0, 120)}). Run "pnpm exec playwright install ${type.name()}".`);
+        return null;
+    }
+}
+
 async function open(path, {width = 1440, height = 900, scheme = 'light', reducedMotion = 'no-preference', init = ''} = {}) {
     const context = await browser.newContext({viewport: {width, height}, deviceScaleFactor: 2, colorScheme: scheme, reducedMotion});
     const page = await context.newPage();
@@ -373,7 +386,8 @@ try {
     // not even the page. Playwright cannot swipe or turn the wheel in WebKit with touch, so there the list is scrolled
     // by its `scrollTop`.
     for (const type of [chromium, webkit]) {
-        const engine = type === chromium ? browser : await type.launch();
+        const engine = type === chromium ? browser : await launchOther(type, 'table of contents on a phone');
+        if (!engine) continue;
         for (const path of ['/reference/map', '/reference/description']) {
             const name = `table of contents of ${path} on a phone in ${type.name()}`;
             const context = await engine.newContext(devices['iPhone 13']);
@@ -470,7 +484,8 @@ try {
     // frame (app/utils/map-frame.ts); the checks look for its canvas, which the map makes before the style loads, so
     // they do not need other hosts.
     for (const engine of editorBrowsers) {
-        const own = engine === 'chromium' ? browser : await playwright[engine].launch();
+        const own = engine === 'chromium' ? browser : await launchOther(playwright[engine], `editor and /play in ${engine}`);
+        if (!own) continue;
         const context = await own.newContext({viewport: {width: 1440, height: 900}});
         const page = await context.newPage();
         // (Playwright reports the errors of the frames here too, so the check runs before the code with an error.)
@@ -707,7 +722,8 @@ try {
     // shows the heading below the bar of the list (#1311). The page has no scroll anchoring, as in Safari before 27.
     for (const type of [chromium, webkit]) {
         const name = `table of contents on a phone in ${type.name()}`;
-        const engine = type === chromium ? browser : await type.launch();
+        const engine = type === chromium ? browser : await launchOther(type, `${name.replace(/ in \w+$/, '')}`);
+        if (!engine) continue;
         const context = await engine.newContext(devices['iPhone 13']);
         const page = await context.newPage();
         const problems = [];
@@ -740,7 +756,8 @@ try {
     // than it, apart from the lines of the editor, which scroll inside it (#1336). The editor is above the map.
     for (const type of [chromium, webkit]) {
         const name = `/play on a phone in ${type.name()}`;
-        const engine = type === chromium ? browser : await type.launch();
+        const engine = type === chromium ? browser : await launchOther(type, `${name.replace(/ in \w+$/, '')}`);
+        if (!engine) continue;
         const context = await engine.newContext(devices['iPhone 13']);
         const page = await context.newPage();
         const problems = [];
