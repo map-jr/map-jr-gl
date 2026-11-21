@@ -1910,6 +1910,21 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
 
+        // Without `position`, a control goes to its own default corner: the bottom left for `scale()`, else the top right (#1197).
+        const corners = await page.evaluate(async () => {
+            const t = window.t, {navigation, scale} = await import('/dist/controls.js');
+            const settle = () => new Promise(r => setTimeout(r, 50));
+            t.host.update(t.spec = {...t.spec, controls: [navigation(), scale()]});
+            for (let i = 0; i < 40 && !document.querySelector('#host .map-jr-ctrl-scale'); i++) await settle();
+            await settle();
+            const where = sel => document.querySelector(sel)?.closest('[class*="ctrl-top-"],[class*="ctrl-bottom-"]')?.className.match(/ctrl-(top|bottom)-(left|right)/)?.[0];
+            const r = {scale: where('#host .map-jr-ctrl-scale'), nav: where('#host .map-jr-ctrl-compass')};
+            t.host.update(t.spec = {...t.spec, controls: undefined});
+            await settle();
+            return r;
+        });
+        check(`[${renderer}] scale() without position goes to the bottom left, navigation() to the top right`, corners.scale?.endsWith('bottom-left') && corners.nav?.endsWith('top-right'), JSON.stringify(corners));
+
         // `locale` gives the texts of the controls, and a change adds the controls again with the new texts (#685).
         const locale = await page.evaluate(async () => {
             const t = window.t, {navigation} = await import('/dist/controls.js');
