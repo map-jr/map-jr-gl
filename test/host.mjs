@@ -235,6 +235,19 @@ for (const renderer of renderers) {
         check(`[${renderer}] fitBounds jumps without a duration and animates with duration 800 (#1154)`,
             fitJump.jumped > 12 && fitJump.moving && fitJump.during < fitJump.jumped - 1 && Math.abs(fitJump.end - fitJump.jumped) < 0.25, JSON.stringify(fitJump));
 
+        // 2d. update() with the padding going from 0 to unset is no change, and does not cancel a running animation (#1351).
+        const padKept = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            t.host.update({...t.spec, padding: 0});
+            t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
+            t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]], {duration: 800});
+            for (let i = 0; i < 250 && !t.host.state.get().moving; i++) await wait(20);
+            t.host.update({...t.spec});
+            for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
+            return {end: t.host._map.getZoom()};
+        });
+        check(`[${renderer}] update() with padding from 0 to unset does not cancel a running fitBounds (#1351)`, padKept.end > 12, JSON.stringify(padKept));
+
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
@@ -3644,6 +3657,6 @@ for (const renderer of renderers) {
     finally { await page.close(); }
 }
 // (Chromium on 2026-11-19 printed 158 results with RENDERER=main and 94 with RENDERER=worker.)
-tally((renderers.includes('main') ? 140 : 0) + (renderers.includes('worker') ? 85 : 0));
+tally((renderers.includes('main') ? 141 : 0) + (renderers.includes('worker') ? 86 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);

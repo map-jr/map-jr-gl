@@ -1117,7 +1117,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
         if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds as LngLatBoundsInput | null | undefined);
-        if (differ(next.padding, before?.padding)) map.jumpTo({padding: next.padding ?? 0});
+        if (differ(next.padding ?? 0, before?.padding ?? 0)) map.jumpTo({padding: next.padding ?? 0});
         // (Before the style is there, the style gets the projection of the description when it comes: see `restyle`.)
         // (The map keeps these values across a new style; only the names whose values changed are set.)
         forced = next.globalState?.['color-scheme'] != null;
