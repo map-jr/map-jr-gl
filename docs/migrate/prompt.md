@@ -59,7 +59,7 @@ Main API (see `migrate/compat-to-main-api.md` for the full table):
 
 ## 5. Do not
 
-- Do not remove `maplibre-gl` from `package.json` while a wrapper, a plugin or the types of the project still import it.
+- Do not remove `maplibre-gl` from `package.json` while a wrapper, a plugin or the types of the project still import it. When nothing imports it any more, remove it with the package manager and report that you did.
 - Do not use an API that the docs do not list. Look up each name in `reference/` or in `maplibre-compatibility.md`; do not guess a method from MapLibre GL JS.
 - Do not write an alias that matches `maplibre-gl/dist/...`. The build stops.
 - Do not copy the style of a layer that the library cannot draw (video and canvas sources, `within` and `distance`, MapLibre Tiles). Report it to the user.
@@ -72,6 +72,7 @@ Main API (see `migrate/compat-to-main-api.md` for the full table):
 1. Run the type check and the build of the project (`tsc --noEmit`, `npm run build` or the equivalent) and fix each error.
 2. Compat entry only: create the map with `strict: true` while you check. An option or a call that the map cannot carry out then throws an error, so you find each use of something that is not available.
 3. Start the development server of the project (Vite and Nuxt load the development build of the library) and open the page. Read the browser console. The development build writes a warning that starts with `[map-jr-gl]` for each option or call that has no effect, and for common mistakes. Fix each warning, or tell the user why you left it.
+   If you cannot run a browser, say so in the report instead of skipping the check in silence.
 4. Confirm that the map reaches the `idle` event (`map.on('idle', ...)` in the compat entry, or the `idle` event of `map.listen` in the main API) and that the layers draw.
 
 ## 7. Report
