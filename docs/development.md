@@ -356,6 +356,13 @@ no documentation, when a member of the map is not in `docs/api.md`, when a galle
 forms, when no document names an entry of the package, when a link between documents is broken, or when a number of
 a text or of a kind of check in `src/mistakes.ts` is taken twice.
 
+The same command runs `node scripts/docs-lint.mjs --strict`, which fails on any finding in the user docs (a table
+cell of more than 200 characters, a block without its import, a line of code that is too long, a broken link).
+`pnpm test:examples` also runs `node test/doc-snippets.mjs`. It compiles each `js`, `ts`, `jsx`, `vue` and `svelte` fence
+of `docs/**/*.md` and fails on an import of a name that the package entry does not export. A fence that is a fragment
+on purpose goes under a "Variations" heading or has `nocheck` after its language (` ```js nocheck `). A `ts` fence in
+`docs/reference/` shows a declaration, so only its imports are checked.
+
 The same command runs `node scripts/reference.mjs --check`. The script writes the reference tables (Name, Type,
 Default, Description) of the blocks `<!-- ref:Name:start -->` of `README.md`, `docs/` and
 `test/fixtures/reference.md` from the types and the TSDoc of `src/`, and `--check` fails when a table is out of date

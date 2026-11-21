@@ -1,6 +1,6 @@
 // Checks the user docs against the rules of docs/style-guide.md that a script can check.
-// It reads docs/guide, docs/reference, docs/recipes and docs/migrate, prints one line for each finding, and exits
-// with 0. With `--strict` it exits with 1 when there is a finding. Give paths to check only those files.
+// It reads docs/guide, docs/reference, docs/recipes and docs/migrate and prints one line for each finding. With `--strict`
+// (as `pnpm test:consistency` runs it) it exits with 1 when there is a finding. Give paths to check only those files.
 // It also checks that each relative link of a page leads to a file, and each anchor to a heading of that file.
 //
 // It warns about a JavaScript, TypeScript, Vue or JSX fence that is not formatted as Prettier formats it at 80
