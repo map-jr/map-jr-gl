@@ -203,6 +203,9 @@ The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `ne
    property that it cannot draw.
 5. Read [MapLibre compatibility](docs/maplibre-compatibility.md) for the differences.
 
+To let a coding agent do these steps, give it the [migration prompt](docs/migrate/prompt.md). The package contains the
+docs as markdown in `node_modules/@map-jr/map-jr-gl/docs/` and an `AGENTS.md` for agents.
+
 A plugin or a wrapper (react-map-gl, for example) that was written for MapLibre GL JS imports `maplibre-gl` itself.
 Map that name to this library in your bundler or in an import map. The alias must match the name `maplibre-gl`
 exactly: an alias that also matches `maplibre-gl/dist/...` makes the bundler look for those files in this package,

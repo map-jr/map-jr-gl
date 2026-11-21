@@ -19,6 +19,20 @@ const surround = computed(() => {
     const link = (found?: {path: string; title: string}) => found ? {path: found.path, title: found.title, description: sectionOf(found.path)?.title ?? ''} : null;
     return [link(pages.value[index - 1]), link(pages.value[index + 1])];
 });
+// "Copy page as markdown" and "Copy migration prompt" put the raw markdown of /raw/ on the clipboard. The prompt is the
+// block of docs/migrate/prompt.md, without its page. `copied` names the button that shows "Copied" for two seconds.
+const copied = ref('');
+async function copyRaw(name: string, file: string, block = false) {
+    try {
+        let text = await $fetch<string>(`/raw/${file}`, {responseType: 'text'});
+        if (block) text = /^```[^\n]*\n([\s\S]*?)\n```$/m.exec(text)?.[1] ?? text;
+        await navigator.clipboard.writeText(text);
+        copied.value = name;
+        setTimeout(() => { if (copied.value === name) copied.value = ''; }, 2000);
+    } catch {
+        window.open(`/raw/${file}`, '_blank');
+    }
+}
 const links = computed(() => {
     if (!entry.value) return [];
     const report = new URLSearchParams({
@@ -26,6 +40,8 @@ const links = computed(() => {
         body: `Page: ${site.url}${path}\n\nWhat is wrong or missing:\n`,
     });
     return [
+        {label: copied.value === 'page' ? 'Copied' : 'Copy page as markdown', icon: copied.value === 'page' ? 'i-lucide-check' : 'i-lucide-copy', onClick: () => copyRaw('page', entry.value!.file)},
+        {label: copied.value === 'prompt' ? 'Copied' : 'Copy migration prompt', icon: copied.value === 'prompt' ? 'i-lucide-check' : 'i-lucide-sparkles', onClick: () => copyRaw('prompt', 'migrate/prompt.md', true)},
         {label: 'Edit this page', icon: 'i-lucide-pencil', to: `${site.repository}/edit/main/docs/${entry.value.file}`, target: '_blank'},
         {label: 'Report a problem with this page', icon: 'i-lucide-flag', to: `${site.repository}/issues/new?${report}`, target: '_blank'},
     ];

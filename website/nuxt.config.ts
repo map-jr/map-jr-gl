@@ -49,6 +49,12 @@ export default defineNuxtConfig({
         domain: 'https://map-jr.org',
         title: 'Map Jr. GL',
         description: 'A small, fast map library for the web. It reads MapLibre styles.',
+        // /llms-full.txt has the text of every page. Each page is also at /raw/<page>.md.
+        full: {title: 'Complete documentation', description: 'The text of every page of this site in one file.'},
+        notes: [
+            'To move a project from MapLibre GL JS, give an agent the prompt at https://map-jr.org/raw/migrate/prompt.md.',
+            'The package has the same pages as markdown in node_modules/@map-jr/map-jr-gl/docs/, and AGENTS.md for agents.',
+        ],
     },
     fonts: {
         families: [
