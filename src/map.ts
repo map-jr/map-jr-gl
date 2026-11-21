@@ -27,6 +27,8 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     style?: unknown;
     /** The area that the map shows at the start (it comes before `center` and `zoom`), and options for the fit, such as `padding`. */
     bounds?: LngLatBoundsInput;
+    /** The padding of the map at the start, in place for the first fit of `bounds`. Only the main API sets it. */
+    startPadding?: PaddingInput;
     fitBoundsOptions?: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number};
     /** Keeps the camera in the fragment of the URL (`#zoom/lat/lng`), so that a link shows the same view. A string gives the camera a name in the fragment. */
     hash?: boolean | string;
@@ -319,6 +321,8 @@ export class Map {
         }
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         // As in MapLibre, `bounds` comes before `center` and `zoom`: the map starts with that area in view.
+        // (The padding of the map is in place for the first fit, so that the box fits into the free part; the main API passes it, #1162.)
+        if (options.startPadding !== undefined) this.tr.padding = paddingOf(options.startPadding);
         if (options.bounds) { const fit = this.cameraForBounds(options.bounds, options.fitBoundsOptions); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
         // As in MapLibre, `interactive: false` turns every handler off, and `enable()` on one turns it on later (#196).
         // The map still fires its mouse events (#253), and a touch scrolls the page until a handler is enabled.

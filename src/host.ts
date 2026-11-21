@@ -772,7 +772,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
+        startPadding: spec.padding as PaddingInput | undefined, bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
