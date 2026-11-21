@@ -3440,7 +3440,7 @@ for (const mode of renderers) {
             el.requestFullscreen = undefined;
             const locale = {'NavigationControl.ZoomIn': 'Zoom avant', 'FullscreenControl.Enter': 'Plein écran', 'FullscreenControl.Exit': 'Quitter le plein écran',
                 'ScaleControl.Kilometers': 'kilomètres', 'AttributionControl.ToggleAttribution': 'Attributions', 'CooperativeGesturesHandler.WindowsHelpText': 'Ctrl + molette', 'CooperativeGesturesHandler.MacHelpText': '⌘ + molette', 'CooperativeGesturesHandler.MobileHelpText': 'Deux doigts',
-                'Popup.Close': 'Fermer', 'Marker.Title': 'Repère'};
+                'Popup.Close': 'Fermer', 'Marker.Title': 'Repère', 'Map.Title': 'Carte'};
             const m = new mod.Map({container: el, renderer: 'main', locale, cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const nav = new mod.NavigationControl(), scale = new mod.ScaleControl(), fc = new mod.FullscreenControl(), events = [];
             m.addControl(nav); m.addControl(scale); m.addControl(fc);
@@ -3467,6 +3467,7 @@ for (const mode of renderers) {
             out.after = el.className.includes('pseudo-fullscreen'); out.enterAgain = fb.title; out.events = events.join();
             out.warnings = warnings.filter(w => /locale/.test(w));
             console.warn = warn;
+            out.canvasLabel = m.getCanvas().getAttribute('aria-label');
             m.remove(); el.remove();
             // A map of the main API keeps its own English names.
             const core = await import('/dist/map-jr-gl.js');
@@ -3475,6 +3476,7 @@ for (const mode of renderers) {
             const m2 = core.createMap(el2, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, controls: [navigation()]});
             for (let i = 0; i < 50 && !el2.querySelector('.maplibregl-ctrl-compass'); i++) await wait(100);
             out.coreCompass = el2.querySelector('.maplibregl-ctrl-compass')?.title;
+            out.coreCanvasLabel = m2.getCanvas?.().getAttribute('aria-label') ?? el2.querySelector('canvas')?.getAttribute('aria-label');
             m2.destroy(); el2.remove();
             return out;
         });
@@ -3482,6 +3484,7 @@ for (const mode of renderers) {
             r.zoomIn === 'Zoom avant' && r.zoomOut === 'Zoom out' && r.compass === 'Reset bearing to north' && /kilomètres$/.test(r.scale) && r.attrib === 'Attributions'
             && r.enter === 'Plein écran' && r.uiString === undefined && r.marker === 'Repère' && r.close === 'Fermer' && r.gesturesFull === false && r.gesturesAfter === true && ['Ctrl + molette', '⌘ + molette', 'Deux doigts'].includes(r.hint)
             && r.pseudo && r.position === 'fixed' && r.exit === 'Quitter le plein écran' && r.pressed === 'true' && !r.after && r.enterAgain === 'Plein écran' && r.events === 'start,end'
+            && r.canvasLabel === 'Carte' && r.coreCanvasLabel === 'Map'
             && r.warnings.length === 0 && r.coreCompass === 'Reset bearing to north', JSON.stringify(r));
     }
     if (mode === 'main') {

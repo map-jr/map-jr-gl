@@ -1956,9 +1956,9 @@ for (const renderer of renderers) {
         const locale = await page.evaluate(async () => {
             const t = window.t, {navigation} = await import('/dist/controls.js');
             const settle = () => new Promise(r => setTimeout(r, 50)), label = () => document.querySelector('#host .map-jr-ctrl-zoom-in')?.getAttribute('aria-label');
-            t.host.update(t.spec = {...t.spec, controls: [navigation()], locale: {'NavigationControl.ZoomIn': 'Zoom avant'}});
+            t.host.update(t.spec = {...t.spec, controls: [navigation()], locale: {'NavigationControl.ZoomIn': 'Zoom avant', 'Map.Title': 'Carte'}});
             for (let i = 0; i < 40 && !label(); i++) await settle();
-            const fr = label();
+            const fr = label(), canvas = () => document.querySelector('#host canvas')?.getAttribute('aria-label'), frCanvas = canvas();
             // An open popup takes the texts of a new locale too (#748). (A marker of this entry has the element of the user, and no text of its own.)
             const at = t.host.state.get().view.center, popup = t.host.overlay(document.createElement('div'), {lngLat: at, popup: true, onClose() {}});
             t.host.update(t.spec = {...t.spec, locale: {'NavigationControl.ZoomIn': 'Hineinzoomen', 'Popup.Close': 'Popup schließen'}});
@@ -1967,12 +1967,12 @@ for (const renderer of renderers) {
             popup.remove();
             t.host.update(t.spec = {...t.spec, locale: undefined});
             await settle();
-            const en = label();
+            const en = label(), enCanvas = canvas();
             t.host.update(t.spec = {...t.spec, controls: undefined});
             await settle();
-            return {fr, de, en, closer};
+            return {fr, de, en, closer, frCanvas, enCanvas};
         });
-        check(`[${renderer}] locale sets the texts of the controls and of an open popup, and follows the description`, locale.fr === 'Zoom avant' && locale.de === 'Hineinzoomen' && locale.en === 'Zoom in' && locale.closer === 'Popup schließen', JSON.stringify(locale));
+        check(`[${renderer}] locale sets the texts of the controls and of an open popup, and follows the description`, locale.fr === 'Zoom avant' && locale.de === 'Hineinzoomen' && locale.en === 'Zoom in' && locale.closer === 'Popup schließen' && locale.frCanvas === 'Carte' && locale.enCanvas === 'Map', JSON.stringify(locale));
 
         // A control of your own (#216): an element, and an object with onAdd/onRemove, follow the description by key.
         const custom = await page.evaluate(async () => {

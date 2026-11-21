@@ -292,6 +292,7 @@ not set keeps the English text.
 | `AttributionControl.ToggleAttribution` | `Toggle map data credits` (the label) and `Map data credits` (the title) |
 | `Popup.Close` | `Close popup` |
 | `Marker.Title` | `Map marker` |
+| `Map.Title` | `Map` |
 | `CooperativeGesturesHandler.WindowsHelpText` | `Use Ctrl + scroll to zoom the map` |
 | `CooperativeGesturesHandler.MacHelpText` | `Use ⌘ + scroll to zoom the map` |
 | `CooperativeGesturesHandler.MobileHelpText` | `Use two fingers to move the map` |

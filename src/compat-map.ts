@@ -371,6 +371,8 @@ export class Map extends CoreMap {
         if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
         if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
         else this.uiLocale = o.locale;
+        const title = this._getUIString('Map.Title');
+        if (title != null) this.getCanvas().setAttribute('aria-label', title);
         // (MapLibre GL JS 6.17 has no option projection and draws Mercator for it: pages that pass it expect that.)
         if (o.projection && ((o.projection as {type?: unknown}).type ?? o.projection) !== 'mercator' && !this.warned.has('projection')) {
             this.warned.add('projection');
