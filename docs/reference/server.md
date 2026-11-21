@@ -25,9 +25,9 @@ renderToSVG(options: RenderOptions): Promise<RenderResult>
 Draws the view that `options` describes. The renderer loads the style, its TileJSON files, the tiles of the view
 and the sprite.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `options` | [`RenderOptions`](#renderoptions) | The style, the view, the size and the other options. |
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `options` **required** | [`RenderOptions`](#renderoptions) | | The style, the view, the size and the other options. |
 
 **Returns** a promise of [`RenderResult`](#renderresult).
 
@@ -177,12 +177,12 @@ renderer then rejects the response when its `url` has a host that is not in `all
 
 ### Limits for requests
 
-| Option | Default | The render rejects when |
-|---|---|---|
-| `timeout` | `30000` | All requests together take longer, counted from the start of the render. |
-| `requestTimeout` | `10000` | One request takes longer, from its start to the end of its body, with its redirects. |
-| `maxBytes` | `0` (no limit) | The body of one response is larger after decompression, or its `content-length` is larger. |
-| `allowHosts` | every host | A request or a redirect goes to a host that is not in the list. |
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `timeout` | `number` | `30000` | The render rejects when all requests together take longer, counted from the start of the render. |
+| `requestTimeout` | `number` | `10000` | The render rejects when one request takes longer, from its start to the end of its body, with its redirects. |
+| `maxBytes` | `number` | `0` (no limit) | The render rejects when the body of one response is larger after decompression, or its `content-length` is larger. |
+| `allowHosts` | `string[]` | every host | The render rejects when a request or a redirect goes to a host that is not in the list. |
 
 When a time limit ends, the renderer aborts the request. A time of `0` sets no limit.
 
@@ -219,9 +219,9 @@ renderFirstView(
 Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
 right. Put the HTML into the element of the map, which needs a `position` that is not `static`.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `options` | [`RenderOptions`](#renderoptions) and `attribution` | The options of `renderToSVG`, and the attribution to show. |
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `options` **required** | [`RenderOptions`](#renderoptions) and `attribution` | | The options of `renderToSVG`, and the attribution to show. |
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -245,10 +245,10 @@ renderElement(
 
 Returns the markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element`, with the first view inside it.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `description` | [`MapDescription`](description.md) | The description of the map. |
-| `options` | [`ElementRenderOptions`](#elementrenderoptions) | The size of the render, the attributes of the element, and the other options of the render. |
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `description` **required** | [`MapDescription`](description.md) | | The description of the map. |
+| `options` **required** | [`ElementRenderOptions`](#elementrenderoptions) | | The size of the render, the attributes of the element, and the other options of the render. |
 
 The element has an attribute for each field of the description that has one. The page sets each other field, such
 as `layers`, `data` or a style object, as a property of the element, with the same value. The render uses `style`,
@@ -285,9 +285,9 @@ renderToImage(options: ImageOptions): Promise<ImageResult>
 Draws the view as a JPEG, WebP or PNG image with `rasteriser`. The default of `inlineImages` is `true` here, and the
 default of `highDensity` is `true` when `pixelRatio` is more than 1. A value that you pass overrides each default.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `options` | [`ImageOptions`](#imageoptions) | The options of `renderToSVG`, the rasteriser and the format. |
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `options` **required** | [`ImageOptions`](#imageoptions) | | The options of `renderToSVG`, the rasteriser and the format. |
 
 **Returns** a promise of [`ImageResult`](#imageresult). The promise rejects in the cases of
 [`renderToSVG`](#rendertosvg), and when the rasteriser throws.
