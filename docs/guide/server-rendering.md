@@ -123,8 +123,7 @@ MAP
 ```
 
 The Vue component renders the first view on the server when it has the [`ssr` prop](../reference/server.md#the-ssr-prop-of-mapjr).
-In Nuxt, the module `@map-jr/map-jr-gl/nuxt` registers the component, and the page needs no import. Without the
-`ssr` prop, the server renders an empty element and the map draws in the browser.
+Without the `ssr` prop, the server renders an empty element and the map draws in the browser.
 
 For `<map-jr>`, [`renderElement`](../reference/server.md#renderelement) returns the element with its attributes and
 the first view inside it. This Node.js server sends `page.html` with the element and serves the built files of the

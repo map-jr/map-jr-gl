@@ -8,9 +8,6 @@ module script of a page that has `<div id="map" style="height: 500px"></div>`, a
 below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
 component and the `<map-jr>` page give the element of the map a height of 500 pixels.
 
-In Nuxt, the code is the Vue code without the imports, because the [module for Nuxt](../reference/nuxt.md) imports the
-components, the composables and the controls automatically.
-
 <!-- example:draggable:start -->
 **Main API**
 

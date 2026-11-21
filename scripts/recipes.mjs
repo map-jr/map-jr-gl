@@ -2,7 +2,7 @@
 // (#1119). A recipe of docs/recipes/ has a block `<!-- example:<id>:start -->` … `<!-- example:<id>:end -->`; this
 // script fills it with the forms of examples/<id>.*, formatted as docs-lint formats a fence (website/build/format.mjs).
 // The Nuxt form is left out when it differs from the Vue form only in its imports and its first comment, as the style
-// guide asks; the page then says once that Nuxt needs no imports.
+// guide asks.
 // A recipe can also have a block `<!-- file:<path>:start -->` … `<!-- file:<path>:end -->`, which this script fills
 // with one fence of the file examples/<path>, such as a component test of examples/tests/.
 //

@@ -1,9 +1,9 @@
 /**
  * The module for Nuxt: `modules: ['@map-jr/map-jr-gl/nuxt']` in nuxt.config.
  *
- * It registers the components of `@map-jr/map-jr-gl/vue` (`MapJr`, `MapOverlay`, `MapImage`), so that a page uses them without an import.
+ * It provides the components of `@map-jr/map-jr-gl/vue` (`MapJr`, `MapOverlay`, `MapImage`).
  * Nuxt then also has `LazyMapJr`: the code of the map is a file of its own, and with `hydrate-on-visible` it loads
- * when the map comes into view. It registers the composables (`useMapJr`, `useMapInstance`, `useMapFeatures`, `useMapSource`) and the controls. The controls
+ * when the map comes into view. It provides the composables (`useMapJr`, `useMapInstance`, `useMapFeatures`, `useMapSource`) and the controls. The controls
  * get longer names, because `scale` and `navigation` are common words: `navigationControl()`, `scaleControl()`,
  * `fullscreenControl()`, `geolocateControl()`, `terrainControl()`, `globeControl()`,
  * `colorSchemeControl()`, `customControl()`.
