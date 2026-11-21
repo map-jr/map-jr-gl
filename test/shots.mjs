@@ -1,4 +1,5 @@
 // Loads each demo page in Chromium and saves screenshots: node test/shots.mjs <outDir> [names...]
+import {chromiumOptions} from './launch.mjs';
 import {createRequire} from 'node:module';
 const {chromium} = createRequire(import.meta.url)('playwright');
 const out = process.argv[2], only = process.argv.slice(3);
@@ -13,7 +14,7 @@ const pages = {
     shields: '/?nomarkers&zoom=11.3&center=-74.05,40.74', shieldsstatic: '/static?nomarkers&zoom=11.3',
     rotated: '/?renderer=worker&bearing=35&zoom=15.4', low: '/?renderer=worker&zoom=10.5&nomarkers',
 };
-const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
+const browser = await chromium.launch({...chromiumOptions(chromium), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
 for (const [name, url] of Object.entries(pages)) {
     if (only.length && !only.includes(name)) continue;
     const page = await browser.newPage({viewport: {width: 1000, height: 700}, deviceScaleFactor: 1});

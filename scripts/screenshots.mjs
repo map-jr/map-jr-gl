@@ -1,6 +1,7 @@
 // Takes the pictures the README shows, from the harness page of the examples (examples/run.html, built by `pnpm site`).
 // Run with the demo server up: pnpm screenshots
 // (The server is started by `pnpm demo`; set GALLERY to use another address of the built site.)
+import {chromiumOptions} from '../test/launch.mjs';
 import {createRequire} from 'node:module';
 import {copyFileSync, existsSync, mkdirSync} from 'node:fs';
 
@@ -11,7 +12,7 @@ mkdirSync(out, {recursive: true});
 
 // Each picture is the map of one example, in its main API form. An example with slower data (elevation) gets longer to settle.
 const shots = [['basic', 6], ['markers', 7], ['terrain', 14], ['query', 6], ['pmtiles', 8]];
-const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
+const browser = await chromium.launch({...chromiumOptions(chromium), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
 const page = await browser.newPage({viewport: {width: 633, height: 700}, deviceScaleFactor: 2});
 for (const [id, seconds] of shots) {
     await page.goto(new URL(`examples/run.html?id=${id}&form=core`, gallery).href);

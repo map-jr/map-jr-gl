@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {gzipSync} from 'node:zlib';
 import path from 'node:path';
+import {chromiumOptions} from '../launch.mjs';
 import {manyMarkers} from '../../demo/markers.mjs';
 
 const require = createRequire(import.meta.url), {chromium} = require('playwright');
@@ -14,7 +15,7 @@ const STYLE = process.env.BENCH_STYLE ?? 'https://tiles.openfreemap.org/styles/l
 const VIEW = {center: [-74.0065, 40.7085], zoom: 14.3};
 const gz = f => (gzipSync(readFileSync(f), {level: 9}).length / 1024).toFixed(0);
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(chromiumOptions(chromium));
 // Wrap requestAnimationFrame to time every frame callback, and record long tasks (main thread blocked for 50 ms or more).
 const instrument = () => {
     const raf = window.requestAnimationFrame.bind(window);
