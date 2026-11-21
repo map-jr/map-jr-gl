@@ -581,7 +581,7 @@ See [Dark mode](../api.md#dark-mode) for a style that follows the scheme.
 
 ## `locale`
 
-`locale` translates the texts of the controls, of the popup and of the hint of `cooperativeGestures`.
+`locale` translates the texts of the controls, of the popup and of the hint of `cooperativeGestures`, and the `aria-label` of the canvas (`Map.Title`). A change of `locale` applies to the canvas label at once.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';

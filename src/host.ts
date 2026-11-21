@@ -794,6 +794,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     const map = new Map(options);
     // (The controls read their texts through `ui()` of controls.ts, which calls this. `latest` is the last description.)
     (map as {_getUIString?(k: string): string | undefined})._getUIString = k => latest.locale?.[k];
+    const nameCanvas = (locale: Record<string, string> | null | undefined) => map.getCanvas().setAttribute('aria-label', locale?.['Map.Title'] ?? 'Map');
+    nameCanvas(spec.locale);
     // The look of the controls of the main API (the class map-jr-glass, see controls.ts). The compat entry does not set it.
     const box = map.getContainer();
     // A popup of overlay() takes the focus when it opens within a second of a key press on the map, with no pointer
@@ -1143,7 +1145,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);
         // (A new `locale` adds every control again: some controls set their texts only when they are added.)
         const relabel = differ(next.locale, before?.locale);
-        if (relabel && before) map.fire('_locale');
+        if (relabel && before) { map.fire('_locale'); nameCanvas(next.locale); }
         if (next.controls !== before?.controls || relabel) {
             const wanted = new Set(relabel ? [] : (next.controls ?? []).map(c => c.key));
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
