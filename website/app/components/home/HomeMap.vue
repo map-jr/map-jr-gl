@@ -126,4 +126,7 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
 .home-first-wide { position: absolute; inset: 0; background: url('/home-first-paint-wide.svg') 50% 50% / 2560px 1600px no-repeat; }
 @media (max-width: 1000px) and (max-height: 1060px) { .home-first-wide { display: none; } }
 @media not all and (max-width: 1000px) and (max-height: 1060px) { .home-first-small { display: none; } }
+/* The controls and the credits of the first paint are at the corners of the stage, in the form that the map has at this width. */
+@media (max-width: 640px) { .home-first-regular { display: none; } }
+@media (min-width: 641px) { .home-first-compact { display: none; } }
 </style>

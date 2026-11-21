@@ -1,6 +1,7 @@
 // Renders the first paint of the home page and writes two files, so that the build needs no network (#1391):
-// - app/assets/home-first-paint.html: an SVG of 1000 by 1000 CSS pixels with the credits, which HomeMap.vue puts into the
-//   page. It covers a window up to 1000 px wide and 1060 px high (phones and tablets), whose stage is at most 1000 by 1000.
+// - app/assets/home-first-paint.html: an SVG of 1000 by 1000 CSS pixels, and the controls of the map, which HomeMap.vue puts
+//   into the page. The controls (and the credits) are not part of the picture: they sit at the corners of the stage, as in the live map,
+//   so the file has them as a layer of their own, in two forms (the credits are folded up to 640 px wide, as the map folds them). It covers a window up to 1000 px wide and 1060 px high (phones and tablets), whose stage is at most 1000 by 1000.
 // - public/home-first-paint-wide.svg: an SVG of 2560 by 1600, for wider or higher windows. The page loads it only there
 //   (a preload and a background image, both with the media query of HomeMap.vue).
 // Both have the centre and the zoom of the live map's first view, and the page sets them at 1:1 CSS pixels, centred on the
@@ -9,13 +10,14 @@
 // `pnpm build` in the root of the repository, and the network). `--check` renders again and exits with 1 when a file differs.
 import {readFileSync, writeFileSync} from 'node:fs';
 import {renderFirstView} from '../../dist/server.js';
+import {navigation, scale} from '../../dist/controls.js';
 
 const small = {file: new URL('../app/assets/home-first-paint.html', import.meta.url), width: 1000, height: 1000};
 const wide = {file: new URL('../public/home-first-paint-wide.svg', import.meta.url), width: 2560, height: 1600};
-const render = ({width, height}) => renderFirstView({
+const render = ({width, height}, controls) => renderFirstView({
     // The first scene (`stopScenes.hero` of app/utils/home-scenes.ts).
     style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [8.33, 47.03], zoom: 10.6, width, height,
-    colorScheme: 'light', timeout: 120000, requestTimeout: 30000,
+    colorScheme: 'light', timeout: 120000, requestTimeout: 30000, ...(controls && {controls: [navigation(), scale()]}),
 });
 // The SVG and the credits that come after it.
 const split = html => {
@@ -25,12 +27,16 @@ const split = html => {
 };
 const place = 'position:absolute;inset:0;width:100%;height:100%';
 
-const [a, b] = await Promise.all([render(small), render(wide)]);
+const [a, narrow, b] = await Promise.all([render(small, true), render({width: 390, height: small.height}, true), render(wide)]);
 const inline = split(a);
 if (!inline.svg.includes(`style="${place}"`)) throw new Error('[map-jr-gl site] first-paint: the style of the SVG root is not the one that this script replaces.');
+// The controls markup of a render: its style sheet and its layer. The compact form has a few more rules (the width of the credits).
+const layer = html => { const rest = split(html).credits, style = /<style[^>]*>([\s\S]*?)<\/style>/.exec(rest); return {css: style?.[1].split('\n') ?? [], html: rest.replace(/<style[\s\S]*?<\/style>/, '')}; };
+const regular = layer(a), compact = layer(narrow);
+const css = [...regular.css, ...compact.css.filter(line => !regular.css.includes(line))].join('\n');
 const centred = `position:absolute;left:50%;top:50%;width:${small.width}px;height:${small.height}px;margin:-${small.height / 2}px 0 0 -${small.width / 2}px;max-width:none`;
 const files = new Map([
-    [small.file, `<div class="home-first-small">${inline.svg.replace(`style="${place}"`, `style="${centred}"`)}</div>${inline.credits}`],
+    [small.file, `<div class="home-first-small">${inline.svg.replace(`style="${place}"`, `style="${centred}"`)}</div><style>${css}</style><div class="home-first-compact">${compact.html}</div><div class="home-first-regular">${regular.html}</div>`],
     [wide.file, split(b).svg.replace(`style="${place}"`, '').replace(' data-map-jr-ssr=""', '')],
 ]);
 if (process.argv.includes('--check')) {
