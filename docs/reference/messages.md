@@ -235,6 +235,10 @@ The map, the style, its sources and images, and the files of the library. Both e
   Error.
 - `[map-jr-gl] addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.`
   Warning.
+- `[map-jr-gl] the request for the <value> <value>... failed: <value>`
+  Error.
+- `[map-jr-gl] the request for the <value> <url> failed: <value>`
+  Error.
 - `[map-jr-gl] the request to <input> did not finish within <ms> ms.`
   Error.
 - `[map-jr-gl] The source "<name>" has no "tiles" and no "url". Give it one of them.`
