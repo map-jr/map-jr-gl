@@ -49,8 +49,8 @@ before you make a map, and show other content when it returns false.
 
 The map also adds an element with the class `map-jr-unavailable` and the text "This browser cannot show the map." to
 the container. The element fills the container. To change its text, set its `textContent` in `onError`. To change its
-look, write a CSS rule for `.map-jr-unavailable`: the rules of the library have the specificity of one class, so a rule of the
-page with two classes (`.page .map-jr-unavailable`) overrides them. `destroy()` removes the element.
+look, write a CSS rule for `.map-jr-unavailable`: the rules of the library have no specificity, so a rule of the page
+overrides them. `destroy()` removes the element.
 
 To show other content before a map is created, call [`supported()`](exports.md#supported) first:
 

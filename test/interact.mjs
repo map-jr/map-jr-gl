@@ -288,7 +288,7 @@ for (const mode of renderers) {
         return r;
     });
     check(`[${mode}] controls inherit the container's font; the canvas shows grab`, css.ctrl === 'monospace' && css.cursor === 'grab', JSON.stringify(css));
-    // #1356: every rule of the library's CSS has the specificity of one class, so element rules of the page (`button`, `a`,
+    // #1356: each rule of the library's CSS that names an element (button, a, svg, path) has the specificity of one class, so element rules of the page (`button`, `a`,
     // `svg`) leave the controls alone, and a page rule with two classes still wins. Both entries, light and dark.
     if (mode === 'main' && browserName === 'chromium') {
         for (const entry of ['host', 'compat']) {
@@ -324,14 +324,17 @@ for (const mode of renderers) {
                     const b = el.querySelector('.map-jr-ctrl-group button'), a = el.querySelector('.map-jr-ctrl-attrib a');
                     out[scheme].two = [getComputedStyle(b).marginLeft, getComputedStyle(b).backgroundColor, getComputedStyle(a).color].join('|');
                     el.classList.remove('page-x');
+                    // A page rule with one class on a container (the group, the attribution) wins: those rules have no specificity.
+                    sheet.textContent = '.map-jr-ctrl-group,.maplibregl-ctrl-group{background:rgb(1,1,1)} .map-jr-ctrl-attrib,.maplibregl-ctrl-attrib{background:rgb(1,1,1)}';
+                    out[scheme].one = [getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backgroundColor, getComputedStyle(el.querySelector('.map-jr-ctrl-attrib')).backgroundColor].join('|');
                 }
                 sheet.remove();
                 if (entry === 'host') m.destroy(); else m.remove();
                 el.remove();
                 return out;
             }, entry);
-            const same = s => r[s].plain === r[s].elements, two = s => r[s].two === '7px|rgb(1, 2, 3)|rgb(4, 5, 6)';
-            check(`[main] ${entry === 'host' ? 'createMap' : 'maplibre-compat'}: page rules for button, a, svg and div leave the controls unchanged, and a page rule with two classes still wins, in light and dark (#1356)`,
+            const same = s => r[s].plain === r[s].elements, two = s => r[s].two === '7px|rgb(1, 2, 3)|rgb(4, 5, 6)' && r[s].one === 'rgb(1, 1, 1)|rgb(1, 1, 1)';
+            check(`[main] ${entry === 'host' ? 'createMap' : 'maplibre-compat'}: page rules for button, a, svg and div leave the controls unchanged, a page rule with two classes wins, and a page rule with one class on the group and the attribution wins, in light and dark (#1356)`,
                 same('light') && same('dark') && two('light') && two('dark') && /^\d/.test(r.light.plain), JSON.stringify(r));
         }
     }
