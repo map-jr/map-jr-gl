@@ -101,7 +101,6 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
   ['@map-jr/map-jr-gl/nuxt']})
 -->
 <script setup>
-// Nuxt imports `ref` itself, and the module registers `MapJr`.
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 </script>
 
@@ -185,7 +184,7 @@ The map shows the streets around City Hall, and the console or the paragraph sho
 - [`map.state`](../reference/state.md#mapstate) is the state of the map. `subscribe` returns a function that stops the calls.
 - In Vue, [`v-model:view`](../vue.md#the-view-of-v-modelview) sets the view of the map and receives each new view.
   React does the same with `view` and `onViewChange`.
-- The Nuxt module registers `MapJr`, `MapOverlay` and `MapImage`. See
+- The Nuxt module provides `MapJr`, `MapOverlay` and `MapImage`. See
   [The module for Nuxt](../vue.md#the-module-for-nuxt).
 - In Svelte, the action `mapJr` creates the map, and `ready` receives the map when it is created. A new description
   for the action updates the map. See [Svelte](../svelte.md).

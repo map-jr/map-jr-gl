@@ -357,7 +357,7 @@ export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 The module adds `@map-jr/map-jr-gl` to `vite.optimizeDeps.exclude`, so that Vite in development does not pre-bundle
 the package and the tile workers load (see `docs/loading.md`). Without the module, add that setting yourself.
 
-With the module, a page uses the components without an import:
+With the module, a page of the app looks like this:
 
 ```vue
 <template>
@@ -368,7 +368,7 @@ With the module, a page uses the components without an import:
 </template>
 ```
 
-- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMapJr`, `useMapInstance`, `useMapFeatures` and `useMapSource`.
+- `MapJr`, `MapOverlay` and `MapImage` are the components of the module, and `useMapJr`, `useMapInstance`, `useMapFeatures` and `useMapSource`.
 - The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
   `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`, `globeControl()`,
   `colorSchemeControl()`, `customControl()`.

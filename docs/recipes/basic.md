@@ -8,9 +8,6 @@ module script of a page that has `<div id="map" style="height: 500px"></div>`, a
 below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
 component and the `<map-jr>` page give the element of the map a height of 500 pixels.
 
-The Nuxt form has no imports, because the [module for Nuxt](../reference/nuxt.md) imports the components and the
-controls automatically, and it names the controls `navigationControl`, `globeControl` and so on.
-
 <!-- example:basic:start -->
 **Main API**
 
@@ -123,9 +120,7 @@ const NYC = [-74.0065, 40.7085];
 ```vue [Nuxt]
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules:
-// ['@map-jr/map-jr-gl/nuxt']. The module imports MapJr and the other
-// components, the composables and the controls (as navigationControl() and so
-// on), and Nuxt imports the functions of Vue.
+// ['@map-jr/map-jr-gl/nuxt'].
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
