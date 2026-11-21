@@ -1126,8 +1126,8 @@ for (const mode of renderers) {
         } finally { console.warn = warn; m?.remove(); el.remove(); }
     });
     check(`[${mode}] the development build warns once for each member of MapLibre GL JS that a class here does not have, and not in usual use`,
-        missing.usual.length === 0 && missing.after.length === 3 && missing.after.every(w => w.startsWith('[map-jr-gl] ')) &&
-        ['AttributionControl.styleOwner', 'map.transform', 'map.cameraHelper'].every(n => missing.after.some(w => w.includes(n))), JSON.stringify(missing));
+        missing.usual.length === 0 && missing.after.length === 2 && missing.after.every(w => w.startsWith('[map-jr-gl] ')) &&
+        ['AttributionControl.styleOwner', 'map.cameraHelper'].every(n => missing.after.some(w => w.includes(n))) && !missing.after.some(w => w.includes('map.transform')), JSON.stringify(missing));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {
@@ -2520,6 +2520,26 @@ for (const mode of renderers) {
         await page.unroute('**/test-766.json'); await page.unroute(/\/t766\//);
         check(`[${mode}] compat map.style.tileManagers gives the vector_layers ids of each vector source (#766)`,
             r.ids.join() === 'g,v' && r.layers?.join() === 'roads,water' && r.geo === undefined && r.same, JSON.stringify(r));
+    }
+    // svelte-maplibre-gl reads `map.style._loaded` before the style has loaded, and the camera in `map.transform` (and
+    // `getTransformForUpdate()`) on each `move` (#1375).
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [10, 20], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+            const before = {style: !!m.style, loaded: m.style?._loaded};
+            await new Promise(r => { m.once('load', r); setTimeout(r, 5000); });
+            m.jumpTo({center: [11, 21], zoom: 4, bearing: 30, pitch: 20, padding: {top: 5}});
+            const t = m.getTransformForUpdate(), u = m._getTransformForUpdate();
+            const out = {before, loaded: m.style._loaded, center: [t.center.lng, t.center.lat], zoom: t.zoom, bearing: t.bearing, pitch: t.pitch, roll: t.roll, elevation: t.elevation,
+                padA: t.isPaddingEqual({top: 5}), padB: t.isPaddingEqual(5), same: u.zoom === t.zoom && m.transform.zoom === 4, stopped: m._stop(true) === m};
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] compat map.style exists before the style has loaded, and map.transform has the camera (#1375)`,
+            r.before.style && r.before.loaded === false && r.loaded === true && r.center.join() === '11,21' && r.zoom === 4 && r.bearing === 30 && r.pitch === 20 && r.roll === 0
+            && r.elevation === 0 && r.padA && !r.padB && r.same && r.stopped, JSON.stringify(r));
     }
     // The other members of a source of the compat entry: the cluster options and the bounds of a GeoJSON source, and
     // `reload` and the values of the TileJSON of a tile source (#566).
