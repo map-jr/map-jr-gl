@@ -4636,7 +4636,7 @@ for (const mode of renderers) {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
         const before = location.hash;
         location.hash = '#12/40.71/-74.01/30';
-        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, hash: true, zoom: 3, center: [0, 0]});
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, hash: true, zoom: 3, center: [0, 0], bounds: [[7, 45], [9, 47]]});
         await new Promise(r => m.once('load', r));
         const start = [m.getZoom(), m.getCenter().lat, m.getCenter().lng, m.getBearing()];
         m.jumpTo({center: [2.5, 48.25], zoom: 5, bearing: 0});

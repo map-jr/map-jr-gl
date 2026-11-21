@@ -311,9 +311,9 @@ export class Map {
         const key = options.hash;
         if (key) {
             // The camera is in the fragment of the URL, as in MapLibre (see hash.ts, which is loaded only for this option).
-            // The fragment gives the camera at the start; the option `center` and the others are for a URL without one.
+            // The fragment gives the camera at the start and overrides `center`, `zoom` and `bounds`, as in MapLibre; the options are for a URL without one.
             const all = location.hash.slice(1), p = (key === true ? all : new URLSearchParams(all).get(key) ?? '').split('/').map(Number);
-            if (p.length > 2 && !p.some(isNaN)) this.options = options = {...options, zoom: p[0], center: [p[2], p[1]], bearing: p[3] ?? 0, pitch: p[4] ?? 0};
+            if (p.length > 2 && !p.some(isNaN)) this.options = options = {...options, zoom: p[0], center: [p[2], p[1]], bounds: undefined, bearing: p[3] ?? 0, pitch: p[4] ?? 0};
             // (A movement can end before the file has loaded: it is written then.)
             let early = false;
             this.once('moveend', () => { early = true; });

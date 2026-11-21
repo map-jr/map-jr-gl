@@ -224,6 +224,21 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] initialView.bounds is fitted into the part that the padding of the description leaves free (#1162)`,
             Math.abs(firstFit.first - firstFit.later) < 1e-6, JSON.stringify(firstFit));
+        // 2c. A view in the URL overrides initialView.bounds as it overrides center and zoom (#1157).
+        const urlView = await page.evaluate(async renderer => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const before = location.href;
+            history.replaceState(history.state, '', '#11/40.7/-74.0');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:900px;height:400px'}));
+            const h = t.lib.createMap(el, {style: t.style, hash: true, initialView: {bounds: [[7, 45], [9, 47]]}, renderer, attribution: false});
+            await wait(300);
+            const out = {zoom: h._map.getZoom(), lng: h._map.getCenter().lng};
+            h.destroy(); el.remove();
+            history.replaceState(history.state, '', before);
+            return out;
+        }, renderer);
+        check(`[${renderer}] a view in the URL overrides initialView.bounds (#1157)`,
+            Math.abs(urlView.zoom - 11) < 1e-6 && Math.abs(urlView.lng + 74) < 1e-3, JSON.stringify(urlView));
         check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and fitPadding without bounds warns once (#501)`,
             near(P.ignored[0], half) && near(P.ignored[1], P.h / 2) && near(P.kept[0], rest) && near(P.same[0], rest) && P.warned === 1, JSON.stringify(padding));
         check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
