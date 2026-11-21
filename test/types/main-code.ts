@@ -40,6 +40,8 @@ map.querySource('rain', NYC).then(found => console.log(found[0]?.type === 'Polyg
 map.queryFeatures([{x: 0, y: 0}, {x: 400, y: 300}], {layers: ['places']}).then(found => console.log(found[0]?.layer.id, found[0]?.state));
 map.queryFeatures({x: 10, y: 10}, {radius: 8}).then(found => console.log(found[0]?.layer.paint));
 map.queryFeatures().then(found => console.log(found[0]?.geometry.type));
+// The geometry is a union by `type`: the position of a clicked point needs no cast.
+map.queryFeatures({x: 10, y: 10}).then(found => { const g = found[0]?.geometry; if (g?.type === 'Point') console.log(g.coordinates[0].toFixed(2), g.coordinates[1].toFixed(2)); });
 map.watchSource('rain', FIXED, {zoom: 10}, features => console.log(features.length, features[0]?.type));
 map.queryFeatures({layers: ['places']}).then(found => console.log(found[0]?.layer.id));
 map.watchFeatures(undefined, {layers: ['places']}, features => console.log(features[0]?.layer.id));
