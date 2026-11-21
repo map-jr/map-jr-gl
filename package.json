@@ -219,7 +219,9 @@
     "LICENSE",
     "ACKNOWLEDGEMENTS.md",
     "THIRD-PARTY-LICENSES.md",
-    "docs/*.md"
+    "AGENTS.md",
+    "docs/**/*.md",
+    "!docs/agents"
   ],
   "sideEffects": [
     "./dist/element.js",

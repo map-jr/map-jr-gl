@@ -773,6 +773,35 @@ try {
         check('/raw/recipes/query.md: equals docs/recipes/query.md', raw === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'));
     }
 
+    // For agents: llms.txt, llms-full.txt, the prompt of the migration and the buttons that copy markdown.
+    {
+        const text = async path => { const response = await fetch(base + path); return {status: response.status, body: await response.text()}; };
+        const llms = await text('/llms.txt');
+        check('/llms.txt: answers with the title and a link to the raw prompt', llms.status === 200 && llms.body.startsWith('# Map Jr. GL') && llms.body.includes('/raw/migrate/prompt.md'), String(llms.status));
+        const full = await text('/llms-full.txt');
+        check('/llms-full.txt: answers with the text of the pages', full.status === 200 && full.body.length > 100000 && full.body.includes('Migration prompt'), `${full.status}, ${full.body.length} characters`);
+        const prompt = await text('/raw/migrate/prompt.md');
+        const source = readFileSync(new URL('../../docs/migrate/prompt.md', import.meta.url), 'utf8');
+        check('/raw/migrate/prompt.md: equals docs/migrate/prompt.md', prompt.body === source);
+        const block = /^```[^\n]*\n([\s\S]*?)\n```$/m.exec(source)?.[1] ?? '';
+        check('docs/migrate/prompt.md: the prompt is between 2,000 and 8,000 characters (about 2,000 tokens at most)', block.length >= 2000 && block.length <= 8000, `${block.length} characters`);
+
+        // The clipboard needs its own context with the permission, and a page of its own.
+        const context = await browser.newContext({viewport: {width: 1440, height: 900}});
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: base});
+        const page = await context.newPage();
+        await page.goto(base + '/recipes/query', {waitUntil: 'networkidle'});
+        await page.getByRole('button', {name: 'Copy page as markdown'}).first().click();
+        await page.getByRole('button', {name: 'Copied'}).first().waitFor({timeout: 5000}).catch(() => {});
+        const page_ = await page.evaluate(() => navigator.clipboard.readText());
+        check('"Copy page as markdown" copies the file of docs/', page_ === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'), `${page_.length} characters`);
+        await page.getByRole('button', {name: 'Copy migration prompt'}).first().click();
+        await page.getByRole('button', {name: 'Copied'}).first().waitFor({timeout: 5000}).catch(() => {});
+        const copiedPrompt = await page.evaluate(() => navigator.clipboard.readText());
+        check('"Copy migration prompt" copies the block of the prompt', copiedPrompt === block, `${copiedPrompt.length} characters`);
+        await context.close();
+    }
+
     // The map of the home page.
     if (withMap) {
         const {page, problems, close} = await open('/');
