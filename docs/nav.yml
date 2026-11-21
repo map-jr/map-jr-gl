@@ -62,6 +62,7 @@ sections:
       - svelte.md
       - element.md
       - maplibre-compat.md
+      - messages.md
   - title: Migrate
     folder: migrate
     pages:
