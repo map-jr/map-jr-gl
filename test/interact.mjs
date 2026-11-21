@@ -1126,8 +1126,8 @@ for (const mode of renderers) {
         } finally { console.warn = warn; m?.remove(); el.remove(); }
     });
     check(`[${mode}] the development build warns once for each member of MapLibre GL JS that a class here does not have, and not in usual use`,
-        missing.usual.length === 0 && missing.after.length === 3 && missing.after.every(w => w.startsWith('[map-jr-gl] ')) &&
-        ['AttributionControl.styleOwner', 'map.transform', 'map.cameraHelper'].every(n => missing.after.some(w => w.includes(n))), JSON.stringify(missing));
+        missing.usual.length === 0 && missing.after.length === 2 && missing.after.every(w => w.startsWith('[map-jr-gl] ')) &&
+        ['AttributionControl.styleOwner', 'map.cameraHelper'].every(n => missing.after.some(w => w.includes(n))) && !missing.after.some(w => w.includes('map.transform')), JSON.stringify(missing));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {
