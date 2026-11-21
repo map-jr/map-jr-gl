@@ -7,6 +7,10 @@ import {variantHeadScript} from './build/variants';
 
 const nav = readNav();
 const library = JSON.parse(readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8'));
+// The download of MapLibre GL JS that the home page shows (docs/status.json, written by `pnpm status`): the page script
+// with its CSS and the worker file, in bytes (gzip).
+const status = JSON.parse(readFileSync(resolve(import.meta.dirname, '../docs/status.json'), 'utf8'));
+const maplibreBytes = status.sizes.find((row: {file: string}) => row.file.startsWith('Page script and worker file of `@map-jr/map-jr-gl`')).maplibreBytes as number;
 
 export default defineNuxtConfig({
     compatibilityDate: '2026-11-01',
@@ -30,6 +34,7 @@ export default defineNuxtConfig({
             description: 'A small, fast map library for the web. It reads MapLibre styles.',
             repository: repositoryUrl,
             version: library.version as string,
+            maplibre: {version: status.maplibre as string, bytes: maplibreBytes},
             sections: nav,
         },
     },

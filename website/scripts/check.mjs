@@ -23,16 +23,17 @@ const installPage = '/guide/getting-started';
 
 const server = await serve(0);
 const base = `http://localhost:${server.address().port}`;
-const browser = await chromium.launch({args: ['--enable-unsafe-swiftshader']});
+const browser = await chromium.launch({args: ['--enable-unsafe-swiftshader'], executablePath: process.env.CHROMIUM_PATH || undefined});
 let failures = 0;
 function check(name, ok, detail = '') {
     if (!ok) failures++;
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? ': ' + detail : ''}`);
 }
 
-async function open(path, {width = 1440, height = 900, scheme = 'light'} = {}) {
-    const context = await browser.newContext({viewport: {width, height}, deviceScaleFactor: 2, colorScheme: scheme});
+async function open(path, {width = 1440, height = 900, scheme = 'light', reducedMotion = 'no-preference', init = ''} = {}) {
+    const context = await browser.newContext({viewport: {width, height}, deviceScaleFactor: 2, colorScheme: scheme, reducedMotion});
     const page = await context.newPage();
+    if (init) await page.addInitScript(init);
     const problems = [];
     page.on('pageerror', error => problems.push('error: ' + error.message.slice(0, 200)));
     page.on('console', message => { if (message.type() === 'error') problems.push('console: ' + message.text().slice(0, 200)); });
@@ -819,14 +820,73 @@ try {
         await context.close();
     }
 
-    // The map of the home page.
+    // The home page (#1120).
+    {
+        const html = await (await fetch(base + '/')).text();
+        check('home page: the first paint is the SVG of the server renderer', /<svg[^>]*data-map-jr-ssr/.test(html));
+    }
     if (withMap) {
         const {page, problems, close} = await open('/');
         const started = Date.now();
-        const idle = await page.locator('[data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
-        check('home page: the map reaches idle', idle, idle ? `${Date.now() - started} ms after the load event` : await page.locator('[data-map-state]').getAttribute('data-map-state'));
-        check('home page: the map has a canvas', await page.locator('[data-map-state] canvas').count() > 0);
+        const idle = await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
+        check('home page: the map reaches idle', idle, idle ? `${Date.now() - started} ms after the load event` : await page.locator('[data-home-map]').getAttribute('data-map-state'));
+        check('home page: the map has a canvas', await page.locator('[data-home-map] canvas').count() > 0);
+        // The scale bar shows what the browser measured: the check waits for the value.
+        await page.locator('[data-home-measure][data-state="measured"]').waitFor({timeout: 30000}).catch(() => {});
+        const bytes = await page.locator('[data-home-bytes]').textContent();
+        check('home page: the scale bar shows the bytes of the map in KB', /^\d[\d,]* KB$/.test(bytes ?? ''), bytes ?? '');
+
+        // The map does not take the wheel before "Explore the map": the wheel scrolls the page, and the map is inert.
+        check('home page: the map is inert before the button', await page.locator('[data-home-map]').evaluate(element => element.inert));
+        await page.mouse.move(720, 450);
+        await page.mouse.wheel(0, 600);
+        const scrolled = await page.waitForFunction(() => scrollY > 100, null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the wheel over the map scrolls the page before the button', scrolled);
+        await page.evaluate(() => scrollTo(0, 0));
+        await page.waitForFunction(() => scrollY === 0);
+        await page.locator('[data-explore]').click();
+        check('home page: after the button the map takes the pointer and the page does not scroll', await page.locator('[data-home-map]').evaluate(element => !element.inert) && await page.evaluate(() => getComputedStyle(document.documentElement).overflow === 'hidden'));
+        await page.getByRole('button', {name: 'Back to the page'}).click();
+        check('home page: "Back to the page" gives the scroll back', await page.evaluate(() => getComputedStyle(document.documentElement).overflow !== 'hidden'));
+
+        // The camera flies to a stop.
+        await page.evaluate(() => document.querySelector('[data-stop="compat"]').scrollIntoView({block: 'center'}));
+        const flight = await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.camera || false, null, {timeout: 15000}).then(handle => handle.jsonValue(), () => '');
+        check('home page: the camera flies to the next stop', flight === 'fly', flight);
         check('home page: no failed request and no error', problems.length === 0, problems.join(' | '));
+        await close();
+    }
+    if (withMap) {
+        // A reader who prefers reduced motion gets a cut.
+        const {page, close} = await open('/', {reducedMotion: 'reduce'});
+        await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});
+        await page.evaluate(() => document.querySelector('[data-stop="compat"]').scrollIntoView({block: 'center'}));
+        const flight = await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.camera || false, null, {timeout: 15000}).then(handle => handle.jsonValue(), () => '');
+        check('home page: reduced motion makes a cut and no flight', flight === 'cut', flight);
+        await close();
+    }
+    {
+        // Without WebGL 2 the SVG stays, and the text and the stops of the page work.
+        const init = `const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (type, ...rest) { return type === 'webgl2' ? null : get.call(this, type, ...rest); };`;
+        const {page, close} = await open('/', {init});
+        await page.waitForFunction(() => document.querySelector('[data-home-map]')?.dataset.mapState === 'error' || document.querySelector('.map-jr-unavailable'), null, {timeout: 30000}).catch(() => {});
+        check('home page without WebGL 2: the SVG of the first paint stays', await page.locator('svg[data-map-jr-ssr]').count() > 0);
+        check('home page without WebGL 2: the page still shows its text', await page.locator('h1').first().isVisible() && await page.getByRole('link', {name: 'Read the docs'}).first().isVisible());
+        await page.evaluate(() => document.querySelector('[data-stop="limits"]').scrollIntoView({block: 'center'}));
+        check('home page without WebGL 2: a stop still scrolls into view', await page.getByRole('heading', {name: 'What it does not do'}).isVisible());
+        await close();
+    }
+    if (withMap) {
+        const {page, problems, close} = await open('/', {width: 390, height: 844});
+        const idle = await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
+        check('home page at 390 px: the map reaches idle', idle);
+        for (const name of ['scale', 'compat', 'play', 'showcase', 'limits', 'install']) {
+            await page.evaluate(name => document.querySelector(`[data-stop="${name}"]`).scrollIntoView({block: 'center'}), name);
+            await page.waitForTimeout(300);
+        }
+        const wide = await overflow(page);
+        check('home page at 390 px: no horizontal scroll', wide <= 0, String(wide));
+        check('home page at 390 px: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
     }
 
@@ -835,7 +895,7 @@ try {
             for (const scheme of ['light', 'dark']) {
                 for (const width of [1440, 390]) {
                     const {page, close} = await open(path, {width, height: width === 390 ? 844 : 900, scheme});
-                    if (path === '/') await page.locator('[data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});
+                    if (path === '/') await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});
                     await page.waitForTimeout(500);
                     const file = `${screenshots}-${name}-${scheme}-${width}.png`;
                     await page.screenshot({path: file, fullPage: path === '/'});
