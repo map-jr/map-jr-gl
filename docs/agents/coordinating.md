@@ -44,10 +44,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   worker with no report is usually still testing.
 - **A worker that reports the same number of steps in several notices is stuck** on a test run of its own. Give the
   issue to a new worker with what is known, and tell the first one to stop its servers.
-- **Watch the checks** with `node scripts/agents/prs.mjs --watch` in a `Monitor` (in the cloud it fails until #1404:
-  use `subscribe_pr_activity` there; it prints one line when the checks
+- **Watch the checks** with `node scripts/agents/prs.mjs --watch` in a `Monitor` (it prints one line when the checks
   of a head finish, also for CI on `main`, which sends no event), or with `subscribe_pr_activity` when the repository
-  is in the session. A Monitor ends after 30 minutes; start it again.
+  is in the session. In a cloud session the script fails until #1404; use `subscribe_pr_activity` for each pull request
+  there, and read CI on `main` with `gh api 'repos/map-jr/map-jr-gl/actions/runs?branch=main&per_page=5'`. A Monitor
+  ends after 30 minutes; start it again.
 - **Send a CI failure, a review finding or a decision of the owner to the worker that opened the pull request**
   (`SendMessage`): the failure and the check run, not the task again. A follow-up costs 10,000 to 20,000 tokens and a
   new worker about 100,000. A worker that ended with no change has lost its worktree (it is removed when nothing
