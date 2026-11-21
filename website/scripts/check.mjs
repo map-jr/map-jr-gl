@@ -791,18 +791,28 @@ try {
         await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: base});
         const page = await context.newPage();
         await page.goto(base + '/recipes/query', {waitUntil: 'networkidle'});
+        // What the button did: a tab that it opened (its fallback when the copy fails) and the warning that it wrote.
+        const events = [];
+        context.on('page', opened => events.push('opened a tab: ' + opened.url()));
+        page.on('console', message => { if (message.text().includes('[map-jr site]')) events.push(message.text().slice(0, 200)); });
         // The label "Copied" stays for two seconds, so it cannot tell the second copy from the first. The clipboard is
-        // emptied before each click, and the check waits until it has text.
+        // emptied before each click, and the check waits until it has text. A timeout is a failure with the events.
         const copy = async name => {
             await page.evaluate(() => navigator.clipboard.writeText(''));
+            const started = Date.now();
             await page.getByRole('button', {name}).first().click();
-            await page.waitForFunction(async () => (await navigator.clipboard.readText()) !== '', null, {timeout: 5000}).catch(() => {});
-            return page.evaluate(() => navigator.clipboard.readText());
+            const arrived = await page.waitForFunction(async () => (await navigator.clipboard.readText()) !== '', null, {timeout: 5000}).then(() => true, () => false);
+            const text = await page.evaluate(() => navigator.clipboard.readText());
+            return {text, detail: arrived ? `${text.length} characters` : `no text after ${Date.now() - started} ms; ${events.join(' | ') || 'the button did nothing visible'}`};
         };
-        const page_ = await copy('Copy page as markdown');
-        check('"Copy page as markdown" copies the file of docs/', page_ === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'), `${page_.length} characters`);
-        const copiedPrompt = await copy('Copy migration prompt');
-        check('"Copy migration prompt" copies the block of the prompt', copiedPrompt === block, `${copiedPrompt.length} characters`);
+        const first = await copy('Copy page as markdown');
+        check('"Copy page as markdown" copies the file of docs/', first.text === readFileSync(new URL('../../docs/recipes/query.md', import.meta.url), 'utf8'), first.detail);
+        // The labels change back after two seconds. The second click waits for that, so that a render of the buttons
+        // cannot fall between its press and its release.
+        const reverted = await page.getByRole('button', {name: 'Copy page as markdown'}).waitFor({timeout: 5000}).then(() => true, () => false);
+        check('"Copied" changes back to "Copy page as markdown"', reverted);
+        const second = await copy('Copy migration prompt');
+        check('"Copy migration prompt" copies the block of the prompt', second.text === block, second.detail);
         await context.close();
     }
 

@@ -23,13 +23,22 @@ const surround = computed(() => {
 // block of docs/migrate/prompt.md, without its page. `copied` names the button that shows "Copied" for two seconds.
 const copied = ref('');
 async function copyRaw(name: string, file: string, block = false) {
+    const read = async () => {
+        const text = await $fetch<string>(`/raw/${file}`, {responseType: 'text'});
+        return block ? /^```[^\n]*\n([\s\S]*?)\n```$/m.exec(text)?.[1] ?? text : text;
+    };
     try {
-        let text = await $fetch<string>(`/raw/${file}`, {responseType: 'text'});
-        if (block) text = /^```[^\n]*\n([\s\S]*?)\n```$/m.exec(text)?.[1] ?? text;
-        await navigator.clipboard.writeText(text);
+        // The clipboard write starts inside the click and takes the text as a promise. Safari refuses a write that
+        // starts after an `await` of the fetch, because the click no longer counts as the reason for it.
+        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+            await navigator.clipboard.write([new ClipboardItem({'text/plain': read().then(text => new Blob([text], {type: 'text/plain'}))})]);
+        } else {
+            await navigator.clipboard.writeText(await read());
+        }
         copied.value = name;
         setTimeout(() => { if (copied.value === name) copied.value = ''; }, 2000);
-    } catch {
+    } catch (error) {
+        console.warn(`[map-jr site] "${name}": the copy failed, so the page opens /raw/${file}.`, error);
         window.open(`/raw/${file}`, '_blank');
     }
 }
