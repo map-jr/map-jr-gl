@@ -77,7 +77,7 @@ const section = 'pointer-events-none flex min-h-[calc(100svh-var(--ui-header-hei
     <div class="relative border-b border-accented">
       <div class="sticky top-(--ui-header-height) h-[calc(100svh-var(--ui-header-height))] overflow-hidden">
         <HomeMap :scene="scene" :exploring="exploring" @measure="measure = $event" @state="mapState = $event" />
-        <div class="absolute left-3 top-3">
+        <div class="absolute left-3 top-3 z-20">
           <UButton
             size="lg" :color="exploring ? 'primary' : 'neutral'" :variant="exploring ? 'solid' : 'subtle'" class="shadow-lg"
             :icon="exploring ? 'i-lucide-arrow-left' : 'i-lucide-move'" :aria-pressed="exploring" data-explore
