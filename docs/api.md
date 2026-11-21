@@ -839,6 +839,7 @@ The map keeps the last 60 views that it reported, with no time limit. It ignores
 `bearing` and `pitch` are all equal to those of one of them. So `update` with a view that your application stored a
 moment ago (a button "back to where I was") can have no effect. For such a movement, call `map.moveTo(stored)`:
 `moveTo` always moves the map.
+The development build writes one warning for each map when `update` gives such a view while the map is at rest and at another view. The production build gives no warning.
 
 ### The camera
 

@@ -4,6 +4,7 @@
 // Usage: node scripts/serve.mjs [port]. The default port is 4173.
 import {createReadStream, existsSync, readFileSync, statSync} from 'node:fs';
 import {createServer} from 'node:http';
+import {createGzip} from 'node:zlib';
 import {extname, join, normalize, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -30,8 +31,12 @@ export function serve(port = 4173) {
         const found = [file, join(file, 'index.html'), file + '.html'].find(isFile);
         const target = found ?? join(root, '404.html');
         const headers = Object.assign({}, ...rules.filter(rule => rule.path.test(path)).map(rule => rule.headers));
-        response.writeHead(found ? 200 : 404, {...headers, 'content-type': types[extname(target)] ?? 'application/octet-stream'});
-        createReadStream(target).pipe(response);
+        const type = types[extname(target)] ?? 'application/octet-stream';
+        // Text is sent with gzip, as the published site does, so that the sizes that a page measures are those of a visit.
+        const zip = /\bgzip\b/.test(request.headers['accept-encoding'] ?? '') && /^(text\/|application\/json|image\/svg)/.test(type);
+        response.writeHead(found ? 200 : 404, {...headers, 'content-type': type, vary: 'accept-encoding', ...(zip ? {'content-encoding': 'gzip'} : {})});
+        if (zip) createReadStream(target).pipe(createGzip()).pipe(response);
+        else createReadStream(target).pipe(response);
     });
     return new Promise(done => server.listen(port, '127.0.0.1', () => done(server)));
 }

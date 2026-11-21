@@ -126,18 +126,30 @@ for (const renderer of renderers) {
             t.host.moveTo({zoom: 15, duration: 300});
             for (let i = 0; i < 100 && !(Math.abs(t.host.state.get().view.zoom - 15) < 1e-6 && !t.host.state.get().moving); i++) await wait(100); // (a slow machine)
             await wait(300);
-            const reported = t.views.length, last = t.views.at(-1), old = t.views[Math.max(0, t.views.length - 4)];
-            t.host.update(t.spec = {...t.spec, view: old}); // an application that owns the view gives back an older report
+            const reported = t.views.length, last = t.views.at(-1), old = t.views.at(-2); // (an intermediate view of the latest movement)
+            const warned = [], warn = console.warn; console.warn = (...a) => warned.push(a.join(' '));
+            const said = () => warned.filter(w => w.includes('update(): "view" is a view that the map reported earlier') && w.includes('moveTo(view)')).length;
+            t.host.update(t.spec = {...t.spec, view: old}); // a late echo: a view of the latest movement, passed after its end
             await wait(300);
-            const afterEcho = t.host.state.get().view.zoom;
+            const afterEcho = t.host.state.get().view.zoom, echoSaid = said();
+            // A view of an earlier movement is a stored view: the map ignores it and warns once.
+            t.host.moveTo({zoom: 14.5, duration: 300});
+            for (let i = 0; i < 100 && !(Math.abs(t.host.state.get().view.zoom - 14.5) < 1e-6 && !t.host.state.get().moving); i++) await wait(100);
+            await wait(300);
+            t.host.update(t.spec = {...t.spec, view: last});
+            await wait(300);
+            t.host.update(t.spec = {...t.spec, view: last});
+            await wait(100);
+            const storedSaid = said(), stored = t.host.state.get().view.zoom;
+            console.warn = warn;
             t.host.update(t.spec = {...t.spec, view: {center: [-74.0, 40.71], zoom: 13.5, bearing: 20, pitch: 0}});
             for (let i = 0; i < 80 && t.host.state.get().view.zoom !== 13.5; i++) await wait(100); // (a slow machine)
             await wait(300);
             const s = t.host.state.get().view;
-            return {reported, last: last?.zoom, afterEcho, moved: [s.zoom, s.bearing, +s.center[0].toFixed(3)], zoomEvents: t.seen.filter(x => x === 'zoom').length};
+            return {reported, last: last?.zoom, afterEcho, echoSaid, storedSaid, stored, moved: [s.zoom, s.bearing, +s.center[0].toFixed(3)], zoomEvents: t.seen.filter(x => x === 'zoom').length};
         });
-        check(`[${renderer}] the view: changes are reported, a reported view is not applied again, a new view moves the map`,
-            view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
+        check(`[${renderer}] the view: changes are reported, a reported view is not applied again and warns once in the development build for a stored view and not for a late echo (#1190), a new view moves the map`,
+            view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.echoSaid === 0 && view.storedSaid === 1 && view.stored === 14.5 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
 
         // 2a. moveTo with `fly` (#43) zooms out and back in on the way, as flyTo of MapLibre GL JS. (For these 1650 pixels
         // at zoom 13.5 in a view of 900 pixels, the curve goes down by 1.07 zoom levels; the state sees some frames of it.)

@@ -86,6 +86,8 @@ The functions of `@map-jr/map-jr-gl` and the map that they make.
   Warning, development build only.
 - `[map-jr-gl] moveTo(): "fitPadding" and "fitMaxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.`
   Warning, development build only.
+- `[map-jr-gl] update(): "view" is a view that the map reported earlier, so the map does not move. The map ignores such a view so that a slow application does not pull it back while the user moves it. To return to a stored view, call moveTo(view).`
+  Warning, development build only.
 - `[map-jr-gl] <name>: "<value>" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit<value><value>". "<value>" of the description applies to the map for good.`
   Warning, development build only.
 - `[map-jr-gl] sources: the GeoJSON source "<name>" has no "data", and "data" of the description has no key "<name>", so the source has no features. Give the source its own "data", or write the features as "data: {<name>: geojson}".`
