@@ -9,7 +9,7 @@ import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {EM, GlyphAtlas} from './text.ts';
-import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
+import {fetchWith, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
@@ -498,7 +498,7 @@ export class Engine {
             const state: {url: string; gl?: GLTile} = st = {url: src.url!};
             this.pictures.set(source, state);
             withTimeout(this.fetchAs('Image'))(src.url!).then(async res => {
-                if (!res.ok) throw new Error(`Failed to load image ${src.url}: ${res.status}`);
+                if (!res.ok) throw httpError('image', src.url!, res.status);
                 const image = await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
                 image.close();
@@ -802,7 +802,7 @@ export class Engine {
             // (An answer that the page requested before the engine started is taken once; see `early` of the options.)
             const early = this.answered, got = (f: typeof fetch): typeof fetch => u => early?.get(String(u)) ?? f(u);
             const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, got(withTimeout(this.fetchAs('SpriteJSON')))), got(withTimeout(this.fetchAs('SpriteImage')))(url + (dense ? '@2x.png' : '.png'))]);
-            if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
+            if (!res.ok) throw httpError('sprite image', url + (dense ? '@2x.png' : '.png'), res.status);
             return {id, sprite, image: await createImageBitmap(await res.blob())};
         }).map(p => p.catch(err => { if (spec === this.spriteUrl) this.emit({type: 'error', message: String(err.message)}); })))).filter(l => !!l);
         if (spec !== this.spriteUrl || !loaded.length) return;

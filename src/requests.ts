@@ -16,10 +16,13 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
     // A request that fails (no network, a blocked origin) says which resource and URL it was for. The URL is cut, because it comes from a style.
     return (input, init) => run(input, init).catch(e => {
         if (e?.name === 'AbortError' || String(e?.message).startsWith('[map-jr-gl]')) throw e;
-        const url = String(input);
-        throw new Error(`[map-jr-gl] the request for the ${KINDS[kind] ?? kind} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${e?.message ?? e}`, {cause: e});
+        throw requestError(KINDS[kind] ?? kind, String(input), e?.message ?? e, e);
     });
 }
+/** The error of a request that failed: it names the resource, the URL (cut, because it comes from a style) and the reason. */
+export const requestError = (what: string, url: string, reason: unknown, cause?: unknown) => new Error(`[map-jr-gl] the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause});
+/** The error of a response with an HTTP error status. */
+export const httpError = (what: string, url: string, status: number) => requestError(what, url, 'HTTP ' + status);
 const KINDS: Record<string, string> = {Tile: 'tile', RasterTile: 'tile', SpriteJSON: 'sprite', SpriteImage: 'sprite image', Glyphs: 'glyphs', Font: 'font', Image: 'image'};
 function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: string): typeof fetch {
     return async (input, init) => {
