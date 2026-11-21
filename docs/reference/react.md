@@ -99,12 +99,6 @@ export function Stations({stations}) {
       <MapJr
         mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
         initialView={{center: [-74.0065, 40.7085], zoom: 12}}
-        sources={{
-          stations: {
-            type: 'geojson',
-            data: {type: 'FeatureCollection', features: []},
-          },
-        }}
         data={data}
         layers={[
           {

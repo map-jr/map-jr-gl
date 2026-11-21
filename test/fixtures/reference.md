@@ -13,7 +13,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `mapStyle` **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. |
 | `view` | [`ViewInput`](../../docs/reference/types.md#viewinput) | | The view that the application controls, for `v-model:view`. |
 | `initialView` | [`InitialView`](../../docs/reference/types.md#initialview) | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
-| `sources` | `Record<string, SourceSpecification> \| null` | | Sources to add to the style, by id. |
+| `sources` | `Record<string, SourceInput> \| null` | | Sources to add to the style, by id. |
 | `layers` | `LayerInput[] \| null` | | Layers to add to the style. |
 | `terrain` | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
 | `images` | `Record<string, ImageInput> \| null` | | Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |

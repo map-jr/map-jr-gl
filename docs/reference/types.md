@@ -96,6 +96,12 @@ A layer of [`layers`](description.md#layers) of the description: a layer of one 
 prefix of each name in `paint` and `layout`, so a layer with an unknown `type` or a `paint` name of another layer type
 does not compile.
 
+## `SourceInput`
+
+A source of [`sources`](description.md#sources) of the description: a `SourceSpecification`, except that a GeoJSON
+source has an optional `data`. A GeoJSON source whose id is a key of [`data`](description.md#data) needs no `data` of
+its own.
+
 ## `RenderedFeature`
 
 A feature that [`queryFeatures`](map.md#queryfeatures), `state.hover` and `onClick` return.

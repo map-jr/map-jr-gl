@@ -187,8 +187,9 @@ The unit is the pixel of a tile 512 pixels wide. The default applies to every Ge
 ## Set the options of a source
 
 To set options of a GeoJSON source, such as `cluster`, `promoteId` or `attribution`, declare the source in
-[`sources`](../reference/description.md#sources) with no features. `data` then sets its features, and the options
-stay when the data changes.
+[`sources`](../reference/description.md#sources) with the same id as the key in `data`. The source in `sources` needs
+no `data` of its own, because `data` sets the features, and the options stay when the data changes. In the
+development build, a GeoJSON source with no `data` and no key in `data` writes a warning.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -216,7 +217,6 @@ const map = createMap('map', {
   sources: {
     stations: {
       type: 'geojson',
-      data: {type: 'FeatureCollection', features: []},
       promoteId: 'code',
     },
   },

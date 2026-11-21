@@ -1910,6 +1910,21 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
 
+        // Without `position`, a control goes to its own default corner: the bottom left for `scale()`, else the top right (#1197).
+        const corners = await page.evaluate(async () => {
+            const t = window.t, {navigation, scale} = await import('/dist/controls.js');
+            const settle = () => new Promise(r => setTimeout(r, 50));
+            t.host.update(t.spec = {...t.spec, controls: [navigation(), scale()]});
+            for (let i = 0; i < 40 && !document.querySelector('#host .map-jr-ctrl-scale'); i++) await settle();
+            await settle();
+            const where = sel => document.querySelector(sel)?.closest('[class*="ctrl-top-"],[class*="ctrl-bottom-"]')?.className.match(/ctrl-(top|bottom)-(left|right)/)?.[0];
+            const r = {scale: where('#host .map-jr-ctrl-scale'), nav: where('#host .map-jr-ctrl-compass')};
+            t.host.update(t.spec = {...t.spec, controls: undefined});
+            await settle();
+            return r;
+        });
+        check(`[${renderer}] scale() without position goes to the bottom left, navigation() to the top right`, corners.scale?.endsWith('bottom-left') && corners.nav?.endsWith('top-right'), JSON.stringify(corners));
+
         // `locale` gives the texts of the controls, and a change adds the controls again with the new texts (#685).
         const locale = await page.evaluate(async () => {
             const t = window.t, {navigation} = await import('/dist/controls.js');
@@ -2407,6 +2422,29 @@ for (const renderer of renderers) {
             typeof clusters.id === 'number' && clusters.zoom > 10 && clusters.children >= 1 && clusters.all === 12 && clusters.two === 2 && clusters.point === 'Point'
             && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): ')
             && clusters.ten === 10 && clusters.errors[3].startsWith('[map-jr-gl] clusterLeaves(): the third argument is 2. Pass {limit, offset}') && clusters.members.join() === 'false,true', JSON.stringify(clusters));
+
+        // 5d2. A GeoJSON source of `sources` whose id is a key of `data` needs no `data` of its own, at the start and when it is added by an update;
+        // one with no `data` and no key warns in the development build (#1189).
+        const optioned = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
+            const points = n => ({type: 'FeatureCollection', features: Array.from({length: 12}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [-74.0065 + (i % 4) * 0.0004 + n, 40.7085 + Math.floor(i / 4) * 0.0004]}}))});
+            const layer = id => ({id, type: 'circle', source: id, paint: {'circle-radius': 20}});
+            const warnings = [], warn = console.warn; console.warn = (...a) => { warnings.push(String(a[0])); };
+            const first = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 10}, renderer, attribution: false, sources: {pts: {type: 'geojson', cluster: true}}, data: {pts: points(0)}, layers: [layer('pts')]};
+            const host = t.lib.createMap(el, first);
+            await idle(host);
+            const clustered = id => host.queryFeatures(undefined, {layers: [id]}).then(f => f.some(x => x.properties.cluster));
+            const one = await clustered('pts');
+            host.update({...first, sources: {...first.sources, more: {type: 'geojson', cluster: true}, bare: {type: 'geojson'}}, data: {pts: first.data.pts, more: points(0.01)}, layers: [layer('pts'), layer('more')]});
+            await idle(host);
+            const two = await clustered('more');
+            const bare = warnings.filter(w => w.includes('GeoJSON source "bare"')).length, others = warnings.filter(w => w.includes('GeoJSON source "pts"') || w.includes('GeoJSON source "more"')).length;
+            console.warn = warn; host.destroy(); el.remove();
+            return {one, two, bare, others, warnings};
+        }, renderer);
+        check(`[${renderer}] a GeoJSON source of "sources" with a key in "data" needs no "data" of its own, at the start and in an update, and a bare source warns (#1189)`,
+            optioned.one && optioned.two && optioned.bare === 1 && optioned.others === 0, JSON.stringify(optioned));
 
         // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
         const rejected = await page.evaluate(async () => {
