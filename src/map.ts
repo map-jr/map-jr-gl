@@ -296,6 +296,8 @@ export class Map {
         // stays centred instead of being stretched to the new shape. The box is sized in device pixels and scaled back
         // down so one frame pixel is one screen pixel.
         this.canvas.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;object-fit:none;object-position:center;touch-action:none;outline:none;max-width:none';
+        // A first view from the server is under the canvas until `load`: the canvas stays hidden while it draws, so it never shows half a map over the picture.
+        if (c.querySelector('[data-map-jr-ssr]')) this.canvas.style.visibility = 'hidden';
         this.canvas.tabIndex = 0;
         // (As in MapLibre GL JS: assistive technology says that this is a map.)
         this.canvas.setAttribute('role', 'region');
@@ -827,6 +829,7 @@ export class Map {
             if (!this.isLoaded) {
                 this.isLoaded = true;
                 for (const el of this.container.querySelectorAll('[data-map-jr-ssr]')) el.remove();
+                this.canvas.style.visibility = '';
                 this.fire('load');
                 // A `load` listener that changed the style or the camera made this report old: wait for the next one.
                 if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;

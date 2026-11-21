@@ -101,7 +101,9 @@ const server = http.createServer((req, res) => {
       const v = [...a.querySelectorAll(selector)].filter(b => getComputedStyle(b).visibility === 'visible');
       if (v.length !== 1) missing.push(name + ':' + v.length); else { const r = v[0].getBoundingClientRect(); at.push([name, r.x, r.y, r.width, r.height].join()); }
     }
-    window.frames.push({n: missing.length ? 0 : 1, missing, at: at.join(';')});
+    // The stage: the server picture and the canvas never show together (the canvas is hidden until the picture goes), and no frame has neither.
+    const svg = !!a.querySelector(':scope > svg[data-map-jr-ssr]'), canvas = a.querySelector(':scope > canvas'), hidden = !!canvas && getComputedStyle(canvas).visibility === 'hidden';
+    window.frames.push({n: missing.length ? 0 : 1, missing, at: at.join(';'), svg, canvas: !!canvas, hidden});
     requestAnimationFrame(watch);
   };
   watch();
@@ -371,6 +373,8 @@ try {
         await two.close();
         return widths[1] <= 283 && widths[0] > 400 ? true : (console.log(widths), false);
     })(), '');
+    check('browser: in every frame the server picture is shown with the canvas hidden, or the canvas is shown with no picture: the canvas never draws over the picture',
+        frames.some(f => f.svg) && frames.some(f => !f.svg) && frames.every(f => f.svg ? !f.canvas || f.hidden : f.canvas && !f.hidden), JSON.stringify({svg: frames.filter(f => f.svg).length, none: frames.filter(f => !f.svg).length, bad: frames.filter(f => f.svg ? f.canvas && !f.hidden : !f.canvas || f.hidden).length}));
     check('browser: the map removes the first view with its style sheet, and its own controls remain', !state.svg && !state.style && state.buttons >= 7 && !page.errors.length, JSON.stringify({...state, frames: undefined, errors: page.errors}));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }
