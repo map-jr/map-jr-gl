@@ -5,3 +5,5 @@ dist
 site-dist
 site/public/ssr.svg
 site/public/ssr.jpg
+# The worktrees of worker sessions (docs/agents/coordinating.md).
+.claude/worktrees/
