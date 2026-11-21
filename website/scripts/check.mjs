@@ -643,7 +643,7 @@ try {
         const mapHas = name => shown(playFrame.locator(`body[data-step="${name}"]`), 'attached');
         const undoButton = page.getByRole('button', {name: 'Undo', exact: true});
         const redoButton = page.getByRole('button', {name: 'Redo', exact: true});
-        const first = "import {navigation, scale}";
+        const firstExample = "import {navigation, scale}";
         check(`${engine}: /play history: Undo and Redo are disabled at the start`, await undoButton.isDisabled() && await redoButton.isDisabled());
         const entries = () => page.evaluate(() => history.length);
         const length = await entries();
@@ -656,7 +656,7 @@ try {
         await undoButton.click();
         check(`${engine}: /play history: Undo restores the code of the first Run, and the map follows`, await editorIs(step('a')) && await mapHas('a') && await redoButton.isEnabled());
         await undoButton.click();
-        check(`${engine}: /play history: Undo again restores the first example`, await editorStarts(first) && await undoButton.isDisabled());
+        check(`${engine}: /play history: Undo again restores the first example`, await editorStarts(firstExample) && await undoButton.isDisabled());
         await redoButton.click();
         check(`${engine}: /play history: Redo restores the first Run`, await editorIs(step('a')) && await mapHas('a'));
         await redoButton.click();
