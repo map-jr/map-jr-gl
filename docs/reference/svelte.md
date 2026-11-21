@@ -68,12 +68,6 @@ for a marker or a popup ([Elements of the page on the map](map.md#overlay)).
   const description = $derived({
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     initialView: {center: [-73.996, 40.73], zoom: 11.5},
-    sources: {
-      stations: {
-        type: 'geojson',
-        data: {type: 'FeatureCollection', features: []},
-      },
-    },
     data: {
       stations: {
         type: 'FeatureCollection',

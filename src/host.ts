@@ -58,6 +58,11 @@ export interface GeoJSONFeature { type: 'Feature'; id?: string | number; geometr
 /** GeoJSON (RFC 7946): a feature collection, a feature or a geometry. */
 export type GeoJSON = {type: 'FeatureCollection'; features: readonly GeoJSONFeature[]} | GeoJSONFeature | GeoJSONGeometry;
 /**
+ * A source of the field `sources` of `MapDescription`: a source of the style specification, except that a GeoJSON source
+ * needs no `data` when its id is a key of `data` of the description.
+ */
+export type SourceInput = SourceSpecification | (Omit<Extract<SourceSpecification, {type: 'geojson'}>, 'data'> & {data?: Extract<SourceSpecification, {type: 'geojson'}>['data']});
+/**
  * A layer of the field `layers` of `MapDescription`: a style layer of one of the types that the library draws, with
  * `before`. TypeScript checks `type` and the prefix of each name in `paint` and `layout`.
  */
@@ -165,8 +170,11 @@ export interface MapDescription extends MapSetup {
      * With `{light, dark}`, the map uses the style of the resolved `colorScheme`, and loads the other style when the scheme changes.
      */
     style: string | StyleSpecification | {light: string | StyleSpecification; dark: string | StyleSpecification};
-    /** Sources to add to the style, by id. A source here overrides the source of the style that has the same id. */
-    sources?: Record<string, SourceSpecification> | null;
+    /**
+     * Sources to add to the style, by id. A source here overrides the source of the style that has the same id. A GeoJSON source
+     * whose id is a key of `data` needs no `data` of its own: it sets the options of the source, and `data` sets the features.
+     */
+    sources?: Record<string, SourceInput> | null;
     /**
      * Layers to add to the style, in order. A layer with `before` is inserted below the style layer with that id, and a
      * layer without `before` is drawn on top.
@@ -1006,7 +1014,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         for (const l of kept) { const w = was.find(x => x.id === l.id)!; if (Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ((l as Record<string, unknown>)[k], (w as Record<string, unknown>)[k]))) return false; }
         for (const w of was) if (!kept.some(l => l.id === w.id)) map.removeLayer(w.id);
         for (const id in os) if (!(id in ns)) { sent.delete(id); map.removeSource(id); }
-        for (const id in ns) if (!(id in os)) { sent.delete(id); map.addSource(id, ns[id]); }
+        for (const id in ns) if (!(id in os)) { sent.delete(id); map.addSource(id, ns[id].type === 'geojson' && (ns[id] as {data?: unknown}).data == null && wantedData && id in wantedData ? {...ns[id], data: {type: 'FeatureCollection', features: []}} : ns[id]); }
         if (moved) for (const l of kept) map.removeLayer(l.id);
         else for (const l of kept) {
             const w = was.find(x => x.id === l.id)!;

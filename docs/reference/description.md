@@ -25,7 +25,7 @@ const map = createMap('map', {
 | Name | Type | Default | Description |
 |---|---|---|---|
 | [`style`](#style) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark colour scheme. |
-| [`sources`](#sources) | `Record<string, SourceSpecification> \| null` | | Sources to add to the style, by id. |
+| [`sources`](#sources) | `Record<string, SourceInput> \| null` | | Sources to add to the style, by id. |
 | [`layers`](#layers) | `LayerInput[] \| null` | | Layers to add to the style, in order. |
 | [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`, in place of the `terrain` of the style. |
 | [`fonts`](#fonts) | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
@@ -307,7 +307,8 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
 - The map compares each value by identity. To change the data, pass a new object: a change inside the old object has
   no effect.
 - To set options of the source (`cluster`, `promoteId`, `attribution`), declare the source in `sources` or in the
-  style, with no features. `data` then sets its features.
+  style. A GeoJSON source in `sources` whose id is a key of `data` needs no `data` of its own: `data` sets its
+  features.
 - When a key is removed from `data`, the map removes the source that it created for that key. A layer that still
   uses the source draws nothing, so remove such a layer in the same description.
 
