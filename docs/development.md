@@ -31,6 +31,7 @@ pnpm install
 | `pnpm screenshots` | Takes the screenshots in `docs/images` from the gallery. Start `pnpm demo` first. |
 | `pnpm bench` | Compares the speed with MapLibre GL JS in a browser without a GPU |
 | `BROWSER=webkit node test/bench/browsers.mjs out` | Runs the benchmark page and a short check in one browser (`chromium`, `firefox` or `webkit`). Start `pnpm demo` first. Every tool that starts a browser through `test/launch.mjs` reads `BROWSER` this way; any other value, such as the `BROWSER=open` of macOS, uses `chromium` and prints one line that says so. |
+| `PW_CHROMIUM=/path/to/chrome` | Names the Chromium executable that the tests, the benchmarks and `website/scripts/check.mjs` start (through `chromiumOptions()` in `test/launch.mjs`). Without it they use the build that Playwright pins (`pnpm exec playwright install chromium`, as CI does). When that build is missing and `/opt/pw-browsers/chromium` exists, as on the image of the cloud VM, they use that file. Firefox and WebKit are not affected. |
 | `WD_URL=http://localhost:4444 node test/bench/webdriver.mjs out` | The same through a WebDriver server, for a browser that Playwright cannot drive: Safari (`safaridriver -p 4444` on macOS), or a phone on a device farm. `WD_CAPS` has the capabilities as JSON. Start `pnpm demo` first, or give the page of the gallery site with `BENCH_URL`. |
 
 ### The development build

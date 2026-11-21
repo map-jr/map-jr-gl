@@ -8,6 +8,7 @@ import {execSync} from 'node:child_process';
 import {existsSync, readFileSync, readdirSync, statSync, mkdirSync, writeFileSync} from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import {chromiumOptions} from '../launch.mjs';
 import {summarize, readExpectations, report, changes, skipReason} from './render-summary.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, '.cache/maplibre-gl-js');
@@ -55,7 +56,7 @@ walk(testsDir);
 const selected = tests.filter(t => !filter || filter.test(t)).slice(0, limit);
 
 const {chromium} = createRequire(import.meta.url)('playwright');
-const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
+const browser = await chromium.launch({...chromiumOptions(chromium), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
 const results = [];
 async function worker(queue) {
     // One page for each pixel ratio: the page has the pixel ratio of the test, so that the screenshot has the pixels

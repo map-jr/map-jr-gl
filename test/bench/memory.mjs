@@ -13,6 +13,7 @@
 // WebKit collects when it chooses: its numbers can fall between runs, and only a steady rise means that memory is kept.
 import {spawn, execSync} from 'node:child_process';
 import {createServer} from 'node:net';
+import {chromiumOptions} from '../launch.mjs';
 import {chromium, webkit} from 'playwright';
 
 const [kind = 'chromium', query = 'auto&runs=3&only=terrain'] = process.argv.slice(2);
@@ -24,7 +25,7 @@ const resident = pattern => {
 };
 try {
     for (let i = 0; i < 50; i++) { try { await fetch(`http://localhost:${port}/`); break; } catch { await new Promise(r => setTimeout(r, 200)); } }
-    const browser = await (kind === 'webkit' ? webkit : chromium).launch();
+    const browser = await (kind === 'webkit' ? webkit : chromium).launch(kind === 'webkit' ? {} : chromiumOptions(chromium));
     const page = await browser.newPage();
     await page.addInitScript(() => {
         const made = [];

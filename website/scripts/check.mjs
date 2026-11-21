@@ -10,6 +10,7 @@
 import {readFileSync} from 'node:fs';
 import * as playwright from 'playwright';
 import {serve} from './serve.mjs';
+import {chromiumOptions} from '../../test/launch.mjs';
 
 const {chromium, devices, webkit} = playwright;
 const withMap = !process.argv.includes('--no-map');
@@ -23,7 +24,7 @@ const installPage = '/guide/getting-started';
 
 const server = await serve(0);
 const base = `http://localhost:${server.address().port}`;
-const browser = await chromium.launch({args: ['--enable-unsafe-swiftshader'], executablePath: process.env.CHROMIUM_PATH || undefined});
+const browser = await chromium.launch({...chromiumOptions(chromium), args: ['--enable-unsafe-swiftshader']});
 let failures = 0;
 function check(name, ok, detail = '') {
     if (!ok) failures++;

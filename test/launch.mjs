@@ -2,17 +2,31 @@
 // or webkit. Any other value is ignored with one line on stderr, because shells set BROWSER for other uses (macOS
 // sets BROWSER=open for the command that opens a URL). WebKit is the engine of Safari, so it is the nearest thing to Safari that runs on Linux and Windows.
 import {createRequire} from 'node:module';
+import {existsSync} from 'node:fs';
 import os from 'node:os';
 
-const playwright = createRequire(import.meta.url)('playwright');
+const require = createRequire(import.meta.url);
 const browsers = ['chromium', 'firefox', 'webkit'];
 export const browserName = browsers.includes(process.env.BROWSER) ? process.env.BROWSER : 'chromium';
 if (process.env.BROWSER && browserName !== process.env.BROWSER) {
     console.error(`launch.mjs: using chromium, because BROWSER="${process.env.BROWSER}" is not chromium, firefox or webkit`);
 }
 
+// Where to find Chromium when Playwright's own build is missing (the image of the cloud VM has /opt/pw-browsers/chromium).
+const imageChromium = '/opt/pw-browsers/chromium';
+
+// The options that every launch of Chromium shares, so that no script has to know where the browser is. `type` is
+// `chromium` of the Playwright that the script uses. The executable is, in this order: the file named by PW_CHROMIUM;
+// none (Playwright's pinned build, which CI installs) when that build exists; the file of the cloud VM image when it
+// exists. With none of these Playwright reports its own "Executable doesn't exist" error.
+export function chromiumOptions(type) {
+    const executablePath = process.env.PW_CHROMIUM
+        || (existsSync(type.executablePath()) || !existsSync(imageChromium) ? undefined : imageChromium);
+    return executablePath ? {executablePath} : {};
+}
+
 export function launch() {
-    const type = playwright[browserName];
+    const type = require('playwright')[browserName];
     // A Linux machine without a GPU needs Chromium's software renderer for WebGL. On macOS and Windows the browser
     // uses the GPU of the machine, if there is one.
     const args = browserName !== 'chromium' ? [] : os.platform() === 'linux'
@@ -21,7 +35,7 @@ export function launch() {
     const firefoxUserPrefs = {'webgl.force-enabled': true, 'webgl.disable-fail-if-major-performance-caveat': true, 'webgl.enable-webgl2': true, 'gfx.webrender.software': true};
     // Firefox without a window draws a few frames each second on the page's thread, which makes each test time out.
     // HEADED=1 opens a window (on Linux that needs a display, for example xvfb-run).
-    const started = type.launch(browserName === 'firefox' ? {firefoxUserPrefs, headless: !process.env.HEADED} : {args});
+    const started = type.launch(browserName === 'firefox' ? {firefoxUserPrefs, headless: !process.env.HEADED} : {args, ...(browserName === 'chromium' && chromiumOptions(type))});
     return process.env.NO_WORKER_WEBGL ? started.then(withoutWorkerWebGL) : started;
 }
 
