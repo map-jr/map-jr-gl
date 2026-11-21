@@ -381,7 +381,9 @@ changes.
 
 The component renders again when the result of `select` changes. `select` can return a part of the state as it is
 (`state.hover`, `state.view`), a number or a string, or a new plain object or array that combines several parts, such
-as `state => ({zoom: state.view.zoom, pitch: state.view.pitch})`. The hook compares a new result with the last one one
+as `state => ({zoom: state.view.zoom, pitch: state.view.pitch})`.
+
+The hook compares a new result with the last one one
 level deep: when both are plain objects or arrays with the same keys and identical members (`Object.is`), it returns
 the last result and the component does not render. A deeper object that `select` makes again at each call, such as
 `{view: {zoom}}`, is not equal to the last one, so the component renders at each change of the state.
