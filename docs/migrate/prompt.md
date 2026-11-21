@@ -14,7 +14,7 @@ Search the source for `maplibre-gl`, `react-map-gl`, `vue-maplibre-gl`, `svelte-
 
 ## 2. Read the documentation of the installed package
 
-Install `@map-jr/map-jr-gl` first with the package manager of the project (`npm install @map-jr/map-jr-gl`, or the `pnpm`, `yarn` or `bun` equivalent), unless `node_modules/@map-jr/map-jr-gl` exists. Keep `maplibre-gl` installed until step 5 allows you to remove it.
+Install `@map-jr/map-jr-gl` first with the package manager of the project (`npm install @map-jr/map-jr-gl`, or the `pnpm`, `yarn` or `bun` equivalent), unless `node_modules/@map-jr/map-jr-gl` exists. Keep `maplibre-gl` installed until step 7 allows you to remove it.
 
 The docs are in `node_modules/@map-jr/map-jr-gl/docs/`. Read these before you change code, and read a reference page when you need an exact name:
 
