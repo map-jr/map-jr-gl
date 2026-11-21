@@ -52,7 +52,7 @@ export function sizedSVG(svg: string, w: number, h: number): string {
 }
 
 /**
- * A style with a GeoJSON source for each key of `data` that is not the id of a source of the style (#487). The source has
+ * A style with a GeoJSON source for each key of `data` that is not the id of a source of the style (#487), and an empty `data` for a GeoJSON source of the style that has none (#1189). The source has
  * the default options, and no features unless `full` (for a renderer that gets the data with the style). `other` gets
  * each key that is the id of a source of another type.
  */
@@ -64,6 +64,7 @@ export function withData(style: any, data: Record<string, unknown> | undefined, 
         if (!s) sources = {...sources, [id]: {type: 'geojson', data: full ? data[id] : {type: 'FeatureCollection', features: []}}};
         else if (s.type !== 'geojson') other?.(id, s.type);
         else if (full) sources = {...sources, [id]: {...s, data: data[id]}};
+        else if (s.data == null) sources = {...sources, [id]: {...s, data: {type: 'FeatureCollection', features: []}}};
     }
     return sources === style.sources ? style : {...style, sources};
 }
