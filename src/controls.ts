@@ -54,10 +54,10 @@ export const CONTROL_CSS = `
 :where(.map-jr-ctrl-attrib.map-jr-compact){display:flex;align-items:center;min-height:28px;padding:0 28px 0 0;margin:0 max(10px,env(safe-area-inset-right)) 10px 0;border-radius:14px;background:var(--map-control-background,#fff);box-shadow:0 0 0 1.5px rgba(0,0,0,.12)}
 :where(.map-jr-ctrl-attrib.map-jr-compact .map-jr-ctrl-attrib-inner){display:none;padding:2px 4px 2px 10px}
 :where(.map-jr-ctrl-attrib.map-jr-compact.map-jr-compact-show .map-jr-ctrl-attrib-inner){display:block}
-:where(.map-jr-ctrl-attrib-button){display:none;flex:none;width:28px;height:28px;border:0;border-radius:14px;background:none;color:inherit;font:italic 700 14px/28px Georgia,serif;cursor:pointer;padding:0}
-:where(.map-jr-compact .map-jr-ctrl-attrib-button){display:block}
-.map-jr-ctrl-attrib.map-jr-compact{position:relative}.map-jr-compact>.map-jr-ctrl-attrib-button{position:absolute;top:0;right:0;margin:0}
-@media (pointer:coarse){:where(.map-jr-compact .map-jr-ctrl-attrib-button){width:36px;height:36px;border-radius:18px;line-height:36px}:where(.map-jr-ctrl-attrib.map-jr-compact){border-radius:18px;min-height:36px;padding-right:36px}}
+.map-jr-ctrl-attrib :where(.map-jr-ctrl-attrib-button){display:none;flex:none;width:28px;height:28px;border:0;border-radius:14px;background:none;color:inherit;font:italic 700 14px/28px Georgia,serif;cursor:pointer;padding:0}
+.map-jr-compact :where(.map-jr-ctrl-attrib-button){display:block}
+.map-jr-ctrl-attrib.map-jr-compact{position:relative}.map-jr-compact>:where(.map-jr-ctrl-attrib-button){position:absolute;top:0;right:0;margin:0}
+@media (pointer:coarse){.map-jr-compact :where(.map-jr-ctrl-attrib-button){width:36px;height:36px;border-radius:18px;line-height:36px}:where(.map-jr-ctrl-attrib.map-jr-compact){border-radius:18px;min-height:36px;padding-right:36px}}
 :where(.map-jr-ctrl){pointer-events:auto;color:var(--map-control-color,#222)}
 :where(.map-jr-ctrl-group){background:var(--map-control-background,#fff);border-radius:var(--map-control-radius,6px);box-shadow:0 0 0 1.5px rgba(0,0,0,.12),0 1px 4px rgba(0,0,0,.15);overflow:hidden}
 .map-jr-ctrl-group :where(button){-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;width:var(--map-control-size,32px);height:var(--map-control-size,32px);margin:0;padding:0;border:0;background:none;color:inherit;cursor:pointer}
@@ -94,7 +94,7 @@ export const CONTROL_CSS = `
 & :where(.map-jr-ctrl-attrib:not(.map-jr-compact),.map-jr-ctrl-scale){background:var(--map-attribution-background,var(--map-jr-bg));color:var(--map-control-color,var(--map-jr-fg))}
 & :where(.map-jr-ctrl-attrib:not(.map-jr-compact)){border-top-left-radius:calc(var(--map-jr-rr)/2)}
 & .map-jr-ctrl-attrib :where(a){text-decoration-color:color-mix(in oklab,currentColor 35%,transparent);&:where(:hover){text-decoration-color:currentColor}}
-& :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:grid;place-content:center;top:50%!important;translate:0 -50%;font:0/0 a;&::before{content:"";width:13px;height:13px;background:currentColor;mask:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M10.588 6.413Q10 5.825 10 5t.588-1.412T12 3t1.413.588T14 5t-.587 1.413T12 7t-1.412-.587m.35 14.15q-.438-.438-.438-1.063v-9q0-.625.438-1.062T12 9t1.063.438t.437 1.062v9q0 .625-.437 1.063T12 21t-1.062-.437'/></svg>")}}
+& .map-jr-compact :where(.map-jr-ctrl-attrib-button){display:grid;place-content:center;top:50%!important;translate:0 -50%;font:0/0 a;&::before{content:"";width:13px;height:13px;background:currentColor;mask:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M10.588 6.413Q10 5.825 10 5t.588-1.412T12 3t1.413.588T14 5t-.587 1.413T12 7t-1.412-.587m.35 14.15q-.438-.438-.438-1.063v-9q0-.625.438-1.062T12 9t1.063.438t.437 1.062v9q0 .625-.437 1.063T12 21t-1.062-.437'/></svg>")}}
 & :where(.map-jr-ctrl-attrib.map-jr-compact){max-width:none!important}
 & :where(.map-jr-ctrl-scale){display:flex;align-items:center;gap:6px;width:auto!important;border:0;border-radius:calc(var(--map-jr-rr)/2) calc(var(--map-jr-rr)/2) 0 0;margin-bottom:-10px;padding:2px 6px;font-size:11px;line-height:1.4;&::after{content:"";width:var(--map-jr-scale);height:5px;margin-top:3px;border:1.5px solid;border-top:0;box-sizing:border-box}}
 &:has(.map-jr-compact) :where(.map-jr-ctrl-scale){margin-bottom:0;border-radius:calc(var(--map-jr-rr)/2)}
