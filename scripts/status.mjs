@@ -94,10 +94,10 @@ if (speed && /<!-- speed:start -->[\s\S]*<!-- speed:end -->/.test(doc)) doc = do
 if (!/<!-- status:start -->[\s\S]*<!-- status:end -->/.test(doc)) { console.error('README.md has no status markers'); process.exit(1); }
 writeFileSync(file, doc.replace(/<!-- status:start -->[\s\S]*<!-- status:end -->/, () => block));
 // The page of the user docs that is the home of the sizes and the speeds has the same figures.
-const page = root + 'docs/guide/size-and-speed.md';
-if (existsSync(page)) {
-    let text = readFileSync(page, 'utf8').replace(/<!-- sizes:start -->[\s\S]*<!-- sizes:end -->/, () => sizesBlock(figures));
+const guide = root + 'docs/guide/size-and-speed.md';
+if (existsSync(guide)) {
+    let text = readFileSync(guide, 'utf8').replace(/<!-- sizes:start -->[\s\S]*<!-- sizes:end -->/, () => sizesBlock(figures));
     if (figures.speed) text = text.replace(/<!-- speed:start -->[\s\S]*<!-- speed:end -->/, () => speedBlock(figures.speed, ml, {page: true}));
-    writeFileSync(page, text);
+    writeFileSync(guide, text);
 }
 console.log(block.split('\n').slice(3, -1).join('\n'));
