@@ -349,12 +349,14 @@ try {
         const [one, two] = [await load(a), await load(b)], size = 200, out = {};
         const box = {'top-left': [0, 0], 'top-right': [one.width - size, 0], 'bottom-left': [0, one.height - size], 'bottom-right': [one.width - size, one.height - size]};
         for (const [name, [x0, y0]] of Object.entries(box)) {
-            let n = 0, ink = 0;
-            for (let y = y0; y < y0 + size; y++) for (let x = x0; x < x0 + size; x++) { const i = (y * one.width + x) * 4; if (Math.max(...[0, 1, 2].map(k => Math.abs(one.data[i + k] - two.data[i + k]))) > 24) n++; if (Math.abs(one.data[i] - 0xdd) > 24) ink++; }
-            out[name] = {differ: n, ink};
+            let n = 0, ink = 0; const at = [];
+            for (let y = y0; y < y0 + size; y++) for (let x = x0; x < x0 + size; x++) { const i = (y * one.width + x) * 4; if (Math.max(...[0, 1, 2].map(k => Math.abs(one.data[i + k] - two.data[i + k]))) > 24) { n++; if (at.length < 40) at.push(`${x},${y}:${one.data[i]}/${two.data[i]}`); } if (Math.abs(one.data[i] - 0xdd) > 24) ink++; }
+            out[name] = {differ: n, ink, ...n > 20 && {at}};
         }
         return {size: [one.width, one.height, two.width, two.height], ...out};
     }, [await png(shotServer), await png(shotMap)]);
+    // (DUMP=<prefix> writes both screenshots, to look at a difference.)
+    if (process.env.DUMP) { const {writeFileSync} = await import('node:fs'); writeFileSync(process.env.DUMP + '-server.png', shotServer); writeFileSync(process.env.DUMP + '-map.png', shotMap); }
     const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
     const frames = state.frames, shown = frames.filter(f => f.n === 1), at = new Set(shown.map(f => f.at));
     check('browser: the corners of the first view with controls and of the idle map are equal (up to 20 of the 40,000 pixels of each 200 by 200 corner)', corners.every(c => diff[c].differ <= 20) && diff['top-right'].ink > 500 && diff['bottom-right'].ink > 100 && diff['bottom-left'].ink > 100, JSON.stringify(diff));

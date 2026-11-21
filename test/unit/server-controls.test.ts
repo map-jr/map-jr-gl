@@ -32,7 +32,7 @@ test('the scale has the value of the first view', () => {
 test('the compass shows the bearing of the view, and a zoom button is disabled at the limit', () => {
     const html = controlsMarkup(base({controls: [navigation()], bearing: 90, zoom: 22, maxZoom: 22}));
     assert.match(html, />E<\/text>/);
-    assert.match(html, /\.map-jr-ssr-r90\{transform:rotate\(-90deg\)\}/);
+    assert.match(html, /\.map-jr-ssr-r90\{transform:rotateX\(0deg\) rotate\(-90deg\)\}/);
     assert.match(html, /map-jr-ctrl-zoom-in maplibregl-ctrl-zoom-in" type="button" title="Zoom in" aria-label="Zoom in" disabled/);
     assert.doesNotMatch(html, /zoom-out[^>]* disabled/);
     assert.doesNotMatch(layer(controlsMarkup(base({controls: [navigation({showCompass: false})]}))), /compass/);

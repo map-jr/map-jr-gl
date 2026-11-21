@@ -45,7 +45,7 @@ function compass(bearing: number): string {
         const s = Math.sin(a * Math.PI / 180), c = -Math.cos(a * Math.PI / 180), major = !(a % 90), r = major ? 6.6 : 8, at = (k: number) => `${+(12 + s * k).toFixed(2)} ${+(12 + c * k).toFixed(2)}`;
         if (major) ticks += `M${at(r)}L${at(10.4)}`; else light += `M${at(r)}L${at(10.4)}`;
     }
-    return `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><g class="map-jr-ssr-g${bearing ? ' map-jr-ssr-r' + name(bearing) : ''}"><path d="${light}" stroke-width="1.1" opacity=".45"/><path d="${ticks}" stroke-width="1.2"/><path d="M12 .9l1.9 4.3h-3.8z" stroke="none"/></g><text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="600" font-family="system-ui,sans-serif" stroke="none">${'NESW'[Math.round((bearing + 360) / 90) % 4]}</text></svg>`;
+    return `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><g class="map-jr-ssr-g map-jr-ssr-r${name(bearing)}"><path d="${light}" stroke-width="1.1" opacity=".45"/><path d="${ticks}" stroke-width="1.2"/><path d="M12 .9l1.9 4.3h-3.8z" stroke="none"/></g><text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="600" font-family="system-ui,sans-serif" stroke="none">${'NESW'[Math.round((bearing + 360) / 90) % 4]}</text></svg>`;
 }
 
 // The style sheet of the controls without comments and empty lines. For `colorScheme: 'auto'`, each rule of the class
@@ -67,7 +67,8 @@ export function controlsMarkup(o: FirstViewControls): string {
     const corners: Record<string, string[]> = {};
     const maxZoom = o.maxZoom ?? 22, minZoom = o.minZoom ?? -2;
     const view = Number.isFinite(o.bearing) ? o.bearing : 0;
-    if (view) rule(`.map-jr-ssr-r${name(view)}{transform:rotate(${-view}deg)}`);
+    // (The same transform as the map gives the dial, also at bearing 0: it changes how the browser draws the ticks.)
+    rule(`.map-jr-ssr-r${name(view)}{transform:rotateX(0deg) rotate(${-view || 0}deg)}`);
     for (const spec of o.controls) {
         // (The key of a control is its function name and its options as JSON: see control-specs.ts. A control from `custom()` has no static markup.)
         const m = /^([a-zA-Z]+)(.*)$/s.exec(spec.key);
