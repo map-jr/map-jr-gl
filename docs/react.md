@@ -207,7 +207,9 @@ const firstView = await renderFirstView({
 <MapJr mapStyle={style} initialView={view} firstView={firstView} />
 ```
 
-- The HTML has the SVG and the credits of the sources.
+- The HTML has the SVG and the credits of the sources that a visible layer uses at the zoom of the view. With the option
+  `controls` of `renderFirstView`, it also has the controls and the attribution control (see
+  [Controls in the first view](guide/server-rendering.md#controls-in-the-first-view)).
 - In the browser, React takes over the page and does not look at this HTML. The map removes it when it has drawn
   its first frame.
 - The prop is read on the server. In the browser you can leave it out, so the HTML does not go to the browser a

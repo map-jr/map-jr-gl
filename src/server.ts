@@ -7,8 +7,9 @@ import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placem
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG, cleanCredits} from './svg.ts';
+import {controlsMarkup} from './server-controls.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
-import type {MapDescription} from './host.ts';
+import type {ControlSpec, MapDescription} from './host.ts';
 import {unset, type Given} from './unset.ts';
 import {compileFor, pickImage} from './expr.ts';
 import {styleImages} from './style-images.ts';
@@ -141,7 +142,7 @@ export interface RenderResult {
     svg: string;
     /** The URLs of the tiles of the view. Write them as `<link rel="preload" as="fetch" crossorigin>` so that the browser loads them early. */
     tiles: string[];
-    /** The credits of the sources of the style, as HTML. Show them with the render. */
+    /** The credits of the sources that a visible layer uses at the zoom of the view, as HTML. Show them with the render. */
     attribution: string[];
 }
 
@@ -212,6 +213,12 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
  * @returns A promise of the SVG, the URLs of the tiles and the credits. It rejects when the style or a limit of the options fails.
  */
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
+    const {view: _view, ...result} = await renderView(o);
+    return result;
+}
+
+/** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
+async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const dz = o.tileZoomOffset ?? 0;
     if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
@@ -324,19 +331,50 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         tr, layers, items, labels, sprite, images, fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
         rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
     });
-    return {svg, tiles: urls, attribution: [...new Set(Object.values(style.sources).map(s => s.attribution).filter((a): a is string => !!a))]};
+    // (The credits are those of `getAttributions` of the map: only the sources that a visible layer uses at this zoom, so that they do not change when the map takes over.)
+    return {svg, tiles: urls, attribution: [...new Set(Object.entries(style.sources).filter(([id]) => layers.some(l => l.source === id && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)).map(([, s]) => s.attribution?.trim()).filter((a): a is string => !!a))], view: {lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing}};
+}
+
+/** The options of `renderFirstView`: those of `renderToSVG`, and the credits and the controls of the first view. */
+export interface FirstViewOptions extends RenderOptions {
+    /** The credits to show instead of those of the sources, as HTML. `false` shows none, and leaves out the attribution of the controls as well. */
+    attribution?: string | string[] | false;
+    /**
+     * The controls of the description, for example `[navigation(), scale()]`. With this option (also `[]`), the first view has the
+     * attribution and these controls as static markup, with the style sheet of the controls, as the map has them at its first frame.
+     * A control from `custom()` is left out. Without the option, the first view has a plain element for the credits and no controls.
+     */
+    controls?: ControlSpec[];
+    /** The texts of the controls, as `locale` of the description. It has an effect with `controls`. */
+    locale?: Record<string, string> | null;
+    /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the controls, as `nonce` of the description. It has an effect with `controls`. */
+    nonce?: string | null;
+    /** The limits of the zoom of the description, which disable a zoom button. They have an effect with `controls`. */
+    minZoom?: number | null;
+    maxZoom?: number | null;
+    /** The projection of the description, which sets the state of the globe control. It has an effect with `controls`. */
+    projection?: {type?: unknown} | null;
+    /** The options of the attribution, as `attribution` of the description. They have an effect with `controls`. */
+    attributionOptions?: {compact?: boolean; customAttribution?: string | string[]} | null;
 }
 
 /**
  * Renders the first view of a map as HTML for a page from a server: the SVG, with the credits over it. Put the HTML into
  * the element of the map; the map removes it when it has loaded the tiles of its first view, just before `load`.
+ * With `controls`, the HTML also has the attribution and the controls of the map as static markup, with their style
+ * sheet, in the positions and the look that the map gives them, so that the map takes over with no visible change.
  * @param o The options of `renderToSVG`. `attribution` sets the credits instead of those of the sources, and `false` shows none.
- * `colorScheme` sets the colours of the credits; `'auto'` follows the browser where it supports the CSS function `light-dark()`.
+ * `colorScheme` sets the colours of the credits and the controls; `'auto'` follows the browser.
  * @returns A promise of the HTML. It rejects as `renderToSVG` does.
  */
-export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false; colorScheme?: 'auto' | 'light' | 'dark'}): Promise<string> {
-    const made = await renderToSVG(o);
-    const credits = o.attribution === false ? [] : [o.attribution ?? made.attribution].flat().map(cleanCredits).filter(Boolean);
+export async function renderFirstView(o: FirstViewOptions): Promise<string> {
+    const made = await renderView(o);
+    const raw = o.attribution === false ? false : [o.attribution ?? made.attribution].flat();
+    if (o.controls) {
+        return made.svg + controlsMarkup({controls: o.controls, ...made.view, width: o.width, colorScheme: o.colorScheme ?? 'light', locale: o.locale, nonce: o.nonce, minZoom: o.minZoom, maxZoom: o.maxZoom,
+            projection: o.projection, terrain: !!o.terrain, credits: raw, attribution: o.attributionOptions});
+    }
+    const credits = raw === false ? [] : raw.map(cleanCredits).filter(Boolean);
     const light = 'background:rgba(255,255,255,.75);color:#333', dark = 'background:rgba(30,30,30,.75);color:#ccc';
     const colors = o.colorScheme === 'dark' ? dark : o.colorScheme === 'auto' ? light + ';color-scheme:light dark;background:light-dark(rgba(255,255,255,.75),rgba(30,30,30,.75));color:light-dark(#333,#ccc)' : light;
     return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
@@ -391,7 +429,9 @@ export async function renderElement(description: MapDescription, options: Elemen
         const fit = !d.view && d.initialView?.bounds;
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
             width, height, images: d.images as RenderOptions['images'], sources: d.sources, layers: d.layers as RenderOptions['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
-            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light'});
+            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light',
+            controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
+            attributionOptions: d.attribution === false ? undefined : d.attribution as {compact?: boolean; customAttribution?: string | string[]} | undefined});
     } catch (cause) {
         console.error(`[map-jr-gl] renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`);
     }

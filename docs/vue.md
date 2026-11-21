@@ -461,9 +461,15 @@ With the `ssr` prop, the server also renders the first view as SVG:
 ### The credits
 
 The server loads the style and its sources, so it knows their credits. It puts them into the page with the SVG, as
-text and links. The map replaces them with its own credits control in the browser. To show other text, give
-`attribution` in the `ssr` prop. With `:attribution="false"` on the component, the server shows no credits, and
-you show them yourself.
+text and links, in the attribution control. The map replaces them with its own credits control in the browser. To
+show other text, give `attribution` in the `ssr` prop. With `:attribution="false"` on the component, the server shows
+no credits, and you show them yourself.
+
+The server also puts the controls of the `controls` prop into the page, with the style sheet of the controls (under
+the `nonce` of the prop, if there is one), so that they are there from the first paint and the map takes over with no
+visible change. The scale has its length at the centre of the first view, and the buttons do nothing until the map
+takes over. A control from `custom()` is left out. See "Controls in the first view" in
+[Server rendering](guide/server-rendering.md#controls-in-the-first-view).
 
 The SVG of a city can be some hundred KB. In the test of this library, three overrides (no buildings, no building
 outlines, no small roads) change a page of 245 KB to 115 KB.

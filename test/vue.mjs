@@ -8,6 +8,7 @@ import {renderToString} from 'vue/server-renderer';
 import {launch} from './launch.mjs';
 import makeStyle from '../demo/style.mjs';
 import {MapJr} from '../dist/vue.js';
+import {navigation, scale} from '../dist/controls.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 let failed = 0;
@@ -38,7 +39,9 @@ const pins = {data: {pins: pinData([[view.center, '#d00']])}, layers: [{id: 'pin
 const html = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, ssr: {width: 800, height: 500}, attribution: false})])}));
 check('server: the component renders the first view as SVG, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.length > 20000 && html.includes('map-jr-vue') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);
 const credited = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: true})}));
-check('server: the credits of the sources are in the page, as text and links only', !html.includes('example.com/credits') && /<div data-map-jr-ssr[^>]*><a href="https:\/\/example.com\/credits">Example tiles<\/a><\/div>/.test(credited), credited.match(/<div data-map-jr-ssr[^>]*>.{0,120}/)?.[0] ?? 'no credits');
+check('server: the credits of the sources are in the page, as text and links only, in the attribution control', !html.includes('example.com/credits') && /<div class="map-jr-ctrl-attrib-inner[^"]*"><a href="https:\/\/example.com\/credits" target="_blank" rel="noopener noreferrer">Example tiles<\/a><\/div>/.test(credited), credited.match(/ctrl-attrib-inner.{0,160}/)?.[0] ?? 'no credits');
+const withControls = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, controls: [navigation(), scale()], locale: {'NavigationControl.ZoomIn': 'Zoom avant'}, nonce: 'n2', ssr: {width: 800, height: 500, attribution: false}})}));
+check('server: the controls of the description are in the first view, with the locale and the nonce of the description', /<style data-map-jr-ssr="" nonce="n2">/.test(withControls) && withControls.includes('map-jr-ctrl-zoom-in') && withControls.includes('title="Zoom avant"') && withControls.includes('map-jr-ctrl-scale') && !withControls.includes('class="map-jr-ctrl-attrib-inner'), `${(withControls.length / 1024).toFixed(0)} KB of HTML`);
 const small = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {width: 800, height: 500, overrides: {building: {hidden: true}, 'building-outline': {hidden: true}, road: {minzoom: 20}}, attribution: 'Own credits'}})}));
 check('server: overrides for style layers make the render smaller, and the credits can be given', small.length < html.length * 0.8 && small.includes('>Own credits</div>'), `${(small.length / 1024).toFixed(0)} KB against ${(html.length / 1024).toFixed(0)} KB`);
 const plain = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view})}));

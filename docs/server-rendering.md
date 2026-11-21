@@ -345,7 +345,7 @@ const {svg} = await renderToSVG({
 ## The first view for a framework
 
 `renderFirstView` takes the options of `renderToSVG` and returns HTML for the element of the map: the SVG, and the
-credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The option `colorScheme` gives the colours of
+credits of the sources that a visible layer uses over it. The option `attribution` gives other credits; `false` shows none. The option `colorScheme` gives the colours of
 the credits: `'light'` (the default) or `'dark'`. The server cannot read the scheme of the browser, so `'auto'`
 writes both colours with the CSS function `light-dark()`, and a browser without that function shows the light
 colours. The Vue component passes its prop `color-scheme`, with `'light'` when the prop is not set. The Vue component
@@ -353,13 +353,19 @@ uses this function for its `ssr` prop. For a pair `{light, dark}` in `style`, th
 style: `'dark'` uses `dark`, and each other value uses `light`. With React, call it on the server and give the result to the component. See
 [Vue and Nuxt](vue.md) and [React](react.md).
 
+With the option `controls` (the `controls` of the description), the HTML also has the attribution and the built-in
+controls as static markup with the style sheet of the controls, in the places and the look that the map gives them, so
+that the map takes over with no visible change. The Vue component and `renderElement` pass the `controls`, `locale`,
+`nonce`, `minZoom`, `maxZoom`, `projection` and `attribution` of the description themselves. See
+[Controls in the first view](guide/server-rendering.md#controls-in-the-first-view).
+
 `renderElement(description, options)` returns the markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element`:
 the attributes from the description (`MapDescription`) and the result of `renderFirstView` as the children of the
 element. See [Server rendering](element.md#server-rendering) in the document of the web component.
 
 ## Credits
 
-The result of `renderToSVG` has `attribution`: the credits of the sources of the style, as a list of HTML strings.
+The result of `renderToSVG` has `attribution`: the credits of the sources that a visible layer uses at the zoom of the view, as a list of HTML strings.
 Show them with the render. (The Vue component does this.)
 
 ## Fonts
