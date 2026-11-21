@@ -492,6 +492,12 @@ try {
         await page.goto(base + '/recipes/basic', {waitUntil: 'load'});
         const frame = page.frameLocator('.live-example iframe');
         check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
+        // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
+        const controlButton = frame.locator('.map-jr-ctrl-group button').first();
+        check(`${engine}: recipe: a button of a map control has no margin, padding or border from the frame`, await shown(controlButton) && await controlButton.evaluate(button => {
+            const style = getComputedStyle(button);
+            return [style.marginLeft, style.marginBottom, style.paddingTop, style.paddingLeft, style.borderTopWidth].every(value => value === '0px');
+        }));
         const before = await loaded();
         check(`${engine}: recipe: the page loads no code of the editor before "Edit"`, !before.editor, `${(before.bytes / 1024).toFixed(1)} KB of scripts`);
         await page.getByRole('button', {name: 'Edit the Main API code'}).click();
@@ -504,6 +510,15 @@ try {
         await replace(editor, code + "\ndocument.body.append(Object.assign(document.createElement('output'), {id: 'edited'}));\n");
         await page.getByRole('button', {name: 'Run', exact: true}).click();
         check(`${engine}: recipe: a changed example runs`, await shown(frame.locator('#edited'), 'attached') && await frame.locator('#map canvas').count() > 0);
+        // On a page of its own, so that the later checks keep the page and the editor of the recipe "basic".
+        const fitPage = await context.newPage();
+        await fitPage.goto(base + '/recipes/fit', {waitUntil: 'load'});
+        const ownButton = fitPage.frameLocator('.live-example iframe').getByRole('button', {name: 'Show all landings'});
+        check(`${engine}: recipe: a button of the example code keeps the style of the frame`, await shown(ownButton) && await ownButton.evaluate(button => {
+            const style = getComputedStyle(button);
+            return style.marginLeft === '12px' && style.paddingLeft === '10px' && style.borderTopWidth === '1px';
+        }));
+        await fitPage.close();
         check(`${engine}: recipe: no error of the page`, problems.length === 0, problems.join(' | '));
         await replace(editor, "import {createMap} from '@map-jr/map-jr-gl';\nconst map = createMap(;\n");
         await page.keyboard.press('ControlOrMeta+Enter');
