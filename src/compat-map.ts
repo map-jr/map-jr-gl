@@ -5,6 +5,7 @@
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
+import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute} from './resolve.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, type LngLatLike} from './geo.ts';
@@ -736,7 +737,7 @@ export class Map extends CoreMap {
     /** Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. */
     async loadImage(url: string) {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to load image ${url}: ${res.status}`);
+        if (!res.ok) throw httpError('image', url, res.status);
         return {data: await createImageBitmap(await res.blob())};
     }
     /** The code for queries on the page, loaded when the style has a GeoJSON source with its data in the style. */
