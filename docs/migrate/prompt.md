@@ -1,10 +1,9 @@
 # Migration prompt
 
 This page has one prompt for a coding agent (Claude Code, Codex, Cursor and similar tools) that moves an application
-from MapLibre GL JS to Map Jr. GL. Install the package first (`npm install @map-jr/map-jr-gl`), then copy the block
-below into the agent. On this site, the button "Copy migration prompt" copies it. The agent reads the pages of
-[Migrate](from-maplibre.md) from `node_modules/@map-jr/map-jr-gl/docs/`, so the package must be installed before it
-starts.
+from MapLibre GL JS to Map Jr. GL. Copy the block below into the agent. On this site, the button "Copy migration prompt"
+copies it. The agent installs the package in step 2 and reads the pages of [Migrate](from-maplibre.md) from
+`node_modules/@map-jr/map-jr-gl/docs/`. You can install it first (`npm install @map-jr/map-jr-gl`) if you prefer.
 
 ```text
 Migrate this project from MapLibre GL JS (the package `maplibre-gl`, or a wrapper such as react-map-gl) to Map Jr. GL (the package `@map-jr/map-jr-gl`). Work in the steps below and do not skip the checks.
@@ -14,6 +13,8 @@ Migrate this project from MapLibre GL JS (the package `maplibre-gl`, or a wrappe
 Search the source for `maplibre-gl`, `react-map-gl`, `vue-maplibre-gl`, `svelte-maplibre` and `@vis.gl`. List each file and each plugin or wrapper that you find, and what each one uses (Map, Marker, Popup, controls, sources, layers, events, queries). Read the version of `maplibre-gl` in `package.json`: the compat entry has the API of MapLibre GL JS 6.
 
 ## 2. Read the documentation of the installed package
+
+Install `@map-jr/map-jr-gl` first with the package manager of the project (`npm install @map-jr/map-jr-gl`, or the `pnpm`, `yarn` or `bun` equivalent), unless `node_modules/@map-jr/map-jr-gl` exists. Keep `maplibre-gl` installed until step 5 allows you to remove it.
 
 The docs are in `node_modules/@map-jr/map-jr-gl/docs/`. Read these before you change code, and read a reference page when you need an exact name:
 
