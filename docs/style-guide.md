@@ -319,7 +319,7 @@ Do not mix the labels of the two tables in one group.
 
 The comment on a public member is the row of the reference and the text that an editor shows on hover.
 
-```ts
+```ts nocheck
 /**
  * The largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
  * @default 60
