@@ -901,6 +901,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     // The views that the map reported a short time ago. An application that owns the view gives them back, often some
     // frames later; they are not applied again, or the map would go back while the user moves it.
     const reported: View[] = [];
+    let run = 0, fresh = false; // the number of the last views of `reported` that belong to the latest movement (#1190)
     const waiting = new Set<() => void>(); // the promises of `once` that wait for an event
     let now = spec, alive = true, pointer: {x: number; y: number} | null = null, asking = false;
     // `hoverState`: the feature that has the state `hover` from the map.
@@ -917,12 +918,13 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         const view = viewOf();
         // (A new size of the map changes only `bounds`.)
         if (same(view, state.get().view) && view.bounds + '' === state.get().view.bounds + '') return state.set({moving, idle: false});
-        reported.push(view);
+        if (fresh) { run = 0; fresh = false; }
+        reported.push(view); run++;
         if (reported.length > 60) reported.shift();
         state.set({view, moving, idle: false});
         now.onViewChange?.(view);
     };
-    map.on('movestart', () => moved(true));
+    map.on('movestart', () => { fresh = true; moved(true); });
     map.on('move', () => moved(true));
     map.on('moveend', () => moved(false));
     map.on('resize', () => moved(state.get().moving));
@@ -1114,8 +1116,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         }
         if (next.view && !same(next.view, before?.view) && before) {
             if (!reported.some(v => same(next.view, v))) map.jumpTo(next.view);
-            // (A view that the map reported is not applied. At rest, it is not an echo of a slow application, so it is a stored view: #1190.)
-            else if (__DEV__ && !state.get().moving && !same(next.view, state.get().view)) check(1190);
+            // (A view that the map reported is not applied. A view of the latest movement can be a late echo of a slow application, so only a view of an earlier movement is a stored view: #1190.)
+            else if (__DEV__ && !state.get().moving && !same(next.view, state.get().view) && !(run && reported.slice(-run).some(v => same(next.view, v)))) check(1190);
         }
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
