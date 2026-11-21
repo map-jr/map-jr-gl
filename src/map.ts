@@ -976,6 +976,8 @@ export class Map {
         if (list) for (const fn of [...list]) try { fn(Object.defineProperties({type, target: this}, Object.getOwnPropertyDescriptors(data))); } catch (error) { if (type === 'error') logError(error); else this.fire('error', {error}); }
         // (A query that the removal of the map or the loss of the context rejects is not an error of the map.)
         if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.removed || this.restarting || this.fire('error', {error}));
+        // As in MapLibre GL JS, the pointer that leaves the canvas leaves the layers that it was over.
+        if (type === 'mouseout') for (const l of [...this.layerListeners]) if ((l.type === 'mouseleave' || l.type === 'mouseenter') && this.hovered.delete(l) && l.type === 'mouseleave') l.fn({type: 'mouseleave', target: this, ...data, features: []});
     }
 
     // ---- camera ----
