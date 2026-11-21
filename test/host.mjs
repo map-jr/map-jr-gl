@@ -208,6 +208,22 @@ for (const renderer of renderers) {
         const P = padding, near = (a, b) => Math.abs(a - b) <= 2, half = P.w / 2, rest = (P.w - 300) / 2;
         check(`[${renderer}] padding per side: fitBounds takes {top, right, bottom, left}, and padding of the description moves the centre`,
             near(P.fit[0], 400 + (P.w - 410) / 2) && near(P.spec[0], rest) && near(P.cleared[0], half), JSON.stringify(padding));
+        // 2c. The first fit of initialView.bounds keeps the padding of the description free, as moveTo does (#1162).
+        const firstFit = await page.evaluate(async renderer => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:900px;height:400px'}));
+            const bounds = [[-75, 40.70], [-73, 40.72]]; // (wide, so that the width limits the zoom)
+            const h = t.lib.createMap(el, {style: t.style, padding: {left: 320}, initialView: {bounds, fitPadding: 40}, renderer, attribution: false});
+            await wait(300);
+            const first = h._map.getZoom();
+            h.moveTo({bounds, fitPadding: 40});
+            await wait(300);
+            const later = h._map.getZoom();
+            h.destroy(); el.remove();
+            return {first, later};
+        }, renderer);
+        check(`[${renderer}] initialView.bounds is fitted into the part that the padding of the description leaves free (#1162)`,
+            Math.abs(firstFit.first - firstFit.later) < 1e-6, JSON.stringify(firstFit));
         check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and fitPadding without bounds warns once (#501)`,
             near(P.ignored[0], half) && near(P.ignored[1], P.h / 2) && near(P.kept[0], rest) && near(P.same[0], rest) && P.warned === 1, JSON.stringify(padding));
         check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
