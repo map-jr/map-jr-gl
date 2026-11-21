@@ -25,7 +25,8 @@ size of each file.
 
 `configure` sets the loading options for each map that is created after the call. Both entries
 export it. In `@map-jr/map-jr-gl/maplibre-compat`, each option is also an option of `new Map()`, and the option of
-`new Map()` overrides `configure` for that map.
+`new Map()` overrides `configure` for that map. The reference describes each option under
+[`LoadOptions`](../reference/exports.md#loadoptions).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
