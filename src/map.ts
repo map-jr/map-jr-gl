@@ -10,6 +10,7 @@ import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts'
 import type {QueriedFeature} from './query.ts';
 import type {ProjectionSpecification} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
+import type {GeoJSONGeometry} from './host.ts';
 import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
@@ -148,8 +149,8 @@ export interface RenderedFeature {
     type: 'Feature';
     /** The id of the feature in its source, if it has one. */
     id?: number | string;
-    /** The geometry as GeoJSON, in longitude and latitude. */
-    geometry: {type: string; coordinates: unknown};
+    /** The geometry as GeoJSON, in longitude and latitude. Narrow it by `type` before you read `coordinates`. It is never a `GeometryCollection`. */
+    geometry: Exclude<GeoJSONGeometry, {type: 'GeometryCollection'}>;
     /** The properties of the feature. */
     properties: Record<string, unknown>;
     /** The id of the source. */

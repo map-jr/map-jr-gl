@@ -111,7 +111,7 @@ A feature that [`queryFeatures`](map.md#queryfeatures), `state.hover` and `onCli
 |---|---|---|---|
 | `type` **required** | `'Feature'` | | Always `'Feature'`. |
 | `id` | `number \| string` | | The id of the feature in its source, if it has one. |
-| `geometry` **required** | `{type: string; coordinates: unknown}` | | The geometry as GeoJSON, in longitude and latitude. |
+| `geometry` **required** | `Exclude<GeoJSONGeometry, {type: 'GeometryCollection'}>` | | The geometry as GeoJSON, in longitude and latitude. |
 | `properties` **required** | `Record<string, unknown>` | | The properties of the feature. |
 | `source` **required** | `string` | | The id of the source. |
 | `sourceLayer` | `string` | | The layer of the vector tile, for a vector source. |
@@ -149,7 +149,7 @@ A feature that [`querySource`](map.md#querysource) returns. It has no style laye
 | `type` **required** | `'Point' \| 'LineString' \| 'Polygon'` | | The type of the geometry. |
 | `layer` | `string` | | Not set by `querySource`. |
 | `properties` **required** | `Record<string, unknown>` | | The properties of the feature. |
-| `geometry` | `{type: string; coordinates: unknown}` | | The geometry as GeoJSON, in longitude and latitude. |
+| `geometry` | `Exclude<GeoJSONGeometry, {type: 'GeometryCollection'}>` | | The geometry as GeoJSON, in longitude and latitude. |
 <!-- ref:QueriedFeature:end -->
 
 ## `ClusterFeature`
