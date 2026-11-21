@@ -961,7 +961,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             if (found.length !== before.length || found.some((f, i) => f.id !== before[i].id || (f.layer as any)?.id !== (before[i].layer as any)?.id || f.source !== before[i].source)) state.set({hover: found});
             if (!now.cursor) map.setCursor(found.length ? 'pointer' : '');
             const top = now.hoverState ? found[0] : undefined;
-            if (top && top.id == null) check(9, top.layer.id);
+            if (top && top.id == null) check(9, top.layer.id, top.source);
             const next = top && top.id != null ? {source: top.source, sourceLayer: top.sourceLayer, id: top.id} : undefined;
             if (next?.id !== lit?.id || next?.source !== lit?.source || next?.sourceLayer !== lit?.sourceLayer) {
                 // (A source that the style no longer has throws: its feature state is gone with it.)
