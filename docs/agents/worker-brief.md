@@ -23,6 +23,8 @@ writing); this brief has the steps.
    A change of placement, of the engine or of `src/gl.ts` runs both `test/host.mjs` and `test/interact.mjs`, because
    CI runs both: on 2026-11-19 a change of the order of symbols broke two checks of `test/host.mjs`, one of them the
    frame time with 100,000 icons, that its worker had not run (#1074).
+   Before a push, also run `pnpm test:consistency`. It runs `scripts/messages.mjs --check`, so a new message text in
+   `src/` needs `node scripts/messages.mjs --write` first (#1381 failed CI on it).
 6. When the change can change what a map draws (a style property, placement, a shader, the building of tiles), run
    the render tests of the groups that it touches with and without the change
    (`node test/conformance/render.mjs --filter='<regex>'`), and give the counts of match, near and differ. If a test
@@ -32,8 +34,10 @@ writing); this brief has the steps.
    and leave the floor. Do not run the other conformance tools (example pages, plugins, styles) unless your prompt
    asks.
 7. Commit, `git push -u origin <branch>`, and open a pull request against `main`
-   (`gh pr create --repo map-jr/map-jr-gl --base main`) that follows `.github/pull_request_template.md`, says
-   `Fixes #N`, and ends with the attribution line that your session instructions give. Write `Part of #N` only when
+   that follows `.github/pull_request_template.md`, says `Fixes #N`, and ends with the attribution line that your
+   session instructions give. In a cloud session use `gh api repos/map-jr/map-jr-gl/pulls -f title=… -f head=<branch>
+   -f base=main -F body=@file`, because `gh pr create` needs GraphQL, which is blocked there. Elsewhere
+   `gh pr create --repo map-jr/map-jr-gl --base main` works. Write `Part of #N` only when
    your prompt says that the issue is a tracking issue. Then stop.
    The coordinator may send you a CI failure to fix on the same branch.
 
@@ -58,7 +62,22 @@ writing); this brief has the steps.
   run with `--filter` rewrites `test/conformance/render-result.json` and `render-tests.json`: restore them with
   `git checkout --` before you commit.
 - `gh pr edit` fails on this repository; change the body of your pull request with
-  `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`.
+  `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`. In cloud sessions GraphQL is blocked, so
+  `gh issue view`, `gh pr view` and `gh pr list` fail too: use `gh api` REST for everything.
+- A check that navigates uses its own page, so that it does not break the checks after it. A check waits for the
+  value that it measures, not for a proxy of it (a label, "non-empty", an earlier state): the copy check of #1366
+  took three rounds (#1369, #1372 and a fix of that) because each wait was on a proxy, and each passed locally 20
+  times. For a fix of a check that fails in some runs, ask in the pull request for three runs of its CI job.
+- An error in a run of the script that you changed is not "the network" until it reproduces on `main`.
+- A "Found" line marked "read" is a hypothesis: check its premise with one command before you write it (two of
+  2026-11-21, #1363 and #1383, were wrong on a second read).
+- A worker has no Agent tool. A task that needs an independent agent run (the migration prompt of #1122, a review)
+  is started by the coordinator: prepare the inputs (a baseline project, a checker script) and hand them back.
+- Make an extra worktree with `git worktree add` under `.claude/worktrees/`, so that
+  `scripts/agents/clean-worktrees.mjs` finds it.
+- For a change of the look, the pull request has screenshots of what users see first (JavaScript off, or before the
+  map loads) at 390, 1024 and 1440 px, and a geometric check of one known feature before and after. The homepage
+  checks of 2026-11-21 proved that a first paint exists, not that it was sized right.
 - Start the name of each file that you write to the shared scratchpad with your branch name.
 - Do not leave a process running when you stop. `suite.mjs` stops its server; stop any server that you start
   yourself in the same command.
