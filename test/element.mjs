@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs';
 import {launch} from './launch.mjs';
 import makeStyle from '../demo/style.mjs';
 import {renderElement} from '../dist/server.js';
+import {navigation, scale, fullscreen, geolocate, globe, terrain, colorScheme} from '../dist/controls.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 let failed = 0;
@@ -78,11 +79,38 @@ const pages = {
 };
 
 const types = {'.js': 'text/javascript', '.json': 'application/json', '.map': 'application/json'};
-let ssrPage = '';
+let ssrPage = '', controlsPage = '';
+// A map whose first view the server and the browser draw the same (one colour), so a screenshot compares the controls (#1396).
+const blank = {version: 8, sources: {credited: {type: 'geojson', data: {type: 'FeatureCollection', features: []}, attribution: '<a href="https://example.com/credits">Test credits</a> &amp; more'}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#dde8d4'}}, {id: 'edge', type: 'line', source: 'credited'}]};
+const controlList = () => [navigation(), scale(), fullscreen(), geolocate(), globe(), terrain({source: 'dem'}), colorScheme()];
+const controlNames = 'navigation(), scale(), fullscreen(), geolocate(), globe(), terrain({source: "dem"}), colorScheme()';
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), send = (body, type) => { res.writeHead(200, {'content-type': type}); res.end(body); };
     try {
         if (url.pathname === '/style.json') return send(JSON.stringify(style), 'application/json');
+        if (url.pathname === '/blank.json') return send(JSON.stringify(blank), 'application/json');
+        if (url.pathname === '/ssrc') return send(`<!doctype html><meta charset="utf-8"><body style="margin:0">${controlsPage}<script type="module">
+  const {navigation, scale, fullscreen, geolocate, globe, terrain, colorScheme} = await import('/dist/controls.js');
+  const a = document.querySelector('map-jr');
+  // Each frame from now on: the buttons that are visible, and where the zoom buttons are.
+  window.frames = [];
+  const names = {'zoom-in': '.map-jr-ctrl-zoom-in', 'zoom-out': '.map-jr-ctrl-zoom-out', compass: '.map-jr-ctrl-compass', scale: '.map-jr-ctrl-scale', fullscreen: '.map-jr-ctrl-fullscreen', geolocate: '.map-jr-ctrl-geolocate', globe: '.map-jr-ctrl-globe, .map-jr-ctrl-globe-enabled', terrain: '.map-jr-ctrl-terrain', 'color-scheme': '.map-jr-ctrl-color-scheme', attribution: '.map-jr-ctrl-attrib'};
+  const watch = () => {
+    const missing = [], at = [];
+    for (const [name, selector] of Object.entries(names)) {
+      const v = [...a.querySelectorAll(selector)].filter(b => getComputedStyle(b).visibility === 'visible');
+      if (v.length !== 1) missing.push(name + ':' + v.length); else { const r = v[0].getBoundingClientRect(); at.push([name, r.x, r.y, r.width, r.height].join()); }
+    }
+    window.frames.push({n: missing.length ? 0 : 1, missing, at: at.join(';')});
+    requestAnimationFrame(watch);
+  };
+  watch();
+  window.idle = false;
+  a.addEventListener('map-idle', () => { window.idle = true; });
+  a.controls = [${controlNames}];
+  await import('/dist/element.js');
+  window.ready = true;
+</script>`, 'text/html');
         if (url.pathname === '/ssr') return send(`<!doctype html><meta charset="utf-8"><body style="margin:0">${ssrPage}<p id="after">after</p><script type="module">
   const a = document.querySelector('map-jr');
   window.seen = [];
@@ -299,6 +327,51 @@ try {
         && !warned.some(w => w.includes('hover-state="false" cannot be read')) && await page.evaluate(() => { const d = document.getElementById('a').map.description; return d.hoverState === true && d.attribution === false; }), JSON.stringify(warned.map(w => w.slice(0, 110))));
     check('browser, development build: an element with no style warns', warned.filter(w => w.includes('the element has no style')).length === 1, '');
     check('browser, development build: removing map-style from an element with a map warns once, and the map keeps its style', warned.filter(w => w.includes('"map-style" was removed')).length === 1 && await page.evaluate(() => document.getElementById('a').map.description.style === '/style.json'), '');
+    await page.close();
+
+    // 8. The controls in the first view of the server (#1396): the same places and look as the controls of the map.
+    const desc = {style: origin + '/blank.json', initialView: {center: [7.4, 46.9], zoom: 9}, controls: controlList()};
+    controlsPage = await renderElement(desc, {width: 600, height: 400, attributes: {id: 'a', style: 'width:600px;height:400px'}});
+    check('server: renderElement puts the style sheet, the controls and the attribution into the first view', controlsPage.includes('<style data-map-jr-ssr=""') && ['zoom-in', 'compass', 'fullscreen', 'geolocate', 'globe', 'terrain', 'color-scheme'].every(n => controlsPage.includes(`map-jr-ctrl-${n} `)) && controlsPage.includes('map-jr-ctrl-scale') && controlsPage.includes('ctrl-attrib-inner'), `${(controlsPage.length / 1024).toFixed(1)} KB`);
+    const png = async buffer => `data:image/png;base64,${buffer.toString('base64')}`;
+    page = await open('/ssrc', {javaScriptEnabled: false});
+    const shotServer = await page.locator('map-jr').screenshot();
+    const dom = await page.evaluate(() => document.querySelector('map-jr').getBoundingClientRect().height);
+    await page.close();
+    page = await open('/ssrc');
+    await page.waitForFunction(() => window.idle, null, {timeout: 60000});
+    await page.waitForTimeout(500);
+    const state = await page.evaluate(() => ({svg: !!document.querySelector('[data-map-jr-ssr]'), style: !!document.querySelector('style[data-map-jr-ssr]'), buttons: document.querySelectorAll('map-jr button').length, frames: window.frames}));
+    const shotMap = await page.locator('map-jr').screenshot();
+    // Compare the corners of the two screenshots: the number of pixels that differ by more than 24 in a channel.
+    const diff = await page.evaluate(async ([a, b]) => {
+        const load = async src => { const img = new Image(); img.src = src; await img.decode(); const c = new OffscreenCanvas(img.width, img.height), x = c.getContext('2d'); x.drawImage(img, 0, 0); return x.getImageData(0, 0, img.width, img.height); };
+        const [one, two] = [await load(a), await load(b)], size = 200, out = {};
+        const box = {'top-left': [0, 0], 'top-right': [one.width - size, 0], 'bottom-left': [0, one.height - size], 'bottom-right': [one.width - size, one.height - size]};
+        for (const [name, [x0, y0]] of Object.entries(box)) {
+            let n = 0, ink = 0; const at = [];
+            for (let y = y0; y < y0 + size; y++) for (let x = x0; x < x0 + size; x++) { const i = (y * one.width + x) * 4; if (Math.max(...[0, 1, 2].map(k => Math.abs(one.data[i + k] - two.data[i + k]))) > 24) { n++; if (at.length < 40) at.push(`${x},${y}:${one.data[i]}/${two.data[i]}`); } if (Math.abs(one.data[i] - 0xdd) > 24) ink++; }
+            out[name] = {differ: n, ink, ...n > 20 && {at}};
+        }
+        return {size: [one.width, one.height, two.width, two.height], ...out};
+    }, [await png(shotServer), await png(shotMap)]);
+    // (DUMP=<prefix> writes both screenshots, to look at a difference.)
+    if (process.env.DUMP) { const {writeFileSync} = await import('node:fs'); writeFileSync(process.env.DUMP + '-server.png', shotServer); writeFileSync(process.env.DUMP + '-map.png', shotMap); }
+    const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+    const frames = state.frames, shown = frames.filter(f => f.n === 1), at = new Set(shown.map(f => f.at));
+    check('browser: the corners of the first view with controls and of the idle map are equal (up to 20 of the 40,000 pixels of each 200 by 200 corner)', corners.every(c => diff[c].differ <= 20) && diff['top-right'].ink > 500 && diff['bottom-right'].ink > 100 && diff['bottom-left'].ink > 100, JSON.stringify(diff));
+    check('browser: the controls are visible in every frame from the page script on, once each (zoom in and out, compass, scale, fullscreen, geolocate, globe, terrain, colour scheme, attribution), and none of them moves', frames.length > 5 && frames.every(f => f.n === 1) && at.size === 1, JSON.stringify({frames: frames.length, none: frames.filter(f => f.n !== 1).length, missing: frames.find(f => f.n !== 1)?.missing, at: at.size}));
+    check('browser: the attribution of the first view has its own width limit in each of two maps on one page', await (async () => {
+        const long = {...desc, attribution: {compact: false, customAttribution: 'A long line of credits that needs more than three hundred pixels to fit on one line'}};
+        const wide = await renderElement(long, {width: 900, height: 200, attributes: {id: 'w', style: 'width:900px;height:200px'}});
+        const narrow = await renderElement(long, {width: 300, height: 200, attributes: {id: 'n', style: 'width:300px;height:200px'}});
+        const two = await browser.newPage({viewport: {width: 1000, height: 600}, javaScriptEnabled: false});
+        await two.setContent(`<body style="margin:0">${wide}${narrow}`);
+        const widths = await two.evaluate(() => ['w', 'n'].map(id => Math.round(document.querySelector(`#${id} .map-jr-ctrl-attrib`).getBoundingClientRect().width)));
+        await two.close();
+        return widths[1] <= 283 && widths[0] > 400 ? true : (console.log(widths), false);
+    })(), '');
+    check('browser: the map removes the first view with its style sheet, and its own controls remain', !state.svg && !state.style && state.buttons >= 7 && !page.errors.length, JSON.stringify({...state, frames: undefined, errors: page.errors}));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }
 await browser.close();
