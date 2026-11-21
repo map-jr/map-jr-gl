@@ -2,7 +2,11 @@
 
 A map of `@map-jr/map-jr-gl` adds its own style sheet, so a page loads no CSS file for it. To change the look of the
 controls, the attribution, the scale and the popup, set the custom properties below on the container of the map or
-on an element above it. The rules of the library have no specificity, so a rule of the page overrides each of them.
+on an element above it.
+
+The rules of the library that style a button, a link or an icon inside a control (`button`, `a`, `path`, including the button of the compact attribution) have the specificity of one class, for example `.map-jr-ctrl-group button`. A rule of the page for `button`, `a`, `svg` or `div`, such as a CSS reset, does not change them. A rule with one class on a button (`.my-button {width: 50px}`) does not win either, as in MapLibre GL JS: use two classes or the custom properties.
+
+All other rules of the library (the container of the map, the control groups, the attribution, the scale, the icons and the dark and glass looks) have no specificity, so a rule of the page with one class wins. Prefer the custom properties.
 
 ```css
 #map {
