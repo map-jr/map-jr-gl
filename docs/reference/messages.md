@@ -4,8 +4,8 @@ Every message that the library prints starts with `[map-jr-gl]`. This page lists
 that prints it, so that a message from the console or from an exception can be found by its text. A message says what
 is wrong and what to write instead.
 
-In the lists, `<name>` stands for a value that the library fills in at run time, such as the name that you wrote, an id,
-a URL or the text of another error.
+In the lists, a word in angle brackets, such as `<image name>` or `<url>`, stands for a value that the library fills in at
+run time. The words say what the value is.
 
 Each entry gives the type of the message, and says when only the development build prints it.
 
@@ -28,17 +28,17 @@ The functions of `@map-jr/map-jr-gl` and the map that they make.
   Error.
 - `[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.`
   Error.
-- `[map-jr-gl] images: the image "<name>" did not load. Give an SVG document or the URL of an image that the page can read.`
+- `[map-jr-gl] images: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.`
   Error.
-- `[map-jr-gl] the style: the image "<name>" did not load. Give an SVG document or the URL of an image that the page can read.`
+- `[map-jr-gl] the style: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.`
   Error.
 - `[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].`
   Error.
 - `[map-jr-gl] querySource(): the first argument is not the id of a source.`
   Error.
-- `[map-jr-gl] <name>(): "<id>" is not a GeoJSON source of the style.`
+- `[map-jr-gl] <method>(): "<id>" is not a GeoJSON source of the style.`
   Error.
-- `[map-jr-gl] update(): the description has no "style". update() takes the complete description, not only the changed fields. Write map.patch({<value>: …}) to change only some fields.`
+- `[map-jr-gl] update(): the description has no "style". update() takes the complete description, not only the changed fields. Write map.patch({<field>: …}) to change only some fields.`
   Error.
 - `[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.`
   Error.
@@ -138,24 +138,24 @@ The components of `@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/react` and the Nux
 
 - `[map-jr-gl] <MapJr>: the template ref has no method "<method>" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`
   Error, development build only.
-- `[map-jr-gl] MapImage "<name>" is not inside MapJr, so no map gets the image. Put it into the children of MapJr.`
+- `[map-jr-gl] MapImage "<image name>" is not inside MapJr, so no map gets the image. Put it into the children of MapJr.`
   Warning.
-- `[map-jr-gl] MapImage "<name>" has no image: its content has no <svg> element. Give an <svg> element as the content, or the URL of an image as "src".`
+- `[map-jr-gl] MapImage "<image name>" has no image: its content has no <svg> element. Give an <svg> element as the content, or the URL of an image as "src".`
   Warning.
-- `[map-jr-gl] MapImage "<name>" is not inside MapJr, so no map gets the image. Put it into the content of MapJr.`
+- `[map-jr-gl] MapImage "<image name>" is not inside MapJr, so no map gets the image. Put it into the content of MapJr.`
   Warning, development build only.
-- `[map-jr-gl] MapImage "<name>" has no image: its content has no <svg> element. Write an <svg> in its slot, or give the URL of an image as "src".`
+- `[map-jr-gl] MapImage "<image name>" has no image: its content has no <svg> element. Write an <svg> in its slot, or give the URL of an image as "src".`
   Warning, development build only.
-- `[map-jr-gl] <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: <value>`
+- `[map-jr-gl] <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: <cause>`
   Error.
 
 ## Map, styles and loading
 
 The map, the style, its sources and images, and the files of the library. Both entries print these.
 
-- `[map-jr-gl] The source "<name>": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`
+- `[map-jr-gl] The source "<source name>": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`
   Warning.
-- `[map-jr-gl] fonts: the font "<name>" did not load from <src> (<message>). The labels use the next font of their "text-font".`
+- `[map-jr-gl] fonts: the font "<font name>" did not load from <src> (<message>). The labels use the next font of their "text-font".`
   Error.
 - `[map-jr-gl] The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)`
   Error.
@@ -163,7 +163,7 @@ The map, the style, its sources and images, and the files of the library. Both e
   Error.
 - `[map-jr-gl] The styles on this page caused 100 different warnings about expressions and filters. Later ones are not shown.`
   Warning.
-- `[map-jr-gl] number-format: Intl.NumberFormat does not accept the options <value> (<message>). The expression gives the number as plain text. Pass a BCP 47 locale, an ISO 4217 currency and a unit that Intl.NumberFormat supports.`
+- `[map-jr-gl] number-format: Intl.NumberFormat does not accept the options <options> (<message>). The expression gives the number as plain text. Pass a BCP 47 locale, an ISO 4217 currency and a unit that Intl.NumberFormat supports.`
   Warning.
 - `[map-jr-gl] Unsupported expression "<op>"`
   Warning.
@@ -173,7 +173,7 @@ The map, the style, its sources and images, and the files of the library. Both e
   Error.
 - `[map-jr-gl] The map cannot start: WebGL2 is not available.`
   Error.
-- `` [map-jr-gl] The worker file is version <v> and the page file is version <__VERSION__>. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass `workerUrl` with the URL of that file. ``
+- `` [map-jr-gl] The worker file is version <worker version> and the page file is version <__VERSION__>. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass `workerUrl` with the URL of that file. ``
   Warning.
 - `[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.`
   Warning.
@@ -185,7 +185,7 @@ The map, the style, its sources and images, and the files of the library. Both e
   Warning.
 - `[map-jr-gl] Vite's dependency cache does not contain the worker file. Add optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']} to vite.config and restart the dev server.`
   Warning, development build only.
-- `[map-jr-gl] Skipping unsupported layer types: <value>`
+- `[map-jr-gl] Skipping unsupported layer types: <layer types>`
   Warning.
 - `[map-jr-gl] The WebGL context was lost again. Call remove() and create the map again later.`
   Error.
@@ -233,29 +233,29 @@ The map, the style, its sources and images, and the files of the library. Both e
   Error.
 - `[map-jr-gl] addControl(): "<pos>" is not a position. Write "top-left", "top-right", "bottom-left" or "bottom-right".`
   Error.
-- `[map-jr-gl] addImage("<name>"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`
+- `[map-jr-gl] addImage("<image name>"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`
   Error.
 - `[map-jr-gl] The query has no answer: the map <why>.`
   Error.
-- `[map-jr-gl] PMTiles <url>: the server ignores Range requests, so each tile would download the whole file (<value> MB). Serve the file from a server that supports Range requests.`
+- `[map-jr-gl] PMTiles <url>: the server ignores Range requests, so each tile would download the whole file (<file size> MB). Serve the file from a server that supports Range requests.`
   Error.
 - `[map-jr-gl] addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.`
   Warning.
-- `[map-jr-gl] the request for the <what> <value>... failed: <reason>`
+- `[map-jr-gl] the request for the <resource> <url>... failed: <reason>`
   Error.
-- `[map-jr-gl] the request for the <what> <url> failed: <reason>`
+- `[map-jr-gl] the request for the <resource> <url> failed: <reason>`
   Error.
 - `[map-jr-gl] the request to <input> did not finish within <ms> ms.`
   Error.
-- `[map-jr-gl] The source "<name>" has no "tiles" and no "url". Give it one of them.`
+- `[map-jr-gl] The source "<source name>" has no "tiles" and no "url". Give it one of them.`
   Error.
-- `[map-jr-gl] The source "<name>": "promoteId" has no effect on <type> sources. Feature state needs the numeric id of the feature in the tile.`
+- `[map-jr-gl] The source "<source name>": "promoteId" has no effect on <type> sources. Feature state needs the numeric id of the feature in the tile.`
   Warning.
 - `[map-jr-gl] the style: metadata["map-jr:images"] is not an object of images by name, and the map uses none of them. Write {"name": "<svg ...>"}.`
   Error.
-- `[map-jr-gl] the style: the image "<name>" of metadata["map-jr:images"] is left out, because the style has more than <MAX_STYLE_IMAGES> images. Give an SVG document without references to other files, or the URL of an image.`
+- `[map-jr-gl] the style: the image "<image name>" of metadata["map-jr:images"] is left out, because the style has more than <MAX_STYLE_IMAGES> images. Give an SVG document without references to other files, or the URL of an image.`
   Error.
-- `[map-jr-gl] hillshade-method: <name> is not a method, and the layer uses "standard". Write "standard", "basic", "combined", "igor" or "multidirectional".`
+- `[map-jr-gl] hillshade-method: <hillshade method> is not a method, and the layer uses "standard". Write "standard", "basic", "combined", "igor" or "multidirectional".`
   Warning.
 - `[map-jr-gl] hillshade: a layer has <n> lights, and the layer draws the first <LIGHTS>. Give lists of at most <LIGHTS> values.`
   Warning.
@@ -268,7 +268,7 @@ The controls of the map.
 
 - `[map-jr-gl] colorScheme(): the control works only in the controls of a map of the main API (createMap).`
   Warning.
-- `[map-jr-gl] The control "<name>" could not be loaded. Check that the files of the library are served.`
+- `[map-jr-gl] The control "<control name>" could not be loaded. Check that the files of the library are served.`
   Error.
 - `[map-jr-gl] custom(): write custom({key: "my-control", element}) or custom({key: "my-control", onAdd(map) { return element; }, onRemove() {}}).`
   Error, development build only.
@@ -281,9 +281,9 @@ The controls of the map.
 
 The entry `@map-jr/map-jr-gl/maplibre-compat`.
 
-- `[map-jr-gl] <name> has no effect: this library does not have that feature.`
+- `[map-jr-gl] <member> has no effect: this library does not have that feature.`
   Warning.
-- `` [map-jr-gl] <name>: the result was used without `await` and was not complete (<had> of <has> features). Tile data is in a worker. Change const features = map.<name>(...); to const features = await map.<name>(...); (this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md. ``
+- `` [map-jr-gl] <method>: the result was used without `await` and was not complete (<had> of <has> features). Tile data is in a worker. Change const features = map.<method>(...); to const features = await map.<method>(...); (this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md. ``
   Warning.
 - `[map-jr-gl] setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.`
   Warning.
@@ -307,26 +307,26 @@ The entry `@map-jr/map-jr-gl/maplibre-compat`.
   Error.
 - `[map-jr-gl] getSource("<id>").setTiles(tiles): "tiles" must be an array of URL strings.`
   Error.
-- `[map-jr-gl] <name>(): the feature has no "id". Give the source features an id, or set "promoteId" on the source.`
+- `[map-jr-gl] <method>(): the feature has no "id". Give the source features an id, or set "promoteId" on the source.`
   Warning.
 - `[map-jr-gl] map.painter does not exist in @map-jr/map-jr-gl/maplibre-compat. To check for WebGL, use supported(); a failed start fires "error" with a GPUInitializationError.`
   Warning, development build only.
-- `[map-jr-gl] the style: the image "<name>" did not load. Give an SVG document or the URL of an image that the page can read.`
+- `[map-jr-gl] the style: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.`
   Error.
 - `[map-jr-gl] <type>: the option <n> has no effect. Remove it; see "What is different" in docs/maplibre-compatibility.md.`
   Warning.
 - `[map-jr-gl] setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.`
   Warning.
-- `[map-jr-gl] <name> is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. <value>`
+- `[map-jr-gl] <member> is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. <advice>`
   Warning.
-- `[map-jr-gl] <name> is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.`
+- `[map-jr-gl] <member> is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.`
   Warning.
 
 ## Server rendering
 
 The functions of `@map-jr/map-jr-gl/server`.
 
-- `[map-jr-gl] server render: "<name>" is <v>. Pass a number that is 0 (no limit) or more.`
+- `[map-jr-gl] server render: "<option name>" is <option value>. Pass a number that is 0 (no limit) or more.`
   Error.
 - `[map-jr-gl] server render: "allowHosts" is <allowHosts>. Pass a list of host names without a scheme, a port or a path, for example ["tiles.example.com"].`
   Error.
@@ -342,10 +342,10 @@ The functions of `@map-jr/map-jr-gl/server`.
   Error.
 - `[map-jr-gl] tileZoomOffset: <dz> is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`
   Error.
-- `[map-jr-gl] renderElement(): "<name>" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".`
+- `[map-jr-gl] renderElement(): "<attribute name>" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".`
   Error.
-- `[map-jr-gl] renderElement(): "<name>" is not the name of an attribute. Give names such as "id", "class" or "style".`
+- `[map-jr-gl] renderElement(): "<attribute name>" is not the name of an attribute. Give names such as "id", "class" or "style".`
   Error.
-- `[map-jr-gl] renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: <value>`
+- `[map-jr-gl] renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: <cause>`
   Error.
 <!-- messages:end -->
