@@ -36,8 +36,9 @@ const style = `<style>
 :root[data-scheme="dark"] { color-scheme: dark; background: #1c1d20; color: #e6edf3; }
 body { margin: 0; padding-bottom: 8px; font: 14px/1.5 system-ui, sans-serif; }
 p { margin: 8px 12px; }
-button { font: inherit; margin: 0 0 8px 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #8b949e; background: none; color: inherit; cursor: pointer; }
-button[aria-pressed="true"] { background: #8b949e44; }
+/* Only the buttons of the example code: the buttons of the map controls keep the styles of the library (#1355). */
+button:not(.map-jr-map *) { font: inherit; margin: 0 0 8px 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #8b949e; background: none; color: inherit; cursor: pointer; }
+button[aria-pressed="true"]:not(.map-jr-map *) { background: #8b949e44; }
 </style>`;
 
 /**
