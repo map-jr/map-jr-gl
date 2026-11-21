@@ -12,57 +12,57 @@ import {maplibreMembers} from './maplibre-members.ts';
 export interface Checked { map: Map; warned: Set<string>; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
 
 const texts: (((a: string, b: string) => string) | undefined)[] = [
-    /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
-    /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "layers".`,
-    /* 2 */ (a, b) => `the layer "${a}" uses the source "${b}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${b}" in "data", or remove the layer.`,
-    /* 3 */ a => `queryFeatures(): the style has no layer "${a}". In "layers" of the query, write the id of a layer of the style or of "layers" of the description.`,
-    /* 4 */ a => `querySource(): the style has no source "${a}". Write the id of a source of the style or of "sources".`,
-    /* 5 */ (a, b) => `layers: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
-    /* 6 */ (a, b) => `layers: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources", or give its GeoJSON as "${b}" in "data".`,
+    /* 0 */ call => call + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
+    /* 1 */ layerId => `interactiveLayers: the style has no layer "${layerId}". Write the id of a layer of the style or of "layers".`,
+    /* 2 */ (layerId, sourceId) => `the layer "${layerId}" uses the source "${sourceId}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${sourceId}" in "data", or remove the layer.`,
+    /* 3 */ layerId => `queryFeatures(): the style has no layer "${layerId}". In "layers" of the query, write the id of a layer of the style or of "layers" of the description.`,
+    /* 4 */ sourceId => `querySource(): the style has no source "${sourceId}". Write the id of a source of the style or of "sources".`,
+    /* 5 */ (layerId, beforeId) => `layers: the layer "${layerId}" has before: "${beforeId}", but the style has no layer "${beforeId}", so the layer goes on top. Write the id of a layer of the style.`,
+    /* 6 */ (layerId, sourceId) => `layers: the layer "${layerId}" uses the source "${sourceId}", which the style does not have. Add "${sourceId}" to "sources", or give its GeoJSON as "${sourceId}" in "data".`,
     /* 7 */ () => '', // (a check of the removed marker layers, #499)
-    /* 8 */ a => `update(): "${a}" changed, but it is read only when the map is made. ${a === 'initialView' ? 'To move the map, change "view" or call moveTo().' : 'To change it, destroy the map and make a new one.'}`,
-    /* 9 */ a => `queryFeatures(): ${a} is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`,
-    /* 10 */ a => `querySource(): ${a} is not the id of a source. Write querySource("id", at, options) with the id of a source of the style.`,
-    /* 11 */ a => `querySource(): "${a}" has an effect only in a query at a point or a position. This query ignores it.`,
-    /* 12 */ (a, b) => b ? `querySource(): "${a}" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).` : `queryFeatures(): "${a}" is not an option of queryFeatures, which finds what the style layers draw. To read the tile data of a source, call querySource(sourceId, at, options).`,
-    /* 13 */ a => `${a}(): "radius" has an effect only in a query at a point or a position. This query ignores it.`,
-    /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
+    /* 8 */ option => `update(): "${option}" changed, but it is read only when the map is made. ${option === 'initialView' ? 'To move the map, change "view" or call moveTo().' : 'To change it, destroy the map and make a new one.'}`,
+    /* 9 */ place => `queryFeatures(): ${place} is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`,
+    /* 10 */ firstArgument => `querySource(): ${firstArgument} is not the id of a source. Write querySource("id", at, options) with the id of a source of the style.`,
+    /* 11 */ option => `querySource(): "${option}" has an effect only in a query at a point or a position. This query ignores it.`,
+    /* 12 */ (option, inSourceQuery) => inSourceQuery ? `querySource(): "${option}" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).` : `queryFeatures(): "${option}" is not an option of queryFeatures, which finds what the style layers draw. To read the tile data of a source, call querySource(sourceId, at, options).`,
+    /* 13 */ method => `${method}(): "radius" has an effect only in a query at a point or a position. This query ignores it.`,
+    /* 14 */ (parameter, imageId) => `images: a layer gives the parameter "${parameter}" to the image "${imageId}", but that image has no slot {{${parameter}}}, so the parameter has no effect. Write {{${parameter}}} in the SVG of "${imageId}" in "images", or remove the parameter.`,
     /* 15 */ () => '', // (a check of the removed marker layers, #499)
     /* 16 */ () => '', // (a check of the removed marker layers, #499)
     /* 17 */ () => '', // (a check of the removed marker layers, #499)
     /* 18 */ () => '', // (a check of the removed marker layers, #499)
     /* 19 */ () => '', // (a check of the removed marker layers, #499)
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
-    /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
-    /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
+    /* 21 */ record => `points(): the record ${record} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
+    /* 22 */ key => `globalState: the value of "${key}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
     /* 23 */ () => 'moveTo(): "fitPadding" and "fitMaxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.',
 ];
 // A new text, and a new kind of check (below), takes the number of its issue, for example texts[544]; a second one for
 // the same issue takes that number plus 10000. Branches that run at the same time then cannot take the same number,
 // and `pnpm test:consistency` fails when a number is taken twice. The production build has none of these numbers.
-texts[1151] = a => `<MapJr>: the template ref has no method "${a}" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`;
+texts[1151] = method => `<MapJr>: the template ref has no method "${method}" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`;
 // The methods of the map (`MapInstance`): a template ref of the Vue component has them before the map has loaded.
 type Method = {[K in keyof MapInstance]: MapInstance[K] extends Function ? K : never}[keyof MapInstance];
 const methods = {update: 1, patch: 1, getResolvedDescription: 1, destroy: 1, queryFeatures: 1, querySource: 1, watchFeatures: 1, watchSource: 1, setFeatureState: 1, removeFeatureState: 1, queryElevation: 1, toBlob: 1, clusterExpansionZoom: 1, clusterChildren: 1, clusterLeaves: 1, moveTo: 1, fitBounds: 1, project: 1, unproject: 1, overlay: 1, listen: 1, once: 1} satisfies Record<Method, 1>;
 export const earlyMethod = (k: PropertyKey) => Object.hasOwn(methods, k);
 texts[1190] = () => 'update(): "view" is a view that the map reported earlier, so the map does not move. The map ignores such a view so that a slow application does not pull it back while the user moves it. To return to a stored view, call moveTo(view).';
-texts[1147] = (a, b) => `${a}: "${b}" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit${b[0].toUpperCase() + b.slice(1)}". "${b}" of the description applies to the map for good.`;
-texts[1189] = a => `sources: the GeoJSON source "${a}" has no "data", and "data" of the description has no key "${a}", so the source has no features. Give the source its own "data", or write the features as "data: {${a}: geojson}".`;
-texts[30] = (a, b) => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". ${b === 'geojson' ? 'Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.' : 'The source is not a GeoJSON source, so "promoteId" and "generateId" have no effect on it. Write a numeric id for each feature into the tiles when you build them.'}`;
-texts[685] = a => `locale: ${a}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
-texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
+texts[1147] = (target, option) => `${target}: "${option}" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit${option[0].toUpperCase() + option.slice(1)}". "${option}" of the description applies to the map for good.`;
+texts[1189] = sourceId => `sources: the GeoJSON source "${sourceId}" has no "data", and "data" of the description has no key "${sourceId}", so the source has no features. Give the source its own "data", or write the features as "data: {${sourceId}: geojson}".`;
+texts[30] = (layerId, sourceType) => `hoverState: a feature of the layer "${layerId}" has no id, so it gets no feature state "hover". ${sourceType === 'geojson' ? 'Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.' : 'The source is not a GeoJSON source, so "promoteId" and "generateId" have no effect on it. Write a numeric id for each feature into the tiles when you build them.'}`;
+texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
+texts[40] = scheme => `colorScheme: ${scheme} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
-texts[46] = (a, b) => `style: the pair has no "${a}", so the map uses "${b}" in both colour schemes. Give both "light" and "dark".`;
-texts[524] = a => `the description has no field "${a}", so the map ignores it. Check the spelling against MapDescription in docs/api.md, or remove "${a}".`;
+texts[46] = (missing, used) => `style: the pair has no "${missing}", so the map uses "${used}" in both colour schemes. Give both "light" and "dark".`;
+texts[524] = field => `the description has no field "${field}", so the map ignores it. Check the spelling against MapDescription in docs/api.md, or remove "${field}".`;
 texts[10524] = () => 'the description has no field "extend", so the map ignores it. Write "sources", "layers" and "terrain" at the root of the description.';
-texts[826] = (a, b) => `<map-jr>: the attribute ${a} cannot be read, so the element ignores it. ${({n: 'Write a number, for example zoom="11".', c: 'Write the longitude and the latitude with a comma between them, for example center="13.4,52.52".', p: 'Write "globe" or "mercator".'} as Record<string, string>)[b] ?? ''}`;
-texts[1258] = (a, b) => b === 'o'
-    ? `<map-jr>: the attribute ${a}="false" switches the option off all the same, because an attribute that is there takes effect, whatever its value. To keep the option on, remove ${a}.`
-    : `<map-jr>: the attribute ${a}="false" switches the option on all the same, because an attribute that is there takes effect, whatever its value. To switch it off, remove ${a}.`;
+texts[826] = (attribute, kind) => `<map-jr>: the attribute ${attribute} cannot be read, so the element ignores it. ${({n: 'Write a number, for example zoom="11".', c: 'Write the longitude and the latitude with a comma between them, for example center="13.4,52.52".', p: 'Write "globe" or "mercator".'} as Record<string, string>)[kind] ?? ''}`;
+texts[1258] = (attribute, kind) => kind === 'o'
+    ? `<map-jr>: the attribute ${attribute}="false" switches the option off all the same, because an attribute that is there takes effect, whatever its value. To keep the option on, remove ${attribute}.`
+    : `<map-jr>: the attribute ${attribute}="false" switches the option on all the same, because an attribute that is there takes effect, whatever its value. To switch it off, remove ${attribute}.`;
 texts[10826] = () => '<map-jr>: the element has no style, so it shows no map. Write the URL of a style in the attribute "map-style", or set the property "mapStyle".';
 texts[20826] = () => '<map-jr>: the attribute "map-style" was removed and the element has no "mapStyle", so the map keeps the style that it has. To change the style, give another URL in "map-style" or set "mapStyle".';
-texts[1057] = (a, b) => `the layer "${a}" has in "${b}" a zoom-based "step" or "interpolate" that is inside another expression, or a second one. The map draws it, but MapLibre GL JS rejects the style. Write one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`;
-texts[55] = a => `sprite: ${a} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
+texts[1057] = (layerId, property) => `the layer "${layerId}" has in "${property}" a zoom-based "step" or "interpolate" that is inside another expression, or a second one. The map draws it, but MapLibre GL JS rejects the style. Write one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`;
+texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
 export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code]!(a, b);

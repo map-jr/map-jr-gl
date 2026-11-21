@@ -46,86 +46,86 @@ The functions of `@map-jr/map-jr-gl` and the map that they make.
   Error.
 - `[map-jr-gl] data: the source "<id>" has the type "<type>", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`
   Error.
-- `[map-jr-gl] <name>: the container has height 0, so the map shows nothing. Give the container a height in CSS.`
+- `[map-jr-gl] <call>: the container has height 0, so the map shows nothing. Give the container a height in CSS.`
   Warning, development build only.
-- `[map-jr-gl] interactiveLayers: the style has no layer "<name>". Write the id of a layer of the style or of "layers".`
+- `[map-jr-gl] interactiveLayers: the style has no layer "<layer id>". Write the id of a layer of the style or of "layers".`
   Warning, development build only.
-- `[map-jr-gl] the layer "<name>" uses the source "<value>", which the map does not have. A key of "data" makes a source only while it is in "data": keep "<value>" in "data", or remove the layer.`
+- `[map-jr-gl] the layer "<layer id>" uses the source "<source id>", which the map does not have. A key of "data" makes a source only while it is in "data": keep "<source id>" in "data", or remove the layer.`
   Warning, development build only.
-- `[map-jr-gl] queryFeatures(): the style has no layer "<name>". In "layers" of the query, write the id of a layer of the style or of "layers" of the description.`
+- `[map-jr-gl] queryFeatures(): the style has no layer "<layer id>". In "layers" of the query, write the id of a layer of the style or of "layers" of the description.`
   Warning, development build only.
-- `[map-jr-gl] querySource(): the style has no source "<name>". Write the id of a source of the style or of "sources".`
+- `[map-jr-gl] querySource(): the style has no source "<source id>". Write the id of a source of the style or of "sources".`
   Warning, development build only.
-- `[map-jr-gl] layers: the layer "<name>" has before: "<value>", but the style has no layer "<value>", so the layer goes on top. Write the id of a layer of the style.`
+- `[map-jr-gl] layers: the layer "<layer id>" has before: "<before id>", but the style has no layer "<before id>", so the layer goes on top. Write the id of a layer of the style.`
   Warning, development build only.
-- `[map-jr-gl] layers: the layer "<name>" uses the source "<value>", which the style does not have. Add "<value>" to "sources", or give its GeoJSON as "<value>" in "data".`
+- `[map-jr-gl] layers: the layer "<layer id>" uses the source "<source id>", which the style does not have. Add "<source id>" to "sources", or give its GeoJSON as "<source id>" in "data".`
   Warning, development build only.
-- `[map-jr-gl] update(): "<name>" changed, but it is read only when the map is made. To move the map, change "view" or call moveTo().`
+- `[map-jr-gl] update(): "<option>" changed, but it is read only when the map is made. To move the map, change "view" or call moveTo().`
   Warning, development build only.
-- `[map-jr-gl] update(): "<name>" changed, but it is read only when the map is made. To change it, destroy the map and make a new one.`
+- `[map-jr-gl] update(): "<option>" changed, but it is read only when the map is made. To change it, destroy the map and make a new one.`
   Warning, development build only.
-- `[map-jr-gl] queryFeatures(): <name> is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`
+- `[map-jr-gl] queryFeatures(): <place> is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`
   Error, development build only.
-- `[map-jr-gl] querySource(): <name> is not the id of a source. Write querySource("id", at, options) with the id of a source of the style.`
+- `[map-jr-gl] querySource(): <first argument> is not the id of a source. Write querySource("id", at, options) with the id of a source of the style.`
   Error, development build only.
-- `[map-jr-gl] querySource(): "<name>" has an effect only in a query at a point or a position. This query ignores it.`
+- `[map-jr-gl] querySource(): "<option>" has an effect only in a query at a point or a position. This query ignores it.`
   Warning, development build only.
-- `[map-jr-gl] querySource(): "<name>" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).`
+- `[map-jr-gl] querySource(): "<option>" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).`
   Warning, development build only.
-- `[map-jr-gl] queryFeatures(): "<name>" is not an option of queryFeatures, which finds what the style layers draw. To read the tile data of a source, call querySource(sourceId, at, options).`
+- `[map-jr-gl] queryFeatures(): "<option>" is not an option of queryFeatures, which finds what the style layers draw. To read the tile data of a source, call querySource(sourceId, at, options).`
   Warning, development build only.
-- `[map-jr-gl] <name>(): "radius" has an effect only in a query at a point or a position. This query ignores it.`
+- `[map-jr-gl] <method>(): "radius" has an effect only in a query at a point or a position. This query ignores it.`
   Warning, development build only.
-- `[map-jr-gl] images: a layer gives the parameter "<name>" to the image "<value>", but that image has no slot {{<name>}}, so the parameter has no effect. Write {{<name>}} in the SVG of "<value>" in "images", or remove the parameter.`
+- `[map-jr-gl] images: a layer gives the parameter "<parameter>" to the image "<image id>", but that image has no slot {{<parameter>}}, so the parameter has no effect. Write {{<parameter>}} in the SVG of "<image id>" in "images", or remove the parameter.`
   Warning, development build only.
 - `[map-jr-gl] The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.`
   Warning, development build only.
-- `[map-jr-gl] points(): the record <name> has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`
+- `[map-jr-gl] points(): the record <record> has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`
   Warning, development build only.
-- `[map-jr-gl] globalState: the value of "<name>" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`
+- `[map-jr-gl] globalState: the value of "<key>" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`
   Warning, development build only.
 - `[map-jr-gl] moveTo(): "fitPadding" and "fitMaxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.`
   Warning, development build only.
 - `[map-jr-gl] update(): "view" is a view that the map reported earlier, so the map does not move. The map ignores such a view so that a slow application does not pull it back while the user moves it. To return to a stored view, call moveTo(view).`
   Warning, development build only.
-- `[map-jr-gl] <name>: "<value>" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit<value><value>". "<value>" of the description applies to the map for good.`
+- `[map-jr-gl] <target>: "<option>" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit<option>". "<option>" of the description applies to the map for good.`
   Warning, development build only.
-- `[map-jr-gl] sources: the GeoJSON source "<name>" has no "data", and "data" of the description has no key "<name>", so the source has no features. Give the source its own "data", or write the features as "data: {<name>: geojson}".`
+- `[map-jr-gl] sources: the GeoJSON source "<source id>" has no "data", and "data" of the description has no key "<source id>", so the source has no features. Give the source its own "data", or write the features as "data: {<source id>: geojson}".`
   Warning, development build only.
-- `[map-jr-gl] hoverState: a feature of the layer "<name>" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.`
+- `[map-jr-gl] hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.`
   Warning, development build only.
-- `[map-jr-gl] hoverState: a feature of the layer "<name>" has no id, so it gets no feature state "hover". The source is not a GeoJSON source, so "promoteId" and "generateId" have no effect on it. Write a numeric id for each feature into the tiles when you build them.`
+- `[map-jr-gl] hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature state "hover". The source is not a GeoJSON source, so "promoteId" and "generateId" have no effect on it. Write a numeric id for each feature into the tiles when you build them.`
   Warning, development build only.
-- `[map-jr-gl] locale: <name>. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`
+- `[map-jr-gl] locale: <problem>. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`
   Warning, development build only.
-- `[map-jr-gl] colorScheme: <name> is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`
+- `[map-jr-gl] colorScheme: <scheme> is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`
   Warning, development build only.
 - `[map-jr-gl] style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.`
   Warning, development build only.
-- `[map-jr-gl] style: the pair has no "<name>", so the map uses "<value>" in both colour schemes. Give both "light" and "dark".`
+- `[map-jr-gl] style: the pair has no "<missing>", so the map uses "<used>" in both colour schemes. Give both "light" and "dark".`
   Warning, development build only.
-- `[map-jr-gl] the description has no field "<name>", so the map ignores it. Check the spelling against MapDescription in docs/api.md, or remove "<name>".`
+- `[map-jr-gl] the description has no field "<field>", so the map ignores it. Check the spelling against MapDescription in docs/api.md, or remove "<field>".`
   Warning, development build only.
 - `[map-jr-gl] the description has no field "extend", so the map ignores it. Write "sources", "layers" and "terrain" at the root of the description.`
   Warning, development build only.
-- `[map-jr-gl] the layer "<name>" has in "<value>" a zoom-based "step" or "interpolate" that is inside another expression, or a second one. The map draws it, but MapLibre GL JS rejects the style. Write one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`
+- `[map-jr-gl] the layer "<layer id>" has in "<property>" a zoom-based "step" or "interpolate" that is inside another expression, or a second one. The map draws it, but MapLibre GL JS rejects the style. Write one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`
   Warning, development build only.
-- `[map-jr-gl] sprite: <name> is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`
+- `[map-jr-gl] sprite: <sprite> is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`
   Warning, development build only.
 
 ## `<map-jr>`
 
 The element `<map-jr>`.
 
-- `[map-jr-gl] <map-jr>: the attribute <name> cannot be read, so the element ignores it. Write a number, for example zoom="11".`
+- `[map-jr-gl] <map-jr>: the attribute <attribute> cannot be read, so the element ignores it. Write a number, for example zoom="11".`
   Warning, development build only.
-- `[map-jr-gl] <map-jr>: the attribute <name> cannot be read, so the element ignores it. Write the longitude and the latitude with a comma between them, for example center="13.4,52.52".`
+- `[map-jr-gl] <map-jr>: the attribute <attribute> cannot be read, so the element ignores it. Write the longitude and the latitude with a comma between them, for example center="13.4,52.52".`
   Warning, development build only.
-- `[map-jr-gl] <map-jr>: the attribute <name> cannot be read, so the element ignores it. Write "globe" or "mercator".`
+- `[map-jr-gl] <map-jr>: the attribute <attribute> cannot be read, so the element ignores it. Write "globe" or "mercator".`
   Warning, development build only.
-- `[map-jr-gl] <map-jr>: the attribute <name>="false" switches the option off all the same, because an attribute that is there takes effect, whatever its value. To keep the option on, remove <name>.`
+- `[map-jr-gl] <map-jr>: the attribute <attribute>="false" switches the option off all the same, because an attribute that is there takes effect, whatever its value. To keep the option on, remove <attribute>.`
   Warning, development build only.
-- `[map-jr-gl] <map-jr>: the attribute <name>="false" switches the option on all the same, because an attribute that is there takes effect, whatever its value. To switch it off, remove <name>.`
+- `[map-jr-gl] <map-jr>: the attribute <attribute>="false" switches the option on all the same, because an attribute that is there takes effect, whatever its value. To switch it off, remove <attribute>.`
   Warning, development build only.
 - `[map-jr-gl] <map-jr>: the element has no style, so it shows no map. Write the URL of a style in the attribute "map-style", or set the property "mapStyle".`
   Warning, development build only.
@@ -136,7 +136,7 @@ The element `<map-jr>`.
 
 The components of `@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/react` and the Nuxt module.
 
-- `[map-jr-gl] <MapJr>: the template ref has no method "<name>" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`
+- `[map-jr-gl] <MapJr>: the template ref has no method "<method>" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`
   Error, development build only.
 - `[map-jr-gl] MapImage "<name>" is not inside MapJr, so no map gets the image. Put it into the children of MapJr.`
   Warning.
