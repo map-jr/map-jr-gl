@@ -824,6 +824,9 @@ try {
     {
         const html = await (await fetch(base + '/')).text();
         check('home page: the first paint is the SVG of the server renderer', /<svg[^>]*data-map-jr-ssr/.test(html));
+        // The page has the committed file whole (app/assets/home-first-paint.html, written by `pnpm first-paint`): the build needs no network.
+        const committed = readFileSync(new URL('../app/assets/home-first-paint.html', import.meta.url), 'utf8');
+        check('home page: the first paint is the committed file of app/assets', html.includes(committed), `${committed.length} bytes`);
     }
     if (withMap) {
         const {page, problems, close} = await open('/');

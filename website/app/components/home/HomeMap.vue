@@ -1,6 +1,6 @@
 <!--
   The one live map of the home page (pages/index.vue). It fills the stage behind the text. The first paint is the SVG
-  of the server renderer (`ssr`), and the map takes over when it has loaded. The map takes no pointer, wheel or key until
+  of the server renderer from a file of the repository, and the map takes over when it has loaded. The map takes no pointer, wheel or key until
   `exploring` is true: the wrapper is `inert` before that, so the page scrolls over it.
 
   A new `scene` changes the props of the map, and the camera moves to the camera of the scene: a flight, or a cut when
@@ -13,6 +13,9 @@
 <script setup lang="ts">
 import type {MapJrExposed} from '@map-jr/map-jr-gl/vue';
 import type {Scene} from '~/utils/home-scenes';
+// The first paint: a render of the first scene by the server renderer, written by scripts/first-paint.mjs. It is a file of
+// the repository, so the build needs no network (#1391).
+import firstPaint from '~/assets/home-first-paint.html?raw';
 
 const props = defineProps<{scene: Scene; exploring: boolean}>();
 const emit = defineEmits<{measure: [{idleMs: number; bytes: number; files: number}]; state: [string]}>();
@@ -43,6 +46,7 @@ watch(() => props.scene, scene => move(scene.camera));
 
 function onLoad() {
     ready = true;
+    showFirst.value = false;
     move(props.scene.camera);
 }
 
@@ -62,9 +66,9 @@ function onIdle() {
     emit('measure', {idleMs: Math.round(performance.now()), bytes, files: scripts.size});
 }
 
-// Without WebGL 2 the map cannot start, and the library would replace the first paint with a message. The page keeps the
-// SVG: it moves the nodes of the server render out of the map, and the live map is not made.
-const holder = useTemplateRef<HTMLElement>('holder');
+// Without WebGL 2 the map cannot start, and the library would show a message. The first paint is outside of the map and stays,
+// and the live map is not made.
+const showFirst = ref(true);
 const unsupported = ref(false);
 function hasWebGL2() {
     try {
@@ -75,7 +79,6 @@ function hasWebGL2() {
 }
 onMounted(() => {
     if (hasWebGL2()) return;
-    holder.value?.append(...document.querySelectorAll('[data-home-map] [data-map-jr-ssr]'));
     unsupported.value = true;
     state.value = 'error';
 });
@@ -85,14 +88,14 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
 
 <template>
   <div class="absolute inset-0" :class="exploring ? '' : 'pointer-events-none'" :inert="!exploring" data-home-map :data-map-state="state" :data-camera="how">
-    <div ref="holder" class="absolute inset-0 overflow-hidden" />
+    <!-- eslint-disable-next-line vue/no-v-html -- a file of the repository, not input -->
+    <div v-if="showFirst" class="absolute inset-0 overflow-hidden" v-html="firstPaint" />
     <p v-if="unsupported" class="absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] border border-accented bg-default/90 px-3 py-1 text-center text-sm text-muted">This browser has no WebGL 2, so the map is a still picture.</p>
     <MapJr
       v-if="!unsupported"
       ref="map"
       v-bind="scene.props"
       :initial-view="first"
-      :ssr="{width: 1280, height: 800, requestTimeout: 30000, timeout: 120000}"
       :color-scheme="colorMode.value === 'dark' ? 'dark' : 'light'"
       :controls="controls"
       @update:view="onView"
