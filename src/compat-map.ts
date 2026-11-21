@@ -607,13 +607,27 @@ export class Map extends CoreMap {
     // react-map-gl and other wrappers read these private members of the MapLibre map. They are here only so that
     // those wrappers work: `style._loaded` tells them that sources and layers can be added, and Maputnik reads the
     // source layers of each vector source in `tileManagers[id]._source.vectorLayerIds` (`sourceCaches` in MapLibre 5).
-    /** For wrappers that read the private `style` of MapLibre GL JS: `_loaded`, and `tileManagers` (also `sourceCaches`) with the id, type and `vectorLayerIds` of each source. It is `undefined` before the map has a style. */
+    /**
+     * For wrappers that read the private `style` of MapLibre GL JS: `_loaded`, `updateImage`, and `tileManagers` (also
+     * `sourceCaches`) with the id, type and `vectorLayerIds` of each source. Before the style has resolved, `_loaded` is
+     * `false` and there are no sources, as in MapLibre GL JS.
+     */
     get style() {
-        if (!this.resolved) return undefined;
         const tileManagers: Record<string, {_source: {id: string; type: string; vectorLayerIds?: string[]}}> = {};
-        for (const [id, s] of Object.entries(this.resolved.sources)) tileManagers[id] = {_source: {id, type: s.type, vectorLayerIds: s.layerIds}};
-        return {_loaded: this.ready, tileManagers, sourceCaches: tileManagers};
+        for (const [id, s] of Object.entries(this.resolved?.sources ?? {})) tileManagers[id] = {_source: {id, type: s.type, vectorLayerIds: s.layerIds}};
+        return {_loaded: this.ready, tileManagers, sourceCaches: tileManagers, updateImage: (name: string, image: Parameters<CoreMap['addImage']>[1]): void => { this.updateImage(name, image); }};
     }
+    /** For wrappers that read the private `transform` of MapLibre GL JS: `center`, `zoom`, `bearing`, `pitch`, `roll`, `elevation` and `isPaddingEqual`, as a copy of the camera. */
+    get transform() {
+        const tr = this.tr, padding = this.getPadding();
+        return {center: new LngLat(tr.lng, tr.lat), zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, roll: 0, elevation: tr.elevation, padding,
+            isPaddingEqual: (p: PaddingInput) => { const [t, r, b, l] = sides(p); return t === padding.top && r === padding.right && b === padding.bottom && l === padding.left; }};
+    }
+    /** The camera that wrappers compare their state with (`transform`); MapLibre GL JS 6 has this name, and 5 has `_getTransformForUpdate`. */
+    getTransformForUpdate() { return this.transform; }
+    _getTransformForUpdate() { return this.transform; }
+    /** `_stop(true)` is how wrappers stop the camera while they keep gestures; here it is `stop()`. */
+    _stop(_allowGestures?: boolean) { return this.stop(); }
     _render() { this.triggerRepaint(); }
     _update() { this.triggerRepaint(); }
     /** Returns the fields of the light that the style sets, or `{}` when the style has no light. */

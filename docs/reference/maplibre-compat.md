@@ -155,7 +155,9 @@ library" names a member that MapLibre GL JS does not have.
 | `getCanvasContainer` | `() => HTMLElement` | Returns the container of the map. |
 | `remove` | `() => void` | Removes the map and its controls from the page, as in MapLibre GL JS. |
 | `redraw` | `() => Map` | Draws the map again in the next frame. |
-| `style` (read only) | `object \| undefined` | For wrappers that read the private `style` of MapLibre GL JS: `_loaded`, and `tileManagers` (also `sourceCaches`) with the id, type and `vectorLayerIds` of each source. |
+| `style` (read only) | `object` | For wrappers that read the private `style` of MapLibre GL JS: `_loaded`, `updateImage`, and `tileManagers` (also `sourceCaches`) with the id, type and `vectorLayerIds` of each source. |
+| `transform` (read only) | `object` | For wrappers that read the private `transform` of MapLibre GL JS: `center`, `zoom`, `bearing`, `pitch`, `roll`, `elevation` and `isPaddingEqual`, as a copy of the camera. |
+| `getTransformForUpdate` | `() => object` | The camera that wrappers compare their state with (`transform`); MapLibre GL JS 6 has this name, and 5 has `_getTransformForUpdate`. |
 | `getLight` | `() => {anchor?: string; position?: number[]; color?: string; intensity?: number}` | Returns the fields of the light that the style sets, or `{}` when the style has no light. |
 | `getLayersOrder` | `() => string[]` | Returns the ids of the style layers, from the bottom layer up. |
 | `getPaintProperty` | `(layerId: string, name: string) => unknown` | Returns the value of a paint property as the style sets it, or `undefined` when the style does not set it. |
