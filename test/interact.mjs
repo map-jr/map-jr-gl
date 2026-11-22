@@ -5287,6 +5287,60 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     check('[main] after a lost WebGL context the map does not call loseContext() on the lost context, and remove() loses the new one', calls.lost && calls.whileLost === 0 && calls.all === 2, JSON.stringify(calls));
     await page.close();
 }
+// 3D terrain: the camera is kept above the ground as MapLibre GL JS 6.17 keeps it (#1480, #1486). A pitch drag and a rotate
+// drag keep the pitch and the zoom that they edit (the centre's height rises instead), and a jumpTo whose camera would be
+// inside a cone solves the pitch and the zoom again. (The MapLibre values were measured with the same terrain.)
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const open = kind => page.evaluate(async ([kind]) => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        // A plateau 3000 m high that starts 3 km south of the centre, or a cone 4000 m high with a radius of 6 km.
+        const heightAt = kind === 'plateau' ? (lng, lat) => Math.max(0, Math.min(3000, (-lat * 110540 - 3000) * 1.5))
+            : (lng, lat) => Math.max(0, 4000 * (1 - Math.hypot(lng * 111320 * Math.cos(lat * Math.PI / 180), (lat + 0.0747) * 110540) / 6000));
+        try { mod.removeProtocol('dem1480'); } catch { /* not added yet */ }
+        mod.addProtocol('dem1480', async request => {
+            const [z, x, y] = request.url.slice(10).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(256, 256), g = c.getContext('2d'), img = g.createImageData(256, 256);
+            for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+                const mx = (x + (i + 0.5) / 256) / n, my = (y + (j + 0.5) / 256) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                const v = heightAt(mx * 360 - 180, lat) + 32768, k = (j * 256 + i) * 4;
+                img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+            }
+            g.putImageData(img, 0, 0);
+            return {data: await (await c.convertToBlob()).arrayBuffer()};
+        });
+        window.liftEl?.remove(); window.liftMap?.remove();
+        const el = window.liftEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9'}));
+        const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem1480://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: 14}},
+            layers: [{id: 'bg', type: 'background', paint: {'background-color': '#9c9'}}], terrain: {source: 'dem', exaggeration: 1}};
+        const m = window.liftMap = new mod.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 13, pitch: 0, maxPitch: 85, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+    }, [kind]);
+    const settle = () => page.evaluate(() => new Promise(r => { const t = setTimeout(r, 4000); window.liftMap.once('idle', () => { clearTimeout(t); setTimeout(r, 700); }); window.liftMap.triggerRepaint(); }));
+    const snap = () => page.evaluate(() => [window.liftMap.getZoom(), window.liftMap.getPitch()].map(v => +v.toFixed(3)));
+    try {
+        await open('plateau');
+        await page.evaluate(() => window.liftMap.jumpTo({pitch: 60})); await settle();
+        await page.mouse.move(400, 300); await page.mouse.down({button: 'right'});
+        for (let i = 1; i <= 30; i++) { await page.mouse.move(400, 300 - i * 6); await page.waitForTimeout(50); }
+        const dragged = await snap();
+        await page.mouse.up({button: 'right'});
+        check('[main] 3D terrain: a pitch drag over a plateau keeps the zoom and reaches the maximum pitch, as in MapLibre GL JS (#1480)', dragged[0] === 13 && dragged[1] > 84.9, JSON.stringify(dragged));
+        await open('plateau');
+        await page.evaluate(() => window.liftMap.jumpTo({pitch: 72, bearing: 120})); await settle();
+        await page.mouse.move(100, 300); await page.mouse.down({button: 'right'});
+        for (let i = 1; i <= 30; i++) { await page.mouse.move(100 + i * 20, 300); await page.waitForTimeout(40); }
+        await page.mouse.up({button: 'right'}); await settle();
+        const turned = await snap();
+        check('[main] 3D terrain: a rotate drag over a plateau keeps the pitch and the zoom, as in MapLibre GL JS (#1480)', turned[0] === 13 && turned[1] === 72, JSON.stringify(turned));
+        await open('cone');
+        await page.evaluate(() => window.liftMap.jumpTo({pitch: 75})); await settle();
+        const cone = await snap();
+        check('[main] 3D terrain: jumpTo with the camera inside a cone solves the pitch and the zoom as MapLibre GL JS does (64.349, 12.9003; #1486)', Math.abs(cone[0] - 12.9003) < 0.05 && Math.abs(cone[1] - 64.349) < 1, JSON.stringify(cone));
+    } catch (e) { check('[main] 3D terrain: the checks of the camera above the ground ran (#1480)', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A lost WebGL context when the style came from a URL in another folder. The relative URLs of the style still belong
 // to that folder after the restart, and a source that is loaded says so before the tiles of the other sources are there.
 {

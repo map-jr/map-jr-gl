@@ -97,7 +97,11 @@ How terrain behaves:
 - When you drag the map, the ground below the pointer stays below the pointer.
 - When a movement stops, the view does not move. The values of `getCenter()` and `getZoom()` can change a small
   quantity at that time. This is because the map centre goes to the ground that the camera looks at. MapLibre GL JS
-  does the same.
+  does the same. A centre that you set (`center` of the style, or `jumpTo`) stays where you put it until the
+  map moves.
+- When the ground under the camera is higher than the camera, the camera rises above it. It stays over the same point
+  of the ground and keeps the same centre, so `getPitch()` becomes smaller and `getZoom()` lower. MapLibre GL JS does
+  the same.
 
 Current limits:
 

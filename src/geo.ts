@@ -336,6 +336,19 @@ export class Transform {
         return [d / 10, Math.min(100 * d, Math.max(4 * d, reach * 1.01) * (1 + drop / (d * Math.max(cp, 1e-3))))];
     }
 
+    /**
+     * The near and far distances of MapLibre GL JS's fog (its fog matrix): the near one is the camera's distance to sea
+     * level along the view, and the far one is its far plane, which it works out for ground at sea level.
+     */
+    fogRange(): [number, number] {
+        const p = this.pitch * Math.PI / 180, lp = Math.min(p, 89.25 * Math.PI / 180), d = this.cameraDistance, h = this.horizon();
+        const near = Math.max(d / 2, d + this.elevation * this.pixelsPerMetre / Math.cos(lp)), oy = this.cy - this.height / 2;
+        const ground = Math.PI / 2 + p, far = (a: number) => Math.sin(a) * near / Math.sin(clamp(Math.PI - ground - a, 0.01, Math.PI - 0.01));
+        const ha = Math.atan(h / d), min = (90 - 89.25) * Math.PI / 180;
+        const top = Math.min(far(0.6435011087932844 * (0.5 + oy / this.height)), far(ha > min ? 2 * ha * (0.5 + oy / (h * 2)) : min));
+        return [near, (Math.sin(lp) * top + near) * 1.01];
+    }
+
     /** Tile units (x, y) and metres (z) to clip space, as a column-major 4x4 matrix for the GPU. */
     tileMatrix4(id: TileID): Float32Array {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
@@ -461,7 +474,7 @@ export class Transform {
         if (want < minzoom) return [];
         const z = Math.min(want, maxzoom), n = 2 ** z;
         // (With 3D terrain, ground that is nearer to the camera than the centre can take a deeper level, as in MapLibre.)
-        if (this.pitch > 0.5) return this.coveringPitched(this.heightAt || lod && this.pitch > 60 ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod);
+        if (this.pitch > 0.5) return this.coveringPitched(this.heightAt || lod && this.pitch > 60 ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod, minzoom);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [mx, my] of this.footprints().flat()) {
             x0 = Math.min(x0, mx); x1 = Math.max(x1, mx);
@@ -482,7 +495,7 @@ export class Transform {
      * Tile cover for a tilted camera. The view is a trapezoid on the ground whose far edge covers much more area,
      * drawn much smaller, so tiles are chosen by descending a quadtree and stopping earlier the farther away a tile is.
      */
-    private coveringPitched(maxZ: number, exact: number, round: boolean, lod?: number[]): TileID[] {
+    private coveringPitched(maxZ: number, exact: number, round: boolean, lod?: number[], minZ = 0): TileID[] {
         // The area to cover: the screen's footprint on the ground (with 3D terrain, the hull of its lowest and highest footprints).
         const pts = this.footprints().flat().sort((p, q) => p[0] - q[0] || p[1] - q[1]);
         const cross = (o: number[], p: number[], q: number[]) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
@@ -518,7 +531,8 @@ export class Transform {
                 const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
                 wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
             }
-            if (z >= maxZ || z >= wanted) { out.push({z, x, y, w, key: `${z}/${x}/${y}`}); return; }
+            // Far ground that wants a level below the source's minimum zoom has no tile, as in MapLibre (#1480).
+            if (z >= maxZ || z >= wanted) { if (z >= minZ) out.push({z, x, y, w, key: `${z}/${x}/${y}`}); return; }
             for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1), w);
         };
         const w0 = Math.floor(Math.min(...quad.map(q => q[0]))), w1 = Math.floor(Math.max(...quad.map(q => q[0])));
