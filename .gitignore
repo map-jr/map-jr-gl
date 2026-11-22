@@ -1,6 +1,7 @@
 node_modules
 dist
 .cache
+.cache-pw
 .cache-server.log
 site-dist
 site/public/ssr.svg
