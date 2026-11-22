@@ -519,9 +519,10 @@ for (const renderer of renderers) {
         check(terrainName, Math.min(...terrainIdle) < 200, JSON.stringify(terrainIdle));
         }
 
-        // #1430: 3D terrain is drawn on the globe too. The ground is 8000 m everywhere with an exaggeration of 20, so the
-        // globe at zoom 4 is 2.5 % larger than without terrain and covers more of the view (before #1430 it was the same).
-        const globeName = `[${renderer}] 3D terrain on the globe raises the ground: the globe covers more of the view than without terrain (#1430)`;
+        // #1430: 3D terrain is drawn on the globe too. The ground is 8000 m everywhere with an exaggeration of 20. The camera
+        // looks at the ground under the centre, and the globe is 2.5 % larger, so it covers a little more of the view
+        // (before #1430 it covered the same). queryElevation gives the height there.
+        const globeName = `[${renderer}] 3D terrain on the globe raises the ground: the globe covers more of the view than without terrain, and queryElevation gives the height (#1430)`;
         if (!decodes) skip(globeName, 'no OffscreenCanvas in workers');
         else {
         const globeTerrain = await page.evaluate(async renderer => {
@@ -542,11 +543,11 @@ for (const renderer of renderers) {
             const host = t.lib.createMap(el, spec);
             const flat = await covered(host);
             host.update({...spec, terrain: {source: 'dem', exaggeration: 20}});
-            const raised = await covered(host);
+            const raised = await covered(host), ground = Math.round(await host.queryElevation([0, 0]));
             host.destroy(); el.remove();
-            return {flat, raised};
+            return {flat, raised, ground};
         }, renderer);
-        check(globeName, globeTerrain.raised > globeTerrain.flat * 1.02, JSON.stringify(globeTerrain));
+        check(globeName, globeTerrain.raised > globeTerrain.flat * 1.003 && globeTerrain.ground === 8000, JSON.stringify(globeTerrain));
         }
 
         // `terrain` of the description (#1104): `null` gives a flat map also when the style has a `terrain`, no field or
