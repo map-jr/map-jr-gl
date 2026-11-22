@@ -1,33 +1,33 @@
 {
   "maplibre": "6.17.0",
   "unitTests": {
-    "pass": 260,
-    "fail": 0
+    "pass": 300,
+    "fail": 1
   },
   "sizes": [
     {
       "file": "Page script of `@map-jr/map-jr-gl`",
-      "bytes": 46251,
+      "bytes": 47418,
       "maplibreBytes": 307262
     },
     {
       "file": "Page script of `@map-jr/map-jr-gl/maplibre-compat`",
-      "bytes": 53369,
+      "bytes": 55219,
       "maplibreBytes": 307262
     },
     {
       "file": "Worker file",
-      "bytes": 86341,
+      "bytes": 88565,
       "maplibreBytes": 148473
     },
     {
       "file": "Page script and worker file of `@map-jr/map-jr-gl`",
-      "bytes": 132592,
+      "bytes": 135983,
       "maplibreBytes": 455735
     },
     {
       "file": "Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat`",
-      "bytes": 139710,
+      "bytes": 143784,
       "maplibreBytes": 455735
     },
     {
@@ -37,7 +37,7 @@
     },
     {
       "file": "Server renderer",
-      "bytes": 48830,
+      "bytes": 55042,
       "maplibreBytes": null
     }
   ],
@@ -62,8 +62,8 @@
     },
     {
       "area": "Properties of the MapLibre style specification",
-      "passing": 224,
-      "total": 242,
+      "passing": 227,
+      "total": 244,
       "details": {
         "text": "Tests against MapLibre GL JS",
         "href": "docs/development.md#tests-against-maplibre-gl-js"
@@ -98,8 +98,8 @@
     },
     {
       "area": "MapLibre render tests, the same",
-      "passing": 1222,
-      "total": 1740,
+      "passing": 1246,
+      "total": 1741,
       "details": {
         "text": "Render tests",
         "href": "docs/development.md#render-tests"
@@ -107,8 +107,8 @@
     },
     {
       "area": "MapLibre render tests, the same or near",
-      "passing": 1539,
-      "total": 1740,
+      "passing": 1574,
+      "total": 1741,
       "details": {
         "text": "Render tests",
         "href": "docs/development.md#render-tests"
@@ -125,34 +125,51 @@
     "internal": 15
   },
   "styleProperties": {
-    "notRead": 16,
+    "notRead": 15,
     "fewerExpressionInputs": 2
   },
   "renderTests": {
-    "differ": 201,
+    "differ": 167,
     "differWontfix": 20,
-    "differLater": 100,
-    "skipped": 20
+    "differLater": 73,
+    "skipped": 19
   },
   "speed": {
-    "date": "2026-11-19T14:31:08.154Z",
-    "commit": "20280bb7b5f4b2931a140c427f1bee56b55b5372",
+    "date": "2026-11-22T19:04:37.220Z",
+    "commit": "58b7324684846b1e76413582f357abfdf7128a2d",
     "rows": [
       {
         "system": "macOS",
         "browser": "Chromium",
         "renderer": "worker",
         "load": {
-          "maplibre": 961.3499999999985,
-          "mapJr": 417.44999999997526
+          "maplibre": 821.3500000000058,
+          "mapJr": 404.8500000000204
         },
         "moving": {
-          "maplibre": 26.131746766960028,
-          "mapJr": 32.79862335356416
+          "maplibre": 31.83953887815391,
+          "mapJr": 23.637001685130922
         },
         "markers": {
-          "maplibre": 5.20897964065783,
-          "mapJr": 24.641236351288455
+          "maplibre": 4.954671533983933,
+          "mapJr": 15.76617259825396
+        }
+      },
+      {
+        "system": "macOS",
+        "browser": "WebKit",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 1763,
+          "mapJr": 888
+        },
+        "moving": {
+          "maplibre": 53.79596376836935,
+          "mapJr": 50.51586035796562
+        },
+        "markers": {
+          "maplibre": 5.96964709578072,
+          "mapJr": 51.726085977366836
         }
       },
       {
@@ -160,16 +177,16 @@
         "browser": "Chromium",
         "renderer": "worker",
         "load": {
-          "maplibre": 878.6000000000058,
-          "mapJr": 662.5
+          "maplibre": 591.3000000000029,
+          "mapJr": 348.70000000001164
         },
         "moving": {
-          "maplibre": 6.062180652983398,
-          "mapJr": 5.099005693889641
+          "maplibre": 10.654827968923419,
+          "mapJr": 11.45475372279496
         },
         "markers": {
-          "maplibre": 1.9961573970107487,
-          "mapJr": 8.007046200656678
+          "maplibre": 3.194888178913738,
+          "mapJr": 12.56925918325478
         }
       },
       {
@@ -177,16 +194,16 @@
         "browser": "Firefox",
         "renderer": "worker",
         "load": {
-          "maplibre": 1526,
-          "mapJr": 540
+          "maplibre": 1011,
+          "mapJr": 503
         },
         "moving": {
-          "maplibre": 16.192560175054705,
-          "mapJr": 57.14285714285714
+          "maplibre": 22.645423598119578,
+          "mapJr": 57.07886520971901
         },
         "markers": {
-          "maplibre": 7.017543859649122,
-          "mapJr": 42.799597180261834
+          "maplibre": 7.3600366513772215,
+          "mapJr": 43.66308234744561
         }
       },
       {
@@ -194,16 +211,16 @@
         "browser": "WebKit",
         "renderer": "worker",
         "load": {
-          "maplibre": 1438,
-          "mapJr": 643
+          "maplibre": 1443,
+          "mapJr": 648.5
         },
         "moving": {
-          "maplibre": 13.912399304131206,
-          "mapJr": 13.03644379083615
+          "maplibre": 13.680097639941751,
+          "mapJr": 13.107357973806751
         },
         "markers": {
-          "maplibre": 2.3355193993183123,
-          "mapJr": 18.466997734573987
+          "maplibre": 2.3020269091775933,
+          "mapJr": 17.40967696299871
         }
       },
       {
@@ -211,16 +228,16 @@
         "browser": "Chromium",
         "renderer": "worker",
         "load": {
-          "maplibre": 780.1000000000058,
-          "mapJr": 521.2499999999709
+          "maplibre": 827.9500000000116,
+          "mapJr": 635.0999999999767
         },
         "moving": {
-          "maplibre": 33.10996392816419,
-          "mapJr": 22.761893016648067
+          "maplibre": 30.27562482549991,
+          "mapJr": 19.05496145386055
         },
         "markers": {
-          "maplibre": 3.4406331141608018,
-          "mapJr": 44.62621711204544
+          "maplibre": 3.307009282848761,
+          "mapJr": 43.669179539631386
         }
       },
       {
@@ -228,16 +245,16 @@
         "browser": "Firefox",
         "renderer": "worker",
         "load": {
-          "maplibre": 1613,
-          "mapJr": 765
+          "maplibre": 1422,
+          "mapJr": 853
         },
         "moving": {
-          "maplibre": 17.152658662092627,
-          "mapJr": 9.472817133443163
+          "maplibre": 18.80484747179273,
+          "mapJr": 12.031466913465987
         },
         "markers": {
-          "maplibre": 5.154639175257732,
-          "mapJr": 25.608194622279132
+          "maplibre": 4.705882352941177,
+          "mapJr": 22.334485509173092
         }
       },
       {
@@ -245,16 +262,16 @@
         "browser": "WebKit",
         "renderer": "worker",
         "load": {
-          "maplibre": 1312,
-          "mapJr": 726.5
+          "maplibre": 1312.5,
+          "mapJr": 720
         },
         "moving": {
-          "maplibre": 13.893776075620218,
-          "mapJr": 11.944670516043235
+          "maplibre": 19.778209840793316,
+          "mapJr": 16.207275253324504
         },
         "markers": {
-          "maplibre": 3.273744748488026,
-          "mapJr": 19.955211310739074
+          "maplibre": 4.105730865523093,
+          "mapJr": 23.591262261165458
         }
       }
     ]
