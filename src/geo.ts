@@ -409,6 +409,9 @@ export class Transform {
     recenterOnGround(): boolean {
         if (!this.heightAt) return false;
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ppm = this.pixelsPerMetre;
+        // A centre that is on the ground stays. (The walk of screenToGround can step over a narrow peak under the centre
+        // and find the ground behind it; the centre then went back and forth between the two, #1459.)
+        if (Math.abs(this.heightAt(mercX(this.lng), mercY(this.lat)) - this.elevation) * ppm < 0.25) return false;
         const [mx, my] = this.screenToGround(this.cx, this.cy), h = this.heightAt(mx, my), z = (h - this.elevation) * ppm;
         const dist = d - z / Math.cos(p); // camera to that point, in pixels at the current scale
         if (Math.abs(z) < 0.25 || dist < d * 0.05) return false;
