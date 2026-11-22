@@ -194,6 +194,33 @@ for (const mode of renderers) {
         const back = await redPixels();
         await page.evaluate(() => { const el = window.farMap.getContainer(); window.farMap.remove(); el.remove(); });
         check(`[${mode}] the globe: a label that turns behind the globe is not drawn in the next frame`, front > 50 && back === 0, JSON.stringify({front, back}));
+        // A fill-extrusion layer draws on the globe at zoom 4, with its height along the normal of the sphere, and not
+        // when it is on the far side (#1429).
+        const towers = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60'}));
+            const box = [[[8, -2], [12, -2], [12, 2], [8, 2], [8, -2]]], said = [], log = console.warn;
+            console.warn = (...a) => said.push(a.join(' '));
+            const style = {version: 8, projection: {type: 'globe'}, sources: {p: {type: 'geojson', data: {type: 'Polygon', coordinates: box}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#0000ff'}}, {id: 'x', type: 'fill-extrusion', source: 'p', paint: {'fill-extrusion-color': '#ff0000', 'fill-extrusion-height': 300000}}]};
+            const map = new mod.Map({container: el, style, center: [10, 0], zoom: 4, pitch: 50, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const red = async () => {
+                const bmp = await createImageBitmap(await map.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data;
+                let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i] > 2 * d[i + 2]) n++;
+                return n;
+            };
+            await idle();
+            const front = await red();
+            map.jumpTo({center: [-170, 0], zoom: 1, pitch: 0});
+            await idle();
+            const back = await red();
+            console.warn = log;
+            map.remove(); el.remove();
+            return {front, back, said: said.filter(w => w.includes('globe'))};
+        }, mode);
+        check(`[${mode}] the globe: a fill-extrusion layer draws at zoom 4 without a warning, and not on the far side (#1429)`, towers.front > 2000 && towers.back === 0 && towers.said.length === 0, JSON.stringify(towers));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();
@@ -3010,6 +3037,53 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
             quiet.thrown.startsWith('[map-jr-gl] The option renderWorldCopies: false has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
     }
+    // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
+    // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
+    // of an extrusion on the globe is flat between its corners, so a wide one stands kilometres above the sphere.)
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const out = {};
+            for (const height of [3000, 300]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:200px;height:150px'}));
+                const box = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-0.02, -0.02], [0.02, -0.02], [0.02, 0.02], [-0.02, 0.02], [-0.02, -0.02]]]}};
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 9, pitch: 30, canvasContextAttributes: {preserveDrawingBuffer: true},
+                    style: {version: 8, projection: {type: 'globe'}, sources: {b: {type: 'geojson', data: box}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}},
+                        {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': height}}]}});
+                let program, buffer, pixel = null, error = null;
+                const layer = {id: 'c', type: 'custom', renderingMode: '3d', onAdd(map, gl) { buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([4095, 4095, 4097, 4095, 4095, 4097, 4097, 4097]), gl.STATIC_DRAW); },
+                    render(gl, args) {
+                        if (args.shaderData.variantName !== 'globe') return;
+                        const t = args.getProjectionData({tileID: {canonical: {x: 0, y: 0, z: 0}, wrap: 0}, applyGlobeMatrix: true});
+                        if (!program) {
+                            const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) error = gl.getShaderInfoLog(s); return s; };
+                            program = gl.createProgram();
+                            gl.attachShader(program, sh(gl.VERTEX_SHADER, `#version 300 es\n${args.shaderData.define}\n${args.shaderData.vertexShaderPrelude}\nin vec2 a_pos; void main() { gl_Position = projectTileFor3D(a_pos, 1000.0); }`));
+                            gl.attachShader(program, sh(gl.FRAGMENT_SHADER, '#version 300 es\nprecision highp float; out vec4 c; void main() { c = vec4(0.0, 1.0, 0.0, 1.0); }'));
+                            gl.bindAttribLocation(program, 0, 'a_pos'); gl.linkProgram(program);
+                        }
+                        gl.useProgram(program);
+                        const u = n => gl.getUniformLocation(program, n);
+                        gl.uniformMatrix4fv(u('u_projection_matrix'), false, t.mainMatrix); gl.uniformMatrix4fv(u('u_projection_fallback_matrix'), false, t.fallbackMatrix);
+                        gl.uniform4f(u('u_projection_tile_mercator_coords'), ...t.tileMercatorCoords); gl.uniform4f(u('u_projection_clipping_plane'), ...t.clippingPlane);
+                        gl.uniform1f(u('u_projection_transition'), t.projectionTransition);
+                        gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+                        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                        const px = new Uint8Array(4); gl.readPixels(gl.drawingBufferWidth >> 1, gl.drawingBufferHeight >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); pixel = Array.from(px);
+                    }};
+                try {
+                    await new Promise(r => m.once('load', r));
+                    m.addLayer(layer);
+                    await new Promise(r => m.once('idle', r)); m.triggerRepaint(); await wait(300);
+                    out[height] = {pixel, error};
+                } finally { m.remove(); el.remove(); }
+            }
+            return out;
+        });
+        const hidden = r[3000]?.pixel, shown = r[300]?.pixel;
+        check('[main] maplibre-compat: on the globe a \'3d\' custom layer and a fill-extrusion layer below it hide each other (#1431)',
+            !r[3000]?.error && hidden?.[0] > 100 && hidden[1] < 50 && shown?.[1] > 200 && shown[0] < 50, JSON.stringify(r));
+    }
     // Custom layers (#45): with renderer: 'main' they draw in their place; with the worker renderer they are an error.
     if (mode === 'main') await checkCustomLayers(page, check);
     // #1431: on the globe a custom layer draws with the projection data of the globe, as in MapLibre GL JS 6.17, and
@@ -3030,7 +3104,7 @@ for (const mode of renderers) {
                     const w = M[11] + M[15];
                     seen.push({variant: args.shaderData.variantName, define: args.shaderData.define, transition: d.projectionTransition, tileTransition: t.projectionTransition,
                         plane: Array.from(d.clippingPlane).map(v => +v.toFixed(3)), coords: t.tileMercatorCoords, centre: [(M[8] + M[12]) / w, (M[9] + M[13]) / w, (M[10] + M[14]) / w].map(v => +v.toFixed(3)),
-                        nearZ: args.nearZ, fallback: t.fallbackMatrix !== t.mainMatrix});
+                        nearZ: args.nearZ, farZ: args.farZ === Infinity ? null : args.farZ, fallback: t.fallbackMatrix !== t.mainMatrix});
                     if (!program && args.shaderData.variantName === 'globe') {
                         const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) error = gl.getShaderInfoLog(s); return s; };
                         program = gl.createProgram();
@@ -3060,7 +3134,7 @@ for (const mode of renderers) {
         });
         const g = r.globe;
         check('[main] maplibre-compat: on the globe a custom layer gets the projection data of the globe, its prelude draws, and no warning (#1431)',
-            g?.variant === 'globe' && g.define === '#define GLOBE' && g.transition === 1 && g.tileTransition === 1 && g.fallback && g.nearZ === 0.5
+            g?.variant === 'globe' && g.define === '#define GLOBE' && g.transition === 1 && g.tileTransition === 1 && g.fallback && g.nearZ > 0 && g.farZ === null
             && Math.hypot(...g.plane.slice(0, 3)) > 0.99 && g.plane[3] < 0 && g.coords.join() === '0,0,0.0001220703125,0.0001220703125'
             && Math.abs(g.centre[0]) < 0.01 && Math.abs(g.centre[1]) < 0.01 && g.centre[2] > -1 && g.centre[2] < 1
             && !r.error && r.pixel?.[0] > 200 && r.pixel[1] < 50 && r.mercator?.variant === 'mercator' && r.mercator.transition === 0 && r.warnings.length === 0, JSON.stringify(r));

@@ -86,17 +86,18 @@ function inputs(tr: Transform, globeness: number): CustomRenderMethodInput {
     // The depth runs from -1 to 1 between the near and the far plane: Z = A·W + B. (Read from the tile matrix, whose
     // translation is small: in `main` it is large, and the rounding of its 32-bit values would show.)
     const A = tile[10] / tile[11], B = tile[14] - A * tile[15], near = -B / (1 + A), far = B / (1 - A), f = 1 / Math.tan(FOV / 2);
-    const perspective = (near: number, far: number) => Float64Array.from([f * tr.height / tr.width, 0, 0, 0, 0, f, 0, 0, (tr.width - 2 * tr.cx) / tr.width, (2 * tr.cy - tr.height) / tr.height, (far + near) / (near - far), -1, 0, 0, 2 * far * near / (near - far), 0]);
+    // (With no far plane, far = Infinity, the depth row is z = -z_view - 2·near.)
+    const perspective = (near: number, far: number) => Float64Array.from([f * tr.height / tr.width, 0, 0, 0, 0, f, 0, 0, (tr.width - 2 * tr.cx) / tr.width, (2 * tr.cy - tr.height) / tr.height, far === Infinity ? -1 : (far + near) / (near - far), -1, 0, 0, far === Infinity ? -2 * near : 2 * far * near / (near - far), 0]);
     const tileMatrix = (c: {z: number; x: number; y: number}, wrap?: number) => Float32Array.from(multiply(tr.tileMatrix4({z: c.z, x: c.x, y: c.y, w: wrap ?? 0, key: ''}), scale(UNIT, UNIT, 1)));
     const mercatorCoords = (c: {z: number; x: number; y: number}): ProjectionData['tileMercatorCoords'] => { const n = 2 ** c.z; return [c.x / n, c.y / n, 1 / n / 8192, 1 / n / 8192]; };
     if (globeness > 0 && tr.globe) {
         // On the globe (also while it turns into Mercator) MapLibre GL JS gives the matrix from the unit sphere to clip
-        // space, with its near plane (0.5 px) and far plane (the camera distance plus the diameter of the globe), the
-        // plane of the horizon, and the globeness; the Mercator matrices are the fallback.
-        const g = tr.globe.frame(tr), gNear = 0.5, gFar = tr.cameraDistance + 2 * g.radius, m = Float64Array.from(g.m);
-        // (The matrix of globe.ts has w = the distance along the view; its depth row is set from w: z = a·w + b.)
-        const a = (gFar + gNear) / (gFar - gNear), b = 2 * gFar * gNear / (gNear - gFar);
-        for (let c = 0; c < 4; c++) m[c * 4 + 2] = a * m[c * 4 + 3] + (c === 3 ? b : 0);
+        // space, the plane of the horizon, and the globeness; the Mercator matrices are the fallback. The depth is that
+        // of the fill-extrusion layers on the globe (toClip3D in gl.ts), so that a '3d' layer and the buildings below it
+        // hide each other: z = w - 0.0005 · (the distance from the camera to the centre of the sphere). That is a
+        // projection with no far plane whose near plane is half that distance (#1431).
+        const g = tr.globe.frame(tr), m = Float64Array.from(g.m), k = 0.0005 * g.m[15], gNear = k / 2, gFar = Infinity;
+        for (let c = 0; c < 4; c++) m[c * 4 + 2] = m[c * 4 + 3] - (c === 3 ? k : 0);
         const m32 = Float32Array.from(m), plane = [...g.horizon] as ProjectionData['clippingPlane'];
         const data = (fallbackMatrix: Float32Array | Float64Array, tileMercatorCoords: ProjectionData['tileMercatorCoords'], projectionTransition: number, clipAntimeridian: boolean): ProjectionData =>
             ({mainMatrix: m32, fallbackMatrix, tileMercatorCoords, clippingPlane: plane, projectionTransition, clipAntimeridian});
