@@ -1929,6 +1929,60 @@ for (const mode of renderers) {
         check(`[${mode}] compat: updateImage draws the new pixels, also at another size, and keeps the options of the image (#949)`,
             r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[1] > 200 && r.resized[0] < 60 && r.sdf === true, JSON.stringify(r));
     }
+    // #1434: a video source draws the frames of its video, and `play`, `pause` and `getVideo` work as in MapLibre GL JS.
+    // The video is made here: half a second of red, then half a second of blue. Its code loads only with a video source.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const paint = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), pg = paint.getContext('2d');
+            const recorder = new MediaRecorder(paint.captureStream(30), {mimeType: 'video/webm'}), parts = [];
+            recorder.ondataavailable = e => parts.push(e.data);
+            const fill = colour => { pg.fillStyle = colour; pg.fillRect(0, 0, 64, 64); };
+            fill('#f00');
+            const drawn = setInterval(() => fill(pg.fillStyle), 20);
+            recorder.start();
+            await new Promise(res => setTimeout(res, 600));
+            fill('#00f');
+            await new Promise(res => setTimeout(res, 600));
+            recorder.stop();
+            await new Promise(res => { recorder.onstop = res; });
+            clearInterval(drawn);
+            const url = URL.createObjectURL(new Blob(parts, {type: 'video/webm'}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const chunk = () => performance.getEntriesByType('resource').some(e => /map-jr-gl-video-/.test(e.name));
+            const early = chunk();
+            const centre = async () => {
+                const blob = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
+                if (!blob) return null;
+                const bmp = await createImageBitmap(blob), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            };
+            m.addSource('v', {type: 'video', urls: [url], coordinates: [[-60, 50], [60, 50], [60, -50], [-60, -50]]});
+            m.addLayer({id: 'v', type: 'raster', source: 'v'});
+            const seen = new Set();
+            for (const t0 = performance.now(); performance.now() - t0 < 15000 && seen.size < 2;) {
+                const px = await centre();
+                if (px?.[0] > 200 && px[1] < 60 && px[2] < 60) seen.add('red');
+                if (px?.[2] > 200 && px[0] < 60 && px[1] < 60) seen.add('blue');
+                await new Promise(res => setTimeout(res, 50));
+            }
+            const video = m.getSource('v').getVideo();
+            m.getSource('v').pause();
+            await new Promise(res => setTimeout(res, 300));
+            const paused = await centre();
+            await new Promise(res => setTimeout(res, 700));
+            const still = await centre();
+            const result = {early, loaded: chunk(), seen: [...seen], isVideo: video instanceof HTMLVideoElement, wasPaused: video?.paused, paused, still};
+            m.remove(); el.remove(); URL.revokeObjectURL(url);
+            result.stopped = video?.paused && !video.childElementCount;
+            return result;
+        }, mode);
+        check(`[${mode}] compat: a video source draws its frames, and pause() keeps the frame that it shows (#1434)`,
+            !r.early && r.loaded && r.seen.length === 2 && r.isVideo && r.wasPaused && r.paused && String(r.paused) === String(r.still) && r.stopped, JSON.stringify(r));
+    }
     // #979: 500 × updateImage of a 64 × 64 image in one task send the pixels once (16 KB), not 500 times, and the
     // icon shows the pixels of the last call. (Each call sent its pixels, 8 MB in all, and at a pixel ratio of 3 the
     // pixels went at 192 × 192: the bench scenario `images` ended the Safari page on an iPhone.)

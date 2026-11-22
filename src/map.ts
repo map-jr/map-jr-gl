@@ -654,6 +654,7 @@ export class Map {
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
         if (this.wantsTiles) this.post({type: 'tileLoads', on: true});
+        for (const v of this.videos.values()) v.player?.frame();
         for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
     }
 
@@ -706,7 +707,7 @@ export class Map {
     protected post(c: Command, transfer?: Transferable[]) {
         // (A command that changes or reads the images goes after the updates of this task. A repaint does not wait.)
         if (c.type === 'style' || c.type === 'templates' || c.type === 'removeImage' || c.type === 'snapshot' || c.type === 'image' && !c.update) this.sendUpdates();
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'snapshot' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'snapshot' && c.type !== 'tileReport' && c.type !== 'tileLoads' && c.type !== 'frame') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
         if (c.type === 'query' || c.type === 'queryRendered') this.tilePool?.wake(); // (#824)
         if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
     }
@@ -1211,7 +1212,30 @@ export class Map {
     /** The new style came from `setStyle` without `diff`: its paint values do not transition (#960). */
     private instant = false;
     /** The events after the style changed. `style.load` is only for a whole new style (the first one, or `setStyle`). */
+    /** The players of the video sources by source id. Their code (video.ts) loads with the first video source. */
+    private videos = new globalThis.Map<string, {urls: string; player?: import('./video.ts').VideoPlayer; paused?: boolean}>();
+    /** Starts a player for each new video source, and stops the players of the sources that are gone or have other URLs. */
+    private syncVideos() {
+        const sources = this.rawStyle?.sources ?? {}, base = this.styleBase;
+        const urlsOf = (spec: any) => spec?.type === 'video' && Array.isArray(spec.urls) && spec.urls.length ? JSON.stringify(spec.urls) : '';
+        for (const [id, v] of this.videos) if (this.removed || urlsOf(sources[id]) !== v.urls) { v.player?.stop(); this.videos.delete(id); }
+        if (this.removed) return;
+        for (const [id, spec] of Object.entries<any>(sources)) {
+            const urls = urlsOf(spec);
+            if (!urls || this.videos.has(id)) continue;
+            const v: {urls: string; player?: import('./video.ts').VideoPlayer; paused?: boolean} = {urls};
+            this.videos.set(id, v);
+            import('./video.ts').then(m => {
+                if (this.videos.get(id) !== v) return;
+                v.player = m.playVideo(id, spec.urls.map((u: string) => absolute(u, base)), image => {
+                    if (this.ready && this.videos.get(id) === v) this.post({type: 'frame', source: id, image}, [image]); else image.close();
+                }, error => this.fire('error', {error}));
+                if (v.paused) v.player.video.pause();
+            }, error => this.fire('error', {error}));
+        }
+    }
     private styleEvents(whole: boolean) {
+        this.syncVideos();
         // (As in MapLibre, a whole new style puts its projection in place first, and that fires `projectiontransition`.)
         if (whole) this.fire('projectiontransition', {newProjection: projectionName(this.rawStyle?.projection?.type)});
         this.fire('styledata', {dataType: 'style'});
@@ -1470,6 +1494,16 @@ export class Map {
     getSource(id: string) {
         const spec = this.rawStyle?.sources[id];
         // An image source can get another image or other corners, as in MapLibre.
+        if (spec?.type === 'video') {
+            // A video source plays, pauses and seeks its element, as in MapLibre. The element exists once its code has loaded.
+            const v = () => this.videos.get(id), video = () => v()?.player?.video;
+            return {
+                ...spec, id, getVideo: video, setCoordinates: (coordinates: unknown) => this.editStyle(() => { spec.coordinates = coordinates; }),
+                play: () => { const s = v(); if (s) s.paused = false; video()?.play().catch(() => {}); },
+                pause: () => { const s = v(); if (s) s.paused = true; video()?.pause(); },
+                seek: (seconds: number) => { const el = video(); if (el) el.currentTime = seconds; },
+            };
+        }
         if (spec?.type === 'image') return {...spec, id, updateImage: (o: {url?: string; coordinates?: unknown}) => this.editStyle(() => { Object.assign(spec, o); }), setCoordinates: (coordinates: unknown) => this.editStyle(() => { spec.coordinates = coordinates; })};
         if (!spec || spec.type !== 'geojson') return spec;
         const clusters = async () => {
@@ -2226,6 +2260,7 @@ export class Map {
         this.tilePool?.release();
         this.observer?.disconnect();
         for (const fn of this.cleanup) fn();
+        this.syncVideos();
         // The engine frees the memory of the GPU first. A worker is stopped a moment later, so that it gets the message.
         if (this.ready) this.send({type: 'destroy'});
         const workers = this.workers;
