@@ -1922,6 +1922,38 @@ for (const mode of renderers) {
         check(`[${mode}] the textures of colour ramps are deleted when their layers are removed or the style changes (#591)`,
             r.renderer === mode && r.start === 2 && r.removed === 0 && r.restyled === 2 && r.empty === 0, JSON.stringify(r));
     }
+    // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
+    // image (only the pictures of this check do), on the main thread.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const P = WebGL2RenderingContext.prototype, live = new Set(), bound = new WeakMap();
+            const bind = P.bindTexture, img = P.texImage2D, del = P.deleteTexture;
+            P.bindTexture = function (t, x) { bound.set(this, x); return bind.call(this, t, x); };
+            P.texImage2D = function (...a) { const x = bound.get(this), s = a[a.length - 1]; if (x) { if (s?.width === 3 && s?.height === 5) live.add(x); else live.delete(x); } return img.apply(this, a); };
+            P.deleteTexture = function (x) { live.delete(x); return del.call(this, x); };
+            try {
+                const c = Object.assign(document.createElement('canvas'), {width: 3, height: 5}), url = c.toDataURL('image/png');
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: []}});
+                const idle = () => new Promise(res => { m.once('idle', res); m.triggerRepaint(); setTimeout(res, 10000); });
+                await idle();
+                let most = 0;
+                for (let i = 0; i < 20; i++) {
+                    m.addSource(`pic${i}`, {type: 'image', url: `${url}#${i}`, coordinates: [[-10, 10], [10, 10], [10, -10], [-10, -10]]});
+                    m.addLayer({id: `pic${i}`, type: 'raster', source: `pic${i}`});
+                    await idle(); most = Math.max(most, live.size);
+                    m.removeLayer(`pic${i}`); m.removeSource(`pic${i}`);
+                    await idle();
+                }
+                const out = {renderer: m.renderer, most, left: live.size};
+                m.remove(); el.remove();
+                return out;
+            } finally { Object.assign(P, {bindTexture: bind, texImage2D: img, deleteTexture: del}); }
+        });
+        check('[main] a removed image source frees its picture and its texture: 20 sources added and removed leave no texture (#1450)',
+            r.renderer === 'main' && r.most === 1 && r.left === 0, JSON.stringify(r));
+    }
     // #46: an image added with `sdf: true` is a signed distance field, and `icon-color` recolours it, as in MapLibre GL JS.
     {
         const r = await page.evaluate(async mode => {

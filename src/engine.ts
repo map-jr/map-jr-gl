@@ -731,6 +731,8 @@ export class Engine {
         if (was !== now) for (const [key, t] of this.tiles) { const source = key.slice(0, key.lastIndexOf('|')); if (source === was) this.ground(key, t, false); else if (source === now) this.ground(key, t, true); }
         const before = this.style;
         this.style = style;
+        // The picture of an image or video source that the style no longer has is freed with its texture (#1450).
+        for (const [id, st] of this.pictures) if (!style.sources[id]) { if (st.gl) this.renderer.destroyTile(st.gl); this.pictures.delete(id); }
         this.styleVersion++;
         this.states.g = style.state ?? {};
         compileFor(this.states);
