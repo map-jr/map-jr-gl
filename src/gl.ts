@@ -181,12 +181,22 @@ void main() {
 }`],
     // The sky (the `sky` of the style): a quad over the screen. u_sky has the horizon line in device pixels from the
     // bottom and the height of the band in which sky-color turns into horizon-color; below the line nothing is drawn.
+    // On the globe (u_globeSky.x, the change to the globe, above 0) it follows MapLibre's sky.fragment.glsl: the
+    // distance to the horizon is the angle of the ray of the pixel past the edge of the sphere times the distance of the
+    // camera (u_globeSky.y), and the sky fades where the ray misses the atmosphere and as the camera leaves it, times
+    // 1 - atmosphere-blend (u_globeSky.z). u_rays, u_cam and u_halo.y are those of the halo below.
     sky: [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
-uniform vec2 u_sky; uniform vec4 u_skyColor; uniform vec4 u_horizonColor; out vec4 o;
+uniform vec2 u_sky; uniform vec4 u_skyColor; uniform vec4 u_horizonColor; uniform vec3 u_globeSky; uniform mat3 u_rays; uniform vec3 u_cam; uniform vec2 u_halo; uniform vec2 u_view; out vec4 o;
 void main() {
-  float b = gl_FragCoord.y - u_sky.x;
+  float b = gl_FragCoord.y - u_sky.x, a = 1.0;
+  if (u_globeSky.x > 0.0) {
+    vec3 r = normalize(u_rays * vec3(gl_FragCoord.x / u_halo.y, u_view.y - gl_FragCoord.y / u_halo.y, 1.0));
+    float d = length(u_cam), c = max(dot(r, -u_cam), 0.0), h = 100.0 / 6371.0;
+    b = mix(b, ((acos(clamp(dot(r, -u_cam) / d, -1.0, 1.0)) - asin(min(1.0 / d, 1.0))) * u_globeSky.y + 1.0) * u_halo.y, u_globeSky.x);
+    a = mix(1.0, (1.0 - smoothstep(h, 10.0 * h, d - 1.0)) * (1.0 - smoothstep(0.0, h, sqrt(max(d * d - c * c, 0.0)) - 1.0)) * u_globeSky.z, u_globeSky.x);
+  }
   if (b <= 0.0) discard;
-  o = b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor;
+  o = (b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor) * a;
 }`],
     // The atmosphere on the globe: a port of atmosphere.fragment.glsl of MapLibre GL JS (BSD-3-Clause), which follows
     // glsl-atmosphere (Rayleigh and Mie scattering, 5 steps along the ray and 3 toward the sun). u_rays gives the ray
@@ -1836,11 +1846,19 @@ export class GLRenderer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
-    /** The sky of the style above the horizon, in Mercator (on the globe there is none yet). */
+    /** The sky of the style above the horizon, in Mercator and, on the globe, blended into the space around it. */
     private drawSky(s: Scene) {
-        const tr = s.tr;
-        if (!s.sky || tr.globeness) return;
+        const tr = s.tr, g = s.globe;
+        if (!s.sky) return;
         const v = skyValues(s.sky, tr.zoom, tr.pitch), gl = this.gl, k = this.canvas.height / tr.height, u = this.use('sky', tr);
+        if (g) {
+            // atmosphere-blend fades as the camera rises, as in drawHalo (MapLibre's getAtmosphereAltitudeBlend).
+            const h = 100 / 6371, x = clamp((Math.hypot(...g.cam) - 1 - h) / (9 * h), 0, 1);
+            gl.uniform3f(u.u_globeSky, g.t, tr.cameraDistance, 1 - v.atmosphere * x * x * (3 - 2 * x));
+            gl.uniformMatrix3fv(u.u_rays, false, g.rays);
+            gl.uniform3fv(u.u_cam, g.cam);
+            gl.uniform2f(u.u_halo, 0, k);
+        } else gl.uniform3f(u.u_globeSky, 0, 0, 0);
         gl.uniform2f(u.u_sky, (tr.height - tr.cy + tr.horizon()) * k, Math.max(v.skyBlend, 1e-6) * this.canvas.height / 2);
         gl.uniform4fv(u.u_skyColor, v.sky);
         gl.uniform4fv(u.u_horizonColor, v.horizon);
