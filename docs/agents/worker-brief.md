@@ -31,7 +31,14 @@ writing); this brief has the steps.
    moves to match or away from it, merge `origin/main`, do a full run on the merged tree (about ten minutes), commit
    `test/conformance/render-result.json` and `render-tests.json`, and set the floor of `test:render` in
    `package.json` to the match count of that run (CI gives the same count). If no test moves, restore the two files
-   and leave the floor. Do not run the other conformance tools (example pages, plugins, styles) unless your prompt
+   and leave the floor.
+   Run render tests and pixel checks on the Chromium build that CI uses, which is the build that the installed
+   Playwright pins. The cloud VM has an older build in `/opt/pw-browsers`, which `test/launch.mjs` takes when the
+   pinned build is missing, and that build counts some tests differently (`text-local-glyphs/cjk` is a match there
+   and near in CI; #1483). Install the pinned build once with
+   `PLAYWRIGHT_BROWSERS_PATH=/home/user/map-jr-gl/.cache-pw pnpm exec playwright install chromium` (about a minute),
+   and set the same `PLAYWRIGHT_BROWSERS_PATH` for every run. A full run writes the two result files only on the
+   pinned build. Do not run the other conformance tools (example pages, plugins, styles) unless your prompt
    asks.
 7. Commit, `git push -u origin <branch>`, and open a pull request against `main`
    that follows `.github/pull_request_template.md`, says `Fixes #N`, and ends with the attribution line that your
