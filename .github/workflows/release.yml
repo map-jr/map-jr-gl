@@ -80,6 +80,9 @@ jobs:
           node -e "const [a, b, c] = process.argv[1].split('.').map(Number); if (a < 11 || (a === 11 && (b < 5 || (b === 5 && c < 1)))) { console.error('::error::npm ' + process.argv[1] + ' is older than 11.5.1, which trusted publishing needs.'); process.exit(1); }" "$(npm --version)"
       - if: env.publish == 'yes'
         run: pnpm install --frozen-lockfile
+      # Prettier of website/, which `pnpm test` imports (test/unit/comment-reflow.test.ts), as ci.yml installs it (#1494).
+      - if: env.publish == 'yes'
+        run: pnpm --dir website install --frozen-lockfile
       - if: env.publish == 'yes'
         run: pnpm build
       - if: env.publish == 'yes'
