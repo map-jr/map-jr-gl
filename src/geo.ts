@@ -23,7 +23,7 @@ export type LngLatLike = readonly number[] | {lng: number; lat: number} | {lon: 
 export interface TileID { z: number; x: number; y: number; w: number; key: string }
 
 /** With 3D terrain, heights are kept on the CPU as one grid of this many samples a side per elevation tile. */
-export const HEIGHT_GRID = 128;
+export const HEIGHT_GRID = 256;
 /**
  * Ground height in metres at a mercator position, from height grids keyed "z/x/y": the deepest one at or above
  * zoom `from` that covers the point, or `unknown` if there is none.
@@ -409,6 +409,9 @@ export class Transform {
     recenterOnGround(): boolean {
         if (!this.heightAt) return false;
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ppm = this.pixelsPerMetre;
+        // A centre that is on the ground stays. (The walk of screenToGround can step over a narrow peak under the centre
+        // and find the ground behind it; the centre then went back and forth between the two, #1459.)
+        if (Math.abs(this.heightAt(mercX(this.lng), mercY(this.lat)) - this.elevation) * ppm < 0.25) return false;
         const [mx, my] = this.screenToGround(this.cx, this.cy), h = this.heightAt(mx, my), z = (h - this.elevation) * ppm;
         const dist = d - z / Math.cos(p); // camera to that point, in pixels at the current scale
         if (Math.abs(z) < 0.25 || dist < d * 0.05) return false;
