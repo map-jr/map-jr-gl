@@ -1405,8 +1405,9 @@ export class GLRenderer {
                     });
                 } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
             }
-            if (L.type === 'fill') {
-                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing.
+            if (L.type === 'fill' && L.p.antialias.eval(zoom) !== false) {
+                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing. As in
+                // MapLibre GL JS, fill-antialias false draws no edges, also with a fill-outline-color.
                 const oc = L.p.outline.eval(zoom), explicit = oc[3] > 0, op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
                 const col = explicit ? [oc[0], oc[1], oc[2], oc[3] * op] : color(L);
                 for (const it of items) for (const b of parts(it, L.id)) {

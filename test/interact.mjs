@@ -2009,8 +2009,8 @@ for (const mode of renderers) {
     }
     // #1469: with fill-antialias true and no fill-outline-color, a fill-pattern layer draws its edges in the pattern,
     // as in MapLibre GL JS (its program fillOutlinePattern). The fill starts 0.3 pixels left of the middle of the canvas,
-    // so the edge line runs through the column left of the middle, which the fill does not cover; with fill-antialias
-    // false that column stays white.
+    // so the edge line runs through the column left of the middle, which the fill does not cover. With fill-antialias
+    // false that column stays white, also with a fill-outline-color.
     {
         const r = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -2024,7 +2024,7 @@ for (const mode of renderers) {
             m.addSource('a', {type: 'geojson', data: box(3, 60)});
             m.addSource('b', {type: 'geojson', data: box(-60, -3)});
             m.addLayer({id: 'a', type: 'fill', source: 'a', paint: {'fill-pattern': 'red', 'fill-color': '#00f'}});
-            m.addLayer({id: 'b', type: 'fill', source: 'b', paint: {'fill-pattern': 'red', 'fill-color': '#00f', 'fill-antialias': false}});
+            m.addLayer({id: 'b', type: 'fill', source: 'b', paint: {'fill-pattern': 'red', 'fill-color': '#00f', 'fill-outline-color': '#0f0', 'fill-antialias': false}});
             await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
             const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
             let on = null, off = null;
@@ -2037,7 +2037,7 @@ for (const mode of renderers) {
             m.remove(); el.remove();
             return {on, off};
         }, mode);
-        check(`[${mode}] compat: fill-antialias draws the edges of a fill-pattern in the pattern, and false draws none (#1469)`,
+        check(`[${mode}] compat: fill-antialias draws the edges of a fill-pattern in the pattern, and false draws none, also with fill-outline-color (#1469)`,
             r.on?.[0] > 200 && r.on[1] < 230 && Math.abs(r.on[1] - r.on[2]) < 20 && r.off?.every(v => v > 245), JSON.stringify(r));
     }
     // #949: updateImage replaces the pixels in place and keeps the options of the image (here `sdf`), as in MapLibre
