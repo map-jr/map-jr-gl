@@ -1019,8 +1019,8 @@ in the style read (for example the highlight of a selected feature):
 | `removeFeatureState(target, key?)` | Removes the key `key` of the state of the feature, its whole state without `key`, or the state of all features of the source when `target` has no `id`. |
 
 `target` is `{source, sourceLayer, id}`. `id` is the `id` of the feature, as `queryFeatures` gives it, and
-`sourceLayer` is required for a vector source. A vector source needs the numeric id of the feature in the tile; a
-GeoJSON source takes the `id` of the feature or the property of `promoteId`, and each can be a number or a string. An `id` of the
+`sourceLayer` is required for a vector source. A vector source takes the numeric id of the feature in the tile, or the property of `promoteId` (a name, or a name for
+each source layer); a GeoJSON source takes the `id` of the feature or the property of `promoteId`, and each can be a number or a string. An `id` of the
 feature that is a string of decimal digits and a safe integer (`'12'`) becomes the number (`12`), so `setFeatureState` takes `12`
 for it; a property of `promoteId` stays as it is. `queryFeatures` gives the state of each
 drawn feature in `state`. The methods have no effect after `destroy()`.

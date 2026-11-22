@@ -1369,10 +1369,11 @@ export class Map {
      * selection highlights). The feature needs an `id`. Tiles showing the source are rebuilt in the background.
      */
     setFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>) {
-        // A string of digits gives the same key as the number, so only other text has no effect.
-        if (typeof feature.id === 'string' && !this.warnedTextId && isNaN(+feature.id) && /^(vector|raster)/.test(this.rawStyle?.sources[feature.source]?.type)) {
+        // A string of digits gives the same key as the number, so only other text has no effect (unless `promoteId` gives the ids).
+        const raw = this.rawStyle?.sources[feature.source];
+        if (typeof feature.id === 'string' && !this.warnedTextId && isNaN(+feature.id) && /^(vector|raster)/.test(raw?.type) && raw?.promoteId == null) {
             this.warnedTextId = true;
-            console.warn(`[map-jr-gl] setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile.`);
+            console.warn(`[map-jr-gl] setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`);
         }
         const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
         states[key] = {...states[key], ...state};

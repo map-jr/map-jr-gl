@@ -37,7 +37,8 @@ export class Pbf {
 const utf8 = new TextDecoder();
 
 export class VTFeature {
-    id: number | undefined;
+    /** The `id` of the feature in the tile, or the property that `promoteId` of the source names (see `decodeVectorTile`). */
+    id: number | string | undefined;
     /** 1 point, 2 line, 3 polygon */
     type = 0;
     private tagPos = -1;
@@ -143,7 +144,12 @@ function readValue(p: Pbf): any {
     return v;
 }
 
-export function decodeVectorTile(bytes: Uint8Array): Record<string, VTLayer> {
+/**
+ * `promoteId`: the property that gives the id of each feature, or such a property for each source layer. As in MapLibre
+ * GL JS, a boolean becomes 0 or 1, and a feature without the property (or a layer that the object does not name) has
+ * no id.
+ */
+export function decodeVectorTile(bytes: Uint8Array, promoteId?: string | Record<string, string>): Record<string, VTLayer> {
     const p = new Pbf(bytes);
     const layers: Record<string, VTLayer> = {};
     while (p.pos < p.end) {
@@ -152,6 +158,13 @@ export function decodeVectorTile(bytes: Uint8Array): Record<string, VTLayer> {
         if (!tag) break;
         if (tag >> 3 === 3) {
             const l = new VTLayer(p.sub());
+            if (promoteId != null) {
+                const key = typeof promoteId === 'string' ? promoteId : promoteId[l.name];
+                for (const f of l.features) {
+                    const v = key === undefined ? undefined : f.properties[key];
+                    f.id = typeof v === 'boolean' ? +v : typeof v === 'number' || typeof v === 'string' ? v : undefined;
+                }
+            }
             if (l.features.length) layers[l.name] = l;
         } else p.skip(tag & 7);
     }

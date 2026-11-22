@@ -266,7 +266,6 @@ wrappers and plugins that run with this library, and their types.
 The library does not have these parts of MapLibre GL JS, among others:
 
 - Video and canvas sources, and MapLibre Tiles (MLT).
-- `promoteId` in vector sources. It works in GeoJSON sources.
 - The expressions `within` and `distance`.
 - `text-writing-mode`.
 - Roll, a field of view other than the default, and a pitch above 90 degrees.
