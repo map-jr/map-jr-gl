@@ -18,7 +18,7 @@ test('hoverState: a GeoJSON source gets the advice for promoteId and generateId'
     assert.ok(w.includes('"promoteId" of the source') && w.includes('generateId: true'), w);
 });
 
-test('hoverState: a vector source is not advised to set promoteId', () => {
+test('hoverState: a vector source is advised to write ids into the tiles or to set promoteId, not generateId', () => {
     const w = said('vector');
-    assert.ok(w.includes('layer "fills"') && w.includes('into the tiles') && !w.includes('Give the features ids, or set'), w);
+    assert.ok(w.includes('layer "fills"') && w.includes('into the tiles') && w.includes('"promoteId"') && !w.includes('generateId'), w);
 });

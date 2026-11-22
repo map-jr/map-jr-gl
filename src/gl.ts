@@ -40,6 +40,16 @@ vec4 toClip3(vec2 t, float h) {
   return r;
 }
 vec4 toClip(vec2 t) { return toClip3(t, 0.0); }
+// Buildings get a depth, so that their walls and roofs hide each other (MapLibre's projectTileFor3D). u_globe gives
+// every point the same depth; here the depth grows with the distance w (in pixels) as in a projection with no far
+// plane, whose near plane is at 0.0005 of the distance to the centre of the sphere (below zoom 12 that is nearer than
+// the ground under the camera). The far side of the globe is hidden by horizonSide: it is below zero for a point of the ground behind the horizon.
+vec4 toClip3D(vec2 t, float h) {
+  vec4 g = u_globe * vec4(toSphere(t) * (1.0 + h / 6371008.8), 1.0);
+  g.z = g.w - 0.0005 * u_globe[3].w;
+  return u_globeness >= 1.0 ? g : mix(u_matrix * vec4(t, h, 1.0), g, u_globeness);
+}
+float horizonSide(vec2 t) { return dot(toSphere(t), u_horizon.xyz) + u_horizon.w; }
 // A tile unit is shorter toward the poles on the sphere: lines are made wider by as much (MapLibre's projectLineThickness).
 float lineScale(vec2 t) { float e = exp(GLOBE_PI - (u_tileMerc.y + u_tileMerc.w * t.y) * 2.0 * GLOBE_PI); return mix(1.0, (e * e + 1.0) / (2.0 * e) * u_cosLat, u_globeness); }
 // For the clip test, a pole vertex is on the border of its tile.
@@ -53,6 +63,8 @@ ${GLOBE_GLSL}
 #else
 vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 #define toClip3(t, h) (u_matrix * vec4(t, h, 1.0))
+#define toClip3D(t, h) (u_matrix * vec4(t, h, 1.0))
+#define horizonSide(t) 1.0
 #define lineScale(t) 1.0
 #define unpole(t) (t)
 #define shown(c) true
@@ -344,8 +356,8 @@ void main() {
 }`],
 
     // Buildings: roofs and walls with a height in metres and a baked light level.
-    extrusion: [`uniform mat4 u_matrix; ${TERRAIN_GLSL}
-layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; out vec4 v_color; out vec2 v_tile; out vec2 v_p;
+    extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
+layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; out vec4 v_color; out vec2 v_tile; out vec2 v_p; out float v_side;
 uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
 void main() {
   v_tile = a_v.xy;
@@ -365,10 +377,11 @@ void main() {
   lit = mix(1.0 - u_lightIntensity, max(1.0 - value + u_lightIntensity, 1.0), lit);
   if (!roof) lit *= (1.0 - u_gradient) + u_gradient * clamp((t + base) * sqrt(height / 150.0), mix(0.7, 0.98, 1.0 - u_lightIntensity), 1.0);
   v_color = vec4(clamp(rgb * lit * u_lightColor, mix(vec3(0.0), vec3(0.3), 1.0 - u_lightColor), vec3(1.0)), c.a);
-  gl_Position = u_matrix * vec4(a_v.xy, a_v.z + ground(a_v.xy / ${EXTENT}.0), 1.0);
+  v_side = horizonSide(a_v.xy);
+  gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_v.xy / ${EXTENT}.0));
 }`, `
-uniform vec4 u_clip; uniform float u_pattern; in vec4 v_color; in vec2 v_tile; in vec2 v_p; out vec4 o; ${PATTERN_GLSL}
-void main() { ${FS_CLIP} o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
+uniform vec4 u_clip; uniform float u_pattern; in vec4 v_color; in vec2 v_tile; in vec2 v_p; in float v_side; out vec4 o; ${PATTERN_GLSL}
+void main() { ${FS_CLIP} if (v_side < 0.0) discard; o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
 
     raster: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; out vec3 v_uvq; out vec2 v_tile;
@@ -527,7 +540,7 @@ void main() {
 /** `u` is empty until the program is first used: see `link`. */
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
-const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon']);
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -1120,8 +1133,6 @@ export class GLRenderer {
                 }
             }
             if ((L.type === 'fill-extrusion') !== (pass === 'buildings') && pass !== 'all') continue;
-            // (Buildings on the globe come with a later pull request of #463; the engine warns once.)
-            if (L.type === 'fill-extrusion' && this.globe) continue;
             if (L.type === 'background' && this.globe && pass === 'all') {
                 // On the globe the background covers the sphere, tile by tile, and not the whole canvas.
                 const name = L.p.pattern.eval(zoom), place = name != null ? pattern(name, L.p.opacity.eval(zoom)) : null;
@@ -1342,7 +1353,7 @@ export class GLRenderer {
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
-                        gl.uniformMatrix4fv(u.u_matrix, false, m);
+                        this.placeTile(u, it.id, m);
                         // (The walls take the height in metres to tile units as MapLibre GL JS does, whose tiles have 8192 units.)
                         if (img) { bindImage(u, img); gl.uniformMatrix3fv(u.u_pat, false, patMatrix(img, tilePixels(it.id))); gl.uniform1f(u.u_hf, -(2 ** it.id.z) / 2 / EXTENT); }
                         this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);

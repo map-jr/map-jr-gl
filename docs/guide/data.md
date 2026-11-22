@@ -500,8 +500,9 @@ A click on a circle turns it red, and the circle that was red before turns blue.
 - `source` is the id of the source.
 - `sourceLayer` is the layer of the tiles, and it is required for a vector source.
 - `id` is the `id` of the feature, as [`queryFeatures`](../reference/map.md#queryfeatures) and `event.features` return it. A
-  feature of a vector source has the numeric id that its tile gives it, and a feature that the tile gives no id cannot
-  have a state. In a GeoJSON source, the id is a number or a string, or the value of the property that `promoteId`
+  feature of a vector source has the numeric id that its tile gives it, or the value of the property that `promoteId` of
+  the source names (a property name, or an object with a property name for each source layer). A feature without an id
+  cannot have a state. In a GeoJSON source, the id is a number or a string, or the value of the property that `promoteId`
   names.
 
 Without `id`, `removeFeatureState` removes the state of all features of the source.

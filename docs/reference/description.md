@@ -535,7 +535,7 @@ createMap('map', {
 ```
 
 The map can set the state only on a feature that has an id. For a GeoJSON source, set ids on the features, or set
-`promoteId` or `generateId: true` on the source. A feature of a vector source needs an id in its tile.
+`promoteId` or `generateId: true` on the source. A feature of a vector source needs an id in its tile, or `promoteId` on the source.
 
 ## `onClick`
 

@@ -1308,8 +1308,8 @@ export class Map {
     }
     private projectionWarned = new Set<string>();
     /**
-     * Warns once per map for a projection that the library does not draw (it draws Mercator), and for 3D terrain and
-     * buildings on the globe, which come with later pull requests of #463, and for custom layers on the globe (#1225).
+     * Warns once per map for a projection that the library does not draw (it draws Mercator), and for 3D terrain on the
+     * globe, which comes with a later pull request of #463, and for custom layers on the globe (#1225).
      */
     private checkProjection() {
         const t = this.rawStyle?.projection?.type, said = this.projectionWarned;
@@ -1319,7 +1319,6 @@ export class Map {
         const stops = globeStops(t)!, i = stops.findIndex((v, j) => j % 2 && !v), z = stops[i - 1];
         const fix = i > 0 ? `they show from zoom ${z}, where the map is flat, or use the projection "mercator".` : 'use the projection "globe", which is flat from zoom 12, or "mercator".';
         if (this.rawStyle.terrain) warn('terrain', '3D terrain is not drawn on the globe: ' + fix);
-        if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'fill-extrusion')) warn('extrusion', 'Layers of the type "fill-extrusion" are not drawn on the globe: ' + fix);
         if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'custom')) warn('custom', 'Custom layers (the type "custom") are not drawn on the globe: ' + fix);
     }
     /**
@@ -1369,10 +1368,11 @@ export class Map {
      * selection highlights). The feature needs an `id`. Tiles showing the source are rebuilt in the background.
      */
     setFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>) {
-        // A string of digits gives the same key as the number, so only other text has no effect.
-        if (typeof feature.id === 'string' && !this.warnedTextId && isNaN(+feature.id) && /^(vector|raster)/.test(this.rawStyle?.sources[feature.source]?.type)) {
+        // A string of digits gives the same key as the number, so only other text has no effect (unless `promoteId` gives the ids).
+        const raw = this.rawStyle?.sources[feature.source];
+        if (typeof feature.id === 'string' && !this.warnedTextId && isNaN(+feature.id) && /^(vector|raster)/.test(raw?.type) && raw?.promoteId == null) {
             this.warnedTextId = true;
-            console.warn(`[map-jr-gl] setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile.`);
+            console.warn(`[map-jr-gl] setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`);
         }
         const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
         states[key] = {...states[key], ...state};

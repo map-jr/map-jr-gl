@@ -7,6 +7,7 @@ import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {fetchTile, heads} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
+import {decodeVectorTile} from './mvt.ts';
 import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
 
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
@@ -33,7 +34,9 @@ export class TileBuilder {
     /** Image decoder for elevation tiles where there is no browser (server rendering). */
     decodeImage?: ImageDecoder;
     /** Tells the builder how each contour source derives its lines. */
-    setContours(sources: Record<string, ContourConfig>) { this.contours = new Map(Object.entries(sources)); }
+    /** `ids`: the `promoteId` of each vector source that has one. */
+    setContours(sources: Record<string, ContourConfig>, ids: Record<string, string | Record<string, string>> = {}) { this.contours = new Map(Object.entries(sources)); this.ids = ids; }
+    private ids: Record<string, string | Record<string, string>> = {};
 
     /** Elevation tiles are shared between neighbouring contour tiles, so decoded ones are kept for a while. */
     private loadDEM = (url: string, encoding: DemEncoding): Promise<DEM | null> => {
@@ -126,7 +129,7 @@ export class TileBuilder {
             }
             if (!bytes) return {layers: {}, labels: {}};
             if (n === this.forgotten) this.remember(key, bytes);
-            return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}};
+            return bytes.length ? buildTile(decodeVectorTile(bytes, this.ids[req.source]), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -167,7 +170,7 @@ export class TileBuilder {
             bytes = fetched;
             if (n === this.forgotten) this.remember(key, bytes);
         }
-        return bytes.length ? this.find(bytes, q) : [];
+        return bytes.length ? this.find(decodeVectorTile(bytes, this.ids[q.source]), q) : [];
     }
 }
 
@@ -186,7 +189,8 @@ export interface TileBackend {
     setFeatureState(source: string, states: FeatureStates, replace?: boolean): void;
     /** The slots of each image that is an SVG template. Tiles that are built later give each icon the name of its variant. */
     setTemplates(templates: Record<string, string[]>): void;
-    setContours(sources: Record<string, ContourConfig>): void;
+    /** The sources of contour lines, and the `promoteId` of each vector source that has one. */
+    setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>): void;
     /** The first bytes of a PMTiles archive, which the page has read already. */
     setHead(url: string, bytes: Uint8Array): void;
     load(req: TileRequest): Promise<TileGL>;
@@ -204,7 +208,7 @@ export class LocalBackend implements TileBackend {
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
     setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.builder.setFeatureState(source, states, replace); }
     setTemplates(templates: Record<string, string[]>) { this.builder.setTemplates(templates); }
-    setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
+    setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>) { this.builder.setContours(sources, ids); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req), req.globe).tile; }
     cancel(id: number) { this.builder.cancel(id); }
@@ -254,7 +258,7 @@ export class PortBackend implements TileBackend {
     }
     setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.port.postMessage({type: 'featureState', source, states, replace}); }
     setTemplates(templates: Record<string, string[]>) { this.port.postMessage({type: 'templates', templates}); }
-    setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
+    setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>) { this.port.postMessage({type: 'contours', sources, ids}); }
     setHead(url: string, bytes: Uint8Array) { this.port.postMessage({type: 'head', url, bytes}); }
     load(req: TileRequest) {
         return new Promise<TileGL>((resolve, reject) => {
@@ -287,7 +291,7 @@ export function serveTiles(port: Port) {
         else if (m.type === 'geojson') { try { builder.setGeoJSON(m.source, m.bytes ? JSON.parse(new TextDecoder().decode(m.bytes)) : m.data, m.options, m.maxzoom); } finally { port.postMessage({id: m.id, result: null}); } }
         else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states, m.replace);
         else if (m.type === 'templates') builder.setTemplates(m.templates);
-        else if (m.type === 'contours') builder.setContours(m.sources);
+        else if (m.type === 'contours') builder.setContours(m.sources, m.ids);
         else if (m.type === 'head') heads.set(m.url, m.bytes);
         else if (m.type === 'cancel') builder.cancel(m.id);
         else if (m.type === 'forget') builder.forget(m.source);
