@@ -487,7 +487,7 @@ export class Engine {
         if (this.uploads.length) this.repaint();
     }
 
-    private pictures = new Map<string, {url?: string; gl?: GLTile}>();
+    private pictures = new Map<string, {url?: string; gl?: GLTile; /** The picture is on its way: the map is not idle (as in MapLibre GL JS, a picture that fails to load no longer holds it). */ loading?: boolean}>();
     /** The picture of an image, video or canvas source, made again when its URL changes. */
     private picture(source: string) {
         const url = this.style.sources[source].url;
@@ -508,12 +508,13 @@ export class Engine {
         const st = this.picture(source);
         if (st !== had && src.url) {
             const state = st;
+            state.loading = true;
             withTimeout(this.fetchAs('Image'))(src.url!).then(async res => {
                 if (!res.ok) throw httpError('image', src.url!, res.status);
                 const image = await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
                 image.close();
-            }).catch(err => this.emit({type: 'error', message: String(err.message)}));
+            }).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { state.loading = false; this.invalidate(); });
         }
         if (!st.gl) return [];
         const z = clamp(Math.floor(tr.zoom), 0, 22), n = 2 ** z, cx = mercX(tr.lng) * n, w = Math.floor(cx / n);
@@ -1614,7 +1615,7 @@ export class Engine {
                 continue;
             }
             const src = this.style.sources[source];
-            if (src.coordinates) { items.set(source, this.pictureItems(source, tr)); continue; }
+            if (src.coordinates) { items.set(source, this.pictureItems(source, tr)); if (this.pictures.get(source)?.loading) complete = false; continue; }
             // (The elevation source of 3D terrain has the tiles of `viewCover` also while the map is seen from above and the
             // ground is flat: relief shading then looks the same as on a tilted map, and a tilt loads no other tiles.)
             const ground = this.style.terrain?.source === source;

@@ -65,6 +65,29 @@ for (const mode of renderers) {
     }, mode).catch(e => ({error: String(e)}));
     check(`[${mode}] a map in a display:none container fires load and idle, and draws once shown (#964)`, hidden.load && hidden.idle && hidden.shown && hidden.width === hidden.want, JSON.stringify(hidden));
 
+    // The picture of an image source is part of the first complete picture: `idle` waits for it, as in MapLibre GL JS
+    // 6.17 (`ImageSource.loaded()`). A picture that fails to load does not hold `idle` back, and the map says once what
+    // failed (#1449). The server answers the picture 400 ms late, so that a map that does not wait is idle before it.
+    const redPng = Buffer.from((await page.evaluate(() => { const c = Object.assign(document.createElement('canvas'), {width: 8, height: 8}), g = c.getContext('2d'); g.fillStyle = '#f00'; g.fillRect(0, 0, 8, 8); return c.toDataURL('image/png'); })).split(',')[1], 'base64');
+    await page.route('**/slow-1449.png', async r => { await new Promise(t => setTimeout(t, 400)); await r.fulfill({status: 200, contentType: 'image/png', body: redPng}); });
+    const picture = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8,
+            sources: {a: {type: 'image', url: location.origin + '/slow-1449.png', coordinates: [[-170, 80], [-10, 80], [-10, -80], [-170, -80]]}, b: {type: 'image', url: location.origin + '/no-such-1449.png', coordinates: [[10, 80], [170, 80], [170, -80], [10, -80]]}},
+            layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'a', type: 'raster', source: 'a'}, {id: 'b', type: 'raster', source: 'b'}]}});
+        const said = []; m.on('error', e => said.push(String(e.error?.message ?? e.message)));
+        const idle = await new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 15000); });
+        const bmp = await createImageBitmap(await m.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+        g.drawImage(bmp, 0, 0);
+        const px = Array.from(g.getImageData(Math.round(bmp.width * 0.25), Math.round(bmp.height / 2), 1, 1).data).slice(0, 3);
+        m.remove(); el.remove();
+        return {idle, px, said};
+    }, mode).catch(e => ({error: String(e)}));
+    await page.unroute('**/slow-1449.png');
+    check(`[${mode}] the first idle comes after the picture of an image source has loaded, and a picture that fails says so once (#1449)`,
+        picture.idle && picture.px?.[0] > 200 && picture.px[1] < 60 && picture.said?.length === 1 && picture.said[0].includes('no-such-1449.png'), JSON.stringify(picture));
+
     // Paint transitions (#960), as in MapLibre GL JS: setPaintProperty and setStyle with `diff` move a colour over the
     // layer's `*-transition` (here 3 s), `idle` waits for the end, and setStyle with `diff: false` changes it at once.
     // (`toBlob` waits for `idle`, so a screenshot of the page reads the colour in the middle.)
