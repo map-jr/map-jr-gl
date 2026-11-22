@@ -181,12 +181,22 @@ void main() {
 }`],
     // The sky (the `sky` of the style): a quad over the screen. u_sky has the horizon line in device pixels from the
     // bottom and the height of the band in which sky-color turns into horizon-color; below the line nothing is drawn.
+    // On the globe (u_globeSky.x, the change to the globe, above 0) it follows MapLibre's sky.fragment.glsl: the
+    // distance to the horizon is the angle of the ray of the pixel past the edge of the sphere times the distance of the
+    // camera (u_globeSky.y), and the sky fades where the ray misses the atmosphere and as the camera leaves it, times
+    // 1 - atmosphere-blend (u_globeSky.z). u_rays, u_cam and u_halo.y are those of the halo below.
     sky: [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
-uniform vec2 u_sky; uniform vec4 u_skyColor; uniform vec4 u_horizonColor; out vec4 o;
+uniform vec2 u_sky; uniform vec4 u_skyColor; uniform vec4 u_horizonColor; uniform vec3 u_globeSky; uniform mat3 u_rays; uniform vec3 u_cam; uniform vec2 u_halo; uniform vec2 u_view; out vec4 o;
 void main() {
-  float b = gl_FragCoord.y - u_sky.x;
+  float b = gl_FragCoord.y - u_sky.x, a = 1.0;
+  if (u_globeSky.x > 0.0) {
+    vec3 r = normalize(u_rays * vec3(gl_FragCoord.x / u_halo.y, u_view.y - gl_FragCoord.y / u_halo.y, 1.0));
+    float d = length(u_cam), c = max(dot(r, -u_cam), 0.0), h = 100.0 / 6371.0;
+    b = mix(b, ((acos(clamp(dot(r, -u_cam) / d, -1.0, 1.0)) - asin(min(1.0 / d, 1.0))) * u_globeSky.y + 1.0) * u_halo.y, u_globeSky.x);
+    a = mix(1.0, (1.0 - smoothstep(h, 10.0 * h, d - 1.0)) * (1.0 - smoothstep(0.0, h, sqrt(max(d * d - c * c, 0.0)) - 1.0)) * u_globeSky.z, u_globeSky.x);
+  }
   if (b <= 0.0) discard;
-  o = b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor;
+  o = (b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor) * a;
 }`],
     // The atmosphere on the globe: a port of atmosphere.fragment.glsl of MapLibre GL JS (BSD-3-Clause), which follows
     // glsl-atmosphere (Rayleigh and Mie scattering, 5 steps along the ray and 3 toward the sun). u_rays gives the ray
@@ -237,16 +247,17 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
     // A distance-field image (`sdf: true`, fill-pattern only) is drawn in the colour of the layer (u_color) and of the
     // feature (a_color), with its edge at 0.75 of the alpha, as in MapLibre GL JS.
     pattern: [`${VS_COMMON}
-layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform mat3 u_pat; out vec2 v_p; out vec2 v_tile; out vec4 v_color;
-void main() { v_tile = unpole(a_pos); v_color = a_color; v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); }`, `
-uniform vec2 u_fade; uniform vec4 u_clip; uniform float u_sdf; uniform vec4 u_color; in vec2 v_p; in vec2 v_tile; in vec4 v_color; out vec4 o;
+layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform mat3 u_pat; uniform vec2 u_world; out vec2 v_p; out vec2 v_tile; out vec4 v_color; out vec2 v_px;
+void main() { v_tile = unpole(a_pos); v_color = a_color; v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); v_px = (gl_Position.xy / gl_Position.w + 1.0) / 2.0 * u_world; }`, `
+uniform vec2 u_fade; uniform vec4 u_clip; uniform float u_sdf; uniform vec4 u_color; uniform vec2 u_world; in vec2 v_p; in vec2 v_tile; in vec4 v_color; in vec2 v_px; out vec4 o;
 ${PATTERN_GLSL}
 float edge(float a) { float g = max(fwidth(a) * 0.5, 1.0 / 255.0 / 16.0); return smoothstep(0.75 - g, 0.75 + g, a); }
 void main() {
   ${FS_CLIP} vec4 a = tile(v_p), b = tile(v_p * 2.0);
-  if (u_sdf < 0.5) { o = mix(a, b, u_fade.x) * u_fade.y; return; }
-  vec4 c = v_color * u_color; float k = mix(edge(a.a), edge(b.a), u_fade.x) * c.a * u_fade.y;
-  o = vec4(c.rgb * k, k);
+  if (u_sdf < 0.5) o = mix(a, b, u_fade.x) * u_fade.y;
+  else { vec4 c = v_color * u_color; float k = mix(edge(a.a), edge(b.a), u_fade.x) * c.a * u_fade.y; o = vec4(c.rgb * k, k); }
+  // With u_world set, these are the edges of a fill drawn as lines (fill-antialias without fill-outline-color), as in MapLibre GL JS.
+  if (u_world.x > 0.0) o *= 1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy));
 }`],
 
     // One-pixel antialiased lines along polygon edges: coverage falls off with distance from the ideal line.
@@ -1111,6 +1122,7 @@ export class GLRenderer {
             bindImage(u, img);
             gl.uniform2f(u.u_fade, 0, opacity);
             gl.uniform1f(u.u_sdf, sdfColor && img.sdf ? 1 : 0);
+            gl.uniform2f(u.u_world, 0, 0);
             if (sdfColor) gl.uniform4fv(u.u_color, sdfColor);
             gl.vertexAttrib4f(1, 1, 1, 1, 1);
             /** `m` maps the drawn coordinates to world pixels at zoom Z (column-major 3x3). */
@@ -1266,7 +1278,8 @@ export class GLRenderer {
                 for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
                 return m;
             };
-            if (L.type === 'fill' && (L.p.pattern.dd || L.p.pattern.eval(zoom))) {
+            const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
+            if (patterned) {
                 for (const it of items) for (const b of parts(it, L.id)) {
                     // (fill-opacity is in u_fade.y; fill-color colours a distance-field image.)
                     const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
@@ -1277,8 +1290,14 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.vao);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+                    // Edge pass in the pattern, unless the style has an outline colour (drawn by the edge pass below).
+                    if (b.edgeVao && L.p.outline.eval(zoom)[3] <= 0) {
+                        gl.uniform2f(u.u_world, target[0], target[1]);
+                        gl.bindVertexArray(b.edgeVao);
+                        gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
+                    }
                 }
-                continue;
+                if (L.p.outline.eval(zoom)[3] <= 0) continue;
             }
             let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
@@ -1292,7 +1311,7 @@ export class GLRenderer {
                 this.extrusionDepth = true;
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
             }
-            draw: for (const it of items) for (const b of parts(it, L.id)) {
+            draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it);
                 if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
@@ -1396,13 +1415,13 @@ export class GLRenderer {
                     });
                 } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
             }
-            if (L.type === 'fill') {
-                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing.
+            if (L.type === 'fill' && L.p.antialias.eval(zoom) !== false) {
+                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing. As in
+                // MapLibre GL JS, fill-antialias false draws no edges, also with a fill-outline-color.
                 const oc = L.p.outline.eval(zoom), explicit = oc[3] > 0, op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
                 const col = explicit ? [oc[0], oc[1], oc[2], oc[3] * op] : color(L);
-                for (const it of items) {
-                    const b = it.tile.batches[L.id];
-                    if (!b?.edgeVao) continue;
+                for (const it of items) for (const b of parts(it, L.id)) {
+                    if (!b.edgeVao) continue;
                     const u = use('edge');
                     gl.uniform4fv(u.u_color, col);
                     gl.uniform2f(u.u_world, target[0], target[1]);
@@ -1827,11 +1846,19 @@ export class GLRenderer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
-    /** The sky of the style above the horizon, in Mercator (on the globe there is none yet). */
+    /** The sky of the style above the horizon, in Mercator and, on the globe, blended into the space around it. */
     private drawSky(s: Scene) {
-        const tr = s.tr;
-        if (!s.sky || tr.globeness) return;
+        const tr = s.tr, g = s.globe;
+        if (!s.sky) return;
         const v = skyValues(s.sky, tr.zoom, tr.pitch), gl = this.gl, k = this.canvas.height / tr.height, u = this.use('sky', tr);
+        if (g) {
+            // atmosphere-blend fades as the camera rises, as in drawHalo (MapLibre's getAtmosphereAltitudeBlend).
+            const h = 100 / 6371, x = clamp((Math.hypot(...g.cam) - 1 - h) / (9 * h), 0, 1);
+            gl.uniform3f(u.u_globeSky, g.t, tr.cameraDistance, 1 - v.atmosphere * x * x * (3 - 2 * x));
+            gl.uniformMatrix3fv(u.u_rays, false, g.rays);
+            gl.uniform3fv(u.u_cam, g.cam);
+            gl.uniform2f(u.u_halo, 0, k);
+        } else gl.uniform3f(u.u_globeSky, 0, 0, 0);
         gl.uniform2f(u.u_sky, (tr.height - tr.cy + tr.horizon()) * k, Math.max(v.skyBlend, 1e-6) * this.canvas.height / 2);
         gl.uniform4fv(u.u_skyColor, v.sky);
         gl.uniform4fv(u.u_horizonColor, v.horizon);

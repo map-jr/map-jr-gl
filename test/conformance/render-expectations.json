@@ -6,7 +6,7 @@
     {"test": "line-miter-limit/global-state", "label": "MapLibre miter overflow", "decision": "wontfix", "issue": 1069, "reason": "MapLibre GL JS stores the extrusion of a miter longer than 127/63 in a Uint8 (line_bucket.ts addCurrentVertex), so it wraps and the joins show notches. The library draws the full miter."},
     {"pattern": "^projection/globe/", "label": "globe", "decision": "later", "issue": 463, "reason": "The work on the globe is in issue #463."},
     {"pattern": "^sky/roll/roll(?!-0)|^terrain/fog.*-roll$", "label": "roll", "decision": "later", "reason": "The camera has no roll (setRoll has no effect)."},
-    {"pattern": "^terrain/fog-sky-blend-globe$", "label": "atmosphere", "decision": "later", "reason": "The globe draws the atmosphere (#888) but no sky and no fog, so the sky above the horizon of a globe with 3D terrain is missing."},
+    {"pattern": "^terrain/fog-sky-blend-globe$", "label": "atmosphere", "decision": "later", "reason": "The globe draws the sky and the atmosphere (#920), but at zoom 13 with pitch 80 the horizon and the fog on 3D terrain differ from MapLibre GL JS (31% of pixels)."},
     {"pattern": "^terrain/fog$|^high-pitch/pitch95", "label": "sky and fog", "decision": "later", "reason": "terrain/fog differs by about 5% at the edge of the fog; pitch95 needs the elevation of the camera."},
     {"pattern": "^mlt/", "label": "MLT", "decision": "later", "reason": "MapLibre Tiles (MLT) are not available."},
     {"pattern": "^line-gradient-dasharray/", "label": "line-gradient with line-dasharray", "decision": "later", "reason": "line-gradient together with line-dasharray is not available."},
