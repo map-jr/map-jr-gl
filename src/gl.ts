@@ -3,7 +3,7 @@ import {hillshadeLights, LIGHTS, withFilter, screenTranslate, type CompiledLayer
 import {compileProp} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
-import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
+import {LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {demUnpack, type DemEncoding} from './query.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
@@ -545,7 +545,7 @@ interface IconBuffers {
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
-    edgeVao?: WebGLVertexArrayObject; edgeCount?: number;
+    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
 }
 export interface GLTile {
     /** Distinguishes this tile's contents from any other's, including an earlier build of the same tile. */
@@ -823,7 +823,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1097,6 +1097,13 @@ export class GLRenderer {
             return [px / EXTENT, 0, 0, 0, px / EXTENT, 0, id.x * px, id.y * px, 1];
         };
 
+        /** The batches of a layer in a tile: more than one when its pattern has a value for each feature (see `patternKey`). */
+        const parts = (it: RenderItem<GLTile>, id: string) => {
+            const r: GLBuffers[] = [];
+            for (let k = 0, b; (b = it.tile.batches[patternKey(id, k)]); k++) r.push(b);
+            return r;
+        };
+
         for (const L of only ? [only] : s.layers.slice(from, to)) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
             // (A custom layer draws on the screen, also with 3D terrain, and not on the pictures of the terrain tiles. It
@@ -1208,11 +1215,10 @@ export class GLRenderer {
                 }
                 continue;
             }
-            if (L.type === 'fill' && L.p.pattern.eval(zoom)) {
-                const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
-                if (place) for (const it of items) {
-                    const b = it.tile.batches[L.id];
-                    if (!b) continue;
+            if (L.type === 'fill' && (L.p.pattern.dd || L.p.pattern.eval(zoom))) {
+                for (const it of items) for (const b of parts(it, L.id)) {
+                    const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
+                    if (!place) continue;
                     const u = place(tilePixels(it.id));
                     this.placeTile(u, it.id, it.matrix4);
                     gl.uniform4fv(u.u_clip, it.clip);
@@ -1238,7 +1244,7 @@ export class GLRenderer {
             };
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
-            let patImg: Parameters<typeof patMatrix>[0] | undefined;
+            let patImg: Parameters<typeof bindImage>[1] | undefined;
             if (extrude) {
                 // The fill-extrusion layers of a frame share one depth buffer, as in MapLibre GL JS, so the roof of one
                 // layer hides the lower part of a building in a later layer. On 3D terrain the ground's depth is kept
@@ -1247,9 +1253,7 @@ export class GLRenderer {
                 this.extrusionDepth = true;
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
             }
-            for (const it of items) {
-                const b = it.tile.batches[L.id];
-                if (!b) continue;
+            draw: for (const it of items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it);
                 if (extrude) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
@@ -1269,10 +1273,10 @@ export class GLRenderer {
                         const base = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
                         gl.uniform4f(u.u_color, base[0] * base[3], base[1] * base[3], base[2] * base[3], L.p.opacity.eval(zoom));
                         // fill-extrusion-pattern: nothing is drawn while the image is not available. A pattern for each
-                        // feature is not supported: the colour is drawn.
+                        // feature has a batch for each image (see `patternKey`).
                         const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
-                        if (name && !img) { first = true; break; }
-                        gl.uniform1f(u.u_pattern, img ? 1 : 0);
+                        if (name && !img) { first = true; break draw; }
+                        gl.uniform1f(u.u_pattern, img || L.p.pattern.dd ? 1 : 0);
                         if (img) { bindImage(u, img); patImg = img; }
                     }
                     if (b.type === 'line') {
@@ -1294,16 +1298,10 @@ export class GLRenderer {
                             gl.uniform1i(u.u_img, 0);
                             gl.uniform4f(u.u_color, 1, 1, 1, L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
                         }
-                        // Draw nothing while the image is not available. A pattern for each feature is not available at all.
-                        if (L.p.pattern.dd || (name && !img)) { first = true; break; }
-                        if (img) {
-                            gl.activeTexture(gl.TEXTURE0);
-                            gl.bindTexture(gl.TEXTURE_2D, img.custom ? this.spriteTex : this.iconTex);
-                            gl.uniform1i(u.u_img, 0);
-                            gl.uniform2f(u.u_tex, img.custom ? this.spriteSize : this.iconSize[0], img.custom ? this.spriteSize : this.iconSize[1]);
-                            gl.uniform4f(u.u_rect, img.x, img.y, img.width, img.height);
-                            gl.uniform4f(u.u_color, 1, 1, 1, L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
-                        }
+                        // Draw nothing while the image is not available. A pattern for each feature has a batch for each image.
+                        if (name && !img) { first = true; break draw; }
+                        if (img) bindImage(u, img);
+                        if (img || L.p.pattern.dd) gl.uniform4f(u.u_color, 1, 1, 1, L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
                     }
                     if (b.type === 'circle') {
                         const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
@@ -1315,6 +1313,13 @@ export class GLRenderer {
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
                         gl.uniform2f(u.u_pitch, +(L.p.pitchAlign.eval(zoom) === 'map'), +(L.p.pitchScale.eval(zoom) !== 'viewport'));
                     }
+                }
+                // The image of a batch of a pattern with a value for each feature (a missing one is not drawn).
+                const img = b.pat ? s.icon?.(b.pat) : patImg;
+                if (b.pat) {
+                    if (!img) continue;
+                    bindImage(u, img);
+                    if (b.type === 'line') gl.uniform2f(u.u_patSize, img.width / img.pixelRatio, img.height / img.pixelRatio);
                 }
                 this.placeTile(u, it.id, m);
                 gl.uniform4fv(u.u_clip, it.clip);
@@ -1339,7 +1344,7 @@ export class GLRenderer {
                     pending.push(() => {
                         gl.uniformMatrix4fv(u.u_matrix, false, m);
                         // (The walls take the height in metres to tile units as MapLibre GL JS does, whose tiles have 8192 units.)
-                        if (patImg) { gl.uniformMatrix3fv(u.u_pat, false, patMatrix(patImg, tilePixels(it.id))); gl.uniform1f(u.u_hf, -(2 ** it.id.z) / 2 / EXTENT); }
+                        if (img) { bindImage(u, img); gl.uniformMatrix3fv(u.u_pat, false, patMatrix(img, tilePixels(it.id))); gl.uniform1f(u.u_hf, -(2 ** it.id.z) / 2 / EXTENT); }
                         this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(b.vao);

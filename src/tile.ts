@@ -44,7 +44,11 @@ export interface Batch {
     base?: Float32Array;
     /** Building extrusions with fill-extrusion-pattern: the walls carry the distance along their ring, for the image. */
     ed?: boolean;
+    /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
+    pat?: string;
 }
+/** The key of the batch of a layer for its `k`th image, when its pattern has a value for each feature: one batch for each image. */
+export const patternKey = (id: string, k: number) => k ? id + '\0' + k : id;
 export interface LabelSrc {
     x: number; y: number; text: string;
     /** `symbol-sort-key`, when the layer has one. */
@@ -108,11 +112,11 @@ export interface IconBatch {
 /** `z`: the zoom that the sizes of the tile were found at, when it is not the zoom of the tile (see `buildTile`). */
 export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 
-export type GLBatch =
+export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array}
-    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array};
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -280,14 +284,6 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
 
         // A heatmap is made of the same points as a circle layer; each carries a weight where a circle carries a radius.
         const extrude = L.type === 'fill-extrusion', heat = L.type === 'heatmap', kind = extrude ? 'fill' : heat ? 'circle' : L.type;
-        const heights: number[] = [], bases: number[] = [];
-        const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
-        const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
-        const ddColor = p.color.dd || p.opacity.dd;
-        const color: number[] = [], scalar: number[] = [], scalar1: number[] = [];
-        let grows = false;
-        const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
-        const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
         // A sort key puts the features of the layer in order: larger keys are drawn later, above the others.
         let features = vl.features;
         const sortKey = (L.type === 'fill' || L.type === 'line' || L.type === 'circle') && p.sortKey.dd ? p.sortKey : null;
@@ -296,52 +292,72 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             for (let i = 0; i < features.length; i++) keyed.push({f: features[i], key: +sortKey.eval(z, features[i]) || 0, i});
             features = keyed.sort((a, b) => a.key - b.key || a.i - b.i).map(k => k.f);
         }
-        for (const f of features) {
-            // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
-            if (kind === 'circle' ? false : want ? f.type !== want : f.type === 1) continue;
+        // fill-pattern, line-pattern and fill-extrusion-pattern with a value for each feature: the features of each image
+        // are a batch of their own, drawn with that image (a feature with no image is not drawn, as in MapLibre GL JS).
+        const groups = new Map<string, typeof features>();
+        if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) for (const f of features) {
             ctx.f = f;
-                f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
-            if (L.filter && !L.filter(ctx)) continue;
-            const g = geometry(f);
-            let start = 0;
-            for (const end of g.ringEnds) {
-                if (kind === 'circle') {
-                    for (let i = start; i < end; i++) { coords.push(g.coords[i * 2], g.coords[i * 2 + 1]); ringEnds.push(coords.length / 2); }
-                    // A polygon ring ends where it began, and MapLibre counts that corner twice.
-                    if (f.type === 3) { coords.push(g.coords[start * 2], g.coords[start * 2 + 1]); ringEnds.push(coords.length / 2); }
+            const name = String(p.pattern.eval(z, f) ?? '');
+            if (name) groups.get(name)?.push(f) ?? groups.set(name, [f]);
+        } else groups.set('', features);
+        let k = 0;
+        for (const [pat, fs] of groups) {
+            const heights: number[] = [], bases: number[] = [];
+            const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
+            const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
+            const ddColor = p.color.dd || p.opacity.dd;
+            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [];
+            let grows = false;
+            const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
+            const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
+            for (const f of fs) {
+                // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
+                if (kind === 'circle' ? false : want ? f.type !== want : f.type === 1) continue;
+                ctx.f = f;
+                    f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
+                if (L.filter && !L.filter(ctx)) continue;
+                const g = geometry(f);
+                let start = 0;
+                for (const end of g.ringEnds) {
+                    if (kind === 'circle') {
+                        for (let i = start; i < end; i++) { coords.push(g.coords[i * 2], g.coords[i * 2 + 1]); ringEnds.push(coords.length / 2); }
+                        // A polygon ring ends where it began, and MapLibre counts that corner twice.
+                        if (f.type === 3) { coords.push(g.coords[start * 2], g.coords[start * 2 + 1]); ringEnds.push(coords.length / 2); }
+                        start = end;
+                        continue;
+                    }
+                    for (let i = start * 2; i < end * 2; i++) coords.push(g.coords[i]);
+                    // Polygon rings drawn as lines need an explicit closing point.
+                    if (L.type === 'line' && f.type === 3) coords.push(g.coords[start * 2], g.coords[start * 2 + 1]);
+                    ringEnds.push(coords.length / 2);
                     start = end;
-                    continue;
                 }
-                for (let i = start * 2; i < end * 2; i++) coords.push(g.coords[i]);
-                // Polygon rings drawn as lines need an explicit closing point.
-                if (L.type === 'line' && f.type === 3) coords.push(g.coords[start * 2], g.coords[start * 2 + 1]);
-                ringEnds.push(coords.length / 2);
-                start = end;
+                featEnds.push(ringEnds.length);
+                if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
+                if (scalarProp?.dd) {
+                    const now = scalarProp.eval(zs, f), next = heat ? now : scalarProp.eval(z1, f);
+                    scalar.push(now); scalar1.push(next);
+                    if (next !== now) grows = true;
+                }
+                if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
+                // (As in MapLibre GL JS, a negative height or base is 0.)
+                if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
             }
-            featEnds.push(ringEnds.length);
-            if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
-            if (scalarProp?.dd) {
-                const now = scalarProp.eval(zs, f), next = heat ? now : scalarProp.eval(z1, f);
-                scalar.push(now); scalar1.push(next);
-                if (next !== now) grows = true;
-            }
-            if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
-            // (As in MapLibre GL JS, a negative height or base is 0.)
-            if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
+            if (!featEnds.length) continue;
+            const batch: Batch = {
+                type: kind as Batch['type'],
+                geom: {coords: Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds)},
+            };
+            if (ddColor && !progress) batch.color = Uint8Array.from(color);
+            if (progress) batch.progress = Float32Array.from(progress);
+            if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
+            if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
+            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
+            if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
+            if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
+            if (pat) batch.pat = pat;
+            out.layers[patternKey(L.id, k++)] = batch;
         }
-        if (!featEnds.length) continue;
-        const batch: Batch = {
-            type: kind as Batch['type'],
-            geom: {coords: Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds)},
-        };
-        if (ddColor && !progress) batch.color = Uint8Array.from(color);
-        if (progress) batch.progress = Float32Array.from(progress);
-        if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
-        if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
-        if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
-        if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
-        if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
-        out.layers[L.id] = batch;
     }
     return out;
 }
@@ -740,13 +756,17 @@ function tessellateLine(b: Batch): GLBatch | null {
 
 /** `globe`: the tile is built for a map that can show the globe (see `tessellate`). */
 export function toGL(ir: TileIR, globe?: GlobeBuild): {tile: TileGL; transfer: ArrayBuffer[]} {
-    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z}, transfer = new Set<ArrayBuffer>();
+    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
         const b = ir.layers[id];
         const g = tessellate(b, globe);
         if (!g) continue;
-        tile.layers[id] = g;
+        if (b.pat) g.pat = b.pat;
+        // (The batches of the images of a layer are numbered again without gaps: one that has no triangles is left out.)
+        const base = id.split('\0')[0], k = next[base] ?? 0;
+        next[base] = k + 1;
+        tile.layers[patternKey(base, k)] = g;
         for (const a of Object.values(g)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     }
     return {tile, transfer: [...transfer]};
