@@ -2007,6 +2007,39 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a distance-field image as fill-pattern takes fill-color, also for each feature (#1433)`,
             r.left?.[1] > 200 && r.left[0] < 60 && r.left[2] < 60 && r.right?.[0] > 200 && r.right[1] < 60 && r.right[2] < 60, JSON.stringify(r));
     }
+    // #1469: with fill-antialias true and no fill-outline-color, a fill-pattern layer draws its edges in the pattern,
+    // as in MapLibre GL JS (its program fillOutlinePattern). The fill starts 0.3 pixels left of the middle of the canvas,
+    // so the edge line runs through the column left of the middle, which the fill does not cover; with fill-antialias
+    // false that column stays white.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const data = new Uint8Array(16 * 16 * 4);
+            for (let i = 0; i < data.length; i += 4) { data[i] = 255; data[i + 3] = 255; }
+            await m.addImage('red', {width: 16, height: 16, data});
+            const box = (y0, y1) => ({type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-0.1, y0], [170, y0], [170, y1], [-0.1, y1], [-0.1, y0]]]}});
+            m.addSource('a', {type: 'geojson', data: box(3, 60)});
+            m.addSource('b', {type: 'geojson', data: box(-60, -3)});
+            m.addLayer({id: 'a', type: 'fill', source: 'a', paint: {'fill-pattern': 'red', 'fill-color': '#00f'}});
+            m.addLayer({id: 'b', type: 'fill', source: 'b', paint: {'fill-pattern': 'red', 'fill-color': '#00f', 'fill-antialias': false}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+            const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
+            let on = null, off = null;
+            if (url) {
+                const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                on = Array.from(g.getImageData((bmp.width >> 1) - 1, bmp.height >> 2, 1, 1).data);
+                off = Array.from(g.getImageData((bmp.width >> 1) - 1, bmp.height * 3 >> 2, 1, 1).data);
+            }
+            m.remove(); el.remove();
+            return {on, off};
+        }, mode);
+        check(`[${mode}] compat: fill-antialias draws the edges of a fill-pattern in the pattern, and false draws none (#1469)`,
+            r.on?.[0] > 200 && r.on[1] < 230 && Math.abs(r.on[1] - r.on[2]) < 20 && r.off?.every(v => v > 245), JSON.stringify(r));
+    }
     // #949: updateImage replaces the pixels in place and keeps the options of the image (here `sdf`), as in MapLibre
     // GL JS. The icon is drawn with the new pixels, and an image of another size replaces the old one.
     {
