@@ -227,7 +227,11 @@ const perTest = path.join(dir, 'render-tests.json');
 if (existsSync(perTest)) for (const line of changes(JSON.parse(readFileSync(perTest, 'utf8')), summary.tests)) console.log(line);
 // A full run (no filter) records its totals, which the status table of the README is written from, and the status
 // of each test. The second file has no percentages and is sorted by id, so that its diff shows the tests that changed.
-if (!filter && limit === Infinity) {
+// The files are written only from Playwright's own build of Chromium, which CI runs: another build draws some tests a
+// little differently (text-local-glyphs/cjk is a match in the build of the cloud VM image and near in CI's, #1462).
+const pinned = !chromiumOptions(chromium).executablePath;
+if (!filter && limit === Infinity && !pinned) console.warn(`Not writing render-result.json and render-tests.json: this run used ${chromiumOptions(chromium).executablePath}, not the Chromium of Playwright that CI runs. Install it with \`pnpm exec playwright install chromium\` and run again.`);
+if (!filter && limit === Infinity && pinned) {
     writeFileSync(path.join(dir, 'render-result.json'), JSON.stringify(summary.totals, null, 2) + '\n');
     writeFileSync(perTest, '{\n' + Object.entries(summary.tests).map(([id, status]) => `${JSON.stringify(id)}: ${JSON.stringify(status)}`).join(',\n') + '\n}\n');
 }
