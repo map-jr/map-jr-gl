@@ -487,7 +487,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
-        if (b.height) return tessellateExtrusion(b);
+        if (b.height) return tessellateExtrusion(b, globe);
         const color = b.color ? new Uint8Array(coords.length * 2) : undefined;
         for (let f = 0; f < featEnds.length; f++) {
             eachPolygon(b.geom, f, (p0, p1, holes) => {
@@ -591,9 +591,13 @@ function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: num
  */
 export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
 
-/** Buildings: a roof at the feature's height and a wall under every edge. Each vertex says which way its face looks, for the light. */
-function tessellateExtrusion(b: Batch): GLBatch | null {
-    const {coords, featEnds} = b.geom, v: number[] = [], idx: number[] = [], color: number[] = [], ed: number[] = [];
+/**
+ * Buildings: a roof at the feature's height and a wall under every edge. Each vertex says which way its face looks, for
+ * the light. With `globe`, the roof is cut as a fill is (without the caps at the poles) and each wall is cut where its
+ * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
+ */
+function tessellateExtrusion(b: Batch, globe?: GlobeBuild): GLBatch | null {
+    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], color: number[] = [], ed: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
         const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
@@ -604,11 +608,18 @@ function tessellateExtrusion(b: Batch): GLBatch | null {
             return count++;
         };
         eachPolygon(b.geom, f, (p0, p1, holes) => {
-            const roof = count, tris = earcut(coords.subarray(p0 * 2, p1 * 2) as any, holes);
-            for (let i = p0; i < p1; i++) vert(coords[i * 2], coords[i * 2 + 1], top, ROOF);
+            let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
+            const roof = count, cut = globe && cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
+            for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
             if (top <= bottom) return;
-            const bounds = [0, ...holes, p1 - p0];
+            if (globe) {
+                // (cutLine repeats the first point of a ring at its end: it is dropped.)
+                const out: number[] = [], ends = [0];
+                for (let r = 0; r + 1 < bounds.length; r++) { cutLine(coords, bounds[r], bounds[r + 1], Math.max(1, globe.grid), out, true); out.length -= 2; ends.push(out.length / 2); }
+                coords = out; bounds = ends;
+            }
+            p0 = 0;
             // The side of an edge that is outside depends on the direction of the outer ring.
             let area = 0;
             for (let i = p0, j = p0 + bounds[1] - 1; i < p0 + bounds[1]; j = i++) area += coords[j * 2] * coords[i * 2 + 1] - coords[i * 2] * coords[j * 2 + 1];
