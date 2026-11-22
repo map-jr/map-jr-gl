@@ -94,6 +94,14 @@ async function worker(queue) {
                 const el = document.getElementById('map');
                 Object.assign(el.style, {width: width + 'px', height: height + 'px', position: 'relative'});
                 const errors = [];
+                const image = async url => { const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url; await img.decode(); return img; };
+                // The canvas of a canvas source (`addFakeCanvas`, `updateFakeCanvas`), drawn from an image as in MapLibre's harness.
+                const paint = async (id, file) => {
+                    const img = await image(`${origin}/${file}`), c = document.getElementById(id) ?? document.body.appendChild(Object.assign(document.createElement('canvas'), {id}));
+                    Object.assign(c, {width: img.naturalWidth, height: img.naturalHeight});
+                    c.getContext('2d').drawImage(img, 0, 0);
+                };
+                if (meta.addFakeCanvas) await paint(meta.addFakeCanvas.id, meta.addFakeCanvas.image);
                 // MapLibre's harness counts the time of `wait` with a clock of its own. Here, after a `wait` of a number of
                 // ms, `performance.now()` stays at that much later than the time when the operations before it ran, until
                 // the next operation, so that a paint transition is drawn at that point of its course (#960).
@@ -105,7 +113,23 @@ async function worker(queue) {
                 map.on('idle', () => { idle = true; });
                 const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 const sleep = ms => new Promise(r => setTimeout(r, ms));
-                const image = async url => { const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url; await img.decode(); return img; };
+                // MapLibre's harness draws without a stop and reads the pixels once the map has loaded. A video or canvas
+                // source that plays keeps this map from `idle`, as it keeps MapLibre GL JS from it. So the run waits until
+                // each such source has its methods and a picture, pauses it (a video at its first frame) and then waits for
+                // `idle`. (`updateFakeCanvas` plays the canvas again.)
+                const pictures = async () => {
+                    for (const [id, src] of Object.entries(style.sources ?? {})) {
+                        if (src.type !== 'video' && src.type !== 'canvas') continue;
+                        let s;
+                        while (!(s = map.getSource(id))?.pause) await frames();
+                        if (src.type === 'video') {
+                            const v = s.getVideo();
+                            while (v.readyState < 2) await frames();
+                            v.pause();
+                            if (v.currentTime) { v.currentTime = 0; await new Promise(r => v.addEventListener('seeked', r, {once: true})); }
+                        } else s.pause();
+                    }
+                };
                 // The operations of the test, applied as the harness of MapLibre GL JS applies them (applyOperations in
                 // test/integration/render/render.test.ts of that project). Two things are different. MapLibre's harness
                 // draws without a stop (map.repaint) and reads the pixels at once; this run lets the map draw two frames
@@ -125,7 +149,15 @@ async function worker(queue) {
                             // change, or when the map is loaded and still after two frames.
                             if (!idle) await Promise.race([map.once('idle'), frames().then(async () => { while (!map.loaded() || map.isMoving()) await frames(); })]);
                         } else if (op[0] === 'sleep') await sleep(op[1]);
-                        else {
+                        else if (op[0] === 'updateFakeCanvas') {
+                            // As in MapLibre's harness: a change while the source plays is drawn, a change after the pause is not.
+                            idle = false;
+                            map.getSource(op[1]).play();
+                            await paint(meta.addFakeCanvas.id, op[2]);
+                            await frames();
+                            map.getSource(op[1]).pause();
+                            await paint(meta.addFakeCanvas.id, op[3]);
+                        } else {
                             idle = false;
                             if (op[0] === 'addImage') map.addImage(op[1], await image(`${origin}/${op[2]}`), op[3] || {});
                             else if (op[0] === 'setStyle') map.setStyle(typeof op[1] === 'object' && op[1] ? {...op[1], 'font-faces': {...fontFaces, ...op[1]['font-faces']}} : op[1], {localIdeographFontFamily: false});
@@ -136,7 +168,7 @@ async function worker(queue) {
                     at = '';
                 };
                 await Promise.race([
-                    new Promise(r => map.once('idle', r)).then(operate).then(frames),
+                    (Object.values(style.sources ?? {}).some(s => s.type === 'video' || s.type === 'canvas') ? map.once('load').then(pictures).then(() => idle || map.once('idle')) : new Promise(r => map.once('idle', r))).then(operate).then(frames),
                     new Promise((_, rej) => setTimeout(() => rej(new Error('timed out' + at + (errors.length ? ': ' + errors[0] : ''))), timeout)),
                 ]);
                 return {errors, view: `zoom ${style.zoom} -> ${map.getZoom().toFixed(3)}, centre ${JSON.stringify(style.center)} -> ${map.getCenter().lng.toFixed(5)},${map.getCenter().lat.toFixed(5)}`};
