@@ -42,6 +42,8 @@ export interface SourceInfo {
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
     data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; /** Vector sources: the ids of `vector_layers` of the TileJSON (for the compat entry). */ layerIds?: string[]; encoding?: 'terrarium' | 'mapbox' | number[];
+    /** Vector sources: the property that gives the id of a feature, or such a property for each source layer. */
+    promoteId?: string | Record<string, string>;
     /** The area that has tiles: west, south, east, north. A tile outside it is not requested. */
     bounds?: number[];
 }
@@ -188,8 +190,6 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`)); }
             return;
         }
-        // (Once for the source object, as above.)
-        if (raw.promoteId != null && !told.has(raw)) { told.add(raw); console.warn(`[map-jr-gl] The source "${name}": "promoteId" has no effect on ${raw.type} sources. Feature state needs the numeric id of the feature in the tile.`); }
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
@@ -217,6 +217,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             // the engine checks them, see `setStyle` there.)
             encoding: raw.type !== 'raster-dem' ? undefined : src.encoding === 'custom' ? [src.redFactor ?? 1, src.greenFactor ?? 1, src.blueFactor ?? 1, src.baseShift ?? 0] : src.encoding === 'terrarium' ? 'terrarium' : 'mapbox',
             head: src.head,
+            promoteId: raw.type === 'vector' ? raw.promoteId : undefined,
             layerIds: Array.isArray(src.vector_layers) ? src.vector_layers.map((l: any) => String(l?.id)) : undefined,
         };
     }));
@@ -296,4 +297,9 @@ export async function loadSprite(url: string, highDensity: boolean, fetchFn: typ
     let width = 0, height = 0;
     for (const i of Object.values(icons)) { width = Math.max(width, i.x + i.width); height = Math.max(height, i.y + i.height); }
     return {icons, image: base + '.png', width, height};
+}
+
+/** The `promoteId` of each vector source that has one, for the tile builders. */
+export function promoteIds(style: ResolvedStyle): Record<string, string | Record<string, string>> {
+    return Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.promoteId != null).map(([name, s]) => [name, s.promoteId!]));
 }

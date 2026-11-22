@@ -1,6 +1,6 @@
 import type {LngLatBoundsInput} from './lnglat.ts';
 import {Transform, fitBox, sides, toLngLat, type LngLatLike, type PaddingInput} from './geo.ts';
-import {SSR_KEY, applySSROverrides, type SSROverrides, compileLayer, loadSprite, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
+import {SSR_KEY, applySSROverrides, type SSROverrides, compileLayer, loadSprite, promoteIds, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
 import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
@@ -252,7 +252,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     const documents = new Map(Object.entries({...styleImages(given, message => console.warn(message)), ...o.images}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const).filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
     builder.setTemplates(Object.fromEntries([...documents].map(([name, v]) => [name, templateSlots(v.image)] as const).filter(([, slots]) => slots.length)));
     builder.decodeImage = o.decodeImage ?? decodeImage;
-    builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])));
+    builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), promoteIds(style));
     for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') builder.setGeoJSON(name, src.data, src.options, src.maxzoom);
     const items = new Map<string, RenderItem<TileIR | TileImage>[]>(), all: RenderItem<TileIR>[] = [], urls: string[] = [];
     const dataURI = async (url: string) => {

@@ -826,17 +826,16 @@ test('GeoJSON clusters: points join at low zoom and divide at the expansion zoom
     assert.equal(prepareSource(data, {promoteId: {_geojsonTileLayer: 'n'}}).features[2].id, 4);
 });
 
-test('promoteId on a vector source warns once for the source object (#207)', async () => {
+test('promoteId on a vector source reaches the resolved style and writes no warning (#1437)', async () => {
     const {resolveStyle} = await import('../../src/style.ts');
     const warn = console.warn, seen: string[] = [];
     console.warn = (m: string) => { seen.push(m); };
+    let resolved;
     try {
-        const style = {version: 8, sources: {areas: {type: 'vector', tiles: ['https://example.com/{z}/{x}/{y}.pbf'], promoteId: 'id'}}, layers: []};
-        await resolveStyle(style);
-        await resolveStyle(style);
+        resolved = await resolveStyle({version: 8, sources: {areas: {type: 'vector', tiles: ['https://example.com/{z}/{x}/{y}.pbf'], promoteId: {parcels: 'ref'}}}, layers: []});
     } finally { console.warn = warn; }
-    assert.equal(seen.length, 1);
-    assert.match(seen[0], /^\[map-jr-gl\] The source "areas": "promoteId" has no effect on vector sources/);
+    assert.deepEqual(seen, []);
+    assert.deepEqual(resolved.sources.areas.promoteId, {parcels: 'ref'});
 });
 
 test('rich text: a section of format with a font scale is wider or narrower, and makes its line taller', async () => {
