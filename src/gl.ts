@@ -323,7 +323,7 @@ void main() {
     circle: [`${VS_COMMON}${TERRAIN_GLSL}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius; layout(location=5) in float a_radius1;
 uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
-uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch;
+uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch; uniform float u_lift; uniform highp sampler2D u_depth;
 out vec4 v_color; out vec2 v_off; out float v_r;
 void main() {
   v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color;
@@ -341,6 +341,12 @@ void main() {
   if (u_pitch.x > 0.0) c = toClip3(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos), h);
   else px += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0);
   c.xy += px * vec2(2.0, -2.0) / u_view * c.w;
+  // With 3D terrain a circle is hidden when the ground in front covers its centre (lifted by u_lift), as in MapLibre GL
+  // JS: u_depth has the depth of the terrain on the screen.
+  if (u_lift > 0.0) {
+    vec4 d = toClip3D(a_pos, h + u_lift); vec3 n = d.xyz / d.w;
+    if (d.w <= 0.0 || n.z * 0.5 + 0.5 > texture(u_depth, n.xy * 0.5 + 0.5).r) inside = false;
+  }
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
 uniform vec4 u_color; uniform vec4 u_stroke; uniform float u_strokeWidth; uniform float u_blur; in vec4 v_color; in vec2 v_off; in float v_r; out vec4 o;
@@ -1288,7 +1294,7 @@ export class GLRenderer {
             }
             draw: for (const it of items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it);
-                if (extrude || b.type === 'circle') this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
+                if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));
@@ -1345,6 +1351,10 @@ export class GLRenderer {
                         gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
                         gl.uniform2f(u.u_pitch, +(L.p.pitchAlign.eval(zoom) === 'map'), +(L.p.pitchScale.eval(zoom) !== 'viewport'));
+                        // (Two cells of the terrain mesh, 64 a side, at this zoom: between its corners the mesh can be well above the ground at the centre on a steep slope.)
+                        gl.uniform1f(u.u_lift, s.terrain && this.depthTex ? 40075016.686 / 2 ** zoom / 32 * Math.max(1, s.terrain.exaggeration) : 0);
+                        gl.uniform1i(u.u_depth, 2);
+                        if (s.terrain && this.depthTex) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.depthTex); gl.activeTexture(gl.TEXTURE0); }
                     }
                 }
                 // The image of a batch of a pattern with a value for each feature (a missing one is not drawn).
@@ -1796,6 +1806,27 @@ export class GLRenderer {
         gl.disable(gl.DEPTH_TEST);
     }
 
+    private depthTex?: WebGLTexture; private depthFbo?: WebGLFramebuffer; private depthSize = '';
+    /**
+     * 3D terrain with circle layers: the depth of the terrain on the screen, in a texture that the circles read (a pass of
+     * the mesh into a framebuffer with only a depth texture; the depth of the canvas cannot be read).
+     */
+    private terrainDepth(s: Scene) {
+        const gl = this.gl, w = this.canvas.width, h = this.canvas.height, z = s.tr.zoom;
+        if (!s.layers.some(L => L.type === 'circle' && L.visible && z >= L.minzoom && z < L.maxzoom)) return;
+        if (!this.depthTex || this.depthSize !== w + 'x' + h) {
+            if (this.depthTex) gl.deleteTexture(this.depthTex);
+            this.depthTex = this.newTexture(); this.depthSize = w + 'x' + h;
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, w, h, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.depthFbo ??= gl.createFramebuffer()!);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.depthTex, 0);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.depthFbo!);
+        this.drawTerrain(s);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
     /** The sky of the style above the horizon, in Mercator (on the globe there is none yet). */
     private drawSky(s: Scene) {
         const tr = s.tr;
@@ -1839,7 +1870,7 @@ export class GLRenderer {
         let above = 0, first = -1;
         s.layers.forEach((L, i) => { if (L.type === 'symbol' && shown(L) && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) { above = i + 1; if (first < 0) first = i; } });
         if (s.terrain) {
-            this.drawTerrain(s); this.drawLayers(s, tr, s.items, target, 'buildings');
+            this.drawTerrain(s); this.terrainDepth(s); this.drawLayers(s, tr, s.items, target, 'buildings');
             this.drawIcons(s, tr, 0, above);
             this.drawLabels(s, s.labels);
         } else {

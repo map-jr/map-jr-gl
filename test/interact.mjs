@@ -3288,6 +3288,40 @@ for (const mode of renderers) {
             && Math.abs(g.centre[0]) < 0.01 && Math.abs(g.centre[1]) < 0.01 && g.centre[2] > -1 && g.centre[2] < 1
             && !r.error && r.pixel?.[0] > 200 && r.pixel[1] < 50 && r.mercator?.variant === 'mercator' && r.mercator.transition === 0 && r.warnings.length === 0, JSON.stringify(r));
     }
+    // #1430: with 3D terrain a circle stands on the ground, and the ground in front of its centre hides it, as in MapLibre
+    // GL JS. The ground is 1000 m with a ridge of 1500 m along lng 0.01: a circle behind the ridge is hidden (0 px), and
+    // one in front of it is whole (about 1176 px for a radius of 20).
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), proto = 'ridge' + renderer;
+            mod.addProtocol(proto, async p => {
+                const [z, x] = p.url.split('://')[1].split('/').map(Number), c = new OffscreenCanvas(256, 256), g = c.getContext('2d'), img = g.createImageData(256, 256);
+                for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+                    const lng = (x + (i + 0.5) / 256) / 2 ** z * 360 - 180, v = 1000 + 1500 * Math.exp(-(((lng - 0.01) / 0.003) ** 2)) + 32768, k = (j * 256 + i) * 4;
+                    img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v % 256); img.data[k + 2] = Math.round(v % 1 * 256); img.data[k + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                return {data: await (await c.convertToBlob({type: 'image/png'})).arrayBuffer()};
+            });
+            const red = async (point, view) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:900px;height:700px;z-index:60'}));
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [proto + '://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 256, maxzoom: 12}, p: {type: 'geojson', data: {type: 'Point', coordinates: point}}},
+                    terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 20}}]};
+                const map = new mod.Map({container: el, style, center: [0, 0], bearing: 90, ...view, renderer, attributionControl: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+                try {
+                    await new Promise(r => map.once('idle', r)); await new Promise(r => setTimeout(r, 500));
+                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                    const k = Object.assign(document.createElement('canvas'), {width: 900, height: 700}).getContext('2d');
+                    k.drawImage(map.getCanvas(), 0, 0, 900, 700);
+                    const d = k.getImageData(0, 0, 900, 700).data; let n = 0;
+                    for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 80 && d[i + 2] < 80) n++;
+                    return n;
+                } finally { map.remove(); el.remove(); }
+            };
+            return {behind: await red([0.02, 0], {zoom: 14, pitch: 80}), front: await red([0, 0], {zoom: 13, pitch: 60})};
+        }, mode);
+        check(`[${mode}] 3D terrain: a circle behind a ridge is hidden, and a circle in front of it is whole (#1430)`, r.behind === 0 && r.front > 1100, JSON.stringify(r));
+    }
     // #1430: on the globe with 3D terrain, project() gives the place where a circle is drawn, and queryRenderedFeatures
     // finds it there. The ground is 3000 m everywhere (before, project() took the place at sea level, 15 px off).
     {
