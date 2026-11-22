@@ -194,6 +194,33 @@ for (const mode of renderers) {
         const back = await redPixels();
         await page.evaluate(() => { const el = window.farMap.getContainer(); window.farMap.remove(); el.remove(); });
         check(`[${mode}] the globe: a label that turns behind the globe is not drawn in the next frame`, front > 50 && back === 0, JSON.stringify({front, back}));
+        // A fill-extrusion layer draws on the globe at zoom 4, with its height along the normal of the sphere, and not
+        // when it is on the far side (#1429).
+        const towers = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60'}));
+            const box = [[[8, -2], [12, -2], [12, 2], [8, 2], [8, -2]]], said = [], log = console.warn;
+            console.warn = (...a) => said.push(a.join(' '));
+            const style = {version: 8, projection: {type: 'globe'}, sources: {p: {type: 'geojson', data: {type: 'Polygon', coordinates: box}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#0000ff'}}, {id: 'x', type: 'fill-extrusion', source: 'p', paint: {'fill-extrusion-color': '#ff0000', 'fill-extrusion-height': 300000}}]};
+            const map = new mod.Map({container: el, style, center: [10, 0], zoom: 4, pitch: 50, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const red = async () => {
+                const bmp = await createImageBitmap(await map.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data;
+                let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i] > 2 * d[i + 2]) n++;
+                return n;
+            };
+            await idle();
+            const front = await red();
+            map.jumpTo({center: [-170, 0], zoom: 1, pitch: 0});
+            await idle();
+            const back = await red();
+            console.warn = log;
+            map.remove(); el.remove();
+            return {front, back, said: said.filter(w => w.includes('globe'))};
+        }, mode);
+        check(`[${mode}] the globe: a fill-extrusion layer draws at zoom 4 without a warning, and not on the far side (#1429)`, towers.front > 2000 && towers.back === 0 && towers.said.length === 0, JSON.stringify(towers));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();

@@ -1432,7 +1432,7 @@ for (const renderer of renderers) {
             && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
 
         // 3f. A style whose root names a projection that the library does not draw: one warning per map, also after setStyle;
-        // mercator gives none (#238). The globe gives none for itself (#463), and one for buildings, which it does not draw yet.
+        // mercator gives none (#238). The globe gives none for itself (#463), nor for its buildings, which it draws (#1429).
         const proj = await page.evaluate(async renderer => {
             const t = window.t, said = [], log = console.warn;
             console.warn = (...a) => { const m = a.join(' '); if (m.includes('projection')) said.push(m); };
@@ -1453,11 +1453,11 @@ for (const renderer of renderers) {
             await idle(globe);
             console.warn = log;
             merc.destroy(); other.destroy(); globe.destroy();
-            return {mercSaid, otherSaid, globeSaid: said, buildings: t.style.layers.some(l => l.type === 'fill-extrusion')};
+            return {mercSaid, otherSaid, globeSaid: said};
         }, renderer);
-        check(`[${renderer}] a style with the projection "identity" writes one warning, "mercator" none, and "globe" one for its buildings only`,
+        check(`[${renderer}] a style with the projection "identity" writes one warning, "mercator" none, and "globe" none, also for its buildings`,
             proj.mercSaid === 0 && proj.otherSaid.length === 1 && proj.otherSaid[0] === '[map-jr-gl] The style has the projection "identity", which is not supported, so the map uses "mercator".'
-            && proj.globeSaid.length === (proj.buildings ? 1 : 0) && proj.globeSaid.every(w => w.includes('"fill-extrusion" are not drawn on the globe')), JSON.stringify(proj));
+            && proj.globeSaid.length === 0, JSON.stringify(proj));
 
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
         const partial = await page.evaluate(async () => {

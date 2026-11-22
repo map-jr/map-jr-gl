@@ -94,7 +94,7 @@ The functions of `@map-jr/map-jr-gl` and the map that they make.
   Warning, development build only.
 - `[map-jr-gl] hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.`
   Warning, development build only.
-- `[map-jr-gl] hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature state "hover". The source is not a GeoJSON source, so "promoteId" and "generateId" have no effect on it. Write a numeric id for each feature into the tiles when you build them.`
+- `[map-jr-gl] hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature state "hover". Write a numeric id for each feature into the tiles when you build them, or set "promoteId" of the source to a property that has one.`
   Warning, development build only.
 - `[map-jr-gl] locale: <problem>. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`
   Warning, development build only.
@@ -217,15 +217,11 @@ The map, the style, its sources and images, and the files of the library. Both e
   Warning.
 - `[map-jr-gl] 3D terrain is not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
   Warning.
-- `[map-jr-gl] Layers of the type "fill-extrusion" are not drawn on the globe: they show from zoom <z>, where the map is flat, or use the projection "mercator".`
-  Warning.
-- `[map-jr-gl] Layers of the type "fill-extrusion" are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
-  Warning.
 - `[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: they show from zoom <z>, where the map is flat, or use the projection "mercator".`
   Warning.
 - `[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
   Warning.
-- `[map-jr-gl] setFeatureState(): the source "<source>" is not GeoJSON, and the id "<id>" is a string. Feature state on a vector source needs the numeric id of the feature in the tile.`
+- `[map-jr-gl] setFeatureState(): the source "<source>" is not GeoJSON, and the id "<id>" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`
   Warning.
 - `[map-jr-gl] Style <style>: HTTP <status>`
   Error.
@@ -249,8 +245,8 @@ The map, the style, its sources and images, and the files of the library. Both e
   Error.
 - `[map-jr-gl] The source "<source name>" has no "tiles" and no "url". Give it one of them.`
   Error.
-- `[map-jr-gl] The source "<source name>": "promoteId" has no effect on <type> sources. Feature state needs the numeric id of the feature in the tile.`
-  Warning.
+- `[map-jr-gl] The source "<source name>" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`
+  Error.
 - `[map-jr-gl] the style: metadata["map-jr:images"] is not an object of images by name, and the map uses none of them. Write {"name": "<svg ...>"}.`
   Error.
 - `[map-jr-gl] the style: the image "<image name>" of metadata["map-jr:images"] is left out, because the style has more than <MAX_STYLE_IMAGES> images. Give an SVG document without references to other files, or the URL of an image.`
