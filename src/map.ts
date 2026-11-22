@@ -1024,8 +1024,16 @@ export class Map {
                 this.triggerRepaint();
             };
             this.once('remove', gone);
-            // (A video that plays keeps the map from `idle`: the image shows the frame of the moment.)
-            if (this.loaded() || this.videos && this.videos.playing()) shoot(); else this.once('idle', shoot);
+            // (A video or canvas source that plays keeps the map from `idle`: the image then shows the frame of the moment,
+            // also when the source starts to play while the image waits.)
+            const playing = () => !!this.videos && this.videos.playing();
+            if (this.loaded() || playing()) return shoot();
+            const done = () => {
+                this.off('idle', done); this.off('render', check);
+                if (!this.listeners.render?.length) { this.wantsFrames = false; this.post({type: 'frames', on: false}); }
+                shoot();
+            }, check = () => { if (playing()) done(); };
+            this.on('idle', done); this.on('render', check);
         });
     }
     /**

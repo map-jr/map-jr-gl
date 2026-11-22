@@ -2042,6 +2042,8 @@ for (const mode of renderers) {
             const coordinates = [[-60, 50], [60, 50], [60, -50], [-60, -50]];
             m.addSource('c', {type: 'canvas', canvas: 'canvas-1435', coordinates});
             m.addLayer({id: 'c', type: 'raster', source: 'c'});
+            // (toBlob() waits for `idle`, which a canvas that plays keeps away: it takes the image once the canvas plays.)
+            const t0 = performance.now(), shot = await Promise.race([m.toBlob().then(() => Math.round(performance.now() - t0)), new Promise(res => setTimeout(() => res('none'), 4000))]);
             const first = await until('red');
             fill('#00f');
             const second = await until('blue');
@@ -2067,10 +2069,10 @@ for (const mode of renderers) {
             m.addSource('x', {type: 'canvas', canvas: 'no-such-canvas', coordinates});
             await new Promise(res => setTimeout(res, 300));
             m.remove(); el.remove(); paint.remove();
-            return {first, second, whilePlaying, isCanvas, afterPause, paused, still, stillAfter, errors};
+            return {shot, first, second, whilePlaying, isCanvas, afterPause, paused, still, stillAfter, errors};
         }, mode);
         check(`[${mode}] compat: a canvas source copies its canvas while it plays, once with animate: false, and fires no idle while it plays (#1435)`,
-            r.first === 'red' && r.second === 'blue' && r.whilePlaying.idles === 0 && !r.whilePlaying.loaded && r.isCanvas && r.afterPause === true && r.paused === 'blue'
+            typeof r.shot === 'number' && r.first === 'red' && r.second === 'blue' && r.whilePlaying.idles === 0 && !r.whilePlaying.loaded && r.isCanvas && r.afterPause === true && r.paused === 'blue'
             && r.still === 'green' && r.stillAfter === 'green' && r.errors.length === 1 && /no-such-canvas/.test(r.errors[0]), JSON.stringify(r));
     }
     // #979: 500 × updateImage of a 64 × 64 image in one task send the pixels once (16 KB), not 500 times, and the
