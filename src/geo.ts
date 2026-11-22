@@ -256,13 +256,13 @@ export class Transform {
     mercToScreen(mx: number, my: number): [number, number] {
         const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : 0;
         const ws = this.worldSize, flat = this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws, z);
-        if (this.globeness) { const [x, y] = this.globe!.toScreen(this, mx, my, 0, flat); return [x, y]; }
+        if (this.globeness) { const [x, y] = this.globe!.toScreen(this, mx, my, this.heightAt ? this.heightAt(mx, my) : this.elevation, flat); return [x, y]; }
         return [flat[0], flat[1]];
     }
 
     /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map centre). */
     screenToMerc(px: number, py: number, z = 0): [number, number] {
-        if (this.globeness) return this.globe!.toMerc(this, px, py);
+        if (this.globeness) return this.globe!.toMerc(this, px, py, this.elevation + z / this.pixelsPerMetre);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
         const sx = px - this.cx, sy = Math.max(py - this.cy, -this.horizon());
         // Invert the perspective for a point on that plane. Above the horizon there is no ground: a point there is taken
@@ -290,7 +290,7 @@ export class Transform {
 
     /** With 3D terrain: whether the ground hides a point on the surface (a label behind a ridge, say) from the camera. */
     occluded(mx: number, my: number): boolean {
-        if (!this.heightAt || this.pitch < 1) return false;
+        if (!this.heightAt || this.pitch < 1 || this.globeness) return false;
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ws = this.worldSize, ppm = this.pixelsPerMetre, a = this.angle;
         // The camera sits back from the map centre along the view direction, above the ground there.
         const back = d * Math.sin(p) / ws, camX = mercX(this.lng) + Math.sin(a) * back, camY = mercY(this.lat) + Math.cos(a) * back;

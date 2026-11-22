@@ -213,10 +213,6 @@ The map, the style, its sources and images, and the files of the library. Both e
   Error.
 - `[map-jr-gl] The style has the projection <t>, which is not supported, so the map uses "mercator".`
   Warning.
-- `[map-jr-gl] 3D terrain is not drawn on the globe: they show from zoom <z>, where the map is flat, or use the projection "mercator".`
-  Warning.
-- `[map-jr-gl] 3D terrain is not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
-  Warning.
 - `[map-jr-gl] setFeatureState(): the source "<source>" is not GeoJSON, and the id "<id>" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`
   Warning.
 - `[map-jr-gl] Style <style>: HTTP <status>`

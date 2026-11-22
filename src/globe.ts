@@ -41,7 +41,7 @@ const frames = new WeakMap<Transform, {key: string; f: GlobeFrame}>();
 
 /** The globe of a transform as it is now (kept until the camera or the size changes). */
 export function frame(tr: Transform): GlobeFrame {
-    const key = [tr.width, tr.height, tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, ...tr.padding].join();
+    const key = [tr.width, tr.height, tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, ...tr.padding].join();
     const kept = frames.get(tr);
     if (kept?.key === key) return kept.f;
     // The radius in pixels: the scale at the centre of the view is that of Mercator at the same zoom (as in MapLibre).
@@ -49,10 +49,12 @@ export function frame(tr: Transform): GlobeFrame {
     const R = tr.worldSize / (2 * PI * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD)), d = tr.cameraDistance, w = tr.width, h = tr.height;
     // (z and w of clip space are the distance along the view; the shader replaces z by the side of the horizon.)
     const proj = [2 * d / w, 0, 0, 0, 0, 2 * d / h, 0, 0, -(tr.cx - w / 2) * 2 / w, (tr.cy - h / 2) * 2 / h, -1, -1, 0, 0, 0, 0];
-    const view = [move(-d), rot(0, -tr.pitch * RAD), rot(2, tr.bearing * RAD), move(-R), rot(0, tr.lat * RAD), rot(1, -tr.lng * RAD), [R, 0, 0, 0, 0, R, 0, 0, 0, 0, R, 0, 0, 0, 0, 1]].reduce(mul);
+    // With 3D terrain the camera looks at the ground under the centre: the sphere moves down by its height (`elevation`).
+    const lift = 1 + tr.elevation / 6371008.8;
+    const view = [move(-d), rot(0, -tr.pitch * RAD), rot(2, tr.bearing * RAD), move(-R * lift), rot(0, tr.lat * RAD), rot(1, -tr.lng * RAD), [R, 0, 0, 0, 0, R, 0, 0, 0, 0, R, 0, 0, 0, 0, 1]].reduce(mul);
     // The camera: the inverse of the view applied to the origin, in radii.
     let cam: number[] = [0, 0, d / R];
-    cam = turn(rot(0, tr.pitch * RAD), cam); cam = turn(rot(2, -tr.bearing * RAD), cam); cam[2] += 1;
+    cam = turn(rot(0, tr.pitch * RAD), cam); cam = turn(rot(2, -tr.bearing * RAD), cam); cam[2] += lift;
     cam = turn(rot(0, -tr.lat * RAD), cam); cam = turn(rot(1, tr.lng * RAD), cam);
     const len = Math.hypot(cam[0], cam[1], cam[2]);
     // A point p of the sphere is on the near side when dot(p, cam / |cam|) is at least 1 / |cam| (the tangent points).
@@ -126,17 +128,17 @@ export function rays(tr: Transform): number[] {
 }
 
 /** Screen pixels to the Mercator position of the globe there; off the globe, the nearest point of the horizon (as in MapLibre). */
-export function toMerc(tr: Transform, px: number, py: number): [number, number] {
-    const p = surface(tr, px, py), lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
+export function toMerc(tr: Transform, px: number, py: number, metres = tr.elevation): [number, number] {
+    const p = surface(tr, px, py, 1 + metres / 6371008.8), lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
     // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
     return [mercX(lng), mercY(clamp(lat, -85.051129, 85.051129))];
 }
 
-/** Screen pixels to the point of the unit sphere there, also past 85.05° (off the globe, the nearest point of the horizon). */
-function surface(tr: Transform, px: number, py: number): V3 {
-    const {cam} = frame(tr), dir = ray(tr, px, py), b = dot(cam, dir), c = dot(cam, cam) - 1, disc = b * b - c;
+/** Screen pixels to the point of the sphere of radius `r` there, scaled to the unit sphere, also past 85.05° (off the globe, the nearest point of the horizon). */
+function surface(tr: Transform, px: number, py: number, r = 1): V3 {
+    const {cam} = frame(tr), dir = ray(tr, px, py), b = dot(cam, dir), c = dot(cam, cam) - r * r, disc = b * b - c;
     let p: number[];
-    if (disc >= 0 && -b - Math.sqrt(disc) > 0) { const t = -b - Math.sqrt(disc); p = cam.map((v, i) => v + dir[i] * t); }
+    if (disc >= 0 && -b - Math.sqrt(disc) > 0) { const t = -b - Math.sqrt(disc); p = cam.map((v, i) => (v + dir[i] * t) / r); }
     else {
         // The point of the horizon in the plane of the camera, the centre of the globe and the ray.
         const cl = Math.hypot(...cam), u = cam.map(v => v / cl), q = cam.map((v, i) => v + dir[i] * Math.max(0, -b)), along = dot(q, u);

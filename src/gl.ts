@@ -160,15 +160,17 @@ void main() {
 }`],
     // 3D terrain: a grid over the tile, raised to the ground height and textured with the tile's flat layers.
     // `u_part` picks the part of the picture to show: all of it, or the tile's share of an ancestor's while its own is drawn.
-    terrain: [`uniform mat4 u_matrix; uniform float u_skirt; uniform float u_exag;
-layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog;
-void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z; v_uv = vec2(p.x, 1.0 - p.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, a_height * u_exag - a_pos.z * u_skirt, 1.0);
+    // On the globe the mesh is put on the sphere as buildings are (toClip3D), and the far side is hidden by horizonSide.
+    terrain: [`${VS_COMMON} uniform float u_skirt; uniform float u_exag;
+layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog; out float v_side;
+void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z, t = a_pos.xy * ${EXTENT}.0; v_uv = vec2(p.x, 1.0 - p.y); v_side = horizonSide(t); gl_Position = toClip3D(t, a_height * u_exag - a_pos.z * u_skirt);
   v_fog = clamp((gl_Position.w - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0); }`, `
-uniform sampler2D u_drape; in vec2 v_uv; out vec4 o;
+uniform sampler2D u_drape; in vec2 v_uv; in float v_side; out vec4 o;
 // Fog (the sky of the style, as in MapLibre GL JS): v_fog is 0 at the map centre and 1 at the far plane. u_fog has
 // fog-ground-blend, horizon-fog-blend and the opacity of the fog (from the pitch); u_fogColor and u_horizonColor are opaque.
 uniform vec3 u_fog; uniform vec4 u_fogColor; uniform vec4 u_horizonColor; in float v_fog;
 void main() {
+  if (v_side < 0.0) discard;
   o = texture(u_drape, v_uv);
   float f = max(v_fog - u_fog.x, 0.0) / (1.0 - u_fog.x), k = f * f * u_fog.z;
   if (k <= 0.0) return;
@@ -317,26 +319,34 @@ void main() {
   o = vec4(c.rgb * a, a);
 }`],
 
-    circle: [`${VS_COMMON}
+    // (With 3D terrain circles are drawn on the screen and stand on the ground, as in MapLibre GL JS: they are not in the ground pictures.)
+    circle: [`${VS_COMMON}${TERRAIN_GLSL}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius; layout(location=5) in float a_radius1;
 uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
-uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch;
+uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch; uniform float u_lift; uniform highp sampler2D u_depth;
 out vec4 v_color; out vec2 v_off; out float v_r;
 void main() {
   v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color;
   float ext = v_r + u_strokeWidth + 1.0;
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
-  vec4 c = toClip(a_pos);
+  float h = ground(a_pos / ${EXTENT}.0);
+  vec4 c = toClip3(a_pos, h);
   // u_pitch.x: circle-pitch-alignment is 'map', and the circle lies on the map: the offset is in tile units.
   // Otherwise the circle faces the viewer, and the offset is in screen pixels after projection.
   // u_pitch.y: circle-pitch-scale is 'map' (the default), and a distant circle is smaller, as the map under it is.
   // With 'viewport' every circle has the size that it has at the centre of the view (as in MapLibre).
   float w = c.w;
   vec2 px = u_translate;
-  if (u_pitch.x > 0.0) c = toClip(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos));
+  if (u_pitch.x > 0.0) c = toClip3(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos), h);
   else px += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0);
   c.xy += px * vec2(2.0, -2.0) / u_view * c.w;
+  // With 3D terrain a circle is hidden when the ground in front covers its centre (lifted by u_lift), as in MapLibre GL
+  // JS: u_depth has the depth of the terrain on the screen.
+  if (u_lift > 0.0) {
+    vec4 d = toClip3D(a_pos, h + u_lift); vec3 n = d.xyz / d.w;
+    if (d.w <= 0.0 || n.z * 0.5 + 0.5 > texture(u_depth, n.xy * 0.5 + 0.5).r) inside = false;
+  }
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
 uniform vec4 u_color; uniform vec4 u_stroke; uniform float u_strokeWidth; uniform float u_blur; in vec4 v_color; in vec2 v_off; in float v_r; out vec4 o;
@@ -548,7 +558,7 @@ void main() {
 /** `u` is empty until the program is first used: see `link`. */
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
-const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion']);
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -1148,7 +1158,7 @@ export class GLRenderer {
                     continue;
                 }
             }
-            if ((L.type === 'fill-extrusion') !== (pass === 'buildings') && pass !== 'all') continue;
+            if ((L.type === 'fill-extrusion' || L.type === 'circle' && !!s.terrain) !== (pass === 'buildings') && pass !== 'all') continue;
             if (L.type === 'background' && this.globe && pass === 'all') {
                 // On the globe the background covers the sphere, tile by tile, and not the whole canvas.
                 const name = L.p.pattern.eval(zoom), place = name != null ? pattern(name, L.p.opacity.eval(zoom)) : null;
@@ -1284,7 +1294,7 @@ export class GLRenderer {
             }
             draw: for (const it of items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it);
-                if (extrude) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
+                if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));
@@ -1341,6 +1351,10 @@ export class GLRenderer {
                         gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
                         gl.uniform2f(u.u_pitch, +(L.p.pitchAlign.eval(zoom) === 'map'), +(L.p.pitchScale.eval(zoom) !== 'viewport'));
+                        // (Two cells of the terrain mesh, 64 a side, at this zoom: between its corners the mesh can be well above the ground at the centre on a steep slope.)
+                        gl.uniform1f(u.u_lift, s.terrain && this.depthTex ? 40075016.686 / 2 ** zoom / 32 * Math.max(1, s.terrain.exaggeration) : 0);
+                        gl.uniform1i(u.u_depth, 2);
+                        if (s.terrain && this.depthTex) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.depthTex); gl.activeTexture(gl.TEXTURE0); }
                     }
                 }
                 // The image of a batch of a pattern with a value for each feature (a missing one is not drawn).
@@ -1784,12 +1798,33 @@ export class GLRenderer {
             }
             gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
             gl.bindTexture(gl.TEXTURE_2D, d.tex);
-            gl.uniformMatrix4fv(u.u_matrix, false, t.matrix);
+            this.placeTile(u, t.id, t.matrix);
             gl.uniform1f(u.u_skirt, 40075016.686 / 2 ** t.id.z / 16 * Math.max(1, s.terrain!.exaggeration));
             gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
         }
         for (const [key, mh] of this.meshHeights) if (this.frame - mh.used > 90) { gl.deleteBuffer(mh.buffer); this.meshHeights.delete(key); }
         gl.disable(gl.DEPTH_TEST);
+    }
+
+    private depthTex?: WebGLTexture; private depthFbo?: WebGLFramebuffer; private depthSize = '';
+    /**
+     * 3D terrain with circle layers: the depth of the terrain on the screen, in a texture that the circles read (a pass of
+     * the mesh into a framebuffer with only a depth texture; the depth of the canvas cannot be read).
+     */
+    private terrainDepth(s: Scene) {
+        const gl = this.gl, w = this.canvas.width, h = this.canvas.height, z = s.tr.zoom;
+        if (!s.layers.some(L => L.type === 'circle' && L.visible && z >= L.minzoom && z < L.maxzoom)) return;
+        if (!this.depthTex || this.depthSize !== w + 'x' + h) {
+            if (this.depthTex) gl.deleteTexture(this.depthTex);
+            this.depthTex = this.newTexture(); this.depthSize = w + 'x' + h;
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, w, h, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.depthFbo ??= gl.createFramebuffer()!);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.depthTex, 0);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.depthFbo!);
+        this.drawTerrain(s);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
     /** The sky of the style above the horizon, in Mercator (on the globe there is none yet). */
@@ -1812,8 +1847,10 @@ export class GLRenderer {
         this.dropRamps(s.layers);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-        this.globe = s.globe;
+        // (The pictures of the ground tiles are flat, also on the globe: only the mesh that shows them is on the sphere.)
+        this.globe = undefined;
         const behind = s.terrain ? this.updateDrapes(s) : false;
+        this.globe = s.globe;
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
@@ -1833,7 +1870,7 @@ export class GLRenderer {
         let above = 0, first = -1;
         s.layers.forEach((L, i) => { if (L.type === 'symbol' && shown(L) && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) { above = i + 1; if (first < 0) first = i; } });
         if (s.terrain) {
-            this.drawTerrain(s); this.drawLayers(s, tr, s.items, target, 'buildings');
+            this.drawTerrain(s); this.terrainDepth(s); this.drawLayers(s, tr, s.items, target, 'buildings');
             this.drawIcons(s, tr, 0, above);
             this.drawLabels(s, s.labels);
         } else {

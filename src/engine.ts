@@ -565,7 +565,7 @@ export class Engine {
         let signature = `${zt}|${this.styleVersion}`;
         for (const source in this.style.sources) {
             const src = this.style.sources[source];
-            if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
+            if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.type !== 'circle' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
             if (src.coordinates) { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
             // Vector tiles are of the level of the ground tile. Image tiles (raster, elevation) are those that the view
             // itself selects, by the rule of MapLibre for each image tile: the ones that touch this ground tile are drawn
@@ -1524,12 +1524,18 @@ export class Engine {
         // relief then grows in over the first ten degrees of tilt rather than popping.
         const tilt = clamp(tr.pitch / 10, 0, 1);
         this.exaggeration = (this.style.terrain?.exaggeration ?? 0) * tilt * tilt * (3 - 2 * tilt);
-        // (3D terrain and buildings on the globe come with later pull requests of #463: the globe is drawn without them,
-        // and the page warns once; see `checkProjection` in map.ts.)
         const globeness = tr.globeness;
-        if (globeness) this.exaggeration = 0;
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
-        if (terrain) {
+        if (terrain && globeness) {
+            // On the globe the camera looks at the ground under the centre (see `frame` in globe.ts), and screen positions
+            // follow the ground as in Mercator (#1430). The camera does not ease or keep its height while it moves.
+            tr.heightAt = this.heightAt;
+            tr.elevation = this.heightAt(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat));
+            this.rawElevation = tr.elevation / this.exaggeration;
+            let lo = tr.elevation, hi = tr.elevation;
+            for (const [key, t] of this.tiles) if (t.range && t.used >= frameNo - 2 && key.startsWith(terrain.source + '|')) { lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration); }
+            tr.groundRange = [lo, hi];
+        } else if (terrain) {
             tr.heightAt = this.heightAt;
             // The centre's height is remembered in real metres, so it shrinks and grows together with the relief.
             tr.elevation = this.rawElevation * this.exaggeration;
@@ -1596,7 +1602,7 @@ export class Engine {
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
             // only labels and buildings are drawn from the tiles of the view. (Without this, the elevation tiles for relief
             // shading were loaded two times, at two sets of zoom levels.)
-            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion'))) {
+            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion' || l.type === 'circle'))) {
                 // (Tiles on their way stay on their way: a page that hides a layer for a moment and shows it again, to
                 // load one layer after another, does not start again each time.)
                 // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
@@ -1803,7 +1809,7 @@ export class Engine {
         // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
         // at the centre is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
-        const unplaced = !!terrain && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
+        const unplaced = !!terrain && !globeness && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
