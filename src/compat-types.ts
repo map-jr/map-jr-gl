@@ -212,9 +212,10 @@ export type GeoJSONSource = Source & {
 export type VectorTileSource = Source;
 export type RasterTileSource = Source;
 export type RasterDEMTileSource = Source;
-/** The library does not draw canvas sources and video sources (see `CanvasSourceSpecification`): these types only let code that names them compile. */
+/** The library does not draw canvas sources (see `CanvasSourceSpecification`): this type only lets code that names it compile. */
 export type CanvasSource = Source;
-export type VideoSource = Source;
+/** A video source: its `<video>` element (`undefined` until the code of video sources has loaded) and the methods of MapLibre GL JS. */
+export type VideoSource = Source & {getVideo(): HTMLVideoElement | undefined; play(): void; pause(): void; seek(seconds: number): void; setCoordinates(coordinates: unknown): unknown};
 /** The base of an event. An event is a plain object here, and not an instance of the class `Event` of MapLibre GL JS. */
 export type Event = MapEvent;
 export type ImageSource = Source & {updateImage(options: {url?: string; coordinates?: unknown}): unknown; setCoordinates(coordinates: unknown): unknown};
