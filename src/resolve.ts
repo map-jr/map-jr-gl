@@ -35,10 +35,10 @@ export interface Sky { 'sky-color'?: unknown; 'horizon-color'?: unknown; 'fog-co
 export interface Light { anchor?: 'map' | 'viewport'; position?: unknown; color?: unknown; intensity?: unknown }
 
 export interface SourceInfo {
-    type: 'vector' | 'raster' | 'raster-dem' | 'geojson' | 'contour' | 'image' | 'video';
+    type: 'vector' | 'raster' | 'raster-dem' | 'geojson' | 'contour' | 'image' | 'video' | 'canvas';
     /**
-     * Image and video sources: the picture's address (none for a video, whose frames the page sends) and where its
-     * corners go (top left, top right, bottom right, bottom left; longitude, latitude).
+     * Image, video and canvas sources: the picture's address (none for a video or a canvas, whose frames the page sends)
+     * and where its corners go (top left, top right, bottom right, bottom left; longitude, latitude).
      */
     url?: string; coordinates?: [number, number][];
     /** Contour sources: how to derive lines from their elevation source. */
@@ -184,7 +184,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             const buffer = raw.buffer ?? geojsonBuffer;
             return {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter || raw.generateId || buffer !== undefined ? {filter: raw.filter, buffer, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId, generateId: raw.generateId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
         }
-        if ((raw.type === 'image' && raw.url || raw.type === 'video' && raw.urls?.length) && raw.coordinates?.length === 4) {
+        if ((raw.type === 'image' && raw.url || raw.type === 'video' && raw.urls?.length || raw.type === 'canvas' && raw.canvas) && raw.coordinates?.length === 4) {
             return {type: raw.type, url: raw.url && absolute(raw.url, base), coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
         }
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') return;

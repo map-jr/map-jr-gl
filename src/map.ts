@@ -841,7 +841,7 @@ export class Map {
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedSources.add(sourceId);
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, isSourceLoaded: true, source: this.rawStyle.sources[sourceId]});
             }
-            // (As in MapLibre GL JS, a video that plays keeps the map from `idle`. Its pause sends a frame, and then `idle` fires.)
+            // (As in MapLibre GL JS, a video that plays, or a canvas source that plays, keeps the map from `idle`. A pause sends a frame, and then `idle` fires.)
             if (!this.videos || !this.videos.playing()) this.fire('idle');
         } else if (e.type === 'heights') {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
@@ -1214,11 +1214,11 @@ export class Map {
     /** The new style came from `setStyle` without `diff`: its paint values do not transition (#960). */
     private instant = false;
     /** The events after the style changed. `style.load` is only for a whole new style (the first one, or `setStyle`). */
-    /** The video sources (video.ts): loaded with the first style that has one, `0` while it loads. */
+    /** The video and canvas sources (video.ts): loaded with the first style that has one, `0` while it loads. */
     private videos?: import('./video.ts').Videos | 0;
     private syncVideos() {
         if (this.videos) return this.videos.sync();
-        if (this.videos === 0 || this.removed || !Object.values<any>(this.rawStyle?.sources ?? {}).some(s => s?.type === 'video')) return;
+        if (this.videos === 0 || this.removed || !Object.values<any>(this.rawStyle?.sources ?? {}).some(s => s?.type === 'video' || s?.type === 'canvas')) return;
         this.videos = 0;
         import('./video.ts').then(m => {
             if (this.removed) return;
@@ -1487,8 +1487,8 @@ export class Map {
     getSource(id: string) {
         const spec = this.rawStyle?.sources[id];
         // An image source can get another image or other corners, as in MapLibre.
-        // (A video source has its methods once the code of video sources has loaded.)
-        if (spec?.type === 'video' && this.videos) return this.videos.source(id, spec);
+        // (A video or canvas source has its methods once the code of these sources has loaded.)
+        if ((spec?.type === 'video' || spec?.type === 'canvas') && this.videos) return this.videos.source(id, spec);
         if (spec?.type === 'image') return {...spec, id, updateImage: (o: {url?: string; coordinates?: unknown}) => this.editStyle(() => { Object.assign(spec, o); }), setCoordinates: (coordinates: unknown) => this.editStyle(() => { spec.coordinates = coordinates; })};
         if (!spec || spec.type !== 'geojson') return spec;
         const clusters = async () => {

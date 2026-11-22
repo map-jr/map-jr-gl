@@ -2017,6 +2017,62 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a video source draws its frames, and pause() keeps the frame that it shows; no idle while it plays (#1434)`,
             r.whilePlaying.idles === 0 && !r.whilePlaying.loaded && !r.whilePlaying.moving && r.afterPause === true && !r.early && r.loaded && r.seen.length === 2 && r.isVideo && r.wasPaused && r.paused && String(r.paused) === String(r.still) && r.stopped, JSON.stringify(r));
     }
+    // #1435: a canvas source copies its canvas in each frame while it plays (`animate`, default true), and once with
+    // `animate: false`, as in MapLibre GL JS. While it plays the map fires no `idle`; a pause copies it one more time.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const paint = document.body.appendChild(Object.assign(document.createElement('canvas'), {id: 'canvas-1435', width: 32, height: 32, style: 'display:none'}));
+            const fill = colour => { const g = paint.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 32, 32); };
+            fill('#f00');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const errors = [];
+            m.on('error', e => errors.push(String(e.error?.message)));
+            const centre = async () => {
+                const blob = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
+                if (!blob) return null;
+                const bmp = await createImageBitmap(blob), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            };
+            const colour = px => !px ? 'none' : px[0] > 200 && px[1] < 60 && px[2] < 60 ? 'red' : px[2] > 200 && px[0] < 60 && px[1] < 60 ? 'blue' : px[1] > 200 && px[0] < 60 && px[2] < 60 ? 'green' : px.join();
+            const until = async want => { let got; for (const t0 = performance.now(); performance.now() - t0 < 8000;) { got = colour(await centre()); if (got === want) break; await new Promise(res => setTimeout(res, 50)); } return got; };
+            const coordinates = [[-60, 50], [60, 50], [60, -50], [-60, -50]];
+            m.addSource('c', {type: 'canvas', canvas: 'canvas-1435', coordinates});
+            m.addLayer({id: 'c', type: 'raster', source: 'c'});
+            const first = await until('red');
+            fill('#00f');
+            const second = await until('blue');
+            let idles = 0;
+            m.on('idle', () => idles++);
+            await new Promise(res => setTimeout(res, 1000));
+            const whilePlaying = {idles, loaded: m.loaded()};
+            const isCanvas = m.getSource('c').getCanvas() === paint;
+            const idleAfter = new Promise(res => { m.once('idle', () => res(m.loaded())); setTimeout(() => res('none'), 5000); });
+            m.getSource('c').pause();
+            const afterPause = await idleAfter;
+            fill('#0f0');
+            await new Promise(res => setTimeout(res, 500));
+            const paused = colour(await centre());
+            // animate: false copies the canvas once.
+            m.removeLayer('c'); m.removeSource('c');
+            m.addSource('s', {type: 'canvas', canvas: paint, animate: false, coordinates});
+            m.addLayer({id: 's', type: 'raster', source: 's'});
+            const still = await until('green');
+            fill('#f00');
+            await new Promise(res => setTimeout(res, 500));
+            const stillAfter = colour(await centre());
+            m.addSource('x', {type: 'canvas', canvas: 'no-such-canvas', coordinates});
+            await new Promise(res => setTimeout(res, 300));
+            m.remove(); el.remove(); paint.remove();
+            return {first, second, whilePlaying, isCanvas, afterPause, paused, still, stillAfter, errors};
+        }, mode);
+        check(`[${mode}] compat: a canvas source copies its canvas while it plays, once with animate: false, and fires no idle while it plays (#1435)`,
+            r.first === 'red' && r.second === 'blue' && r.whilePlaying.idles === 0 && !r.whilePlaying.loaded && r.isCanvas && r.afterPause === true && r.paused === 'blue'
+            && r.still === 'green' && r.stillAfter === 'green' && r.errors.length === 1 && /no-such-canvas/.test(r.errors[0]), JSON.stringify(r));
+    }
     // #979: 500 × updateImage of a 64 × 64 image in one task send the pixels once (16 KB), not 500 times, and the
     // icon shows the pixels of the last call. (Each call sent its pixels, 8 MB in all, and at a pixel ratio of 3 the
     // pixels went at 192 × 192: the bench scenario `images` ended the Safari page on an iPhone.)
