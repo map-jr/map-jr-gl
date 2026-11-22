@@ -224,3 +224,4 @@ export default {
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };
+export {createTileMesh, type CreateTileMeshOptions, type TileMesh, type IndicesType} from './tile-mesh.ts';

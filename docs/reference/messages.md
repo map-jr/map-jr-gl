@@ -249,6 +249,8 @@ The map, the style, its sources and images, and the files of the library. Both e
   Warning.
 - `[map-jr-gl] raster-fade-duration: the property has no effect, and a raster tile shows at once when it has loaded. Remove it, or write 0.`
   Warning.
+- `[map-jr-gl] createTileMesh(): the granularity is too large for 16-bit indices. Pass a smaller granularity, or "32bit".`
+  Error.
 - `[map-jr-gl] The video source "<id>" could not load any of its "urls". Check the URLs, and that a server of another origin sends CORS headers.`
   Error.
 - `[map-jr-gl] The canvas source "<id>": the canvas is <width> × <height> pixels. Give it a width and a height above 0.`
