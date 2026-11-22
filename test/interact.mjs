@@ -1969,19 +1969,26 @@ for (const mode of renderers) {
                 if (px?.[2] > 200 && px[0] < 60 && px[1] < 60) seen.add('blue');
                 await new Promise(res => setTimeout(res, 50));
             }
+            // As in MapLibre GL JS, the map is not loaded() and fires no `idle` while the video plays, and it does after a pause.
+            let idles = 0;
+            m.on('idle', () => idles++);
+            await new Promise(res => setTimeout(res, 1000));
+            const whilePlaying = {idles, loaded: m.loaded(), moving: m.isMoving()};
             const video = m.getSource('v').getVideo();
+            const idleAfter = new Promise(res => { m.once('idle', () => res(m.loaded())); setTimeout(() => res('none'), 5000); });
             m.getSource('v').pause();
+            const afterPause = await idleAfter;
             await new Promise(res => setTimeout(res, 300));
             const paused = await centre();
             await new Promise(res => setTimeout(res, 700));
             const still = await centre();
-            const result = {early, loaded: chunk(), seen: [...seen], isVideo: video instanceof HTMLVideoElement, wasPaused: video?.paused, paused, still};
+            const result = {early, whilePlaying, afterPause, loaded: chunk(), seen: [...seen], isVideo: video instanceof HTMLVideoElement, wasPaused: video?.paused, paused, still};
             m.remove(); el.remove(); URL.revokeObjectURL(url);
             result.stopped = video?.paused && !video.childElementCount;
             return result;
         }, mode);
-        check(`[${mode}] compat: a video source draws its frames, and pause() keeps the frame that it shows (#1434)`,
-            !r.early && r.loaded && r.seen.length === 2 && r.isVideo && r.wasPaused && r.paused && String(r.paused) === String(r.still) && r.stopped, JSON.stringify(r));
+        check(`[${mode}] compat: a video source draws its frames, and pause() keeps the frame that it shows; no idle while it plays (#1434)`,
+            r.whilePlaying.idles === 0 && !r.whilePlaying.loaded && !r.whilePlaying.moving && r.afterPause === true && !r.early && r.loaded && r.seen.length === 2 && r.isVideo && r.wasPaused && r.paused && String(r.paused) === String(r.still) && r.stopped, JSON.stringify(r));
     }
     // #979: 500 × updateImage of a 64 × 64 image in one task send the pixels once (16 KB), not 500 times, and the
     // icon shows the pixels of the last call. (Each call sent its pixels, 8 MB in all, and at a pixel ratio of 3 the
