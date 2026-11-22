@@ -232,12 +232,20 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
 
     // Repeating image fill. The image is tiled in world pixels at whole zoom levels, so it stays put while panning
     // and grows with the map between levels, as in MapLibre.
+    // A distance-field image (`sdf: true`, fill-pattern only) is drawn in the colour of the layer (u_color) and of the
+    // feature (a_color), with its edge at 0.75 of the alpha, as in MapLibre GL JS.
     pattern: [`${VS_COMMON}
-layout(location=0) in vec2 a_pos; uniform mat3 u_pat; out vec2 v_p; out vec2 v_tile;
-void main() { v_tile = unpole(a_pos); v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); }`, `
-uniform vec2 u_fade; uniform vec4 u_clip; in vec2 v_p; in vec2 v_tile; out vec4 o;
+layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform mat3 u_pat; out vec2 v_p; out vec2 v_tile; out vec4 v_color;
+void main() { v_tile = unpole(a_pos); v_color = a_color; v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); }`, `
+uniform vec2 u_fade; uniform vec4 u_clip; uniform float u_sdf; uniform vec4 u_color; in vec2 v_p; in vec2 v_tile; in vec4 v_color; out vec4 o;
 ${PATTERN_GLSL}
-void main() { ${FS_CLIP} o = mix(tile(v_p), tile(v_p * 2.0), u_fade.x) * u_fade.y; }`],
+float edge(float a) { float g = max(fwidth(a) * 0.5, 1.0 / 255.0 / 16.0); return smoothstep(0.75 - g, 0.75 + g, a); }
+void main() {
+  ${FS_CLIP} vec4 a = tile(v_p), b = tile(v_p * 2.0);
+  if (u_sdf < 0.5) { o = mix(a, b, u_fade.x) * u_fade.y; return; }
+  vec4 c = v_color * u_color; float k = mix(edge(a.a), edge(b.a), u_fade.x) * c.a * u_fade.y;
+  o = vec4(c.rgb * k, k);
+}`],
 
     // One-pixel antialiased lines along polygon edges: coverage falls off with distance from the ideal line.
     edge: [`${VS_COMMON}
@@ -1086,12 +1094,15 @@ export class GLRenderer {
 
         // Selects the pattern program for an image; returns a function that positions the pattern, or null if the image is missing.
         const Z = Math.floor(zoom), fade = zoom - Z;
-        const pattern = (name: string, opacity: number) => {
+        const pattern = (name: string, opacity: number, sdfColor?: number[]) => {
             const img = s.icon?.(name);
             if (!img) return null;
             const u = use('pattern');
             bindImage(u, img);
             gl.uniform2f(u.u_fade, 0, opacity);
+            gl.uniform1f(u.u_sdf, sdfColor && img.sdf ? 1 : 0);
+            if (sdfColor) gl.uniform4fv(u.u_color, sdfColor);
+            gl.vertexAttrib4f(1, 1, 1, 1, 1);
             /** `m` maps the drawn coordinates to world pixels at zoom Z (column-major 3x3). */
             return (m: number[]) => {
                 gl.uniformMatrix3fv(u.u_pat, false, patMatrix(img, m));
@@ -1233,7 +1244,9 @@ export class GLRenderer {
             }
             if (L.type === 'fill' && (L.p.pattern.dd || L.p.pattern.eval(zoom))) {
                 for (const it of items) for (const b of parts(it, L.id)) {
-                    const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
+                    // (fill-opacity is in u_fade.y; fill-color colours a distance-field image.)
+                    const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
+                    const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom), c);
                     if (!place) continue;
                     const u = place(tilePixels(it.id));
                     this.placeTile(u, it.id, it.matrix4);

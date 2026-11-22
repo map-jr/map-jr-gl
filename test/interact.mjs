@@ -1922,6 +1922,36 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] compat: addImage with sdf: true is recoloured by icon-color (#46)`, r.px?.[0] > 200 && r.px[1] < 60 && r.px[2] < 60 && r.sdf === true, JSON.stringify(r));
     }
+    // #1433: a distance-field image as fill-pattern is drawn in fill-color, also a fill-color for each feature, as in
+    // MapLibre GL JS (its shader fillPattern with u_sdf_pattern). The image is inside its outline everywhere.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const data = new Uint8Array(16 * 16 * 4).fill(255);
+            await m.addImage('sdf', {width: 16, height: 16, data}, {sdf: true});
+            const box = (x0, x1, c) => ({type: 'Feature', properties: {c}, geometry: {type: 'Polygon', coordinates: [[[x0, -60], [x1, -60], [x1, 60], [x0, 60], [x0, -60]]]}});
+            m.addSource('l', {type: 'geojson', data: box(-170, 0, '#0f0')});
+            m.addSource('r', {type: 'geojson', data: box(0, 170, '')});
+            m.addLayer({id: 'l', type: 'fill', source: 'l', paint: {'fill-pattern': 'sdf', 'fill-color': ['get', 'c']}});
+            m.addLayer({id: 'r', type: 'fill', source: 'r', paint: {'fill-pattern': 'sdf', 'fill-color': '#f00'}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+            const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
+            let left = null, right = null;
+            if (url) {
+                const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                left = Array.from(g.getImageData(bmp.width >> 2, bmp.height >> 1, 1, 1).data);
+                right = Array.from(g.getImageData(bmp.width * 3 >> 2, bmp.height >> 1, 1, 1).data);
+            }
+            m.remove(); el.remove();
+            return {left, right};
+        }, mode);
+        check(`[${mode}] compat: a distance-field image as fill-pattern takes fill-color, also for each feature (#1433)`,
+            r.left?.[1] > 200 && r.left[0] < 60 && r.left[2] < 60 && r.right?.[0] > 200 && r.right[1] < 60 && r.right[2] < 60, JSON.stringify(r));
+    }
     // #949: updateImage replaces the pixels in place and keeps the options of the image (here `sdf`), as in MapLibre
     // GL JS. The icon is drawn with the new pixels, and an image of another size replaces the old one.
     {
