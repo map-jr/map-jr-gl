@@ -128,17 +128,17 @@ export function rays(tr: Transform): number[] {
 }
 
 /** Screen pixels to the Mercator position of the globe there; off the globe, the nearest point of the horizon (as in MapLibre). */
-export function toMerc(tr: Transform, px: number, py: number): [number, number] {
-    const p = surface(tr, px, py), lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
+export function toMerc(tr: Transform, px: number, py: number, metres = tr.elevation): [number, number] {
+    const p = surface(tr, px, py, 1 + metres / 6371008.8), lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
     // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
     return [mercX(lng), mercY(clamp(lat, -85.051129, 85.051129))];
 }
 
-/** Screen pixels to the point of the unit sphere there, also past 85.05° (off the globe, the nearest point of the horizon). */
-function surface(tr: Transform, px: number, py: number): V3 {
-    const {cam} = frame(tr), dir = ray(tr, px, py), b = dot(cam, dir), c = dot(cam, cam) - 1, disc = b * b - c;
+/** Screen pixels to the point of the sphere of radius `r` there, scaled to the unit sphere, also past 85.05° (off the globe, the nearest point of the horizon). */
+function surface(tr: Transform, px: number, py: number, r = 1): V3 {
+    const {cam} = frame(tr), dir = ray(tr, px, py), b = dot(cam, dir), c = dot(cam, cam) - r * r, disc = b * b - c;
     let p: number[];
-    if (disc >= 0 && -b - Math.sqrt(disc) > 0) { const t = -b - Math.sqrt(disc); p = cam.map((v, i) => v + dir[i] * t); }
+    if (disc >= 0 && -b - Math.sqrt(disc) > 0) { const t = -b - Math.sqrt(disc); p = cam.map((v, i) => (v + dir[i] * t) / r); }
     else {
         // The point of the horizon in the plane of the camera, the centre of the globe and the ray.
         const cl = Math.hypot(...cam), u = cam.map(v => v / cl), q = cam.map((v, i) => v + dir[i] * Math.max(0, -b)), along = dot(q, u);

@@ -3230,6 +3230,32 @@ for (const mode of renderers) {
             && Math.abs(g.centre[0]) < 0.01 && Math.abs(g.centre[1]) < 0.01 && g.centre[2] > -1 && g.centre[2] < 1
             && !r.error && r.pixel?.[0] > 200 && r.pixel[1] < 50 && r.mercator?.variant === 'mercator' && r.mercator.transition === 0 && r.warnings.length === 0, JSON.stringify(r));
     }
+    // #1430: on the globe with 3D terrain, project() gives the place where a circle is drawn, and queryRenderedFeatures
+    // finds it there. The ground is 3000 m everywhere (before, project() took the place at sea level, 15 px off).
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+            g.fillStyle = 'rgb(140,184,0)'; g.fillRect(0, 0, 256, 256); // 3000 m in the terrarium encoding
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:500px;z-index:60'}));
+            const style = {version: 8, projection: {type: 'globe'}, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10},
+                p: {type: 'geojson', data: {type: 'Point', coordinates: [0.005, 0.003]}}}, terrain: {source: 'dem'},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 15}}]};
+            const map = new mod.Map({container: el, style, center: [0, 0], zoom: 11.6, pitch: 60, bearing: 90, renderer, attributionControl: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+            try {
+                await new Promise(r => map.once('idle', r)); await new Promise(r => setTimeout(r, 500));
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                const cv = map.getCanvas(), k = Object.assign(document.createElement('canvas'), {width: 600, height: 500}).getContext('2d');
+                k.drawImage(cv, 0, 0, 600, 500);
+                const d = k.getImageData(0, 0, 600, 500).data; let n = 0, sx = 0, sy = 0;
+                for (let y = 0; y < 500; y++) for (let x = 0; x < 600; x++) { const i = (y * 600 + x) * 4; if (d[i] > 200 && d[i + 1] < 80) { n++; sx += x; sy += y; } }
+                const p = map.project([0.005, 0.003]);
+                return {n, x: Math.round(sx / n), y: Math.round(sy / n), px: Math.round(p.x), py: Math.round(p.y), found: (await map.queryRenderedFeatures(p, {layers: ['c']})).length};
+            } finally { map.remove(); el.remove(); }
+        }, mode);
+        check(`[${mode}] the globe with 3D terrain: project() gives the place where a circle is drawn, and queryRenderedFeatures finds it there (#1430)`,
+            r.n > 100 && Math.hypot(r.x - r.px, r.y - r.py) < 6 && r.found === 1, JSON.stringify(r));
+    }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
     if (mode === 'main') {

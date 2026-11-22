@@ -1527,11 +1527,14 @@ export class Engine {
         const globeness = tr.globeness;
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
         if (terrain && globeness) {
-            // On the globe the camera looks at the ground under the centre (see `frame` in globe.ts). Screen positions are
-            // those of a sphere at the height of the centre: the CPU does not follow the ground away from it (#1430).
-            tr.heightAt = undefined; tr.groundRange = undefined;
+            // On the globe the camera looks at the ground under the centre (see `frame` in globe.ts), and screen positions
+            // follow the ground as in Mercator (#1430). The camera does not ease or keep its height while it moves.
+            tr.heightAt = this.heightAt;
             tr.elevation = this.heightAt(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat));
             this.rawElevation = tr.elevation / this.exaggeration;
+            let lo = tr.elevation, hi = tr.elevation;
+            for (const [key, t] of this.tiles) if (t.range && t.used >= frameNo - 2 && key.startsWith(terrain.source + '|')) { lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration); }
+            tr.groundRange = [lo, hi];
         } else if (terrain) {
             tr.heightAt = this.heightAt;
             // The centre's height is remembered in real metres, so it shrinks and grows together with the relief.
