@@ -50,7 +50,7 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
     assert.equal(h.digest('hex'), '99a3356f038343851a838c44e12838728a70c12ac21711f09577c1a9cf1e1d66');
 });
 
-test('globe: the fills and lines of a real tile get the vertices that were measured, and buildings stay as they are', () => {
+test('globe: the fills and lines of a real tile get the vertices that were measured', () => {
     const counts = (t: any) => Object.fromEntries(Object.entries(t.layers).map(([id, l]: [string, any]) => [id, [l.pos ? l.pos.length / 2 : l.v.length / LINE_VERTEX, l.idx.length / 3]]));
     const flat = counts(tile()), g20 = counts(tile({grid: 20})), g40 = counts(tile({grid: 40}));
     // [vertices, triangles] (the vertices of a fill include those of its smoothing edges).
@@ -59,7 +59,7 @@ test('globe: the fills and lines of a real tile get the vertices that were measu
     assert.deepEqual(g40.water, [6290, 8390]);
     assert.deepEqual(g40.land, [1720, 1316]);
     assert.deepEqual([flat.roads[1], g20.roads[1], g40.roads[1]], [34942, 42546, 49744]);
-    assert.deepEqual(g40.buildings, flat.buildings); // fill-extrusion comes in a later pull request
+    assert.deepEqual([flat.buildings[1], g40.buildings[1]], [40998, 65906]); // buildings: roofs and walls are cut too (#1442)
 });
 
 test('globe: a cut fill keeps its area, has no edge longer than a cell, and no cracks', () => {
@@ -154,4 +154,23 @@ test('globe: two tiles of different zooms meet without a gap on the sphere (no T
         const worst = Math.max(gap(fine, coarse, R), gap(coarse, fine, R));
         assert.ok(worst < 0.05, `zoom ${z}: ${worst} px`);
     }
+});
+
+test('globe: a building has a roof cut along the grid and a wall under every piece of a cut edge (#1442)', () => {
+    // A square across the whole tile with a hole, 8 cells a side: the edges of the roof and the walls are at most one
+    // cell long, the roof keeps its area, and a Mercator tile is built as before (one wall per edge).
+    const b = {...square(0, 0, 4096, 4096, [1024, 1024, 1024, 3072, 3072, 3072, 3072, 1024]), height: Float32Array.from([30])};
+    const flat = tessellate(b) as any, cut = tessellate(b, {grid: 8}) as any;
+    const walls = (t: any) => Array.from({length: t.v.length / 4}, (_, i) => i).filter(i => t.v[i * 4 + 3] !== -1);
+    assert.equal(walls(flat).length, 8 * 4);
+    assert.equal(walls(cut).length, (8 * 4 + 4 * 4) * 4);
+    const roof: number[] = [], index = new Map<number, number>();
+    for (let i = 0; i < cut.v.length / 4; i++) if (cut.v[i * 4 + 3] === -1) { index.set(i, roof.length / 2); roof.push(cut.v[i * 4], cut.v[i * 4 + 1]); }
+    const tris = Array.from(cut.idx as Uint32Array).filter(i => index.has(i)).map(i => index.get(i)!);
+    assert.equal(area(roof, tris), 4096 * 4096 - 2048 * 2048);
+    for (let i = 0; i < tris.length; i += 3) for (const [p, q] of [[0, 1], [1, 2], [2, 0]]) {
+        const a = tris[i + p], c = tris[i + q];
+        assert.ok(Math.abs(roof[a * 2] - roof[c * 2]) <= 512 && Math.abs(roof[a * 2 + 1] - roof[c * 2 + 1]) <= 512);
+    }
+    for (const [k, i] of walls(cut).entries()) if (k % 4 === 0) assert.ok(Math.hypot(cut.v[i * 4] - cut.v[(i + 1) * 4], cut.v[i * 4 + 1] - cut.v[(i + 1) * 4 + 1]) <= 512);
 });

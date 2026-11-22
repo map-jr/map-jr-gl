@@ -247,16 +247,17 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
     // A distance-field image (`sdf: true`, fill-pattern only) is drawn in the colour of the layer (u_color) and of the
     // feature (a_color), with its edge at 0.75 of the alpha, as in MapLibre GL JS.
     pattern: [`${VS_COMMON}
-layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform mat3 u_pat; out vec2 v_p; out vec2 v_tile; out vec4 v_color;
-void main() { v_tile = unpole(a_pos); v_color = a_color; v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); }`, `
-uniform vec2 u_fade; uniform vec4 u_clip; uniform float u_sdf; uniform vec4 u_color; in vec2 v_p; in vec2 v_tile; in vec4 v_color; out vec4 o;
+layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform mat3 u_pat; uniform vec2 u_world; out vec2 v_p; out vec2 v_tile; out vec4 v_color; out vec2 v_px;
+void main() { v_tile = unpole(a_pos); v_color = a_color; v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); v_px = (gl_Position.xy / gl_Position.w + 1.0) / 2.0 * u_world; }`, `
+uniform vec2 u_fade; uniform vec4 u_clip; uniform float u_sdf; uniform vec4 u_color; uniform vec2 u_world; in vec2 v_p; in vec2 v_tile; in vec4 v_color; in vec2 v_px; out vec4 o;
 ${PATTERN_GLSL}
 float edge(float a) { float g = max(fwidth(a) * 0.5, 1.0 / 255.0 / 16.0); return smoothstep(0.75 - g, 0.75 + g, a); }
 void main() {
   ${FS_CLIP} vec4 a = tile(v_p), b = tile(v_p * 2.0);
-  if (u_sdf < 0.5) { o = mix(a, b, u_fade.x) * u_fade.y; return; }
-  vec4 c = v_color * u_color; float k = mix(edge(a.a), edge(b.a), u_fade.x) * c.a * u_fade.y;
-  o = vec4(c.rgb * k, k);
+  if (u_sdf < 0.5) o = mix(a, b, u_fade.x) * u_fade.y;
+  else { vec4 c = v_color * u_color; float k = mix(edge(a.a), edge(b.a), u_fade.x) * c.a * u_fade.y; o = vec4(c.rgb * k, k); }
+  // With u_world set, these are the edges of a fill drawn as lines (fill-antialias without fill-outline-color), as in MapLibre GL JS.
+  if (u_world.x > 0.0) o *= 1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy));
 }`],
 
     // One-pixel antialiased lines along polygon edges: coverage falls off with distance from the ideal line.
@@ -1121,6 +1122,7 @@ export class GLRenderer {
             bindImage(u, img);
             gl.uniform2f(u.u_fade, 0, opacity);
             gl.uniform1f(u.u_sdf, sdfColor && img.sdf ? 1 : 0);
+            gl.uniform2f(u.u_world, 0, 0);
             if (sdfColor) gl.uniform4fv(u.u_color, sdfColor);
             gl.vertexAttrib4f(1, 1, 1, 1, 1);
             /** `m` maps the drawn coordinates to world pixels at zoom Z (column-major 3x3). */
@@ -1276,7 +1278,8 @@ export class GLRenderer {
                 for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
                 return m;
             };
-            if (L.type === 'fill' && (L.p.pattern.dd || L.p.pattern.eval(zoom))) {
+            const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
+            if (patterned) {
                 for (const it of items) for (const b of parts(it, L.id)) {
                     // (fill-opacity is in u_fade.y; fill-color colours a distance-field image.)
                     const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
@@ -1287,8 +1290,14 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.vao);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+                    // Edge pass in the pattern, unless the style has an outline colour (drawn by the edge pass below).
+                    if (b.edgeVao && L.p.outline.eval(zoom)[3] <= 0) {
+                        gl.uniform2f(u.u_world, target[0], target[1]);
+                        gl.bindVertexArray(b.edgeVao);
+                        gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
+                    }
                 }
-                continue;
+                if (L.p.outline.eval(zoom)[3] <= 0) continue;
             }
             let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
@@ -1302,7 +1311,7 @@ export class GLRenderer {
                 this.extrusionDepth = true;
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
             }
-            draw: for (const it of items) for (const b of parts(it, L.id)) {
+            draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it);
                 if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
@@ -1406,13 +1415,13 @@ export class GLRenderer {
                     });
                 } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
             }
-            if (L.type === 'fill') {
-                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing.
+            if (L.type === 'fill' && L.p.antialias.eval(zoom) !== false) {
+                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing. As in
+                // MapLibre GL JS, fill-antialias false draws no edges, also with a fill-outline-color.
                 const oc = L.p.outline.eval(zoom), explicit = oc[3] > 0, op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
                 const col = explicit ? [oc[0], oc[1], oc[2], oc[3] * op] : color(L);
-                for (const it of items) {
-                    const b = it.tile.batches[L.id];
-                    if (!b?.edgeVao) continue;
+                for (const it of items) for (const b of parts(it, L.id)) {
+                    if (!b.edgeVao) continue;
                     const u = use('edge');
                     gl.uniform4fv(u.u_color, col);
                     gl.uniform2f(u.u_world, target[0], target[1]);
