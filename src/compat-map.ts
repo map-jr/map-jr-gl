@@ -613,12 +613,18 @@ export class Map extends CoreMap {
     /**
      * For wrappers that read the private `style` of MapLibre GL JS: `_loaded`, `updateImage`, and `tileManagers` (also
      * `sourceCaches`) with the id, type and `vectorLayerIds` of each source. Before the style has resolved, `_loaded` is
-     * `false` and there are no sources, as in MapLibre GL JS.
+     * `false` and there are no sources, as in MapLibre GL JS. `projection.subdivisionGranularity` has the values of
+     * MapLibre GL JS 6.17 for the projection of the style (#1453).
      */
     get style() {
+        // A granularity as in MapLibre GL JS: [base, min], and the number of segments of a tile at zoom z.
+        const g = (base: number, min: number) => ({getGranularityForZoomLevel: (z: number) => Math.max(Math.floor(base / (1 << z)), min, 1)}),
+            globe = (this.getProjection() as {type?: unknown} | undefined)?.type === 'globe';
+        const subdivisionGranularity = globe ? {fill: g(128, 2), line: g(512, 0), tile: g(128, 32), stencil: g(128, 1), circle: 3}
+            : {fill: g(0, 0), line: g(0, 0), tile: g(0, 0), stencil: g(0, 0), circle: 1};
         const tileManagers: Record<string, {_source: {id: string; type: string; vectorLayerIds?: string[]}}> = {};
         for (const [id, s] of Object.entries(this.resolved?.sources ?? {})) tileManagers[id] = {_source: {id, type: s.type, vectorLayerIds: s.layerIds}};
-        return {_loaded: this.ready, tileManagers, sourceCaches: tileManagers, updateImage: (name: string, image: Parameters<CoreMap['addImage']>[1]): void => { this.updateImage(name, image); }};
+        return {_loaded: this.ready, projection: {subdivisionGranularity}, tileManagers, sourceCaches: tileManagers, updateImage: (name: string, image: Parameters<CoreMap['addImage']>[1]): void => { this.updateImage(name, image); }};
     }
     /** For wrappers that read the private `transform` of MapLibre GL JS: `center`, `zoom`, `bearing`, `pitch`, `roll`, `elevation` and `isPaddingEqual`, as a copy of the camera. */
     get transform() {
