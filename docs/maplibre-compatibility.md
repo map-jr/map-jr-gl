@@ -121,7 +121,7 @@ The [status table](../README.md#status) gives the current test results.
 Sources:
 
 - Video and canvas sources
-- MapLibre Tiles (MLT)
+- MapLibre Tiles (MLT). A `vector` source with `encoding: 'mlt'` is not drawn, and the map reports one error for it, as for a source that has no `tiles` and no `url`. The other sources are drawn.
 
 Layers:
 

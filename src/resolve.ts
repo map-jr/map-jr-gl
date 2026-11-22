@@ -190,6 +190,11 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`)); }
             return;
         }
+        if (raw.type === 'vector' && raw.encoding === 'mlt') {
+            // MapLibre Tiles are not decoded (#1436): the source is left out, and reported one time for the source object (#1438).
+            if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`)); }
+            return;
+        }
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
