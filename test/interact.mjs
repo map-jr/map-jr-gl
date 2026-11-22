@@ -3294,6 +3294,8 @@ for (const mode of renderers) {
     {
         const r = await page.evaluate(async renderer => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), proto = 'ridge' + renderer;
+            // The pixels of the canvas, read in the frame that draws them (the canvas keeps no picture after its frame).
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
             mod.addProtocol(proto, async p => {
                 const [z, x] = p.url.split('://')[1].split('/').map(Number), c = new OffscreenCanvas(256, 256), g = c.getContext('2d'), img = g.createImageData(256, 256);
                 for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
@@ -3303,22 +3305,25 @@ for (const mode of renderers) {
                 g.putImageData(img, 0, 0);
                 return {data: await (await c.convertToBlob({type: 'image/png'})).arrayBuffer()};
             });
-            const red = async (point, view) => {
+            const red = async (point, view, want) => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:900px;height:700px;z-index:60'}));
                 const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [proto + '://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 256, maxzoom: 12}, p: {type: 'geojson', data: {type: 'Point', coordinates: point}}},
                     terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 20}}]};
-                const map = new mod.Map({container: el, style, center: [0, 0], bearing: 90, ...view, renderer, attributionControl: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+                const map = new mod.Map({container: el, style, center: [0, 0], bearing: 90, ...view, renderer, attributionControl: false});
                 try {
-                    await new Promise(r => map.once('idle', r)); await new Promise(r => setTimeout(r, 500));
-                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-                    const k = Object.assign(document.createElement('canvas'), {width: 900, height: 700}).getContext('2d');
-                    k.drawImage(map.getCanvas(), 0, 0, 900, 700);
-                    const d = k.getImageData(0, 0, 900, 700).data; let n = 0;
-                    for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 80 && d[i + 2] < 80) n++;
+                    await new Promise(r => map.once('idle', r));
+                    // Read when the ridge has its height (and for the circle in front, when the circle is drawn), for up to 10 s.
+                    let n = 0;
+                    for (let t = 0; t < 50; t++) {
+                        await new Promise(r => setTimeout(r, 200));
+                        const d = await shot(map, 900, 700); n = 0;
+                        for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 80 && d[i + 2] < 80) n++;
+                        if ((map.queryTerrainElevation([0.01, 0]) ?? 0) > 2000 && (want === 'none' || n > 1100)) break;
+                    }
                     return n;
                 } finally { map.remove(); el.remove(); }
             };
-            return {behind: await red([0.02, 0], {zoom: 14, pitch: 80}), front: await red([0, 0], {zoom: 13, pitch: 60})};
+            return {behind: await red([0.02, 0], {zoom: 14, pitch: 80}, 'none'), front: await red([0, 0], {zoom: 13, pitch: 60}, 'whole')};
         }, mode);
         check(`[${mode}] 3D terrain: a circle behind a ridge is hidden, and a circle in front of it is whole (#1430)`, r.behind === 0 && r.front > 1100, JSON.stringify(r));
     }
@@ -3327,20 +3332,24 @@ for (const mode of renderers) {
     {
         const r = await page.evaluate(async renderer => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            // The pixels of the canvas, read in the frame that draws them (the canvas keeps no picture after its frame).
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
             const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
             g.fillStyle = 'rgb(140,184,0)'; g.fillRect(0, 0, 256, 256); // 3000 m in the terrarium encoding
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:500px;z-index:60'}));
             const style = {version: 8, projection: {type: 'globe'}, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10},
                 p: {type: 'geojson', data: {type: 'Point', coordinates: [0.005, 0.003]}}}, terrain: {source: 'dem'},
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 15}}]};
-            const map = new mod.Map({container: el, style, center: [0, 0], zoom: 11.6, pitch: 60, bearing: 90, renderer, attributionControl: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+            const map = new mod.Map({container: el, style, center: [0, 0], zoom: 11.6, pitch: 60, bearing: 90, renderer, attributionControl: false});
             try {
-                await new Promise(r => map.once('idle', r)); await new Promise(r => setTimeout(r, 500));
-                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-                const cv = map.getCanvas(), k = Object.assign(document.createElement('canvas'), {width: 600, height: 500}).getContext('2d');
-                k.drawImage(cv, 0, 0, 600, 500);
-                const d = k.getImageData(0, 0, 600, 500).data; let n = 0, sx = 0, sy = 0;
-                for (let y = 0; y < 500; y++) for (let x = 0; x < 600; x++) { const i = (y * 600 + x) * 4; if (d[i] > 200 && d[i + 1] < 80) { n++; sx += x; sy += y; } }
+                await new Promise(r => map.once('idle', r));
+                // (The check waits for the circle itself, for up to 10 s: on a slow machine the frame with it can come later.)
+                let n = 0, sx = 0, sy = 0;
+                for (let t = 0; t < 50 && n < 100; t++) {
+                    await new Promise(r => setTimeout(r, 200));
+                    const d = await shot(map, 600, 500); n = 0; sx = 0; sy = 0;
+                    for (let y = 0; y < 500; y++) for (let x = 0; x < 600; x++) { const i = (y * 600 + x) * 4; if (d[i] > 200 && d[i + 1] < 80) { n++; sx += x; sy += y; } }
+                }
                 const p = map.project([0.005, 0.003]);
                 return {n, x: Math.round(sx / n), y: Math.round(sy / n), px: Math.round(p.x), py: Math.round(p.y), found: (await map.queryRenderedFeatures(p, {layers: ['c']})).length};
             } finally { map.remove(); el.remove(); }
