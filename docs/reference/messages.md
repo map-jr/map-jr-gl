@@ -249,6 +249,8 @@ The map, the style, its sources and images, and the files of the library. Both e
   Error.
 - `[map-jr-gl] The source "<source name>" has no "tiles" and no "url". Give it one of them.`
   Error.
+- `[map-jr-gl] The source "<source name>" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`
+  Error.
 - `[map-jr-gl] the style: metadata["map-jr:images"] is not an object of images by name, and the map uses none of them. Write {"name": "<svg ...>"}.`
   Error.
 - `[map-jr-gl] the style: the image "<image name>" of metadata["map-jr:images"] is left out, because the style has more than <MAX_STYLE_IMAGES> images. Give an SVG document without references to other files, or the URL of an image.`
