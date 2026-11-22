@@ -1369,6 +1369,9 @@ export class Engine {
                 load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
                     if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
                     t.dem = {grid: dem.grid, lo: dem.lo, hi: dem.hi};
+                    // (Its heights now place the camera. A frame that dropped it as a tile that is no longer wanted took
+                    // them away again, and the camera went back and forth between two places for good, #1468.)
+                    t.built = true;
                     if (this.style.terrain?.source === source) this.ground(key, t, true);
                     return this.renderer.createImageTile({width: dem.width, height: dem.height, data: dem.pixels}, encoding, id);
                 }));
