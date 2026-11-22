@@ -1336,7 +1336,6 @@ export class Map {
         const stops = globeStops(t)!, i = stops.findIndex((v, j) => j % 2 && !v), z = stops[i - 1];
         const fix = i > 0 ? `they show from zoom ${z}, where the map is flat, or use the projection "mercator".` : 'use the projection "globe", which is flat from zoom 12, or "mercator".';
         if (this.rawStyle.terrain) warn('terrain', '3D terrain is not drawn on the globe: ' + fix);
-        if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'custom')) warn('custom', 'Custom layers (the type "custom") are not drawn on the globe: ' + fix);
     }
     /**
      * Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for

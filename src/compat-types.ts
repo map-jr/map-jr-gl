@@ -90,8 +90,10 @@ export type QuerySourceFeatureOptions = {sourceLayer?: string; filter?: unknown;
  */
 export type AddLayerObject = (Omit<LayerSpecification, 'source'> & {source?: string | SourceSpecification}) | CustomLayerInterface;
 /**
- * The projection of a tile or of the world for a shader, as in MapLibre GL JS. In this library the projection is
- * always Mercator: `clippingPlane` is `[0, 0, 0, 0]`, `projectionTransition` is 0, and `fallbackMatrix` is `mainMatrix`.
+ * The projection of a tile or of the world for a shader, as in MapLibre GL JS. In Mercator, `clippingPlane` is
+ * `[0, 0, 0, 0]`, `projectionTransition` is 0, and `fallbackMatrix` is `mainMatrix`. On the globe, `mainMatrix` maps
+ * the unit sphere to clip space, `clippingPlane` is the plane of the horizon, `projectionTransition` is the globeness
+ * (1 for the globe, less while it turns into Mercator), and `fallbackMatrix` is the Mercator matrix.
  */
 export type ProjectionData = {
     mainMatrix: Float32Array | Float64Array; tileMercatorCoords: [number, number, number, number]; clippingPlane: [number, number, number, number];
