@@ -2013,6 +2013,9 @@ for (const mode of renderers) {
     // The video is made here: half a second of red, then half a second of blue. Its code loads only with a video source.
     {
         const r = await page.evaluate(async mode => {
+            // WebKit on Linux and Windows has no MediaRecorder, so the test video cannot be made there (#1471).
+            if (typeof MediaRecorder !== 'function' || !MediaRecorder.isTypeSupported?.('video/webm')) return {unsupported: 'no MediaRecorder for video/webm'};
+            if (typeof HTMLCanvasElement.prototype.captureStream !== 'function') return {unsupported: 'no canvas captureStream'};
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const paint = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), pg = paint.getContext('2d');
             const recorder = new MediaRecorder(paint.captureStream(30), {mimeType: 'video/webm'}), parts = [];
@@ -2067,7 +2070,9 @@ for (const mode of renderers) {
             result.stopped = video?.paused && !video.childElementCount;
             return result;
         }, mode);
-        check(`[${mode}] compat: a video source draws its frames, and pause() keeps the frame that it shows; no idle while it plays (#1434)`,
+        const name = `[${mode}] compat: a video source draws its frames, and pause() keeps the frame that it shows; no idle while it plays (#1434)`;
+        if (r.unsupported) skip(name, `${browserName} has ${r.unsupported}`);
+        else check(name,
             r.whilePlaying.idles === 0 && !r.whilePlaying.loaded && !r.whilePlaying.moving && r.afterPause === true && !r.early && r.loaded && r.seen.length === 2 && r.isVideo && r.wasPaused && r.paused && String(r.paused) === String(r.still) && r.stopped, JSON.stringify(r));
     }
     // #1435: a canvas source copies its canvas in each frame while it plays (`animate`, default true), and once with
