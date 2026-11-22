@@ -3064,8 +3064,7 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: on the globe a custom layer is not drawn and the map warns once; in Mercator it draws again (#1225)',
             r.globe === 0 && r.said.length === 1 && r.said[0] === '[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: they show from zoom 12, where the map is flat, or use the projection "mercator".'
-            && r.vp.length === 2 && r.vp[0] === '[map-jr-gl] 3D terrain is not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".'
-            && r.vp[1] === '[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".' && r.mercator > 0, JSON.stringify(r));
+            && r.vp.length === 1 && r.vp[0] === '[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".' && r.mercator > 0, JSON.stringify(r));
     }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.

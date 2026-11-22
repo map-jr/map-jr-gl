@@ -1504,12 +1504,13 @@ export class Engine {
         // relief then grows in over the first ten degrees of tilt rather than popping.
         const tilt = clamp(tr.pitch / 10, 0, 1);
         this.exaggeration = (this.style.terrain?.exaggeration ?? 0) * tilt * tilt * (3 - 2 * tilt);
-        // (3D terrain and buildings on the globe come with later pull requests of #463: the globe is drawn without them,
-        // and the page warns once; see `checkProjection` in map.ts.)
         const globeness = tr.globeness;
-        if (globeness) this.exaggeration = 0;
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
-        if (terrain) {
+        if (terrain && globeness) {
+            // On the globe the relief is drawn, but the camera does not follow the ground yet (#1430): the centre stays at
+            // sea level, and screen positions are those of the sea-level sphere.
+            tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0;
+        } else if (terrain) {
             tr.heightAt = this.heightAt;
             // The centre's height is remembered in real metres, so it shrinks and grows together with the relief.
             tr.elevation = this.rawElevation * this.exaggeration;
@@ -1783,7 +1784,7 @@ export class Engine {
         // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
         // at the centre is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
-        const unplaced = !!terrain && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
+        const unplaced = !!terrain && !globeness && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:

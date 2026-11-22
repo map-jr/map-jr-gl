@@ -1308,8 +1308,8 @@ export class Map {
     }
     private projectionWarned = new Set<string>();
     /**
-     * Warns once per map for a projection that the library does not draw (it draws Mercator), and for 3D terrain on the
-     * globe, which comes with a later pull request of #463, and for custom layers on the globe (#1225).
+     * Warns once per map for a projection that the library does not draw (it draws Mercator), and for custom layers on
+     * the globe (#1225).
      */
     private checkProjection() {
         const t = this.rawStyle?.projection?.type, said = this.projectionWarned;
@@ -1318,7 +1318,6 @@ export class Map {
         if (!globeStops(t)) return warn('name', `The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
         const stops = globeStops(t)!, i = stops.findIndex((v, j) => j % 2 && !v), z = stops[i - 1];
         const fix = i > 0 ? `they show from zoom ${z}, where the map is flat, or use the projection "mercator".` : 'use the projection "globe", which is flat from zoom 12, or "mercator".';
-        if (this.rawStyle.terrain) warn('terrain', '3D terrain is not drawn on the globe: ' + fix);
         if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'custom')) warn('custom', 'Custom layers (the type "custom") are not drawn on the globe: ' + fix);
     }
     /**

@@ -160,15 +160,17 @@ void main() {
 }`],
     // 3D terrain: a grid over the tile, raised to the ground height and textured with the tile's flat layers.
     // `u_part` picks the part of the picture to show: all of it, or the tile's share of an ancestor's while its own is drawn.
-    terrain: [`uniform mat4 u_matrix; uniform float u_skirt; uniform float u_exag;
-layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog;
-void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z; v_uv = vec2(p.x, 1.0 - p.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, a_height * u_exag - a_pos.z * u_skirt, 1.0);
+    // On the globe the mesh is put on the sphere as buildings are (toClip3D), and the far side is hidden by horizonSide.
+    terrain: [`${VS_COMMON} uniform float u_skirt; uniform float u_exag;
+layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog; out float v_side;
+void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z, t = a_pos.xy * ${EXTENT}.0; v_uv = vec2(p.x, 1.0 - p.y); v_side = horizonSide(t); gl_Position = toClip3D(t, a_height * u_exag - a_pos.z * u_skirt);
   v_fog = clamp((gl_Position.w - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0); }`, `
-uniform sampler2D u_drape; in vec2 v_uv; out vec4 o;
+uniform sampler2D u_drape; in vec2 v_uv; in float v_side; out vec4 o;
 // Fog (the sky of the style, as in MapLibre GL JS): v_fog is 0 at the map centre and 1 at the far plane. u_fog has
 // fog-ground-blend, horizon-fog-blend and the opacity of the fog (from the pitch); u_fogColor and u_horizonColor are opaque.
 uniform vec3 u_fog; uniform vec4 u_fogColor; uniform vec4 u_horizonColor; in float v_fog;
 void main() {
+  if (v_side < 0.0) discard;
   o = texture(u_drape, v_uv);
   float f = max(v_fog - u_fog.x, 0.0) / (1.0 - u_fog.x), k = f * f * u_fog.z;
   if (k <= 0.0) return;
@@ -540,7 +542,7 @@ void main() {
 /** `u` is empty until the program is first used: see `link`. */
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
-const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion']);
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -1761,7 +1763,7 @@ export class GLRenderer {
             }
             gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
             gl.bindTexture(gl.TEXTURE_2D, d.tex);
-            gl.uniformMatrix4fv(u.u_matrix, false, t.matrix);
+            this.placeTile(u, t.id, t.matrix);
             gl.uniform1f(u.u_skirt, 40075016.686 / 2 ** t.id.z / 16 * Math.max(1, s.terrain!.exaggeration));
             gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
         }
@@ -1789,8 +1791,10 @@ export class GLRenderer {
         this.dropRamps(s.layers);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-        this.globe = s.globe;
+        // (The pictures of the ground tiles are flat, also on the globe: only the mesh that shows them is on the sphere.)
+        this.globe = undefined;
         const behind = s.terrain ? this.updateDrapes(s) : false;
+        this.globe = s.globe;
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);

@@ -519,6 +519,36 @@ for (const renderer of renderers) {
         check(terrainName, Math.min(...terrainIdle) < 200, JSON.stringify(terrainIdle));
         }
 
+        // #1430: 3D terrain is drawn on the globe too. The ground is 8000 m everywhere with an exaggeration of 20, so the
+        // globe at zoom 4 is 2.5 % larger than without terrain and covers more of the view (before #1430 it was the same).
+        const globeName = `[${renderer}] 3D terrain on the globe raises the ground: the globe covers more of the view than without terrain (#1430)`;
+        if (!decodes) skip(globeName, 'no OffscreenCanvas in workers');
+        else {
+        const globeTerrain = await page.evaluate(async renderer => {
+            const t = window.t, c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+            g.fillStyle = 'rgb(159,64,0)'; g.fillRect(0, 0, 256, 256); // 8000 m in the terrarium encoding
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const style = {version: 8, projection: {type: 'globe'}, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 6}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const covered = async host => {
+                await new Promise(r => { if (host.state.get().idle) r(); else host.state.subscribe(s => s.idle, v => v && r()); });
+                await new Promise(r => setTimeout(r, 200));
+                const bmp = await createImageBitmap(await host.toBlob()), k = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                k.drawImage(bmp, 0, 0);
+                const d = k.getImageData(0, 0, bmp.width, bmp.height).data;
+                let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 128) n++;
+                return n;
+            };
+            const spec = {style, initialView: {center: [0, 0], zoom: 4, pitch: 60}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec);
+            const flat = await covered(host);
+            host.update({...spec, terrain: {source: 'dem', exaggeration: 20}});
+            const raised = await covered(host);
+            host.destroy(); el.remove();
+            return {flat, raised};
+        }, renderer);
+        check(globeName, globeTerrain.raised > globeTerrain.flat * 1.02, JSON.stringify(globeTerrain));
+        }
+
         // `terrain` of the description (#1104): `null` gives a flat map also when the style has a `terrain`, no field or
         // `undefined` gives the terrain of the style, and `patch` goes back and forth. The terrain is read from the style
         // that the map has, so no elevation tile needs to be decoded.
