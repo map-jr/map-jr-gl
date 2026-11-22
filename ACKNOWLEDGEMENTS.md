@@ -53,6 +53,8 @@ BSD-3-Clause.
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
   (BSD-3-Clause), so that a `locale` object for MapLibre GL JS works unchanged. The English texts are not copied.
+- `createTileMesh` of the compat entry follows the method of `createTileMesh` in `src/util/create_tile_mesh.ts` of MapLibre GL JS 6.17 (BSD-3-Clause): the order of the vertices and of the indices,
+  the border of 64 units and the pole vertices, so that the bytes are the same. The code in `src/tile-mesh.ts` is new.
 - The rotate drag on the map (the right mouse button, or Ctrl with the left one) follows the method of
   `generateMouseRotationHandler` in `src/ui/handler/mouse.ts` of MapLibre GL JS (BSD-3-Clause). The code in
   `src/map.ts` is new.
