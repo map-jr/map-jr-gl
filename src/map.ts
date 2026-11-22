@@ -654,6 +654,7 @@ export class Map {
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
         if (this.wantsTiles) this.post({type: 'tileLoads', on: true});
+        if (this.videos) this.videos.frame();
         for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
     }
 
@@ -840,7 +841,8 @@ export class Map {
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedSources.add(sourceId);
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, isSourceLoaded: true, source: this.rawStyle.sources[sourceId]});
             }
-            this.fire('idle');
+            // (As in MapLibre GL JS, a video that plays keeps the map from `idle`. Its pause sends a frame, and then `idle` fires.)
+            if (!this.videos || !this.videos.playing()) this.fire('idle');
         } else if (e.type === 'heights') {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
             heightsChanged(this.heights);
@@ -1022,14 +1024,15 @@ export class Map {
                 this.triggerRepaint();
             };
             this.once('remove', gone);
-            if (this.loaded()) shoot(); else this.once('idle', shoot);
+            // (A video that plays keeps the map from `idle`: the image shows the frame of the moment.)
+            if (this.loaded() || this.videos && this.videos.playing()) shoot(); else this.once('idle', shoot);
         });
     }
     /**
      * As in MapLibre: `false` from a call of `setStyle`, a style edit, a source change or a camera move until the next
      * complete frame (the frame that fires `idle`).
      */
-    loaded() { return this.isLoaded && this.tilesLoaded && !this.styleLoading && this.restyled === this.restyles; }
+    loaded() { return this.isLoaded && this.tilesLoaded && !this.styleLoading && this.restyled === this.restyles && !(this.videos && this.videos.playing()); }
     /** A `setStyle` whose style has not come yet. */
     private styleLoading = false;
     /** Whether the camera moves now, by the user or by a camera method. */
@@ -1211,7 +1214,21 @@ export class Map {
     /** The new style came from `setStyle` without `diff`: its paint values do not transition (#960). */
     private instant = false;
     /** The events after the style changed. `style.load` is only for a whole new style (the first one, or `setStyle`). */
+    /** The video sources (video.ts): loaded with the first style that has one, `0` while it loads. */
+    private videos?: import('./video.ts').Videos | 0;
+    private syncVideos() {
+        if (this.videos) return this.videos.sync();
+        if (this.videos === 0 || this.removed || !Object.values<any>(this.rawStyle?.sources ?? {}).some(s => s?.type === 'video')) return;
+        this.videos = 0;
+        import('./video.ts').then(m => {
+            if (this.removed) return;
+            (this.videos = new m.Videos(() => this.removed ? {} : this.rawStyle?.sources ?? {}, () => this.styleBase,
+                (source, image) => this.ready ? this.post({type: 'frame', source, image}, [image]) : image.close(),
+                error => this.fire('error', {error}), fn => this.editStyle(fn))).sync();
+        }, error => this.fire('error', {error}));
+    }
     private styleEvents(whole: boolean) {
+        this.syncVideos();
         // (As in MapLibre, a whole new style puts its projection in place first, and that fires `projectiontransition`.)
         if (whole) this.fire('projectiontransition', {newProjection: projectionName(this.rawStyle?.projection?.type)});
         this.fire('styledata', {dataType: 'style'});
@@ -1307,18 +1324,12 @@ export class Map {
         return import('./globe.ts').then(m => { if (!this.removed) this.tr.globe = m; }, error => this.fire('error', {error}));
     }
     private projectionWarned = new Set<string>();
-    /**
-     * Warns once per map for a projection that the library does not draw (it draws Mercator), and for custom layers on
-     * the globe (#1225).
-     */
+    /** Warns once per map for a projection that the library does not draw (it draws Mercator). */
     private checkProjection() {
         const t = this.rawStyle?.projection?.type, said = this.projectionWarned;
-        const warn = (key: string, text: string) => { if (!said.has(key)) { said.add(key); console.warn('[map-jr-gl] ' + text); } };
-        if (t === undefined || t === 'mercator') return;
-        if (!globeStops(t)) return warn('name', `The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
-        const stops = globeStops(t)!, i = stops.findIndex((v, j) => j % 2 && !v), z = stops[i - 1];
-        const fix = i > 0 ? `they show from zoom ${z}, where the map is flat, or use the projection "mercator".` : 'use the projection "globe", which is flat from zoom 12, or "mercator".';
-        if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'custom')) warn('custom', 'Custom layers (the type "custom") are not drawn on the globe: ' + fix);
+        if (t === undefined || t === 'mercator' || globeStops(t) || said.has('name')) return;
+        said.add('name');
+        console.warn(`[map-jr-gl] The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
     }
     /**
      * Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for
@@ -1469,6 +1480,8 @@ export class Map {
     getSource(id: string) {
         const spec = this.rawStyle?.sources[id];
         // An image source can get another image or other corners, as in MapLibre.
+        // (A video source has its methods once the code of video sources has loaded.)
+        if (spec?.type === 'video' && this.videos) return this.videos.source(id, spec);
         if (spec?.type === 'image') return {...spec, id, updateImage: (o: {url?: string; coordinates?: unknown}) => this.editStyle(() => { Object.assign(spec, o); }), setCoordinates: (coordinates: unknown) => this.editStyle(() => { spec.coordinates = coordinates; })};
         if (!spec || spec.type !== 'geojson') return spec;
         const clusters = async () => {
@@ -2225,6 +2238,7 @@ export class Map {
         this.tilePool?.release();
         this.observer?.disconnect();
         for (const fn of this.cleanup) fn();
+        this.syncVideos();
         // The engine frees the memory of the GPU first. A worker is stopped a moment later, so that it gets the message.
         if (this.ready) this.send({type: 'destroy'});
         const workers = this.workers;

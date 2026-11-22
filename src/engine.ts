@@ -54,6 +54,8 @@ export type Command =
     | {type: 'fonts'; fonts: FontSource[]}
     | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; sdf?: boolean; update?: boolean}
     | {type: 'removeImage'; name: string}
+    /** A new frame of a video or canvas source (the page makes it). The engine closes the bitmap. */
+    | {type: 'frame'; source: string; image: ImageBitmap}
     | {type: 'geojson'; source: string; data: unknown}
     /** Replaces the feature state of one source ("sourceLayer|id" -> state); its tiles are rebuilt in place. */
     /** The states of the features that changed (`null`: no state), or all states of the source with `replace`. */
@@ -485,18 +487,27 @@ export class Engine {
         if (this.uploads.length) this.repaint();
     }
 
-    private pictures = new Map<string, {url: string; gl?: GLTile}>();
+    private pictures = new Map<string, {url?: string; gl?: GLTile}>();
+    /** The picture of an image, video or canvas source, made again when its URL changes. */
+    private picture(source: string) {
+        const url = this.style.sources[source].url;
+        let st = this.pictures.get(source);
+        if (!st || st.url !== url) {
+            if (st?.gl) this.renderer.destroyTile(st.gl);
+            this.pictures.set(source, st = {url});
+        }
+        return st;
+    }
     /**
      * An image source is one picture stretched between four corners. It is drawn like a tile: positioned relative to
      * a tile near the view's centre (which keeps the numbers small and exact), reaching outside it as far as it needs.
+     * A video or canvas source has no URL: its pictures are the frames that the page sends (`frame`).
      */
     private pictureItems(source: string, tr: Transform): RenderItem<GLTile>[] {
-        const src = this.style.sources[source];
-        let st = this.pictures.get(source);
-        if (!st || st.url !== src.url) {
-            if (st?.gl) this.renderer.destroyTile(st.gl);
-            const state: {url: string; gl?: GLTile} = st = {url: src.url!};
-            this.pictures.set(source, state);
+        const src = this.style.sources[source], had = this.pictures.get(source);
+        const st = this.picture(source);
+        if (st !== had && src.url) {
+            const state = st;
             withTimeout(this.fetchAs('Image'))(src.url!).then(async res => {
                 if (!res.ok) throw httpError('image', src.url!, res.status);
                 const image = await createImageBitmap(await res.blob());
@@ -555,7 +566,7 @@ export class Engine {
         for (const source in this.style.sources) {
             const src = this.style.sources[source];
             if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
-            if (src.type === 'image') { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
+            if (src.coordinates) { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
             // Vector tiles are of the level of the ground tile. Image tiles (raster, elevation) are those that the view
             // itself selects, by the rule of MapLibre for each image tile: the ones that touch this ground tile are drawn
             // into it. (Near the camera they are finer than the ground tile, far away they can be coarser.)
@@ -981,7 +992,7 @@ export class Engine {
                 // layer for a moment only (to load one layer after another), and a frame can come later than that.
                 if (!this.exaggeration && this.tr.width) for (const source in this.style.sources) {
                     const src = this.style.sources[source], tr = this.tr;
-                    if (src.type === 'image' || this.style.terrain?.source === source || !this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
+                    if (src.coordinates || this.style.terrain?.source === source || !this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
                     for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem', this.lod[source])) {
                         const key = source + '|' + id.key;
                         if (!this.tiles.has(key)) this.request(source, id, key);
@@ -998,6 +1009,15 @@ export class Engine {
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight, sdf: c.sdf});
                 this.styleVersion++;
                 this.placeDirty = true; this.iconsRev++;
+                break;
+            }
+            case 'frame': {
+                if (this.style.sources[c.source]?.coordinates) {
+                    const st = this.picture(c.source);
+                    st.gl = this.renderer.createImageTile(c.image, undefined, {z: 0, x: 0, y: 0, w: 0, key: ''}, st.gl);
+                    this.styleVersion++;
+                }
+                c.image.close();
                 break;
             }
             case 'removeImage': this.dropImage(c.name); this.placeDirty = true; this.iconsRev++; break;
@@ -1582,14 +1602,14 @@ export class Engine {
                 // load one layer after another, does not start again each time.)
                 // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
                 const src = this.style.sources[source];
-                if (src.type !== 'image' && this.layers.some(l => l.source === source)) for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem', this.lod[source])) {
+                if (!src.coordinates && this.layers.some(l => l.source === source)) for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem', this.lod[source])) {
                     const key = source + '|' + id.key, t = this.tiles.get(key);
                     if (t) { t.used = frameNo; wanted.add(key); }
                 }
                 continue;
             }
             const src = this.style.sources[source];
-            if (src.type === 'image') { items.set(source, this.pictureItems(source, tr)); continue; }
+            if (src.coordinates) { items.set(source, this.pictureItems(source, tr)); continue; }
             // (The elevation source of 3D terrain has the tiles of `viewCover` also while the map is seen from above and the
             // ground is flat: relief shading then looks the same as on a tilted map, and a tilt loads no other tiles.)
             const ground = this.style.terrain?.source === source;
