@@ -34,20 +34,20 @@ in `@map-jr/map-jr-gl`, and `map.renderer` in `@map-jr/map-jr-gl/maplibre-compat
 ### The workflow `Browsers`, in the browsers of Playwright
 
 The workflow runs after each merge on hosted GitHub runners. These lines are from the branch `bench-results` for
-commit `94a114f` (2026-11-19). "Renderer" is the renderer that the map took when the page asked for the worker
-renderer. The behaviour tests are `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs` and `test/react.mjs`. That run
-has no line for Chromium on Linux.
+commit `58b7324` (2026-11-22). "Renderer" is the renderer that the map took when the page asked for the worker
+renderer. The behaviour tests are `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs` and `test/react.mjs`.
 
 | System | Browser | GPU of the machine | Renderer | Behaviour tests |
 |---|---|---|---|---|
-| macOS (Apple M1, virtual) | Chromium 159 | Apple paravirtual device | Worker | 685 pass, 1 fail |
-| macOS (Apple M2 Pro, virtual) | Firefox 159 | Apple M1 (as the browser reports it) | Worker | 546 pass, 13 fail |
-| macOS (Apple M1, virtual) | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Worker | 683 pass, 0 fail |
-| Linux | Firefox 159 | None (llvmpipe) | Worker | 678 pass, 4 fail |
-| Linux | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Main thread | 662 pass, 3 fail |
-| Windows | Chromium 159 | None (Microsoft Basic Render Driver) | Worker | 686 pass, 0 fail |
-| Windows | Firefox 159 | None (Microsoft Basic Render Driver) | Worker | 676 pass, 5 fail |
-| Windows | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Main thread | 648 pass, 1 fail |
+| macOS (Apple M1, virtual) | Chromium 159 | Apple paravirtual device | Worker | 785 pass, 2 fail |
+| macOS (Apple M2 Pro, virtual) | Firefox 159 | Apple M1 (as the browser reports it) | Worker | 764 pass, 15 fail |
+| macOS (Apple M1, virtual) | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Worker | 780 pass, 0 fail |
+| Linux | Chromium 159 | None (SwiftShader) | Worker | 787 pass, 0 fail |
+| Linux | Firefox 159 | None (llvmpipe) | Worker | 779 pass, 0 fail |
+| Linux | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Main thread | 756 pass, 4 fail |
+| Windows | Chromium 159 | None (Microsoft Basic Render Driver) | Worker | 693 pass, 6 fail |
+| Windows | Firefox 159 | None (Microsoft Basic Render Driver) | Worker | 769 pass, 8 fail |
+| Windows | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Main thread | 732 pass, 8 fail |
 
 Notes on these lines:
 
@@ -55,7 +55,7 @@ Notes on these lines:
 - On Linux, WebKit has no WebGL2 context in a worker. The map draws on the main thread. With `renderer: 'worker'` it
   warns "Worker rendering unavailable, using the main thread: WebGL2 is not available"; with `'auto'` it does not warn.
 - On Windows, WebKit has no `OffscreenCanvas`. Some tests fail with "Can't find variable: OffscreenCanvas". The
-  benchmark page reports a terrain height of 0 m at the centre there and 10 m in the other browsers. This is the
+  benchmark page reports a terrain height of 0 m at the centre there and 8 m in the other browsers. This is the
   same condition as Safari before 16.4.
 - On macOS, the worker renderer loads in Chromium, Firefox and WebKit 27.2 on the hosted runner.
 - The branch lists each failed test by name. Read it with
@@ -70,7 +70,7 @@ third line. It runs only when somebody starts the workflow by hand
 
 | Browser | Where | Seen |
 |---|---|---|
-| Safari 27.2, macOS 26.7.2 | Hosted GitHub runner with a virtual GPU, through `safaridriver` | A worker has `OffscreenCanvas` with a WebGL2 context and a 2D context. The map loads with the main-thread renderer. With the worker renderer, a worker draws one frame and then answers nothing, and its WebGL context is lost about 2.4 seconds later. A second worker does the same with no event (the debug record of run 43328734147). The map then goes to the main thread and loads: run 43334734769 (commit `ceb1b8c`, 2026-11-13) reports "worker: loaded, renderer main", and 21.9 seconds from load to idle on the benchmark page. Why the worker stops is not known ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78)). |
+| Safari 27.2, macOS 26.7.2 | Hosted GitHub runner with a virtual GPU, through `safaridriver` | A worker has `OffscreenCanvas` with a WebGL2 context and a 2D context. The map loads with the main-thread renderer. With the worker renderer, a worker draws one frame and then answers nothing, and its WebGL context is lost about 2.4 seconds later. A second worker does the same with no event (the debug record of run 43328734147). The map then goes to the main thread and loads: run 43334734769 (commit `ceb1b8c`, 2026-11-13) reports "worker: loaded, renderer main", and 21.9 seconds from load to idle on the benchmark page. Why the worker stops is not known ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78)). Run 45021588591 (commit `e5191a5`, 2026-11-22) gives the same: the page that asks for the worker renderer reports "renderer main" and takes 8.3 seconds from load to idle, and the main-thread renderer takes 0.44 seconds. |
 | Safari 27.2 | The owner's Mac with a GPU, by hand | The worker renderer works. No numbers were recorded. |
 | Safari 26.5, iOS 26.5 | iOS Simulator (iPhone 17 Pro) on the hosted runner | The map loads with the worker renderer and with the main-thread renderer. The benchmark did not finish, so there are no numbers. |
 

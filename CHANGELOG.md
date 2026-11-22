@@ -7,7 +7,9 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
-## Unreleased
+## 0.10.0 (2026-11-22)
+
+This entry covers the changes after 0.9.0 (the tag `v0.9.0`).
 
 ### Breaking changes
 
@@ -16,9 +18,95 @@ no pull requests.
   `null` to keep the terrain of the style leaves the field out instead ([#1105]).
 - `@map-jr/map-jr-gl`: the options of a fit of `bounds` in `initialView`, `moveTo` and `fitBounds` are now
   `fitPadding` and `fitMaxZoom`. `padding` and `maxZoom` there have no effect, and the development build warns and
-  names the new option. `padding` and `maxZoom` of the description keep their meaning (#1147).
+  names the new option. `padding` and `maxZoom` of the description keep their meaning ([#1147]).
+
+### New
+
+- Both entries: on the globe, 3D terrain is drawn on the sphere ([#1458]), `fill-extrusion` layers are drawn and
+  follow the curve of the sphere ([#1441], [#1477]), custom layers get the projection data of the globe ([#1451]),
+  and the sky is drawn around the globe ([#1479]).
+- Both entries: sources of type `video` and `canvas` are drawn, with `play`, `pause`, `seek`, `getVideo` and
+  `getCanvas` in the compat entry ([#1448], [#1452]). Their code loads only when a map has such a source.
+- Both entries: a `fill-pattern` or `line-pattern` that reads feature properties draws the image of each feature
+  ([#1443]), and an SDF image as `fill-pattern` takes the colour of `fill-color` ([#1455]).
+- Both entries: `promoteId` on a vector source gives the id of each feature, so feature state works on such a source
+  ([#1439]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `createTileMesh` ([#1475]), `map.style.projection.subdivisionGranularity`
+  ([#1464]), and `Hash`, `config`, `Evented`, `EXTENT` and three types that the Svelte wrappers import ([#1374]).
+- `@map-jr/map-jr-gl/server`: the first view has the controls and the attribution, and the map takes over without a
+  flash ([#1397]).
+
+### Fixed
+
+- Both entries: with 3D terrain, the heights come from the full elevation image, so `queryTerrainElevation` and the
+  height of the camera agree with MapLibre GL JS within 5 % ([#1478]). This makes the grid of heights 256 KB for
+  each elevation tile instead of 64 KB.
+- Both entries: when the camera would be inside 3D terrain, it rises and the pitch and zoom are solved again, as in
+  MapLibre GL JS, and pitch and rotate gestures keep their values ([#1487]). The horizon of the sky and the fog at a
+  high pitch agree with MapLibre GL JS. `getPitch()` and `getZoom()` return the solved values.
+- Both entries: an elevation tile whose heights have arrived is kept, so the camera no longer moves back and forth and
+  the map reaches `idle` ([#1470]).
+- Both entries: a fill layer with `fill-pattern` draws its antialiased edges in the pattern, and `fill-translate`
+  applies to it ([#1476], [#1466]). With `fill-antialias: false`, a fill draws no outline, also with a
+  `fill-outline-color`, as in MapLibre GL JS ([#1476]).
+- Both entries: `idle` and `toBlob` wait for the picture of an image source ([#1467]), `toBlob` no longer makes
+  `loaded()` false in other `idle` listeners ([#1474]), and a removed image or video source frees its texture
+  ([#1473]).
+- Both entries: a vector source with `encoding: 'mlt'` gives a `[map-jr-gl]` warning instead of drawing nothing in
+  silence ([#1440]). MapLibre Tiles are not decoded yet.
+- Both entries: a failed request and an HTTP error status of a style, sprite, source or image give a `[map-jr-gl]`
+  message that names the resource and the URL ([#1376], [#1402]).
+- Both entries: the geometry of a rendered or queried feature has the GeoJSON geometry types ([#1403]), the locale key
+  `Map.Title` sets the `aria-label` of the canvas ([#1401]), and the rules of the controls are not restyled by element
+  rules of the page ([#1363]).
+- `@map-jr/map-jr-gl`: a view in the URL overrides `initialView.bounds` ([#1390]), the first fit of
+  `initialView.bounds` leaves out the padding of the description ([#1378]), `scale()` without `position` goes to the
+  bottom left ([#1383]), a GeoJSON source whose id is a key of `data` needs no data of its own ([#1382]), and
+  `update()` keeps a camera animation when `padding` goes from 0 to unset ([#1354]).
+- `@map-jr/map-jr-gl`: in the development build, `update()` with a view of an earlier movement warns that it is
+  ignored ([#1381]), and the `hoverState` warning gives advice that fits the type of the source ([#1395]).
+- `@map-jr/map-jr-gl/maplibre-compat`: a layer `mouseleave` fires when the pointer leaves the canvas ([#1400]), and
+  `map.style` exists before `load` and `map.transform` has the camera, so svelte-maplibre-gl starts ([#1387]).
 
 [#1105]: https://github.com/map-jr/map-jr-gl/pull/1105
+[#1147]: https://github.com/map-jr/map-jr-gl/pull/1147
+[#1354]: https://github.com/map-jr/map-jr-gl/pull/1354
+[#1363]: https://github.com/map-jr/map-jr-gl/pull/1363
+[#1374]: https://github.com/map-jr/map-jr-gl/pull/1374
+[#1376]: https://github.com/map-jr/map-jr-gl/pull/1376
+[#1378]: https://github.com/map-jr/map-jr-gl/pull/1378
+[#1381]: https://github.com/map-jr/map-jr-gl/pull/1381
+[#1382]: https://github.com/map-jr/map-jr-gl/pull/1382
+[#1383]: https://github.com/map-jr/map-jr-gl/pull/1383
+[#1387]: https://github.com/map-jr/map-jr-gl/pull/1387
+[#1390]: https://github.com/map-jr/map-jr-gl/pull/1390
+[#1395]: https://github.com/map-jr/map-jr-gl/pull/1395
+[#1397]: https://github.com/map-jr/map-jr-gl/pull/1397
+[#1400]: https://github.com/map-jr/map-jr-gl/pull/1400
+[#1401]: https://github.com/map-jr/map-jr-gl/pull/1401
+[#1402]: https://github.com/map-jr/map-jr-gl/pull/1402
+[#1403]: https://github.com/map-jr/map-jr-gl/pull/1403
+[#1439]: https://github.com/map-jr/map-jr-gl/pull/1439
+[#1440]: https://github.com/map-jr/map-jr-gl/pull/1440
+[#1441]: https://github.com/map-jr/map-jr-gl/pull/1441
+[#1443]: https://github.com/map-jr/map-jr-gl/pull/1443
+[#1448]: https://github.com/map-jr/map-jr-gl/pull/1448
+[#1451]: https://github.com/map-jr/map-jr-gl/pull/1451
+[#1452]: https://github.com/map-jr/map-jr-gl/pull/1452
+[#1455]: https://github.com/map-jr/map-jr-gl/pull/1455
+[#1458]: https://github.com/map-jr/map-jr-gl/pull/1458
+[#1464]: https://github.com/map-jr/map-jr-gl/pull/1464
+[#1466]: https://github.com/map-jr/map-jr-gl/pull/1466
+[#1467]: https://github.com/map-jr/map-jr-gl/pull/1467
+[#1470]: https://github.com/map-jr/map-jr-gl/pull/1470
+[#1473]: https://github.com/map-jr/map-jr-gl/pull/1473
+[#1474]: https://github.com/map-jr/map-jr-gl/pull/1474
+[#1475]: https://github.com/map-jr/map-jr-gl/pull/1475
+[#1476]: https://github.com/map-jr/map-jr-gl/pull/1476
+[#1477]: https://github.com/map-jr/map-jr-gl/pull/1477
+[#1478]: https://github.com/map-jr/map-jr-gl/pull/1478
+[#1479]: https://github.com/map-jr/map-jr-gl/pull/1479
+[#1487]: https://github.com/map-jr/map-jr-gl/pull/1487
 
 ## 0.9.0 (2026-11-19)
 
