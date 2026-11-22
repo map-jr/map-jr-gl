@@ -221,10 +221,6 @@ The map, the style, its sources and images, and the files of the library. Both e
   Warning.
 - `[map-jr-gl] Layers of the type "fill-extrusion" are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
   Warning.
-- `[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: they show from zoom <z>, where the map is flat, or use the projection "mercator".`
-  Warning.
-- `[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
-  Warning.
 - `[map-jr-gl] setFeatureState(): the source "<source>" is not GeoJSON, and the id "<id>" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`
   Warning.
 - `[map-jr-gl] Style <style>: HTTP <status>`

@@ -3012,33 +3012,58 @@ for (const mode of renderers) {
     }
     // Custom layers (#45): with renderer: 'main' they draw in their place; with the worker renderer they are an error.
     if (mode === 'main') await checkCustomLayers(page, check);
-    // #1225: on the globe the map leaves custom layers out and warns once; in Mercator they draw again.
+    // #1431: on the globe a custom layer draws with the projection data of the globe, as in MapLibre GL JS 6.17, and
+    // the map writes no warning; in Mercator it gets the Mercator data again.
     if (mode === 'main') {
         const r = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
             const warnings = [], warn = console.warn;
             console.warn = (...a) => { if (String(a[0]).startsWith('[map-jr-gl]')) warnings.push(a.join(' ')); else warn(...a); };
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:200px;height:150px'}));
-            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, projection: {type: 'globe'}, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
-            let calls = 0;
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, canvasContextAttributes: {preserveDrawingBuffer: true},
+                style: {version: 8, projection: {type: 'globe'}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}}]}});
+            const seen = [];
+            let program, buffer, error = null, pixel = null;
+            const layer = {id: 'c', type: 'custom', onAdd(map, gl) { buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([3696, 3696, 4496, 3696, 3696, 4496, 4496, 4496]), gl.STATIC_DRAW); },
+                render(gl, args) {
+                    const t = args.getProjectionData({tileID: {canonical: {x: 0, y: 0, z: 0}, wrap: 0}, applyGlobeMatrix: true}), d = args.defaultProjectionData, M = d.mainMatrix;
+                    const w = M[11] + M[15];
+                    seen.push({variant: args.shaderData.variantName, define: args.shaderData.define, transition: d.projectionTransition, tileTransition: t.projectionTransition,
+                        plane: Array.from(d.clippingPlane).map(v => +v.toFixed(3)), coords: t.tileMercatorCoords, centre: [(M[8] + M[12]) / w, (M[9] + M[13]) / w, (M[10] + M[14]) / w].map(v => +v.toFixed(3)),
+                        nearZ: args.nearZ, fallback: t.fallbackMatrix !== t.mainMatrix});
+                    if (!program && args.shaderData.variantName === 'globe') {
+                        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) error = gl.getShaderInfoLog(s); return s; };
+                        program = gl.createProgram();
+                        gl.attachShader(program, sh(gl.VERTEX_SHADER, `#version 300 es\n${args.shaderData.define}\n${args.shaderData.vertexShaderPrelude}\nin vec2 a_pos; void main() { gl_Position = projectTile(a_pos); }`));
+                        gl.attachShader(program, sh(gl.FRAGMENT_SHADER, '#version 300 es\nprecision highp float; out vec4 c; void main() { c = vec4(1.0, 0.0, 0.0, 1.0); }'));
+                        gl.bindAttribLocation(program, 0, 'a_pos'); gl.linkProgram(program);
+                    }
+                    if (args.shaderData.variantName !== 'globe') return;
+                    gl.useProgram(program);
+                    const u = n => gl.getUniformLocation(program, n);
+                    gl.uniformMatrix4fv(u('u_projection_matrix'), false, t.mainMatrix); gl.uniformMatrix4fv(u('u_projection_fallback_matrix'), false, t.fallbackMatrix);
+                    gl.uniform4f(u('u_projection_tile_mercator_coords'), ...t.tileMercatorCoords); gl.uniform4f(u('u_projection_clipping_plane'), ...t.clippingPlane);
+                    gl.uniform1f(u('u_projection_transition'), t.projectionTransition);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                    const px = new Uint8Array(4); gl.readPixels(gl.drawingBufferWidth >> 1, gl.drawingBufferHeight >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); pixel = Array.from(px);
+                }};
             try {
                 await new Promise(r => m.once('load', r));
-                m.addLayer({id: 'c', type: 'custom', render() { calls++; }});
-                m.addLayer({id: 'c2', type: 'custom', render() {}});
+                m.addLayer(layer);
                 await wait(500); m.triggerRepaint(); await wait(300);
-                const globe = calls, said = warnings.filter(w => w.includes('"custom"'));
+                const globe = seen.at(-1), globePixel = pixel;
                 m.setProjection({type: 'mercator'});
                 await wait(500); m.triggerRepaint(); await wait(300);
-                const n = warnings.length, el2 = document.body.appendChild(el.cloneNode()), vp = new mod.Map({container: el2, renderer: 'main', attributionControl: false, style: {version: 8, projection: {type: 'vertical-perspective'},
-                    sources: {dem: {type: 'raster-dem', tiles: ['/none/{z}/{x}/{y}.png']}}, terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background'}]}});
-                await new Promise(r => vp.once('load', r)); vp.addLayer({id: 'c', type: 'custom', render() {}}); await wait(300); vp.remove(); el2.remove();
-                return {globe, said, mercator: calls, vp: warnings.slice(n)};
+                return {globe, pixel: globePixel, error, mercator: seen.at(-1), warnings: warnings.filter(w => w.includes('ustom'))};
             } finally { console.warn = warn; m.remove(); el.remove(); }
         });
-        check('[main] maplibre-compat: on the globe a custom layer is not drawn and the map warns once; in Mercator it draws again (#1225)',
-            r.globe === 0 && r.said.length === 1 && r.said[0] === '[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: they show from zoom 12, where the map is flat, or use the projection "mercator".'
-            && r.vp.length === 2 && r.vp[0] === '[map-jr-gl] 3D terrain is not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".'
-            && r.vp[1] === '[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".' && r.mercator > 0, JSON.stringify(r));
+        const g = r.globe;
+        check('[main] maplibre-compat: on the globe a custom layer gets the projection data of the globe, its prelude draws, and no warning (#1431)',
+            g?.variant === 'globe' && g.define === '#define GLOBE' && g.transition === 1 && g.tileTransition === 1 && g.fallback && g.nearZ === 0.5
+            && Math.hypot(...g.plane.slice(0, 3)) > 0.99 && g.plane[3] < 0 && g.coords.join() === '0,0,0.0001220703125,0.0001220703125'
+            && Math.abs(g.centre[0]) < 0.01 && Math.abs(g.centre[1]) < 0.01 && g.centre[2] > -1 && g.centre[2] < 1
+            && !r.error && r.pixel?.[0] > 200 && r.pixel[1] < 50 && r.mercator?.variant === 'mercator' && r.mercator.transition === 0 && r.warnings.length === 0, JSON.stringify(r));
     }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.

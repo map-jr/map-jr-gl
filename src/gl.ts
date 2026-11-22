@@ -1099,9 +1099,9 @@ export class GLRenderer {
 
         for (const L of only ? [only] : s.layers.slice(from, to)) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
-            // (A custom layer draws on the screen, also with 3D terrain, and not on the pictures of the terrain tiles. It
-            // draws in Mercator, so it is left out while a globe is drawn, #1225; the map warns once.)
-            if (L.type === 'custom') { if (pass !== 'ground' && !this.globe) { this.custom?.(L.id, s); this.current = null; } continue; }
+            // (A custom layer draws on the screen, also with 3D terrain and on the globe, and not on the pictures of the
+            // terrain tiles. On the globe it gets the matrices of the globe, #1431.)
+            if (L.type === 'custom') { if (pass !== 'ground') { this.custom?.(L.id, s); this.current = null; } continue; }
             if (L.type === 'heatmap') { if (pass !== 'buildings') this.drawHeatmap(L, tr, bySource.get(L.source!) ?? [], target); continue; }
             if (!only && (L.type === 'fill' || L.type === 'line' || L.type === 'raster') && pass !== 'buildings') {
                 // Layer-wide opacity and blending: the layer is drawn on its own first, so that overlapping features
