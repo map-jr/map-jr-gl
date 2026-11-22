@@ -409,6 +409,8 @@ export class Engine {
     private rawElevation = 0;
     private lastPose = '';
     private movedAt = -1e9;
+    /** When the centre last took the height of the ground (a centre set outright is not moved along the line of sight before the map moves, as in MapLibre GL JS, #1480). */
+    private placedAt = -1e9;
     /** 3D terrain: the exaggeration in force this frame (zero when looking straight down, or with no terrain). */
     private exaggeration = 0;
     /** Counts changes to the style and its images, so cached terrain pictures know when they are out of date. */
@@ -1578,12 +1580,19 @@ export class Engine {
                     // while that is loading: a height from the coarse tile of the surroundings would fix the camera at
                     // another height for good, and the picture would depend on which tile arrived first, #820.
                     const d = this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30), src = this.style.sources[terrain.source];
-                    if (d && (d.z >= Math.min(src.maxzoom, Math.floor(tr.zoom) - 1) || !this.demLoading)) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; }
-                } else if (tr.recenterOnGround()) this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`;
+                    if (d && (d.z >= Math.min(src.maxzoom, Math.floor(tr.zoom) - 1) || !this.demLoading)) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; this.placedAt = now; }
+                } else if (this.movedAt > this.placedAt && tr.recenterOnGround()) this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`;
             }
-            // Never inside the mountain: if the ground under the camera reaches it, the camera is lifted clear.
-            const [camX, camY, camH] = tr.cameraPosition(), clear = this.heightAt(camX, camY) + (camH - tr.elevation) * 0.05;
-            if (camH < clear) tr.elevation += clear - camH;
+            // Never inside the mountain: if the ground under the camera reaches it, the camera rises over the same point
+            // of the ground and keeps looking at the same centre, so the pitch and the zoom are solved again (as MapLibre
+            // GL JS's _raiseCameraByPitchAndZoom does, #1480). Not while the centre waits for its own height.
+            for (let pass = 0; pass < 3 && !this.centreGiven; pass++) {
+                const [camX, camY, camH] = tr.cameraPosition(), lift = this.heightAt(camX, camY) + (camH - tr.elevation) * 0.05 - camH;
+                if (lift <= 0) break;
+                const ppm = tr.pixelsPerMetre, d = tr.cameraDistance, p = tr.pitch * Math.PI / 180, across = d * Math.sin(p) / ppm, up = d * Math.cos(p) / ppm + lift;
+                tr.pitch = Math.atan2(across, up) * 180 / Math.PI;
+                tr.zoom = Math.max(tr.minZoom, tr.zoom + Math.log2(d / ppm / Math.hypot(across, up)));
+            }
             this.rawElevation = tr.elevation / this.exaggeration;
         } else {
             tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0;

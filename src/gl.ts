@@ -164,9 +164,9 @@ void main() {
     terrain: [`${VS_COMMON} uniform float u_skirt; uniform float u_exag;
 layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog; out float v_side;
 void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z, t = a_pos.xy * ${EXTENT}.0; v_uv = vec2(p.x, 1.0 - p.y); v_side = horizonSide(t); gl_Position = toClip3D(t, a_height * u_exag - a_pos.z * u_skirt);
-  v_fog = clamp((gl_Position.w - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0); }`, `
+  float w = gl_Position.w; v_fog = clamp(u_fogRange.y * (w - u_fogRange.x) / ((u_fogRange.y - u_fogRange.x) * w), 0.0, 1.0); }`, `
 uniform sampler2D u_drape; in vec2 v_uv; in float v_side; out vec4 o;
-// Fog (the sky of the style, as in MapLibre GL JS): v_fog is 0 at the map centre and 1 at the far plane. u_fog has
+// Fog (the sky of the style, as in MapLibre GL JS): v_fog is the depth of MapLibre's fog matrix, 0 at its near and 1 at its far plane. u_fog has
 // fog-ground-blend, horizon-fog-blend and the opacity of the fog (from the pitch); u_fogColor and u_horizonColor are opaque.
 uniform vec3 u_fog; uniform vec4 u_fogColor; uniform vec4 u_horizonColor; in float v_fog;
 void main() {
@@ -175,9 +175,9 @@ void main() {
   float f = max(v_fog - u_fog.x, 0.0) / (1.0 - u_fog.x), k = f * f * u_fog.z;
   if (k <= 0.0) return;
   vec3 c = mix(u_fogColor.rgb, u_horizonColor.rgb, smoothstep(0.0, 1.0, (v_fog - u_fog.y) / (1.0 - u_fog.y)));
-  // The mix is in linear space (gamma 2.2), on the colour without its alpha.
-  vec3 s = o.a > 0.0 ? o.rgb / o.a : vec3(0.0);
-  o.rgb = pow(mix(pow(s, vec3(2.2)), pow(c, vec3(2.2)), k), vec3(1.0 / 2.2)) * o.a;
+  // The mix is in linear space (gamma 2.2), on all four channels of the premultiplied colour, as in MapLibre GL JS:
+  // fog covers ground whose picture is transparent too.
+  o = pow(mix(pow(o, vec4(2.2)), pow(vec4(c, 1.0), vec4(2.2)), k), vec4(1.0 / 2.2));
 }`],
     // The sky (the `sky` of the style): a quad over the screen. u_sky has the horizon line in device pixels from the
     // bottom and the height of the band in which sky-color turns into horizon-color; below the line nothing is drawn.
@@ -1790,7 +1790,7 @@ export class GLRenderer {
         gl.uniform1f(u.u_exag, s.terrain!.exaggeration);
         // Fog only where the style has a sky, and not on the globe.
         const fog = s.sky && !this.globe ? skyValues(s.sky, s.tr.zoom, s.tr.pitch) : undefined;
-        gl.uniform2f(u.u_fogRange, s.tr.cameraDistance, s.tr.depthRange()[1]);
+        gl.uniform2f(u.u_fogRange, ...s.tr.fogRange());
         gl.uniform3f(u.u_fog, Math.min(fog?.ground ?? 0, 0.999), Math.min(fog?.horizonFog ?? 0, 0.999), fog?.opacity ?? 0);
         if (fog) { gl.uniform4fv(u.u_fogColor, opaque(fog.fog)); gl.uniform4fv(u.u_horizonColor, opaque(fog.horizon)); }
         for (const t of s.terrain!.tiles) {
