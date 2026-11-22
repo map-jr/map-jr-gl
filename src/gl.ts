@@ -319,7 +319,8 @@ void main() {
   o = vec4(c.rgb * a, a);
 }`],
 
-    circle: [`${VS_COMMON}
+    // (With 3D terrain circles are drawn on the screen and stand on the ground, as in MapLibre GL JS: they are not in the ground pictures.)
+    circle: [`${VS_COMMON}${TERRAIN_GLSL}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius; layout(location=5) in float a_radius1;
 uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
 uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch;
@@ -329,14 +330,15 @@ void main() {
   float ext = v_r + u_strokeWidth + 1.0;
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
-  vec4 c = toClip(a_pos);
+  float h = ground(a_pos / ${EXTENT}.0);
+  vec4 c = toClip3(a_pos, h);
   // u_pitch.x: circle-pitch-alignment is 'map', and the circle lies on the map: the offset is in tile units.
   // Otherwise the circle faces the viewer, and the offset is in screen pixels after projection.
   // u_pitch.y: circle-pitch-scale is 'map' (the default), and a distant circle is smaller, as the map under it is.
   // With 'viewport' every circle has the size that it has at the centre of the view (as in MapLibre).
   float w = c.w;
   vec2 px = u_translate;
-  if (u_pitch.x > 0.0) c = toClip(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos));
+  if (u_pitch.x > 0.0) c = toClip3(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos), h);
   else px += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0);
   c.xy += px * vec2(2.0, -2.0) / u_view * c.w;
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
@@ -1150,7 +1152,7 @@ export class GLRenderer {
                     continue;
                 }
             }
-            if ((L.type === 'fill-extrusion') !== (pass === 'buildings') && pass !== 'all') continue;
+            if ((L.type === 'fill-extrusion' || L.type === 'circle' && !!s.terrain) !== (pass === 'buildings') && pass !== 'all') continue;
             if (L.type === 'background' && this.globe && pass === 'all') {
                 // On the globe the background covers the sphere, tile by tile, and not the whole canvas.
                 const name = L.p.pattern.eval(zoom), place = name != null ? pattern(name, L.p.opacity.eval(zoom)) : null;
@@ -1286,7 +1288,7 @@ export class GLRenderer {
             }
             draw: for (const it of items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it);
-                if (extrude) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
+                if (extrude || b.type === 'circle') this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));

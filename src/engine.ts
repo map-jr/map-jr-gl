@@ -565,7 +565,7 @@ export class Engine {
         let signature = `${zt}|${this.styleVersion}`;
         for (const source in this.style.sources) {
             const src = this.style.sources[source];
-            if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
+            if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.type !== 'circle' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
             if (src.coordinates) { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
             // Vector tiles are of the level of the ground tile. Image tiles (raster, elevation) are those that the view
             // itself selects, by the rule of MapLibre for each image tile: the ones that touch this ground tile are drawn
@@ -1597,7 +1597,7 @@ export class Engine {
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
             // only labels and buildings are drawn from the tiles of the view. (Without this, the elevation tiles for relief
             // shading were loaded two times, at two sets of zoom levels.)
-            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion'))) {
+            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion' || l.type === 'circle'))) {
                 // (Tiles on their way stay on their way: a page that hides a layer for a moment and shows it again, to
                 // load one layer after another, does not start again each time.)
                 // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
