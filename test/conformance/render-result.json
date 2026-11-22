@@ -1,10 +1,10 @@
 {
-  "match": 1234,
-  "near": 1556,
-  "differ": 185,
+  "match": 1236,
+  "near": 1558,
+  "differ": 182,
   "differWontfix": 20,
-  "differLater": 85,
-  "errored": 0,
+  "differLater": 84,
+  "errored": 1,
   "skipped": 19,
   "run": 1741
 }

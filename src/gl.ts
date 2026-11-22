@@ -1252,21 +1252,6 @@ export class GLRenderer {
                 }
                 continue;
             }
-            if (L.type === 'fill' && (L.p.pattern.dd || L.p.pattern.eval(zoom))) {
-                for (const it of items) for (const b of parts(it, L.id)) {
-                    // (fill-opacity is in u_fade.y; fill-color colours a distance-field image.)
-                    const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
-                    const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom), c);
-                    if (!place) continue;
-                    const u = place(tilePixels(it.id));
-                    this.placeTile(u, it.id, it.matrix4);
-                    gl.uniform4fv(u.u_clip, it.clip);
-                    gl.bindVertexArray(b.vao);
-                    gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
-                }
-                continue;
-            }
-            let first = true;
             // fill-translate, line-translate and fill-extrusion-translate move the layer by screen pixels. The anchor
             // says if the direction turns with the map (the default) or stays fixed on the screen.
             const tl = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? L.p.translate.eval(zoom) as number[] | null : null;
@@ -1281,6 +1266,21 @@ export class GLRenderer {
                 for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
                 return m;
             };
+            if (L.type === 'fill' && (L.p.pattern.dd || L.p.pattern.eval(zoom))) {
+                for (const it of items) for (const b of parts(it, L.id)) {
+                    // (fill-opacity is in u_fade.y; fill-color colours a distance-field image.)
+                    const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
+                    const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom), c);
+                    if (!place) continue;
+                    const u = place(tilePixels(it.id));
+                    this.placeTile(u, it.id, moved(it));
+                    gl.uniform4fv(u.u_clip, it.clip);
+                    gl.bindVertexArray(b.vao);
+                    gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+                }
+                continue;
+            }
+            let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
             let patImg: Parameters<typeof bindImage>[1] | undefined;
