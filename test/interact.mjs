@@ -2728,13 +2728,18 @@ for (const mode of renderers) {
                 style: {version: 8, sources: {v: {type: 'vector', url: '/test-766.json'}, g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: []}});
             m.on('error', () => {});
             await new Promise(r => { m.once('load', r); setTimeout(r, 5000); });
-            const s = m.style, out = {ids: Object.keys(s.tileManagers).sort(), layers: s.tileManagers.v?._source.vectorLayerIds, geo: s.tileManagers.g?._source.vectorLayerIds, same: s.sourceCaches === s.tileManagers};
+            const gr = () => { const x = m.style.projection.subdivisionGranularity; return [x.tile.getGranularityForZoomLevel(0), x.tile.getGranularityForZoomLevel(3), x.fill.getGranularityForZoomLevel(9), x.circle]; };
+            const merc = gr(); m.setProjection({type: 'globe'}); const globe = gr();
+            const s = m.style, out = {merc, globe, ids: Object.keys(s.tileManagers).sort(), layers: s.tileManagers.v?._source.vectorLayerIds, geo: s.tileManagers.g?._source.vectorLayerIds, same: s.sourceCaches === s.tileManagers};
             m.remove(); el.remove();
             return out;
         }, mode);
         await page.unroute('**/test-766.json'); await page.unroute(/\/t766\//);
         check(`[${mode}] compat map.style.tileManagers gives the vector_layers ids of each vector source (#766)`,
             r.ids.join() === 'g,v' && r.layers?.join() === 'roads,water' && r.geo === undefined && r.same, JSON.stringify(r));
+        // The example page "Add a custom layer with tiles to a globe" reads map.style.projection.subdivisionGranularity (#1453).
+        check(`[${mode}] compat map.style.projection.subdivisionGranularity has the values of MapLibre GL JS (#1453)`,
+            r.merc.join() === '1,1,1,1' && r.globe.join() === '128,32,2,3', JSON.stringify(r));
     }
     // svelte-maplibre-gl reads `map.style._loaded` before the style has loaded, and the camera in `map.transform` (and
     // `getTransformForUpdate()`) on each `move` (#1375).
