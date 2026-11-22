@@ -23,7 +23,7 @@ export type LngLatLike = readonly number[] | {lng: number; lat: number} | {lon: 
 export interface TileID { z: number; x: number; y: number; w: number; key: string }
 
 /** With 3D terrain, heights are kept on the CPU as one grid of this many samples a side per elevation tile. */
-export const HEIGHT_GRID = 128;
+export const HEIGHT_GRID = 256;
 /**
  * Ground height in metres at a mercator position, from height grids keyed "z/x/y": the deepest one at or above
  * zoom `from` that covers the point, or `unknown` if there is none.

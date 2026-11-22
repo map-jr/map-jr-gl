@@ -66,12 +66,21 @@ export class TileBuilder {
             if (!bytes) return null;
             const px = await decodePixels(bytes, this.decodeImage), {width: w, height: h} = px, grid = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
             let lo = Infinity, hi = -Infinity;
+            // Each cell of the grid is the mean of the pixels that it covers (two by two for a tile of 512 pixels), so that
+            // heights read from it agree with the full image, as MapLibre GL JS reads them. A cell that took one pixel in
+            // four lay up to hundreds of metres off in the mountains (#1459).
             for (let j = 0; j < HEIGHT_GRID; j++) {
-                const y = Math.min(h - 1, Math.floor((j + 0.5) * h / HEIGHT_GRID));
+                const y0 = Math.min(h - 1, Math.floor(j * h / HEIGHT_GRID)), y1 = Math.max(y0 + 1, Math.floor((j + 1) * h / HEIGHT_GRID));
                 for (let i = 0; i < HEIGHT_GRID; i++) {
-                    const v = grid[j * HEIGHT_GRID + i] = decodeElevation(px.data, (y * w + Math.min(w - 1, Math.floor((i + 0.5) * w / HEIGHT_GRID))) * 4, req.encoding);
-                    if (v < lo) lo = v;
-                    if (v > hi) hi = v;
+                    const x0 = Math.min(w - 1, Math.floor(i * w / HEIGHT_GRID)), x1 = Math.max(x0 + 1, Math.floor((i + 1) * w / HEIGHT_GRID));
+                    let sum = 0;
+                    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+                        const v = decodeElevation(px.data, (y * w + x) * 4, req.encoding);
+                        sum += v;
+                        if (v < lo) lo = v;
+                        if (v > hi) hi = v;
+                    }
+                    grid[j * HEIGHT_GRID + i] = sum / ((y1 - y0) * (x1 - x0));
                 }
             }
             return {width: w, height: h, pixels: new Uint8Array(px.data.buffer, px.data.byteOffset, px.data.byteLength), grid, lo, hi};
