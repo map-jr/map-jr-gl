@@ -186,14 +186,14 @@ The table counts the 138 public methods of the MapLibre `Map` class in the entry
 | Available | 131 | 94.9% |
 | Accepted, with no effect | 7 | 5.1% |
 | Not available | 0 | 0.0% |
-| Only in this library | 10 |  |
+| Only in this library | 11 |  |
 | Internal to MapLibre GL JS, not counted | 15 |  |
 
 **Available:** `addControl`, `addImage`, `addLayer`, `addSource`, `addSprite`, `areTilesLoaded`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `cameraForBounds`, `coveringTiles`, `easeTo`, `fire`, `fitBounds`, `fitScreenCoordinates`, `flyTo`, `getAnisotropicFilterPitch`, `getBearing`, `getBounds`, `getCameraTargetElevation`, `getCanvas`, `getCanvasContainer`, `getCenter`, `getCenterClampedToGround`, `getCenterElevation`, `getContainer`, `getFeatureState`, `getFilter`, `getFontFaces`, `getGlobalState`, `getGlyphs`, `getImage`, `getLayer`, `getLayersOrder`, `getLayoutProperty`, `getLight`, `getMaxBounds`, `getMaxPitch`, `getMaxZoom`, `getMinPitch`, `getMinZoom`, `getPadding`, `getPaintProperty`, `getPitch`, `getPixelRatio`, `getProjection`, `getRenderWorldCopies`, `getRoll`, `getSky`, `getSource`, `getSprite`, `getStyle`, `getStyleUrl`, `getTerrain`, `getVerticalFieldOfView`, `getZoom`, `getZoomSnap`, `hasControl`, `hasImage`, `isMoving`, `isRotating`, `isSourceLoaded`, `isStyleLoaded`, `isZooming`, `jumpTo`, `listImages`, `listens`, `loadImage`, `loaded`, `moveLayer`, `off`, `on`, `once`, `panBy`, `panTo`, `project`, `queryRenderedFeatures`, `querySourceFeatures`, `queryTerrainElevation`, `redraw`, `refreshTiles`, `remove`, `removeControl`, `removeFeatureState`, `removeImage`, `removeLayer`, `removeSource`, `removeSprite`, `resetNorth`, `resetNorthPitch`, `resize`, `rotateTo`, `setBearing`, `setCenter`, `setEventedParent`, `setFeatureState`, `setFilter`, `setFontFaces`, `setGlobalStateProperty`, `setGlyphs`, `setLayerZoomRange`, `setLayoutProperty`, `setLight`, `setMaxBounds`, `setMaxPitch`, `setMaxZoom`, `setMinPitch`, `setMinZoom`, `setMissingStyleImageResolver`, `setPadding`, `setPaintProperty`, `setPitch`, `setPixelRatio`, `setProjection`, `setSky`, `setSourceTileLodParams`, `setSprite`, `setStyle`, `setTerrain`, `setTransformConstrain`, `setTransformRequest`, `setZoom`, `setZoomSnap`, `snapToNorth`, `stop`, `triggerRepaint`, `unproject`, `updateImage`, `zoomIn`, `zoomOut`, `zoomTo`
 
 **Accepted, with no effect** (a value that the library cannot do gives one warning, except for `setAnisotropicFilterPitch`, which gives none): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setRenderWorldCopies`, `setRoll`, `setTransformCameraUpdate`, `setVerticalFieldOfView`
 
-**Only in this library:** `addFonts`, `getAttributions`, `isLocationOccluded`, `isPitching`, `isRolling`, `queryElevation`, `queryFeatures`, `querySource`, `setCursor`, `toBlob`
+**Only in this library:** `addFonts`, `getAttributions`, `getTransformForUpdate`, `isLocationOccluded`, `isPitching`, `isRolling`, `queryElevation`, `queryFeatures`, `querySource`, `setCursor`, `toBlob`
 
 **Not available:** 
 
