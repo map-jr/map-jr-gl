@@ -200,5 +200,8 @@ jobs:
           path: .cache/maplibre-gl-js
           key: maplibre-tests-${{ hashFiles('test/conformance/render.mjs') }}
       - run: node build.mjs
+      # (`shell: bash` sets pipefail, so a result below the floor fails the step and not only `tee`; #1481.)
       - run: pnpm test:render | tee render.txt
+        shell: bash
       - run: head -2 render.txt >> "$GITHUB_STEP_SUMMARY"
+        if: always()
