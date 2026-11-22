@@ -217,10 +217,6 @@ The map, the style, its sources and images, and the files of the library. Both e
   Warning.
 - `[map-jr-gl] 3D terrain is not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
   Warning.
-- `[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: they show from zoom <z>, where the map is flat, or use the projection "mercator".`
-  Warning.
-- `[map-jr-gl] Custom layers (the type "custom") are not drawn on the globe: use the projection "globe", which is flat from zoom 12, or "mercator".`
-  Warning.
 - `[map-jr-gl] setFeatureState(): the source "<source>" is not GeoJSON, and the id "<id>" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`
   Warning.
 - `[map-jr-gl] Style <style>: HTTP <status>`
@@ -257,6 +253,8 @@ The map, the style, its sources and images, and the files of the library. Both e
   Warning.
 - `[map-jr-gl] raster-fade-duration: the property has no effect, and a raster tile shows at once when it has loaded. Remove it, or write 0.`
   Warning.
+- `[map-jr-gl] The video source "<id>" could not load any of its "urls". Check the URLs, and that a server of another origin sends CORS headers.`
+  Error.
 
 ## Controls
 

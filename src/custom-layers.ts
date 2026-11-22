@@ -22,6 +22,45 @@ const PRELUDE = 'const float PI = 3.141592653589793;\n' +
     'vec4 projectTileFor3D(vec2 p, float elevation) { return projectTileWithElevation(p, elevation); }\n' +
     'vec4 projectTile(vec2 p) { return projectTileWithElevation(p, 0.0); }\n' +
     'vec4 projectTile(vec2 p, vec2 rawPos) { return projectTileWithElevation(p, 0.0); }\n';
+// The prelude for the globe: the functions and uniforms of `_projection_globe.vertex.glsl` of MapLibre GL JS 6.17
+// (BSD-3-Clause), translated closely and shortened (no antimeridian varying, no animation of the poles).
+const GLOBE = 'const float PI = 3.141592653589793;\n' +
+    'uniform mat4 u_projection_matrix;\n' +
+    '#define GLOBE_RADIUS 6371008.8\n' +
+    'uniform highp vec4 u_projection_tile_mercator_coords;\n' +
+    'uniform highp vec4 u_projection_clipping_plane;\n' +
+    'uniform highp float u_projection_transition;\n' +
+    'uniform mat4 u_projection_fallback_matrix;\n' +
+    'float circumferenceRatioAtTileY(float tileY) { float e = exp(PI - (u_projection_tile_mercator_coords.y + u_projection_tile_mercator_coords.w * tileY) * 2.0 * PI); return 2.0 * e / (e * e + 1.0); }\n' +
+    'float projectLineThickness(float tileY) { return mix(1.0, 1.0 / circumferenceRatioAtTileY(tileY), min(u_projection_transition, 1.0)); }\n' +
+    'vec3 projectToSphere(vec2 p, vec2 rawPos) {\n' +
+    '  vec2 m = u_projection_tile_mercator_coords.xy + u_projection_tile_mercator_coords.zw * p;\n' +
+    '  float a = m.x * 2.0 * PI + PI, e = exp(PI - m.y * 2.0 * PI), c = 2.0 * e / (e * e + 1.0);\n' +
+    '  if (rawPos.y < -32767.5) return vec3(0.0, 1.0, 0.0);\n' +
+    '  if (rawPos.y > 32766.5) return vec3(0.0, -1.0, 0.0);\n' +
+    '  return vec3(sin(a) * c, (e * e - 1.0) / (e * e + 1.0), cos(a) * c);\n' +
+    '}\n' +
+    'vec3 projectToSphere(vec2 p) { return projectToSphere(p, vec2(0.0)); }\n' +
+    'float globeComputeClippingZ(vec3 s) { return 1.0 - (dot(s, u_projection_clipping_plane.xyz) + u_projection_clipping_plane.w); }\n' +
+    'vec4 interpolateProjection(vec2 p, vec3 s, float elevation) {\n' +
+    '  vec3 e = s * (1.0 + elevation / GLOBE_RADIUS);\n' +
+    '  vec4 g = u_projection_matrix * vec4(e, 1.0);\n' +
+    '  g.z = globeComputeClippingZ(e) * g.w;\n' +
+    '  if (u_projection_transition > 0.999) return g;\n' +
+    '  vec4 f = u_projection_fallback_matrix * vec4(p, elevation, 1.0), r = g;\n' +
+    '  r.z = g.z * clamp((u_projection_transition - 0.2) / 0.8, 0.0, 1.0);\n' +
+    '  r.xyw = mix(f.xyw, g.xyw, u_projection_transition);\n' +
+    '  return r;\n' +
+    '}\n' +
+    'vec4 interpolateProjectionFor3D(vec2 p, vec3 s, float elevation) {\n' +
+    '  vec4 g = u_projection_matrix * vec4(s * (1.0 + elevation / GLOBE_RADIUS), 1.0);\n' +
+    '  if (u_projection_transition > 0.999) return g;\n' +
+    '  return mix(u_projection_fallback_matrix * vec4(p, elevation, 1.0), g, u_projection_transition);\n' +
+    '}\n' +
+    'vec4 projectTile(vec2 p) { return interpolateProjection(p, projectToSphere(p), 0.0); }\n' +
+    'vec4 projectTile(vec2 p, vec2 rawPos) { return interpolateProjection(p, projectToSphere(p, rawPos), 0.0); }\n' +
+    'vec4 projectTileWithElevation(vec2 p, float elevation) { return interpolateProjection(p, projectToSphere(p), elevation); }\n' +
+    'vec4 projectTileFor3D(vec2 p, float elevation) { return interpolateProjectionFor3D(p, projectToSphere(p, p), elevation); }\n';
 
 /** a × b of two column-major 4×4 matrices, in 64 bits. */
 function multiply(a: ArrayLike<number>, b: ArrayLike<number>) {
@@ -38,7 +77,7 @@ const projection = (mainMatrix: Float32Array | Float64Array, tileMercatorCoords:
  * the zoom below (whose values are small, so they are exact in 32 bits), times the step from Mercator coordinates to
  * the units of that tile in 64 bits: a model the size of a building does not shake at a high zoom.
  */
-function inputs(tr: Transform): CustomRenderMethodInput {
+function inputs(tr: Transform, globeness: number): CustomRenderMethodInput {
     const z = Math.max(0, Math.floor(tr.zoom)), n = 2 ** z, ws = tr.worldSize, metres = EARTH * Math.cos(tr.lat * Math.PI / 180);
     const x = Math.min(n - 1, Math.floor(mercX(tr.lng) * n)), y = Math.min(n - 1, Math.floor(mercY(tr.lat) * n)), k = n * 4096;
     const tile = tr.tileMatrix4({z, x, y, w: 0, key: ''});
@@ -47,17 +86,36 @@ function inputs(tr: Transform): CustomRenderMethodInput {
     // The depth runs from -1 to 1 between the near and the far plane: Z = A·W + B. (Read from the tile matrix, whose
     // translation is small: in `main` it is large, and the rounding of its 32-bit values would show.)
     const A = tile[10] / tile[11], B = tile[14] - A * tile[15], near = -B / (1 + A), far = B / (1 - A), f = 1 / Math.tan(FOV / 2);
+    // (With no far plane, far = Infinity, the depth row is z = -z_view - 2·near.)
+    const perspective = (near: number, far: number) => Float64Array.from([f * tr.height / tr.width, 0, 0, 0, 0, f, 0, 0, (tr.width - 2 * tr.cx) / tr.width, (2 * tr.cy - tr.height) / tr.height, far === Infinity ? -1 : (far + near) / (near - far), -1, 0, 0, far === Infinity ? -2 * near : 2 * far * near / (near - far), 0]);
+    const tileMatrix = (c: {z: number; x: number; y: number}, wrap?: number) => Float32Array.from(multiply(tr.tileMatrix4({z: c.z, x: c.x, y: c.y, w: wrap ?? 0, key: ''}), scale(UNIT, UNIT, 1)));
+    const mercatorCoords = (c: {z: number; x: number; y: number}): ProjectionData['tileMercatorCoords'] => { const n = 2 ** c.z; return [c.x / n, c.y / n, 1 / n / 8192, 1 / n / 8192]; };
+    if (globeness > 0 && tr.globe) {
+        // On the globe (also while it turns into Mercator) MapLibre GL JS gives the matrix from the unit sphere to clip
+        // space, the plane of the horizon, and the globeness; the Mercator matrices are the fallback. The depth is that
+        // of the fill-extrusion layers on the globe (toClip3D in gl.ts), so that a '3d' layer and the buildings below it
+        // hide each other: z = w - 0.0005 · (the distance from the camera to the centre of the sphere). That is a
+        // projection with no far plane whose near plane is half that distance (#1431).
+        const g = tr.globe.frame(tr), m = Float64Array.from(g.m), k = 0.0005 * g.m[15], gNear = k / 2, gFar = Infinity;
+        for (let c = 0; c < 4; c++) m[c * 4 + 2] = m[c * 4 + 3] - (c === 3 ? k : 0);
+        const m32 = Float32Array.from(m), plane = [...g.horizon] as ProjectionData['clippingPlane'];
+        const data = (fallbackMatrix: Float32Array | Float64Array, tileMercatorCoords: ProjectionData['tileMercatorCoords'], projectionTransition: number, clipAntimeridian: boolean): ProjectionData =>
+            ({mainMatrix: m32, fallbackMatrix, tileMercatorCoords, clippingPlane: plane, projectionTransition, clipAntimeridian});
+        return {
+            nearZ: gNear, farZ: gFar, fov: FOV, modelViewProjectionMatrix: m, projectionMatrix: perspective(gNear, gFar),
+            shaderData: {variantName: 'globe', vertexShaderPrelude: GLOBE, define: '#define GLOBE'},
+            defaultProjectionData: data(main, [0, 0, 1, 1], globeness, true),
+            getProjectionData: ({tileID: {canonical: c, wrap}, applyGlobeMatrix}) => data(tileMatrix(c, wrap), mercatorCoords(c), applyGlobeMatrix ? globeness : 0, c.z === 0),
+        };
+    }
     return {
         nearZ: near, farZ: far, fov: FOV,
         modelViewProjectionMatrix: multiply(main, scale(1 / ws, 1 / ws, 1 / metres)),
         // (The padding moves the centre of the perspective, as `m[8]` and `m[9]` do in MapLibre GL JS.)
-        projectionMatrix: Float64Array.from([f * tr.height / tr.width, 0, 0, 0, 0, f, 0, 0, (tr.width - 2 * tr.cx) / tr.width, (2 * tr.cy - tr.height) / tr.height, (far + near) / (near - far), -1, 0, 0, 2 * far * near / (near - far), 0]),
+        projectionMatrix: perspective(near, far),
         shaderData: {variantName: 'mercator', vertexShaderPrelude: PRELUDE, define: '#define PROJECTION_MERCATOR'},
         defaultProjectionData: projection(main, [0, 0, 1, 1]),
-        getProjectionData: ({tileID: {canonical: c, wrap}}) => {
-            const n = 2 ** c.z;
-            return projection(Float32Array.from(multiply(tr.tileMatrix4({z: c.z, x: c.x, y: c.y, w: wrap ?? 0, key: ''}), scale(UNIT, UNIT, 1))), [c.x / n, c.y / n, 1 / n / 8192, 1 / n / 8192]);
-        },
+        getProjectionData: ({tileID: {canonical: c, wrap}}) => projection(tileMatrix(c, wrap), mercatorCoords(c)),
     };
 }
 
@@ -118,7 +176,7 @@ export function customLayers(map: Map, connect: (draw: (id: string, s: Scene) =>
         const layer = added.get(id);
         if (!layer || !gl) return;
         // (The layers of one frame share the values of that frame.)
-        if (s !== scene) { scene = s; args = inputs(s.tr); cleared = false; }
+        if (s !== scene) { scene = s; args = inputs(s.tr, s.globe?.t ?? 0); cleared = false; }
         try {
             base(gl, 4);
             if (layer.prerender) { layer.prerender(gl, args); base(gl, 4); }

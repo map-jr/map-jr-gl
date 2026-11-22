@@ -996,15 +996,20 @@ export class GLRenderer {
         this.iconSize = [width, height];
     }
 
-    /** Wraps a decoded raster or elevation tile image as a drawable tile. */
-    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: DemEncoding | undefined, id: TileID): GLTile {
+    /**
+     * Wraps a decoded raster or elevation tile image as a drawable tile. With `into` (a tile of a video or canvas source),
+     * the image is a new frame that replaces the picture of that tile in its own texture.
+     */
+    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: DemEncoding | undefined, id: TileID, into?: GLTile): GLTile {
         const dem = !!encoding;
-        const gl = this.gl, tex = this.newTexture();
+        const gl = this.gl, tex = into ? into.tex! : this.newTexture();
+        if (into) gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
         // (Elevation tiles arrive as plain pixels, which a tile worker decoded.)
         if ('data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image.data);
         else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        if (into) return into;
         const tile: GLTile = {uid: ++this.uids, labels: {}, batches: {}, tex};
         if (dem) {
             const n = 2 ** id.z, slopes = this.newTexture(), u = this.ready('demPrepare');
@@ -1130,9 +1135,9 @@ export class GLRenderer {
 
         for (const L of only ? [only] : s.layers.slice(from, to)) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
-            // (A custom layer draws on the screen, also with 3D terrain, and not on the pictures of the terrain tiles. It
-            // draws in Mercator, so it is left out while a globe is drawn, #1225; the map warns once.)
-            if (L.type === 'custom') { if (pass !== 'ground' && !this.globe) { this.custom?.(L.id, s); this.current = null; } continue; }
+            // (A custom layer draws on the screen, also with 3D terrain and on the globe, and not on the pictures of the
+            // terrain tiles. On the globe it gets the matrices of the globe, #1431.)
+            if (L.type === 'custom') { if (pass !== 'ground') { this.custom?.(L.id, s); this.current = null; } continue; }
             if (L.type === 'heatmap') { if (pass !== 'buildings') this.drawHeatmap(L, tr, bySource.get(L.source!) ?? [], target); continue; }
             if (!only && (L.type === 'fill' || L.type === 'line' || L.type === 'raster') && pass !== 'buildings') {
                 // Layer-wide opacity and blending: the layer is drawn on its own first, so that overlapping features
