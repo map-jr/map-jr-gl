@@ -255,6 +255,12 @@ The map, the style, its sources and images, and the files of the library. Both e
   Warning.
 - `[map-jr-gl] The video source "<id>" could not load any of its "urls". Check the URLs, and that a server of another origin sends CORS headers.`
   Error.
+- `[map-jr-gl] The canvas source "<id>": the canvas is <width> × <height> pixels. Give it a width and a height above 0.`
+  Error.
+- `[map-jr-gl] The canvas source "<id>": the page has no <canvas> with the id "<key>". Give the id of a <canvas> of the page, or the element.`
+  Error.
+- `[map-jr-gl] The canvas source "<id>": "canvas" is not a <canvas> element. Give the id of a <canvas> of the page, or the element.`
+  Error.
 
 ## Controls
 
