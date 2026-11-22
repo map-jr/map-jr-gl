@@ -41,7 +41,7 @@ const frames = new WeakMap<Transform, {key: string; f: GlobeFrame}>();
 
 /** The globe of a transform as it is now (kept until the camera or the size changes). */
 export function frame(tr: Transform): GlobeFrame {
-    const key = [tr.width, tr.height, tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, ...tr.padding].join();
+    const key = [tr.width, tr.height, tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, ...tr.padding].join();
     const kept = frames.get(tr);
     if (kept?.key === key) return kept.f;
     // The radius in pixels: the scale at the centre of the view is that of Mercator at the same zoom (as in MapLibre).
@@ -49,10 +49,12 @@ export function frame(tr: Transform): GlobeFrame {
     const R = tr.worldSize / (2 * PI * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD)), d = tr.cameraDistance, w = tr.width, h = tr.height;
     // (z and w of clip space are the distance along the view; the shader replaces z by the side of the horizon.)
     const proj = [2 * d / w, 0, 0, 0, 0, 2 * d / h, 0, 0, -(tr.cx - w / 2) * 2 / w, (tr.cy - h / 2) * 2 / h, -1, -1, 0, 0, 0, 0];
-    const view = [move(-d), rot(0, -tr.pitch * RAD), rot(2, tr.bearing * RAD), move(-R), rot(0, tr.lat * RAD), rot(1, -tr.lng * RAD), [R, 0, 0, 0, 0, R, 0, 0, 0, 0, R, 0, 0, 0, 0, 1]].reduce(mul);
+    // With 3D terrain the camera looks at the ground under the centre: the sphere moves down by its height (`elevation`).
+    const lift = 1 + tr.elevation / 6371008.8;
+    const view = [move(-d), rot(0, -tr.pitch * RAD), rot(2, tr.bearing * RAD), move(-R * lift), rot(0, tr.lat * RAD), rot(1, -tr.lng * RAD), [R, 0, 0, 0, 0, R, 0, 0, 0, 0, R, 0, 0, 0, 0, 1]].reduce(mul);
     // The camera: the inverse of the view applied to the origin, in radii.
     let cam: number[] = [0, 0, d / R];
-    cam = turn(rot(0, tr.pitch * RAD), cam); cam = turn(rot(2, -tr.bearing * RAD), cam); cam[2] += 1;
+    cam = turn(rot(0, tr.pitch * RAD), cam); cam = turn(rot(2, -tr.bearing * RAD), cam); cam[2] += lift;
     cam = turn(rot(0, -tr.lat * RAD), cam); cam = turn(rot(1, tr.lng * RAD), cam);
     const len = Math.hypot(cam[0], cam[1], cam[2]);
     // A point p of the sphere is on the near side when dot(p, cam / |cam|) is at least 1 / |cam| (the tangent points).

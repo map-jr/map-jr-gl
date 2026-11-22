@@ -1527,9 +1527,11 @@ export class Engine {
         const globeness = tr.globeness;
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
         if (terrain && globeness) {
-            // On the globe the relief is drawn, but the camera does not follow the ground yet (#1430): the centre stays at
-            // sea level, and screen positions are those of the sea-level sphere.
-            tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0;
+            // On the globe the camera looks at the ground under the centre (see `frame` in globe.ts). Screen positions are
+            // those of a sphere at the height of the centre: the CPU does not follow the ground away from it (#1430).
+            tr.heightAt = undefined; tr.groundRange = undefined;
+            tr.elevation = this.heightAt(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat));
+            this.rawElevation = tr.elevation / this.exaggeration;
         } else if (terrain) {
             tr.heightAt = this.heightAt;
             // The centre's height is remembered in real metres, so it shrinks and grows together with the relief.
