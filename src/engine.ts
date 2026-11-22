@@ -411,6 +411,8 @@ export class Engine {
     private movedAt = -1e9;
     /** When the centre last took the height of the ground (a centre set outright is not moved along the line of sight before the map moves, as in MapLibre GL JS, #1480). */
     private placedAt = -1e9;
+    private lastTilt = '';
+    private tiltedAt = -1e9;
     /** 3D terrain: the exaggeration in force this frame (zero when looking straight down, or with no terrain). */
     private exaggeration = 0;
     /** Counts changes to the style and its images, so cached terrain pictures know when they are out of date. */
@@ -420,6 +422,20 @@ export class Engine {
     private invalidate() { this.placeDirty = true; this.repaint(); }
 
     /** The deepest loaded elevation tile at or above a position, and its zoom. */
+    /** Metres by which the ground reaches above the camera or above 9 points of the near clipping plane (MapLibre's 1/50 of the height); 0 or less while clear. */
+    private terrainAboveCamera(tr: Transform): number {
+        const [cx, cy, ch] = tr.cameraPosition(), ws = tr.worldSize, ppm = tr.pixelsPerMetre, d = tr.cameraDistance, n = tr.height / 50;
+        const p = tr.pitch * Math.PI / 180, a = -tr.bearing * Math.PI / 180, sa = Math.sin(a), ca = Math.cos(a), sp = Math.sin(p), cp = Math.cos(p);
+        let lift = this.heightAt(cx, cy) - ch;
+        for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+            // A point of the near plane: forward n pixels, then sideways and up by the half sizes of the plane.
+            const x = i * n * tr.width / 2 / d, y = j * n * tr.height / 2 / d;
+            const px = -sa * sp * n + ca * x - sa * cp * y, py = -ca * sp * n - sa * x - ca * cp * y, pz = -cp * n + sp * y;
+            lift = Math.max(lift, this.heightAt(cx + px / ws, cy + py / ws) - (ch + pz / ppm));
+        }
+        return lift;
+    }
+
     private demTile(x: number, y: number, z: number): {t: TileState; z: number} | null {
         const terrain = this.style.terrain, src = terrain && this.style.sources[terrain.source];
         if (!src) return null;
@@ -1563,6 +1579,10 @@ export class Engine {
             // ground as soon as it is known, and `idle` does not come with the centre still at sea level, #793.)
             if (pose !== this.lastPose) { if (this.lastPose) this.movedAt = now; this.lastPose = pose; }
             const moving = cameraAnimating || now - this.movedAt < 150;
+            // (A turn or a tilt is a movement too while the camera is kept clear of the ground.)
+            const tilt = `${tr.bearing},${tr.pitch}`;
+            if (tilt !== this.lastTilt) { if (this.lastTilt) this.tiltedAt = now; this.lastTilt = tilt; }
+            const turning = moving || now - this.tiltedAt < 150;
             const known = (mx: number, my: number) => !!this.demTile(mx - Math.floor(mx), my, 30);
             const e = this.ease;
             if (e && !e.around) {
@@ -1583,15 +1603,19 @@ export class Engine {
                     if (d && (d.z >= Math.min(src.maxzoom, Math.floor(tr.zoom) - 1) || !this.demLoading)) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; this.placedAt = now; }
                 } else if (this.movedAt > this.placedAt && tr.recenterOnGround()) this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`;
             }
-            // Never inside the mountain: if the ground under the camera reaches it, the camera rises over the same point
-            // of the ground and keeps looking at the same centre, so the pitch and the zoom are solved again (as MapLibre
-            // GL JS's _raiseCameraByPitchAndZoom does, #1480). Not while the centre waits for its own height.
+            // Never inside the mountain (as MapLibre GL JS's _terrainHeightAboveCamera and _raiseCameraByPitchAndZoom,
+            // #1480, #1486): the ground under the camera and under 9 points of the near clipping plane stays below them.
+            // During a gesture or an animation the centre's height rises instead, so that the pitch and the zoom that the
+            // movement edits are kept. At rest the camera rises over the same point of the ground and keeps the same
+            // centre: the pitch and the zoom are solved again. Not while the centre waits for its own height.
             for (let pass = 0; pass < 3 && !this.centreGiven; pass++) {
-                const [camX, camY, camH] = tr.cameraPosition(), lift = this.heightAt(camX, camY) + (camH - tr.elevation) * 0.05 - camH;
+                const lift = this.terrainAboveCamera(tr);
                 if (lift <= 0) break;
+                if (turning) { tr.elevation += lift; break; }
                 const ppm = tr.pixelsPerMetre, d = tr.cameraDistance, p = tr.pitch * Math.PI / 180, across = d * Math.sin(p) / ppm, up = d * Math.cos(p) / ppm + lift;
                 tr.pitch = Math.atan2(across, up) * 180 / Math.PI;
                 tr.zoom = Math.max(tr.minZoom, tr.zoom + Math.log2(d / ppm / Math.hypot(across, up)));
+                this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`; this.lastTilt = `${tr.bearing},${tr.pitch}`;
             }
             this.rawElevation = tr.elevation / this.exaggeration;
         } else {
