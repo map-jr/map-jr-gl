@@ -1031,7 +1031,8 @@ export class Map {
             const done = () => {
                 this.off('idle', done); this.off('render', check);
                 if (!this.listeners.render?.length) { this.wantsFrames = false; this.post({type: 'frames', on: false}); }
-                shoot();
+                // (After the other listeners of this `idle`: the repaint of `shoot` makes `loaded()` false; #1454.)
+                queueMicrotask(shoot);
             }, check = () => { if (playing()) done(); };
             this.on('idle', done); this.on('render', check);
         });
