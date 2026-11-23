@@ -220,7 +220,12 @@ export function editingPage(maputnik: string, readme: string): string {
 export const specFile = 'docs/map-jr.md';
 export function specPage(markdown: string): string {
     const lines = markdown.split('\n');
-    const start = lines.findIndex(line => line.startsWith('# '));
+    let fence = false;
+    const start = lines.findIndex(line => {
+        if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+        return !fence && line.startsWith('# ');
+    });
+    if (start > 0 && lines.slice(0, start).some(line => line.trim())) fail(`${specFile} of map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has text before its heading "# ...", which the site would leave out. Start the file with the heading.`);
     if (start < 0) fail(`${specFile} of map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has no heading "# ...", which the site reads. Restore the heading there, or change website/build/styles.ts.`);
     const body = ['# The style specification of Map Jr. GL', '',
         `The [Maputnik of Map Jr. GL](/styles/editing) validates styles with a fork of the MapLibre style specification, [map-jr/maplibre-style-spec](${githubUrl(sources.spec)}) (branch \`${sources.spec.branch}\`). This page is \`${specFile}\` of the fork.`, '',
@@ -236,7 +241,9 @@ export function writeStylePages(): StyleChoice[] {
     const stylesDir = checkout(sources.styles);
     const readme = safeMarkdown(readFileSync(resolve(stylesDir, 'README.md'), 'utf8'));
     const maputnik = safeMarkdown(readFileSync(resolve(checkout(sources.maputnik), 'README.md'), 'utf8'));
-    const spec = readFileSync(resolve(checkout(sources.spec), specFile), 'utf8');
+    const specPath = resolve(checkout(sources.spec), specFile);
+    if (!existsSync(specPath)) fail(`map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has no ${specFile}, which the site reads for /styles/spec. Restore the file there, or change website/build/styles.ts.`);
+    const spec = readFileSync(specPath, 'utf8');
     const rows = styleRows(readme);
     const stateRows = (/\*\*Global state\.\*\*[\s\S]*?\n((?:\|.*\n)+)/.exec(readme)?.[1] ?? fail('README.md of map-jr/map-jr-styles has no table under "**Global state.**".'))
         .trim().split('\n').slice(2).map(cells);

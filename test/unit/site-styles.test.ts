@@ -122,6 +122,9 @@ test('/styles/spec is docs/map-jr.md of the fork, escaped, under the heading of 
     assert.match(page, /^\["image", "pin", \{"params": \{\}\}\]$/m);
     assert.match(page, /blob\/map-jr-main\/docs\/map-jr\.md/);
     assert.throws(() => specPage('no heading'), /no heading/);
+    assert.throws(() => specPage('```md\n# not a heading\n```\n'), /no heading/);
+    assert.throws(() => specPage('Text first.\n\n# Additions\n'), /text before its heading/);
+    assert.match(specPage('\n# Additions\n\nBody.\n'), /^Body\.$/m);
 });
 
 test('raw HTML and component blocks of another repository show as text, and code stays', () => {
