@@ -52,7 +52,7 @@ uses the same renderer and has its own tests in a browser.
 <!-- status:start -->
 These figures are written by `pnpm status`. They compare this library with MapLibre GL JS 6.17.0. The file [docs/status.json](docs/status.json) has the same figures.
 
-Unit tests: 300 pass and 1 fail.
+Unit tests: 322 pass and 0 fail.
 
 Sizes, in KB (gzip). The page script of MapLibre GL JS includes its CSS. The page script of this library is the file of the entry and the files that it imports when it loads.
 
@@ -60,9 +60,9 @@ Sizes, in KB (gzip). The page script of MapLibre GL JS includes its CSS. The pag
 |---|---:|---:|---:|
 | Page script of `@map-jr/map-jr-gl` | 46.3 | 300.1 | 15.4% |
 | Page script of `@map-jr/map-jr-gl/maplibre-compat` | 53.9 | 300.1 | 18.0% |
-| Worker file | 86.5 | 145.0 | 59.7% |
-| Page script and worker file of `@map-jr/map-jr-gl` | 132.8 | 445.1 | 29.8% |
-| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 140.4 | 445.1 | 31.5% |
+| Worker file | 86.6 | 145.0 | 59.7% |
+| Page script and worker file of `@map-jr/map-jr-gl` | 132.9 | 445.1 | 29.9% |
+| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 140.5 | 445.1 | 31.6% |
 | Hard line for the page script and the worker file | 148.4 | 445.1 | 33.3% |
 | Server renderer | 53.8 |  |  |
 
@@ -174,46 +174,40 @@ Each task has a page of the guide or a recipe, with the code of each entry and a
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-22 (commit 58b7324), next to MapLibre GL JS 6.17.0. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-23 (commit 01e427b), next to MapLibre GL JS 6.17.0. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
 
 Load to idle, in milliseconds. A ratio below 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 821 | 405 | 0.49 |
-| macOS, WebKit | 1763 | 888 | 0.50 |
-| Linux, Chromium | 591 | 349 | 0.59 |
-| Linux, Firefox | 1011 | 503 | 0.50 |
-| Linux, WebKit | 1443 | 649 | 0.45 |
-| Windows, Chromium | 828 | 635 | 0.77 |
-| Windows, Firefox | 1422 | 853 | 0.60 |
-| Windows, WebKit | 1313 | 720 | 0.55 |
+| macOS, Chromium | 1252 | 592 | 0.47 |
+| Linux, Firefox | 1081 | 457 | 0.42 |
+| Linux, WebKit | 1543 | 540 | 0.35 |
+| Windows, Chromium | 1006 | 630 | 0.63 |
+| Windows, Firefox | 1271 | 703 | 0.55 |
+| Windows, WebKit | 1817 | 948 | 0.52 |
 
 Frames per second while the map moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 32 | 24 | 0.74 |
-| macOS, WebKit | 54 | 51 | 0.94 |
-| Linux, Chromium | 11 | 11 | 1.08 |
-| Linux, Firefox | 23 | 57 | 2.52 |
-| Linux, WebKit | 14 | 13 | 0.96 |
-| Windows, Chromium | 30 | 19 | 0.63 |
-| Windows, Firefox | 19 | 12 | 0.64 |
-| Windows, WebKit | 20 | 16 | 0.82 |
+| macOS, Chromium | 29 | 26 | 0.89 |
+| Linux, Firefox | 23 | 55 | 2.41 |
+| Linux, WebKit | 19 | 14 | 0.72 |
+| Windows, Chromium | 24 | 15 | 0.62 |
+| Windows, Firefox | 22 | 17 | 0.75 |
+| Windows, WebKit | 11 | 8 | 0.72 |
 
 Frames per second while a map with 10,000 markers moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 5 | 16 | 3.18 |
-| macOS, WebKit | 6 | 52 | 8.66 |
-| Linux, Chromium | 3 | 13 | 3.93 |
-| Linux, Firefox | 7 | 44 | 5.93 |
-| Linux, WebKit | 2 | 17 | 7.56 |
-| Windows, Chromium | 3 | 44 | 13.21 |
-| Windows, Firefox | 5 | 22 | 4.75 |
-| Windows, WebKit | 4 | 24 | 5.75 |
+| macOS, Chromium | 1 | 21 | 14.96 |
+| Linux, Firefox | 8 | 45 | 5.38 |
+| Linux, WebKit | 4 | 25 | 7.05 |
+| Windows, Chromium | 2 | 41 | 17.33 |
+| Windows, Firefox | 5 | 26 | 5.12 |
+| Windows, WebKit | 2 | 13 | 5.29 |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the tables to compare the
