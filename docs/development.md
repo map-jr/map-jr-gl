@@ -448,7 +448,9 @@ the tag `v<version>`, and makes the release on GitHub. Nobody pushes a tag or ma
    recipe with its example in `examples/` when one would. For each change of behaviour, read the recipes and the
    examples that use the changed option or method, and update them. A pull request for these pages names the
    recipes that it adds or updates, and the new features that it leaves without a recipe, with the reason. Steps 3
-   and 4 go into pull requests of their own, which merge before the release.
+   and 4 go into pull requests of their own, which merge before the release. The pages follow
+   [the style guide](style-guide.md), and each of these pull requests gets a review by a reviewer that did not write
+   it, against the style guide and the changelog, before it merges.
 5. **Open a pull request for the release** (`docs/release-0.4.0`). It changes `"version"` in `package.json`, adds
    the section `## 0.4.0 (date)` to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](browser-support.md)
    when the results of the browsers changed. The entry is written for a reader who decides whether to update:
