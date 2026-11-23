@@ -22,7 +22,7 @@ const prompt = async () => {
 
 <template>
   <div>
-    <h2 class="font-display text-3xl font-medium tracking-tight text-highlighted">Install it</h2>
+    <h2 class="font-display text-3xl tracking-tight text-highlighted">Install it</h2>
     <p class="mt-4 flex items-center justify-between gap-3 border border-accented bg-(--site-pre-bg) px-3 py-2 figure-text">
       <span><span class="select-none text-dimmed" aria-hidden="true">$ </span>{{ command }}</span>
       <UButton size="xs" color="neutral" variant="ghost" :icon="copied === 'install' ? 'i-lucide-check' : 'i-lucide-copy'" aria-label="Copy the install command" @click="copy('install', async () => command)" />

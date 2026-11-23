@@ -49,12 +49,7 @@ export default defineNuxtConfig({
             link: [{rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg'}],
             meta: [{name: 'color-scheme', content: 'light dark'}],
             // Sets the reader's variant of the code on <html> before the first paint (build/variants.ts).
-            script: [
-                {innerHTML: variantHeadScript, tagPosition: 'head'},
-                // For the review of the heading font only (remove with the choice of the font): `?font=besley`, `?font=fraunces` or
-                // `?font=orelega` sets the heading font of the site, and the tab keeps the choice.
-                {innerHTML: "try{var f=new URLSearchParams(location.search).get('font');if(f)sessionStorage.setItem('font',f);f=f||sessionStorage.getItem('font');if(f)document.documentElement.dataset.font=f}catch(e){}", tagPosition: 'head'},
-            ],
+            script: [{innerHTML: variantHeadScript, tagPosition: 'head'}],
         },
     },
     // What the application reads at run time: the navigation of docs/nav.yml and the version of the library.
@@ -121,10 +116,7 @@ export default defineNuxtConfig({
     },
     fonts: {
         families: [
-            {name: 'Orelega One', provider: 'google', weights: [400], styles: ['normal']},
-            // The two other heading fonts of the review (`?font=`, see the script of the head above).
-            {name: 'Besley', provider: 'google', weights: [500, 600, 700], styles: ['normal']},
-            {name: 'Fraunces', provider: 'google', weights: [500], styles: ['normal']},
+            {name: 'Besley', provider: 'google', weights: [600], styles: ['normal']},
             {name: 'IBM Plex Sans', provider: 'google', weights: [400, 500, 600], styles: ['normal', 'italic']},
             {name: 'IBM Plex Mono', provider: 'google', weights: [400, 500], styles: ['normal']},
         ],
