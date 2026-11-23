@@ -83,7 +83,7 @@ The field [`terrain`](../reference/description.md#terrain) of the description ov
 of the style. `exaggeration` multiplies the heights and is 1 by default.
 
 `source` is the id of a `raster-dem` source of the style or of [`sources`](../reference/description.md#sources).
-The style `elevation-zero.json` has no elevation source, so this example adds one in `sources`. `encoding` is
+The style [`elevation-zero.json`](https://map-jr.org/styles/elevation-zero) has no elevation source, so this example adds one in `sources`. `encoding` is
 `mapbox` (the default), `terrarium` or `custom`. A PMTiles archive also works, with the prefix `pmtiles://` before
 its URL.
 

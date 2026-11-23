@@ -1052,6 +1052,27 @@ try {
         await close();
     }
 
+    // The section /styles, written from the other repositories at build (build/styles.ts, #1129).
+    {
+        const {page, close} = await open('/styles');
+        const links = await page.locator('main a[href^="/styles/"]').evaluateAll(list => list.map(link => link.getAttribute('href')));
+        check('/styles links the page of each style, /styles/editing and /styles/spec', ['/styles/elevation', '/styles/openfreemap-liberty', '/styles/editing', '/styles/spec'].every(href => links.includes(href)), links.join(' '));
+        for (const path of ['/styles/editing', '/styles/spec']) {
+            await page.goto(base + path);
+            check(`${path} has a heading and text`, await page.locator('h1').count() === 1 && (await page.locator('main').innerText()).length > 400);
+        }
+        await close();
+        const style = await open('/styles/elevation');
+        const schemes = await style.page.locator('[data-color-scheme]').evaluateAll(list => list.map(map => map.dataset.colorScheme));
+        check('/styles/elevation shows a map in light and a map in dark', schemes.join(' ') === 'light dark', schemes.join(' '));
+        if (withMap) {
+            const idle = await style.page.locator('[data-color-scheme][data-map-state="idle"]').nth(1).waitFor({timeout: 90000}).then(() => true, () => false);
+            check('/styles/elevation: both maps reach idle', idle);
+            check('/styles/elevation: no failed request and no error', style.problems.length === 0, style.problems.join(' | '));
+        }
+        await style.close();
+    }
+
     if (screenshots) {
         for (const [name, path] of [['home', '/'], ['docs', docsPage]]) {
             for (const scheme of ['light', 'dark']) {
