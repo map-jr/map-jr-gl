@@ -63,7 +63,6 @@ sections:
       - element.md
       - maplibre-compat.md
       - maplibre-differences.md
-      - messages.md
   - title: Migrate
     folder: migrate
     pages:

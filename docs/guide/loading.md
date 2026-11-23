@@ -331,7 +331,7 @@ condition, so a bundler that sets the condition takes it in development and take
 
 The development server of Vite takes the development build, and `vite build` takes the production build. Node.js
 takes it with `--conditions=development`. The production build makes no request for the checks
-and writes none of their warnings. [Messages](../reference/messages.md) lists each warning.
+and writes none of their warnings.
 
 ## See also
 
