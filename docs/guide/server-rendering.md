@@ -38,9 +38,9 @@ attribution over it. The page shows this HTML at once. The map then starts in th
 HTML when it has loaded the tiles of its first view. With the option `controls`, the HTML also has the controls of
 the map, so that they are on the page from the first paint (see [Controls in the first view](#controls-in-the-first-view)).
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';

@@ -4,9 +4,9 @@ This example shows the Matterhorn in 3D with relief shading and labelled contour
 ground at a click. Two buttons switch the contour lines between feet and metres and turn the 3D terrain on and off.
 
 <!-- example:terrain:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text with the elevation at a
 // click and two buttons.
@@ -127,9 +127,9 @@ flat.onclick = () => {
 readout.textContent = 'Click the map to read the elevation';
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text with the elevation at a
 // click and two buttons.
@@ -780,7 +780,7 @@ shows a flat map.
 
 ## Variations
 
-Each variation changes the Main API example. The buttons call `describe` again, so a change goes into `describe` or
+Each variation changes the Map Jr example. The buttons call `describe` again, so a change goes into `describe` or
 `elevation`, not into one call of `update`.
 
 ### Start with a flat map

@@ -17,9 +17,9 @@ This example draws an SVG pin with the name of the place beside it for four plac
 of the place.
 
 <!-- example:images:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map shows four places. Each has an SVG image of the
 // description in the colour of its kind, and its name beside it.
@@ -96,9 +96,9 @@ const map = createMap(document.getElementById('map'), {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map shows four places. Each has an SVG image from
 // addImage, and its name beside it.
@@ -544,9 +544,9 @@ A sprite is one image file with many small images, and a JSON file with the name
 [`sprite`](../reference/description.md#sprite) adds sprites to the sprite of the style. Each sprite has an `id`, and an
 `icon-image` names one of its images as `id:name`.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -570,9 +570,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({
@@ -624,9 +624,9 @@ an object in the code, with a few layers of roads and water from the vector tile
 of `styles.map-jr.org` draw shields of their own.
 
 <!-- example:shields:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map draws a highway shield for each route, and a line of
 // text below the map counts the shields that the page made.
@@ -728,9 +728,9 @@ map.listen('styleimagemissing', e => {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map draws a highway shield for each route, and a line of
 // text below the map counts the shields that the page made.
@@ -1297,9 +1297,9 @@ export default function Shields() {
 map has (`map.description.images`, the `images` of the last description) with the new one. Where the description
 has no `images`, `map.description.images` is `undefined`, and the spread adds nothing.
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({
@@ -1398,9 +1398,9 @@ A value is an SVG document or the URL of an image, as a string, or `{image, widt
 
 [`fonts`](../reference/description.md#fonts) sets a font file for each `text-font` name.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -1426,9 +1426,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({

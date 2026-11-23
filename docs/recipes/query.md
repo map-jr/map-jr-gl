@@ -4,9 +4,9 @@ To find what is at a position of the map, query the data of a source. This examp
 of a click, also features that the style does not draw.
 
 <!-- example:query:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The answer to a click shows in a box on the map, and a line of
 // text below the map counts the features.
@@ -71,9 +71,9 @@ container.append(box);
 show('Click the map to list what is there.');
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The answer to a click shows in a box on the map, and a line of
 // text below the map counts the features.

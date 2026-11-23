@@ -9,9 +9,9 @@ In the main API and the adapters, [`controls`](../reference/description.md#contr
 the map shows. Each function of `@map-jr/map-jr-gl/controls` creates one item of the list.
 
 <!-- example:basic:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map says which thread draws it.
 import {createMap} from '@map-jr/map-jr-gl';
@@ -50,9 +50,9 @@ map.listen('stats', e => {
 show('Starting');
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map says which thread draws it.
 import {
@@ -391,9 +391,9 @@ so a list of such entries replaces the control `colorScheme()`. See
 [`locale`](../reference/description.md#locale) sets the texts of the buttons, by the keys of the option `locale` of
 MapLibre GL JS. A key that is not set keeps the English text.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 import {navigation, fullscreen} from '@map-jr/map-jr-gl/controls';
 
@@ -411,9 +411,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {
   Map,
   NavigationControl,
@@ -482,9 +482,9 @@ of 6 pixels.
 control while the list has a control with that `key`.
 
 <!-- example:control:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A button of your own in the top left corner of the map shows
 // the next style, and a line of text below the map names the style.
@@ -525,9 +525,9 @@ const map = createMap(container, {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A button of your own in the top left corner of the map shows
 // the next style, and a line of text below the map names the style.

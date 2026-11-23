@@ -8,9 +8,9 @@ user switch.
 Set [`colorScheme`](../reference/description.md#colorscheme-and-oncolorschemechange) to `'auto'`. The map then follows
 the media query `prefers-color-scheme` of the browser, also when it changes while the page is open.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 import {navigation} from '@map-jr/map-jr-gl/controls';
 
@@ -88,9 +88,9 @@ The control `colorScheme()` of `@map-jr/map-jr-gl/controls` is a button that swi
 It shows a sun while the map is light and a moon while it is dark.
 
 <!-- example:color-scheme:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map names the scheme that the button
 // of the map set.
@@ -116,9 +116,9 @@ const map = createMap(container, {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The compat entry has no colorScheme and no control for it, so
 // a button below the map sets the global state property `color-scheme`, which
@@ -410,9 +410,9 @@ When a later description leaves `color-scheme` out of `globalState`, the style f
 When a provider publishes a light style and a dark style, set `style` to the pair `{light, dark}`. Each value is the
 URL of a style or a style object.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {

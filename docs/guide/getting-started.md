@@ -38,9 +38,9 @@ Each example shows a street map of Lower Manhattan in an element that is 400 pix
 MapLibre style.
 
 <!-- example:first-map:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 400px"></div>.
 import {createMap} from '@map-jr/map-jr-gl';
@@ -58,9 +58,9 @@ map.state.subscribe(
 );
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 400px"></div>.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -212,9 +212,9 @@ A page without a bundler loads the built file from a CDN in a module script. Nam
 the page file and the worker file must come from the same version. Replace the version in the URLs with the version that you use:
 [npm](https://www.npmjs.com/package/@map-jr/map-jr-gl) shows the latest.
 
-**Main API**
+**Map Jr**
 
-```html [Main API]
+```html [Map Jr]
 <!doctype html>
 <meta charset="utf-8" />
 <div id="map" style="height: 400px"></div>
@@ -230,9 +230,9 @@ the page file and the worker file must come from the same version. Replace the v
 </script>
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```html [MapLibre compat]
+```html [MapLibre]
 <!doctype html>
 <meta charset="utf-8" />
 <div id="map" style="height: 400px"></div>

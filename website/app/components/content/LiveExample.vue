@@ -3,8 +3,8 @@
   makes this block from the marks "example:<id>:start" and "example:<id>:end" of docs/recipes/ and docs/guide/, and the default slot is
   the group of the variants of the code.
 
-  The map runs the variant that the reader reads when a frame can run it (Main API, MapLibre compat, <map-jr>), and
-  the Main API variant otherwise. The line under the map names that variant, and the button "Edit" (its accessible name
+  The map runs the variant that the reader reads when a frame can run it (Map Jr, MapLibre, <map-jr>), and
+  the Map Jr variant otherwise. The line under the map names that variant, and the button "Edit" (its accessible name
   names the variant) replaces the code with an editor of the code that the map runs; the editor
   (CodeEditor.vue, with CodeMirror) is loaded only then. The code comes from the code block of the page, so the
   editor starts with the text that the reader sees. The editor takes the height of the code that it replaces, so that

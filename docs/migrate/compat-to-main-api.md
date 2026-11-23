@@ -201,7 +201,7 @@ engine and read the same styles, so the map looks the same.
 
 ## Names that change
 
-| Compat entry | Main API | Notes |
+| MapLibre | Map Jr | Notes |
 |---|---|---|
 | `new Map({container, style, center, zoom, bearing, pitch})` | `createMap(container, {style, initialView: {center, zoom, bearing, pitch}})` | `initialView` also accepts `bounds`. |
 | `map.remove()` | `map.destroy()` | |

@@ -23,8 +23,8 @@ if (!format) {
 
 // The forms in the order of the style guide: the label, the file suffix and the language of the fence.
 const forms = [
-    ['Main API', '.js', 'js'],
-    ['MapLibre compat', '.compat.js', 'js'],
+    ['Map Jr', '.js', 'js'],
+    ['MapLibre', '.compat.js', 'js'],
     ['Vue', '.vue', 'vue'],
     ['Nuxt', '.nuxt.vue', 'vue'],
     ['React', '.jsx', 'jsx'],

@@ -206,7 +206,7 @@ try {
         const headerLabel = () => page.locator('.variant-menu .variant-label:visible').textContent();
         const groups = await page.locator('.code-variants').count();
         check('variants: the page has groups, each with one visible panel', groups > 1 && (await shownPanels()).length === groups, `${groups} groups`);
-        check('variants: with no choice, the groups show the main API', await showsEverywhere('main') && await headerLabel() === 'Main API', (await shownPanels()).join(' '));
+        check('variants: with no choice, the groups show the main API', await showsEverywhere('main') && await headerLabel() === 'Map Jr', (await shownPanels()).join(' '));
         await page.locator('.code-variants').first().getByRole('tab', {name: 'Vue', exact: true}).click();
         check('variants: a tab of one group switches every group and the header', await showsEverywhere('vue') && await headerLabel() === 'Vue', (await shownPanels()).join(' '));
         check('variants: the chosen tab is selected', await page.locator('.code-variants').last().getByRole('tab', {name: 'Vue', exact: true}).getAttribute('aria-selected') === 'true');
@@ -545,7 +545,7 @@ try {
             const reading = await footer();
             check(`${engine}: recipe: at ${width} the line under the map fits while reading`, fits(reading), JSON.stringify(reading));
             if (screenshots) { const file = `${screenshots}-live-example-reading-${width}.png`; await small.locator('.live-example').first().screenshot({path: file}); console.log('screenshot', file); }
-            await small.getByRole('button', {name: 'Edit the Main API code'}).click();
+            await small.getByRole('button', {name: 'Edit the Map Jr code'}).click();
             await small.locator('.live-example .cm-content').waitFor();
             const editing = await height('.live-example .code-editor');
             const edited = await footer();
@@ -576,7 +576,7 @@ try {
         // The frame starts its map when it comes into view, and the example is below the first screen of the guide.
         await page.locator('.live-example .map-frame').first().scrollIntoViewIfNeeded();
         const frame = page.frameLocator('.live-example iframe');
-        check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
+        check(`${engine}: recipe: the map of the Map Jr code starts`, await shown(frame.locator('#map canvas').first()));
         // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
         const controlButton = frame.locator('.map-jr-ctrl-group button').first();
         check(`${engine}: recipe: a button of a map control has no margin, padding or border from the frame`, await shown(controlButton) && await controlButton.evaluate(button => {
@@ -585,7 +585,7 @@ try {
         }));
         const before = await loaded();
         check(`${engine}: recipe: the page loads no code of the editor before "Edit"`, !before.editor, `${(before.bytes / 1024).toFixed(1)} KB of scripts`);
-        await page.getByRole('button', {name: 'Edit the Main API code'}).click();
+        await page.getByRole('button', {name: 'Edit the Map Jr code'}).click();
         const editor = page.locator('.live-example .cm-content');
         await shown(editor);
         const after = await loaded();

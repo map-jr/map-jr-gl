@@ -24,7 +24,7 @@ const walk = dir => !existsSync(dir) ? [] : readdirSync(dir, {withFileTypes: tru
 const files = named.length ? named.map(f => path.resolve(f)) : folders.flatMap(f => walk(path.join(root, 'docs', f)));
 
 /** The labels of the variants and of the package managers, each set in the order of the style guide. */
-const codeLabels = ['Main API', 'MapLibre compat', 'Vue', 'Nuxt', 'React', 'Svelte', '<map-jr>'];
+const codeLabels = ['Map Jr', 'MapLibre', 'Vue', 'Nuxt', 'React', 'Svelte', '<map-jr>'];
 const packageManagerLabels = ['npm', 'pnpm', 'yarn', 'bun'];
 const labels = [...codeLabels, ...packageManagerLabels];
 const setOf = label => codeLabels.includes(label) ? 'code' : 'pm';
