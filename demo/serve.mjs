@@ -1,6 +1,7 @@
 /** Demo server: client-only page, server-rendered page with hydration, and a caching tile proxy. */
 import http from 'node:http';
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
+import {existsSync, statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import makeStyle from './style.mjs';
@@ -125,6 +126,8 @@ http.createServer(async (req, res) => {
         if (url.pathname.startsWith('/site/')) {
             const file = path.join(root, 'site-dist', path.normalize(url.pathname.slice(6).replace(/\/$/, '/index.html')));
             if (!file.startsWith(path.join(root, 'site-dist'))) return send(403, 'text/plain', 'Forbidden');
+            // A folder without its slash (/site/bench) goes to the folder, whose relative URLs need the slash.
+            if (!url.pathname.endsWith('/') && existsSync(file) && statSync(file).isDirectory()) { res.writeHead(302, {location: url.pathname + '/' + url.search}); return res.end(); }
             const types = {'.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.css': 'text/css'};
             return send(200, types[path.extname(file)] ?? 'application/octet-stream', await readFile(file));
         }

@@ -1,18 +1,18 @@
 // Builds what the tests and the docs site need into site-dist/: the harness page of the examples (examples/), the
-// benchmark page (bench/, which the docs site publishes at https://map-jr.org/bench/), and the pictures of the server
-// renderer (ssr.svg, ssr.jpg). Run after the library is built: pnpm site
+// benchmark page (bench/, which the docs site publishes at https://map-jr.org/bench/), and the picture of the server
+// renderer (ssr.jpg). Run after the library is built: pnpm site
 import {fileURLToPath} from 'node:url';
 import {build} from 'vite';
 import {execSync} from 'node:child_process';
 import {cpSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
 import {Renderer} from '@takumi-rs/core';
-import {renderToSVG, renderToImage} from '../dist/server.js';
+import {renderToImage} from '../dist/server.js';
 import makeStyle from '../demo/style.mjs';
 import {markers, images, view, asSpec} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
 import {alias, examplesAsFunctions, svelteExamples} from './examples-plugins.mjs';
 
-// The pictures of the server renderer (pnpm screenshots copies the JPEG into docs/images/) are made here, at build time, with no browser involved.
+// The picture of the server renderer (pnpm screenshots copies it into docs/images/) is made here, at build time, with no browser involved.
 // Each request (the TileJSON, and the tiles, sprites and glyphs of the renders) is tried three times, 2 s apart: the
 // server sometimes resets a connection, and one reset must not fail CI. A 4xx answer is returned as it is.
 const TILEJSON_URL = 'https://tiles.openfreemap.org/planet';
@@ -37,15 +37,14 @@ async function fetchJSON(url) {
 }
 const tileJSON = await fetchJSON(TILEJSON_URL);
 const style = makeStyle(tileJSON.tiles[0], '');
-// overrides: false: the pictures show the complete style, as a live map draws it.
+// overrides: false: the picture shows the complete style, as a live map draws it.
 const options = {style, ...view, width: 800, height: 520, resolveImage: shield, images, ...asSpec(markers), overrides: false, fetch: fetchRetry};
 mkdirSync(new URL('../site-dist', import.meta.url), {recursive: true});
-// inlineImages: the picture is shown through <img>, where an SVG may not fetch anything else (its icon sheet, here).
-const {svg} = await renderToSVG({...options, inlineImages: true});
-writeFileSync(new URL('../site-dist/ssr.svg', import.meta.url), svg);
 const {image} = await renderToImage({...options, rasteriser: new Renderer(), pixelRatio: 2});
+// A map of 1600 x 1040 pixels with its tiles is about 330 KB; a picture under 50 KB has lost its tiles or its layers.
+if (image.length < 50_000) throw new Error(`[site] the server picture has ${image.length} bytes, fewer than the 50,000 of a map with its tiles. Check the style and the tiles of ${TILEJSON_URL}.`);
 writeFileSync(new URL('../site-dist/ssr.jpg', import.meta.url), image);
-console.log(`server pictures: SVG ${(svg.length / 1024).toFixed(0)} KB, JPEG ${(image.length / 1024).toFixed(0)} KB`);
+console.log(`server picture: JPEG ${(image.length / 1024).toFixed(0)} KB`);
 
 // The harness page (examples/run.html?id=&form=) runs one form of one example, into site-dist/examples/.
 // (fileURLToPath: a URL's pathname is not a path on Windows.)

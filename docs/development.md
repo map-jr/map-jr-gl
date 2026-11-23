@@ -14,7 +14,7 @@ pnpm install
 |---|---|
 | `pnpm build` | Checks the types and builds the library into `dist` with Vite. `node build.mjs` is the same without the type check. Both write the type declarations into `dist/types` and a source map beside each built file. |
 | `pnpm demo` | Builds the library and the pages of `site-dist`. Then starts a server at `http://localhost:8080`. |
-| `pnpm site` | Builds into `site-dist` the harness page of the examples, the benchmark page that the docs site publishes at `/bench/`, and the pictures of the server renderer. |
+| `pnpm site` | Builds into `site-dist` the harness page of the examples, the benchmark page that the docs site publishes at `/bench/`, and the picture of the server renderer (`ssr.jpg`). |
 | `pnpm test` | Runs the unit tests, the MapLibre expression tests and the API check |
 | `pnpm test:browser` | Drives the map in a browser. Start `pnpm demo` first. Both commands read the port from the environment variable `PORT` (default 8080), so two checkouts can run their tests at the same time. |
 | `pnpm test:loading` | Checks each method of loading the library. Start `pnpm demo` first. |

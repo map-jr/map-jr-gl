@@ -4,13 +4,13 @@
 // its container by the id "map" when its code starts (`document.getElementById('map')`, or `container: 'map'` in the
 // compat entry), it names its map `map`, and it puts what it shows beside the map directly after the container: a <p>
 // for a line of text and <button> elements. The build loads each file with `?mount` as a function that runs the code
-// of the file and resolves with its `map` (the plugin `examplesAsFunctions` in site/vite.config.mjs), so the harness
+// of the file and resolves with its `map` (the plugin `examplesAsFunctions` in scripts/examples-plugins.mjs), so the harness
 // can run a file again, and on a page with several maps.
 //
 // A <map-jr> form (examples/<id>.html) is a page with the element <map-jr id="map">, the elements beside it and one
 // module script. The build loads it with `?mount` as its markup and its script as a function (the same plugin), and
 // the harness puts the element into the container, the other elements after it, and then runs the script. A Svelte
-// form (examples/<id>.svelte) is compiled by the plugin `svelteExamples` of site/vite.config.mjs, which also gives it
+// form (examples/<id>.svelte) is compiled by the plugin `svelteExamples` of scripts/examples-plugins.mjs, which also gives it
 // examples/harness/svelte.js as `@map-jr/map-jr-gl/svelte`, so that the harness gets the map that the action makes.
 import {mount as mountSvelte, flushSync} from 'svelte';
 import {made} from './svelte.js';
