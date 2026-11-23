@@ -9,10 +9,34 @@ import {variantHeadScript} from './build/variants';
 
 const nav = readNav();
 const library = JSON.parse(readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8'));
-// The download of MapLibre GL JS that the home page shows (docs/status.json, written by `pnpm status`): the page script
-// with its CSS and the worker file, in bytes (gzip).
+// The figures of the home page (docs/status.json, written by `pnpm status`): the sizes in bytes (gzip), the checks against
+// MapLibre GL JS, and the last run of the workflow Browsers. The page shows no number that this file does not have.
 const status = JSON.parse(readFileSync(resolve(import.meta.dirname, '../docs/status.json'), 'utf8'));
-const maplibreBytes = status.sizes.find((row: {file: string}) => row.file.startsWith('Page script and worker file of `@map-jr/map-jr-gl`')).maplibreBytes as number;
+const sizeRow = (start: string) => {
+    const row = status.sizes.find((candidate: {file: string}) => candidate.file.startsWith(start));
+    if (!row) throw new Error(`[map-jr-gl site] docs/status.json has no size row that starts with "${start}". Run \`pnpm status\`, or change website/nuxt.config.ts.`);
+    return row as {bytes: number; maplibreBytes: number};
+};
+const worker = sizeRow('Worker file');
+const entrySizes = (name: string) => ({page: sizeRow(`Page script of \`${name}\``).bytes, worker: worker.bytes, total: sizeRow(`Page script and worker file of \`${name}\``).bytes});
+const range = (values: number[]) => [Math.min(...values), Math.max(...values)];
+const speedRows = status.speed.rows as {system: string; browser: string; load: Record<string, number>; moving: Record<string, number>; markers: Record<string, number>}[];
+const home = {
+    sizes: {
+        main: entrySizes('@map-jr/map-jr-gl'),
+        compat: entrySizes('@map-jr/map-jr-gl/maplibre-compat'),
+        maplibre: {page: sizeRow('Page script of `@map-jr/map-jr-gl`').maplibreBytes, worker: worker.maplibreBytes, total: sizeRow('Page script and worker file of `@map-jr/map-jr-gl`').maplibreBytes},
+    },
+    checks: (status.compatibility as {area: string; passing: number; total: number}[]).map(({area, passing, total}) => ({area, passing, total})),
+    speed: {
+        date: (status.speed.date as string).slice(0, 10),
+        load: speedRows.map(row => ({name: `${row.system}, ${row.browser}`, maplibre: Math.round(row.load.maplibre!), mapJr: Math.round(row.load.mapJr!)})),
+        // The ratio of Map Jr. GL to MapLibre GL JS, the smallest and the largest of the rows.
+        loadRatio: range(speedRows.map(row => row.load.mapJr! / row.load.maplibre!)),
+        movingRatio: range(speedRows.map(row => row.moving.mapJr! / row.moving.maplibre!)),
+        markersRatio: range(speedRows.map(row => row.markers.mapJr! / row.markers.maplibre!)),
+    },
+};
 
 export default defineNuxtConfig({
     compatibilityDate: '2026-11-01',
@@ -25,7 +49,12 @@ export default defineNuxtConfig({
             link: [{rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg'}],
             meta: [{name: 'color-scheme', content: 'light dark'}],
             // Sets the reader's variant of the code on <html> before the first paint (build/variants.ts).
-            script: [{innerHTML: variantHeadScript, tagPosition: 'head'}],
+            script: [
+                {innerHTML: variantHeadScript, tagPosition: 'head'},
+                // For the review of the heading font only (remove with the choice of the font): `?font=besley`, `?font=fraunces` or
+                // `?font=orelega` sets the heading font of the site, and the tab keeps the choice.
+                {innerHTML: "try{var f=new URLSearchParams(location.search).get('font');if(f)sessionStorage.setItem('font',f);f=f||sessionStorage.getItem('font');if(f)document.documentElement.dataset.font=f}catch(e){}", tagPosition: 'head'},
+            ],
         },
     },
     // What the application reads at run time: the navigation of docs/nav.yml and the version of the library.
@@ -36,14 +65,15 @@ export default defineNuxtConfig({
             description: 'A small, fast map library for the web. It reads MapLibre styles.',
             repository: repositoryUrl,
             version: library.version as string,
-            maplibre: {version: status.maplibre as string, bytes: maplibreBytes},
+            maplibre: {version: status.maplibre as string},
+            home,
             sections: nav,
             // The styles of the switch of /styles (build/styles.ts).
             styles: nav.some(section => section.generated) ? writeStylePages() : [],
         },
     },
-    // Each file of dist/ is a chunk of its own with "map-jr-gl" in its name, so that the home page can count the files that
-    // it fetched for the map (app/components/home/HomeMap.vue). The code of the site and of Vue stays in other chunks.
+    // Each file of dist/ is a chunk of its own with "map-jr-gl" in its name, so that the network panel of the browser shows
+    // which files a page fetched for the map. The code of the site and of Vue stays in other chunks.
     vite: {
         build: {
             rollupOptions: {
@@ -91,7 +121,10 @@ export default defineNuxtConfig({
     },
     fonts: {
         families: [
-            {name: 'Fraunces', provider: 'google', weights: [400, 500, 600], styles: ['normal', 'italic']},
+            {name: 'Orelega One', provider: 'google', weights: [400], styles: ['normal']},
+            // The two other heading fonts of the review (`?font=`, see the script of the head above).
+            {name: 'Besley', provider: 'google', weights: [500, 600, 700], styles: ['normal']},
+            {name: 'Fraunces', provider: 'google', weights: [500], styles: ['normal']},
             {name: 'IBM Plex Sans', provider: 'google', weights: [400, 500, 600], styles: ['normal', 'italic']},
             {name: 'IBM Plex Mono', provider: 'google', weights: [400, 500], styles: ['normal']},
         ],

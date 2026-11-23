@@ -15,7 +15,7 @@
 
 @theme static {
   /* @nuxt/fonts loads the families that these names start with, and serves them from the site. */
-  --font-display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-display: 'Orelega One', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
@@ -137,6 +137,15 @@
   --site-pre-fg: #e6edf3;
 }
 
+/*
+ * For the review of the heading font only: `?font=besley` or `?font=fraunces` in the address (the script of the head in
+ * nuxt.config.ts sets `data-font`). Remove these rules with the choice of the font.
+ */
+:root[data-font="besley"] { --font-display: 'Besley', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; }
+:root[data-font="besley"] :is(h1, h2, h3, h4, .font-display) { font-weight: 600 !important; letter-spacing: -0.01em; }
+:root[data-font="fraunces"] { --font-display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; }
+:root[data-font="fraunces"] :is(h1, h2, h3, h4, .font-display) { font-weight: 500 !important; letter-spacing: -0.01em; }
+
 @layer base {
   :root {
     accent-color: var(--ui-primary);
@@ -148,8 +157,9 @@
 
   h1, h2, h3, h4 {
     font-family: var(--font-display);
-    font-optical-sizing: auto;
-    letter-spacing: -0.01em;
+    /* Orelega One has one weight (400). A heading that asks for a heavier weight keeps the drawn one. */
+    font-synthesis-weight: none;
+    letter-spacing: 0;
     text-wrap: balance;
   }
 

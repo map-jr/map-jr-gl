@@ -206,6 +206,16 @@ The maps of the recipes and of `/play` run code that the reader can change:
 - `website/app/components/CodeEditor.vue` is the editor (CodeMirror 6). The pages load it as `<LazyCodeEditor>`, so
   that its code is a file of its own that a page loads only when the editor shows.
 
+The home page is `website/app/pages/index.vue` with the components of `website/app/components/home/`:
+
+- It has one live map (`HomeMap.vue`) and a panel of demos beside it (`HomeDemo.vue`). Each choice of the panel changes
+  the props of the map, and `website/app/utils/home-scenes.ts` has the props, the camera and the text of the
+  description of each demo.
+- The first paint of the map is a file of the repository that `pnpm first-paint` writes. Run it again when the first
+  view of `home-scenes.ts` changes.
+- The page measures nothing. Each figure of the cards comes from `docs/status.json` through `site.home` of the app
+  config (`website/nuxt.config.ts`), so `pnpm status` changes the figures of the page.
+
 Which files are pages:
 
 - `docs/nav.yml` names the sections of the navigation and their order. A section with a `folder` (`guide`,
