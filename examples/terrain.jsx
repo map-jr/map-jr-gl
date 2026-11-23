@@ -10,9 +10,11 @@ const thresholds = {
 };
 
 // Additions to the style, which has the elevation source "terrarium" and relief shading: contour lines and
-// stronger 3D terrain. `null` makes the map flat, although the style has a terrain.
+// stronger 3D terrain. `null` makes the map flat, although the style has a terrain. The style shows the heights of
+// peaks in the unit of its state "elevation-unit", so `globalState` sets the unit of the contour lines there too.
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
+  globalState: {'elevation-unit': unit},
   sources: {
     // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or metres.
     contours: {type: 'contour', source: 'terrarium', multiplier: unit === 'ft' ? 3.28084 : 1, thresholds: thresholds[unit]},

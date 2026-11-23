@@ -510,6 +510,37 @@ try {
         // The text of a CodeMirror editor that shows all of its lines.
         const textOf = editor => editor.evaluate(content => [...content.querySelectorAll('.cm-line')].map(line => line.textContent).join('\n'));
 
+        // The editor takes the height of the code that it replaces, and "Close the editor" gives the code back at the same
+        // height (#1538). The line and the buttons under the map are not measured here (#1539).
+        for (const width of engine === 'chromium' ? [390, 1440] : []) {
+            const sized = await own.newContext({viewport: {width, height: width === 390 ? 844 : 900}});
+            const small = await sized.newPage();
+            await small.goto(base + '/guide/globe', {waitUntil: 'networkidle'});
+            const height = selector => small.locator(selector).first().evaluate(element => Math.round(element.getBoundingClientRect().height));
+            const code = await height('.live-example > div:last-child');
+            await small.getByRole('button', {name: 'Edit the Main API code'}).click();
+            await small.locator('.live-example .cm-content').waitFor();
+            const editing = await height('.live-example .code-editor');
+            await small.getByRole('button', {name: 'Close the editor'}).click();
+            const closed = await height('.live-example > div:last-child');
+            check(`${engine}: recipe: at ${width} the editor has the height of the code`, editing === code && closed === code, `code ${code}, editor ${editing}, after closing ${closed}`);
+            // The variants differ in height, and a click on a tab keeps the tab bar where it was on the screen. The
+            // place is read after the map frame has taken the height of its new document.
+            const bar = small.locator('.live-example [role="tablist"]').first();
+            await bar.evaluate(element => scrollBy(0, element.getBoundingClientRect().top - 300));
+            const top = () => bar.evaluate(element => Math.round(element.getBoundingClientRect().top));
+            const start = await top();
+            const moves = [];
+            for (const tab of await bar.getByRole('tab').all()) {
+                await tab.click();
+                await small.waitForTimeout(1500);
+                const panel = await height('.live-example .code-variant:visible');
+                moves.push(`${(await tab.textContent()).trim()} ${panel} px, bar ${await top() - start}`);
+            }
+            check(`${engine}: recipe: at ${width} a click on a variant tab does not move the tab bar`, moves.every(move => move.endsWith('bar 0')), moves.join('; '));
+            await sized.close();
+        }
+
         // The guide to the globe has one live example, so the locators below find one editor and one frame.
         await page.goto(base + '/guide/globe', {waitUntil: 'load'});
         // The frame starts its map when it comes into view, and the example is below the first screen of the guide.

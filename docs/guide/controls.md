@@ -295,7 +295,7 @@ These functions are available. Each one also accepts `position`.
 | `terrain({source})` | A button that turns 3D terrain on and off | `source` (required): the id of an elevation source of the style; `exaggeration` |
 | `globe()` | A button that switches the projection between the globe and Mercator | |
 | `colorScheme()` | A button that switches the map between light and dark: see [Light and dark maps](color-scheme.md#let-the-user-switch-the-scheme) | |
-| `styles({entries})` | A button that opens a list of styles with a picture of each, and sets the chosen style: see [`styles()`](../reference/controls.md#styles) | `entries` (required): `{label, style}` for each style; `preview`, `onStyleChange` |
+| `styles({entries})` | A button that opens a list of styles with a picture of each, and sets the chosen style: see [`styles()`](../reference/controls.md#styles) | `entries` (required): `{label, style, colorSchemes}` for each style; `preview`, `onStyleChange` |
 | `custom({key, element})` | A control of your own: see [Add a control of your own](#add-a-control-of-your-own) | |
 
 See [Controls](controls.md) for what each option does.
@@ -380,6 +380,11 @@ const controls = [
 
 The pictures are drawn by a small second map after the map is first idle, so they do not delay the map. A click on
 the button before that opens the list with its labels, and the pictures appear as they are ready.
+
+An entry with `colorSchemes: true` (for a style that reads the global state `color-scheme`, as the official styles
+do) or with `style: {light, dark}` shows a light and a dark picture. A choice of one sets the style and `colorScheme`,
+so a list of such entries replaces the control `colorScheme()`. See
+[An entry with a light and a dark form](../reference/controls.md#an-entry-with-a-light-and-a-dark-form).
 
 ## Translate the texts of the controls
 
