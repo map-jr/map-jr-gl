@@ -257,6 +257,7 @@ const map = createMap('map', {
 | `style` **required** | the type of [`style`](description.md#style) | The style that the entry sets: a URL, a style object or `{light, dark}`. |
 | `terrain` | the type of [`terrain`](description.md#terrain) | The terrain that the entry sets. `null` turns off the terrain of the style. Without it, a choice leaves `terrain` as it is, unless the entry before set it. |
 | `globalState` | `Record<string, unknown>` | Values of global state that the entry sets, by name, for example `{relief: false}`. |
+| `colorSchemes` | `boolean` | `true` when the style reads the global state `color-scheme`, as the official styles of `https://styles.map-jr.org/1/` do. The entry then has a light and a dark form. Default `false`. |
 
 With `terrain` and `globalState`, one style gives several entries. These entries use one style of elevation:
 
@@ -296,9 +297,9 @@ the camera and the other fields of the description stay. The control then calls 
 
 An application that passes `style` itself, as a component of Vue, React or Svelte does, keeps the new value in
 `onStyleChange`, and also `terrain` and `globalState` when an entry sets them. Otherwise its next description sets
-the old style again. The map keeps the control while its
-options are equal as JSON (see [The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in
-a later description does not replace the first one.
+the old style again. The map keeps the control while its options are equal as JSON (see
+[The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in a later description does not
+replace the first one.
 
 The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
 [`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so
@@ -320,6 +321,49 @@ outside the control or focus that leaves the control closes the list, and Escape
 button. The control uses the variables `--map-control-background`, `--map-control-radius` and `--map-control-focus`
 of [Change the look of the controls](../guide/controls.md#change-the-look-of-the-controls). The control works only
 in `controls` of a map of `createMap`; the compat entry does not have it.
+
+### An entry with a light and a dark form
+
+An entry has two forms when its `style` is `{light, dark}`, or when it has `colorSchemes: true`. The list then shows
+the label of the entry above two pictures, one drawn with `colorScheme: 'light'` and one with `colorScheme: 'dark'`.
+
+A choice of a picture sets `style`, `terrain`, `globalState` and `colorScheme` of the description with one `patch`,
+calls `onStyleChange` when the entry changed, and calls `onColorSchemeChange` of the description when the scheme changed. A choice of the other
+form of the current entry changes only the scheme, and keeps the terrain and the global state of the entry. The picture of the current style and the current scheme is marked
+with `aria-pressed="true"`.
+
+The scheme of a choice follows the rule of [`colorScheme()`](#colorscheme):
+
+- When the description has `colorScheme: 'auto'`, or has had it while the control was on the map, a choice of the
+  form whose scheme is the scheme of the system keeps or sets `'auto'`. A choice of the other form sets `'light'` or
+  `'dark'`. For example, with `'auto'` and the system in dark, the dark form keeps `'auto'`, the light form sets
+  `'light'`, and the dark form then sets `'auto'` again.
+- When the description has never had `'auto'`, a choice sets `'light'` or `'dark'`, never `'auto'`.
+
+`onColorSchemeChange` is called only when `colorScheme` changes.
+
+When every entry of the list has two forms, the control does the work of [`colorScheme()`](#colorscheme), and a map
+needs only one of the two. With both on the map, each shows the scheme that the other one sets.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {styles} from '@map-jr/map-jr-gl/controls';
+
+const base = 'https://styles.map-jr.org/1/';
+const map = createMap('map', {
+  style: base + 'elevation.json',
+  initialView: {center: [8.33, 47.03], zoom: 11},
+  controls: [
+    styles({
+      entries: [
+        {label: 'Elevation', style: base + 'elevation.json', colorSchemes: true},
+        {label: 'Elevation zero', style: base + 'elevation-zero.json', colorSchemes: true},
+        {label: 'Positron and Dark', style: {light: base + 'openfreemap-positron.json', dark: base + 'openfreemap-dark.json'}},
+      ],
+    }),
+  ],
+});
+```
 
 ## `custom()`
 
@@ -405,6 +449,8 @@ not set keeps the English text.
 | `ColorSchemeControl.Light` | `Use light colours` |
 | `ColorSchemeControl.Dark` | `Use dark colours` |
 | `StylesControl.Open` | `Choose a style` |
+| `StylesControl.Light` | `Light` (the light form of an entry; its label is the label of the entry, a comma and this text) |
+| `StylesControl.Dark` | `Dark` |
 | `AttributionControl.ToggleAttribution` | `Toggle map data credits` (the label) and `Map data credits` (the title) |
 | `Popup.Close` | `Close popup` |
 | `Marker.Title` | `Map marker` |
@@ -413,7 +459,7 @@ not set keeps the English text.
 | `CooperativeGesturesHandler.MacHelpText` | `Use ⌘ + scroll to zoom the map` |
 | `CooperativeGesturesHandler.MobileHelpText` | `Use two fingers to move the map` |
 
-`ColorSchemeControl.Light`, `ColorSchemeControl.Dark` and `StylesControl.Open` are keys of this library. The other keys are those of the
+`ColorSchemeControl.Light`, `ColorSchemeControl.Dark` and the keys of `StylesControl` are keys of this library. The other keys are those of the
 option `locale` of MapLibre GL JS.
 
 ```js

@@ -115,3 +115,21 @@ test('a line label whose glyphs arrive later gets its anchors then, and the anch
     assert.equal(lineLabels(labels, shaper), placed, 'the same result while nothing changed');
     assert.equal(calls, 0, 'and no text is shaped for it');
 });
+
+test('text along a line on a steep slope of 3D terrain is not mirrored (#1535)', () => {
+    // A contour line runs across a steep slope that falls 80 m to the north, away from the camera, at a pitch of 60. The
+    // step across the text has to point down the screen, as on flat ground, although the ground one step north is lower.
+    const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': '12,200 ft', 'text-size': 16, 'symbol-placement': 'line'}})!;
+    const labels = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: line} as any), z, tx, ty), z, [layer], false).labels;
+    const across = (slope: boolean): number[] => {
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, 60);
+        if (slope) tr.heightAt = (_mx: number, my: number) => Math.max(-40, Math.min(40, (my * n - ty - 0.5) * 20000));
+        const placed = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid())[0];
+        assert.ok(placed?.ground?.length, `slope ${slope}: the text lies on the ground along the line`);
+        return placed.ground.filter((_: number, i: number) => i % 3 === 2);
+    };
+    assert.ok(across(false).every(by => by > 0), 'flat ground: the step across points down the screen');
+    for (const by of across(true)) assert.ok(by > 0, `slope: the step across is ${by.toFixed(2)}, up the screen, and the text is mirrored`);
+});

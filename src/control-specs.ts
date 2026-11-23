@@ -173,9 +173,15 @@ export interface StyleEntry {
     terrain?: MapDescription['terrain'];
     /**
      * Values of global state that a choice of the entry sets, by name, for example `{relief: false}`. A choice keeps
-     * the other names of `globalState` of the description, and removes the names that the entry before set.
+     * the other names of `globalState` of the description, and gives the names that the entry before set back the
+     * values of the application.
      */
     globalState?: Record<string, unknown>;
+    /**
+     * The style reads the global state `color-scheme`, as the official styles do: the entry then has a light and a dark
+     * form, as an entry whose `style` is `{light, dark}` has. Default `false`.
+     */
+    colorSchemes?: boolean;
 }
 /** The options of `styles()`. */
 export interface StylesOptions {
