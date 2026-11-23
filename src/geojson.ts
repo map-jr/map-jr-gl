@@ -41,8 +41,8 @@ interface ClusterNode { x: number; y: number; count: number; id: number; props: 
 
 /**
  * Clusters of the points of a GeoJSON source, for each zoom level. The method is the one of the supercluster
- * library: from the largest zoom down, each point takes its neighbours within the radius into one cluster at their
- * weighted centre. A cluster's id is the same wherever the index is made from the same data.
+ * library: from the largest zoom down, each point takes its neighbors within the radius into one cluster at their
+ * weighted center. A cluster's id is the same wherever the index is made from the same data.
  */
 export class ClusterIndex {
     /** levels[z] holds what a tile of zoom z shows; zooms above `maxZoom` show the points themselves. */

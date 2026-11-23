@@ -4,7 +4,7 @@ const MAX_LAT = 85.051129;
 /** The highest pitch that the camera takes (degrees). Above 90 the camera would look up from below the ground: that needs the elevation of the camera, which the library does not have yet. */
 export const MAX_PITCH = 90;
 /**
- * The change of zoom that keeps the size of the globe on the screen when the centre moves from one latitude to
+ * The change of zoom that keeps the size of the globe on the screen when the center moves from one latitude to
  * another (MapLibre's `getZoomAdjustment`). Past 85.05° the size of the globe stays that of 85.05°.
  */
 export const keepSize = (from: number, to: number) => {
@@ -25,7 +25,7 @@ export interface TileID { z: number; x: number; y: number; w: number; key: strin
 /** With 3D terrain, heights are kept on the CPU as one grid of this many samples a side per elevation tile. */
 export const HEIGHT_GRID = 256;
 /**
- * Ground height in metres at a mercator position, from height grids keyed "z/x/y": the deepest one at or above
+ * Ground height in meters at a mercator position, from height grids keyed "z/x/y": the deepest one at or above
  * zoom `from` that covers the point, or `unknown` if there is none.
  */
 export function groundHeight(grids: Map<string, Float32Array>, mx: number, my: number, from: number, to = 0, unknown = 0): number {
@@ -65,14 +65,14 @@ export const latFromMerc = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 *
 /** Padding in CSS pixels: one number for all sides, or some of the sides. */
 export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
 /**
- * The centre and zoom that fit the box [west, south, east, north] into a view of `width` by `height` pixels, less
- * `pad` ([top, right, bottom, left]) on each side. `shift` is the part of the padding that moves the centre.
+ * The center and zoom that fit the box [west, south, east, north] into a view of `width` by `height` pixels, less
+ * `pad` ([top, right, bottom, left]) on each side. `shift` is the part of the padding that moves the center.
  */
 export function fitBox([w, s, e, n]: number[], width: number, height: number, pad: number[], shift: number[], maxZoom: number) {
     // An east edge west of the west edge crosses the antimeridian: the box goes one world further east.
     const x0 = mercX(w), x1 = mercX(e < w ? e + 360 : e), y0 = mercY(n), y1 = mercY(s);
     const zoom = Math.min(maxZoom, Math.log2(Math.min(Math.max(1, width - pad[1] - pad[3]) / Math.max(x1 - x0, 1e-12), Math.max(1, height - pad[0] - pad[2]) / Math.max(y1 - y0, 1e-12)) / 512));
-    // Shift the centre so the box sits in the middle of the area inside `shift`.
+    // Shift the center so the box sits in the middle of the area inside `shift`.
     const world = 512 * 2 ** zoom;
     return {center: {lng: lngFromMerc((x0 + x1) / 2 - (shift[3] - shift[1]) / 2 / world), lat: latFromMerc((y0 + y1) / 2 - (shift[0] - shift[2]) / 2 / world)}, zoom};
 }
@@ -122,23 +122,23 @@ export class Transform {
     minPitch = 0;
     /**
      * Space at the edges (top, right, bottom, left, in pixels) covered by other things, such as a side panel. The map
-     * centre, and the point the camera looks at, sit in the middle of what is left.
+     * center, and the point the camera looks at, sit in the middle of what is left.
      */
     padding: [number, number, number, number] = [0, 0, 0, 0];
-    /** Where on screen the map centre is drawn. */
+    /** Where on screen the map center is drawn. */
     get cx() { return this.width / 2 + (this.padding[3] - this.padding[1]) / 2; }
     get cy() { return this.height / 2 + (this.padding[0] - this.padding[2]) / 2; }
     /** If set, the view is kept inside this box: west, south, east, north. */
     maxBounds: [number, number, number, number] | null = null;
 
     /**
-     * With 3D terrain: the height of the ground at the map centre, in (exaggerated) metres. The camera looks at that
+     * With 3D terrain: the height of the ground at the map center, in (exaggerated) meters. The camera looks at that
      * point rather than at sea level, so it rides over mountains instead of ending up inside them.
      */
     elevation = 0;
-    /** With 3D terrain: (exaggerated) ground height in metres at a mercator position, used to lift labels onto the surface. */
+    /** With 3D terrain: (exaggerated) ground height in meters at a mercator position, used to lift labels onto the surface. */
     heightAt?: (mx: number, my: number) => number;
-    /** With 3D terrain: the lowest and highest ground in view, in the same metres. Tile selection covers both extremes. */
+    /** With 3D terrain: the lowest and highest ground in view, in the same meters. Tile selection covers both extremes. */
     groundRange?: [number, number];
 
     /** The globe (globe.ts) once it has loaded, and the stops of the projection (see `globeStops`). */
@@ -156,9 +156,9 @@ export class Transform {
         if (center) [this.lng, this.lat] = toLngLat(center);
         if (zoom !== undefined) this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
         this.constrain();
-        // On the globe a new centre without a zoom keeps the size of the globe on the screen, and the zoom changes
-        // with the latitude instead, as in MapLibre GL JS. (The zoom decides how near a pole the centre can be, so the
-        // centre is constrained again.)
+        // On the globe a new center without a zoom keeps the size of the globe on the screen, and the zoom changes
+        // with the latitude instead, as in MapLibre GL JS. (The zoom decides how near a pole the center can be, so the
+        // center is constrained again.)
         if (center && zoom === undefined && globenessAt(this.globeStops, this.zoom)) {
             this.zoom = clamp(this.zoom + keepSize(lat0, this.lat), this.minZoom, this.maxZoom);
             [this.lng, this.lat] = toLngLat(center);
@@ -179,14 +179,14 @@ export class Transform {
         // (A latitude that needs no change is left exactly as it was given.)
         // The world is never less tall than the view: the zoom stops there (as in MapLibre).
         this.zoom = Math.max(this.zoom, this.zoomFloor);
-        // (On a globe the centre only stays between the latitudes that Mercator reaches. MapLibre does not keep a globe
+        // (On a globe the center only stays between the latitudes that Mercator reaches. MapLibre does not keep a globe
         // inside maxBounds either.)
         // (The stops decide this, also before globe.ts has loaded, so that a camera at the start is not moved.)
         if (globenessAt(this.globeStops, this.zoom)) {
-            // The centre reaches the pole only while the area past the edge of Mercator fits in the view, and eases back
+            // The center reaches the pole only while the area past the edge of Mercator fits in the view, and eases back
             // to that edge as it outgrows it (MapLibre's _getMaxLatitude).
             const area = (90 - MAX_LAT) * Math.PI / 180, areaPx = this.worldSize / (2 * Math.PI * Math.cos(MAX_LAT * Math.PI / 180)) * area, reach = Math.min(this.width, this.height) / 2;
-            // (The centre stops a millionth of a degree short of the pole, where the Mercator y of the centre, which
+            // (The center stops a millionth of a degree short of the pole, where the Mercator y of the center, which
             // the view uses, is infinite.)
             const centrePx = Math.min(areaPx, reach) * clamp(1 - (areaPx - reach) / (reach * 3), 0, 1), max = Math.min(MAX_LAT + area * centrePx / areaPx * 180 / Math.PI, 90 - 1e-6);
             this.lat = clamp(this.lat, -max, max);
@@ -198,10 +198,10 @@ export class Transform {
         if (!b) return;
         // As MapLibre's Mercator transform does, the view stays inside the bounds: the canvas less the padding, as if
         // there were no bearing and no pitch. When the bounds are smaller than that, the zoom rises until they fill it,
-        // centred on them (and can then go past maxZoom, as in MapLibre).
+        // centered on them (and can then go past maxZoom, as in MapLibre).
         const [pt, pr, pb, pl] = this.padding, vw = this.width - pl - pr, vh = this.height - pt - pb;
         // As in MapLibre, both edges are wrapped into one world, and an east edge west of the west edge (bounds that
-        // cross the antimeridian) lies one world further east. The centre is then wrapped to the copy nearest the bounds.
+        // cross the antimeridian) lies one world further east. The center is then wrapped to the copy nearest the bounds.
         const ws = this.worldSize, wrap = (v: number, lo: number) => { const r = ((v - lo) % ws + ws) % ws + lo; return r === lo ? lo + ws : r; };
         const x0 = wrap(mercX(b[0]) * ws, 0), y0 = mercY(b[3]) * ws, y1 = mercY(b[1]) * ws;
         let x1 = wrap(mercX(b[2]) * ws, 0);
@@ -218,20 +218,20 @@ export class Transform {
             x = x - w < x0 ? x0 + w : x + w > x1 ? x1 - w : x;
             y2 = y2 - h < y0 ? y0 + h : y2 + h > y1 ? y1 - h : y2;
         }
-        // As in MapLibre, a centre that moves is wrapped into (-180, 180].
+        // As in MapLibre, a center that moves is wrapped into (-180, 180].
         const dy = y2 !== mercY(this.lat) * ws;
         if (x !== xw || dy) { const l = ((lngFromMerc(x === xw ? mercX(this.lng) : x / ws) + 180) % 360 + 360) % 360 - 180; this.lng = l === -180 ? 180 : l; }
         if (dy) this.lat = latFromMerc(y2 / ws);
     }
 
-    /** Distance from the camera to the map centre in pixels; fixes the field of view at MapLibre's 36.87 degrees. */
+    /** Distance from the camera to the map center in pixels; fixes the field of view at MapLibre's 36.87 degrees. */
     get cameraDistance() { return 0.5 / Math.tan(0.6435011087932844 / 2) * this.height; }
-    /** Pixels per metre of height at the map centre. */
+    /** Pixels per meter of height at the map center. */
     get pixelsPerMetre() { return this.worldSize / (40075016.686 * Math.cos(this.lat * Math.PI / 180)); }
 
     /**
-     * The camera model, shared by every projection below. A point (dx, dy) pixels from the centre on the map plane
-     * (and z pixels above the height of the ground at the centre) is rotated by the bearing, tilted by the pitch, then seen in perspective from
+     * The camera model, shared by every projection below. A point (dx, dy) pixels from the center on the map plane
+     * (and z pixels above the height of the ground at the center) is rotated by the bearing, tilted by the pitch, then seen in perspective from
      * `cameraDistance` away. With no pitch this reduces to the plain 2D rotation.
      */
     private view(dx: number, dy: number, z = 0, out?: [number, number, number]): [number, number, number] {
@@ -244,7 +244,7 @@ export class Transform {
     }
 
     /**
-     * The pixels from the map centre up to the horizon on the screen, as MapLibre GL JS draws it (`getMercatorHorizon`):
+     * The pixels from the map center up to the horizon on the screen, as MapLibre GL JS draws it (`getMercatorHorizon`):
      * a little below the true horizon, so that the ground ends at a finite distance.
      */
     horizon(): number {
@@ -260,13 +260,13 @@ export class Transform {
         return [flat[0], flat[1]];
     }
 
-    /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map centre). */
+    /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map center). */
     screenToMerc(px: number, py: number, z = 0): [number, number] {
         if (this.globeness) return this.globe!.toMerc(this, px, py, this.elevation + z / this.pixelsPerMetre);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
         const sx = px - this.cx, sy = Math.max(py - this.cy, -this.horizon());
         // Invert the perspective for a point on that plane. Above the horizon there is no ground: a point there is taken
-        // on the horizon, and the floor keeps planes above the map centre (with 3D terrain) below their own horizon.
+        // on the horizon, and the floor keeps planes above the map center (with 3D terrain) below their own horizon.
         const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * Math.min(0.02, 0.1 * Math.cos(p)));
         const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
@@ -292,7 +292,7 @@ export class Transform {
     occluded(mx: number, my: number): boolean {
         if (!this.heightAt || this.pitch < 1 || this.globeness) return false;
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ws = this.worldSize, ppm = this.pixelsPerMetre, a = this.angle;
-        // The camera sits back from the map centre along the view direction, above the ground there.
+        // The camera sits back from the map center along the view direction, above the ground there.
         const back = d * Math.sin(p) / ws, camX = mercX(this.lng) + Math.sin(a) * back, camY = mercY(this.lat) + Math.cos(a) * back;
         const camH = this.elevation + d * Math.cos(p) / ppm, h = this.heightAt(mx, my), slack = (camH - this.elevation) * 0.008;
         for (let i = 1; i < 40; i++) {
@@ -310,7 +310,7 @@ export class Transform {
         return planes.map(z => [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map(([x, y]) => this.screenToMerc(x, y, z)));
     }
 
-    /** A point in a tile (tile units, optional height in metres) to screen pixels. */
+    /** A point in a tile (tile units, optional height in meters) to screen pixels. */
     /**
      * Tile units to screen pixels. The third value is the distance from the camera, in pixels along the view direction.
      * With `out`, the result is written into it and it is returned (on the globe, a new array is still made).
@@ -328,7 +328,7 @@ export class Transform {
     /** The distances of the near and the far plane from the camera, in pixels (the w of a point in clip space). */
     depthRange(): [number, number] {
         const p = this.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), d = this.cameraDistance;
-        // With 3D terrain, ground far below the map centre is seen from higher up and so reaches further away.
+        // With 3D terrain, ground far below the map center is seen from higher up and so reaches further away.
         const drop = this.groundRange ? Math.max(0, this.elevation - this.groundRange[0]) * this.pixelsPerMetre : 0;
         // The far plane reaches the ground at the top of the screen or at the horizon, whichever is nearer (and at least 4
         // times the camera distance, for buildings beyond that ground at a low pitch).
@@ -349,7 +349,7 @@ export class Transform {
         return [near, (Math.sin(lp) * top + near) * 1.01];
     }
 
-    /** Tile units (x, y) and metres (z) to clip space, as a column-major 4x4 matrix for the GPU. */
+    /** Tile units (x, y) and meters (z) to clip space, as a column-major 4x4 matrix for the GPU. */
     tileMatrix4(id: TileID): Float32Array {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
         const a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p);
@@ -357,13 +357,13 @@ export class Transform {
         const ox = (id.x + id.w * n) * ws / n - mercX(this.lng) * ws, oy = id.y * ws / n - mercY(this.lat) * ws;
         const tx = cos * ox - sin * oy, ty = sin * ox + cos * oy, kx = 2 * d / this.width, ky = -2 * d / this.height;
         // A tight depth range (everything visible at the steepest pitch fits) keeps depth precise even in a 16-bit buffer.
-        // With 3D terrain, ground far below the map centre is seen from higher up and so reaches further away.
+        // With 3D terrain, ground far below the map center is seen from higher up and so reaches further away.
         const [near, far] = this.depthRange(), A = (far + near) / (far - near), B = -2 * far * near / (far - near);
         // Rows: X = kx * xc, Y = ky * yc, W = depth, Z = A * depth + B (so Z/W runs -1..1 from near to far).
         const X = [cos * s * kx, -sin * s * kx, 0, tx * kx];
         const Y = [sin * s * cp * ky, cos * s * cp * ky, -ppm * sp * ky, ty * cp * ky];
         const W = [-sin * s * sp, -cos * s * sp, -ppm * cp, d - ty * sp];
-        // The ground at the map centre sits at height `elevation`: shift everything down by that much.
+        // The ground at the map center sits at height `elevation`: shift everything down by that much.
         Y[3] -= Y[2] * this.elevation; W[3] -= W[2] * this.elevation;
         // Padding moves the point the camera looks at away from the middle of the screen.
         const px = (this.cx - this.width / 2) * 2 / this.width, py = (this.cy - this.height / 2) * 2 / this.height;
@@ -373,7 +373,7 @@ export class Transform {
     }
 
     project(lng: number, lat: number): [number, number] {
-        // Pick the world copy nearest the centre so markers stay put across the antimeridian.
+        // Pick the world copy nearest the center so markers stay put across the antimeridian.
         let mx = mercX(lng);
         const cx = mercX(this.lng);
         mx += Math.round(cx - mx);
@@ -386,14 +386,14 @@ export class Transform {
     }
 
     /**
-     * The centre after the view moves by (sx, sy) screen pixels: a pan with the keys, a fling. On the globe the centre
+     * The center after the view moves by (sx, sy) screen pixels: a pan with the keys, a fling. On the globe the center
      * moves along the latitude and the meridian (as MapLibre's computeGlobePanCenter does), so that a horizontal fling
      * does not drift north or south.
      */
     panned(sx: number, sy: number): [number, number] {
         if (!this.globeness) return this.unprojectFlat(this.cx + sx, this.cy + sy);
         const a = this.angle, east = Math.cos(a) * sx + Math.sin(a) * sy, south = -Math.sin(a) * sx + Math.cos(a) * sy;
-        // Degrees per pixel at the centre, and the speed of longitude: 1 / cos(latitude), or with the latitude capped at
+        // Degrees per pixel at the center, and the speed of longitude: 1 / cos(latitude), or with the latitude capped at
         // 60° while the globe is small (zoom 3 at the equator and less), as MapLibre's computeGlobePanCenter does.
         const cos = (lat: number) => Math.cos(Math.min(Math.abs(lat), MAX_LAT) * Math.PI / 180), perPx = 360 * cos(this.lat) / this.worldSize;
         const zoom0 = this.zoom + Math.log2(cos(this.lat)), t = clamp((7 - zoom0) / 4, 0, 1);
@@ -401,35 +401,35 @@ export class Transform {
         return [this.lng + east * perPx * lngSpeed, clamp(this.lat - south * perPx, -90, 90)];
     }
 
-    /** Screen pixels to the position under them on the level plane through the map centre (ignoring 3D terrain). */
+    /** Screen pixels to the position under them on the level plane through the map center (ignoring 3D terrain). */
     unprojectFlat(px: number, py: number): [number, number] {
         const [mx, my] = this.screenToMerc(px, py);
         return [lngFromMerc(mx), latFromMerc(clamp(my, 0, 1))];
     }
 
-    /** With 3D terrain: where the camera itself is (mercator), and its height in the same metres as the terrain. */
+    /** With 3D terrain: where the camera itself is (mercator), and its height in the same meters as the terrain. */
     cameraPosition(): [number, number, number] {
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, back = d * Math.sin(p) / this.worldSize, a = this.angle;
         return [mercX(this.lng) + Math.sin(a) * back, mercY(this.lat) + Math.cos(a) * back, this.elevation + d * Math.cos(p) / this.pixelsPerMetre];
     }
 
     /**
-     * With 3D terrain: makes the map centre the point of ground the camera is actually looking at, without moving
-     * the camera. The centre slides along the line of sight to the surface, and the zoom changes to match the new
+     * With 3D terrain: makes the map center the point of ground the camera is actually looking at, without moving
+     * the camera. The center slides along the line of sight to the surface, and the zoom changes to match the new
      * distance, so the picture stays exactly as it was. (This is what MapLibre does when a movement ends.)
      * Returns whether anything changed.
      */
     recenterOnGround(): boolean {
         if (!this.heightAt) return false;
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ppm = this.pixelsPerMetre;
-        // A centre that is on the ground stays. (The walk of screenToGround can step over a narrow peak under the centre
-        // and find the ground behind it; the centre then went back and forth between the two, #1459.)
+        // A center that is on the ground stays. (The walk of screenToGround can step over a narrow peak under the center
+        // and find the ground behind it; the center then went back and forth between the two, #1459.)
         if (Math.abs(this.heightAt(mercX(this.lng), mercY(this.lat)) - this.elevation) * ppm < 0.25) return false;
         const [mx, my] = this.screenToGround(this.cx, this.cy), h = this.heightAt(mx, my), z = (h - this.elevation) * ppm;
         const dist = d - z / Math.cos(p); // camera to that point, in pixels at the current scale
         if (Math.abs(z) < 0.25 || dist < d * 0.05) return false;
         const lat = latFromMerc(clamp(my, 0, 1));
-        // The same distance in metres must come out as `d` pixels at the new zoom and latitude.
+        // The same distance in meters must come out as `d` pixels at the new zoom and latitude.
         const zoom = Math.log2(d / (dist / ppm) * 40075016.686 * Math.cos(lat * Math.PI / 180) / TILE_SIZE);
         this.lng = lngFromMerc(mx); this.lat = clamp(lat, -MAX_LAT, MAX_LAT);
         this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
@@ -473,7 +473,7 @@ export class Transform {
         if (this.globeness) return this.globe!.covering(this, minzoom, maxzoom, tileSize, round);
         if (want < minzoom) return [];
         const z = Math.min(want, maxzoom), n = 2 ** z;
-        // (With 3D terrain, ground that is nearer to the camera than the centre can take a deeper level, as in MapLibre.)
+        // (With 3D terrain, ground that is nearer to the camera than the center can take a deeper level, as in MapLibre.)
         if (this.pitch > 0.5) return this.coveringPitched(this.heightAt || lod && this.pitch > 60 ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod, minzoom);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [mx, my] of this.footprints().flat()) {
@@ -547,7 +547,7 @@ export class Transform {
  * less detail with the distance from the camera to the nearest point of the tile, less again for ground seen at a flat
  * angle (more so with more `levels` on screen), and less everywhere when the view would need more than `ratio` times
  * the tiles of an unpitched view. `d2` is the distance on the ground, `dz` the height of the camera and `d3` the
- * distance to the centre, all in the same unit.
+ * distance to the center, all in the same unit.
  */
 function lodZoom([levels, ratio]: number[], zoom: number, d2: number, dz: number, d3: number) {
     const R = Math.PI / 180, H = 89.25 * R, f = 36.87 * R, b = 2 * ((levels - 1) / Math.log2(Math.cos(H - f) / Math.cos(H)) - 1);

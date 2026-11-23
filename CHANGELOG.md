@@ -28,7 +28,7 @@ This entry covers the changes after 0.9.0 (the tag `v0.9.0`).
 - Both entries: sources of type `video` and `canvas` are drawn, with `play`, `pause`, `seek`, `getVideo` and
   `getCanvas` in the compat entry ([#1448], [#1452]). Their code loads only when a map has such a source.
 - Both entries: a `fill-pattern` or `line-pattern` that reads feature properties draws the image of each feature
-  ([#1443]), and an SDF image as `fill-pattern` takes the colour of `fill-color` ([#1455]).
+  ([#1443]), and an SDF image as `fill-pattern` takes the color of `fill-color` ([#1455]).
 - Both entries: `promoteId` on a vector source gives the id of each feature, so feature state works on such a source
   ([#1439]).
 - `@map-jr/map-jr-gl/maplibre-compat`: `createTileMesh` ([#1475]), `map.style.projection.subdivisionGranularity`
@@ -341,13 +341,13 @@ This entry covers the changes after 0.6.0 (the tag `v0.6.0`).
   state, where it had `id: undefined`. A string of decimal digits that is a safe integer becomes the number (`'12'` is
   `12`), so `setFeatureState` for such a feature takes the number ([#633]).
 - Both entries: a `background-pattern` that names no image, `""` included, draws nothing, as in MapLibre GL JS. Before,
-  it drew `background-color`. Leave `background-pattern` unset to draw the colour ([#741]).
+  it drew `background-color`. Leave `background-pattern` unset to draw the color ([#741]).
 - `@map-jr/map-jr-gl/maplibre-compat`: `setStyle` with a style equal to the current one (apart from the camera) fires
   no `style.load` and no `styledata`, as in MapLibre GL JS 6.17. A style that differs fires `style.load` once. Code
   that waited for the event after setting an equal style must not wait for it ([#801]).
 - Both entries: Escape closes a popup that has a close button while the focus is inside it, and the popup stops the
   `keydown` event. A listener for Escape on an ancestor of such a popup no longer gets the event. Give the popup
-  `closeButton: false` (in `@map-jr/map-jr-gl`, leave out `onClose`) to keep the old behaviour ([#728]).
+  `closeButton: false` (in `@map-jr/map-jr-gl`, leave out `onClose`) to keep the old behavior ([#728]).
 - `@map-jr/map-jr-gl/vue`: when the server render of the `ssr` prop fails, the component sends the page without the
   first view, and the map draws in the browser. The render no longer rejects, so an `errorHandler` or
   `onErrorCaptured` of the application does not get the error. Listen to the `error` event of the component
@@ -373,7 +373,7 @@ This entry covers the changes after 0.6.0 (the tag `v0.6.0`).
 ### Fixed
 
 - Both entries: a map is idle sooner. The first `idle` does not wait 200 ms after the first camera ([#726]), a map
-  with 3D terrain is idle when its tiles are drawn ([#736]), and a map with 3D terrain puts the centre on the ground
+  with 3D terrain is idle when its tiles are drawn ([#736]), and a map with 3D terrain puts the center on the ground
   before its first `idle` ([#802]). A style with many images is idle as soon as one with a sprite ([#638]).
 - Both entries: with the worker renderer, `idle` comes after the page shows the frame ([#745], [#756]).
 - Both entries: a map that falls back from the worker renderer to the main thread warns only with
@@ -386,9 +386,9 @@ This entry covers the changes after 0.6.0 (the tag `v0.6.0`).
   revoked before it loaded ([#797]).
 - Both entries: a vector feature with no id comes once in query results, not once for each tile ([#755]).
 - Both entries: an empty `sprite` is no sprite, so the map does not request the page's URL ([#761]).
-- Both entries: the textures of colour ramps are deleted when their layers go ([#749]).
+- Both entries: the textures of color ramps are deleted when their layers go ([#749]).
 - Both entries: the warnings of expressions keep at most 100 messages ([#737]).
-- Both entries: touch screens get buttons of 44px again ([#727]), and a page rule for links does not colour the
+- Both entries: touch screens get buttons of 44px again ([#727]), and a page rule for links does not color the
   attribution links ([#763]).
 - `@map-jr/map-jr-gl/maplibre-compat`: the buttons of `NavigationControl` have a `maplibregl-ctrl-icon` span, so a
   page can restyle the icons ([#769]).
@@ -510,16 +510,16 @@ renamed has no alias.
 The second group corrects results, most of them so that they agree with MapLibre GL JS.
 
 - Both entries: a rotate drag (the right mouse button, or Ctrl with the left one) turns the map as MapLibre GL JS
-  6.17 does. More than 100 pixels above or below the centre of the map, the map turns by the angle that the sideways
-  movement of the pointer makes around the centre. Nearer to the centre, it turns by 0.8° for each pixel. Before, the
-  map turned by −0.4° for each pixel to the right at every height, so below the centre of the map it now turns the
-  other way, and within 100 pixels of the centre it turns twice as fast ([#597]).
+  6.17 does. More than 100 pixels above or below the center of the map, the map turns by the angle that the sideways
+  movement of the pointer makes around the center. Nearer to the center, it turns by 0.8° for each pixel. Before, the
+  map turned by −0.4° for each pixel to the right at every height, so below the center of the map it now turns the
+  other way, and within 100 pixels of the center it turns twice as fast ([#597]).
 - Both entries: a drag on the compass of the navigation control turns the map by −0.4° for each pixel to the right.
-  Before, it turned the map by the angle of the pointer around the centre of the button, so the first move turned the
+  Before, it turned the map by the angle of the pointer around the center of the button, so the first move turned the
   map by about 85°. The compass and a rotate drag on the map now differ ([#551], [#552]).
 - Both entries: a circle layer reads `circle-pitch-scale` and `circle-pitch-alignment`, with the defaults `map` and
   `viewport` of MapLibre GL JS. On a map with pitch, a style that sets neither property now draws the circles away
-  from the centre smaller or larger than before. Set `circle-pitch-scale: viewport` to keep the old picture. A map
+  from the center smaller or larger than before. Set `circle-pitch-scale: viewport` to keep the old picture. A map
   without pitch draws the same picture ([#580]).
 - Both entries: circle and symbol layers read `circle-translate-anchor`, `icon-translate-anchor` and
   `text-translate-anchor`, whose default is `map`. On a map with a bearing, a translate without an anchor now moves in
@@ -532,8 +532,8 @@ The second group corrects results, most of them so that they agree with MapLibre
   `["literal", "{name}"]` and a `step` expression on the zoom. Before, the property took the place of the token in
   every value. MapLibre GL JS does the same as the library does now ([#621]).
 - Both entries: three expressions give other results. `typeof` of an array gives `"array<number, 3>"` or a similar
-  text in place of `"array"`, and `typeof` of a colour gives `"color"`. `["array", x]` no longer passes an object, and
-  it reads a type and a length as the style specification says. `to-rgba` of an array that is not a colour returns the
+  text in place of `"array"`, and `typeof` of a color gives `"color"`. `["array", x]` no longer passes an object, and
+  it reads a type and a length as the style specification says. `to-rgba` of an array that is not a color returns the
   numbers as they are, where it multiplied them by 255 ([#582]).
 - Both entries: a legacy identity function with a `default` gives the `default` when the value of the feature does not
   have the type of the property. Before, it gave the value of the feature, for example the number `0` for a text
@@ -550,7 +550,7 @@ The second group corrects results, most of them so that they agree with MapLibre
   type `image` and the header `accept: image/webp,*/*`. A protocol that tested `type === 'arrayBuffer'` for these
   tiles must accept `image` ([#622]).
 - Both entries: a URL of a custom protocol reaches the protocol as the style writes it, so `cog://https://…` keeps
-  the colon of the inner URL. The library no longer makes the host of such a URL lower case and no longer normalises
+  the colon of the inner URL. The library no longer makes the host of such a URL lower case and no longer normalizes
   its path (`..`, spaces): the protocol function gets what the style has ([#602]).
 - Both entries: an image that is a URL (in `images` of the description, in `metadata["map-jr:images"]` of a style, or
   given to `addImage` of `@map-jr/map-jr-gl/maplibre-compat`) is requested through `transformRequest` and the
@@ -592,14 +592,14 @@ The second group corrects results, most of them so that they agree with MapLibre
     the globe, for 1 s at most.
   - The code of the globe loads with the first style that has a globe. The other differences from MapLibre GL JS are
     in [docs/maplibre-compatibility.md](docs/maplibre-compatibility.md) ([#471], [#473], [#474], [#478], [#493]).
-- Both entries: the layer type `color-relief` colours the ground by its elevation, with the new expression
-  `["elevation"]`. The colour between two stops is a linear mix. The server renderer does not draw the layer
+- Both entries: the layer type `color-relief` colors the ground by its elevation, with the new expression
+  `["elevation"]`. The color between two stops is a linear mix. The server renderer does not draw the layer
   ([#589]).
 - Both entries: a `hillshade` layer draws every value of `hillshade-method` (`standard`, `basic`, `combined`, `igor`,
   `multidirectional`) and uses `hillshade-illumination-altitude`. Before, it drew `standard` for every method. A layer
   draws at most 8 lights ([#604]).
 - `@map-jr/map-jr-gl`: dark mode. The field `colorScheme` of the description is `'light'` (the default), `'dark'` or
-  `'auto'`, which follows `prefers-color-scheme`. The controls and the popup have dark colours, and
+  `'auto'`, which follows `prefers-color-scheme`. The controls and the popup have dark colors, and
   `state.colorScheme` has the resolved value. `style` takes a pair `{light, dark}` of style objects or URLs, and one
   style can serve both schemes with `["global-state", "color-scheme"]`. The control `colorScheme()` in
   `@map-jr/map-jr-gl/controls` is a button that changes the scheme and calls the new field `onColorSchemeChange`
@@ -663,7 +663,7 @@ The second group corrects results, most of them so that they agree with MapLibre
   rejects its options, where a tile failed to build before. `feature-state` takes an expression as the name,
   `is-supported-script` gives `true`, and `to-string` of a `format` expression gives the text of the sections
   ([#582], [#587]).
-- Both entries: after a new style, a zoom out no longer draws tiles in the colours of the style before ([#554]).
+- Both entries: after a new style, a zoom out no longer draws tiles in the colors of the style before ([#554]).
 - Both entries: with the worker renderer, an HTML marker or popup follows a one-finger drag in the same frame as the
   map. During `easeTo`, `flyTo`, a fling or a pinch it can still trail by about one frame ([#467]).
 - Both entries: with the worker renderer, a fast drag on the compass no longer loses a part of the turn, and the map
@@ -750,7 +750,7 @@ This entry covers the changes after 0.4.0 (the tag `v0.4.0`).
 - Both entries: the compass of `NavigationControl` changes and shows the pitch only with `visualizePitch: true`, as in
   MapLibre GL JS. By default, dragging the compass only rotates the map, and a click resets only the bearing. Before,
   the compass always changed and reset the pitch, and `visualizePitch` warned that it had no effect. Pass
-  `visualizePitch: true` (in the main API, `navigation({visualizePitch: true})`) to keep the old behaviour ([#452],
+  `visualizePitch: true` (in the main API, `navigation({visualizePitch: true})`) to keep the old behavior ([#452],
   [#456]).
 - `@map-jr/map-jr-gl/maplibre-compat`: a `Popup` moves the keyboard focus into itself when it opens, also when a click
   on its marker opens it, because `focusAfterOpen` is true by default as in MapLibre GL JS. Pass
@@ -1082,7 +1082,7 @@ The name of the package is `@map-jr/map-jr-gl`
   two versions differ, which can happen behind a CDN or a cache ([#116]).
 - The [status table](README.md#status) of the README has the test results and the sizes of the built files.
 
-### Behaviour that changed during 0.2.0
+### Behavior that changed during 0.2.0
 
 These changes matter if you used a build of the repository from before 2026-11-12.
 
@@ -1123,9 +1123,9 @@ These changes matter if you used a build of the repository from before 2026-11-1
 - A camera animation that is not `essential` does not run when the system asks for less motion
   (`prefers-reduced-motion: reduce`). The container of the map has a role and shows the keyboard focus ([#71]).
 - In `@map-jr/map-jr-gl/maplibre-compat`, an option that has no effect writes one warning, and a style call that the library
-  refuses fires `error` ([#70]). `setMaxBounds` moves the centre into the bounds at once ([#93]).
+  refuses fires `error` ([#70]). `setMaxBounds` moves the center into the bounds at once ([#93]).
 - The server renderer has time limits, a size limit and a list of allowed hosts for its requests ([#96]).
-- Two ways for HTML from data to reach the page are closed: the colour of a marker, and the attribution of the
+- Two ways for HTML from data to reach the page are closed: the color of a marker, and the attribution of the
   first view from a server.
 
 ### What is known not to work

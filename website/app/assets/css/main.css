@@ -1,8 +1,8 @@
 /*
- * The design tokens of the site. The look is cartographic: the paper and ink of a printed map, one survey colour,
+ * The design tokens of the site. The look is cartographic: the paper and ink of a printed map, one survey color,
  * and contour lines as the only ornament.
  *
- * - The scales `paper` and `survey` are below. app/app.config.ts makes them the neutral and the primary colour of
+ * - The scales `paper` and `survey` are below. app/app.config.ts makes them the neutral and the primary color of
  *   Nuxt UI, and sets the classes of the components.
  * - Components use the semantic classes of Nuxt UI (`text-muted`, `bg-elevated`, `border-default`, `text-primary`),
  *   never a shade of a scale, so a change here changes the whole site.
@@ -48,7 +48,7 @@
 
 /*
  * The day map. Contrast on the paper (#f6f5f2), computed with the formula of WCAG 2: body text 11.2, muted text
- * 5.9, dimmed text 3.9 (used for marks that carry no information), the survey colour 5.1 (4.7 on an elevated
+ * 5.9, dimmed text 3.9 (used for marks that carry no information), the survey color 5.1 (4.7 on an elevated
  * surface), and the paper on a solid survey button 5.1.
  */
 :root {
@@ -76,7 +76,7 @@
   --ui-border-accented: var(--ui-color-neutral-300);
   --ui-border-inverted: var(--ui-color-neutral-900);
 
-  /* The colour of the contour lines, and of the sheet that a code block is printed on. */
+  /* The color of the contour lines, and of the sheet that a code block is printed on. */
   --site-contour: var(--ui-color-neutral-300);
   --site-sheet: #ffffff;
 
@@ -102,7 +102,7 @@
 
 /*
  * The night map. Contrast on the night (#17181a): body text 13.6, muted text 6.8, dimmed text 4.1, the survey
- * colour 7.1. The ink of the day (#1d1d1f) on a solid survey button is 6.8.
+ * color 7.1. The ink of the day (#1d1d1f) on a solid survey button is 6.8.
  */
 .dark {
   --ui-primary: var(--ui-color-primary-400);
@@ -159,9 +159,9 @@
 }
 
 /*
- * Contour lines. An element with this class is filled with the colour of the lines, and public/contours.svg cuts
+ * Contour lines. An element with this class is filled with the color of the lines, and public/contours.svg cuts
  * the lines out of it as a mask. The second mask fades the lines towards the text. The element is an ornament: it
- * takes no pointer events, and it is not drawn when the browser has no masks or forces its own colours.
+ * takes no pointer events, and it is not drawn when the browser has no masks or forces its own colors.
  */
 .contours {
   display: none;
@@ -220,7 +220,7 @@
 /*
  * The contents of a page as the legend of a map. From the width where it stands at the right (the breakpoint lg of
  * Tailwind), it is a box with a title in the mono face, and each entry has the symbol of a line: a solid line for
- * a section, a dashed line for a part of a section. The entry of the section in view has the survey colour.
+ * a section, a dashed line for a part of a section. The entry of the section in view has the survey color.
  */
 @media (min-width: 64rem) {
   .legend-box {
@@ -374,7 +374,7 @@
   }
 }
 
-/* Monospace text has its own background and colour (#1331). The tokens of a block set their own colours. */
+/* Monospace text has its own background and color (#1331). The tokens of a block set their own colors. */
 :not(pre) > code {
   background-color: var(--site-code-bg);
   color: var(--site-code-fg);
@@ -386,14 +386,14 @@
   -webkit-box-decoration-break: clone;
 }
 
-/* Inline code in a link has the colour of the link, also on hover. */
+/* Inline code in a link has the color of the link, also on hover. */
 a > code,
 a code {
   color: inherit;
 }
 
 /*
- * The comment colour of github-light-default (#6e7781) is 4.43:1 on the block background (#fcfcfa). In the light mode,
+ * The comment color of github-light-default (#6e7781) is 4.43:1 on the block background (#fcfcfa). In the light mode,
  * every token of a block is darkened by 15%, which puts the lowest token at 5.7:1 and keeps the others above 4.5.
  */
 html:not(.dark) pre.shiki code span {
@@ -540,7 +540,7 @@ main li > code {
 }
 
 /*
- * Inline code in a note (info), tip (success) and warning block: a darker shade of the colour of the block on a
+ * Inline code in a note (info), tip (success) and warning block: a darker shade of the color of the block on a
  * semi-transparent white, and in the dark mode a light shade on a semi-transparent black (#1533). The selectors are
  * the classes that Nuxt UI gives each block (`bg-info/10`, `bg-success/10`, `bg-warning/10`): check them after an
  * upgrade of Nuxt UI.

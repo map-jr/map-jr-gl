@@ -56,7 +56,7 @@ What each scenario found:
 9. events: move, load; layer from <Layer>: true; marker: true; control: true; popup: true; zoom after jumpTo: 13.00
 10. drag followed by the state: true; state change from outside: true; onMove that limits the latitude: true (after the drag: map 40.72000, limit 40.72000; during the drag the map went 0.01991° past the limit); warnings about setTransformCameraUpdate: 0 before the limit, 1 after it
 11. events: load; layer from <MglCircleLayer>: true; marker: true; control: true
-12. deck.gl canvas: true; frames drawn: 3 then 4; the point at the map centre was picked there: true
+12. deck.gl canvas: true; frames drawn: 3 then 4; the point at the map center was picked there: true
 13. the control is in the page: true; result: Eiffel Tower; the map went to the place: true; marker: true
 14. routes: 1; layers of the plugin: 11; features under the first waypoint, read at once: 7; waypoints added by a click on the map: 1
 15. the plugin changes the text fields: true; the map has the changed fields: true; style.load fired: true
@@ -85,15 +85,15 @@ The run used Maputnik 3.1.0 (2ca0ccc) and MapLibre GL JS 6.18.0.
 | Loads the style liberty of OpenFreeMap | Pass | Pass |
 | Opens with the empty default style | Pass | Pass |
 | Suggests the properties of a source layer in the filter editor | Pass | Pass |
-| Shows the icons of the navigation control in the colours of the editor | Pass | Pass |
+| Shows the icons of the navigation control in the colors of the editor | Pass | Pass |
 
 What each scenario found:
 
 - Loads the style elevation of map-jr-styles. Both libraries: layers: 113; messages of the editor: 0; errors: 0.
 - Loads the style liberty of OpenFreeMap. Both libraries: layers: 111; errors: 0.
 - Opens with the empty default style. Both libraries: errors: 0.
-- Suggests the properties of a source layer in the filter editor. Both libraries: properties of the layer "building": render_height, render_min_height, colour, hide_3d.
-- Shows the icons of the navigation control in the colours of the editor. Both libraries: icons with the colour of the editor: 3 of 3.
+- Suggests the properties of a source layer in the filter editor. Both libraries: properties of the layer "building": render_height, render_min_height, color, hide_3d.
+- Shows the icons of the navigation control in the colors of the editor. Both libraries: icons with the color of the editor: 3 of 3.
 <!-- maputnik:end -->
 
 <!-- styles:start -->

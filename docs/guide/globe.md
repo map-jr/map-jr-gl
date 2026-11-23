@@ -352,7 +352,7 @@ transparent. To fill it, set the CSS `background` of the container, the element 
 ## How the camera moves on the globe
 
 - A drag turns the globe and keeps the bearing, as in MapLibre GL JS.
-- A move to a new centre without a `zoom` keeps the size of the globe on the screen. The map then changes the zoom
+- A move to a new center without a `zoom` keeps the size of the globe on the screen. The map then changes the zoom
   of the view with the latitude: a view at zoom 1.5 at the equator is at zoom -0.05 at 70 degrees north. A `zoom` that you
   pass is applied unchanged.
 - [`maxBounds`](../reference/description.md#maxbounds) has no effect on the globe.

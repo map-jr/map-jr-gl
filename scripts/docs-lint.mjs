@@ -2,6 +2,7 @@
 // It reads docs/guide, docs/reference, docs/recipes and docs/migrate and prints one line for each finding. With `--strict`
 // (as `pnpm test:consistency` runs it) it exits with 1 when there is a finding. Give paths to check only those files.
 // It also checks that each relative link of a page leads to a file, and each anchor to a heading of that file.
+// It also checks that docs/, src/ and examples/ use US spelling (see `british` and `codeNames` below).
 //
 // It warns about a JavaScript, TypeScript, Vue or JSX fence that is not formatted as Prettier formats it at 80
 // columns (website/build/format.mjs, #1250); `--fix` formats those fences. These warnings do not fail `--strict`. It
@@ -166,8 +167,43 @@ for (const file of files) {
     if (callouts > 2) find(0, `the page has ${callouts} callouts. The limit is two.`);
 }
 
+// US spelling (#1536). The check reads every file of docs/, src/ and examples/ (or the files given), and finds the
+// common British forms as whole words. A word that is part of a longer name (`pixelsPerMetre`) is code and is not
+// checked. A name of code that is a whole word stays as it is, and is in `codeNames` with the files that use it.
+const british = new RegExp('(?:colour|behaviour|favour|honour|neighbour|flavour)(?:s|ed|ing|ful|able|al)?|grey(?:s|ed|scale)?' +
+    '|centre[sd]?|centring|licences?|(?:kilo|centi|milli)?metres?|(?:cancel|label|model|travel|signal)l(?:ed|ing)|artefacts?' +
+    '|catalogues?|whilst|amongst|anticlockwise|analys(?:e|ed|ing)|judgement|(?:apolog|organ|recogn|initial|normal|serial|optim' +
+    '|custom|minim|maxim|raster|quant|penal|real|util|visual|summar|standard|synchron|author|categor|emphas|special|general' +
+    '|memo|local|stabil|random|priorit|character|sanit|token|vector|linear|final|parallel|anonym|digit|virtual|symbol' +
+    '|tessell|canon|harmon|legal|neutral|equal)is(?:e|ed|es|ing|er|ers|ation|ations)', 'gi');
+/** Names of code that are British words, each with the files where it may appear. `*` is every file. */
+const codeNames = {
+    rasteriser: ['*'], // the option of renderToImage
+    grey: ['src/expr.ts'], // the CSS color names
+    metres: ['src/custom-layers.ts', 'src/geo.ts', 'src/globe.ts', 'examples/terrain.js', 'examples/terrain.compat.js', 'examples/terrain.html', 'docs/guide/terrain.md', 'docs/recipes/terrain.md'],
+    centre: ['src/contour.ts', 'src/gl.ts', 'src/tile.ts'],
+    colour: ['src/webp.ts'],
+    colours: ['src/webp.ts'],
+};
+const spellingFiles = named.length ? files : ['docs', 'src', 'examples'].flatMap(function all(dir) {
+    return readdirSync(path.join(root, dir), {withFileTypes: true}).flatMap(e => e.isDirectory() ? all(path.join(dir, e.name))
+        : /\.(md|ts|tsx|js|mjs|jsx|vue|svelte|html|css)$/.test(e.name) ? [path.join(root, dir, e.name)] : []);
+});
+for (const file of spellingFiles) {
+    const rel = path.relative(root, file).split(path.sep).join('/');
+    readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        for (const m of line.matchAll(british)) {
+            const before = line[m.index - 1] ?? '', after = line[m.index + m[0].length] ?? '';
+            if (/[A-Za-z]/.test(before + after)) continue;
+            const allowed = codeNames[m[0].toLowerCase()];
+            if (allowed && (allowed.includes('*') || allowed.includes(rel))) continue;
+            findings.push(`${rel}:${i + 1}: "${m[0]}" is British spelling. The text uses US spelling ("color", "center", "-ize"). A name of code goes into codeNames of scripts/docs-lint.mjs.`);
+        }
+    });
+}
+
 for (const f of findings) console.log(f);
-console.log(`docs-lint: ${files.length} pages, ${findings.length} findings${strict ? '' : ' (warnings only; --strict fails)'}`);
+console.log(`docs-lint: ${files.length} pages, ${spellingFiles.length} files for spelling, ${findings.length} findings${strict ? '' : ' (warnings only; --strict fails)'}`);
 
 // The format of the code.
 const format = await import('../website/build/format.mjs').catch(() => undefined);

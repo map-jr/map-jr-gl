@@ -38,7 +38,7 @@ export class TileBuilder {
     setContours(sources: Record<string, ContourConfig>, ids: Record<string, string | Record<string, string>> = {}) { this.contours = new Map(Object.entries(sources)); this.ids = ids; }
     private ids: Record<string, string | Record<string, string>> = {};
 
-    /** Elevation tiles are shared between neighbouring contour tiles, so decoded ones are kept for a while. */
+    /** Elevation tiles are shared between neighboring contour tiles, so decoded ones are kept for a while. */
     private loadDEM = (url: string, encoding: DemEncoding): Promise<DEM | null> => {
         let dem = this.dems.get(url);
         if (!dem) {
@@ -68,7 +68,7 @@ export class TileBuilder {
             let lo = Infinity, hi = -Infinity;
             // Each cell of the grid is the mean of the pixels that it covers (two by two for a tile of 512 pixels), so that
             // heights read from it agree with the full image, as MapLibre GL JS reads them. A cell that took one pixel in
-            // four lay up to hundreds of metres off in the mountains (#1459).
+            // four lay up to hundreds of meters off in the mountains (#1459).
             for (let j = 0; j < HEIGHT_GRID; j++) {
                 const y0 = Math.min(h - 1, Math.floor(j * h / HEIGHT_GRID)), y1 = Math.max(y0 + 1, Math.floor((j + 1) * h / HEIGHT_GRID));
                 for (let i = 0; i < HEIGHT_GRID; i++) {
@@ -173,7 +173,7 @@ export class TileBuilder {
         const key = q.source + '|' + url, n = this.forgotten;
         let bytes = this.recent.get(key);
         if (!bytes) {
-            // A load that is cancelled or fails does not answer the query: the query then fetches the tile itself.
+            // A load that is canceled or fails does not answer the query: the query then fetches the tile itself.
             const shared = this.loading.get(key), fetched = shared && await shared.catch(() => undefined) || await fetchTile(url, this.fetchFn);
             if (!fetched) return [];
             bytes = fetched;

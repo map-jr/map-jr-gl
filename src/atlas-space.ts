@@ -4,7 +4,7 @@
  * along a whole edge become one, so cycles of images of different sizes do not cut the texture into small pieces.
  * Free places that share only part of an edge do not join, so after many replacements the texture can be mostly free
  * and still have no place for an image: the map then places its images again in a new `AtlasSpace` (`repack`).
- * Each place keeps one empty pixel to its right and below it, so that a filtered image does not read its neighbour.
+ * Each place keeps one empty pixel to its right and below it, so that a filtered image does not read its neighbor.
  */
 export class AtlasSpace {
     private pen = [1, 1, 0];

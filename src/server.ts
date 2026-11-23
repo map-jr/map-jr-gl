@@ -24,7 +24,7 @@ export interface RenderOptions {
      * `style` of `MapDescription`. Of `{light, dark}`, the server renders `dark` when `colorScheme` is `'dark'`, and `light` otherwise.
      */
     style: unknown;
-    /** The colour scheme that selects the style of `{light, dark}` in `style`, and the colours of the credits of `renderFirstView`. */
+    /** The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. */
     colorScheme?: 'auto' | 'light' | 'dark';
     /** The center of the view, `[lng, lat]`. `bounds` overrides it. */
     center: LngLatLike;
@@ -65,7 +65,7 @@ export interface RenderOptions {
     /** A function that returns `false` for the ids of style layers to leave out of the render, for example dense building footprints. */
     layerFilter?: (layerId: string) => boolean;
     /**
-     * Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. A rasterised SVG needs it.
+     * Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. A rasterized SVG needs it.
      * @default false in `renderToSVG`, true in `renderToImage`
      */
     inlineImages?: boolean;
@@ -364,7 +364,7 @@ export interface FirstViewOptions extends RenderOptions {
  * With `controls`, the HTML also has the attribution and the controls of the map as static markup, with their style
  * sheet, in the positions and the look that the map gives them, so that the map takes over with no visible change.
  * @param o The options of `renderToSVG`. `attribution` sets the credits instead of those of the sources, and `false` shows none.
- * `colorScheme` sets the colours of the credits and the controls; `'auto'` follows the browser.
+ * `colorScheme` sets the colors of the credits and the controls; `'auto'` follows the browser.
  * @returns A promise of the HTML. It rejects as `renderToSVG` does.
  */
 export async function renderFirstView(o: FirstViewOptions): Promise<string> {
@@ -456,7 +456,7 @@ export interface ImageOptions extends RenderOptions {
      */
     format?: 'jpeg' | 'webp' | 'png';
     /**
-     * The quality of a `'jpeg'` or `'webp'` image, as the rasteriser reads it.
+     * The quality of a `'jpeg'` or `'webp'` image, as the rasterizer reads it.
      * @default 75
      */
     quality?: number;

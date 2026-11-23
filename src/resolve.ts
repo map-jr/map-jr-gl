@@ -269,7 +269,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number, ratio = 1) {
-    // `{bbox-epsg-3857}` is for WMS servers: the edges of the tile in metres of Web Mercator (west, south, east, north).
+    // `{bbox-epsg-3857}` is for WMS servers: the edges of the tile in meters of Web Mercator (west, south, east, north).
     const edge = (v: number) => (v / 2 ** z - 0.5) * 40075016.68557849;
     // The scheme `tms` counts the rows from the south. `{quadkey}` is the tile as one number in base 4 (Bing Maps).
     // `{prefix}` is two hex digits from the column and the row, and `{ratio}` is `@2x` on a screen with a pixel ratio

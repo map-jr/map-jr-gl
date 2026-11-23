@@ -1,4 +1,4 @@
-// The control for the colour scheme (`colorScheme()` of `@map-jr/map-jr-gl/controls`). It is a file of its own, which
+// The control for the color scheme (`colorScheme()` of `@map-jr/map-jr-gl/controls`). It is a file of its own, which
 // loads only when a map adds the control: the compat entry, which loads controls-more.ts up front, does not get it.
 import type {Map} from './map.ts';
 import type {MapInstance} from './host.ts';
@@ -6,7 +6,7 @@ import {ui, type Control} from './controls.ts';
 import {button, group, svg} from './controls-more.ts';
 
 /**
- * A button that switches the colour scheme of a map of the main API between light and dark (#541). It
+ * A button that switches the color scheme of a map of the main API between light and dark (#541). It
  * shows the scheme that the map has: a sun for light and a moon for dark. A click changes `colorScheme` of the
  * description with `patch` and calls `onColorSchemeChange` of the description, so that an application with a
  * framework can keep the value. When the description follows the system (`'auto'`), a click sets the opposite of
@@ -30,7 +30,7 @@ export class ColorSchemeControl implements Control {
             instance.description.onColorSchemeChange?.(to);
         });
         const show = (scheme: 'light' | 'dark') => {
-            const label = scheme === 'dark' ? ui(map, 'ColorSchemeControl.Light', 'Use light colours') : ui(map, 'ColorSchemeControl.Dark', 'Use dark colours');
+            const label = scheme === 'dark' ? ui(map, 'ColorSchemeControl.Light', 'Use light colors') : ui(map, 'ColorSchemeControl.Dark', 'Use dark colors');
             b.title = label;
             b.setAttribute('aria-label', label);
             b.firstElementChild!.innerHTML = scheme === 'dark'

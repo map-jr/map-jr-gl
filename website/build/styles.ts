@@ -231,7 +231,7 @@ export function styleChoice(row: StyleRow, style: any, stateRows: string[][] = [
 // The address of a style on /styles.
 export const styleAddress = (name: string) => `/styles?style=${encodeURIComponent(name)}`;
 
-// The page /styles: the introduction, one map with a switch of the style and of the colour scheme, and the use of the
+// The page /styles: the introduction, one map with a switch of the style and of the color scheme, and the use of the
 // styles, without the parts for those who release and build them.
 export function indexPage(readme: string, rows: StyleRow[]): string {
     const intro = readme.slice(readme.indexOf('\n') + 1, readme.indexOf('\n## ')).trim();
@@ -248,7 +248,7 @@ export function indexPage(readme: string, rows: StyleRow[]): string {
         ...lines.slice(last + 1)].join('\n');
     const body = ['# Styles', '', intro, '',
         '::style-switch', '::', '',
-        'The buttons above the map choose the style and the colour scheme. The scheme sets the global state property `color-scheme`. A style that does not read `color-scheme` has one look, so its scheme buttons are off. The address of the page keeps the choice, for example `/styles?style=elevation&scheme=dark`.', '',
+        'The buttons above the map choose the style and the color scheme. The scheme sets the global state property `color-scheme`. A style that does not read `color-scheme` has one look, so its scheme buttons are off. The address of the page keeps the choice, for example `/styles?style=elevation&scheme=dark`.', '',
         '## The styles', '', styles, '', '## Use a style', '', sectionOf(readme, '## Use'), '',
         '## Sources and licences', '', sectionOf(readme, '## Sources and licences'), '',
         '## Editing a style', '', 'To change a style, open it in the Maputnik of Map Jr. GL. [Editing a style](/styles/editing) says how, and [the style specification of Map Jr. GL](/styles/spec) lists what Map Jr. GL reads beyond the MapLibre style specification.', ''].join('\n');

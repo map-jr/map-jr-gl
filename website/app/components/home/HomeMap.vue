@@ -20,8 +20,8 @@ import firstPaint from '~/assets/home-first-paint.html?raw';
 // Windows up to 1000 px wide and 1060 px high have a stage of at most 1000 by 1000 and take the inline SVG of 1000 by 1000. Other
 // windows take the SVG of 2560 by 1600 from public/, which starts to load with the HTML only for them (scripts/first-paint.mjs).
 const small = '(max-width: 1000px) and (max-height: 1060px)';
-// The dark pictures load only on a page with the class `dark` on <html>, which the colour mode of the site sets in the head before the
-// first paint. A preload cannot read the class, so it follows `prefers-color-scheme`, which is the colour mode unless the visitor has
+// The dark pictures load only on a page with the class `dark` on <html>, which the color mode of the site sets in the head before the
+// first paint. A preload cannot read the class, so it follows `prefers-color-scheme`, which is the color mode unless the visitor has
 // stored the other one: then the picture loads when the style sheet applies, a little later.
 const wideMedia = (scheme: string) => `((width > 1000px) or (height > 1060px)) and (prefers-color-scheme: ${scheme})`;
 useHead({link: [
@@ -138,7 +138,7 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
 .dark .home-first-small { display: none; }
 @media (max-width: 1000px) and (max-height: 1060px) { .home-first-wide { display: none; } }
 @media not all and (max-width: 1000px) and (max-height: 1060px) { .home-first-small, .dark .home-first-small-dark { display: none; } }
-/* The controls come in the light and the dark colours: the rules of the dark ones sit under `.map-jr-dark` in the sheet of the file. */
+/* The controls come in the light and the dark colors: the rules of the dark ones sit under `.map-jr-dark` in the sheet of the file. */
 .dark .home-first-light, :root:not(.dark) .home-first-dark { display: none; }
 /* The controls and the credits of the first paint are at the corners of the stage, in the form that the map has at this width. */
 @media (max-width: 640px) { .home-first-regular { display: none; } }

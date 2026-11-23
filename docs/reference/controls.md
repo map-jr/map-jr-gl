@@ -1,7 +1,7 @@
 # Controls
 
 The functions of `@map-jr/map-jr-gl/controls` create the controls of a map: the zoom buttons and the compass, the
-scale bar, the buttons for the full screen, the position of the user, terrain, the globe and the colour scheme, and
+scale bar, the buttons for the full screen, the position of the user, terrain, the globe and the color scheme, and
 the list of styles. Each function returns a `ControlSpec`: an item for [`controls`](description.md#controls) of the
 description. Create a `ControlSpec` only with these functions, and use [`custom`](#custom) for a control of your own.
 See [Controls](../guide/controls.md) for how to add, change and style them.
@@ -92,7 +92,7 @@ is that distance at the scale of the map.
 scale(options?: ScaleOptions): ControlSpec
 ```
 
-The bar shows metres and kilometres with `unit: 'metric'`, feet and miles with `'imperial'`, and nautical miles with
+The bar shows meters and kilometers with `unit: 'metric'`, feet and miles with `'imperial'`, and nautical miles with
 `'nautical'`.
 
 ### `ScaleOptions`
@@ -192,7 +192,7 @@ description whose `projection` differs from that of the description before it ov
 
 ## `colorScheme()`
 
-Creates a button that switches the map between the light and the dark colour scheme.
+Creates a button that switches the map between the light and the dark color scheme.
 
 ```ts
 colorScheme(options?: {
@@ -497,8 +497,8 @@ not set keeps the English text.
 | `TerrainControl.Disable` | `Toggle terrain` |
 | `GlobeControl.Enable` | `Enable globe` |
 | `GlobeControl.Disable` | `Disable globe` |
-| `ColorSchemeControl.Light` | `Use light colours` |
-| `ColorSchemeControl.Dark` | `Use dark colours` |
+| `ColorSchemeControl.Light` | `Use light colors` |
+| `ColorSchemeControl.Dark` | `Use dark colors` |
 | `StylesControl.Open` | `Choose a style` |
 | `StylesControl.Light` | `Light` (the light form of an entry; its label is the label of the entry, a comma and this text) |
 | `StylesControl.Dark` | `Dark` |

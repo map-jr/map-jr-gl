@@ -35,7 +35,7 @@ export function globeBuild(id: {z: number; y: number}, zoom = id.z): GlobeBuild 
 }
 
 /**
- * The border of a tile gets a vertex every BORDER tile units (128 a side), whatever its grid. A neighbouring tile of
+ * The border of a tile gets a vertex every BORDER tile units (128 a side), whatever its grid. A neighboring tile of
  * another zoom has another grid, so without this the vertices of the two sides of a shared border would not meet: a
  * straight edge of one side lies under the curve that the vertices of the other side follow, and the background
  * shows through (T-junctions). With these vertices, the gap between the two sides is below 0.03 pixel.
@@ -90,7 +90,7 @@ export function cutFill(features: {coords: ArrayLike<number>; holes: number[]}[]
     const lines = gridLines(Math.max(1, build.grid)), pos: number[] = [], idx: number[] = [], featStarts: number[] = [];
     for (const polygons of features) {
         featStarts.push(pos.length / 2);
-        // The vertices of one feature are shared through this map. (Each feature has its own colour.)
+        // The vertices of one feature are shared through this map. (Each feature has its own color.)
         const seen = new Map<number, number>();
         const vertex = (x: number, y: number) => {
             const key = (x + 32768) * 65536 + y + 32768;

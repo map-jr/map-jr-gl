@@ -1,6 +1,6 @@
 # Terrain and elevation
 
-This page shows how to draw mountains in 3D, shade the relief, colour the ground by its height, draw contour lines
+This page shows how to draw mountains in 3D, shade the relief, color the ground by its height, draw contour lines
 and ask for the height of the ground at a position. Each of these reads an elevation source: a source of the type
 `raster-dem`, whose tiles store a height for each pixel.
 
@@ -184,7 +184,7 @@ document
   the point of the screen where the ground at a position is drawn.
 - A label behind a mountain is hidden. A marker behind a mountain stays visible.
 - The roof of a building follows the slope of the ground under it.
-- When a movement stops, the map moves the centre of the view to the ground that the camera looks at. The view on the
+- When a movement stops, the map moves the center of the view to the ground that the camera looks at. The view on the
   screen does not move, but the `center` and the `zoom` of the view change by a small amount.
 - When the camera would be inside the terrain, it rises above the ground, and the map solves the pitch and the zoom
   again, as MapLibre GL JS does. `view` of the state reports the solved values, and so do `getPitch()` and
@@ -280,7 +280,7 @@ map.on('load', () => {
 
 | `hillshade-method` | What it draws |
 |---|---|
-| `standard` | Shadows and highlights from one light, with `hillshade-accent-color` on steep slopes. Only this method uses that colour. |
+| `standard` | Shadows and highlights from one light, with `hillshade-accent-color` on steep slopes. Only this method uses that color. |
 | `basic` | Ground that faces the light gets `hillshade-highlight-color`, and ground that faces away gets `hillshade-shadow-color`. |
 | `combined` | The shading of `basic`, multiplied by the steepness of the ground. Level ground is transparent. |
 | `igor` | The shading follows the direction that the ground faces, and steep slopes do not turn fully dark. |
@@ -291,11 +291,11 @@ is 45. With `multidirectional`, the four properties of the example each accept o
 each light. A list that is shorter than the longest list repeats its last value. The layer draws at most 8 lights.
 The other methods use the first value of a list.
 
-## Colour the ground by its height
+## Color the ground by its height
 
-A `color-relief` layer gives each pixel a colour from its height in metres. `color-relief-color` is an `interpolate`
-expression of `["elevation"]`. Below the first stop, the layer has the colour of the first stop, and above the last
-stop it has the colour of the last stop.
+A `color-relief` layer gives each pixel a color from its height in meters. `color-relief-color` is an `interpolate`
+expression of `["elevation"]`. Below the first stop, the layer has the color of the first stop, and above the last
+stop it has the color of the last stop.
 
 **Map Jr**
 
@@ -510,7 +510,7 @@ tiles that it reads.
 
 ## Ask for the height of the ground
 
-`queryElevation` returns a promise of the height of the ground in metres above sea level, at a position
+`queryElevation` returns a promise of the height of the ground in meters above sea level, at a position
 (`[lng, lat]`) or at a point of the screen (`{x, y}`). Over the sea, the elevation tiles of `elevation.json` give 0.
 The query does not need 3D terrain, and the position can be outside the view.
 
@@ -529,7 +529,7 @@ const map = createMap('map', {
   onClick: async e => {
     const metres = await map.queryElevation(e.lngLat);
     console.log(
-      metres === null ? 'No elevation data here' : `${Math.round(metres)} m`,
+      metres === null ? 'No elevation data here' : `${Math.round(meters)} m`,
     );
   },
 });
@@ -550,7 +550,7 @@ const map = new Map({
 map.on('click', async e => {
   const metres = await map.queryElevation(e.lngLat);
   console.log(
-    metres === null ? 'No elevation data here' : `${Math.round(metres)} m`,
+    metres === null ? 'No elevation data here' : `${Math.round(meters)} m`,
   );
 });
 ```
@@ -564,8 +564,8 @@ the number is the height multiplied by the exaggeration of the terrain:
 
 | Method | Returns |
 |---|---|
-| `map.queryTerrainElevation(lngLat)` | The height at a position in metres above sea level, multiplied by the exaggeration, or `null` with no 3D terrain. |
-| `map.getCenterElevation()` | The height at the centre of the view in metres, multiplied by the exaggeration, or `0` with no 3D terrain. |
+| `map.queryTerrainElevation(lngLat)` | The height at a position in meters above sea level, multiplied by the exaggeration, or `null` with no 3D terrain. |
+| `map.getCenterElevation()` | The height at the center of the view in meters, multiplied by the exaggeration, or `0` with no 3D terrain. |
 
 ## See also
 

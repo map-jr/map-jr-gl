@@ -27,7 +27,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `maxBounds` | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string` | | The CSS cursor over the map. |
 | `cooperativeGestures` | `boolean` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| `colorScheme` | `'auto' \| 'dark' \| 'light' \| null` | `'light'` | The colour scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
+| `colorScheme` | `'auto' \| 'dark' \| 'light' \| null` | `'light'` | The color scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
 | `locale` | `Record<string, string> \| null` | | The texts of the controls by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
 | `padding` | `PaddingInput \| null` | `0` | Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. |
 | `controls` | `ControlSpec[]` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |

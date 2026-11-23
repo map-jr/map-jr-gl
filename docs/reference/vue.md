@@ -56,7 +56,7 @@ new `key`.
 | `maxBounds` | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string` | | The CSS cursor over the map. |
 | `cooperativeGestures` | `boolean` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| `colorScheme` | `'auto' \| 'dark' \| 'light' \| null` | `'light'` | The colour scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
+| `colorScheme` | `'auto' \| 'dark' \| 'light' \| null` | `'light'` | The color scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
 | `locale` | `Record<string, string> \| null` | | The texts of the controls by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
 | `padding` | `PaddingInput \| null` | `0` | Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. |
 | `controls` | `ControlSpec[]` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
@@ -192,7 +192,7 @@ in the browser.
 | Event | Value | When |
 |---|---|---|
 | `update:view` | `View` | Once with the first view, and then at each change of the view. See [`view`](#view). |
-| `update:colorScheme` | `'auto' \| 'light' \| 'dark'` | When a control sets the colour scheme. With `v-model:color-scheme`, the prop follows. |
+| `update:colorScheme` | `'auto' \| 'light' \| 'dark'` | When a control sets the color scheme. With `v-model:color-scheme`, the prop follows. |
 | `click` | `{point: {x, y}, lngLat: [lng, lat], features}` | At each click on the map. `features` are those of `interactiveLayers` at the point. |
 | `hover` | `RenderedFeature[]` | When the features of `interactiveLayers` under the pointer change. |
 | `load` | `MapInstance` | Once, when the style and the first tiles have loaded. The map is not yet idle then. |

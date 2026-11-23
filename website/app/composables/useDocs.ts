@@ -48,6 +48,6 @@ export function formatCoordinates([lng, lat]: [number, number]) {
     return `${part(lat, 'N', 'S')}  ${part(lng, 'E', 'W')}`;
 }
 
-// The view of the map on the home page. The footer of every page shows its centre.
+// The view of the map on the home page. The footer of every page shows its center.
 export const homeView = {center: [8.33, 47.03] as [number, number], zoom: 10.6};
 export const useHomeView = () => useState('home-view', () => ({...homeView}));

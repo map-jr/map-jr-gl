@@ -1,6 +1,6 @@
 <!--
   An editor of code (CodeMirror 6). A page loads it as <LazyCodeEditor>, so its code and CodeMirror are a file of their
-  own that the browser loads only when the editor shows. Ctrl+Enter (⌘+Enter on a Mac) emits `run`. The colours of the
+  own that the browser loads only when the editor shows. Ctrl+Enter (⌘+Enter on a Mac) emits `run`. The colors of the
   tokens are those of the code blocks of the site (github-light-default and github-dark-default, #1209).
 -->
 <script setup lang="ts">

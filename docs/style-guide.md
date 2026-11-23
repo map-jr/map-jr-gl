@@ -67,14 +67,14 @@ A writer who has the source open tends to write what the source shows. These rul
   development build warns about a mistake.
 - **Do not describe how the types are built.** Phrases such as "A extends B" and "is a union of" tell the reader
   nothing to do. Say what the reader does differently.
-- **State behaviour as what the user can rely on, in one statement.** A list of cases comes after it, and has only
+- **State behavior as what the user can rely on, in one statement.** A list of cases comes after it, and has only
   the cases in which the user must act.
 - **Do not describe the messages for incorrect use.** When the library warns or throws because of a mistake, the
   message tells the developer what to change, and the docs do not repeat it or say that it exists. Describe an error
   only where a correct program can meet it, such as a request that fails and reaches `onError`, or a limit that a
   correct program can reach. On the pages of the compat entry, state that a member is not supported or has no
   effect, and leave out the message that the library gives for it.
-- **Name a value by what it is to the user,** not by how the code recognises it: "an SVG document as a string", not
+- **Name a value by what it is to the user,** not by how the code recognizes it: "an SVG document as a string", not
   "a string that starts with `<`"; "the URL of a style", not "a string".
 - **A row and a section start with what the member is for,** in the user's terms, before they name any other member.
   "`interactiveLayers` selects the style layers that respond to the pointer" comes before `state.hover` and
@@ -97,6 +97,10 @@ often.
   throw, accept, receive. Do not write "make", "give", "take", "get", "come before", "has the shape of" or "goes
   below" where one of these says it exactly. A map is created, an option is set, a function is called with its
   arguments and returns a value.
+- **Use US spelling:** "color", "behavior", "gray", "center", "meter", "license", "canceled", "labeled",
+  "initialize", "normalize". A name of code, of CSS or of the style specification stays as it is written, and so
+  does quoted text of another project. `pnpm test:consistency` finds the common British forms in `docs/`, `src/`
+  and `examples/`; a name of code that is a British word goes into `codeNames` of `scripts/docs-lint.mjs`.
 - **One idea in each sentence.** Define a term in a sentence of its own before the sentence that uses it. Put at
   most one "of the …" after a noun: "the id of the layer of the style that it goes below" needs two sentences.
 - **State precedence with "overrides" or "takes precedence over",** and name what is set on each side: "`null`
@@ -220,7 +224,7 @@ supported, one short example, and "See also".
 
 - A migration page has numbered steps with code before and after, and then tables.
 - A mapping table has the columns "MapLibre GL JS", "Map Jr. GL" and "Notes", one row for each name.
-- A difference in behaviour is one row or one short section with a code example. Its explanation is at most three
+- A difference in behavior is one row or one short section with a code example. Its explanation is at most three
   sentences. How MapLibre GL JS works inside is not part of it.
 
 ## Code
@@ -234,7 +238,7 @@ supported, one short example, and "See also".
 - A fragment is allowed in one place: under "Variations" of a recipe. Each variation changes the complete example
   that stands directly above it on the same page, and a second copy of that example for each variation would hide
   the lines that differ. One sentence under the heading says what the names of the fragments are.
-- Use the official styles at `https://styles.map-jr.org/1/`: they have images and colour schemes that the library
+- Use the official styles at `https://styles.map-jr.org/1/`: they have images and color schemes that the library
   draws with no further setup. The default is `elevation-zero.json`. The others are `elevation.json` (with
   elevation tiles, for terrain and hillshade), `elevation-radar.json` (a neutral base for an overlay) and
   `openfreemap-bright.json`, `-dark`, `-fiord`, `-liberty` and `-positron` (with `glyphs` and a sprite). An example
@@ -314,7 +318,7 @@ Do not mix the labels of the two tables in one group.
 
   | Kind | Use it for |
   |---|---|
-  | `[!WARNING]` | Something that breaks the reader's code, loses data, or breaks a licence or terms of use. |
+  | `[!WARNING]` | Something that breaks the reader's code, loses data, or breaks a license or terms of use. |
   | `[!NOTE]` | A fact that changes what the reader writes but does not break anything when missed. |
   | `[!TIP]` | A shorter or faster way to do the task of the section. |
 

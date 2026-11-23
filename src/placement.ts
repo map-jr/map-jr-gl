@@ -20,32 +20,32 @@ export interface RenderItem<T> {
 }
 
 export interface PlacedIcon {
-    /** Centre, size and rotation on screen. */
+    /** Center, size and rotation on screen. */
     x: number; y: number; w: number; h: number; angle: number;
     /** Source rectangle in the sprite sheet, in its pixels. */
     rect: [number, number, number, number];
     /** For stretchable icons: (source pixel, screen pixel) pairs along each axis, measured from the icon's left/top edge. */
     gx?: number[]; gy?: number[];
     opacity: number;
-    /** Distance-field icons with a halo: its colour, and how far it reaches as a part of the distance field (0 to 1). */
+    /** Distance-field icons with a halo: its color, and how far it reaches as a part of the distance field (0 to 1). */
     halo?: number[]; haloReach?: number; /** How far the halo's edge is blurred, as a part of the distance field (0 to 0.99). */ haloBlur?: number;
     /** An icon that lies on the ground of a tilted map: see `Placed.frame`. Its angle is then the angle of the first pair. */
     frame?: number[];
-    /** Set for distance-field icons, which are drawn in this colour. */
+    /** Set for distance-field icons, which are drawn in this color. */
     color?: number[];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
     custom?: boolean;
     name: string;
 }
 export interface Placed {
-    /** Centre of the text block in screen pixels. */
+    /** Center of the text block in screen pixels. */
     x: number; y: number;
     angle: number; size: number; shaped: Shaped | null; src: LabelSrc; icon?: PlacedIcon;
     /** Line alignment chosen at placement (`text-justify: auto` with a list of anchors); otherwise the label's own. */
     justify?: number;
     /** The anchor of `text-variable-anchor` (or `text-variable-anchor-offset`) that the placement chose. */
     anchor?: string;
-    /** The `text-opacity` of the layer at the zoom of the map (1 when it is a value for each feature, which is in the colours). */
+    /** The `text-opacity` of the layer at the zoom of the map (1 when it is a value for each feature, which is in the colors). */
     alpha?: number;
     /** Text following a line: for each glyph, where its baseline starts relative to the label's anchor, and its rotation (x, y, angle triples). */
     curve?: number[];
@@ -93,7 +93,7 @@ const flatGrow = (tr: Transform, from: number, to: number) => flatSize(tr, to) /
  */
 /**
  * The height of the ground at (x, y) of the tile, for the points of a frame on the ground: they take the height of
- * the frame's own point. (With the height of 3D terrain at each point, a step of a few metres across a steep slope
+ * the frame's own point. (With the height of 3D terrain at each point, a step of a few meters across a steep slope
  * went up or down the slope, and text on the ground was mirrored, #1535.)
  */
 const heightAt = (tr: Transform, it: RenderItem<unknown>, x: number, y: number) => {
@@ -504,7 +504,7 @@ export function placeLabels(
                 const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
                 const ic = meta && l.icon, iflat = !!tr.pitch && !!ic && ic.flat && !line && ic.fit === 'none';
                 const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (iflat ? flatSize(tr, depth) : persp) : 0;
-                // Where the icon goes and its size, for text centred at (tx, ty).
+                // Where the icon goes and its size, for text centered at (tx, ty).
                 const sprite = meta;
                 const iconAt = (fit: string, tx: number, ty: number) => {
                     const ic = l.icon!, meta = sprite!;
@@ -516,7 +516,7 @@ export function placeLabels(
                     if (fit !== 'none') {
                         // Stretch the icon around the text, e.g. a road shield around its number. Only the image's
                         // stretch ranges grow; its content box ends up around the padded text. As in MapLibre, the
-                        // icon's own anchor is not used: an axis that is not fitted keeps its size, centred on the text.
+                        // icon's own anchor is not used: an axis that is not fitted keeps its size, centered on the text.
                         const [pt, pr, pb, pl] = ic.fitPad.map(v => v * isize), unit = isize / meta.pixelRatio, c = meta.content;
                         const ox = ic.offset[0] * isize, oy = ic.offset[1] * isize;
                         // The box the content must fill, relative to the label's point.
@@ -642,7 +642,7 @@ function followLine(
     w *= size / s;
     const start = cum[anchorIndex] - w / 2;
     if (start < 0 || start + w > cum[n - 1]) return null; // not enough line for the text at this zoom
-    const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centred on the line
+    const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centered on the line
     const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
     let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
     for (const advance of line.advances) {
@@ -660,7 +660,7 @@ function followLine(
         }
         const angle = Math.atan2(dy, dx);
         // A sharp bend inside the text makes it unreadable. The limit is `text-max-angle`: 45 degrees by default,
-        // for which a turn of 0.6 radians between neighbours gives the results nearest to MapLibre's.
+        // for which a turn of 0.6 radians between neighbors gives the results nearest to MapLibre's.
         if (!Number.isNaN(last)) { let d = angle - last; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6 * (l.maxAngle ?? 45) / 45) return null; }
         last = angle;
         if (!k) { bx = -dy; by = dx; }

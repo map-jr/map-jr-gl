@@ -24,7 +24,7 @@ const map = createMap('map', {
 <!-- ref:MapDescription:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`style`](#style) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark colour scheme. |
+| [`style`](#style) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark color scheme. |
 | [`sources`](#sources) | `Record<string, SourceInput> \| null` | | Sources to add to the style, by id. |
 | [`layers`](#layers) | `LayerInput[] \| null` | | Layers to add to the style, in order. |
 | [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`, in place of the `terrain` of the style. |
@@ -48,7 +48,7 @@ const map = createMap('map', {
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark' \| null` | `'light'` | The colour scheme of the controls, the popup and the attribution. |
+| [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark' \| null` | `'light'` | The color scheme of the controls, the popup and the attribution. |
 | [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `((colorScheme: 'auto' \| 'light' \| 'dark') => void) \| null` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
 | [`locale`](#locale) | `Record<string, string> \| null` | | The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
 | [`padding`](#padding) | `PaddingInput \| null` | `0` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` with 0 for a side that is left out. |
@@ -205,7 +205,7 @@ move it from code, call [`map.moveTo`](map.md#moveto) or set [`view`](#view-and-
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `center` | `Position` | `[0, 0]` | The centre as `[lng, lat]`. |
+| `center` | `Position` | `[0, 0]` | The center as `[lng, lat]`. |
 | `zoom` | `number` | `0` | The zoom. |
 | `bearing` | `number` | `0` | The bearing in degrees. |
 | `pitch` | `number` | `0` | The pitch in degrees. |
@@ -428,7 +428,7 @@ On a globe:
 
 - The map draws 3D terrain and `fill-extrusion` layers on the sphere.
 - `maxBounds` has no effect.
-- A move to a new centre with no `zoom` keeps the size of the globe on the screen, so the zoom of the view changes
+- A move to a new center with no `zoom` keeps the size of the globe on the screen, so the zoom of the view changes
   with the latitude. A `zoom` that is passed is applied unchanged.
 
 ## `globalState`
@@ -568,7 +568,7 @@ shows a hint. Set the text of the hint in [`locale`](#locale).
 changes while the page is open. The resolved scheme is
 `colorScheme` of [the state of the map](state.md#mapstate), and it has these effects:
 
-- The controls, the popup and the attribution have the colours of the scheme, and the container has the class
+- The controls, the popup and the attribution have the colors of the scheme, and the container has the class
   `map-jr-dark` while the scheme is dark.
 - The global state property `color-scheme` of the style is `'light'` or `'dark'`, so a style can read
   `['global-state', 'color-scheme']`. A value for `color-scheme` in [`globalState`](#globalstate) overrides it.
@@ -605,7 +605,7 @@ change the language of the labels of the map.
 
 `padding` reserves space at the sides of the map, for example for a panel that covers part of it.
 
-`padding` is one number for all sides, or `{top, right, bottom, left}`. A side that is not set is 0. The map centres
+`padding` is one number for all sides, or `{top, right, bottom, left}`. A side that is not set is 0. The map centers
 the view in the area that the padding leaves free. A change of `padding` moves the
 camera immediately.
 

@@ -42,7 +42,7 @@ vec4 toClip3(vec2 t, float h) {
 vec4 toClip(vec2 t) { return toClip3(t, 0.0); }
 // Buildings get a depth, so that their walls and roofs hide each other (MapLibre's projectTileFor3D). u_globe gives
 // every point the same depth; here the depth grows with the distance w (in pixels) as in a projection with no far
-// plane, whose near plane is at 0.0005 of the distance to the centre of the sphere (below zoom 12 that is nearer than
+// plane, whose near plane is at 0.0005 of the distance to the center of the sphere (below zoom 12 that is nearer than
 // the ground under the camera). The far side of the globe is hidden by horizonSide: it is below zero for a point of the ground behind the horizon.
 vec4 toClip3D(vec2 t, float h) {
   vec4 g = u_globe * vec4(toSphere(t) * (1.0 + h / 6371008.8), 1.0);
@@ -56,7 +56,7 @@ float lineScale(vec2 t) { float e = exp(GLOBE_PI - (u_tileMerc.y + u_tileMerc.w 
 vec2 unpole(vec2 t) { return vec2(t.x, t.y < -32767.5 ? 0.0 : t.y > 32766.5 ? ${EXTENT}.0 : t.y); }
 bool shown(vec4 c) { return c.z <= c.w; }
 `;
-/** Shared by the map-space programs: u_matrix takes tile units (and metres of height) to clip space. */
+/** Shared by the map-space programs: u_matrix takes tile units (and meters of height) to clip space. */
 const VS_COMMON = `uniform mat4 u_matrix; uniform vec2 u_view;
 #ifdef GLOBE
 ${GLOBE_GLSL}
@@ -84,7 +84,7 @@ float ground(vec2 uv) {
 }
 `;
 
-// The vertex shader of the layers that colour an elevation tile (`hillshade`, `color-relief`).
+// The vertex shader of the layers that color an elevation tile (`hillshade`, `color-relief`).
 const VS_DEM = `${VS_COMMON}
 layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
 #ifdef GLOBE
@@ -129,7 +129,7 @@ void main() {
 uniform float u_intensity; in vec2 v_ex; in float v_w; out vec4 o;
 void main() { o = vec4(v_w * u_intensity * 0.3989422804 * exp(-4.5 * dot(v_ex, v_ex)), 0.0, 0.0, 1.0); }`],
 
-    // Heatmap, step two: the density picture is coloured through the layer's ramp.
+    // Heatmap, step two: the density picture is colored through the layer's ramp.
     heatColor: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
 void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
 uniform sampler2D u_heat; uniform sampler2D u_ramp; uniform float u_opacity; in vec2 v_uv; out vec4 o;
@@ -175,7 +175,7 @@ void main() {
   float f = max(v_fog - u_fog.x, 0.0) / (1.0 - u_fog.x), k = f * f * u_fog.z;
   if (k <= 0.0) return;
   vec3 c = mix(u_fogColor.rgb, u_horizonColor.rgb, smoothstep(0.0, 1.0, (v_fog - u_fog.y) / (1.0 - u_fog.y)));
-  // The mix is in linear space (gamma 2.2), on all four channels of the premultiplied colour, as in MapLibre GL JS:
+  // The mix is in linear space (gamma 2.2), on all four channels of the premultiplied color, as in MapLibre GL JS:
   // fog covers ground whose picture is transparent too.
   o = pow(mix(pow(o, vec4(2.2)), pow(vec4(c, 1.0), vec4(2.2)), k), vec4(1.0 / 2.2));
 }`],
@@ -244,7 +244,7 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
 
     // Repeating image fill. The image is tiled in world pixels at whole zoom levels, so it stays put while panning
     // and grows with the map between levels, as in MapLibre.
-    // A distance-field image (`sdf: true`, fill-pattern only) is drawn in the colour of the layer (u_color) and of the
+    // A distance-field image (`sdf: true`, fill-pattern only) is drawn in the color of the layer (u_color) and of the
     // feature (a_color), with its edge at 0.75 of the alpha, as in MapLibre GL JS.
     pattern: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform mat3 u_pat; uniform vec2 u_world; out vec2 v_p; out vec2 v_tile; out vec4 v_color; out vec2 v_px;
@@ -323,7 +323,7 @@ void main() {
     return;
   }
   if (u_patSize.x < 0.0) {
-    // line-gradient: the colour comes from a ramp, by the place along the whole line (see tessellateLine).
+    // line-gradient: the color comes from a ramp, by the place along the whole line (see tessellateLine).
     o = texture(u_img, vec2((v_color.r * 65280.0 + v_color.g * 255.0) / 65535.0, 0.5)) * a;
     return;
   }
@@ -346,13 +346,13 @@ void main() {
   // u_pitch.x: circle-pitch-alignment is 'map', and the circle lies on the map: the offset is in tile units.
   // Otherwise the circle faces the viewer, and the offset is in screen pixels after projection.
   // u_pitch.y: circle-pitch-scale is 'map' (the default), and a distant circle is smaller, as the map under it is.
-  // With 'viewport' every circle has the size that it has at the centre of the view (as in MapLibre).
+  // With 'viewport' every circle has the size that it has at the center of the view (as in MapLibre).
   float w = c.w;
   vec2 px = u_translate;
   if (u_pitch.x > 0.0) c = toClip3(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos), h);
   else px += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0);
   c.xy += px * vec2(2.0, -2.0) / u_view * c.w;
-  // With 3D terrain a circle is hidden when the ground in front covers its centre (lifted by u_lift), as in MapLibre GL
+  // With 3D terrain a circle is hidden when the ground in front covers its center (lifted by u_lift), as in MapLibre GL
   // JS: u_depth has the depth of the terrain on the screen.
   if (u_lift > 0.0) {
     vec4 d = toClip3D(a_pos, h + u_lift); vec3 n = d.xyz / d.w;
@@ -384,21 +384,21 @@ void main() {
   o = vec4(c.rgb * a, a);
 }`],
 
-    // Buildings: roofs and walls with a height in metres and a baked light level.
+    // Buildings: roofs and walls with a height in meters and a baked light level.
     extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; out vec4 v_color; out vec2 v_tile; out vec2 v_p; out float v_side;
 uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
 void main() {
   v_tile = a_v.xy;
-  // The light model of MapLibre. A face is brighter when it looks at the light; a dark colour is made brighter by
-  // more than a light colour. Walls are darker near the ground (the vertical gradient).
+  // The light model of MapLibre. A face is brighter when it looks at the light; a dark color is made brighter by
+  // more than a light color. Walls are darker near the ground (the vertical gradient).
   bool roof = a_v.w < 0.0; float other = floor(a_v.w / ${WALL_OTHER}.0), rest = a_v.w - other * ${WALL_OTHER}.0, t = rest >= ${WALL_TOP}.0 ? 1.0 : 0.0, angle = rest - t * ${WALL_TOP}.0 - ${Math.PI};
   float base = t > 0.5 ? other : max(a_v.z, 0.0), height = t > 0.5 ? max(a_v.z, 0.0) : other;
   vec3 normal = roof ? vec3(0.0, 0.0, 1.0) : vec3(cos(angle), sin(angle), 0.0);
   // fill-extrusion-pattern: the image lies flat on the roof and runs along the ring on the walls, as in MapLibre,
   // and the light alone sets the shade.
   v_p = (u_pat * vec3(roof ? a_v.xy : vec2(a_ed, max(a_v.z, 0.0) * u_hf), 1.0)).xy;
-  // (As in MapLibre, a translucent colour is multiplied by its alpha and then drawn solid; only the opacity of the layer shows through.)
+  // (As in MapLibre, a translucent color is multiplied by its alpha and then drawn solid; only the opacity of the layer shows through.)
   vec4 c = u_pattern > 0.5 ? vec4(1.0, 1.0, 1.0, u_color.a) : vec4(a_color.rgb * a_color.a * u_color.rgb, u_color.a);
   float value = u_pattern > 0.5 ? 0.5 : dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
   vec3 rgb = c.rgb + 0.03 * (1.0 - u_pattern);
@@ -461,7 +461,7 @@ void main() {
   float g = elev(p + ivec2(-1, 1), size), h = elev(p + ivec2(0, 1), size), i = elev(p + ivec2(1, 1), size);
   float factor = u_zoom < 2.0 ? 0.4 : u_zoom < 4.5 ? 0.35 : 0.3;
   float exaggeration = u_zoom < 15.0 ? (u_zoom - 15.0) * factor : 0.0;
-  // Elevation differences over 8 pixel widths; the mercator world is 2^25.2562 metres wide.
+  // Elevation differences over 8 pixel widths; the mercator world is 2^25.2562 meters wide.
   vec2 deriv = vec2((c + f + f + i) - (a + d + d + g), (g + h + h + i) - (a + b + b + c)) * float(size.x) / pow(2.0, exaggeration + (28.2562 - u_zoom));
   // Flat ground is stored as 128/255, which 8 bits hold exactly.
   o = clamp(vec4(deriv / 8.0 + 128.0 / 255.0, 1.0, 1.0), 0.0, 1.0);
@@ -503,10 +503,10 @@ void main() {
   o = accent * (1.0 - shadeColor.a) + shadeColor;
 }`],
 
-    // A `color-relief` layer: the colour of each pixel comes from its elevation. `u_stops` has the elevations of the
-    // stops of `color-relief-color` and `u_ramp` has the colour at each stop. The colour between two stops is a linear
+    // A `color-relief` layer: the color of each pixel comes from its elevation. `u_stops` has the elevations of the
+    // stops of `color-relief-color` and `u_ramp` has the color at each stop. The color between two stops is a linear
     // mix, as in MapLibre GL JS. (The filter of the elevation texture is linear, and so is the encoding: the texture
-    // gives the elevation between its pixels.) Two stops of the same elevation have one colour in `u_ramp`,
+    // gives the elevation between its pixels.) Two stops of the same elevation have one color in `u_ramp`,
     // and the shader does not divide by their distance of zero. (A ramp of one stop arrives here as two stops.)
     'color-relief': [VS_DEM, `
 uniform sampler2D u_image; uniform sampler2D u_ramp; uniform highp sampler2D u_stops; uniform vec4 u_clip; uniform vec4 u_unpack; uniform float u_opacity;
@@ -523,7 +523,7 @@ void main() {
 
     // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
     // from its point in the tile, as for circles. `a_v`: the point, and the corner in the texture. `a_d`: the corner
-    // from the centre of the icon in pixels at size 1, and 1 for a distance-field icon.
+    // from the center of the icon in pixels at size 1, and 1 for a distance-field icon.
     icon: [`${VS_COMMON}${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec3 a_d; layout(location=2) in float a_angle; layout(location=3) in vec2 a_size; layout(location=4) in float a_alpha;
 uniform float u_zt; uniform float u_size; uniform float u_north; uniform float u_persp; uniform float u_dpr; uniform float u_opacity;
@@ -550,7 +550,7 @@ void main() {
   o = vec4(u_color.rgb * a, a);
 }`],
 
-    // Icons. A colour with alpha >= 0 marks a distance-field icon, drawn in that colour with an edge that stays sharp.
+    // Icons. A color with alpha >= 0 marks a distance-field icon, drawn in that color with an edge that stays sharp.
     sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; layout(location=1) in float a_alpha; layout(location=2) in vec4 a_color;
 out vec2 v_uv; out float v_alpha; out vec4 v_color;
 void main() { v_uv = a_v.zw / u_tex; v_alpha = a_alpha; v_color = a_color; vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
@@ -619,8 +619,8 @@ export interface TerrainTile {
     /** Whether everything the picture needs has loaded; a finished picture is not replaced by a partial one. */
     complete: boolean;
     /**
-     * Ground heights in metres at the corners of a 64 x 64 grid over the tile (65 x 65 values, row by row), and a
-     * number that changes when they do. They come from data shared between tiles, so neighbours agree along their edges.
+     * Ground heights in meters at the corners of a 64 x 64 grid over the tile (65 x 65 values, row by row), and a
+     * number that changes when they do. They come from data shared between tiles, so neighbors agree along their edges.
      */
     heights: Float32Array; heightsVersion: number;
     dem: DemRef | null;
@@ -645,13 +645,13 @@ export interface Scene {
     /**
      * The globe (#463), when the projection draws one at this zoom: the matrix from the unit sphere to clip space, the
      * plane of the horizon, how much of a globe (1) or of Mercator (0) is drawn, the cosine of the latitude of the
-     * centre, and the tiles of the background.
+     * center, and the tiles of the background.
      */
     globe?: {m: Float32Array; horizon: number[]; cam: number[]; rays: number[]; t: number; cosLat: number; tiles: TileID[]};
 }
 
 /**
- * The values of the `sky` of a style at a zoom, with the defaults of the specification: the colours (premultiplied
+ * The values of the `sky` of a style at a zoom, with the defaults of the specification: the colors (premultiplied
  * RGBA) and the blends. Fog has an opacity of 0 below a pitch of 60 that rises to 1 at 70, as in MapLibre GL JS.
  */
 export function skyValues(sky: Sky, zoom: number, pitch: number) {
@@ -661,7 +661,7 @@ export function skyValues(sky: Sky, zoom: number, pitch: number) {
         opacity: Math.min(1, Math.max(0, (pitch - 60) / 10))};
 }
 
-/** A colour without its alpha. */
+/** A color without its alpha. */
 const opaque = (c: number[]) => { const a = c[3] || 1; return [c[0] / a, c[1] / a, c[2] / a, 1]; };
 
 export const SPRITE_ATLAS = 2048;
@@ -1190,7 +1190,7 @@ export class GLRenderer {
             if (L.type === 'background' && L.p.pattern.eval(zoom) != null) {
                 const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
                 if (!place) continue;
-                // Screen position -> world pixels at zoom Z, about the map centre (pitch is ignored for backgrounds).
+                // Screen position -> world pixels at zoom Z, about the map center (pitch is ignored for backgrounds).
                 const k = 2 ** -fade, b = tr.bearing * Math.PI / 180, cos = Math.cos(b) * k, sin = Math.sin(b) * k, w = tr.width, h = tr.height;
                 const cx = mercX(tr.lng) * 512 * 2 ** Z, cy = mercY(tr.lat) * 512 * 2 ** Z;
                 const u = place([cos * w, sin * w, 0, -sin * h, cos * h, 0, cx - (cos * w - sin * h) / 2, cy - (sin * w + cos * h) / 2, 1]);
@@ -1242,7 +1242,7 @@ export class GLRenderer {
                     const c = p.accent.eval(zoom); gl.uniform4f(u.u_accent, c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]);
                 }
                 // A map at rest, seen from above: the image moves by less than a pixel, so that its pixels are on the pixels of
-                // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the centre of the
+                // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the center of the
                 // map goes to a whole pixel of the world (to a half pixel when the size of the map is odd).
                 let snap: number[] | undefined;
                 for (const it of items) {
@@ -1281,7 +1281,7 @@ export class GLRenderer {
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {
                 for (const it of items) for (const b of parts(it, L.id)) {
-                    // (fill-opacity is in u_fade.y; fill-color colours a distance-field image.)
+                    // (fill-opacity is in u_fade.y; fill-color colors a distance-field image.)
                     const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
                     const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom), c);
                     if (!place) continue;
@@ -1290,7 +1290,7 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.vao);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
-                    // Edge pass in the pattern, unless the style has an outline colour (drawn by the edge pass below).
+                    // Edge pass in the pattern, unless the style has an outline color (drawn by the edge pass below).
                     if (b.edgeVao && L.p.outline.eval(zoom)[3] <= 0) {
                         gl.uniform2f(u.u_world, target[0], target[1]);
                         gl.bindVertexArray(b.edgeVao);
@@ -1370,7 +1370,7 @@ export class GLRenderer {
                         gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
                         gl.uniform2f(u.u_pitch, +(L.p.pitchAlign.eval(zoom) === 'map'), +(L.p.pitchScale.eval(zoom) !== 'viewport'));
-                        // (Two cells of the terrain mesh, 64 a side, at this zoom: between its corners the mesh can be well above the ground at the centre on a steep slope.)
+                        // (Two cells of the terrain mesh, 64 a side, at this zoom: between its corners the mesh can be well above the ground at the center on a steep slope.)
                         gl.uniform1f(u.u_lift, s.terrain && this.depthTex ? 40075016.686 / 2 ** zoom / 32 * Math.max(1, s.terrain.exaggeration) : 0);
                         gl.uniform1i(u.u_depth, 2);
                         if (s.terrain && this.depthTex) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.depthTex); gl.activeTexture(gl.TEXTURE0); }
@@ -1399,13 +1399,13 @@ export class GLRenderer {
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
                 if (extrude) {
-                    // Depth first, colour second: translucent buildings then blend once, with the nearest surface only.
+                    // Depth first, color second: translucent buildings then blend once, with the nearest surface only.
                     gl.colorMask(false, false, false, false);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
                         this.placeTile(u, it.id, m);
-                        // (The walls take the height in metres to tile units as MapLibre GL JS does, whose tiles have 8192 units.)
+                        // (The walls take the height in meters to tile units as MapLibre GL JS does, whose tiles have 8192 units.)
                         if (img) { bindImage(u, img); gl.uniformMatrix3fv(u.u_pat, false, patMatrix(img, tilePixels(it.id))); gl.uniform1f(u.u_hf, -(2 ** it.id.z) / 2 / EXTENT); }
                         this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                         gl.uniform4fv(u.u_clip, it.clip);
@@ -1416,7 +1416,7 @@ export class GLRenderer {
                 } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
             }
             if (L.type === 'fill' && L.p.antialias.eval(zoom) !== false) {
-                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing. As in
+                // Edge pass: the style's outline color if it has one, otherwise the fill's own color as antialiasing. As in
                 // MapLibre GL JS, fill-antialias false draws no edges, also with a fill-outline-color.
                 const oc = L.p.outline.eval(zoom), explicit = oc[3] > 0, op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
                 const col = explicit ? [oc[0], oc[1], oc[2], oc[3] * op] : color(L);
@@ -1433,7 +1433,7 @@ export class GLRenderer {
                 }
             }
             if (extrude) {
-                // Colour pass: only the nearest surface, and each pixel once. Touching walls and stacked building parts
+                // Color pass: only the nearest surface, and each pixel once. Touching walls and stacked building parts
                 // share depths exactly; without the stencil they would blend twice in a speckled pattern.
                 gl.enable(gl.STENCIL_TEST);
                 gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
@@ -1533,7 +1533,7 @@ export class GLRenderer {
         const u = this.use('composite', tr), mode = ['overlay', 'color', 'luminosity'].indexOf(blend) + 1;
         gl.uniform1i(u.u_mode, mode);
         if (mode) {
-            // These modes compute the result from the colours underneath, so those are copied and the output replaces them.
+            // These modes compute the result from the colors underneath, so those are copied and the output replaces them.
             this.belowTex ??= this.newTexture();
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D, this.belowTex);
@@ -1541,7 +1541,7 @@ export class GLRenderer {
             gl.uniform1i(u.u_below, 1);
             gl.disable(gl.BLEND);
         }
-        // Colours are premultiplied. Multiply is exact over an opaque map, which is what lies beneath in practice.
+        // Colors are premultiplied. Multiply is exact over an opaque map, which is what lies beneath in practice.
         if (blend === 'multiply') gl.blendFunc(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA);
         else if (blend === 'screen') gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
         else if (blend === 'plus-lighter') gl.blendFunc(gl.ONE, gl.ONE);
@@ -1560,7 +1560,7 @@ export class GLRenderer {
     private ramps = new Map<Uint8Array | Float32Array, WebGLTexture>();
     private rampLayers?: CompiledLayer[];
     /**
-     * The texture of a colour ramp (heatmap colours, line gradients, the colours of a `color-relief` layer), made on
+     * The texture of a color ramp (heatmap colors, line gradients, the colors of a `color-relief` layer), made on
      * first use. A `Float32Array` gives a texture of one number for each pixel (the elevations of a `color-relief` layer).
      * When the list of layers changes, `dropRamps` deletes the textures of ramps that no layer has any more (#591).
      */
@@ -1654,7 +1654,7 @@ export class GLRenderer {
     private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
     private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();
 
-    /** A 64 x 64 grid over a tile plus a skirt hanging from its edges, which hides the cracks between neighbouring tiles. */
+    /** A 64 x 64 grid over a tile plus a skirt hanging from its edges, which hides the cracks between neighboring tiles. */
     private terrainGrid() {
         if (this.grid) return this.grid;
         const gl = this.gl, N = 64, pos: number[] = [], idx: number[] = [];
@@ -2024,12 +2024,12 @@ export class GLRenderer {
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
             const col = i.color ?? plain, hw = i.w / 2, hh = i.h / 2;
             // Upright icons are placed on whole device pixels. Between pixels, the texture filter would smear fine
-            // detail such as a one-pixel outline into its neighbours. A distance field has no such detail, and
+            // detail such as a one-pixel outline into its neighbors. A distance field has no such detail, and
             // MapLibre GL JS draws it where it falls.
             const ox = i.angle === 0 && !i.color ? snap(i.x - hw) - (i.x - hw) : 0, oy = i.angle === 0 && !i.color ? snap(i.y - hh) - (i.y - hh) : 0;
             const x = i.x + ox, y = i.y + oy;
             room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * 54);
-            // A halo is the same picture drawn first, in the halo colour and out to a lower level of the distance field.
+            // A halo is the same picture drawn first, in the halo color and out to a lower level of the distance field.
             for (let pass = i.halo ? 0 : 1; pass < 2; pass++) {
                 const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) + 100 * Math.round(i.haloBlur! * 100) : 0);
                 for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
@@ -2133,7 +2133,7 @@ export class GLRenderer {
                 for (const g of line.glyphs!) {
                     if (g.w) {
                         if (g.scale || g.color) {
-                            // Rich text: this glyph has its own size or colour. The label's values come back after it.
+                            // Rich text: this glyph has its own size or color. The label's values come back after it.
                             const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
                             if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
                             gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * k) / SDF_RADIUS);

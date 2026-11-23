@@ -16,7 +16,7 @@ these keys work as in MapLibre GL JS:
 | `+` or `=`, and `-` | Zoom in and out. |
 
 The container of the map shows an outline of 2 pixels while the map has the keyboard focus. A click on the map
-gives it the focus but shows no outline. The colour is the custom property
+gives it the focus but shows no outline. The color is the custom property
 `--map-control-focus`, and its default is `#2f7fd1`.
 
 ```js
@@ -65,7 +65,7 @@ To move the focus into such a popup, give an element of its content `tabindex="0
 | Setting of the system | What the map does |
 |---|---|
 | `prefers-reduced-motion: reduce` | A camera animation with a `duration` shows the new view at once. The animation of a popup follows the same setting. In `@map-jr/map-jr-gl/maplibre-compat`, `essential: true` keeps the animation. |
-| `forced-colors: active` | The controls, the attribution, the scale and popups have a border in the system text colour. A focused button has an outline in the system highlight colour. |
+| `forced-colors: active` | The controls, the attribution, the scale and popups have a border in the system text color. A focused button has an outline in the system highlight color. |
 | `prefers-contrast: more` | The attribution has an opaque background, and the groups of controls have a black outline. |
 
 ## What the application must add

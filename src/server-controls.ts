@@ -104,7 +104,7 @@ export function controlsMarkup(o: FirstViewControls): string {
         } else if (m[1] === 'colorScheme') {
             // `'auto'` has both icons: the style sheet shows the one that the scheme of the browser selects.
             const dark = o.colorScheme === 'dark', both = o.colorScheme === 'auto';
-            html = group(button('color-scheme', ui(dark ? 'ColorSchemeControl.Light' : 'ColorSchemeControl.Dark', dark ? 'Use light colours' : 'Use dark colours'),
+            html = group(button('color-scheme', ui(dark ? 'ColorSchemeControl.Light' : 'ColorSchemeControl.Dark', dark ? 'Use light colors' : 'Use dark colors'),
                 both ? SUN.replace('<svg ', '<svg class="map-jr-ssr-sun" ') + MOON.replace('<svg ', '<svg class="map-jr-ssr-moon" ') : dark ? MOON : SUN));
         }
         if (!html) continue;

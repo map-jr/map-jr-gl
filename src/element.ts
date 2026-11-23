@@ -131,7 +131,7 @@ export class MapJrElement extends Base {
         this.made = null;
     }
 
-    /** Dispatches `map-` and the name. Returns `false` when a listener called `preventDefault()` (only `map-error` can be cancelled). */
+    /** Dispatches `map-` and the name. Returns `false` when a listener called `preventDefault()` (only `map-error` can be canceled). */
     private emit(name: string, detail?: unknown) { return this.dispatchEvent(new CustomEvent('map-' + name, {detail, bubbles: true, cancelable: name === 'error'})); }
 
     /** The fields of the view attributes that can be read. */

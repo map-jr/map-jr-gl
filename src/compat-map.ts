@@ -177,9 +177,9 @@ export class Map extends CoreMap {
         return this.tr.tileCover(o.minzoom ?? 0, o.maxzoom ?? 30, o.tileSize, o.roundZoom).map(({z, x, y, w, key}) =>
             ({canonical: {z, x, y, key}, wrap: w, overscaledZ: z, key: `${w}/${key}`}));
     }
-    // The camera math of MapLibre GL JS 6 (mercator). Heights in metres convert to mercator units with the
+    // The camera math of MapLibre GL JS 6 (mercator). Heights in meters convert to mercator units with the
     // circumference of MapLibre GL JS (6,371,008.8 m radius), so that the results agree with it.
-    /** The camera options that look from `from` at `altitudeFrom` metres to `to` at `altitudeTo` metres, as in MapLibre GL JS. */
+    /** The camera options that look from `from` at `altitudeFrom` meters to `to` at `altitudeTo` meters, as in MapLibre GL JS. */
     calculateCameraOptionsFromTo(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number) {
         altitudeTo ??= this.queryTerrainElevation(to) ?? 0;
         const [fl, fa] = toLngLat(from), [tl, ta] = toLngLat(to), tx = mercX(tl), ty = mercY(ta);
@@ -189,13 +189,13 @@ export class Map extends CoreMap {
         return {center: new LngLat(lngFromMerc(tx), latFromMerc(ty)), elevation: altitudeTo, zoom: Math.log2(this.tr.cameraDistance / d / TILE_SIZE),
             pitch: dz < 0 ? 90 - pitch : 90 + pitch, bearing: Math.atan2(dx, -dy) * 180 / Math.PI};
     }
-    /** The camera options that put the camera at `cameraLngLat` and `cameraAlt` metres with this rotation, as in MapLibre GL JS. */
+    /** The camera options that put the camera at `cameraLngLat` and `cameraAlt` meters with this rotation, as in MapLibre GL JS. */
     calculateCameraOptionsFromCameraLngLatAltRotation(cameraLngLat: LngLatLike, cameraAlt: number, bearing: number, pitch: number, roll?: number) {
         const [lng, lat] = toLngLat(cameraLngLat), p = pitch * Math.PI / 180, b = bearing * Math.PI / 180, down = -Math.cos(p), above = cameraAlt - this.tr.elevation;
         // (A camera that looks away from the ground, or along it, looks at a point 10 km away, as in MapLibre GL JS.)
         const far = down * above >= 0 || Math.abs(down) < Math.cos(89.25 * Math.PI / 180), dist = far ? 1e4 : -above / down;
         const x = mercX(lng), y = mercY(lat), sx = Math.sin(p) * Math.sin(b), sy = -Math.sin(p) * Math.cos(b);
-        // The scale changes with the latitude of the centre, which is not known yet: each pass takes the scale at the last centre.
+        // The scale changes with the latitude of the center, which is not known yet: each pass takes the scale at the last center.
         let m = mercMetres(lat), dm = dist / m, cy = y + sy * dm, step = Infinity;
         for (let pass = 1; pass < 10; pass++) {
             const next = mercMetres(latFromMerc(cy)), change = Math.abs(next - m);
@@ -205,7 +205,7 @@ export class Map extends CoreMap {
         return {center: new LngLat(lngFromMerc(x + sx * dm), latFromMerc(cy)), elevation: far ? cameraAlt + dist * down : this.tr.elevation,
             zoom: Math.log2(this.tr.cameraDistance / dm / TILE_SIZE), bearing, pitch, roll};
     }
-    /** The centre and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. */
+    /** The center and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. */
     calculateAnchoredCameraOptions(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) {
         const tr = Object.assign(Object.create(Object.getPrototypeOf(this.tr)), this.tr) as typeof this.tr, [lng, lat] = toLngLat(o.anchorLocation);
         const pt = o.anchorScreenPoint as {x: number; y: number} | [number, number], px = Array.isArray(pt) ? pt[0] : pt.x, py = Array.isArray(pt) ? pt[1] : pt.y;
@@ -532,7 +532,7 @@ export class Map extends CoreMap {
         // The box of the two places, with edges along the meridians and parallels, is turned by the bearing: its extent on the screen is this.
         const pad = sides(o.padding), own = this.tr.padding, fit = (size: number, i: number, extent: number) => Math.max(1, size - pad[i] - pad[i + 2] - own[i] - own[i + 2]) / Math.max(extent, 1e-12);
         const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(fit(this.tr.width, 1, dx * Math.abs(c) + dy * Math.abs(s)), fit(this.tr.height, 0, dx * Math.abs(s) + dy * Math.abs(c))) / 512));
-        // As in fitBounds, the padding of the call moves the centre (the padding of the map does that by itself): here along the turned axes.
+        // As in fitBounds, the padding of the call moves the center (the padding of the map does that by itself): here along the turned axes.
         const world = 512 * 2 ** zoom, sx = (pad[3] - pad[1]) / 2 / world, sy = (pad[0] - pad[2]) / 2 / world;
         return this.fit({center: [lngFromMerc((x0 + x1) / 2 - c * sx + s * sy), latFromMerc((y0 + y1) / 2 - s * sx - c * sy)], zoom, bearing}, o, eventData);
     }
@@ -589,9 +589,9 @@ export class Map extends CoreMap {
     getRenderWorldCopies() { return true; }
     /** Returns 0: the camera has no roll. */
     getRoll() { return 0; }
-    /** Returns the elevation of the ground at the map center in metres, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. */
+    /** Returns the elevation of the ground at the map center in meters, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. */
     getCenterElevation() { return this.tr.elevation; }
-    /** Returns the elevation of the ground at the map center in metres, as `getCenterElevation` does. */
+    /** Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. */
     getCameraTargetElevation() { return this.tr.elevation; }
     /** Whether the zoom level changes now, by the user or by a camera method. */
     isZooming() { return this.zooming; }
@@ -959,7 +959,7 @@ export class Map extends CoreMap {
     }
 }
 
-/** Metres in one mercator unit at a latitude, with the earth of MapLibre GL JS. */
+/** Meters in one mercator unit at a latitude, with the earth of MapLibre GL JS. */
 const mercMetres = (lat: number) => 2 * Math.PI * 6371008.8 * Math.cos(lat * Math.PI / 180);
 /** What `setTransformCameraUpdate` gives its function, as in MapLibre GL JS (a part of the transform). */
 type CameraLike = {center: {lng: number; lat: number}; zoom: number; bearing: number; pitch: number; padding: unknown; elevation: number};

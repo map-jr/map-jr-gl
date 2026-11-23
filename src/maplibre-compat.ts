@@ -110,7 +110,7 @@ export {GlobeControl};
 export {GPUInitializationError} from './gpu-error.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc} from './geo.ts';
 import {LngLat as Position} from './lnglat.ts';
-/** The circumference of the earth in metres at the equator, from the radius that MapLibre GL JS uses (6,371,008.8 m). */
+/** The circumference of the earth in meters at the equator, from the radius that MapLibre GL JS uses (6,371,008.8 m). */
 const EARTH = 2 * Math.PI * 6371008.8;
 /**
  * A position in the coordinates of Web Mercator, as in MapLibre GL JS: x and y run from 0 to 1 from the north-west
@@ -118,15 +118,15 @@ const EARTH = 2 * Math.PI * 6371008.8;
  */
 export class MercatorCoordinate {
     constructor(public x: number, public y: number, public z = 0) {}
-    /** The position of a longitude and latitude at a height in metres (default 0). */
+    /** The position of a longitude and latitude at a height in meters (default 0). */
     static fromLngLat(lngLat: Where, altitude = 0) {
         const [lng, lat] = toLngLat(lngLat);
         return new MercatorCoordinate(mercX(lng), mercY(lat), altitude / (EARTH * Math.cos(lat * Math.PI / 180)));
     }
     toLngLat() { return new Position(lngFromMerc(this.x), latFromMerc(this.y)); }
-    /** The height in metres. */
+    /** The height in meters. */
     toAltitude() { return this.z * EARTH * Math.cos(latFromMerc(this.y) * Math.PI / 180); }
-    /** The length of one metre at this position, in the units of x, y and z. */
+    /** The length of one meter at this position, in the units of x, y and z. */
     meterInMercatorCoordinateUnits() { return 1 / EARTH / Math.cos(latFromMerc(this.y) * Math.PI / 180); }
 }
 // In the development build only, reading a member of MapLibre GL JS that a class here does not have warns once (see

@@ -62,7 +62,7 @@ const stop = map.listen('click', event => console.log(event.lngLat));
 | `click` | [`MapPointerEvent`](#mappointerevent)`<'click'>` | A click on the map. |
 | `wheel` | [`MapPointerEvent`](#mappointerevent)`<'wheel', WheelEvent>` | A turn of the mouse wheel over the map. |
 | `boxzoomstart` | [`MapEventBase`](#mapeventbase)`<'boxzoomstart'> & {originalEvent: PointerEvent}` | A zoom to a box drawn with the Shift key and a drag starts. |
-| `boxzoomcancel` | [`MapEventBase`](#mapeventbase)`<'boxzoomcancel'> & {originalEvent: Event}` | A zoom to a box is cancelled. |
+| `boxzoomcancel` | [`MapEventBase`](#mapeventbase)`<'boxzoomcancel'> & {originalEvent: Event}` | A zoom to a box is canceled. |
 | `boxzoomend` | [`MapEventBase`](#mapeventbase)`<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: [[number, number], [number, number]]}` | A zoom to a box ends, with the bounds of the box as `boxZoomBounds`. |
 | `stats` | [`MapEventBase`](#mapeventbase)`<'stats'> & {fps: number; frameMs: number; labels: number}` | About once a second while the map renders: the frames per second, the CPU time of a frame in milliseconds on the thread that renders, and the number of labels placed. |
 | `styleimagemissing` | [`MapEventBase`](#mapeventbase)`<'styleimagemissing'> & {id: string}` | The style names an image (`id`) that the map does not have. |

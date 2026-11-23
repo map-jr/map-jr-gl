@@ -256,11 +256,11 @@ Map Jr. GL is a project of Sam Margulies and whatismyelevation.com. An AI coding
 of this project ("vibe coding"). A person gave the directions and reviewed the results. Nobody reviewed every line of the code. Read [Acknowledgements](ACKNOWLEDGEMENTS.md) for
 more information, and run your own tests before you use the library for important work.
 
-## Licence and acknowledgements
+## License and acknowledgements
 
-The licence is MIT. See [LICENSE](LICENSE).
+The license is MIT. See [LICENSE](LICENSE).
 
 The library follows [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause) but contains none of
 its files. A [similarity scan](docs/similarity-scan.md) of the source against MapLibre GL JS 6.17.0 and the other
 projects found no copied block. [Acknowledgements](ACKNOWLEDGEMENTS.md) lists the projects that this library uses or follows.
-[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) contains their licence texts.
+[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) contains their license texts.

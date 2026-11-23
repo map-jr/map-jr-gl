@@ -5,7 +5,7 @@
 <map-jr id="map" map-style="https://styles.map-jr.org/1/elevation.json" center="7.6586,45.9763" zoom="12.4" pitch="60"
         bearing="25" style="height: 500px"></map-jr>
 <p id="readout">Click the map to read the elevation</p>
-<button id="units">Contours in metres</button>
+<button id="units">Contours in meters</button>
 <button id="flat">Flat map</button>
 <script type="module">
   import '@map-jr/map-jr-gl/element';
@@ -29,7 +29,7 @@
     map.terrain = terrain ? {source: 'terrarium', exaggeration: 1.5} : null;
     map.globalState = {'elevation-unit': unit};
     map.sources = {
-      // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or metres.
+      // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or meters.
       contours: {type: 'contour', source: 'terrarium', multiplier: unit === 'ft' ? 3.28084 : 1, thresholds: thresholds[unit]},
     };
     map.layers = [
@@ -50,7 +50,7 @@
   });
   units.onclick = () => {
     unit = unit === 'ft' ? 'm' : 'ft';
-    units.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+    units.textContent = unit === 'ft' ? 'Contours in meters' : 'Contours in feet';
     showElevation();
   };
   flat.onclick = () => {

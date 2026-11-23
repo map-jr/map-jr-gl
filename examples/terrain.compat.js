@@ -11,14 +11,14 @@ const thresholds = {
 
 const map = new Map({container: 'map', style, center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25, attributionControl: {compact: true}});
 const readout = document.createElement('p');
-const units = Object.assign(document.createElement('button'), {textContent: 'Contours in metres'});
+const units = Object.assign(document.createElement('button'), {textContent: 'Contours in meters'});
 const flat = Object.assign(document.createElement('button'), {textContent: 'Flat map'});
 map.getContainer().after(readout, units, flat);
 
 let unit = 'ft', terrain = true;
 // Adds the contour lines and their labels in the current unit. A contour source is an addition of this library: it
 // makes lines from the elevation tiles. For each zoom level, `thresholds` sets the interval between lines and between
-// major lines, in feet or metres.
+// major lines, in feet or meters.
 function addContours() {
   map.addSource('contours', {type: 'contour', source: 'terrarium', multiplier: unit === 'ft' ? 3.28084 : 1, thresholds: thresholds[unit]});
   map.addLayer({id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours',
@@ -38,12 +38,12 @@ map.on('load', () => {
 map.on('click', async e => {
   const metres = await map.queryElevation(e.lngLat);
   const feet = metres * 3.28084;
-  readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+  readout.textContent = metres === null ? 'No elevation data here' : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
 });
 
 units.onclick = () => {
   unit = unit === 'ft' ? 'm' : 'ft';
-  units.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+  units.textContent = unit === 'ft' ? 'Contours in meters' : 'Contours in feet';
   // The style shows the heights of peaks in the unit of its state "elevation-unit".
   map.setGlobalStateProperty('elevation-unit', unit);
   // The options of a source do not change after it is added, so the source and its layers are added again.

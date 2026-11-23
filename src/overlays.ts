@@ -279,14 +279,14 @@ export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?:
 /**
  * A pin for `overlay`, the default pin of `Marker` in the compat entry: a `div` with an SVG drop, 27 by 41 pixels at `scale` 1, filled with `color` (default
  * `'#3fb1ce'`). Each call makes a new element. Its anchor is `'bottom'`.
- * @param options `color` is a CSS colour, and `scale` multiplies the size (default 1).
+ * @param options `color` is a CSS color, and `scale` multiplies the size (default 1).
  * @returns A new element.
  */
 export function defaultPin(options: {color?: string; scale?: number} = {}): HTMLElement {
     const s = +(options.scale ?? 1) || 1, el = document.createElement('div');
     el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41">` +
         `<path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z"/><circle cx="13.5" cy="13.5" r="5.5" fill="#fff"/></svg>`;
-    // (The colour can come from data: it is set as an attribute, never as HTML.)
+    // (The color can come from data: it is set as an attribute, never as HTML.)
     el.querySelector('path')!.setAttribute('fill', options.color ?? '#3fb1ce');
     // (A style property, not a `style` attribute in the HTML, which a strict `style-src` blocks.)
     el.querySelector('svg')!.style.cssText = 'display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))';
