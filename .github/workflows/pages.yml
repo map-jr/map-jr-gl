@@ -1,9 +1,12 @@
-# Builds the gallery and publishes it to GitHub Pages.
+# The old address of the gallery, https://map-jr.github.io/map-jr-gl/, sends readers to the docs site at
+# https://map-jr.org/. GitHub Pages cannot answer with a redirect, so each page sends the browser on: index.html and
+# bench/index.html with a meta refresh, and 404.html (every other address) with a script that keeps the path.
 # One-time setup: repository Settings > Pages > Build and deployment > Source: "GitHub Actions".
-name: Gallery site
+name: Pages redirect
 on:
   push:
     branches: [main]
+    paths: ['.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,17 +19,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm site
+      - name: Write the redirect pages
+        run: |
+          page() { printf '<!doctype html><meta charset="utf-8"><title>Map Jr. GL</title><link rel="canonical" href="%s"><meta http-equiv="refresh" content="0; url=%s"><p>The site moved to <a href="%s">%s</a>.</p>\n' "$1" "$1" "$1" "$1"; }
+          mkdir -p out/bench
+          page https://map-jr.org/ > out/index.html
+          page https://map-jr.org/bench/ > out/bench/index.html
+          # Any other address goes to the same path on map-jr.org, without /map-jr-gl/.
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Map Jr. GL</title><script>location.replace("https://map-jr.org/" + location.pathname.replace(/^\/map-jr-gl\/?/, "") + location.search + location.hash)</script><p>The site moved to <a href="https://map-jr.org/">map-jr.org</a>.</p>' > out/404.html
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site-dist
+          path: out
   deploy:
     needs: build
     runs-on: ubuntu-latest

@@ -3185,7 +3185,7 @@ for (const renderer of renderers) {
 for (const code of ['core', 'compat']) {
     const page = await browser.newPage({viewport: {width: 1200, height: 800}});
     try {
-        await page.goto(`${origin}/gallery/examples/run.html?id=query&form=${code}`);
+        await page.goto(`${origin}/site/examples/run.html?id=query&form=${code}`);
         await page.waitForFunction(() => window.maps?.query, null, {timeout: 60000});
         await page.evaluate(async code => {
             document.getElementById('query').scrollIntoView({block: 'center'});
@@ -3243,7 +3243,7 @@ for (const code of ['core', 'compat', 'svelte', 'element']) {
     const zoomOf = id => page.evaluate(id => { const m = window.maps[id]; return m.getZoom ? m.getZoom() : m.state.get().view.zoom; }, id);
     const screenOf = (id, lngLat) => page.evaluate(([id, lngLat]) => { const p = window.maps[id].project(lngLat), r = document.querySelector('.live').getBoundingClientRect(); return [r.x + p.x, r.y + p.y]; }, [id, lngLat]);
     const readout = () => page.evaluate(() => document.querySelector('.readout').textContent);
-    const open = async id => { await page.goto(`${origin}/gallery/examples/run.html?id=${id}&form=${code}`); await settled(id); await page.waitForTimeout(300); };
+    const open = async id => { await page.goto(`${origin}/site/examples/run.html?id=${id}&form=${code}`); await settled(id); await page.waitForTimeout(300); };
     const whitehall = [-74.0131, 40.7013], landings = [whitehall, [-74.0067, 40.7034], [-74.0181, 40.7147], [-73.9946, 40.7036], [-74.0189, 40.6928], [-73.9785, 40.7116], [-73.9997, 40.6930]];
     const allInside = () => page.evaluate(landings => { const m = window.maps.fit, r = document.querySelector('.live').getBoundingClientRect(); return landings.every(l => { const p = m.project(l); return p.x >= 20 && p.y >= 20 && p.x <= r.width - 20 && p.y <= r.height - 20; }); }, landings);
     try {
@@ -3281,22 +3281,16 @@ for (const code of ['core', 'compat', 'svelte', 'element']) {
     check(`examples, hover, back and fit examples (${code}): no error on the page`, !errors.length, errors.join(' | '));
     await page.close();
 }
-// The harness page and the gallery (#1114). The harness page says which forms it runs when it is asked for a form that
-// it does not run, and for an example that no file has. The gallery has one row for each example and a live map in the
-// first row.
+// The harness page (#1114) says which forms it runs when it is asked for a form that it does not run, and for an
+// example that no file has.
 {
     const page = await browser.newPage({viewport: {width: 1200, height: 800}});
     try {
-        const errorOf = async query => { await page.goto(`${origin}/gallery/examples/run.html?${query}`); await page.waitForFunction(() => window.exampleError || window.maps, null, {timeout: 30000}); return page.evaluate(() => [window.exampleError, document.querySelector('.readout').textContent]); };
+        const errorOf = async query => { await page.goto(`${origin}/site/examples/run.html?${query}`); await page.waitForFunction(() => window.exampleError || window.maps, null, {timeout: 30000}); return page.evaluate(() => [window.exampleError, document.querySelector('.readout').textContent]); };
         const noForm = await errorOf('id=query&form=vue'), noId = await errorOf('id=nothing&form=core');
         check('examples, harness page: a form that does not run and an unknown example each give a message on the page and in window.exampleError (#1114)',
             /^\[map-jr-gl\] examples: the form "vue" does not run here\. Use one of: core, compat, svelte, element\.$/.test(noForm[0]) && noForm[1] === noForm[0] && /^\[map-jr-gl\] examples: no example has the id "nothing"/.test(noId[0]) && noId[1] === noId[0], JSON.stringify({noForm: noForm[0], noId: noId[0]}));
-        await page.goto(`${origin}/gallery/?code=vue`);
-        await page.waitForFunction(() => window.maps?.basic, null, {timeout: 60000});
-        const rows = await page.evaluate(() => [...document.querySelectorAll('#rows > article')].map(a => `${a.id}:${a.querySelector('code').textContent.length > 100 && !!a.querySelector('.live, .pair') && !!a.querySelector('.readout') && !!a.querySelector('.actions')}`).join(' '));
-        check('gallery: one row for each of the twelve examples and the server row, each with its code, and a live map in the first row (#1114)',
-            rows === ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles', 'server'].map(id => id + ':true').join(' '), rows);
-    } catch (e) { check('examples, harness page and gallery (#1114): the test run was completed', false, String(e.message).split('\n')[0]); }
+    } catch (e) { check('examples, harness page (#1114): the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // The Svelte and <map-jr> forms of each example run on the harness page and reach idle, with their line of text in
@@ -3307,7 +3301,7 @@ for (const form of ['svelte', 'element']) {
     page.on('pageerror', e => errors.push(e.message));
     try {
         for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles']) {
-            await page.goto(`${origin}/gallery/examples/run.html?id=${id}&form=${form}`);
+            await page.goto(`${origin}/site/examples/run.html?id=${id}&form=${form}`);
             const idle = await page.waitForFunction(id => window.exampleError || window.maps?.[id]?.state.get().idle, id, {timeout: 30000}).then(() => true, () => false);
             const [error, buttons, inStage] = await page.evaluate(() => [window.exampleError, document.querySelectorAll('.actions button').length, !!document.querySelector('.live canvas')]);
             results.push(`${id}:${idle && !error && inStage ? 'ok' : 'no'}${buttons ? `/${buttons}` : ''}`);

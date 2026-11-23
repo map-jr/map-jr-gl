@@ -11,7 +11,7 @@ whatismyelevation.com. It has two entries:
 
 ![A 3D terrain map with relief shading and contour lines](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/terrain.jpg)
 
-**[Open the live gallery](https://map-jr.github.io/map-jr-gl/)** to see each feature with the code that makes it.
+**[Open the docs site](https://map-jr.org/)** to see each feature with the code that makes it, and try it on [the playground](https://map-jr.org/play).
 
 Which entry to use:
 
@@ -463,7 +463,7 @@ These computers are virtual machines, and those for Linux and Windows have no GP
 two libraries, not as the speed of a real device. On an Apple M4 the two libraries draw 60 frames each second;
 this library loads faster (490 ms against 781 ms) and uses no page script for a frame.
 
-To measure on your device, open [the benchmark page](https://map-jr.github.io/map-jr-gl/bench/) of the gallery site, or run `pnpm demo` and open `http://localhost:8080/bench`. `pnpm status` writes the tables.
+To measure on your device, open [the benchmark page](https://map-jr.org/bench/) of the docs site, or run `pnpm demo` and open `http://localhost:8080/bench`. `pnpm status` writes the tables.
 
 ## Documents
 

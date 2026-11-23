@@ -1,5 +1,4 @@
-// Runs one form of one example in an element. The harness page (examples/run.html) and the gallery (site/gallery.js)
-// both mount an example through this file, so a form runs in the same way in both.
+// Runs one form of one example in an element. The harness page (examples/run.html) mounts an example through this file.
 //
 // An example file is the module script of a page that has <div id="map">, and it runs as it is written there. It finds
 // its container by the id "map" when its code starts (`document.getElementById('map')`, or `container: 'map'` in the

@@ -120,16 +120,15 @@ http.createServer(async (req, res) => {
             const file = path.join(root, 'node_modules/maplibre-gl/dist', path.basename(url.pathname));
             return send(200, file.endsWith('.css') ? 'text/css' : 'text/javascript', await readFile(file));
         }
-        // The gallery is a static site (built by `pnpm site` into site-dist/, the same files GitHub Pages serves).
-        if (url.pathname === '/gallery') { res.writeHead(302, {location: '/gallery/'}); return res.end(); }
-        if (url.pathname.startsWith('/gallery/')) {
-            // (A folder is its index.html, as on GitHub Pages: /gallery/bench/ is the benchmark page of the site.)
-            const file = path.join(root, 'site-dist', path.normalize((url.pathname.slice(9) || 'index.html').replace(/\/$/, '/index.html')));
+        // The static pages that `pnpm site` builds into site-dist/: the harness page of the examples at /site/examples/run.html,
+        // and the benchmark page at /site/bench/ (a folder is its index.html), as the docs site publishes it.
+        if (url.pathname.startsWith('/site/')) {
+            const file = path.join(root, 'site-dist', path.normalize(url.pathname.slice(6).replace(/\/$/, '/index.html')));
             if (!file.startsWith(path.join(root, 'site-dist'))) return send(403, 'text/plain', 'Forbidden');
             const types = {'.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.css': 'text/css'};
             return send(200, types[path.extname(file)] ?? 'application/octet-stream', await readFile(file));
         }
-        if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div><a href="/gallery" style="position:absolute;left:8px;bottom:34px;z-index:2;background:#fff;padding:5px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003;color:#222;text-decoration:none">Feature gallery</a>${client()}`));
+        if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${client()}`));
         if (url.pathname === '/map.jpg') {
             const q = url.searchParams, ratio = +(q.get('ratio') || 1);
             const {image, contentType} = await renderToImage({style, ...view, zoom: +(q.get('zoom') || view.zoom), bearing: +(q.get('bearing') || 0),
