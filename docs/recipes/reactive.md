@@ -3,11 +3,6 @@
 This example adds and removes markers with a button, tilts the camera with another button, and shows the zoom and the
 style layer under the pointer. The map follows a description that the application changes.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the text and the
-buttons below the map itself. The Vue and React components fill their parent element, so give the parent a height. The
-Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels.
-
 <!-- example:reactive:start -->
 **Main API**
 

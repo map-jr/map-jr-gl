@@ -3,11 +3,6 @@
 To find what is at a position of the map, query the data of a source. This example lists every feature within 8 pixels
 of a click, also features that the style does not draw.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
-below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
-component and the `<map-jr>` page give the element of the map a height of 500 pixels.
-
 <!-- example:query:start -->
 **Main API**
 

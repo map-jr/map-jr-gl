@@ -3,11 +3,6 @@
 This example shows a map of a MapLibre style with the zoom, compass, scale and fullscreen controls. A line of text below
 the map names the thread that renders the map.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
-below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
-component and the `<map-jr>` page give the element of the map a height of 500 pixels.
-
 <!-- example:basic:start -->
 **Main API**
 

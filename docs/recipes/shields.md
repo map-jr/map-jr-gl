@@ -3,11 +3,6 @@
 This example draws a highway shield for each route of a road: an SVG image with the number of the route, which the page
 creates when a layer asks for it.
 
-Each block below is a complete file of [`examples/`](https://github.com/map-jr/map-jr-gl/tree/main/examples). The two
-`js` files are the module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates
-the line of text below the map itself. The Vue and React components fill their parent element, so give the parent a
-height. The Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels.
-
 The style is an object in the code: a few layers of roads and water from the vector tiles of OpenFreeMap. The styles of
 `styles.map-jr.org` draw shields of their own, so the example does not use one of them.
 

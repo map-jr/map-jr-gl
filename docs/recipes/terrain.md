@@ -3,11 +3,6 @@
 This example shows the Matterhorn in 3D with relief shading and labelled contour lines, and reads the height of the
 ground at a click. Two buttons switch the contour lines between feet and metres and turn the 3D terrain on and off.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the text and the
-buttons below the map itself. The Vue and React components fill their parent element, so give the parent a height. The
-Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels.
-
 <!-- example:terrain:start -->
 **Main API**
 

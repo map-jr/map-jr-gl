@@ -4,12 +4,6 @@ This example is a component with a map of three stores and a button for each sto
 Svelte. The test environment (happy-dom or jsdom) has no WebGL, so the test replaces the map with a stub and checks what
 the component gives to the map and what it asks the map to do.
 
-Each block below is a complete file of [`examples/`](https://github.com/map-jr/map-jr-gl/tree/main/examples). The two
-`js` files are the module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates
-the buttons below the map itself. The Vue and React components fill their parent element, so give the parent a
-height. The Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels. The main
-API, compat and `<map-jr>` forms have no component to test: they show the same page for comparison.
-
 In a Nuxt app with the [module for Nuxt](../reference/nuxt.md), the Vue code works as it is.
 
 <!-- example:stores:start -->

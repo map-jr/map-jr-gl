@@ -3,11 +3,6 @@
 This example draws the county and ZIP code boundaries of the United States from one PMTiles file on a file host, over a
 base map, and lists the names of the areas at a click.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
-below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
-component and the `<map-jr>` page give the element of the map a height of 500 pixels.
-
 <!-- example:pmtiles:start -->
 **Main API**
 
