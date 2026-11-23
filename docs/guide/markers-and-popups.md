@@ -242,7 +242,8 @@ other forms of an image.
 ## Change the markers
 
 Set new GeoJSON on the source. In the main API, [`map.patch`](../reference/map.md#patch) replaces the fields that it
-is passed and keeps the other fields of the description.
+is passed and keeps the other fields of the description. It merges `data` by key, so pass only the sources that
+change.
 
 **Main API**
 

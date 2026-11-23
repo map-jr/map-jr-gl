@@ -14,7 +14,10 @@
   map.controls = [navigation(), colorScheme()];
   map.attribution = {compact: true};
 
+  // Store the value that the button set on the element. Otherwise the next description, after a change of another
+  // attribute or property, passes "auto" again and the map changes back.
   map.addEventListener('map-colorschemechange', event => {
+    map.colorScheme = event.detail;
     readout.textContent = `Scheme: ${event.detail}`;
   });
 </script>

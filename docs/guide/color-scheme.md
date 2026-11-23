@@ -287,7 +287,15 @@ export default function SchemeMap() {
   map.controls = [navigation(), colorScheme()];
   map.attribution = {compact: true};
 
+  // Store the value that the
+  // button set on the element.
+  // Otherwise the next
+  // description, after a change
+  // of another attribute or
+  // property, passes "auto" again
+  // and the map changes back.
   map.addEventListener('map-colorschemechange', event => {
+    map.colorScheme = event.detail;
     readout.textContent = `Scheme: ${event.detail}`;
   });
 </script>
@@ -299,7 +307,7 @@ A click on the button changes `colorScheme` of the map and then calls
 
 A line of text below the map names the value that the button set.
 
-- Store the new value where the description comes from, as the Vue, React and Svelte examples do. Otherwise the next
+- Store the new value where the description comes from, as the Vue, React, Svelte and `<map-jr>` examples do. Otherwise the next
   description passes the old value, and the map changes back.
 - With `'auto'`, the first click sets the opposite of the system, `'light'` or `'dark'`. The next click returns to the
   scheme of the system and sets `'auto'` again.

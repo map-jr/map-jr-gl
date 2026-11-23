@@ -280,7 +280,9 @@ map and the frames per second.
   [`renderer`](../reference/state.md#mapstate) of the state is `'worker'` or `'main'` once the map has loaded, and
   `undefined` before. In the compat entry, `map.renderer` names the thread. The
   [`stats`](../reference/events.md#mapevents) event reports the frames per second about once a second while the map
-  renders. To choose the thread, set [`renderer`](../reference/description.md#renderer) of the description.
+  renders. To choose the thread, set [`renderer`](../reference/description.md#renderer) of the description to `'auto'` (the
+  default), `'worker'` or `'main'`. `'worker'` renders as `'auto'` does, and warns once when the map renders on the
+  main thread instead.
 
 These functions are available. Each one also accepts `position`.
 

@@ -529,8 +529,11 @@ Two options belong to the fit:
 
 | Option | Main API | MapLibre compat | Default | Effect |
 |---|---|---|---|---|
-| `fitPadding` | in `initialView` | `padding` in `fitBoundsOptions` | `0` | The space in CSS pixels between the box and the edges of the map, for this fit only. |
+| `fitPadding` | in `initialView` | `padding` in `fitBoundsOptions` | `0` | The space in CSS pixels between the box and the edges of the map, for this fit only: a number, or `{top, right, bottom, left}`. |
 | `fitMaxZoom` | in `initialView` | `maxZoom` in `fitBoundsOptions` | `maxZoom` of the map | The largest zoom of the fit. |
+
+Without `fitPadding`, circles at the edge of the box are cut in half. For a panel of 300 pixels over the left side of
+the map, pass `{top: 40, right: 40, bottom: 40, left: 340}`.
 
 The fit of `initialView` does not add the [`padding`](../reference/description.md#padding) of the description.
 
@@ -1355,6 +1358,24 @@ A click on a ferry landing zooms to it, and the button Back below the map return
 
 The option [`hash`](../reference/description.md#hash) keeps the view in the URL of the page, so that a link or a
 reload opens the same view.
+
+To start at the last view of the visit before, keep the view in `localStorage`. Read it before the call of
+`createMap`, and store each view where the map stops:
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const saved = JSON.parse(localStorage.getItem('view') ?? 'null');
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: saved ?? {center: [-74.0065, 40.7085], zoom: 13.6},
+});
+
+map.listen('moveend', () => {
+  const {center, zoom, bearing, pitch} = map.state.get().view;
+  localStorage.setItem('view', JSON.stringify({center, zoom, bearing, pitch}));
+});
+```
 
 ## Read the view
 
