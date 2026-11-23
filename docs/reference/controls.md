@@ -215,7 +215,7 @@ shows a generic placeholder image. A new picture fades in over the old one, exce
 ```ts
 styles(options: {
   entries: StyleEntry[];
-  preview?: {center: Position; zoom: number};
+  preview?: StylesPreview;
   onStyleChange?: (entry: StyleEntry) => void;
   position?: ControlPosition;
 }): ControlSpec
@@ -247,8 +247,58 @@ const map = createMap('map', {
 | Name | Type | Description |
 |---|---|---|
 | `entries` **required** | `StyleEntry[]` | The entries of the list, in their order. |
-| `preview` | `{center: Position; zoom: number}` | The center and the zoom of the pictures. Without it, the pictures show the center, the zoom, the bearing and the pitch of the map. |
+| `preview` | `StylesPreview` | How the pictures are drawn. |
 | `onStyleChange` | `(entry: StyleEntry) => void` | Called with the entry after a choice has set `style`. |
+
+### `StylesPreview`
+
+| Name | Type | Description |
+|---|---|---|
+| `center`, `zoom` | `Position`, `number` | The center and the zoom of the pictures, both together. Without them, the pictures show the center, the zoom, the bearing and the pitch of the map. |
+| `style` | `(style: StyleSpecification, entry: StyleEntry) => StyleSpecification \| void` | Changes the style of a picture only. It gets a copy of the style of the entry with absolute URLs, and changes it in place or returns another style. The map keeps the style of the entry. |
+| `ssr` | `boolean` | Applies the overrides of `metadata["map-jr:ssr"]` of each layer to the pictures, before `style`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint` and `layout`. Default `true`. |
+
+For `ssr` and `style`, the control loads a style that is a URL itself, through the request path of the map: the
+protocols of [`addProtocol`](exports.md#addprotocol), the `transformRequest` of the description and its timeout. The
+map has usually loaded the style before, so the browser cache answers. The hidden maps also use the `transformRequest`
+of the description. The picture of a `{light, dark}` entry uses `light` for the button "Light" and `dark` for the
+button "Dark".
+
+When a picture fails, its entry shows the placeholder, the control warns once for that entry, and the next picture
+starts. The warning names the label of the entry and the reason:
+
+- the style URL answers with an HTTP error, or its answer is not a style;
+- the style URL does not answer in 20 seconds;
+- `preview.style` throws, or returns a value that is not a style object with `version`, `sources` and `layers`;
+- the hidden map reports an error before the style has loaded.
+
+A `preview` with `center` and no `zoom`, or `zoom` and no `center`, warns, and the pictures show the view of the map.
+
+In the official styles, the overrides hide most labels, the buildings and most roads at zoom 14, and the dark style
+draws as an almost even dark area. With `ssr: false`, the pictures show the full style.
+
+With the overrides, six pictures of the official styles take less time to draw: 3.8 s instead of 4.0 s at zoom 11,
+and 4.3 s instead of 5.5 s at zoom 14, on a machine without a GPU.
+
+This example hides the labels and the icons of the pictures:
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {styles} from '@map-jr/map-jr-gl/controls';
+
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/openfreemap-positron.json',
+  controls: [
+    styles({
+      entries: [
+        {label: 'Positron', style: 'https://styles.map-jr.org/1/openfreemap-positron.json'},
+        {label: 'Dark', style: 'https://styles.map-jr.org/1/openfreemap-dark.json'},
+      ],
+      preview: {style: style => { style.layers = style.layers.filter(layer => layer.type !== 'symbol'); }},
+    }),
+  ],
+});
+```
 
 ### `StyleEntry`
 

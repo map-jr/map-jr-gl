@@ -938,6 +938,8 @@ export class Map {
     private protocolAborts = new Set<AbortController>();
     /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data), with the timeout of `withTimeout`. */
     protected fetchAs = (kind: string) => withTimeout(fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k, signal) => this.answer(url, k, signal), kind));
+    /** (For the control `styles()`, which loads the styles of its pictures as the map loads its style.) @internal */
+    _fetch = (kind: string) => this.fetchAs(kind);
     protected layerListeners: {type: string; layers: string[]; fn: Listener}[] = [];
     /** The `mouseenter` and `mouseleave` listeners whose layers are under the pointer. */
     private hovered = new WeakSet<object>();
