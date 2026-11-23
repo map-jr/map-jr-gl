@@ -240,7 +240,7 @@ supported, one short example, and "See also".
   `openfreemap-bright.json`, `-dark`, `-fiord`, `-liberty` and `-positron` (with `glyphs` and a sprite). An example
   that needs a second style takes it from the same host. Use another host only when the example is about that host.
 - An example relies only on layer ids and source ids that the style has. Run the example to check them.
-- An example has no code of a test or of the gallery around it (a wrapper function, a `show` callback). Where a
+- An example has no code of a test or of the harness around it (a wrapper function, a `show` callback). Where a
   recipe must copy such a file, one or two sentences directly before the first block say what the wrapper is.
 - Use names from a real application (`stations`, `selectedTrail`), not `foo` or `myLayer1`.
 - A comment in the code says why a line is there, for the one or two lines that need it.

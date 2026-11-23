@@ -1,4 +1,4 @@
-// TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the gallery write it.
+// TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the examples write it.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
 import {createMap, points, type AttributionOptions, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
 import {navigation, scale, geolocate, terrain, type NavigationOptions, type ScaleOptions, type GeolocateOptions, type TerrainOptions} from '@map-jr/map-jr-gl/controls';

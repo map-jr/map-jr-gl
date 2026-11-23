@@ -146,7 +146,7 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
     check('worker blob URL: not revoked while a worker loads it, and a map made after the revoke starts', result.first === 'worker' && result.second === 'worker' && !result.early && !errors.length, `${JSON.stringify(result)} errors=${errors.join(' | ')}`);
     await page.close();
 }
-// The .js and .compat.js forms of the gallery run as they are written: each is the module script of a bare page with
+// The .js and .compat.js forms of the examples run as they are written: each is the module script of a bare page with
 // <div id="map"> and an import map, and reaches idle with no page error (#1156). The route appends only
 // `window.map = map` so that the test can read the map.
 {
@@ -164,7 +164,7 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
         await page.close();
     }
 }
-// The <map-jr> forms (.html) and the Svelte forms (.svelte) of the gallery run too, and reach idle with no page error
+// The <map-jr> forms (.html) and the Svelte forms (.svelte) of the examples run too, and reach idle with no page error
 // (#1115). A <map-jr> form is the page itself, with an import map put after its <meta charset>. A Svelte form is
 // compiled with svelte/compiler and bundled with esbuild into a page that mounts it in <body>; its imports of the
 // entry go to examples/harness/svelte.js, which keeps the map that the action makes. The Vue, Nuxt and React forms

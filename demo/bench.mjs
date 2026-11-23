@@ -1,5 +1,5 @@
 // In-browser benchmark: this library against MapLibre GL JS on the visitor's own GPU (#29). See bench.html.
-// (The URLs are relative: the page is at /bench of the demo server, and in the folder bench/ of the gallery site.)
+// (The URLs are relative: the page is at /bench of the demo server, and at https://map-jr.org/bench/.)
 //
 // The query of the page (test/bench/browsers.mjs and test/bench/webdriver.mjs use it):
 //   auto              runs the scenarios that are checked when the page opens, and sets window.benchResults at the end
@@ -129,7 +129,7 @@ async function settleHost(map, armed = map.once('idle'), limit = 60000) {
 let styleJSON;
 const loadStyle = async () => structuredClone(styleJSON ??= await (await fetch(STYLE)).json());
 const sourceIds = style => Object.keys(style.sources ?? {});
-/** Elevation, relief shading and terrain on the style (Mapterhorn tiles, as in the gallery). */
+/** Elevation, relief shading and terrain on the style (Mapterhorn tiles, as in the examples). */
 function withTerrain(style) {
     style.sources.benchdem = {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12};
     const firstSymbol = style.layers.findIndex(l => l.type === 'symbol');
