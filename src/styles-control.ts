@@ -158,8 +158,10 @@ export class StylesControl implements Control {
             for (let i = 0; i < entries.length && !this.removed; i++) {
                 failed = false;
                 const spec = {...base, style: entries[i].style};
-                if (small) small.update(spec); else small = createMap(box, spec);
-                const m = small;
+                // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of
+                // a new style that does not load, and the picture would show the old style.)
+                small?.destroy();
+                const m = small = createMap(box, spec);
                 await new Promise<void>(resolve => {
                     const timer = setTimeout(wake = () => { clearTimeout(timer); stop(); resolve(); }, 20000);
                     const stop = m.state.subscribe(s => s.idle, on => { if (on) wake(); });

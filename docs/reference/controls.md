@@ -266,8 +266,8 @@ An application that passes `style` itself, as a component of Vue, React or Svelt
 options are equal as JSON (see [The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in
 a later description does not replace the first one.
 
-The pictures are 120 × 80 CSS pixels. A small second map, hidden from the page, draws them one after the other with
-[`toBlob`](map.md#toblob) and is then removed. It starts when the map is first idle, so that it does not delay the
+The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
+[`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so that they do not delay the
 map, or at the first click on the button if that comes earlier. The list opens with the labels at once and shows each
 picture when it is ready.
 
