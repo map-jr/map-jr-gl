@@ -37,10 +37,15 @@ function addSheet(el: HTMLElement, nonce?: string | null) {
 }
 
 const sameStyle = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** Whether the description shows the entry: its style, and the terrain and the global state that it sets (#1505). */
+const shows = (e: StyleEntry, d: MapDescription) => sameStyle(e.style, d.style) && (e.terrain === undefined || sameStyle(e.terrain, d.terrain))
+    && Object.keys(e.globalState ?? {}).every(k => sameStyle(e.globalState![k], d.globalState?.[k]));
+/** The number of fields that the entry sets besides `style`: of two entries that the description shows, the one that sets more is current. */
+const overrides = (e: StyleEntry) => +(e.terrain !== undefined) + Object.keys(e.globalState ?? {}).length;
 
 /**
- * A button that opens a list of styles with a picture of each. A choice applies the style with `patch`, so the camera
- * stays, and calls `onStyleChange` with the entry. The pictures are made once the map is first idle, or at the first
+ * A button that opens a list of styles with a picture of each. A choice applies the style, the terrain and the global
+ * state of the entry with one `patch`, so the camera stays, and calls `onStyleChange` with the entry. The pictures are made once the map is first idle, or at the first
  * click if that comes earlier; without `preview`, they show the view of the map and are made again when the list opens
  * on a view that has changed. A picture that fails leaves its label.
  */
@@ -52,6 +57,8 @@ export class StylesControl implements Control {
     private urls: string[] = [];
     private drawing?: Promise<void>;
     private drawn = '';
+    /** The index of the entry of the last choice. */
+    private chosen = -1;
     private removed = false;
     /** The hidden map of the picture that is being drawn, and the function that ends the wait for it. */
     private small?: MapInstance;
@@ -81,7 +88,7 @@ export class StylesControl implements Control {
             const pic = b.appendChild(document.createElement('span'));
             pic.className = 'map-jr-styles-pic';
             b.appendChild(document.createElement('span')).textContent = entry.label;
-            b.addEventListener('click', () => this.choose(instance, entry));
+            b.addEventListener('click', () => this.choose(instance, i));
             b.addEventListener('keydown', e => {
                 const to = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : -2;
                 if (to > -2) { e.preventDefault(); this.items[(to + entries.length) % entries.length]?.focus(); }
@@ -108,8 +115,8 @@ export class StylesControl implements Control {
     private open() {
         const list = this.list!, el = this.el!, instance = this.instance?.();
         if (!instance) return;
-        const current = instance.description.style;
-        this.items.forEach((b, i) => b.setAttribute('aria-pressed', String(sameStyle(this.options.entries[i].style, current))));
+        const current = this.current(instance.description);
+        this.items.forEach((b, i) => b.setAttribute('aria-pressed', String(i === current)));
         // The list opens toward the middle of the map, and fits in its height.
         const box = el.getBoundingClientRect(), map = (el.closest('.map-jr-map') ?? el.parentElement!).getBoundingClientRect();
         const left = box.left + box.width / 2 < map.left + map.width / 2, top = box.top + box.height / 2 < map.top + map.height / 2;
@@ -126,10 +133,34 @@ export class StylesControl implements Control {
         if (focus) this.trigger!.focus();
     }
 
-    private choose(instance: MapInstance, entry: StyleEntry) {
+    /** The index of the entry that the description shows: the entry of the last choice, or else the one that sets the most fields; -1 for none. */
+    private current(d: MapDescription) {
+        const entries = this.options.entries;
+        if (entries[this.chosen] && shows(entries[this.chosen], d)) return this.chosen;
+        let best = -1;
+        entries.forEach((e, i) => { if (shows(e, d) && (best < 0 || overrides(e) > overrides(entries[best]))) best = i; });
+        return best;
+    }
+
+    /**
+     * Sets the style, the terrain and the global state of the entry in one `patch`, so the camera stays. The terrain
+     * and the names of global state that the entry before set are removed; the other names of `globalState` stay.
+     */
+    private choose(instance: MapInstance, i: number) {
         this.close(true);
-        if (sameStyle(entry.style, instance.description.style)) return;
-        instance.patch({style: entry.style});
+        const d = instance.description, at = this.current(d), entries = this.options.entries, entry = entries[i], before = entries[at];
+        if (at === i) return;
+        const part: Parameters<MapInstance['patch']>[0] = {style: entry.style};
+        if (entry.terrain !== undefined) part.terrain = entry.terrain;
+        else if (before?.terrain !== undefined) part.terrain = undefined;
+        if (entry.globalState || before?.globalState) {
+            const state: Record<string, unknown> = {...d.globalState};
+            for (const k in before?.globalState) delete state[k];
+            Object.assign(state, entry.globalState);
+            part.globalState = Object.keys(state).length ? state : undefined;
+        }
+        this.chosen = i;
+        instance.patch(part);
         this.options.onStyleChange?.(entry);
     }
 
@@ -165,7 +196,10 @@ export class StylesControl implements Control {
             for (let i = 0; i < entries.length && !this.removed; i++) {
                 if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
-                const spec = {...base, style: entries[i].style};
+                // (The picture shows the terrain and the global state that the entry sets.)
+                const {style, terrain, globalState} = entries[i], spec: MapDescription = {...base, style};
+                if (terrain !== undefined) spec.terrain = terrain;
+                if (globalState) spec.globalState = globalState;
                 // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of
                 // a new style that does not load, and the picture would show the old style.)
                 this.small?.destroy();

@@ -255,20 +255,51 @@ const map = createMap('map', {
 |---|---|---|
 | `label` **required** | `string` | The text of the entry. |
 | `style` **required** | the type of [`style`](description.md#style) | The style that the entry sets: a URL, a style object or `{light, dark}`. |
+| `terrain` | the type of [`terrain`](description.md#terrain) | The terrain that the entry sets. `null` turns off the terrain of the style. Without it, a choice leaves `terrain` as it is, unless the entry before set it. |
+| `globalState` | `Record<string, unknown>` | Values of global state that the entry sets, by name, for example `{relief: false}`. |
 
-A choice sets `style` of the description with [`patch`](map.md#patch), so the camera and the other fields of the
-description stay. The control then calls `onStyleChange` once with the entry. A choice of the entry whose style the
-map has closes the list and calls nothing. The entry of the current style is marked with `aria-pressed="true"`: its
-`style` is the same value as `style` of the description, or equal to it as JSON.
+With `terrain` and `globalState`, one style gives several entries. These entries use one style of elevation:
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {styles} from '@map-jr/map-jr-gl/controls';
+
+const elevation = 'https://styles.map-jr.org/1/elevation.json';
+const map = createMap('map', {
+  style: elevation,
+  initialView: {center: [8.33, 47.03], zoom: 11},
+  controls: [
+    styles({
+      entries: [
+        {label: 'Elevation', style: elevation},
+        {label: 'Elevation flat', style: elevation, terrain: null},
+        {label: 'Radar', style: 'https://styles.map-jr.org/1/elevation-radar.json', globalState: {relief: false}},
+      ],
+    }),
+  ],
+});
+```
+
+A choice sets `style`, `terrain` and `globalState` of the description together with one [`patch`](map.md#patch), so
+the camera and the other fields of the description stay. The control then calls `onStyleChange` once with the entry.
+
+- **What the entry before set.** A choice removes the `terrain` and the names of `globalState` that the entry chosen
+  before set, so the map uses the terrain and the defaults of the style again. Other names of `globalState`, which
+  the application set, stay.
+- **The current entry.** The entry that the description shows is marked with `aria-pressed="true"`: its `style` is
+  the same value as `style` of the description, or equal to it as JSON, and so are its `terrain` and each value of
+  its `globalState`. When several entries match, the entry of the last choice is current, or else the entry that
+  sets the most fields. A choice of the current entry closes the list and calls nothing.
 
 An application that passes `style` itself, as a component of Vue, React or Svelte does, keeps the new value in
-`onStyleChange`. Otherwise its next description sets the old style again. The map keeps the control while its
+`onStyleChange`, and also `terrain` and `globalState` when an entry sets them. Otherwise its next description sets the old style again. The map keeps the control while its
 options are equal as JSON (see [The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in
 a later description does not replace the first one.
 
 The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
 [`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so
-that they do not delay the map, or at the first click on the button if that comes earlier. The list opens with the
+that they do not delay the map, or at the first click on the button if that comes earlier. The picture of an entry
+shows its `terrain` and its `globalState`. The list opens with the
 labels at once and shows each picture when it is ready.
 
 - **A style that fails.** An error before the style of an entry has loaded, such as a failed request or an answer that

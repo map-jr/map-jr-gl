@@ -166,6 +166,16 @@ export interface StyleEntry {
     label: string;
     /** The style that a choice of the entry sets: a value of `style` of the description. */
     style: MapDescription['style'];
+    /**
+     * The terrain that a choice of the entry sets: a value of `terrain` of the description. `null` turns off the
+     * terrain of the style. Without this field, a choice leaves `terrain` as it is, unless the entry before set it.
+     */
+    terrain?: MapDescription['terrain'];
+    /**
+     * Values of global state that a choice of the entry sets, by name, for example `{relief: false}`. A choice keeps
+     * the other names of `globalState` of the description, and removes the names that the entry before set.
+     */
+    globalState?: Record<string, unknown>;
 }
 /** The options of `styles()`. */
 export interface StylesOptions {
@@ -174,8 +184,8 @@ export interface StylesOptions {
     /** The center and zoom of the pictures. Without it, the pictures show the view of the map when the list opens. */
     preview?: {center: Position; zoom: number};
     /**
-     * Called with the entry after a choice has set `style`. An application that passes `style` itself keeps the value
-     * here, or its next description sets the old style again.
+     * Called with the entry after a choice has set `style`, `terrain` and `globalState`. An application that passes these
+     * fields itself keeps their values here, or its next description sets the old style again.
      */
     onStyleChange?: (entry: StyleEntry) => void;
 }

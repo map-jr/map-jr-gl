@@ -42,7 +42,9 @@ const stylesClient = `<script type="module">
 import {createMap} from '/dist/map-jr-gl.js';
 import {navigation, styles} from '/dist/controls.js';
 const q = new URLSearchParams(location.search), base = 'https://styles.map-jr.org/1/';
-const entries = [['Elevation', 'elevation'], ['Elevation zero', 'elevation-zero'], ['Elevation radar', 'elevation-radar']].map(([label, name]) => ({label, style: base + name + '.json'}));
+// (Elevation flat and Radar use one style with other terrain or global state, #1505.)
+const entries = [{label: 'Elevation', style: base + 'elevation.json'}, {label: 'Elevation flat', style: base + 'elevation.json', terrain: null},
+  {label: 'Elevation zero', style: base + 'elevation-zero.json'}, {label: 'Radar', style: base + 'elevation-radar.json', globalState: {relief: false}}];
 const hud = document.getElementById('hud');
 const map = window.map = createMap('map', {style: entries[0].style, initialView: {center: [8.33, 47.03], zoom: 11}, renderer: q.get('renderer') || undefined,
   controls: [navigation(), styles({entries, onStyleChange: e => { hud.textContent = 'style: ' + e.label; }})]});
@@ -142,7 +144,7 @@ http.createServer(async (req, res) => {
             const types = {'.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.css': 'text/css'};
             return send(200, types[path.extname(file)] ?? 'application/octet-stream', await readFile(file));
         }
-        // /?styles is a map of the main API with the control styles() (#1504) and three official styles; ?renderer=main or
+        // /?styles is a map of the main API with the control styles() (#1504) and four entries of three official styles; ?renderer=main or
         // ?renderer=worker chooses the renderer.
         if (url.pathname === '/' && url.searchParams.has('styles')) return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${stylesClient}`));
         if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${client()}`));

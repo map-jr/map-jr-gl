@@ -2442,6 +2442,44 @@ for (const renderer of renderers) {
         check(`[${renderer}] removing the control styles() while a picture is drawn removes the hidden map at once`,
             removedWhileDrawing.drawing && removedWhileDrawing.after === 0, JSON.stringify(removedWhileDrawing));
 
+        // An entry of styles() sets terrain and global state with its style (#1505): a choice sets them together, the
+        // next choice removes what the entry before set and keeps the names of the application, and the picture of each
+        // entry shows its global state.
+        const overridden = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const relief = {version: 8, state: {relief: {default: true}}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': ['case', ['global-state', 'relief'], '#ff0000', '#0000ff']}}]};
+            const entries = [{label: 'Plain', style: relief}, {label: 'Flat', style: relief, terrain: null, globalState: {relief: false}}, {label: 'Other', style: relief, globalState: {other: 2}}];
+            const host = t.lib.createMap(el, {style: relief, globalState: {app: 1}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, controls: [styles({entries, onStyleChange: e => calls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            const items = () => [...list.querySelectorAll('button')];
+            const pressed = () => { trigger.click(); const p = items().map(b => b.getAttribute('aria-pressed') === 'true' ? 1 : 0).join(''); trigger.click(); return p; };
+            const d = () => `${JSON.stringify(host.description.globalState)}/${'terrain' in host.description ? JSON.stringify(host.description.terrain) : '-'}`;
+            const pick = async i => { trigger.click(); items()[i].click(); await new Promise(r => setTimeout(r, 200)); return `${d()}/${pressed()}`; };
+            out.start = pressed();
+            out.flat = await pick(1);
+            out.other = await pick(2);
+            out.plain = await pick(0);
+            out.calls = calls.join(',');
+            await until(() => list.querySelectorAll('img').length === 3);
+            const colour = async img => {
+                await img.decode();
+                const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
+                g.drawImage(img, 0, 0, 4, 4);
+                const [r, , b] = g.getImageData(2, 2, 1, 1).data;
+                return r > 200 && b < 60 ? 'red' : b > 200 && r < 60 ? 'blue' : `${r},${b}`;
+            };
+            out.pictures = (await Promise.all([...list.querySelectorAll('img')].map(colour))).join(',');
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] an entry of styles() sets its terrain and global state with its style, the next choice removes them and keeps the global state of the application, and its picture shows its global state`,
+            overridden.start === '100' && overridden.flat === '{"app":1,"relief":false}/null/010' && overridden.other === '{"app":1,"other":2}/-/001'
+            && overridden.plain === '{"app":1}/-/100' && overridden.calls === 'Flat,Other,Plain' && overridden.pictures === 'red,blue,red', JSON.stringify(overridden));
+
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.
         await page.emulateMedia({colorScheme: 'light'});
