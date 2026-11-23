@@ -33,6 +33,15 @@ export function serve(port = 4173) {
         const headers = Object.assign({}, ...rules.filter(rule => rule.path.test(path)).map(rule => rule.headers));
         const type = types[extname(target)] ?? 'application/octet-stream';
         // Text is sent with gzip, as the published site does, so that the sizes that a page measures are those of a visit.
+        // A range request (the PMTiles file of /data) gets 206 with the bytes asked for, as on Cloudflare.
+        const range = found && /^bytes=(\d+)-(\d*)$/.exec(request.headers.range ?? '');
+        if (range) {
+            const length = statSync(target).size, start = Number(range[1]), end = Math.min(range[2] ? Number(range[2]) : length - 1, length - 1);
+            if (start > end) { response.writeHead(416, {...headers, 'content-range': `bytes */${length}`}); response.end(); return; }
+            response.writeHead(206, {...headers, 'content-type': type, 'accept-ranges': 'bytes', 'content-range': `bytes ${start}-${end}/${length}`, 'content-length': end - start + 1});
+            createReadStream(target, {start, end}).pipe(response);
+            return;
+        }
         const zip = /\bgzip\b/.test(request.headers['accept-encoding'] ?? '') && /^(text\/|application\/json|image\/svg)/.test(type);
         response.writeHead(found ? 200 : 404, {...headers, 'content-type': type, vary: 'accept-encoding', ...(zip ? {'content-encoding': 'gzip'} : {})});
         if (zip) createReadStream(target).pipe(createGzip()).pipe(response);
