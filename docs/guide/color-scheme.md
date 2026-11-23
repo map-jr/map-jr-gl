@@ -102,7 +102,7 @@ const readout = document.createElement('p');
 container.after(readout);
 readout.textContent = 'Scheme: auto';
 
-createMap(container, {
+const map = createMap(container, {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13},
   controls: [navigation(), colorScheme()],
