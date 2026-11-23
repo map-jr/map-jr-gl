@@ -166,6 +166,11 @@ export interface StyleEntry {
     label: string;
     /** The style that a choice of the entry sets: a value of `style` of the description. */
     style: MapDescription['style'];
+    /**
+     * The style reads the global state `color-scheme`, as the official styles do: the entry then has a light and a dark
+     * form, as an entry whose `style` is `{light, dark}` has. Default `false`.
+     */
+    colorSchemes?: boolean;
 }
 /** The options of `styles()`. */
 export interface StylesOptions {

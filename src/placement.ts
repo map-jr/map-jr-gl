@@ -91,9 +91,18 @@ const flatGrow = (tr: Transform, from: number, to: number) => flatSize(tr, to) /
  * Where one pixel on the ground at the point (x, y) of the tile goes on the screen, in the direction `angle` (radians
  * clockwise from the x axis of the tile) and at a right angle to it: two x, y pairs.
  */
+/**
+ * The height of the ground at (x, y) of the tile, for the points of a frame on the ground: they take the height of
+ * the frame's own point. (With the height of 3D terrain at each point, a step of a few metres across a steep slope
+ * went up or down the slope, and text on the ground was mirrored, #1535.)
+ */
+const heightAt = (tr: Transform, it: RenderItem<unknown>, x: number, y: number) => {
+    const n = 2 ** it.id.z;
+    return tr.heightAt ? tr.heightAt((it.id.x + x / EXTENT) / n, (it.id.y + y / EXTENT) / n) : undefined;
+};
 function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, angle: number): number[] {
-    const e = 16, d = e / it.scale, c = Math.cos(angle) * d, s = Math.sin(angle) * d;
-    const [fx, fy] = tr.projectTile(it.id, x + c, y + s), [qx, qy] = tr.projectTile(it.id, x - s, y + c);
+    const e = 16, d = e / it.scale, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
+    const [fx, fy] = tr.projectTile(it.id, x + c, y + s, m), [qx, qy] = tr.projectTile(it.id, x - s, y + c, m);
     return [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
 }
 /** Turns the pairs of a frame by `turn` radians on the screen. */
@@ -646,7 +655,7 @@ function followLine(
             // across it go on the screen from there. (The perspective changes along a piece of the line: one size for
             // the whole piece made the size of the letters jump at each point of the line.)
             const tu = (us[seg] - us[seg - 1]) / len, tv = (vs[seg] - vs[seg - 1]) / len, pu = us[seg - 1] + tu * t, pv = vs[seg - 1] + tv * t, e = 16;
-            const [px, py] = tr.projectTile(it.id, pu, pv), [fx, fy] = tr.projectTile(it.id, pu + tu * e, pv + tv * e), [qx, qy] = tr.projectTile(it.id, pu - tv * e, pv + tu * e);
+            const m = heightAt(tr, it, pu, pv), [px, py] = tr.projectTile(it.id, pu, pv, m), [fx, fy] = tr.projectTile(it.id, pu + tu * e, pv + tv * e, m), [qx, qy] = tr.projectTile(it.id, pu - tv * e, pv + tu * e, m);
             cx = px; cy = py; dx = (fx - px) / e; dy = (fy - py) / e; bx = (qx - px) / e; by = (qy - py) / e;
         }
         const angle = Math.atan2(dy, dx);

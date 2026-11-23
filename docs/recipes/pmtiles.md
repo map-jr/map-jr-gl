@@ -1,7 +1,7 @@
 # Show vector tiles from a PMTiles file
 
-This example draws the county and ZIP code boundaries of the United States from one PMTiles file on a file host, over a
-base map, and lists the names of the areas at a click.
+This example draws the borders of countries and of states and provinces from one PMTiles file on a file host, over a base
+map, and lists the names of the areas at a click.
 
 <!-- example:pmtiles:start -->
 **Main API**
@@ -14,7 +14,7 @@ import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const boundaryFile =
-  'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
 // the tiles that it needs with HTTP range requests.
@@ -24,18 +24,18 @@ const boundaries = {
   },
   layers: [
     {
-      id: 'zips',
+      id: 'states',
       type: 'line',
       source: 'admin',
-      'source-layer': 'zip_features',
-      minzoom: 9,
+      'source-layer': 'states',
+      minzoom: 3,
       paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6},
     },
     {
-      id: 'counties',
+      id: 'countries',
       type: 'line',
       source: 'admin',
-      'source-layer': 'county_features',
+      'source-layer': 'countries',
       paint: {'line-color': '#5746af', 'line-width': 2},
     },
   ],
@@ -51,16 +51,13 @@ const show = text => {
 const map = createMap(container, {
   style,
   ...boundaries,
-  initialView: {center: [-74.1, 40.75], zoom: 9.2},
+  initialView: {center: [-98, 39], zoom: 3.2},
   attribution: {compact: true},
   onClick: async e => {
     const features = await map.querySource('admin', e.lngLat);
     show(
       features
-        .map(
-          f =>
-            f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20,
-        )
+        .map(f => f.properties.name)
         .filter(Boolean)
         .join(' · ') || 'Nothing here',
     );
@@ -75,8 +72,8 @@ legend.style.cssText =
 legend.appendChild(document.createElement('b')).textContent =
   'From one PMTiles file';
 for (const [line, text] of [
-  ['2px solid #5746af', 'County boundaries'],
-  ['1px solid #7c66dc', 'ZIP code areas (from zoom 9)'],
+  ['2px solid #5746af', 'Country borders'],
+  ['1px solid #7c66dc', 'States and provinces (from zoom 3)'],
 ]) {
   const item = legend.appendChild(document.createElement('div'));
   item.appendChild(document.createElement('span')).style.cssText =
@@ -86,7 +83,7 @@ for (const [line, text] of [
 legend.appendChild(document.createElement('small')).textContent =
   'The base map below them is a usual tile source.';
 container.append(legend);
-show('Click to list the county, state and ZIP code');
+show('Click to list the country and the state or province');
 ```
 
 **MapLibre compat**
@@ -98,13 +95,13 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const boundaryFile =
-  'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 const map = new Map({
   container: 'map',
   style,
-  center: [-74.1, 40.75],
-  zoom: 9.2,
+  center: [-98, 39],
+  zoom: 3.2,
   attributionControl: {compact: true},
 });
 const readout = document.createElement('p');
@@ -115,18 +112,18 @@ map.on('load', () => {
   // `addProtocol`.
   map.addSource('admin', {type: 'vector', url: 'pmtiles://' + boundaryFile});
   map.addLayer({
-    id: 'zips',
+    id: 'states',
     type: 'line',
     source: 'admin',
-    'source-layer': 'zip_features',
-    minzoom: 9,
+    'source-layer': 'states',
+    minzoom: 3,
     paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6},
   });
   map.addLayer({
-    id: 'counties',
+    id: 'countries',
     type: 'line',
     source: 'admin',
-    'source-layer': 'county_features',
+    'source-layer': 'countries',
     paint: {'line-color': '#5746af', 'line-width': 2},
   });
 });
@@ -135,13 +132,11 @@ map.on('click', async e => {
   const features = await map.querySource('admin', e.lngLat);
   readout.textContent =
     features
-      .map(
-        f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20,
-      )
+      .map(f => f.properties.name)
       .filter(Boolean)
       .join(' · ') || 'Nothing here';
 });
-readout.textContent = 'Click to list the county, state and ZIP code';
+readout.textContent = 'Click to list the country and the state or province';
 ```
 
 **Vue**
@@ -154,7 +149,7 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const boundaryFile =
-  'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
 // the tiles that it needs with HTTP range requests.
@@ -164,30 +159,30 @@ const boundaries = {
   },
   layers: [
     {
-      id: 'zips',
+      id: 'states',
       type: 'line',
       source: 'admin',
-      'source-layer': 'zip_features',
-      minzoom: 9,
+      'source-layer': 'states',
+      minzoom: 3,
       paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6},
     },
     {
-      id: 'counties',
+      id: 'countries',
       type: 'line',
       source: 'admin',
-      'source-layer': 'county_features',
+      'source-layer': 'countries',
       paint: {'line-color': '#5746af', 'line-width': 2},
     },
   ],
 };
 const map = useTemplateRef('map'),
-  names = ref('Click to list the county, state and ZIP code');
+  names = ref('Click to list the country and the state or province');
 
 async function ask(event) {
   const features = await map.value.querySource('admin', event.lngLat);
   names.value =
     features
-      .map(f => f.properties.NAMELSAD ?? f.properties.NAME)
+      .map(f => f.properties.name)
       .filter(Boolean)
       .join(' · ') || 'Nothing here';
 }
@@ -198,7 +193,7 @@ async function ask(event) {
     ref="map"
     :map-style="style"
     v-bind="boundaries"
-    :initial-view="{center: [-74.1, 40.75], zoom: 9.2}"
+    :initial-view="{center: [-98, 39], zoom: 3.2}"
     @click="ask"
   />
   <p>{{ names }}</p>
@@ -214,7 +209,7 @@ import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const boundaryFile =
-  'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
 // the tiles that it needs with HTTP range requests.
@@ -224,18 +219,18 @@ const boundaries = {
   },
   layers: [
     {
-      id: 'zips',
+      id: 'states',
       type: 'line',
       source: 'admin',
-      'source-layer': 'zip_features',
-      minzoom: 9,
+      'source-layer': 'states',
+      minzoom: 3,
       paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6},
     },
     {
-      id: 'counties',
+      id: 'countries',
       type: 'line',
       source: 'admin',
-      'source-layer': 'county_features',
+      'source-layer': 'countries',
       paint: {'line-color': '#5746af', 'line-width': 2},
     },
   ],
@@ -244,14 +239,14 @@ const boundaries = {
 export default function Boundaries() {
   const map = useRef(null);
   const [names, setNames] = useState(
-    'Click to list the county, state and ZIP code',
+    'Click to list the country and the state or province',
   );
 
   async function ask(event) {
     const features = await map.current.querySource('admin', event.lngLat);
     setNames(
       features
-        .map(f => f.properties.NAMELSAD ?? f.properties.NAME)
+        .map(f => f.properties.name)
         .filter(Boolean)
         .join(' · ') || 'Nothing here',
     );
@@ -263,7 +258,7 @@ export default function Boundaries() {
         ref={map}
         mapStyle={style}
         {...boundaries}
-        initialView={{center: [-74.1, 40.75], zoom: 9.2}}
+        initialView={{center: [-98, 39], zoom: 3.2}}
         onClick={ask}
       />
       <p>{names}</p>
@@ -279,10 +274,10 @@ export default function Boundaries() {
   import {mapJr} from '@map-jr/map-jr-gl/svelte';
 
   const boundaryFile =
-    'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+    'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
   let map = null;
-  let names = $state('Click to list the county, state and ZIP code');
+  let names = $state('Click to list the country and the state or province');
   const description = {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     // Additions to the style: a PMTiles file on a usual file host. The map
@@ -292,11 +287,11 @@ export default function Boundaries() {
     },
     layers: [
       {
-        id: 'zips',
+        id: 'states',
         type: 'line',
         source: 'admin',
-        'source-layer': 'zip_features',
-        minzoom: 9,
+        'source-layer': 'states',
+        minzoom: 3,
         paint: {
           'line-color': '#7c66dc',
           'line-width': 0.6,
@@ -304,25 +299,20 @@ export default function Boundaries() {
         },
       },
       {
-        id: 'counties',
+        id: 'countries',
         type: 'line',
         source: 'admin',
-        'source-layer': 'county_features',
+        'source-layer': 'countries',
         paint: {'line-color': '#5746af', 'line-width': 2},
       },
     ],
-    initialView: {center: [-74.1, 40.75], zoom: 9.2},
+    initialView: {center: [-98, 39], zoom: 3.2},
     attribution: {compact: true},
     onClick: async e => {
       const features = await map.querySource('admin', e.lngLat);
       names =
         features
-          .map(
-            f =>
-              f.properties.NAMELSAD ??
-              f.properties.NAME ??
-              f.properties.GEOID20,
-          )
+          .map(f => f.properties.name)
           .filter(Boolean)
           .join(' · ') || 'Nothing here';
     },
@@ -340,11 +330,11 @@ export default function Boundaries() {
   <div class="legend">
     <b>From one PMTiles file</b>
     <div>
-      <span style="border-top: 2px solid #5746af"></span>County boundaries
+      <span style="border-top: 2px solid #5746af"></span>Country borders
     </div>
     <div>
-      <span style="border-top: 1px solid #7c66dc"></span>ZIP code areas (from
-      zoom 9)
+      <span style="border-top: 1px solid #7c66dc"></span>States and provinces
+      (from zoom 3)
     </div>
     <small>The base map below them is a usual tile source.</small>
   </div>
@@ -394,8 +384,8 @@ export default function Boundaries() {
 <map-jr
   id="map"
   map-style="https://styles.map-jr.org/1/elevation-zero.json"
-  center="-74.1,40.75"
-  zoom="9.2"
+  center="-98,39"
+  zoom="3.2"
   style="height: 500px"
 >
   <div
@@ -428,7 +418,7 @@ export default function Boundaries() {
           border-top: 2px solid #5746af;
         "
       ></span
-      >County boundaries
+      >Country borders
     </div>
     <div>
       <span
@@ -440,17 +430,17 @@ export default function Boundaries() {
           border-top: 1px solid #7c66dc;
         "
       ></span
-      >ZIP code areas (from zoom 9)
+      >States and provinces (from zoom 3)
     </div>
     <small>The base map below them is a usual tile source.</small>
   </div>
 </map-jr>
-<p id="readout">Click to list the county, state and ZIP code</p>
+<p id="readout">Click to list the country and the state or province</p>
 <script type="module">
   import '@map-jr/map-jr-gl/element';
 
   const boundaryFile =
-    'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+    'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
   const map = document.getElementById('map');
   const readout = document.getElementById('readout');
@@ -465,18 +455,18 @@ export default function Boundaries() {
   };
   map.layers = [
     {
-      id: 'zips',
+      id: 'states',
       type: 'line',
       source: 'admin',
-      'source-layer': 'zip_features',
-      minzoom: 9,
+      'source-layer': 'states',
+      minzoom: 3,
       paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6},
     },
     {
-      id: 'counties',
+      id: 'countries',
       type: 'line',
       source: 'admin',
-      'source-layer': 'county_features',
+      'source-layer': 'countries',
       paint: {'line-color': '#5746af', 'line-width': 2},
     },
   ];
@@ -485,10 +475,7 @@ export default function Boundaries() {
     const features = await map.map.querySource('admin', event.detail.lngLat);
     readout.textContent =
       features
-        .map(
-          f =>
-            f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20,
-        )
+        .map(f => f.properties.name)
         .filter(Boolean)
         .join(' · ') || 'Nothing here';
   });
@@ -501,9 +488,15 @@ export default function Boundaries() {
 - A PMTiles archive is one static file of tiles. A `url` that starts with `pmtiles://` followed by the URL of the file
   loads the tiles from it, with HTTP range requests. The host must answer range requests, and it must allow them from
   other origins (CORS) when the file is on another host than the page.
+- The file is `https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles` (1.9 MB, zoom 0 to 6). It holds the
+  countries and the states and provinces of [Natural Earth](https://www.naturalearthdata.com/) at the scale 1:50m,
+  which are public domain. The host answers range requests and allows them from any origin (CORS), so your own page can
+  read it too. Above zoom 6 the map draws the tiles of zoom 6 larger.
 - The source in [`sources`](../reference/description.md#sources) is a usual `vector` source. Its layers name the layers
-  of the file in `source-layer`: `county_features` and `zip_features`.
-- `minzoom: 9` on the layer `zips` hides the ZIP code areas below zoom 9.
+  of the file in `source-layer`: `countries` and `states`. Each feature has the property `name`; a country also has
+  `iso_a3` and `continent`, and a state has `country` and `iso_3166_2`.
+- `minzoom: 3` on the layer `states` hides the states and provinces below zoom 3.
+- The attribution of the file (Natural Earth) comes from its metadata and shows in the attribution control.
 - [`querySource`](../reference/map.md#querysource) reads the features of the source at the position of the click, also
   the ones that no layer draws, and the example lists their names.
 
