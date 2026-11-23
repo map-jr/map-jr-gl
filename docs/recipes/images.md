@@ -3,11 +3,6 @@
 This example draws an SVG pin with the name of the place beside it for four places, and colours each pin by the kind of
 the place.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`. The Vue and React components fill their
-parent element, so give the parent a height. The Svelte component and the `<map-jr>` page give the element of the map a
-height of 500 pixels.
-
 <!-- example:images:start -->
 **Main API**
 
@@ -166,6 +161,7 @@ map.on('load', () => {
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -248,6 +244,7 @@ const additions = {
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';

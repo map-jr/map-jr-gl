@@ -5,7 +5,7 @@ name: Browsers
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'demo/**', 'test/**', 'scripts/**', 'site/**', 'examples/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
+    paths: ['src/**', 'demo/**', 'test/**', 'scripts/**', 'examples/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
   workflow_dispatch:
     inputs:
       safari:
@@ -108,10 +108,10 @@ jobs:
       # (Without markers and terrain: the GPU of this machine is virtual, so more scenarios would say nothing more.)
       - name: Safari on macOS
         run: BENCH_QUERY="nomarkers&noterrain" WD_NAME=darwin-safari node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/darwin-safari-failed.txt
-      # The same benchmark page as the gallery site has it (site-dist/bench/), so that the page that devices open
-      # is tested too.
-      - name: Safari on macOS, the benchmark page of the gallery site
-        run: BENCH_URL=http://localhost:8080/gallery/bench/ BENCH_QUERY="nomarkers&noterrain" WD_NAME=darwin-safari-site-page node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/darwin-safari-site-page-failed.txt
+      # The same benchmark page as the docs site has it at https://map-jr.org/bench/ (site-dist/bench/), so that the
+      # page that devices open is tested too.
+      - name: Safari on macOS, the benchmark page of the docs site
+        run: BENCH_URL=http://localhost:8080/site/bench/ BENCH_QUERY="nomarkers&noterrain" WD_NAME=darwin-safari-site-page node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/darwin-safari-site-page-failed.txt
       # Safari of the iOS Simulator: the WebKit of that iOS version on the GPU of the host. It shows what iOS Safari can
       # do and which renderer the map takes. It does not show the speed or the memory limits of a phone.
       - name: Safari in the iOS Simulator

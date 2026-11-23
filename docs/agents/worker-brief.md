@@ -23,8 +23,8 @@ writing); this brief has the steps.
    A change of placement, of the engine or of `src/gl.ts` runs both `test/host.mjs` and `test/interact.mjs`, because
    CI runs both: on 2026-11-19 a change of the order of symbols broke two checks of `test/host.mjs`, one of them the
    frame time with 100,000 icons, that its worker had not run (#1074).
-   Before a push, also run `pnpm test:consistency`. It runs `scripts/messages.mjs --check`, so a new message text in
-   `src/` needs `node scripts/messages.mjs --write` first (#1381 failed CI on it).
+   Before a push, also run `pnpm test:consistency`. It runs `scripts/messages.mjs --check`, which checks each message
+   text of `src/`.
 6. When the change can change what a map draws (a style property, placement, a shader, the building of tiles), run
    the render tests of the groups that it touches with and without the change
    (`node test/conformance/render.mjs --filter='<regex>'`), and give the counts of match, near and differ. If a test
