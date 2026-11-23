@@ -209,7 +209,7 @@ or grid container.
 ## Load the library without a bundler
 
 A page without a bundler loads the built file from a CDN in a module script. Name the version in the URL, because
-the page file and the worker file must come from the same version. Replace `0.9.0` with the version that you use:
+the page file and the worker file must come from the same version. Replace the version in the URLs with the version that you use:
 [npm](https://www.npmjs.com/package/@map-jr/map-jr-gl) shows the latest.
 
 **Main API**
