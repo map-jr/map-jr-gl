@@ -398,6 +398,8 @@ export class Engine {
     /** `version` is the elevation data that the heights were made from; `checked` is the newest data that is known not to change them. */
     private meshHeights = new Map<string, {data: Float32Array; version: number; checked: number; used: number}>();
     private meshBehind = false;
+    /** 3D terrain: a ground picture still waits for tiles of its sources, and `idle` waits for them too (#1493). */
+    private groundWaits = false;
     /** 3D terrain: an elevation tile that the ground needs is still loading in this frame. */
     private demLoading = false;
     private grab: {lng: number; lat: number; at: number; seq: number} | null = null;
@@ -622,6 +624,7 @@ export class Engine {
         const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
         let meshBudget = 4;
         this.meshBehind = false;
+        this.groundWaits = false;
         this.demLoading = false;
         this.viewCovers.clear();
         for (const [k, m] of this.meshHeights) if (this.frameNo - m.used > 120) this.meshHeights.delete(k);
@@ -649,6 +652,7 @@ export class Engine {
             }
             made.used = this.frameNo;
             for (const k of made.keys) wanted.add(k);
+            if (!made.complete) this.groundWaits = true;
             const {view, items, signature, complete} = made;
             // The heights themselves: make sure the elevation tiles for this ground tile are on their way. They are the
             // tiles that the view selects for the source, which are also the ones that relief shading of the same source
@@ -1634,6 +1638,8 @@ export class Engine {
             } else this.rawElevation = 0;
         }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
+        // (The raster tiles that only the pictures of the ground draw are not in the loop below.)
+        if (ground && this.groundWaits) complete = false;
         if (this.globeWait && !this.holdGlobe(wanted, frameNo)) complete = false;
         const view: string[] = [];
         for (const source in this.style.sources) {
