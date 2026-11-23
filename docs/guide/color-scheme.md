@@ -161,8 +161,6 @@ A click on the button changes `colorScheme` of the map and then calls
 - With `'light'` or `'dark'`, each click sets the other value.
 - To switch the scheme with a button of your own, pass the value: `map.patch({colorScheme: 'dark'})`.
 
-The control is a prototype: its look and its behaviour can change in a later version.
-
 ## Write a style that follows the scheme
 
 The map sets the global state property `color-scheme` of the style to `'light'` or `'dark'`. An expression of the

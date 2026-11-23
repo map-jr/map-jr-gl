@@ -131,6 +131,10 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 
 ## Independent review
 
+**Every pull request that changes the docs gets a review before it merges** (the owner, 2026-11-23). The reviewer
+reads the changed pages against `docs/style-guide.md` and the "Writing" rules of `CLAUDE.md`, and checks each claim
+against the source, the changelog or a run. A small change of wording can share one reviewer with others.
+
 Ask for a review when a pull request changes how every map starts or draws, rewrites code that it did not need to
 touch, or leaves less than a few hundred bytes of a budget. The reviewer is a new worker that gets the branch and a
 list of questions, not the report of the author. It reproduces a fault before it reports it, and it reports only to

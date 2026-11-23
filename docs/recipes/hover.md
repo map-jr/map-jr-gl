@@ -3,11 +3,6 @@
 This example draws seven ferry landings of New York as circles, draws the landing under the pointer larger and in red,
 and names it below the map.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
-below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
-component and the `<map-jr>` page give the element of the map a height of 500 pixels. In Nuxt, use the Vue form.
-
 <!-- example:hover:start -->
 **Main API**
 
@@ -175,6 +170,7 @@ readout.textContent = 'Move the pointer over a ferry landing.';
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {ref} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
@@ -245,6 +241,7 @@ const hover = ref([]);
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';

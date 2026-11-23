@@ -1,5 +1,6 @@
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules: ['@map-jr/map-jr-gl/nuxt'].
+// The map fills its parent element, so give the parent a height.
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const boundaryFile = 'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';

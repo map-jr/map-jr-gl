@@ -6,7 +6,7 @@ import {ui, type Control} from './controls.ts';
 import {button, group, svg} from './controls-more.ts';
 
 /**
- * A button that switches the colour scheme of a map of the main API between light and dark (a prototype, #541). It
+ * A button that switches the colour scheme of a map of the main API between light and dark (#541). It
  * shows the scheme that the map has: a sun for light and a moon for dark. A click changes `colorScheme` of the
  * description with `patch` and calls `onColorSchemeChange` of the description, so that an application with a
  * framework can keep the value. When the description follows the system (`'auto'`), a click sets the opposite of

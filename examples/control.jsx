@@ -1,3 +1,4 @@
+// The map fills its parent element, so give the parent a height.
 import {useEffect, useMemo, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {MapJr} from '@map-jr/map-jr-gl/react';

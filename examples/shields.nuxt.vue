@@ -1,5 +1,6 @@
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules: ['@map-jr/map-jr-gl/nuxt'].
+// The map fills its parent element, so give the parent a height.
 
 // A small style of roads and water. Its layer "shields" asks for an image named from the network and the number of the
 // first route of each road, such as "shield|US:I|95", and no sprite has such images.

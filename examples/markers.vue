@@ -1,4 +1,5 @@
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {shallowRef} from 'vue';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
