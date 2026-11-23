@@ -538,3 +538,16 @@ main li > code {
     display: none;
   }
 }
+
+/*
+ * Inline code in a note (info), tip (success) and warning block: a darker shade of the colour of the block on a
+ * semi-transparent white, and in the dark mode a light shade on a semi-transparent black (#1533).
+ */
+.bg-info\/10 { --site-code-fg: var(--ui-color-info-800); }
+.bg-success\/10 { --site-code-fg: var(--ui-color-success-800); }
+.bg-warning\/10 { --site-code-fg: var(--ui-color-warning-800); }
+.bg-info\/10, .bg-success\/10, .bg-warning\/10 { --site-code-bg: rgb(255 255 255 / 0.5); }
+.dark .bg-info\/10 { --site-code-fg: var(--ui-color-info-200); }
+.dark .bg-success\/10 { --site-code-fg: var(--ui-color-success-200); }
+.dark .bg-warning\/10 { --site-code-fg: var(--ui-color-warning-200); }
+.dark :is(.bg-info\/10, .bg-success\/10, .bg-warning\/10) { --site-code-bg: rgb(0 0 0 / 0.3); }
