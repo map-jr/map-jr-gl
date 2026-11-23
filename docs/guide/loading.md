@@ -175,7 +175,7 @@ Import the entry from the CDN with the version in the URL. The map finds the wor
 
 ```js
 const {createMap} = await import(
-  'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js'
+  'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/map-jr-gl.js'
 );
 
 // The page has <div id="map" style="height: 400px"></div>.

@@ -4,7 +4,8 @@
   the group of the variants of the code.
 
   The map runs the variant that the reader reads when a frame can run it (Map Jr, MapLibre, <map-jr>), and
-  the Map Jr variant otherwise. "Edit" replaces the code with an editor of the code that the map runs; the editor
+  the Map Jr variant otherwise. The line under the map names that variant, and the button "Edit" (its accessible name
+  names the variant) replaces the code with an editor of the code that the map runs; the editor
   (CodeEditor.vue, with CodeMirror) is loaded only then. The code comes from the code block of the page, so the
   editor starts with the text that the reader sees. The editor takes the height of the code that it replaces, so that
   the page does not move when the reader opens or closes it (#1538).
@@ -66,19 +67,24 @@ function close() {
       <MapFrame v-if="code" ref="frame" :form="form" :code="code" :title="`The map of the ${label(form)} code`" />
       <div v-else class="h-130" />
       <div class="flex flex-wrap items-center gap-2 border-t border-muted px-3 py-2">
-        <p class="me-auto text-sm text-muted">
-          <template v-if="editing">Editing the {{ label(editing) }} code. Run it with Ctrl+Enter (⌘+Enter on a Mac).</template>
+        <p class="live-example-line me-auto min-w-0 text-sm text-muted">
+          <template v-if="editing">Editing the {{ label(editing) }} code. Ctrl+Enter (⌘+Enter on a Mac) runs it.</template>
           <template v-else-if="shown && shown !== running">
-            The map runs the Map Jr code. The {{ label(shown) }} code needs a {{ label(shown) }} application, so it does not run on this page.
+            The map runs the {{ label(running) }} code, because the {{ label(shown) }} code needs a {{ label(shown) }} application.
           </template>
-          <template v-else>The map runs the {{ label(running) }} code below.</template>
+          <template v-else>The map runs the {{ label(running) }} code.</template>
         </p>
         <template v-if="editing">
           <UButton size="sm" icon="i-lucide-play" @click="run">Run</UButton>
           <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-rotate-ccw" @click="reset">Reset</UButton>
-          <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-x" @click="close">Close the editor</UButton>
+          <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-x" aria-label="Close the editor" @click="close">Close</UButton>
         </template>
-        <UButton v-else size="sm" color="neutral" variant="outline" icon="i-lucide-pencil" :disabled="!code" @click="edit">Edit the {{ label(running) }} code</UButton>
+        <UButton
+          v-else size="sm" color="neutral" variant="outline" icon="i-lucide-pencil" :disabled="!code"
+          :aria-label="`Edit the ${label(running)} code`" @click="edit"
+        >
+          Edit
+        </UButton>
       </div>
     </div>
     <LazyCodeEditor
