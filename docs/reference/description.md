@@ -103,6 +103,9 @@ keeps the view and the other fields of the description.
 the source of the style that has the same id. See [`layers`](#layers) for an example
 of a source with its layer.
 
+A source has one of the types of the MapLibre style specification, `video` and `canvas` included. See
+[Show a video or a canvas](../guide/data.md#show-a-video-or-a-canvas).
+
 To change the features of a GeoJSON source, set them in [`data`](#data). A changed source in `sources` [loads the style again](#style).
 
 ## `layers`
@@ -423,8 +426,7 @@ See [Controls](controls.md) for the functions and their options.
 
 On a globe:
 
-- The map does not draw 3D terrain and `fill-extrusion` layers. With `globe`, they show past zoom 12, where the map
-  is flat.
+- The map draws 3D terrain and `fill-extrusion` layers on the sphere.
 - `maxBounds` has no effect.
 - A move to a new centre with no `zoom` keeps the size of the globe on the screen, so the zoom of the view changes
   with the latitude. A `zoom` that is passed is applied unchanged.

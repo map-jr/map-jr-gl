@@ -9,6 +9,10 @@ style itself, and how to draw labels with web fonts.
 `icon-image`, and a fill, line or background layer draws one as a pattern with `fill-pattern`, `line-pattern` or
 `background-pattern`.
 
+A `fill-pattern` or `line-pattern` can be an expression that reads the properties of the feature, such as
+`['get', 'surface']`, and then each feature draws its own image. An SDF image (an image with `sdf: true`) as
+`fill-pattern` takes the colour of `fill-color`.
+
 **Main API**
 
 ```js [Main API]
