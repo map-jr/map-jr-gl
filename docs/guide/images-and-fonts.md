@@ -395,7 +395,7 @@ files that a text needs.
 
 ### Which text uses the web fonts
 
-- A style without `glyphs`, such as [`elevation-zero.json`](https://map-jr.org/styles/elevation-zero), draws all of its text with the web fonts and the fonts of
+- A style without `glyphs`, such as [`elevation-zero.json`](https://map-jr.org/styles?style=elevation-zero), draws all of its text with the web fonts and the fonts of
   the browser.
 - A style with `glyphs` draws its text from the glyph files of its server. A web font then draws only the text that
   the glyph files do not have: a font or a character that the server does not have, and text that the browser must

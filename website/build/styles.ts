@@ -1,7 +1,7 @@
 // The section "Styles" of the site (/styles, #1129). Its text stays in the repositories that own it, and the site
 // reads it when it builds:
 //
-//   map-jr/map-jr-styles (main)                 README.md and dist/styles/*.json: /styles and a page for each style
+//   map-jr/map-jr-styles (main)                 README.md and dist/styles/*.json: /styles, one map with a switch of the style
 //   map-jr/maputnik (map-jr-main)               README.md, the note on the fork: /styles/editing
 //   map-jr/maplibre-style-spec (map-jr-main)    src/reference/v8.json, the docs that name Map Jr. GL: /styles/spec
 //
@@ -89,21 +89,6 @@ export function safeMarkdown(markdown: string): string {
     }).join('\n');
 }
 
-// The attribution of a source (HTML from the style) as markdown for a cell of a table: the text of each link becomes a
-// markdown link when its href is https, the other tags are removed, and the rest is plain text.
-export function attributionText(html: string): string {
-    const plain = (text: string) => text.replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39|copy);/g, (_, name: string) => ({amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", copy: '©'})[name]!)
-        .replace(/[\\`*_[\]|<>&]/g, char => ({'<': '&lt;', '>': '&gt;', '&': '&amp;'})[char] ?? '\\' + char).trim();
-    const out: string[] = [];
-    let last = 0;
-    for (const match of html.matchAll(/<a\s[^>]*?href\s*=\s*["'](https:\/\/[^"'\s()<>]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
-        out.push(plain(html.slice(last, match.index)), `[${plain(match[2]!)}](${match[1]})`);
-        last = match.index! + match[0].length;
-    }
-    out.push(plain(html.slice(last)));
-    return out.filter(Boolean).join(' ');
-}
-
 // A relative link of a file of another repository leads to the file on GitHub.
 export function absoluteLinks(markdown: string, source: Source): string {
     return markdown.replace(/\]\((?![a-z][a-z0-9+.-]*:|\/|#)([^)\s]+)\)/gi, (_, path: string) => `](${githubUrl(source, path)})`);
@@ -135,48 +120,71 @@ export function styleRows(readme: string): StyleRow[] {
 
 const frontmatter = (fields: Record<string, string>) => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n\n`;
 
-// The page of one style.
-export function stylePage(row: StyleRow, style: any, readme: string, stateRows: string[][]): string {
-    const url = stylesBase + row.name + '.json';
-    const state = Object.keys(style.state ?? {});
-    const schemes = state.includes('color-scheme');
-    const ownMaplibre = isOwn(row);
-    const maplibreUrl = /\]\(([^)]+)\)/.exec(row.maplibre)?.[1];
-    const out = [`# ${row.title}`, '', absoluteLinks(row.text, sources.styles), ''];
-    out.push(`::style-preview{style-url="${url}"${schemes ? '' : ' :single="true"'}}`, '::', '');
-    if (!schemes) out.push('The style has one look. It does not read the global state property `color-scheme`, so the map is the same in light and in dark.', '');
-    out.push('## URLs', '', table([
-        ['Library', 'Style'],
-        ['---', '---'],
-        ['Map Jr. GL', `\`${url}\``],
-        ['Map Jr. GL, from npm', `\`@map-jr/styles/${row.name}.json\``],
-        ['MapLibre GL JS', ownMaplibre ? `\`${maplibreUrl}\` (5.16.0 or later)` : maplibreUrl ? `The style of OpenFreeMap: \`${maplibreUrl}\`` : 'none'],
-    ]), '');
-    out.push('With `@map-jr/map-jr-gl`:', '', '```js', `import {createMap} from '@map-jr/map-jr-gl';`, '', `createMap('map', {style: '${url}'});`, '```', '');
-    if (ownMaplibre) out.push('With MapLibre GL JS:', '', '```js', `import maplibregl from 'maplibre-gl';`, '', `new maplibregl.Map({container: 'map', style: '${maplibreUrl}'});`, '```', '');
-    out.push('The [styles page](/styles#use) says how the versions of `/1/` change and how to use the npm package `@map-jr/styles`.', '');
-    out.push('## Global state', '');
-    const rows = stateRows.filter(([property]) => state.includes(property!.replace(/`/g, '')));
-    if (rows.length) out.push('The style reads these properties of the global state of the map:', '', table([['Property', 'Values', 'Effect'], ['---', '---', '---'], ...rows]), '');
-    else out.push('The style reads no global state.', '');
-    out.push('## Sources and attribution', '', table([
-        ['Source', 'Type', 'URL', 'Attribution'],
-        ['---', '---', '---', '---'],
-        ...Object.entries<any>(style.sources ?? {}).map(([id, source]) => [
-            `\`${id}\``,
-            source.type,
-            `\`${source.url ?? source.tiles?.[0] ?? source.data ?? ''}\``,
-            typeof source.attribution === 'string' ? attributionText(source.attribution) : source.url ? 'From its TileJSON' : 'none',
-        ]),
-    ]), '');
-    out.push(`The licences, from the README of [map-jr-styles](${githubUrl(sources.styles)}):`, '', absoluteLinks(sectionOf(readme, '## Sources and licences'), sources.styles), '');
-    return frontmatter({editUrl: githubUrl(sources.styles, 'README.md')}) + out.join('\n');
-}
-
 // A style of map-jr-styles itself has its own version for MapLibre GL JS; a copy of a style of OpenFreeMap has not.
 const isOwn = (row: StyleRow) => row.maplibre.includes(`${stylesBase}maplibre/`);
+// A style as the switch of /styles shows it (website/app/components/content/StyleSwitch.vue). Every field is plain text,
+// which the component shows as text, and a link is an https URL.
+export interface StyleChoice {
+    name: string;
+    title: string;
+    // The text of the style in the table of the README.
+    text: string;
+    url: string;
+    // The style for MapLibre GL JS: the version of map-jr-styles (5.16.0 or later), or the style of OpenFreeMap that a
+    // copy follows.
+    maplibre?: {url: string; own: boolean};
+    // The style reads the global state property `color-scheme`.
+    schemes: boolean;
+    // The properties of the global state that the style reads, with the values and the effect from the README.
+    state: {property: string; values: string; effect: string}[];
+    sources: {id: string; type: string; url: string; attribution: TextPart[] | 'tilejson' | null}[];
+}
 
-// The page /styles: the introduction and the use of the styles, without the parts for those who release and build them.
+export interface TextPart {
+    text: string;
+    href?: string;
+}
+
+// A cell of the README after `safeMarkdown`, as plain text: a markdown link keeps its text.
+export const plainText = (cell: string) => cell.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[`*_]/g, '').replace(/\\(.)/g, '$1')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+
+// The attribution of a source (HTML from the style) as parts of text: each link with an https href keeps its href, the
+// other tags are removed, and the entities that attributions use become their characters.
+export function attributionParts(html: string): TextPart[] {
+    const plain = (text: string) => text.replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39|copy);/g, (_, name: string) => ({amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", copy: '©'})[name]!)
+        .replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+    const out: TextPart[] = [];
+    let last = 0;
+    for (const match of html.matchAll(/<a\s[^>]*?href\s*=\s*["'](https:\/\/[^"'\s<>]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+        out.push({text: plain(html.slice(last, match.index))}, {text: plain(match[2]!), href: match[1]!});
+        last = match.index! + match[0].length;
+    }
+    out.push({text: plain(html.slice(last))});
+    return out.filter(part => part.text);
+}
+
+export function styleChoice(row: StyleRow, style: any, stateRows: string[][] = []): StyleChoice {
+    const maplibreUrl = /\]\((https:\/\/[^)\s]+)\)/.exec(row.maplibre)?.[1];
+    const read = Object.keys(style?.state ?? {});
+    return {
+        name: row.name, title: plainText(row.title), text: plainText(row.text), url: stylesBase + row.name + '.json',
+        ...(maplibreUrl ? {maplibre: {url: maplibreUrl, own: isOwn(row)}} : {}),
+        schemes: read.includes('color-scheme'),
+        state: stateRows.filter(([property]) => read.includes(plainText(property!))).map(([property, values = '', effect = '']) => ({property: plainText(property!), values: plainText(values), effect: plainText(effect)})),
+        sources: Object.entries<any>(style?.sources ?? {}).map(([id, source]) => ({
+            id, type: String(source?.type ?? ''),
+            url: String(source?.url ?? source?.tiles?.[0] ?? (typeof source?.data === 'string' ? source.data : '')).slice(0, 300),
+            attribution: typeof source?.attribution === 'string' ? attributionParts(source.attribution.slice(0, 2000)) : source?.url ? 'tilejson' : null,
+        })),
+    };
+}
+
+// The address of a style on /styles.
+export const styleAddress = (name: string) => `/styles?style=${encodeURIComponent(name)}`;
+
+// The page /styles: the introduction, one map with a switch of the style and of the colour scheme, and the use of the
+// styles, without the parts for those who release and build them.
 export function indexPage(readme: string, rows: StyleRow[]): string {
     const intro = readme.slice(readme.indexOf('\n') + 1, readme.indexOf('\n## ')).trim();
     // The styles of map-jr-styles come first, in a table. The copies of the styles of OpenFreeMap follow as a short list
@@ -187,10 +195,14 @@ export function indexPage(readme: string, rows: StyleRow[]): string {
     const own = rows.filter(row => isOwn(row));
     const copies = rows.filter(row => !isOwn(row));
     const styles = [...lines.slice(0, first),
-        table([['Style', 'What it is'], ['---', '---'], ...own.map(row => [`[${row.title}](/styles/${row.name})`, row.text])]),
-        ...(copies.length ? ['', '### From OpenFreeMap', '', `${copies[0]!.text} Their pages: ${copies.map(row => `[${row.title.replace(/^OpenFreeMap /, '')}](/styles/${row.name})`).join(', ')}.`] : []),
+        table([['Style', 'What it is'], ['---', '---'], ...own.map(row => [`[${row.title}](${styleAddress(row.name)})`, row.text])]),
+        ...(copies.length ? ['', '### From OpenFreeMap', '', `${copies[0]!.text} The map above shows them: ${copies.map(row => `[${row.title.replace(/^OpenFreeMap /, '')}](${styleAddress(row.name)})`).join(', ')}.`] : []),
         ...lines.slice(last + 1)].join('\n');
-    const body = ['# Styles', '', intro, '', '## The styles', '', styles, '', '## Use a style', '', sectionOf(readme, '## Use'), '',
+    const body = ['# Styles', '', intro, '',
+        '::style-switch', '::', '',
+        'The buttons above the map choose the style and the colour scheme. The scheme sets the global state property `color-scheme`. A style that does not read `color-scheme` has one look, so its scheme buttons are off. The address of the page keeps the choice, for example `/styles?style=elevation&scheme=dark`.', '',
+        '## The styles', '', styles, '', '## Use a style', '', sectionOf(readme, '## Use'), '',
+        '## Sources and licences', '', sectionOf(readme, '## Sources and licences'), '',
         '## Editing a style', '', 'To change a style, open it in the Maputnik of Map Jr. GL. [Editing a style](/styles/editing) says how, and [the style specification of Map Jr. GL](/styles/spec) lists what Map Jr. GL reads beyond the MapLibre style specification.', ''].join('\n');
     return frontmatter({editUrl: githubUrl(sources.styles, 'README.md')}) + absoluteLinks(body, sources.styles);
 }
@@ -235,26 +247,28 @@ export function specPage(reference: unknown): string {
     return frontmatter({editUrl: githubUrl(sources.spec, 'src/reference/v8.json')}) + body;
 }
 
-// Fetches the three repositories and writes the pages. It runs once for each start of Nuxt.
-let written: string[] | undefined;
-export function writeStylePages(): string[] {
+// Fetches the three repositories and writes the pages. It runs once for each start of Nuxt,
+// and returns the styles for the switch of /styles.
+let written: StyleChoice[] | undefined;
+export function writeStylePages(): StyleChoice[] {
     if (written) return written;
     const stylesDir = checkout(sources.styles);
     const readme = safeMarkdown(readFileSync(resolve(stylesDir, 'README.md'), 'utf8'));
     const maputnik = safeMarkdown(readFileSync(resolve(checkout(sources.maputnik), 'README.md'), 'utf8'));
     const reference = JSON.parse(readFileSync(resolve(checkout(sources.spec), 'src/reference/v8.json'), 'utf8'));
+    const rows = styleRows(readme);
     const stateRows = (/\*\*Global state\.\*\*[\s\S]*?\n((?:\|.*\n)+)/.exec(readme)?.[1] ?? fail('README.md of map-jr/map-jr-styles has no table under "**Global state.**".'))
         .trim().split('\n').slice(2).map(cells);
+    const built = new Set(readdirSync(resolve(stylesDir, 'dist/styles')));
+    const choices = rows.map(row => {
+        if (!built.has(row.name + '.json')) fail(`the table of the styles names "${row.name}", and dist/styles/ has no ${row.name}.json.`);
+        return styleChoice(row, JSON.parse(readFileSync(resolve(stylesDir, 'dist/styles', row.name + '.json'), 'utf8')), stateRows);
+    });
 
     const out = resolve(generatedDir, stylesFolder);
     rmSync(out, {recursive: true, force: true});
     mkdirSync(out, {recursive: true});
-    const pages: Record<string, string> = {'index.md': indexPage(readme, styleRows(readme)), 'editing.md': editingPage(maputnik, readme), 'spec.md': specPage(reference)};
-    const built = new Set(readdirSync(resolve(stylesDir, 'dist/styles')));
-    for (const row of styleRows(readme)) {
-        if (!built.has(row.name + '.json')) fail(`the table of the styles names "${row.name}", and dist/styles/ has no ${row.name}.json.`);
-        pages[row.name + '.md'] = stylePage(row, JSON.parse(readFileSync(resolve(stylesDir, 'dist/styles', row.name + '.json'), 'utf8')), readme, stateRows);
-    }
+    const pages: Record<string, string> = {'index.md': indexPage(readme, rows), 'editing.md': editingPage(maputnik, readme), 'spec.md': specPage(reference)};
     for (const [file, text] of Object.entries(pages)) writeFileSync(resolve(out, file), text);
-    return written = Object.keys(pages);
+    return written = choices;
 }

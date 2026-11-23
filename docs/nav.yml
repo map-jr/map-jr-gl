@@ -70,8 +70,8 @@ sections:
       - wrappers.md
       - compat-to-main-api.md
   # The official styles and the tools around them (#1129). The pages come from map-jr/map-jr-styles, map-jr/maputnik
-  # and map-jr/maplibre-style-spec when the site builds (website/build/styles.ts); they are not in docs/. A page for
-  # each style of map-jr-styles follows these three.
+  # and map-jr/maplibre-style-spec when the site builds (website/build/styles.ts); they are not in docs/. /styles shows
+  # every style of map-jr-styles on one map with a switch.
   - title: Styles
     folder: styles
     generated: true
