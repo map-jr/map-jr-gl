@@ -1,7 +1,8 @@
 // Builds website/public/data/natural-earth.pmtiles, the PMTiles file of the PMTiles example (examples/pmtiles.*).
 // The data is Natural Earth 5.1.2 (public domain): the countries and the states and provinces at the scale 1:50m.
-// The tiles are made with @maplibre/geojson-vt and @maplibre/vt-pbf, which the installed MapLibre GL JS depends on,
-// and this script writes the PMTiles version 3 archive itself (one root directory, gzip everywhere).
+// The tiles are made with @maplibre/geojson-vt and @maplibre/vt-pbf. The script takes them from the installed
+// maplibre-gl (they are its dependencies, not ours), so another version of MapLibre GL JS can change the bytes of the
+// file. This script writes the PMTiles version 3 archive itself (one root directory, gzip everywhere).
 //   node scripts/natural-earth-pmtiles.mjs
 import {createRequire} from 'node:module';
 import {realpathSync, writeFileSync} from 'node:fs';

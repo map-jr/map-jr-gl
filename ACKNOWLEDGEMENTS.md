@@ -135,8 +135,8 @@ These are not part of the built library.
 - [Mapterhorn](https://mapterhorn.com/): the elevation tiles of the examples.
 - [Natural Earth](https://www.naturalearthdata.com/) (public domain): the countries and the states and provinces at
   1:50m, version 5.1.2, in the PMTiles file of the PMTiles example (`website/public/data/natural-earth.pmtiles`, built
-  by `scripts/natural-earth-pmtiles.mjs` with [geojson-vt](https://github.com/maplibre/geojson-vt) and
-  [vt-pbf](https://github.com/maplibre/vt-pbf), ISC and MIT). The file is not part of the package.
+  by `scripts/natural-earth-pmtiles.mjs` with [geojson-vt](https://github.com/maplibre/geojson-vt) (MIT) and
+  [vt-pbf](https://github.com/maplibre/vt-pbf) (MIT), as the LICENSE files of both packages say). The file is not part of the package.
 
 ## How this project is made
 

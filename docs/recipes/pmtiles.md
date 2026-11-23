@@ -486,6 +486,8 @@ export default function Boundaries() {
   states and provinces of [Natural Earth](https://www.naturalearthdata.com/) at the scale 1:50m, which are public domain.
   The docs site serves it with CORS for any origin, so your own page can read it too. Above zoom 6 the map draws the
   tiles of zoom 6 larger.
+- The docs site does not answer range requests yet: it sends the whole file (1.9 MB) at the first request, and the map
+  reads the tiles from that copy. A file of up to 64 MB works this way.
 - The source in [`sources`](../reference/description.md#sources) is a usual `vector` source. Its layers name the layers
   of the file in `source-layer`: `countries` and `states`. Each feature has the property `name`; a country also has
   `iso_a3` and `continent`, and a state has `country` and `iso_3166_2`.
