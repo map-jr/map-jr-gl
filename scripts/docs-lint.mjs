@@ -135,7 +135,9 @@ for (const file of files) {
             }
             return;
         }
-        if (/^>\s*\*\*(Note|Warning|Tip|Important)\b|^>\s*\[!/.test(line)) {
+        if (/^(>\s*)?(\*\*)?(Note|Warning|Tip|Important|Caution)\b(:|\*\*)/.test(line)) find(i, 'a note or warning is a paragraph. Write it as a GitHub alert: "> [!NOTE]", "> [!TIP]" or "> [!WARNING]".');
+        if (/^>\s*\[!/.test(line)) {
+            if (!/^> \[!(NOTE|TIP|WARNING)\]\s*$/.test(line)) find(i, 'the alert is not "> [!NOTE]", "> [!TIP]" or "> [!WARNING]" on a line of its own.');
             endParagraph();
             callouts++;
             if (lastCallout >= 0 && lines.slice(lastCallout + 1, i).every(l => !l.trim() || l.startsWith('>'))) find(i, 'two callouts follow each other. Keep one.');
