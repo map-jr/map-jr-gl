@@ -8,7 +8,7 @@
 import type * as More from './controls-more.ts';
 import type {Map} from './map.ts';
 import type {Control, ControlPosition} from './controls.ts';
-import type {ControlSpec, MapInstance} from './host.ts';
+import type {ControlSpec, MapDescription, MapInstance, Position} from './host.ts';
 
 // The control classes import the map, so this file loads them with `import()` when the map adds a control. A page
 // that imports a control function before it makes the map then does not download the map with it (#160).
@@ -77,6 +77,14 @@ export const globe = spec('globe', (m, _o: {}) => new m.GlobeControl());
  * @returns A control for `controls` of the description.
  */
 export const colorScheme = spec('colorScheme', (m, _o: {}, instance) => new m.ColorSchemeControl(instance), () => import('./color-scheme-control.ts'));
+/**
+ * Creates a button that opens a list of styles, each with its label and a picture of the style. A choice sets `style`
+ * of the description, keeps the camera and calls `onStyleChange` with the entry. A small second map draws the pictures
+ * after the map is first idle. The control is placed at `'top-right'` unless `position` sets it.
+ * @param options The options of `StylesOptions`, and `position`.
+ * @returns A control for `controls` of the description.
+ */
+export const styles = spec('styles', (m, o: StylesOptions, instance) => new m.StylesControl(o, instance), () => import('./styles-control.ts'));
 /**
  * Creates a control from your own element, or from `onAdd` and `onRemove` as a MapLibre GL JS control has them.
  * @param options `key` identifies the control: a new description with the same `key` keeps the control on the map.
@@ -151,6 +159,25 @@ export interface TerrainOptions {
      * @default 1
      */
     exaggeration?: number;
+}
+/** An entry of `styles()`. */
+export interface StyleEntry {
+    /** The text of the entry in the list. */
+    label: string;
+    /** The style that a choice of the entry sets: a value of `style` of the description. */
+    style: MapDescription['style'];
+}
+/** The options of `styles()`. */
+export interface StylesOptions {
+    /** The styles of the list, in their order. */
+    entries: StyleEntry[];
+    /** The center and zoom of the pictures. Without it, the pictures show the view of the map when the list opens. */
+    preview?: {center: Position; zoom: number};
+    /**
+     * Called with the entry after a choice has set `style`. An application that passes `style` itself keeps the value
+     * here, or its next description sets the old style again.
+     */
+    onStyleChange?: (entry: StyleEntry) => void;
 }
 declare const __DEV__: boolean;
 export type {ControlSpec, ControlPosition};

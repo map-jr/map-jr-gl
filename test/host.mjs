@@ -2363,6 +2363,53 @@ for (const renderer of renderers) {
         check(`[${renderer}] the control colorScheme() flips light and dark, and from 'auto' sets the opposite of the system and then 'auto' again, with onColorSchemeChange and a label that names the action`,
             Object.keys(wantToggles).every(k => toggles[k] === wantToggles[k]), JSON.stringify(toggles));
 
+        // The control styles() (#1504): the list opens with its labels at once, a small second map draws a picture of
+        // each style after the first idle, a style that does not load keeps its label, and a choice applies the style,
+        // keeps the camera, calls onStyleChange once, closes the list and gives the focus back to the button.
+        const picked = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const red = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            const entries = [{label: 'Streets', style: t.style}, {label: 'Red', style: red}, {label: 'Missing', style: '/no-such-style.json'}];
+            const host = t.lib.createMap(el, {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14}, renderer, attribution: false, controls: [styles({entries, onStyleChange: e => calls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            trigger.click();
+            const items = [...list.querySelectorAll('button')];
+            out.open = `${!list.hidden}/${trigger.getAttribute('aria-expanded')}/${items.map(b => b.textContent).join(',')}/${items.map(b => b.getAttribute('aria-pressed')).join(',')}/${document.activeElement === items[0]}`;
+            out.early = list.querySelectorAll('img').length; // (before the first idle of the map, no picture yet)
+            document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            out.escape = `${list.hidden}/${document.activeElement === trigger}`;
+            await until(() => list.querySelectorAll('img').length === 2 && host.state.get().idle);
+            await new Promise(r => setTimeout(r, 500));
+            const imgs = [...list.querySelectorAll('button')].map(b => b.querySelector('img'));
+            out.pictures = imgs.map(i => i ? 'img' : '-').join(',');
+            if (imgs[1]) {
+                await imgs[1].decode();
+                const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
+                g.drawImage(imgs[1], 0, 0, 4, 4);
+                const [r, gr, b] = g.getImageData(2, 2, 1, 1).data;
+                out.red = r > 200 && gr < 60 && b < 60;
+            }
+            const center = host.state.get().view.center.join();
+            trigger.click();
+            list.querySelectorAll('button')[1].click();
+            await new Promise(r => setTimeout(r, 300));
+            out.chosen = `${host.description.style === red}/${calls.join(',')}/${host.state.get().view.center.join() === center}/${list.hidden}/${document.activeElement === trigger}`;
+            trigger.click();
+            out.pressed = [...list.querySelectorAll('button')].map(b => b.getAttribute('aria-pressed')).join(',');
+            list.querySelectorAll('button')[1].click(); // the current style: no new call
+            out.calls = calls.length;
+            out.extraMaps = document.querySelectorAll('body > div[aria-hidden="true"]').length;
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] the control styles() lists its entries at once, draws a picture of each style that loads after the first idle, and a choice sets the style, keeps the camera, calls onStyleChange once and returns the focus`,
+            picked.open === 'true/true/Streets,Red,Missing/true,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-' && picked.red === true
+            && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false' && picked.calls === 1 && picked.extraMaps === 0, JSON.stringify(picked));
+
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.
         await page.emulateMedia({colorScheme: 'light'});

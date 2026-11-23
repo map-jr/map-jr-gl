@@ -274,6 +274,10 @@ The controls of the map.
   Error.
 - `[map-jr-gl] <control>: the option <option> has no effect.<instead>`
   Warning.
+- `[map-jr-gl] styles(): the control works only in the controls of a map of the main API (createMap).`
+  Warning.
+- `[map-jr-gl] styles(): "entries" is empty. Write styles({entries: [{label: "Streets", style: "https://…/style.json"}, …]}).`
+  Warning.
 
 ## MapLibre compatibility
 

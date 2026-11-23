@@ -83,7 +83,7 @@ const sections = [
 const sectionOfFile = {
     'host.ts': 'main', 'markers.ts': 'main', 'points.ts': 'main', 'element.ts': 'element', 'vue.ts': 'vue', 'react.ts': 'vue',
     'server.ts': 'server', 'compat-map.ts': 'compat', 'maplibre-compat.ts': 'compat', 'compat-style-images.ts': 'compat',
-    'controls-more.ts': 'controls', 'control-specs.ts': 'controls', 'color-scheme-control.ts': 'controls', 'controls.ts': 'controls',
+    'controls-more.ts': 'controls', 'control-specs.ts': 'controls', 'color-scheme-control.ts': 'controls', 'styles-control.ts': 'controls', 'controls.ts': 'controls',
 };
 
 const files = readdirSync(path.join(root, 'src')).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts')).sort();

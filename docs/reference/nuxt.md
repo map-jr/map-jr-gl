@@ -30,7 +30,7 @@ export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 |---|---|---|
 | `MapJr`, `MapOverlay`, `MapImage` | Components, and `LazyMapJr` (see [`LazyMapJr`](#lazymapjr)) | [`@map-jr/map-jr-gl/vue`](vue.md) |
 | `useMapJr`, `useMapInstance`, `useMapFeatures`, `useMapSource` | Composables | [`@map-jr/map-jr-gl/vue`](vue.md) |
-| `navigationControl`, `scaleControl`, `fullscreenControl`, `geolocateControl`, `terrainControl`, `globeControl`, `colorSchemeControl`, `customControl` | Functions that create controls | `navigation`, `scale`, `fullscreen`, `geolocate`, `terrain`, `globe`, `colorScheme` and `custom` of `@map-jr/map-jr-gl/controls` |
+| `navigationControl`, `scaleControl`, `fullscreenControl`, `geolocateControl`, `terrainControl`, `globeControl`, `colorSchemeControl`, `stylesControl`, `customControl` | Functions that create controls | `navigation`, `scale`, `fullscreen`, `geolocate`, `terrain`, `globe`, `colorScheme`, `styles` and `custom` of `@map-jr/map-jr-gl/controls` |
 
 The controls have longer names than their exports, because `scale` and `navigation` are common words. A file that
 imports from `@map-jr/map-jr-gl/controls` itself uses the short names.
