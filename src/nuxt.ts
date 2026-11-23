@@ -6,7 +6,7 @@
  * when the map comes into view. It provides the composables (`useMapJr`, `useMapInstance`, `useMapFeatures`, `useMapSource`) and the controls. The controls
  * get longer names, because `scale` and `navigation` are common words: `navigationControl()`, `scaleControl()`,
  * `fullscreenControl()`, `geolocateControl()`, `terrainControl()`, `globeControl()`,
- * `colorSchemeControl()`, `customControl()`.
+ * `colorSchemeControl()`, `stylesControl()`, `customControl()`.
  */
 // @ts-ignore: the kit of Nuxt comes with the application, it is not a dependency of this library
 import {addComponent, addImports, defineNuxtModule} from '@nuxt/kit';
@@ -23,7 +23,7 @@ const nuxtModule: any = defineNuxtModule({
         deps.exclude = [...(deps.exclude || []), '@map-jr/map-jr-gl', vue, controls];
         for (const name of ['MapJr', 'MapOverlay', 'MapImage']) addComponent({name, export: name, filePath: vue});
         addImports(['useMapJr', 'useMapInstance', 'useMapFeatures', 'useMapSource'].map(name => ({name, from: vue})));
-        addImports(['navigation', 'scale', 'fullscreen', 'geolocate', 'terrain', 'globe', 'colorScheme', 'custom'].map(name => ({name, as: name + 'Control', from: controls})));
+        addImports(['navigation', 'scale', 'fullscreen', 'geolocate', 'terrain', 'globe', 'colorScheme', 'styles', 'custom'].map(name => ({name, as: name + 'Control', from: controls})));
     },
 });
 export default nuxtModule;

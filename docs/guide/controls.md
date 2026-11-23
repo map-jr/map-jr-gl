@@ -119,6 +119,7 @@ These functions are available. Each one also accepts `position`.
 | `terrain({source})` | A button that turns 3D terrain on and off | `source` (required): the id of an elevation source of the style; `exaggeration` |
 | `globe()` | A button that switches the projection between the globe and Mercator | |
 | `colorScheme()` | A button that switches the map between light and dark: see [Light and dark maps](color-scheme.md#let-the-user-switch-the-scheme) | |
+| `styles({entries})` | A button that opens a list of styles with a picture of each, and sets the chosen style: see [`styles()`](../reference/controls.md#styles) | `entries` (required): `{label, style}` for each style; `preview`, `onStyleChange` |
 | `custom({key, element})` | A control of your own: see [Add a control of your own](#add-a-control-of-your-own) | |
 
 See [Controls](controls.md) for what each option does.
@@ -153,6 +154,38 @@ has, and it replaces a control whose options changed. In `useMiles`, the zoom bu
 removed and added again with miles.
 
 In the compat entry, call `map.removeControl(control)` with the object that `addControl` was passed.
+
+## Let the user choose the style
+
+The control [`styles()`](../reference/controls.md#styles) of `@map-jr/map-jr-gl/controls` is a button that opens a
+list of styles with a picture of each. A choice sets `style` and keeps the camera. In a component, keep the style in
+your own state with `onStyleChange`, because the component passes its `style` again at the next change. This example
+uses the component `MapJr` of `@map-jr/map-jr-gl/vue`:
+
+```vue
+<script setup>
+import {ref} from 'vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+import {navigation, styles} from '@map-jr/map-jr-gl/controls';
+
+const entries = [
+  {label: 'Elevation', style: 'https://styles.map-jr.org/1/elevation-zero.json'},
+  {label: 'Positron', style: 'https://styles.map-jr.org/1/openfreemap-positron.json'},
+  {label: 'Dark', style: 'https://styles.map-jr.org/1/openfreemap-dark.json'},
+];
+const mapStyle = ref(entries[0].style);
+const controls = [navigation(), styles({entries, onStyleChange: entry => { mapStyle.value = entry.style; }})];
+</script>
+
+<template>
+  <div style="height: 400px">
+    <MapJr :map-style="mapStyle" :initial-view="{center: [8.33, 47.03], zoom: 11}" :controls="controls" />
+  </div>
+</template>
+```
+
+The pictures are drawn by a small second map after the map is first idle, so they do not delay the map. A click on
+the button before that opens the list with its labels, and the pictures appear as they are ready.
 
 ## Translate the texts of the controls
 

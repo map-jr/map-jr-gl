@@ -1,10 +1,10 @@
 # Controls
 
 The functions of `@map-jr/map-jr-gl/controls` create the controls of a map: the zoom buttons and the compass, the
-scale bar, and the buttons for the full screen, the position of the user, terrain, the globe and the colour scheme.
-Each function returns a `ControlSpec`: an item for [`controls`](description.md#controls) of the description. Create
-a `ControlSpec` only with these functions, and use [`custom`](#custom) for a control of your own. See
-[Controls](../guide/controls.md) for how to add, change and style them.
+scale bar, the buttons for the full screen, the position of the user, terrain, the globe and the colour scheme, and
+the list of styles. Each function returns a `ControlSpec`: an item for [`controls`](description.md#controls) of the
+description. Create a `ControlSpec` only with these functions, and use [`custom`](#custom) for a control of your own.
+See [Controls](../guide/controls.md) for how to add, change and style them.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -206,6 +206,85 @@ the scheme opposite to that of the system, and the next click sets `'auto'` agai
 `'light'`, `'dark'` or no value, a click switches between `'light'` and `'dark'`. See
 [Light and dark maps](../guide/color-scheme.md#let-the-user-switch-the-scheme) for an example.
 
+## `styles()`
+
+Creates a button that opens a list of styles. Each entry shows its label and a picture of its style, and a choice
+sets the style of the map.
+
+```ts
+styles(options: {
+  entries: StyleEntry[];
+  preview?: {center: Position; zoom: number};
+  onStyleChange?: (entry: StyleEntry) => void;
+  position?: ControlPosition;
+}): ControlSpec
+```
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {navigation, styles} from '@map-jr/map-jr-gl/controls';
+
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: {center: [8.33, 47.03], zoom: 11},
+  controls: [
+    navigation(),
+    styles({
+      entries: [
+        {label: 'Elevation', style: 'https://styles.map-jr.org/1/elevation-zero.json'},
+        {label: 'Positron', style: 'https://styles.map-jr.org/1/openfreemap-positron.json'},
+        {label: 'Dark', style: 'https://styles.map-jr.org/1/openfreemap-dark.json'},
+      ],
+      onStyleChange: entry => console.log('The map shows', entry.label),
+    }),
+  ],
+});
+```
+
+### `StylesOptions`
+
+| Name | Type | Description |
+|---|---|---|
+| `entries` **required** | `StyleEntry[]` | The entries of the list, in their order. |
+| `preview` | `{center: Position; zoom: number}` | The center and the zoom of the pictures. Without it, the pictures show the center, the zoom, the bearing and the pitch of the map. |
+| `onStyleChange` | `(entry: StyleEntry) => void` | Called with the entry after a choice has set `style`. |
+
+### `StyleEntry`
+
+| Name | Type | Description |
+|---|---|---|
+| `label` **required** | `string` | The text of the entry. |
+| `style` **required** | the type of [`style`](description.md#style) | The style that the entry sets: a URL, a style object or `{light, dark}`. |
+
+A choice sets `style` of the description with [`patch`](map.md#patch), so the camera and the other fields of the
+description stay. The control then calls `onStyleChange` once with the entry. A choice of the entry whose style the
+map has closes the list and calls nothing. The entry of the current style is marked with `aria-pressed="true"`: its
+`style` is the same value as `style` of the description, or equal to it as JSON.
+
+An application that passes `style` itself, as a component of Vue, React or Svelte does, keeps the new value in
+`onStyleChange`. Otherwise its next description sets the old style again. The map keeps the control while its
+options are equal as JSON (see [The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in
+a later description does not replace the first one.
+
+The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
+[`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so
+that they do not delay the map, or at the first click on the button if that comes earlier. The list opens with the
+labels at once and shows each picture when it is ready.
+
+- **A style that fails.** An error before the style of an entry has loaded, such as a failed request or an answer that
+  is not a style, ends its picture at once. A picture that takes more than 20 seconds also ends. The entry then has no
+  picture and stays usable.
+- **A new view.** Without `preview`, opening the list on a view that has changed since the pictures were drawn draws
+  them again. The old pictures stay until the new ones replace them. When the list closes, this drawing stops after
+  the current picture and starts again at the next open.
+- **Removal.** Removing the control, or the map, removes the hidden map at once.
+
+The list opens toward the middle of the map. The arrow keys move between the entries. Escape, a choice, a click
+outside the control or focus that leaves the control closes the list, and Escape and a choice return the focus to the
+button. The control uses the variables `--map-control-background`, `--map-control-radius` and `--map-control-focus`
+of [Change the look of the controls](../guide/controls.md#change-the-look-of-the-controls). The control works only
+in `controls` of a map of `createMap`; the compat entry does not have it.
+
 ## `custom()`
 
 Creates a control from an element of your page, or from a control written for MapLibre GL JS.
@@ -289,6 +368,7 @@ not set keeps the English text.
 | `GlobeControl.Disable` | `Disable globe` |
 | `ColorSchemeControl.Light` | `Use light colours` |
 | `ColorSchemeControl.Dark` | `Use dark colours` |
+| `StylesControl.Open` | `Choose a style` |
 | `AttributionControl.ToggleAttribution` | `Toggle map data credits` (the label) and `Map data credits` (the title) |
 | `Popup.Close` | `Close popup` |
 | `Marker.Title` | `Map marker` |
@@ -297,7 +377,7 @@ not set keeps the English text.
 | `CooperativeGesturesHandler.MacHelpText` | `Use ⌘ + scroll to zoom the map` |
 | `CooperativeGesturesHandler.MobileHelpText` | `Use two fingers to move the map` |
 
-`ColorSchemeControl.Light` and `ColorSchemeControl.Dark` are keys of this library. The other keys are those of the
+`ColorSchemeControl.Light`, `ColorSchemeControl.Dark` and `StylesControl.Open` are keys of this library. The other keys are those of the
 option `locale` of MapLibre GL JS.
 
 ```js

@@ -2363,6 +2363,85 @@ for (const renderer of renderers) {
         check(`[${renderer}] the control colorScheme() flips light and dark, and from 'auto' sets the opposite of the system and then 'auto' again, with onColorSchemeChange and a label that names the action`,
             Object.keys(wantToggles).every(k => toggles[k] === wantToggles[k]), JSON.stringify(toggles));
 
+        // The control styles() (#1504): the list opens with its labels at once, a small second map draws a picture of
+        // each style after the first idle, a style that does not load keeps its label, and a choice applies the style,
+        // keeps the camera, calls onStyleChange once, closes the list and gives the focus back to the button.
+        const picked = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const red = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            const entries = [{label: 'Streets', style: t.style}, {label: 'Red', style: red}, {label: 'Missing', style: '/no-such-style.json'},
+                {label: 'Offline', style: 'http://127.0.0.1:9/style.json'}, {label: 'Page', style: '/'}];
+            const host = t.lib.createMap(el, {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14}, renderer, attribution: false, controls: [styles({entries, onStyleChange: e => calls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            trigger.click();
+            const items = [...list.querySelectorAll('button')];
+            out.open = `${!list.hidden}/${trigger.getAttribute('aria-expanded')}/${items.map(b => b.textContent).join(',')}/${items.map(b => b.getAttribute('aria-pressed')).join(',')}/${document.activeElement === items[0]}`;
+            out.early = list.querySelectorAll('img').length; // (before the first idle of the map, no picture yet)
+            document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            out.escape = `${list.hidden}/${document.activeElement === trigger}`;
+            // (A style that fails, by status, by network or with an answer that is not JSON, ends its picture at once.)
+            const hidden = () => document.querySelectorAll('body > div[aria-hidden="true"]').length;
+            await until(() => host.state.get().idle);
+            const idleAt = Date.now();
+            await until(() => list.querySelectorAll('img').length === 2 && !hidden());
+            out.drawn = Date.now() - idleAt;
+            await new Promise(r => setTimeout(r, 500));
+            const imgs = [...list.querySelectorAll('button')].map(b => b.querySelector('img'));
+            out.pictures = imgs.map(i => i ? 'img' : '-').join(',');
+            if (imgs[1]) {
+                await imgs[1].decode();
+                const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
+                g.drawImage(imgs[1], 0, 0, 4, 4);
+                const [r, gr, b] = g.getImageData(2, 2, 1, 1).data;
+                out.red = r > 200 && gr < 60 && b < 60;
+            }
+            const center = host.state.get().view.center.join();
+            trigger.click();
+            list.querySelectorAll('button')[1].click();
+            await new Promise(r => setTimeout(r, 300));
+            out.chosen = `${host.description.style === red}/${calls.join(',')}/${host.state.get().view.center.join() === center}/${list.hidden}/${document.activeElement === trigger}`;
+            trigger.click();
+            out.pressed = [...list.querySelectorAll('button')].map(b => b.getAttribute('aria-pressed')).join(',');
+            list.querySelectorAll('button')[1].click(); // the current style: no new call
+            out.calls = calls.length;
+            out.extraMaps = hidden();
+            // Tab out of the open list closes it.
+            trigger.click();
+            const outsideButton = document.body.appendChild(document.createElement('button'));
+            outsideButton.focus();
+            out.tabOut = list.hidden;
+            outsideButton.remove();
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] the control styles() lists its entries at once, draws a picture of each style that loads after the first idle, and a choice sets the style, keeps the camera, calls onStyleChange once and returns the focus; a style that fails ends its picture at once, and focus that leaves closes the list`,
+            picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.drawn < 15000 && picked.red === true
+            && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut, JSON.stringify(picked));
+        // Removing styles() while a picture is drawn removes the hidden map at once (#1504): here its tiles never answer.
+        const removedWhileDrawing = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const stalled = {version: 8, sources: {r: {type: 'raster', tiles: ['http://10.255.255.1/{z}/{x}/{y}.png'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r'}]};
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14}, renderer, attribution: false};
+            const host = t.lib.createMap(el, {...spec, controls: [styles({entries: [{label: 'Stalled', style: stalled}]})]});
+            const hidden = () => document.querySelectorAll('body > div[aria-hidden="true"]').length;
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            const drawing = await until(() => hidden() > 0);
+            await new Promise(r => setTimeout(r, 300));
+            host.update({...spec, controls: []});
+            await new Promise(r => setTimeout(r, 300));
+            const out = {drawing, after: hidden()};
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] removing the control styles() while a picture is drawn removes the hidden map at once`,
+            removedWhileDrawing.drawing && removedWhileDrawing.after === 0, JSON.stringify(removedWhileDrawing));
+
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.
         await page.emulateMedia({colorScheme: 'light'});
