@@ -19,6 +19,6 @@ const items = [
     <ul class="mt-4 list-disc space-y-2 ps-5 text-toned marker:text-muted">
       <li v-for="item in items" :key="item" v-html="item" />
     </ul>
-    <p class="mt-4"><UButton to="/maplibre-compatibility" variant="link" trailing-icon="i-lucide-arrow-right" class="px-0">Every difference from MapLibre GL JS</UButton></p>
+    <p class="mt-4"><UButton to="/reference/maplibre-differences" variant="link" trailing-icon="i-lucide-arrow-right" class="px-0">Every difference from MapLibre GL JS</UButton></p>
   </div>
 </template>
