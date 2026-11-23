@@ -248,13 +248,13 @@ map.on('load', () => {
     type: 'geojson',
     data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
   });
-  // 'circle-color' is not a paint property. The map fires no error event,
+  // 'circle-colour' is not a paint property. The map fires no error event,
   // and the circle has the default color.
   map.addLayer({
     id: 'stops',
     type: 'circle',
     source: 'stops',
-    paint: {'circle-color': '#d6453d'},
+    paint: {'circle-colour': '#d6453d'},
   });
 });
 ```

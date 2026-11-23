@@ -180,11 +180,16 @@ const british = new RegExp('(?:colour|behaviour|favour|honour|neighbour|flavour)
 const codeNames = {
     rasteriser: ['*'], // the option of renderToImage
     grey: ['src/expr.ts'], // the CSS color names
-    metres: ['src/custom-layers.ts', 'src/geo.ts', 'src/globe.ts', 'examples/terrain.js', 'examples/terrain.compat.js', 'examples/terrain.html', 'docs/guide/terrain.md', 'docs/recipes/terrain.md'],
+    metres: ['src/custom-layers.ts', 'src/geo.ts', 'src/globe.ts'],
     centre: ['src/contour.ts', 'src/gl.ts', 'src/tile.ts'],
     colour: ['src/webp.ts'],
     colours: ['src/webp.ts'],
 };
+/** Data that is spelled this way on purpose: each line that contains one of these is not checked there. */
+const quoted = [
+    ['docs/migrate/from-maplibre.md', "'circle-colour'"], // a misspelled paint property, the point of the example
+    ['docs/ecosystem.md', 'render_min_height, colour, hide_3d'], // property names of the tiles that Maputnik reads
+];
 const spellingFiles = named.length ? files : ['docs', 'src', 'examples'].flatMap(function all(dir) {
     return readdirSync(path.join(root, dir), {withFileTypes: true}).flatMap(e => e.isDirectory() ? all(path.join(dir, e.name))
         : /\.(md|ts|tsx|js|mjs|jsx|vue|svelte|html|css)$/.test(e.name) ? [path.join(root, dir, e.name)] : []);
@@ -197,6 +202,7 @@ for (const file of spellingFiles) {
             if (/[A-Za-z]/.test(before + after)) continue;
             const allowed = codeNames[m[0].toLowerCase()];
             if (allowed && (allowed.includes('*') || allowed.includes(rel))) continue;
+            if (quoted.some(([where, text]) => where === rel && line.includes(text))) continue;
             findings.push(`${rel}:${i + 1}: "${m[0]}" is British spelling. The text uses US spelling ("color", "center", "-ize"). A name of code goes into codeNames of scripts/docs-lint.mjs.`);
         }
     });

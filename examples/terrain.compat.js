@@ -36,9 +36,9 @@ map.on('load', () => {
 });
 
 map.on('click', async e => {
-  const metres = await map.queryElevation(e.lngLat);
-  const feet = metres * 3.28084;
-  readout.textContent = metres === null ? 'No elevation data here' : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+  const meters = await map.queryElevation(e.lngLat);
+  const feet = meters * 3.28084;
+  readout.textContent = meters === null ? 'No elevation data here' : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
 });
 
 units.onclick = () => {

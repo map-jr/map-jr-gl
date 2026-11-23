@@ -157,7 +157,7 @@ try {
             const foreign = used.filter(colour => !colours.some(expected => near(colour, expected)));
             check(`code in ${scheme}: the tokens have the colors of the theme`, foreign.length === 0, foreign.join(' '));
             const low = used.map(colour => [colour, contrast(colour, sheet)]).filter(([, ratio]) => ratio < 4.5);
-            check(`code in ${scheme}: every token has 4.5:1 or more on the sheet`, low.length === 0, low.map(([colour, ratio]) => `${color} ${ratio.toFixed(2)}`).join(' ') || 'lowest ' + Math.min(...used.map(colour => contrast(colour, sheet))).toFixed(2));
+            check(`code in ${scheme}: every token has 4.5:1 or more on the sheet`, low.length === 0, low.map(([colour, ratio]) => `${colour} ${ratio.toFixed(2)}`).join(' ') || 'lowest ' + Math.min(...used.map(colour => contrast(colour, sheet))).toFixed(2));
             check(`code in ${scheme}: no failed request and no error`, problems.length === 0, problems.join(' | '));
             await close();
         }

@@ -55,7 +55,7 @@ if (sheetOf([regularDark, compactDark]) !== sheetOf([regular, compact])) throw n
 const file = html => split(html).svg.replace(`style="${place}"`, '').replace(' data-map-jr-ssr=""', '');
 const centred = `position:absolute;left:50%;top:50%;width:${small.width}px;height:${small.height}px;margin:-${small.height / 2}px 0 0 -${small.width / 2}px;max-width:none`;
 const files = new Map([
-    [small.file, `<div class="home-first-small">${inline.svg.replace(`style="${place}"`, `style="${centered}"`)}</div><style>${css}</style><div class="home-first-small-dark" role="img" aria-label="Map"></div>`
+    [small.file, `<div class="home-first-small">${inline.svg.replace(`style="${place}"`, `style="${centred}"`)}</div><style>${css}</style><div class="home-first-small-dark" role="img" aria-label="Map"></div>`
         + `<div class="home-first-compact home-first-light">${compact.html}</div><div class="home-first-compact home-first-dark">${compactDark.html}</div>`
         + `<div class="home-first-regular home-first-light">${regular.html}</div><div class="home-first-regular home-first-dark">${regularDark.html}</div>`],
     [wide.file, file(b)],

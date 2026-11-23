@@ -92,7 +92,7 @@ What each scenario found:
 - Loads the style elevation of map-jr-styles. Both libraries: layers: 113; messages of the editor: 0; errors: 0.
 - Loads the style liberty of OpenFreeMap. Both libraries: layers: 111; errors: 0.
 - Opens with the empty default style. Both libraries: errors: 0.
-- Suggests the properties of a source layer in the filter editor. Both libraries: properties of the layer "building": render_height, render_min_height, color, hide_3d.
+- Suggests the properties of a source layer in the filter editor. Both libraries: properties of the layer "building": render_height, render_min_height, colour, hide_3d.
 - Shows the icons of the navigation control in the colors of the editor. Both libraries: icons with the color of the editor: 3 of 3.
 <!-- maputnik:end -->
 

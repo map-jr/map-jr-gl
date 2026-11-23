@@ -104,10 +104,10 @@ const describe = () => ({
   initialView: {center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25},
   attribution: {compact: true},
   onClick: async e => {
-    const metres = await map.queryElevation(e.lngLat);
-    const feet = metres * 3.28084;
+    const meters = await map.queryElevation(e.lngLat);
+    const feet = meters * 3.28084;
     readout.textContent =
-      metres === null
+      meters === null
         ? 'No elevation data here'
         : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   },
@@ -230,10 +230,10 @@ map.on('load', () => {
 });
 
 map.on('click', async e => {
-  const metres = await map.queryElevation(e.lngLat);
-  const feet = metres * 3.28084;
+  const meters = await map.queryElevation(e.lngLat);
+  const feet = meters * 3.28084;
   readout.textContent =
-    metres === null
+    meters === null
       ? 'No elevation data here'
       : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
 });
@@ -733,12 +733,12 @@ export default function Terrain() {
   showElevation();
 
   map.addEventListener('map-click', async event => {
-    const metres = await map.map.queryElevation(event.detail.lngLat);
-    const feet = metres * 3.28084;
+    const meters = await map.map.queryElevation(event.detail.lngLat);
+    const feet = meters * 3.28084;
     readout.textContent =
-      metres === null
+      meters === null
         ? 'No elevation data here'
-        : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+        : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   });
   units.onclick = () => {
     unit = unit === 'ft' ? 'm' : 'ft';

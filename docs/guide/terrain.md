@@ -527,9 +527,9 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation.json',
   initialView: {center: [7.6586, 45.9763], zoom: 12},
   onClick: async e => {
-    const metres = await map.queryElevation(e.lngLat);
+    const meters = await map.queryElevation(e.lngLat);
     console.log(
-      metres === null ? 'No elevation data here' : `${Math.round(meters)} m`,
+      meters === null ? 'No elevation data here' : `${Math.round(meters)} m`,
     );
   },
 });
@@ -548,9 +548,9 @@ const map = new Map({
 });
 
 map.on('click', async e => {
-  const metres = await map.queryElevation(e.lngLat);
+  const meters = await map.queryElevation(e.lngLat);
   console.log(
-    metres === null ? 'No elevation data here' : `${Math.round(meters)} m`,
+    meters === null ? 'No elevation data here' : `${Math.round(meters)} m`,
   );
 });
 ```

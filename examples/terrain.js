@@ -42,9 +42,9 @@ const describe = () => ({
   initialView: {center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25},
   attribution: {compact: true},
   onClick: async e => {
-    const metres = await map.queryElevation(e.lngLat);
-    const feet = metres * 3.28084;
-    readout.textContent = metres === null ? 'No elevation data here' : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+    const meters = await map.queryElevation(e.lngLat);
+    const feet = meters * 3.28084;
+    readout.textContent = meters === null ? 'No elevation data here' : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   },
 });
 const map = createMap(container, describe());
