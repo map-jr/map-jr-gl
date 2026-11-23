@@ -5357,10 +5357,10 @@ for (const mode of renderers) {
             for (const p of ['dem1493', 'slow1493']) try { mod.removeProtocol(p); } catch { /* not added yet */ }
             mod.addProtocol('dem1493', async () => ({data: flat.slice(0)}));
             mod.addProtocol('slow1493', async request => {
-                state.asked++;
+                const n = ++state.asked;
                 await new Promise(r => setTimeout(r, 1500));
                 // (One tile of the view fails: it must not hold `idle` back for ever.)
-                if (state.asked === 2 && !state.failed) { state.failed++; state.answered++; throw new Error('tile 1493 failed'); }
+                if (n === 2) { state.failed++; state.answered++; throw new Error('tile 1493 failed'); }
                 state.answered++;
                 return {data: red.slice(0)};
             });
