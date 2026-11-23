@@ -255,6 +255,43 @@ const map = createMap('map', {
 |---|---|---|
 | `label` **required** | `string` | The text of the entry. |
 | `style` **required** | the type of [`style`](description.md#style) | The style that the entry sets: a URL, a style object or `{light, dark}`. |
+| `colorSchemes` | `boolean` | `true` when the style reads the global state `color-scheme`, as the official styles of `https://styles.map-jr.org/1/` do. The entry then has a light and a dark form. Default `false`. |
+
+### An entry with a light and a dark form
+
+An entry has two forms when its `style` is `{light, dark}`, or when it has `colorSchemes: true`. The list then shows
+the label of the entry above two pictures, one drawn with `colorScheme: 'light'` and one with `colorScheme: 'dark'`.
+
+A choice of a picture sets `style` and `colorScheme` of the description with one `patch`, calls `onStyleChange` when
+the style changed, and calls `onColorSchemeChange` of the description when the scheme changed. A choice of the other
+form of the current entry changes only the scheme. The picture of the current style and the current scheme is marked
+with `aria-pressed="true"`.
+
+A choice sets `'light'` or `'dark'`, never `'auto'`, so after a choice the map no longer
+follows the system.
+
+When every entry of the list has two forms, the control does the work of [`colorScheme()`](#colorscheme), and a map
+needs only one of the two. With both on the map, each shows the scheme that the other one sets.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {styles} from '@map-jr/map-jr-gl/controls';
+
+const base = 'https://styles.map-jr.org/1/';
+const map = createMap('map', {
+  style: base + 'elevation.json',
+  initialView: {center: [8.33, 47.03], zoom: 11},
+  controls: [
+    styles({
+      entries: [
+        {label: 'Elevation', style: base + 'elevation.json', colorSchemes: true},
+        {label: 'Elevation zero', style: base + 'elevation-zero.json', colorSchemes: true},
+        {label: 'Positron and Dark', style: {light: base + 'openfreemap-positron.json', dark: base + 'openfreemap-dark.json'}},
+      ],
+    }),
+  ],
+});
+```
 
 A choice sets `style` of the description with [`patch`](map.md#patch), so the camera and the other fields of the
 description stay. The control then calls `onStyleChange` once with the entry. A choice of the entry whose style the
@@ -369,6 +406,8 @@ not set keeps the English text.
 | `ColorSchemeControl.Light` | `Use light colours` |
 | `ColorSchemeControl.Dark` | `Use dark colours` |
 | `StylesControl.Open` | `Choose a style` |
+| `StylesControl.Light` | `Light` (the light form of an entry; its label is the label of the entry, a comma and this text) |
+| `StylesControl.Dark` | `Dark` |
 | `AttributionControl.ToggleAttribution` | `Toggle map data credits` (the label) and `Map data credits` (the title) |
 | `Popup.Close` | `Close popup` |
 | `Marker.Title` | `Map marker` |
@@ -377,7 +416,7 @@ not set keeps the English text.
 | `CooperativeGesturesHandler.MacHelpText` | `Use ⌘ + scroll to zoom the map` |
 | `CooperativeGesturesHandler.MobileHelpText` | `Use two fingers to move the map` |
 
-`ColorSchemeControl.Light`, `ColorSchemeControl.Dark` and `StylesControl.Open` are keys of this library. The other keys are those of the
+`ColorSchemeControl.Light`, `ColorSchemeControl.Dark` and the keys of `StylesControl` are keys of this library. The other keys are those of the
 option `locale` of MapLibre GL JS.
 
 ```js

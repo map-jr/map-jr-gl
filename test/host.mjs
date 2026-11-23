@@ -2441,6 +2441,51 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] removing the control styles() while a picture is drawn removes the hidden map at once`,
             removedWhileDrawing.drawing && removedWhileDrawing.after === 0, JSON.stringify(removedWhileDrawing));
+        // An entry of styles() with a light and a dark form (#1506), as a pair of styles or as a style that reads the global
+        // state `color-scheme`: a picture of each form, and a choice of a form sets the style and the scheme.
+        const forms = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), styleCalls = [], schemeCalls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const bg = color => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': color}}]});
+            const reads = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': ['case', ['==', ['global-state', 'color-scheme'], 'dark'], '#0000ff', '#00ff00']}}]};
+            const pair = {light: bg('#ff0000'), dark: bg('#0000ff')};
+            const entries = [{label: 'Plain', style: bg('#ffffff')}, {label: 'Pair', style: pair}, {label: 'Reads', style: reads, colorSchemes: true}];
+            const host = t.lib.createMap(el, {style: entries[0].style, colorScheme: 'light', renderer, attribution: false,
+                onColorSchemeChange: s => schemeCalls.push(s), controls: [styles({entries, onStyleChange: e => styleCalls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            const buttons = () => [...list.querySelectorAll('button')];
+            out.names = buttons().map(b => b.getAttribute('aria-label') ?? b.textContent).join(',');
+            await until(() => list.querySelectorAll('img').length === 5, 30000);
+            const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
+            out.colors = [];
+            for (const img of list.querySelectorAll('img')) {
+                await img.decode();
+                g.drawImage(img, 0, 0, 4, 4);
+                const [r, gr, b] = g.getImageData(2, 2, 1, 1).data;
+                out.colors.push(r > 200 && gr > 200 && b > 200 ? 'white' : r > 200 ? 'red' : gr > 200 ? 'green' : b > 200 ? 'blue' : `${r} ${gr} ${b}`);
+            }
+            out.colors = out.colors.join(',');
+            trigger.click();
+            buttons()[2].click(); // Pair, dark
+            await new Promise(r => setTimeout(r, 100));
+            out.dark = `${host.description.style === pair}/${host.description.colorScheme}/${host.state.get().colorScheme}`;
+            trigger.click();
+            out.pressed = buttons().map(b => b.getAttribute('aria-pressed')).join(',');
+            buttons()[1].click(); // Pair, light: only the scheme changes
+            await new Promise(r => setTimeout(r, 100));
+            out.light = `${host.description.style === pair}/${host.description.colorScheme}`;
+            trigger.click();
+            buttons()[1].click(); // the current form: nothing
+            out.calls = `${styleCalls.join(',')}/${schemeCalls.join(',')}`;
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] an entry of styles() with a light and a dark form, a pair or a style that reads the global state color-scheme, has a picture of each form, and a choice of a form sets the style and colorScheme and calls onStyleChange and onColorSchemeChange`,
+            forms.names === 'Plain,Pair, Light,Pair, Dark,Reads, Light,Reads, Dark' && forms.colors === 'white,red,blue,green,blue' && forms.dark === 'true/dark/dark'
+            && forms.pressed === 'false,false,true,false,false' && forms.light === 'true/light' && forms.calls === 'Pair/dark,light', JSON.stringify(forms));
 
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.

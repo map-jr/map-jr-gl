@@ -17,6 +17,7 @@ const CSS = `.map-jr-styles{position:relative}
 .map-jr-styles-list button[aria-pressed=true]{box-shadow:inset 0 0 0 2px var(--map-control-focus,#2f7fd1)}
 .map-jr-styles-list button:focus-visible{outline:2px solid var(--map-control-focus,#2f7fd1);outline-offset:1px}
 @media (hover:hover){.map-jr-styles-list button:hover{background:color-mix(in oklab,currentColor 8%,transparent)}}
+.map-jr-styles-pair{display:flex;flex-wrap:wrap;gap:0 2px}.map-jr-styles-pair>span{flex-basis:100%;padding:0 4px}
 .map-jr-styles-pic{display:block;width:${W}px;height:${H}px;border-radius:calc(var(--map-control-radius,8px)*.5);background:color-mix(in oklab,currentColor 10%,transparent);object-fit:cover}
 @media (forced-colors:active){.map-jr-styles-list{border:1px solid CanvasText}}`;
 const sheets = new WeakMap<Document, CSSStyleSheet>();
@@ -37,6 +38,9 @@ function addSheet(el: HTMLElement, nonce?: string | null) {
 }
 
 const sameStyle = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** An entry has a light and a dark form when its style is `{light, dark}` or when `colorSchemes` is set (#1506). */
+const twoForms = (e: StyleEntry) => !!e.colorSchemes || typeof e.style === 'object' && 'light' in e.style && 'dark' in e.style;
+type Scheme = 'light' | 'dark';
 
 /**
  * A button that opens a list of styles with a picture of each. A choice applies the style with `patch`, so the camera
@@ -49,6 +53,8 @@ export class StylesControl implements Control {
     private trigger?: HTMLButtonElement;
     private list?: HTMLElement;
     private items: HTMLButtonElement[] = [];
+    /** The entry and the scheme of each button: an entry with two forms has a button for each scheme. */
+    private slots: {entry: StyleEntry; scheme?: Scheme}[] = [];
     private urls: string[] = [];
     private drawing?: Promise<void>;
     private drawn = '';
@@ -75,19 +81,31 @@ export class StylesControl implements Control {
         const entries = this.options.entries ?? [];
         if (!instance) { console.warn('[map-jr-gl] styles(): the control works only in the controls of a map of the main API (createMap).'); return el; }
         if (!entries.length) console.warn('[map-jr-gl] styles(): "entries" is empty. Write styles({entries: [{label: "Streets", style: "https://…/style.json"}, …]}).');
-        this.items = entries.map((entry, i) => {
-            const b = list.appendChild(document.createElement('button'));
+        const add = (parent: HTMLElement, entry: StyleEntry, text: string, scheme?: Scheme) => {
+            const b = parent.appendChild(document.createElement('button')), i = this.items.length;
             b.type = 'button';
             const pic = b.appendChild(document.createElement('span'));
             pic.className = 'map-jr-styles-pic';
-            b.appendChild(document.createElement('span')).textContent = entry.label;
-            b.addEventListener('click', () => this.choose(instance, entry));
+            b.appendChild(document.createElement('span')).textContent = text;
+            if (scheme) b.setAttribute('aria-label', `${entry.label}, ${text}`);
+            b.addEventListener('click', () => this.choose(instance, entry, scheme));
             b.addEventListener('keydown', e => {
-                const to = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : -2;
-                if (to > -2) { e.preventDefault(); this.items[(to + entries.length) % entries.length]?.focus(); }
+                const to = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? i - 1 : -2;
+                if (to > -2) { e.preventDefault(); this.items[(to + this.items.length) % this.items.length]?.focus(); }
             });
-            return b;
-        });
+            this.items.push(b);
+            this.slots.push({entry, scheme});
+        };
+        for (const entry of entries) {
+            if (!twoForms(entry)) { add(list, entry, entry.label); continue; }
+            const pair = list.appendChild(document.createElement('div'));
+            pair.className = 'map-jr-styles-pair';
+            pair.setAttribute('role', 'group');
+            pair.setAttribute('aria-label', entry.label);
+            pair.appendChild(document.createElement('span')).textContent = entry.label;
+            add(pair, entry, ui(map, 'StylesControl.Light', 'Light'), 'light');
+            add(pair, entry, ui(map, 'StylesControl.Dark', 'Dark'), 'dark');
+        }
         addSheet(el, instance.description.nonce);
         const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !list.hidden) { e.stopPropagation(); this.close(true); } };
         const outside = (e: PointerEvent) => { if (!list.hidden && !el.contains(e.target as Node)) this.close(false); };
@@ -108,8 +126,8 @@ export class StylesControl implements Control {
     private open() {
         const list = this.list!, el = this.el!, instance = this.instance?.();
         if (!instance) return;
-        const current = instance.description.style;
-        this.items.forEach((b, i) => b.setAttribute('aria-pressed', String(sameStyle(this.options.entries[i].style, current))));
+        const current = instance.description.style, scheme = instance.state.get().colorScheme;
+        this.items.forEach((b, i) => { const s = this.slots[i]; b.setAttribute('aria-pressed', String(sameStyle(s.entry.style, current) && (!s.scheme || s.scheme === scheme))); });
         // The list opens toward the middle of the map, and fits in its height.
         const box = el.getBoundingClientRect(), map = (el.closest('.map-jr-map') ?? el.parentElement!).getBoundingClientRect();
         const left = box.left + box.width / 2 < map.left + map.width / 2, top = box.top + box.height / 2 < map.top + map.height / 2;
@@ -126,11 +144,14 @@ export class StylesControl implements Control {
         if (focus) this.trigger!.focus();
     }
 
-    private choose(instance: MapInstance, entry: StyleEntry) {
+    /** `scheme`: the form of an entry with two forms, which sets `colorScheme` too. */
+    private choose(instance: MapInstance, entry: StyleEntry, scheme?: Scheme) {
         this.close(true);
-        if (sameStyle(entry.style, instance.description.style)) return;
-        instance.patch({style: entry.style});
-        this.options.onStyleChange?.(entry);
+        const same = sameStyle(entry.style, instance.description.style), to = scheme !== instance.state.get().colorScheme ? scheme : undefined;
+        if (same && !to) return;
+        instance.patch({...same ? {} : {style: entry.style}, ...to ? {colorScheme: to} : {}});
+        if (!same) this.options.onStyleChange?.(entry);
+        if (to) instance.description.onColorSchemeChange?.(to);
     }
 
     /** The view of the pictures: `preview`, or the view of the map. */
@@ -142,7 +163,7 @@ export class StylesControl implements Control {
     /** Draws the pictures one after the other with one hidden map, unless they show the view already. */
     private draw(instance: MapInstance): Promise<void> {
         const view = this.view(instance), at = JSON.stringify(view);
-        if (this.drawing || at === this.drawn || this.removed) return this.drawing ?? Promise.resolve();
+        if (this.drawing || at === this.drawn || this.removed || !this.slots.length) return this.drawing ?? Promise.resolve();
         this.drawn = at;
         return this.drawing = this.paint(instance, view, !!this.urls.length).finally(() => {
             this.drawing = undefined;
@@ -155,17 +176,17 @@ export class StylesControl implements Control {
         const box = document.body.appendChild(document.createElement('div'));
         box.style.cssText = `position:fixed;left:-${W * 4}px;top:0;width:${W}px;height:${H}px;pointer-events:none`;
         box.setAttribute('aria-hidden', 'true');
-        const entries = this.options.entries;
+        const slots = this.slots;
         let failed = false;
         // An error before the style has loaded (a failed request, an answer that is not a style) ends the picture at
         // once; an error of a tile after that does not.
         const onError = () => { if (!(this.small as unknown as {_map?: Map} | undefined)?._map?.isStyleLoaded()) { failed = true; this.wake(); } };
-        const base: MapDescription = {style: entries[0].style, initialView: view, interactive: false, attribution: false, colorScheme: instance.state.get().colorScheme, onError};
+        const base: MapDescription = {style: slots[0].entry.style, initialView: view, interactive: false, attribution: false, colorScheme: instance.state.get().colorScheme, onError};
         try {
-            for (let i = 0; i < entries.length && !this.removed; i++) {
+            for (let i = 0; i < slots.length && !this.removed; i++) {
                 if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
-                const spec = {...base, style: entries[i].style};
+                const spec = {...base, style: slots[i].entry.style, colorScheme: slots[i].scheme ?? base.colorScheme};
                 // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of
                 // a new style that does not load, and the picture would show the old style.)
                 this.small?.destroy();
