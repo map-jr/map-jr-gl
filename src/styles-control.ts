@@ -53,6 +53,9 @@ export class StylesControl implements Control {
     private drawing?: Promise<void>;
     private drawn = '';
     private removed = false;
+    /** The hidden map of the picture that is being drawn, and the function that ends the wait for it. */
+    private small?: MapInstance;
+    private wake = () => {};
     private stops: (() => void)[] = [];
     constructor(private options: StylesOptions, private instance?: () => MapInstance) {}
 
@@ -89,6 +92,8 @@ export class StylesControl implements Control {
         const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !list.hidden) { e.stopPropagation(); this.close(true); } };
         const outside = (e: PointerEvent) => { if (!list.hidden && !el.contains(e.target as Node)) this.close(false); };
         el.addEventListener('keydown', key);
+        // Focus that leaves the control (Tab, or a click elsewhere) closes the list.
+        el.addEventListener('focusout', e => { if (!list.hidden && !el.contains(e.relatedTarget as Node | null)) this.close(false); });
         document.addEventListener('pointerdown', outside, true);
         this.stops.push(() => document.removeEventListener('pointerdown', outside, true));
         // The pictures come after the first idle of the map, so that they do not delay it.
@@ -139,39 +144,45 @@ export class StylesControl implements Control {
         const view = this.view(instance), at = JSON.stringify(view);
         if (this.drawing || at === this.drawn || this.removed) return this.drawing ?? Promise.resolve();
         this.drawn = at;
-        return this.drawing = this.paint(instance, view).finally(() => {
+        return this.drawing = this.paint(instance, view, !!this.urls.length).finally(() => {
             this.drawing = undefined;
             if (!this.list?.hidden) this.draw(instance); // the view changed while the list was open
         });
     }
 
-    private async paint(instance: MapInstance, view: ViewInput) {
+    /** `again`: the pictures exist and only the view changed; the drawing then stops when the list closes. */
+    private async paint(instance: MapInstance, view: ViewInput, again: boolean) {
         const box = document.body.appendChild(document.createElement('div'));
         box.style.cssText = `position:fixed;left:-${W * 4}px;top:0;width:${W}px;height:${H}px;pointer-events:none`;
         box.setAttribute('aria-hidden', 'true');
         const entries = this.options.entries;
-        let small: MapInstance | undefined, failed = false, wake = () => {};
-        // An error of the style ends the picture; an error of one tile does not.
-        const onError = (e: Error) => { if (/style/i.test(e.message)) { failed = true; wake(); } };
+        let failed = false;
+        // An error before the style has loaded (a failed request, an answer that is not a style) ends the picture at
+        // once; an error of a tile after that does not.
+        const onError = () => { if (!(this.small as unknown as {_map?: Map} | undefined)?._map?.isStyleLoaded()) { failed = true; this.wake(); } };
         const base: MapDescription = {style: entries[0].style, initialView: view, interactive: false, attribution: false, colorScheme: instance.state.get().colorScheme, onError};
         try {
             for (let i = 0; i < entries.length && !this.removed; i++) {
+                if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
                 const spec = {...base, style: entries[i].style};
                 // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of
                 // a new style that does not load, and the picture would show the old style.)
-                small?.destroy();
-                const m = small = createMap(box, spec);
+                this.small?.destroy();
+                const m = this.small = createMap(box, spec);
                 await new Promise<void>(resolve => {
-                    const timer = setTimeout(wake = () => { clearTimeout(timer); stop(); resolve(); }, 20000);
-                    const stop = m.state.subscribe(s => s.idle, on => { if (on) wake(); });
+                    const timer = setTimeout(this.wake = () => { clearTimeout(timer); stop(); resolve(); }, 20000);
+                    const stop = m.state.subscribe(s => s.idle, on => { if (on) this.wake(); });
                 });
+                if (this.removed) break;
                 const blob = failed || !m.state.get().idle ? null : await m.toBlob('image/webp', .8).catch(() => null);
                 if (this.removed) break;
                 if (blob) this.show(i, blob);
             }
         } finally {
-            small?.destroy();
+            this.small?.destroy();
+            this.small = undefined;
+            this.wake = () => {};
             box.remove();
         }
     }
@@ -191,6 +202,8 @@ export class StylesControl implements Control {
 
     onRemove() {
         this.removed = true;
+        this.wake();
+        this.small?.destroy();
         for (const stop of this.stops) stop();
         for (const url of this.urls) if (url) URL.revokeObjectURL(url);
         this.el?.remove();

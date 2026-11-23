@@ -1,10 +1,10 @@
 # Controls
 
 The functions of `@map-jr/map-jr-gl/controls` create the controls of a map: the zoom buttons and the compass, the
-scale bar, and the buttons for the full screen, the position of the user, terrain, the globe and the colour scheme, and the list of styles.
-Each function returns a `ControlSpec`: an item for [`controls`](description.md#controls) of the description. Create
-a `ControlSpec` only with these functions, and use [`custom`](#custom) for a control of your own. See
-[Controls](../guide/controls.md) for how to add, change and style them.
+scale bar, the buttons for the full screen, the position of the user, terrain, the globe and the colour scheme, and
+the list of styles. Each function returns a `ControlSpec`: an item for [`controls`](description.md#controls) of the
+description. Create a `ControlSpec` only with these functions, and use [`custom`](#custom) for a control of your own.
+See [Controls](../guide/controls.md) for how to add, change and style them.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -267,19 +267,23 @@ options are equal as JSON (see [The list of controls](#the-list-of-controls)), s
 a later description does not replace the first one.
 
 The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
-[`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so that they do not delay the
-map, or at the first click on the button if that comes earlier. The list opens with the labels at once and shows each
-picture when it is ready.
+[`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so
+that they do not delay the map, or at the first click on the button if that comes earlier. The list opens with the
+labels at once and shows each picture when it is ready.
 
-Without `preview`, opening the list on a view that has changed since the pictures were drawn
-draws them again, and the old pictures stay until the new ones replace them. An entry whose style does not load, or
-whose picture takes more than 20 seconds, has no picture and stays usable.
+- **A style that fails.** An error before the style of an entry has loaded, such as a failed request or an answer that
+  is not a style, ends its picture at once. A picture that takes more than 20 seconds also ends. The entry then has no
+  picture and stays usable.
+- **A new view.** Without `preview`, opening the list on a view that has changed since the pictures were drawn draws
+  them again. The old pictures stay until the new ones replace them. When the list closes, this drawing stops after
+  the current picture and starts again at the next open.
+- **Removal.** Removing the control, or the map, removes the hidden map at once.
 
-The list opens toward the middle of the map. The arrow keys move between the entries, and Escape, a choice or a click
-outside the control closes the list. Escape and a choice return the focus to the button. The control uses the
-variables `--map-control-background`, `--map-control-radius` and `--map-control-focus` of
-[Change the look of the controls](../guide/controls.md#change-the-look-of-the-controls). The control works only in
-`controls` of a map of `createMap`; the compat entry does not have it.
+The list opens toward the middle of the map. The arrow keys move between the entries. Escape, a choice, a click
+outside the control or focus that leaves the control closes the list, and Escape and a choice return the focus to the
+button. The control uses the variables `--map-control-background`, `--map-control-radius` and `--map-control-focus`
+of [Change the look of the controls](../guide/controls.md#change-the-look-of-the-controls). The control works only
+in `controls` of a map of `createMap`; the compat entry does not have it.
 
 ## `custom()`
 
