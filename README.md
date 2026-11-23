@@ -164,11 +164,11 @@ Each task has a page of the guide or a recipe, with the code of each entry and a
 - [From MapLibre GL JS](docs/migrate/from-maplibre.md): change the imports to `@map-jr/map-jr-gl/maplibre-compat`.
   [Wrappers and plugins](docs/migrate/wrappers.md) covers react-map-gl and the alias of `maplibre-gl`, and the
   [migration prompt](docs/migrate/prompt.md) lets a coding agent do the steps.
-- [Markers and popups](docs/guide/markers-and-popups.md) and [Add markers](docs/recipes/markers.md).
+- [Markers and popups](docs/guide/markers-and-popups.md).
 - [Terrain and elevation](docs/guide/terrain.md): terrain, hillshade, contour lines and elevation queries.
 - [Query what is at a position](docs/recipes/query.md).
 - [Server rendering](docs/guide/server-rendering.md): the first view as SVG, on a server or in the browser.
-- [Draw highway shields](docs/recipes/shields.md): images that the map creates when a layer asks for them.
+- [Images and fonts](docs/guide/images-and-fonts.md): images of the style layers, highway shields that the page creates when a layer asks for them, and web fonts.
 - [Loading](docs/guide/loading.md): the worker file, a CDN, a strict Content Security Policy and the one-file build.
 
 ## Speed
@@ -230,7 +230,7 @@ The documentation is on [map-jr.org](https://map-jr.org/) and in four folders of
   [markers and popups](docs/guide/markers-and-popups.md), [terrain](docs/guide/terrain.md),
   [server rendering](docs/guide/server-rendering.md), [loading](docs/guide/loading.md),
   [browser support](docs/guide/browser-support.md) and [accessibility](docs/guide/accessibility.md).
-- [Recipes](docs/recipes/basic.md): complete examples in each of their seven forms.
+- [Recipes](docs/recipes/reactive.md): complete examples in each of their seven forms.
 - [Reference](docs/reference/create-map.md): every function, field, event and type of each entry:
   [the description](docs/reference/description.md), [the map](docs/reference/map.md),
   [Vue](docs/reference/vue.md), [Nuxt](docs/reference/nuxt.md), [React](docs/reference/react.md),

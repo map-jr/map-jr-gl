@@ -13,25 +13,84 @@ A `fill-pattern` or `line-pattern` can be an expression that reads the propertie
 `['get', 'surface']`, and then each feature draws its own image. An SDF image (an image with `sdf: true`) as
 `fill-pattern` takes the colour of `fill-color`.
 
+This example draws an SVG pin with the name of the place beside it for four places, and colours each pin by the kind
+of the place.
+
+<!-- example:images:start -->
 **Main API**
 
 ```js [Main API]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The map shows four places. Each has an SVG image of the
+// description in the colour of its kind, and its name beside it.
 import {createMap} from '@map-jr/map-jr-gl';
 
-const station =
-  '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#0b6e4f" stroke="#fff" stroke-width="2"/></svg>';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+// An SVG image with a slot ({{color}}). The symbol layer fills the slot for
+// each feature.
+const pin =
+  '<svg viewBox="0 0 24 31"><path d="M12 30C12 30 2 19 2 11.5a10 10 0 1 1 20 0C22 19 12 30 12 30z" fill="{{color}}" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>';
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {name: 'City Hall', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Washington Square', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-73.9973, 40.7308]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Battery Park', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-74.017, 40.7033]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Brooklyn Bridge', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]},
+    },
+  ],
+};
 
-const map = createMap('map', {
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  initialView: {center: [-73.9855, 40.758], zoom: 13},
-  images: {station},
-  data: {stations: {type: 'Point', coordinates: [-73.9855, 40.758]}},
+const map = createMap(document.getElementById('map'), {
+  style,
+  initialView: {center: [-74.006, 40.7175], zoom: 12.7},
+  attribution: {compact: true},
+  images: {pin},
+  // Additions to the style: a GeoJSON source and a symbol layer.
+  sources: {places: {type: 'geojson', data: places}},
+  // A symbol layer draws the image and a label beside it.
   layers: [
     {
-      id: 'stations',
+      id: 'places',
       type: 'symbol',
-      source: 'stations',
-      layout: {'icon-image': 'station'},
+      source: 'places',
+      layout: {
+        'icon-image': [
+          'image',
+          'pin',
+          {
+            params: {
+              color: ['match', ['get', 'kind'], 'park', '#2e9d5b', '#d6453d'],
+            },
+          },
+        ],
+        'icon-anchor': 'bottom',
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 13,
+        'text-anchor': 'left',
+        'text-offset': [0.9, -1.1],
+      },
+      paint: {
+        'text-color': '#222',
+        'text-halo-color': '#fff',
+        'text-halo-width': 1.5,
+      },
     },
   ],
 });
@@ -40,36 +99,430 @@ const map = createMap('map', {
 **MapLibre compat**
 
 ```js [MapLibre compat]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The map shows four places. Each has an SVG image from
+// addImage, and its name beside it.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const station =
-  '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#0b6e4f" stroke="#fff" stroke-width="2"/></svg>';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+// addImage in MapLibre GL JS takes pixels. This library also takes an SVG
+// document as a string.
+const pin =
+  '<svg viewBox="0 0 24 31"><path d="M12 30C12 30 2 19 2 11.5a10 10 0 1 1 20 0C22 19 12 30 12 30z" fill="#d6453d" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>';
+const parkPin = pin.replace('#d6453d', '#2e9d5b');
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {name: 'City Hall', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Washington Square', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-73.9973, 40.7308]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Battery Park', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-74.017, 40.7033]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Brooklyn Bridge', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]},
+    },
+  ],
+};
 
 const map = new Map({
   container: 'map',
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  center: [-73.9855, 40.758],
-  zoom: 13,
+  style,
+  center: [-74.006, 40.7175],
+  zoom: 12.7,
+  attributionControl: {compact: true},
 });
-
-map.on('load', async () => {
-  // addImage of this library also accepts an SVG document as a string. It
-  // returns a promise.
-  await map.addImage('station', station);
-  map.addSource('stations', {
-    type: 'geojson',
-    data: {type: 'Point', coordinates: [-73.9855, 40.758]},
-  });
+map.on('load', () => {
+  map.addImage('pin', pin);
+  map.addImage('pin-park', parkPin);
+  map.addSource('places', {type: 'geojson', data: places});
+  // A symbol layer draws the image and a label beside it.
   map.addLayer({
-    id: 'stations',
+    id: 'places',
     type: 'symbol',
-    source: 'stations',
-    layout: {'icon-image': 'station'},
+    source: 'places',
+    layout: {
+      'icon-image': ['match', ['get', 'kind'], 'park', 'pin-park', 'pin'],
+      'icon-anchor': 'bottom',
+      'text-field': ['get', 'name'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 13,
+      'text-anchor': 'left',
+      'text-offset': [0.9, -1.1],
+    },
+    paint: {
+      'text-color': '#222',
+      'text-halo-color': '#fff',
+      'text-halo-width': 1.5,
+    },
   });
 });
 ```
 
-The map draws a green circle with a white ring at Times Square.
+**Vue**
+
+```vue [Vue]
+<script setup>
+// The map fills its parent element, so give the parent a height.
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+// An SVG image with a slot ({{color}}). The symbol layer fills the slot for
+// each feature.
+const pin =
+  '<svg viewBox="0 0 24 31"><path d="M12 30C12 30 2 19 2 11.5a10 10 0 1 1 20 0C22 19 12 30 12 30z" fill="{{color}}" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>';
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {name: 'City Hall', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Washington Square', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-73.9973, 40.7308]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Battery Park', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-74.017, 40.7033]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Brooklyn Bridge', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]},
+    },
+  ],
+};
+// Additions to the style: a GeoJSON source and a symbol layer.
+const additions = {
+  sources: {places: {type: 'geojson', data: places}},
+  // A symbol layer draws the image and a label beside it.
+  layers: [
+    {
+      id: 'places',
+      type: 'symbol',
+      source: 'places',
+      layout: {
+        'icon-image': [
+          'image',
+          'pin',
+          {
+            params: {
+              color: ['match', ['get', 'kind'], 'park', '#2e9d5b', '#d6453d'],
+            },
+          },
+        ],
+        'icon-anchor': 'bottom',
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 13,
+        'text-anchor': 'left',
+        'text-offset': [0.9, -1.1],
+      },
+      paint: {
+        'text-color': '#222',
+        'text-halo-color': '#fff',
+        'text-halo-width': 1.5,
+      },
+    },
+  ],
+};
+</script>
+
+<template>
+  <MapJr
+    :map-style="style"
+    :initial-view="{center: [-74.006, 40.7175], zoom: 12.7}"
+    :attribution="{compact: true}"
+    :images="{pin}"
+    v-bind="additions"
+  />
+</template>
+```
+
+**React**
+
+```jsx [React]
+// The map fills its parent element, so give the parent a height.
+import {MapJr} from '@map-jr/map-jr-gl/react';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+// An SVG image with a slot ({{color}}). The symbol layer fills the slot for
+// each feature.
+const pin =
+  '<svg viewBox="0 0 24 31"><path d="M12 30C12 30 2 19 2 11.5a10 10 0 1 1 20 0C22 19 12 30 12 30z" fill="{{color}}" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>';
+// (The objects are outside the component, so each render gives the map the same
+// description.)
+const images = {pin};
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {name: 'City Hall', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Washington Square', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-73.9973, 40.7308]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Battery Park', kind: 'park'},
+      geometry: {type: 'Point', coordinates: [-74.017, 40.7033]},
+    },
+    {
+      type: 'Feature',
+      properties: {name: 'Brooklyn Bridge', kind: 'civic'},
+      geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]},
+    },
+  ],
+};
+// Additions to the style: a GeoJSON source and a symbol layer.
+const additions = {
+  sources: {places: {type: 'geojson', data: places}},
+  // A symbol layer draws the image and a label beside it.
+  layers: [
+    {
+      id: 'places',
+      type: 'symbol',
+      source: 'places',
+      layout: {
+        'icon-image': [
+          'image',
+          'pin',
+          {
+            params: {
+              color: ['match', ['get', 'kind'], 'park', '#2e9d5b', '#d6453d'],
+            },
+          },
+        ],
+        'icon-anchor': 'bottom',
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 13,
+        'text-anchor': 'left',
+        'text-offset': [0.9, -1.1],
+      },
+      paint: {
+        'text-color': '#222',
+        'text-halo-color': '#fff',
+        'text-halo-width': 1.5,
+      },
+    },
+  ],
+};
+
+export default function Images() {
+  return (
+    <MapJr
+      mapStyle={style}
+      initialView={{center: [-74.006, 40.7175], zoom: 12.7}}
+      attribution={{compact: true}}
+      images={images}
+      {...additions}
+    />
+  );
+}
+```
+
+**Svelte**
+
+```svelte [Svelte]
+<script>
+  import {mapJr} from '@map-jr/map-jr-gl/svelte';
+
+  // An SVG image with a slot ({{color}}). The symbol layer fills the slot for
+  // each feature.
+  const pin =
+    '<svg viewBox="0 0 24 31"><path d="M12 30C12 30 2 19 2 11.5a10 10 0 1 1 20 0C22 19 12 30 12 30z" fill="{{color}}" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>';
+  const places = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {name: 'City Hall', kind: 'civic'},
+        geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+      },
+      {
+        type: 'Feature',
+        properties: {name: 'Washington Square', kind: 'park'},
+        geometry: {type: 'Point', coordinates: [-73.9973, 40.7308]},
+      },
+      {
+        type: 'Feature',
+        properties: {name: 'Battery Park', kind: 'park'},
+        geometry: {type: 'Point', coordinates: [-74.017, 40.7033]},
+      },
+      {
+        type: 'Feature',
+        properties: {name: 'Brooklyn Bridge', kind: 'civic'},
+        geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]},
+      },
+    ],
+  };
+
+  const description = {
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    initialView: {center: [-74.006, 40.7175], zoom: 12.7},
+    attribution: {compact: true},
+    images: {pin},
+    // Additions to the style: a GeoJSON source and a symbol layer.
+    sources: {places: {type: 'geojson', data: places}},
+    // A symbol layer draws the image and a label beside it.
+    layers: [
+      {
+        id: 'places',
+        type: 'symbol',
+        source: 'places',
+        layout: {
+          'icon-image': [
+            'image',
+            'pin',
+            {
+              params: {
+                color: ['match', ['get', 'kind'], 'park', '#2e9d5b', '#d6453d'],
+              },
+            },
+          ],
+          'icon-anchor': 'bottom',
+          'text-field': ['get', 'name'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 13,
+          'text-anchor': 'left',
+          'text-offset': [0.9, -1.1],
+        },
+        paint: {
+          'text-color': '#222',
+          'text-halo-color': '#fff',
+          'text-halo-width': 1.5,
+        },
+      },
+    ],
+  };
+</script>
+
+<div use:mapJr={{description}} style="height: 500px"></div>
+```
+
+**`<map-jr>`**
+
+```html [<map-jr>]
+<!doctype html>
+<meta charset="utf-8" />
+<title>SVG images for symbol layers, with a label beside each</title>
+<!--
+  The map shows four places. Each
+  has an SVG image in the colour
+  of its kind, and its name beside
+  it.
+-->
+<map-jr
+  id="map"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.006,40.7175"
+  zoom="12.7"
+  style="height: 500px"
+></map-jr>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+
+  // An SVG image with a slot
+  // ({{color}}). The symbol layer
+  // fills the slot for each
+  // feature.
+  const pin =
+    '<svg viewBox="0 0 24 31"><path d="M12 30C12 30 2 19 2 11.5a10 10 0 1 1 20 0C22 19 12 30 12 30z" fill="{{color}}" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>';
+  const places = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {name: 'City Hall', kind: 'civic'},
+        geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+      },
+      {
+        type: 'Feature',
+        properties: {name: 'Washington Square', kind: 'park'},
+        geometry: {type: 'Point', coordinates: [-73.9973, 40.7308]},
+      },
+      {
+        type: 'Feature',
+        properties: {name: 'Battery Park', kind: 'park'},
+        geometry: {type: 'Point', coordinates: [-74.017, 40.7033]},
+      },
+      {
+        type: 'Feature',
+        properties: {name: 'Brooklyn Bridge', kind: 'civic'},
+        geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]},
+      },
+    ],
+  };
+
+  const map = document.getElementById('map');
+  map.attribution = {compact: true};
+  map.images = {pin};
+  // Additions to the style: a
+  // GeoJSON source and a symbol
+  // layer, which draws the image
+  // and a label beside it.
+  map.sources = {places: {type: 'geojson', data: places}};
+  map.layers = [
+    {
+      id: 'places',
+      type: 'symbol',
+      source: 'places',
+      layout: {
+        'icon-image': [
+          'image',
+          'pin',
+          {
+            params: {
+              color: ['match', ['get', 'kind'], 'park', '#2e9d5b', '#d6453d'],
+            },
+          },
+        ],
+        'icon-anchor': 'bottom',
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 13,
+        'text-anchor': 'left',
+        'text-offset': [0.9, -1.1],
+      },
+      paint: {
+        'text-color': '#222',
+        'text-halo-color': '#fff',
+        'text-halo-width': 1.5,
+      },
+    },
+  ];
+</script>
+```
+<!-- example:images:end -->
+
+- [`sources`](../reference/description.md#sources) and [`layers`](../reference/description.md#layers) add a GeoJSON
+  source and a symbol layer to the style. `text-field` draws the name beside the icon, and `text-font` names a font of
+  the `glyphs` of the style.
+- The SVG document `pin` has a slot (`{{color}}`), so it is a template. The `image` expression of `icon-image` fills
+  the slot with its `params`, here a colour that `match` selects from the property `kind`. Without `params`, each
+  feature fills a slot from its property of the same name.
+- In the compat entry, `addImage` accepts an SVG document as a string, which MapLibre GL JS does not. The compat
+  example adds one image for each colour and selects it with `match`, as an application for MapLibre GL JS does.
 
 An image is an SVG document as a string, the URL of an image, an `ImageBitmap`, a canvas, an image element or
 `ImageData`. See [`images`](../reference/description.md#images) for each form and its size.
@@ -83,9 +536,7 @@ An image is an SVG document as a string, the URL of an image, an `ImageBitmap`, 
 - In `update` and `patch`, an image as a string is compared by its content. To replace a bitmap or a canvas, pass a
   new object.
 
-An SVG document can have slots (`{{color}}`) that each feature fills from its properties. See
-[Markers and popups](markers-and-popups.md#draw-markers-with-a-symbol-layer) for an example, and
-[An image that is a template](../reference/description.md#images) for the parameters and the limits.
+See [An image that is a template](../reference/description.md#images) for the parameters and the limits of slots.
 
 ## Use the images of a sprite
 
@@ -168,51 +619,679 @@ When a layer names an image that the map does not have, the map fires the event 
 `id`. Create the image in the listener, and the map draws it. Use this for images that your code creates from the
 name, such as a badge for each number.
 
+This example draws a highway shield for each route of a road: an SVG image with the number of the route. The style is
+an object in the code, with a few layers of roads and water from the vector tiles of OpenFreeMap, because the styles
+of `styles.map-jr.org` draw shields of their own.
+
+<!-- example:shields:start -->
 **Main API**
 
 ```js [Main API]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The map draws a highway shield for each route, and a line of
+// text below the map counts the shields that the page made.
 import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap('map', {
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  initialView: {center: [-73.99, 40.735], zoom: 12},
-  data: {
-    lines: {
-      type: 'FeatureCollection',
-      features: [
-        {
-          type: 'Feature',
-          properties: {line: 4},
-          geometry: {type: 'Point', coordinates: [-73.9903, 40.7359]},
-        },
-        {
-          type: 'Feature',
-          properties: {line: 6},
-          geometry: {type: 'Point', coordinates: [-73.9772, 40.7516]},
-        },
-      ],
-    },
+// A small style of roads and water. Its layer "shields" asks for an image named
+// from the network and the number of the first route of each road, such as
+// "shield|US:I|95", and no sprite has such images.
+const style = {
+  version: 8,
+  sources: {
+    openmaptiles: {type: 'vector', url: 'https://tiles.openfreemap.org/planet'},
   },
-  // Each feature asks for the image "line-4", "line-6" and so on.
   layers: [
+    {id: 'land', type: 'background', paint: {'background-color': '#f2efe9'}},
     {
-      id: 'lines',
+      id: 'water',
+      type: 'fill',
+      source: 'openmaptiles',
+      'source-layer': 'water',
+      paint: {'fill-color': '#aad3df'},
+    },
+    {
+      id: 'roads',
+      type: 'line',
+      source: 'openmaptiles',
+      'source-layer': 'transportation',
+      filter: [
+        'match',
+        ['get', 'class'],
+        ['motorway', 'trunk', 'primary'],
+        true,
+        false,
+      ],
+      paint: {
+        'line-color': '#e3a04f',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4],
+      },
+    },
+    {
+      id: 'shields',
       type: 'symbol',
-      source: 'lines',
-      layout: {'icon-image': ['concat', 'line-', ['get', 'line']]},
+      source: 'openmaptiles',
+      'source-layer': 'transportation_name',
+      filter: ['has', 'route_1_ref'],
+      layout: {
+        'icon-image': [
+          'concat',
+          'shield|',
+          ['coalesce', ['get', 'route_1_network'], ''],
+          '|',
+          ['get', 'route_1_ref'],
+        ],
+        'symbol-placement': 'line',
+        'symbol-spacing': 300,
+        'icon-rotation-alignment': 'viewport',
+      },
     },
   ],
+};
+
+// The SVG of the shield for an image name such as "shield|US:I|95": blue for an
+// Interstate, white for a US highway and yellow for other routes. The width
+// grows with the number. The number comes from the tiles, so the characters
+// that XML reserves are escaped.
+function shield(name) {
+  const [, network, ref] = name.split('|');
+  const text = ref.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`);
+  const width = 10 + 7 * ref.length;
+  const [fill, color] =
+    network === 'US:I'
+      ? ['#2a57a5', '#fff']
+      : network === 'US:US'
+        ? ['#fff', '#222']
+        : ['#fdf6d8', '#5b4f1f'];
+  return (
+    `<svg viewBox="0 0 ${width} 20"><rect x="1" y="1" width="${width - 2}" height="18" rx="4" fill="${fill}" stroke="#222" stroke-width="1.2"/>` +
+    `<text x="${width / 2}" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="${color}">${text}</text></svg>`
+  );
+}
+
+const container = document.getElementById('map');
+const readout = document.createElement('p');
+container.after(readout);
+
+const map = createMap(container, {
+  style,
+  initialView: {center: [-74.0, 40.75], zoom: 10.5},
+  attribution: {compact: true},
 });
 
-map.listen('styleimagemissing', event => {
-  // Leave out names that this code does not create, such as an icon that the
-  // sprite of the style lacks.
-  if (!event.id.startsWith('line-')) return;
-  const number = event.id.slice(5);
-  const badge = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#00933c"/><text x="12" y="17" font-family="sans-serif" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">${number}</text></svg>`;
-  map.patch({images: {...map.description.images, [event.id]: badge}});
+// The map reports each image name that a layer asks for and that it does not
+// have. The page adds the image to `images`, and the map draws it.
+map.listen('styleimagemissing', e => {
+  if (!e.id.startsWith('shield|')) return;
+  map.patch({images: {...map.description.images, [e.id]: shield(e.id)}});
+  const made = Object.keys(map.description.images).length;
+  readout.textContent = `${made} shields made so far`;
 });
 ```
+
+**MapLibre compat**
+
+```js [MapLibre compat]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The map draws a highway shield for each route, and a line of
+// text below the map counts the shields that the page made.
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+// A small style of roads and water. Its layer "shields" asks for an image named
+// from the network and the number of the first route of each road, such as
+// "shield|US:I|95", and no sprite has such images.
+const style = {
+  version: 8,
+  sources: {
+    openmaptiles: {type: 'vector', url: 'https://tiles.openfreemap.org/planet'},
+  },
+  layers: [
+    {id: 'land', type: 'background', paint: {'background-color': '#f2efe9'}},
+    {
+      id: 'water',
+      type: 'fill',
+      source: 'openmaptiles',
+      'source-layer': 'water',
+      paint: {'fill-color': '#aad3df'},
+    },
+    {
+      id: 'roads',
+      type: 'line',
+      source: 'openmaptiles',
+      'source-layer': 'transportation',
+      filter: [
+        'match',
+        ['get', 'class'],
+        ['motorway', 'trunk', 'primary'],
+        true,
+        false,
+      ],
+      paint: {
+        'line-color': '#e3a04f',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4],
+      },
+    },
+    {
+      id: 'shields',
+      type: 'symbol',
+      source: 'openmaptiles',
+      'source-layer': 'transportation_name',
+      filter: ['has', 'route_1_ref'],
+      layout: {
+        'icon-image': [
+          'concat',
+          'shield|',
+          ['coalesce', ['get', 'route_1_network'], ''],
+          '|',
+          ['get', 'route_1_ref'],
+        ],
+        'symbol-placement': 'line',
+        'symbol-spacing': 300,
+        'icon-rotation-alignment': 'viewport',
+      },
+    },
+  ],
+};
+
+// The SVG of the shield for an image name such as "shield|US:I|95": blue for an
+// Interstate, white for a US highway and yellow for other routes. The width
+// grows with the number. The number comes from the tiles, so the characters
+// that XML reserves are escaped.
+function shield(name) {
+  const [, network, ref] = name.split('|');
+  const text = ref.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`);
+  const width = 10 + 7 * ref.length;
+  const [fill, color] =
+    network === 'US:I'
+      ? ['#2a57a5', '#fff']
+      : network === 'US:US'
+        ? ['#fff', '#222']
+        : ['#fdf6d8', '#5b4f1f'];
+  return (
+    `<svg viewBox="0 0 ${width} 20"><rect x="1" y="1" width="${width - 2}" height="18" rx="4" fill="${fill}" stroke="#222" stroke-width="1.2"/>` +
+    `<text x="${width / 2}" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="${color}">${text}</text></svg>`
+  );
+}
+
+const map = new Map({
+  container: 'map',
+  style,
+  center: [-74.0, 40.75],
+  zoom: 10.5,
+  attributionControl: {compact: true},
+});
+const readout = document.createElement('p');
+map.getContainer().after(readout);
+
+// The map reports each image name that a layer asks for and that it does not
+// have, and draws the image that the page adds. An SVG document as the image is
+// an addition of this library: MapLibre GL JS needs pixels.
+let made = 0;
+map.on('styleimagemissing', e => {
+  if (!e.id.startsWith('shield|')) return;
+  map.addImage(e.id, shield(e.id));
+  readout.textContent = `${++made} shields made so far`;
+});
+```
+
+**Vue**
+
+```vue [Vue]
+<script setup>
+// The map fills its parent element, so give the parent a height.
+import {shallowRef} from 'vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+
+// A small style of roads and water. Its layer "shields" asks for an image named
+// from the network and the number of the first route of each road, such as
+// "shield|US:I|95", and no sprite has such images.
+const style = {
+  version: 8,
+  sources: {
+    openmaptiles: {type: 'vector', url: 'https://tiles.openfreemap.org/planet'},
+  },
+  layers: [
+    {id: 'land', type: 'background', paint: {'background-color': '#f2efe9'}},
+    {
+      id: 'water',
+      type: 'fill',
+      source: 'openmaptiles',
+      'source-layer': 'water',
+      paint: {'fill-color': '#aad3df'},
+    },
+    {
+      id: 'roads',
+      type: 'line',
+      source: 'openmaptiles',
+      'source-layer': 'transportation',
+      filter: [
+        'match',
+        ['get', 'class'],
+        ['motorway', 'trunk', 'primary'],
+        true,
+        false,
+      ],
+      paint: {
+        'line-color': '#e3a04f',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4],
+      },
+    },
+    {
+      id: 'shields',
+      type: 'symbol',
+      source: 'openmaptiles',
+      'source-layer': 'transportation_name',
+      filter: ['has', 'route_1_ref'],
+      layout: {
+        'icon-image': [
+          'concat',
+          'shield|',
+          ['coalesce', ['get', 'route_1_network'], ''],
+          '|',
+          ['get', 'route_1_ref'],
+        ],
+        'symbol-placement': 'line',
+        'symbol-spacing': 300,
+        'icon-rotation-alignment': 'viewport',
+      },
+    },
+  ],
+};
+
+// The SVG of the shield for an image name such as "shield|US:I|95": blue for an
+// Interstate, white for a US highway and yellow for other routes. The width
+// grows with the number. The number comes from the tiles, so the characters
+// that XML reserves are escaped.
+function shield(name) {
+  const [, network, ref] = name.split('|');
+  const text = ref.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`);
+  const width = 10 + 7 * ref.length;
+  const [fill, color] =
+    network === 'US:I'
+      ? ['#2a57a5', '#fff']
+      : network === 'US:US'
+        ? ['#fff', '#222']
+        : ['#fdf6d8', '#5b4f1f'];
+  return (
+    `<svg viewBox="0 0 ${width} 20"><rect x="1" y="1" width="${width - 2}" height="18" rx="4" fill="${fill}" stroke="#222" stroke-width="1.2"/>` +
+    `<text x="${width / 2}" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="${color}">${text}</text></svg>`
+  );
+}
+
+// The images that the page made, by name. A new object is a change of the prop.
+const images = shallowRef({});
+// The map reports each image name that a layer asks for and that it does not
+// have, and draws the image when the page adds it to `images`.
+function addShield(e) {
+  if (e.id.startsWith('shield|'))
+    images.value = {...images.value, [e.id]: shield(e.id)};
+}
+</script>
+
+<template>
+  <MapJr
+    :map-style="style"
+    :initial-view="{center: [-74.0, 40.75], zoom: 10.5}"
+    :images="images"
+    :attribution="{compact: true}"
+    @styleimagemissing="addShield"
+  />
+  <p>{{ Object.keys(images).length }} shields made so far</p>
+</template>
+```
+
+**React**
+
+```jsx [React]
+// The map fills its parent element, so give the parent a height.
+import {useState} from 'react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+
+// A small style of roads and water. Its layer "shields" asks for an image named
+// from the network and the number of the first route of each road, such as
+// "shield|US:I|95", and no sprite has such images.
+const style = {
+  version: 8,
+  sources: {
+    openmaptiles: {type: 'vector', url: 'https://tiles.openfreemap.org/planet'},
+  },
+  layers: [
+    {id: 'land', type: 'background', paint: {'background-color': '#f2efe9'}},
+    {
+      id: 'water',
+      type: 'fill',
+      source: 'openmaptiles',
+      'source-layer': 'water',
+      paint: {'fill-color': '#aad3df'},
+    },
+    {
+      id: 'roads',
+      type: 'line',
+      source: 'openmaptiles',
+      'source-layer': 'transportation',
+      filter: [
+        'match',
+        ['get', 'class'],
+        ['motorway', 'trunk', 'primary'],
+        true,
+        false,
+      ],
+      paint: {
+        'line-color': '#e3a04f',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4],
+      },
+    },
+    {
+      id: 'shields',
+      type: 'symbol',
+      source: 'openmaptiles',
+      'source-layer': 'transportation_name',
+      filter: ['has', 'route_1_ref'],
+      layout: {
+        'icon-image': [
+          'concat',
+          'shield|',
+          ['coalesce', ['get', 'route_1_network'], ''],
+          '|',
+          ['get', 'route_1_ref'],
+        ],
+        'symbol-placement': 'line',
+        'symbol-spacing': 300,
+        'icon-rotation-alignment': 'viewport',
+      },
+    },
+  ],
+};
+
+// The SVG of the shield for an image name such as "shield|US:I|95": blue for an
+// Interstate, white for a US highway and yellow for other routes. The width
+// grows with the number. The number comes from the tiles, so the characters
+// that XML reserves are escaped.
+function shield(name) {
+  const [, network, ref] = name.split('|');
+  const text = ref.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`);
+  const width = 10 + 7 * ref.length;
+  const [fill, color] =
+    network === 'US:I'
+      ? ['#2a57a5', '#fff']
+      : network === 'US:US'
+        ? ['#fff', '#222']
+        : ['#fdf6d8', '#5b4f1f'];
+  return (
+    `<svg viewBox="0 0 ${width} 20"><rect x="1" y="1" width="${width - 2}" height="18" rx="4" fill="${fill}" stroke="#222" stroke-width="1.2"/>` +
+    `<text x="${width / 2}" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="${color}">${text}</text></svg>`
+  );
+}
+
+export default function Shields() {
+  // The images that the page made, by name.
+  const [images, setImages] = useState({});
+  // The map reports each image name that a layer asks for and that it does not
+  // have, and draws the image when the page adds it to `images`.
+  function addShield(e) {
+    if (e.id.startsWith('shield|'))
+      setImages(made => ({...made, [e.id]: shield(e.id)}));
+  }
+
+  return (
+    <>
+      <MapJr
+        mapStyle={style}
+        initialView={{center: [-74.0, 40.75], zoom: 10.5}}
+        images={images}
+        attribution={{compact: true}}
+        onStyleimagemissing={addShield}
+      />
+      <p>{Object.keys(images).length} shields made so far</p>
+    </>
+  );
+}
+```
+
+**Svelte**
+
+```svelte [Svelte]
+<script>
+  import {mapJr} from '@map-jr/map-jr-gl/svelte';
+
+  // A small style of roads and water. Its layer "shields" asks for an image
+  // named from the network and the number of the first route of each road, such
+  // as "shield|US:I|95", and no sprite has such images.
+  const style = {
+    version: 8,
+    sources: {
+      openmaptiles: {
+        type: 'vector',
+        url: 'https://tiles.openfreemap.org/planet',
+      },
+    },
+    layers: [
+      {id: 'land', type: 'background', paint: {'background-color': '#f2efe9'}},
+      {
+        id: 'water',
+        type: 'fill',
+        source: 'openmaptiles',
+        'source-layer': 'water',
+        paint: {'fill-color': '#aad3df'},
+      },
+      {
+        id: 'roads',
+        type: 'line',
+        source: 'openmaptiles',
+        'source-layer': 'transportation',
+        filter: [
+          'match',
+          ['get', 'class'],
+          ['motorway', 'trunk', 'primary'],
+          true,
+          false,
+        ],
+        paint: {
+          'line-color': '#e3a04f',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4],
+        },
+      },
+      {
+        id: 'shields',
+        type: 'symbol',
+        source: 'openmaptiles',
+        'source-layer': 'transportation_name',
+        filter: ['has', 'route_1_ref'],
+        layout: {
+          'icon-image': [
+            'concat',
+            'shield|',
+            ['coalesce', ['get', 'route_1_network'], ''],
+            '|',
+            ['get', 'route_1_ref'],
+          ],
+          'symbol-placement': 'line',
+          'symbol-spacing': 300,
+          'icon-rotation-alignment': 'viewport',
+        },
+      },
+    ],
+  };
+
+  // The SVG of the shield for an image name such as "shield|US:I|95": blue for
+  // an Interstate, white for a US highway and yellow for other routes. The
+  // width grows with the number. The number comes from the tiles, so the
+  // characters that XML reserves are escaped.
+  function shield(name) {
+    const [, network, ref] = name.split('|');
+    const text = ref.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`);
+    const width = 10 + 7 * ref.length;
+    const [fill, color] =
+      network === 'US:I'
+        ? ['#2a57a5', '#fff']
+        : network === 'US:US'
+          ? ['#fff', '#222']
+          : ['#fdf6d8', '#5b4f1f'];
+    return (
+      `<svg viewBox="0 0 ${width} 20"><rect x="1" y="1" width="${width - 2}" height="18" rx="4" fill="${fill}" stroke="#222" stroke-width="1.2"/>` +
+      `<text x="${width / 2}" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="${color}">${text}</text></svg>`
+    );
+  }
+
+  // The images that the page made, by name. (`$state.raw`: the map gets the
+  // object itself, not a proxy of it.)
+  let images = $state.raw({});
+  // A change is a new description. The map finds what is different.
+  const description = $derived({
+    style,
+    initialView: {center: [-74.0, 40.75], zoom: 10.5},
+    images,
+    attribution: {compact: true},
+  });
+
+  // The map reports each image name that a layer asks for and that it does not
+  // have, and draws the image when the page adds it to `images`.
+  function ready(map) {
+    map.listen('styleimagemissing', e => {
+      if (e.id.startsWith('shield|'))
+        images = {...images, [e.id]: shield(e.id)};
+    });
+  }
+</script>
+
+<div use:mapJr={{description, ready}} style="height: 500px"></div>
+<p>{Object.keys(images).length} shields made so far</p>
+```
+
+**`<map-jr>`**
+
+```html [<map-jr>]
+<!doctype html>
+<meta charset="utf-8" />
+<title>Highway shields that the page draws</title>
+<!--
+  The map draws a highway shield
+  for each route, and a line of
+  text below the map counts the
+  shields that the page made.
+-->
+<map-jr
+  id="map"
+  center="-74.0,40.75"
+  zoom="10.5"
+  attribution-compact
+  style="height: 500px"
+></map-jr>
+<p id="readout"></p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+
+  // A small style of roads and
+  // water. Its layer "shields"
+  // asks for an image named from
+  // the network and the number of
+  // the first route of each road,
+  // such as "shield|US:I|95", and
+  // no sprite has such images.
+  const style = {
+    version: 8,
+    sources: {
+      openmaptiles: {
+        type: 'vector',
+        url: 'https://tiles.openfreemap.org/planet',
+      },
+    },
+    layers: [
+      {id: 'land', type: 'background', paint: {'background-color': '#f2efe9'}},
+      {
+        id: 'water',
+        type: 'fill',
+        source: 'openmaptiles',
+        'source-layer': 'water',
+        paint: {'fill-color': '#aad3df'},
+      },
+      {
+        id: 'roads',
+        type: 'line',
+        source: 'openmaptiles',
+        'source-layer': 'transportation',
+        filter: [
+          'match',
+          ['get', 'class'],
+          ['motorway', 'trunk', 'primary'],
+          true,
+          false,
+        ],
+        paint: {
+          'line-color': '#e3a04f',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4],
+        },
+      },
+      {
+        id: 'shields',
+        type: 'symbol',
+        source: 'openmaptiles',
+        'source-layer': 'transportation_name',
+        filter: ['has', 'route_1_ref'],
+        layout: {
+          'icon-image': [
+            'concat',
+            'shield|',
+            ['coalesce', ['get', 'route_1_network'], ''],
+            '|',
+            ['get', 'route_1_ref'],
+          ],
+          'symbol-placement': 'line',
+          'symbol-spacing': 300,
+          'icon-rotation-alignment': 'viewport',
+        },
+      },
+    ],
+  };
+
+  // The SVG of the shield for an
+  // image name such as
+  // "shield|US:I|95": blue for an
+  // Interstate, white for a US
+  // highway and yellow for other
+  // routes. The width grows with
+  // the number. The number comes
+  // from the tiles, so the
+  // characters that XML reserves
+  // are escaped.
+  function shield(name) {
+    const [, network, ref] = name.split('|');
+    const text = ref.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`);
+    const width = 10 + 7 * ref.length;
+    const [fill, color] =
+      network === 'US:I'
+        ? ['#2a57a5', '#fff']
+        : network === 'US:US'
+          ? ['#fff', '#222']
+          : ['#fdf6d8', '#5b4f1f'];
+    return (
+      `<svg viewBox="0 0 ${width} 20"><rect x="1" y="1" width="${width - 2}" height="18" rx="4" fill="${fill}" stroke="#222" stroke-width="1.2"/>` +
+      `<text x="${width / 2}" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="${color}">${text}</text></svg>`
+    );
+  }
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  // A style object is a property:
+  // the attribute map-style takes
+  // only a URL.
+  map.mapStyle = style;
+  map.images = {};
+
+  // The map reports each image
+  // name that a layer asks for
+  // and that it does not have,
+  // and draws the image when the
+  // page adds it to `images`.
+  map.addEventListener('map-styleimagemissing', event => {
+    const name = event.detail.id;
+    if (!name.startsWith('shield|')) return;
+    map.images = {...map.images, [name]: shield(name)};
+    const made = Object.keys(map.images).length;
+    readout.textContent = `${made} shields made so far`;
+  });
+</script>
+```
+<!-- example:shields:end -->
 
 [`map.patch`](../reference/map.md#patch) replaces the field `images` whole, so the listener passes the images that the
 map has (`map.description.images`, the `images` of the last description) with the new one. Where the description
@@ -270,7 +1349,11 @@ The map shows a green badge with "4" and one with "6".
 - The map fires the event once for each name and each style. After a new style, it fires the event again for a name
   that is still missing. The listener can add the image later, for example after a request.
 - The map fires the event for each icon of a loaded tile, also for an icon outside the view.
-- In Vue, listen with `@styleimagemissing`. In React, pass `onStyleimagemissing`.
+- In Vue, listen with `@styleimagemissing`. In React, pass `onStyleimagemissing`. On `<map-jr>`, listen for
+  `map-styleimagemissing`.
+- When the images differ only in a short text, such as numbers of up to three characters, a template with a slot
+  needs no listener: `params` of the `image` expression fill the slot for each feature. MapLibre GL JS does not
+  draw such a layer, because `params` is not part of the MapLibre style specification.
 
 ## Put images into a style
 

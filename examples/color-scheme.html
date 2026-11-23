@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A map that follows the colour scheme</title>
+<!-- A line of text below the map names the scheme that the button of the map set. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13"
+        color-scheme="auto" style="height: 500px"></map-jr>
+<p id="readout">Scheme: auto</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {navigation, colorScheme} from '@map-jr/map-jr-gl/controls';
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  map.controls = [navigation(), colorScheme()];
+  map.attribution = {compact: true};
+
+  // Store the value that the button set on the element. Otherwise the next description, after a change of another
+  // attribute or property, passes "auto" again and the map changes back.
+  map.addEventListener('map-colorschemechange', event => {
+    map.colorScheme = event.detail;
+    readout.textContent = `Scheme: ${event.detail}`;
+  });
+</script>
