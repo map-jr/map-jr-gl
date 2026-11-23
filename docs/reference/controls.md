@@ -256,18 +256,17 @@ const map = createMap('map', {
 |---|---|---|
 | `center`, `zoom` | `Position`, `number` | The center and the zoom of the pictures, both together. Without them, the pictures show the center, the zoom, the bearing and the pitch of the map. |
 | `style` | `(style: StyleSpecification, entry: StyleEntry) => StyleSpecification \| void` | Changes the style of a picture only. It gets a copy of the style of the entry with absolute URLs, and changes it in place or returns another style. The map keeps the style of the entry. |
-| `simplify` | `boolean` | Applies the adjustments that the style has for the server renderer (`metadata["map-jr:ssr"]` of its layers) to the pictures, before `style`. Default `false`. |
+| `ssr` | `boolean` | Applies the overrides of `metadata["map-jr:ssr"]` of each layer to the pictures, before `style`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint` and `layout`. Default `true`. |
 
-For `style` and `simplify`, the control fetches a style that is a URL once more with `fetch`, without the
+For `style`, and for `ssr` unless it is `false`, the control fetches a style that is a URL once more with `fetch`, without the
 `transformRequest` of the map. The map has usually loaded it before, so the browser cache answers. A style of a
 `{light, dark}` entry is the form of the picture.
 
-The adjustments of `simplify` hide most labels and the small features. In the official styles they also hide the
-buildings and most roads at zoom 14, and the dark style draws as an almost even dark area. The pictures of different
-styles then look more alike, so the default is `false`.
+In the official styles, the overrides hide most labels, the buildings and most roads at zoom 14, and the dark style
+draws as an almost even dark area. With `ssr: false`, the pictures show the full style.
 
-With `simplify`, six pictures of the official styles take about a quarter less time to draw: 4.9 s instead of 6.6 s
-at zoom 11, and 4.4 s instead of 5.6 s at zoom 14, on a machine without a GPU.
+With the overrides, six pictures of the official styles take less time to draw: 3.8 s instead of 4.0 s at zoom 11,
+and 4.3 s instead of 5.5 s at zoom 14, on a machine without a GPU.
 
 This example hides the labels and the icons of the pictures:
 

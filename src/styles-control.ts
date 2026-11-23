@@ -35,7 +35,7 @@ const CSS = `.map-jr-styles{position:relative}
 const abs = (u: unknown, base: string) => typeof u !== 'string' || /^[a-z][a-z\d+.-]*:/i.test(u) ? u : new URL(u, base).href.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
 /**
  * The style of a picture: the style of the URL, with its URLs made absolute, with the adjustments of
- * `metadata["map-jr:ssr"]` when `server` is true (#1507), and then `transform` of `preview.style`.
+ * `metadata["map-jr:ssr"]` unless `server` is false (#1507): hidden, filter, minzoom, maxzoom, paint and layout, never simplify or minSize, and then `transform` of `preview.style`.
  */
 async function pictureStyle(given: unknown, server: boolean, transform: ((s: StyleSpecification) => StyleSpecification | void) | undefined): Promise<unknown> {
     if (!server && !transform) return given;
@@ -281,7 +281,7 @@ export class StylesControl implements Control {
                 let given: unknown;
                 try {
                     given = await pictureStyle(styleFor(style, scheme === 'dark' || scheme === 'auto' && !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches),
-                        !!p?.simplify, transform && (s => transform(s, slots[i].entry)));
+                        p?.ssr ?? true, transform && (s => transform(s, slots[i].entry)));
                 } catch { continue; }
                 if (this.removed) break;
                 const spec: MapDescription = {...base, style: given as MapDescription['style'], colorScheme: scheme};

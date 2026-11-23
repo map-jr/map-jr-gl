@@ -191,14 +191,14 @@ export interface StylesPreview {
     /** The zoom of the pictures, with `center`. */
     zoom?: number;
     /**
-     * Whether a picture applies the adjustments that the style has for the server renderer, in `metadata["map-jr:ssr"]`
-     * of its layers. These hide most labels and the small features, and in the official styles also the buildings and
-     * most roads, so the pictures of two styles look more alike. Default `false`. A style without them is drawn as it is.
+     * Whether a picture applies the overrides that each layer of the style has for the server renderer, in
+     * `metadata["map-jr:ssr"]`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint` and `layout`. The pictures never
+     * apply `simplify` or `minSize`. Default `true`. A style without these overrides is drawn as it is.
      */
-    simplify?: boolean;
+    ssr?: boolean;
     /**
      * Changes the style of a picture only, for example to hide the labels. It gets a copy of the style of the entry
-     * (after `simplify`), which it can change, and returns the style to draw or nothing. The map of the control keeps
+     * (after `ssr`), which it can change, and returns the style to draw or nothing. The map of the control keeps
      * the style of the entry as it is. A style of a URL is fetched once more for this.
      */
     style?: (style: StyleSpecification, entry: StyleEntry) => StyleSpecification | void;
