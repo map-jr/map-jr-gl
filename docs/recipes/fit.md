@@ -3,12 +3,6 @@
 This example starts the map with all seven ferry landings of New York in the view, and fits the map to them again
 when the user presses a button.
 
-Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
-module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
-and the button below the map itself. The Vue and React components fill their parent element, so give the parent a
-height. The Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels. In Nuxt, use
-the Vue form.
-
 <!-- example:fit:start -->
 **Main API**
 
@@ -153,6 +147,7 @@ readout.textContent = 'Move the map, then press Show all landings.';
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
@@ -224,6 +219,7 @@ const showAll = () =>
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useRef} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';
