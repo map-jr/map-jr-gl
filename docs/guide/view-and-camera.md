@@ -527,7 +527,7 @@ export default function Fit() {
 
 Two options belong to the fit:
 
-| Option | Main API | MapLibre compat | Default | Effect |
+| Option | Map Jr | MapLibre | Default | Effect |
 |---|---|---|---|---|
 | `fitPadding` | in `initialView` | `padding` in `fitBoundsOptions` | `0` | The space in CSS pixels between the box and the edges of the map, for this fit only: a number, or `{top, right, bottom, left}`. |
 | `fitMaxZoom` | in `initialView` | `maxZoom` in `fitBoundsOptions` | `maxZoom` of the map | The largest zoom of the fit. |
