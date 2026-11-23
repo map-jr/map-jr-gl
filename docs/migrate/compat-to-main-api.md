@@ -1,4 +1,4 @@
-# From the compat entry to the main API
+# From compat to the main API
 
 This page moves a map from the compat entry (`@map-jr/map-jr-gl/maplibre-compat`, the API of MapLibre GL JS) to the
 main API (`@map-jr/map-jr-gl`). In the main API, one object, the description
@@ -201,7 +201,7 @@ engine and read the same styles, so the map looks the same.
 
 ## Names that change
 
-| Compat entry | Main API | Notes |
+| MapLibre | Map Jr | Notes |
 |---|---|---|
 | `new Map({container, style, center, zoom, bearing, pitch})` | `createMap(container, {style, initialView: {center, zoom, bearing, pitch}})` | `initialView` also accepts `bounds`. |
 | `map.remove()` | `map.destroy()` | |

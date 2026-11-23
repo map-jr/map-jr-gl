@@ -10,15 +10,22 @@ import type {StylesOptions, StyleEntry} from './control-specs.ts';
 
 const W = 120, H = 80;
 const CSS = `.map-jr-styles{position:relative}
-.map-jr-styles-list{position:absolute;display:flex;flex-direction:column;gap:6px;padding:6px;margin:0;overflow-y:auto;box-sizing:border-box;background:var(--map-control-background,#fff);color:inherit;border-radius:var(--map-control-radius,8px);box-shadow:0 0 0 1px rgb(0 0 0/.1),0 2px 6px rgb(0 0 0/.12),0 6px 18px rgb(0 0 0/.1);font:12px/1.3 system-ui,sans-serif;z-index:3}
+.map-jr-styles-list{position:absolute;display:flex;flex-direction:column;gap:6px;padding:6px;margin:0;overflow-y:auto;box-sizing:border-box;background:var(--map-control-background,#fff);color:inherit;--map-jr-sr:var(--map-control-radius,8px);border-radius:var(--map-jr-sr);box-shadow:0 0 0 1px rgb(0 0 0/.1),0 2px 6px rgb(0 0 0/.12),0 6px 18px rgb(0 0 0/.1);font:12px/1.3 system-ui,sans-serif;z-index:3}
 .map-jr-dark .map-jr-styles-list{background:var(--map-control-background,#2b2b2b)}
 .map-jr-styles-list[hidden]{display:none}
-.map-jr-styles-list button{display:flex;flex-direction:column;gap:4px;align-items:stretch;width:${W + 8}px;padding:4px;border:0;border-radius:calc(var(--map-control-radius,8px)*.75);background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.map-jr-styles-list button[aria-pressed=true]{box-shadow:inset 0 0 0 2px var(--map-control-focus,#2f7fd1)}
+.map-jr-styles-list button{position:relative;display:block;width:${W}px;height:${H}px;padding:0;border:0;border-radius:max(0px,calc(var(--map-jr-sr) - 6px));overflow:hidden;background:none;color:#fff;font:inherit;font-weight:600;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.map-jr-styles-list button[aria-pressed=true]::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 2px var(--map-control-focus,#2f7fd1)}
 .map-jr-styles-list button:focus-visible{outline:2px solid var(--map-control-focus,#2f7fd1);outline-offset:1px}
-@media (hover:hover){.map-jr-styles-list button:hover{background:color-mix(in oklab,currentColor 8%,transparent)}}
-.map-jr-styles-pair{display:flex;flex-wrap:wrap;gap:0 2px}.map-jr-styles-pair>span{flex-basis:100%;padding:0 4px}
-.map-jr-styles-pic{display:block;width:${W}px;height:${H}px;border-radius:calc(var(--map-control-radius,8px)*.5);background:color-mix(in oklab,currentColor 10%,transparent);object-fit:cover}
+@media (hover:hover){.map-jr-styles-list button:hover .map-jr-styles-pic img{filter:brightness(1.08)}}
+.map-jr-styles-pic{position:absolute;inset:0;background:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 80' fill='none' stroke='%23888' stroke-opacity='.4' stroke-linecap='round'><path stroke-width='4' d='M-4 58C30 48 52 22 124 26'/><path stroke-width='2.5' d='M38-4 54 84M-4 18h56m30 0 4 66'/></svg>") center/cover,color-mix(in oklab,#888 18%,transparent)}
+.map-jr-styles-pic img{position:absolute;inset:0;width:100%;height:100%;max-width:none;margin:0;padding:0;border:0;opacity:1;filter:none;transition:none;object-fit:cover}
+.map-jr-styles-pic .map-jr-styles-in{animation:map-jr-styles-in .3s ease-out}
+@keyframes map-jr-styles-in{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.map-jr-styles-pic .map-jr-styles-in{animation:none}}
+.map-jr-styles-list button>span+span{position:absolute;left:4px;bottom:4px;max-width:calc(100% - 20px);padding:2px 6px;border-radius:max(3px,calc(var(--map-jr-sr) - 10px));background:rgb(0 0 0/.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@supports (backdrop-filter:blur(1px)){.map-jr-styles-list button>span+span{background:rgb(0 0 0/.55);backdrop-filter:blur(6px)}
+.map-jr-glass .map-jr-styles-list{--map-jr-sr:var(--map-jr-rr);background:var(--map-control-background,var(--map-jr-bg));box-shadow:var(--map-jr-shadow);backdrop-filter:blur(5px)}}
+.map-jr-styles-pair{display:grid;grid-template-columns:auto auto;gap:4px 6px}.map-jr-styles-pair>span{grid-column:1/-1;padding:0 2px;font-weight:600}
 @media (forced-colors:active){.map-jr-styles-list{border:1px solid CanvasText}}`;
 const sheets = new WeakMap<Document, CSSStyleSheet>();
 
@@ -38,15 +45,21 @@ function addSheet(el: HTMLElement, nonce?: string | null) {
 }
 
 const sameStyle = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** Whether the description shows the entry: its style, and the terrain and the global state that it sets (#1505). */
+const shows = (e: StyleEntry, d: MapDescription) => sameStyle(e.style, d.style) && (e.terrain === undefined || sameStyle(e.terrain, d.terrain))
+    && Object.keys(e.globalState ?? {}).every(k => sameStyle(e.globalState![k], d.globalState?.[k]));
+/** The number of fields that the entry sets besides `style`: of two entries that the description shows, the one that sets more is current. */
+const overrides = (e?: StyleEntry) => e ? +(e.terrain !== undefined) + Object.keys(e.globalState ?? {}).length : -1;
 /** An entry has a light and a dark form when its style is `{light, dark}` or when `colorSchemes` is set (#1506). */
 const twoForms = (e: StyleEntry) => !!e.colorSchemes || typeof e.style === 'object' && 'light' in e.style && 'dark' in e.style;
 type Scheme = 'light' | 'dark';
 
 /**
- * A button that opens a list of styles with a picture of each. A choice applies the style with `patch`, so the camera
- * stays, and calls `onStyleChange` with the entry. The pictures are made once the map is first idle, or at the first
+ * A button that opens a list of styles with a picture of each. A choice applies the style, the terrain and the global
+ * state of the entry with one `patch`, so the camera stays, and calls `onStyleChange` with the entry. The pictures are made once the map is first idle, or at the first
  * click if that comes earlier; without `preview`, they show the view of the map and are made again when the list opens
- * on a view that has changed. A picture that fails leaves its label.
+ * on a view that has changed. The label lies on the picture; an entry without a picture, or whose picture failed, shows
+ * a placeholder.
  */
 export class StylesControl implements Control {
     private el?: HTMLElement;
@@ -58,6 +71,10 @@ export class StylesControl implements Control {
     private urls: string[] = [];
     private drawing?: Promise<void>;
     private drawn = '';
+    /** The index of the entry of the last choice. */
+    private chosen?: StyleEntry;
+    /** The values that the application had for the terrain and the names of global state that the entry of the last choice set. */
+    private saved: {terrain?: MapDescription['terrain']; state: Record<string, unknown>} = {state: {}};
     private removed = false;
     /** The description has had `'auto'`: a form of the scheme of the system sets `'auto'` again, as in `colorScheme()`. */
     private followed = false;
@@ -125,8 +142,8 @@ export class StylesControl implements Control {
 
     /** Marks the button of the current style and the current scheme. */
     private pressed(instance: MapInstance) {
-        const current = instance.description.style, scheme = instance.state.get().colorScheme;
-        this.items.forEach((b, i) => { const s = this.slots[i]; b.setAttribute('aria-pressed', String(sameStyle(s.entry.style, current) && (!s.scheme || s.scheme === scheme))); });
+        const current = this.current(instance.description), scheme = instance.state.get().colorScheme;
+        this.items.forEach((b, i) => { const s = this.slots[i]; b.setAttribute('aria-pressed', String(s.entry === current && (!s.scheme || s.scheme === scheme))); });
     }
 
     private toggle() { if (this.list!.hidden) this.open(); else this.close(true); }
@@ -151,18 +168,53 @@ export class StylesControl implements Control {
         if (focus) this.trigger!.focus();
     }
 
-    /** `scheme`: the form of an entry with two forms, which sets `colorScheme` too. */
+    /** The entry that the description shows and that sets the most fields; a tie goes to the last choice. */
+    private current(d: MapDescription) {
+        let best: StyleEntry | undefined, most = -1;
+        for (const e of this.options.entries) { const n = overrides(e) + (e === this.chosen ? .5 : 0); if (shows(e, d) && n > most) { best = e; most = n; } }
+        return best;
+    }
+
+    /**
+     * The terrain and the global state of the application: the description without what the entry of the last choice
+     * set, with the values that the application had before. When the description no longer shows that entry, the
+     * application has set these fields since, and they are its own.
+     */
+    private own(d: MapDescription) {
+        const e = this.chosen, state: Record<string, unknown> = {...d.globalState};
+        let terrain = d.terrain;
+        if (e && shows(e, d)) {
+            for (const k in e.globalState) if (k in this.saved.state) state[k] = this.saved.state[k]; else delete state[k];
+            if (e.terrain !== undefined) terrain = this.saved.terrain;
+        }
+        return {terrain, state};
+    }
+
+    /**
+     * Sets the style, the terrain and the global state of the entry in one `patch`, so the camera stays. What the entry
+     * before set goes back to the value of the application; the other names of `globalState` stay. `scheme`: the form
+     * of an entry with two forms, which sets `colorScheme` too.
+     */
     private choose(instance: MapInstance, entry: StyleEntry, scheme?: Scheme) {
         this.close(true);
         // As colorScheme() does: once the description has had 'auto', the scheme of the system gives 'auto'.
-        const d = instance.description.colorScheme, system: Scheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const desc = instance.description, d = desc.colorScheme, system: Scheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         if (d === 'auto') this.followed = true;
         const want = scheme && (this.followed && scheme === system ? 'auto' : scheme), to = want !== d ? want : undefined;
-        const same = sameStyle(entry.style, instance.description.style);
+        const same = this.current(desc) === entry;
         if (same && !to) return;
-        instance.patch({...same ? {} : {style: entry.style}, ...to ? {colorScheme: to} : {}});
+        const part: Parameters<MapInstance['patch']>[0] = to ? {colorScheme: to} : {};
+        if (!same) {
+            const {terrain, state} = this.own(desc), saved: Record<string, unknown> = {};
+            for (const k in entry.globalState) if (k in state) saved[k] = state[k];
+            this.saved = {terrain, state: saved};
+            Object.assign(state, entry.globalState);
+            this.chosen = entry;
+            Object.assign(part, {style: entry.style, terrain: entry.terrain !== undefined ? entry.terrain : terrain, globalState: Object.keys(state).length ? state : undefined});
+        }
+        instance.patch(part);
         if (!same) this.options.onStyleChange?.(entry);
-        if (to) instance.description.onColorSchemeChange?.(to);
+        if (to) desc.onColorSchemeChange?.(to);
     }
 
     /** The view of the pictures: `preview`, or the view of the map. */
@@ -187,7 +239,7 @@ export class StylesControl implements Control {
         const box = document.body.appendChild(document.createElement('div'));
         box.style.cssText = `position:fixed;left:-${W * 4}px;top:0;width:${W}px;height:${H}px;pointer-events:none`;
         box.setAttribute('aria-hidden', 'true');
-        const slots = this.slots;
+        const slots = this.slots, own = this.own(instance.description);
         let failed = false;
         // An error before the style has loaded (a failed request, an answer that is not a style) ends the picture at
         // once; an error of a tile after that does not.
@@ -197,7 +249,11 @@ export class StylesControl implements Control {
             for (let i = 0; i < slots.length && !this.removed; i++) {
                 if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
-                const spec = {...base, style: slots[i].entry.style, colorScheme: slots[i].scheme ?? base.colorScheme};
+                // (The picture shows the terrain and the global state that the entry sets, over the global state of the application.)
+                const {style, terrain, globalState} = slots[i].entry, state = {...own.state, ...globalState};
+                const spec: MapDescription = {...base, style, colorScheme: slots[i].scheme ?? base.colorScheme};
+                if (terrain !== undefined) spec.terrain = terrain;
+                if (Object.keys(state).length) spec.globalState = state;
                 // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of
                 // a new style that does not load, and the picture would show the old style.)
                 this.small?.destroy();
@@ -220,16 +276,20 @@ export class StylesControl implements Control {
     }
 
     private show(i: number, blob: Blob) {
-        const old = this.items[i]?.firstElementChild;
-        if (!old) return;
-        const img = document.createElement('img');
-        img.className = 'map-jr-styles-pic';
+        // The new picture fades in over the old one (CSS), which goes once the fade is over.
+        const frame = this.items[i]?.firstElementChild;
+        if (!frame) return;
+        const img = document.createElement('img'), old = [...frame.children];
         img.alt = '';
+        // (The class of the fade goes after it ran, so that the next opening of the list does not run it again.)
+        img.className = 'map-jr-styles-in';
+        for (const e of ['animationend', 'animationcancel']) img.addEventListener(e, () => img.removeAttribute('class'));
         img.width = W;
         img.height = H;
-        if (this.urls[i]) URL.revokeObjectURL(this.urls[i]);
+        const was = this.urls[i];
         img.src = this.urls[i] = URL.createObjectURL(blob);
-        old.replaceWith(img);
+        frame.appendChild(img);
+        setTimeout(() => { for (const o of old) o.remove(); if (was) URL.revokeObjectURL(was); }, 400);
     }
 
     onRemove() {

@@ -8,9 +8,9 @@ user switch.
 Set [`colorScheme`](../reference/description.md#colorscheme-and-oncolorschemechange) to `'auto'`. The map then follows
 the media query `prefers-color-scheme` of the browser, also when it changes while the page is open.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 import {navigation} from '@map-jr/map-jr-gl/controls';
 
@@ -87,79 +87,234 @@ The compat entry has no `colorScheme`. See [In the compat entry](#in-the-compat-
 The control `colorScheme()` of `@map-jr/map-jr-gl/controls` is a button that switches the map between light and dark.
 It shows a sun while the map is light and a moon while it is dark.
 
-**Main API**
+<!-- example:color-scheme:start -->
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. A line of text below the map names the scheme that the button
+// of the map set.
 import {createMap} from '@map-jr/map-jr-gl';
 import {navigation, colorScheme} from '@map-jr/map-jr-gl/controls';
 
-const map = createMap('map', {
+const container = document.getElementById('map');
+const readout = document.createElement('p');
+container.after(readout);
+readout.textContent = 'Scheme: auto';
+
+const map = createMap(container, {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13},
   controls: [navigation(), colorScheme()],
+  attribution: {compact: true},
   colorScheme: 'auto',
+  // The button has changed the scheme of the map. A later `update` must pass
+  // this value, or the map changes back.
+  onColorSchemeChange: scheme => {
+    readout.textContent = `Scheme: ${scheme}`;
+  },
 });
+```
+
+**MapLibre**
+
+```js [MapLibre]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The compat entry has no colorScheme and no control for it, so
+// a button below the map sets the global state property `color-scheme`, which
+// the style reads.
+import {Map, NavigationControl} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13,
+  attributionControl: {compact: true},
+});
+map.addControl(new NavigationControl());
+
+const dark = window.matchMedia('(prefers-color-scheme: dark)');
+let scheme = dark.matches ? 'dark' : 'light';
+const button = document.createElement('button');
+map.getContainer().after(button);
+const apply = () => {
+  map.setGlobalStateProperty('color-scheme', scheme);
+  button.textContent = scheme === 'dark' ? 'Light map' : 'Dark map';
+};
+button.addEventListener('click', () => {
+  scheme = scheme === 'dark' ? 'light' : 'dark';
+  apply();
+});
+map.on('load', apply);
 ```
 
 **Vue**
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {ref} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {navigation, colorScheme} from '@map-jr/map-jr-gl/controls';
 
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const controls = [navigation(), colorScheme()];
 // v-model writes the value that the button sets back into `scheme`.
 const scheme = ref('auto');
 </script>
 
 <template>
-  <div style="height: 400px">
-    <MapJr
-      map-style="https://styles.map-jr.org/1/elevation-zero.json"
-      :initial-view="{center: [-74.0065, 40.7085], zoom: 13}"
-      :controls="controls"
-      v-model:color-scheme="scheme"
-    />
-  </div>
+  <MapJr
+    :map-style="style"
+    :initial-view="{center: [-74.0065, 40.7085], zoom: 13}"
+    :controls="controls"
+    :attribution="{compact: true}"
+    v-model:color-scheme="scheme"
+  >
+    <p class="note">Scheme: {{ scheme }}</p>
+  </MapJr>
+</template>
+```
+
+**Nuxt**
+
+```vue [Nuxt]
+<script setup>
+// A page of a Nuxt app whose nuxt.config.ts has modules:
+// ['@map-jr/map-jr-gl/nuxt']. The map fills its parent element, so give the
+// parent a height.
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const controls = [navigationControl(), colorSchemeControl()];
+// v-model writes the value that the button sets back into `scheme`.
+const scheme = ref('auto');
+</script>
+
+<template>
+  <MapJr
+    :map-style="style"
+    :initial-view="{center: [-74.0065, 40.7085], zoom: 13}"
+    :controls="controls"
+    :attribution="{compact: true}"
+    v-model:color-scheme="scheme"
+  >
+    <p class="note">Scheme: {{ scheme }}</p>
+  </MapJr>
 </template>
 ```
 
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {navigation, colorScheme} from '@map-jr/map-jr-gl/controls';
 
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const controls = [navigation(), colorScheme()];
 
-export function CityMap() {
+export default function SchemeMap() {
+  // Store the value that the button sets, or the next render passes the old one
+  // and the map changes back.
   const [scheme, setScheme] = useState('auto');
   return (
-    <div style={{height: 400}}>
-      <MapJr
-        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
-        initialView={{center: [-74.0065, 40.7085], zoom: 13}}
-        controls={controls}
-        colorScheme={scheme}
-        onColorSchemeChange={setScheme}
-      />
-    </div>
+    <MapJr
+      mapStyle={style}
+      initialView={{center: [-74.0065, 40.7085], zoom: 13}}
+      controls={controls}
+      attribution={{compact: true}}
+      colorScheme={scheme}
+      onColorSchemeChange={setScheme}
+    >
+      <p className="note">Scheme: {scheme}</p>
+    </MapJr>
   );
 }
 ```
 
+**Svelte**
+
+```svelte [Svelte]
+<script>
+  import {mapJr} from '@map-jr/map-jr-gl/svelte';
+  import {navigation, colorScheme} from '@map-jr/map-jr-gl/controls';
+
+  let scheme = $state('auto');
+  // A new description updates the map, so it passes the value that the button
+  // set.
+  const description = $derived({
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    initialView: {center: [-74.0065, 40.7085], zoom: 13},
+    controls: [navigation(), colorScheme()],
+    attribution: {compact: true},
+    colorScheme: scheme,
+    onColorSchemeChange: value => (scheme = value),
+  });
+</script>
+
+<div use:mapJr={{description}} style="height: 500px"></div>
+<p>Scheme: {scheme}</p>
+```
+
+**`<map-jr>`**
+
+```html [<map-jr>]
+<!doctype html>
+<meta charset="utf-8" />
+<title>A map that follows the colour scheme</title>
+<!--
+  A line of text below the map
+  names the scheme that the button
+  of the map set.
+-->
+<map-jr
+  id="map"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="13"
+  color-scheme="auto"
+  style="height: 500px"
+></map-jr>
+<p id="readout">Scheme: auto</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {navigation, colorScheme} from '@map-jr/map-jr-gl/controls';
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  map.controls = [navigation(), colorScheme()];
+  map.attribution = {compact: true};
+
+  // Store the value that the
+  // button set on the element.
+  // Otherwise the next
+  // description, after a change
+  // of another attribute or
+  // property, passes "auto" again
+  // and the map changes back.
+  map.addEventListener('map-colorschemechange', event => {
+    map.colorScheme = event.detail;
+    readout.textContent = `Scheme: ${event.detail}`;
+  });
+</script>
+```
+<!-- example:color-scheme:end -->
+
 A click on the button changes `colorScheme` of the map and then calls
 [`onColorSchemeChange`](../reference/description.md#colorscheme-and-oncolorschemechange) with the new value.
 
-- Store the new value where the description comes from, as the Vue and React examples do. Otherwise the next
+A line of text below the map names the value that the button set.
+
+- Store the new value where the description comes from, as the Vue, React, Svelte and `<map-jr>` examples do. Otherwise the next
   description passes the old value, and the map changes back.
 - With `'auto'`, the first click sets the opposite of the system, `'light'` or `'dark'`. The next click returns to the
   scheme of the system and sets `'auto'` again.
 - With `'light'` or `'dark'`, each click sets the other value.
 - To switch the scheme with a button of your own, pass the value: `map.patch({colorScheme: 'dark'})`.
+- The compat entry has no `colorScheme` and no such control. Its example sets the global state property `color-scheme`
+  from a button below the map: see [In the compat entry](#in-the-compat-entry).
 
 ## Write a style that follows the scheme
 
@@ -255,9 +410,9 @@ When a later description leaves `color-scheme` out of `globalState`, the style f
 When a provider publishes a light style and a dark style, set `style` to the pair `{light, dark}`. Each value is the
 URL of a style or a style object.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {

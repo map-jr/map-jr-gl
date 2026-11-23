@@ -114,7 +114,7 @@ test('/styles/editing has the note of the fork of Maputnik without the quote mar
 
 test('/styles/spec is docs/map-jr.md of the fork, escaped, under the heading of the site', () => {
     const page = specPage('# Additions of Map Jr. GL\n\nA <b>key</b> of [MapLibre](https://maplibre.org/).\n\n## `params`\n\n```json\n["image", "pin", {"params": {}}]\n```\n');
-    assert.match(page, /^# The style specification of Map Jr\. GL$/m);
+    assert.match(page, /^# Style spec additions$/m);
     assert.doesNotMatch(page, /^# Additions/m);
     assert.match(page, /A &lt;b&gt;key&lt;\/b&gt;/);
     assert.match(page, /\[MapLibre\]\(https:\/\/maplibre\.org\/\)/);

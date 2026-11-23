@@ -275,7 +275,7 @@ export function specPage(markdown: string): string {
     });
     if (start > 0 && lines.slice(0, start).some(line => line.trim())) fail(`${specFile} of map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has text before its heading "# ...", which the site would leave out. Start the file with the heading.`);
     if (start < 0) fail(`${specFile} of map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has no heading "# ...", which the site reads. Restore the heading there, or change website/build/styles.ts.`);
-    const body = ['# The style specification of Map Jr. GL', '',
+    const body = ['# Style spec additions', '',
         `The [Maputnik of Map Jr. GL](/styles/editing) validates styles with a fork of the MapLibre style specification, [map-jr/maplibre-style-spec](${githubUrl(sources.spec)}) (branch \`${sources.spec.branch}\`). This page is \`${specFile}\` of the fork.`, '',
         safeMarkdown(lines.slice(start + 1).join('\n').trim()), ''].join('\n');
     return frontmatter({editUrl: githubUrl(sources.spec, specFile)}) + body;

@@ -9,9 +9,9 @@ and ask for the height of the ground at a position. Each of these reads an eleva
 The style `elevation.json` has an elevation source with the id `terrarium` and a terrain with an exaggeration of
 0.5. This example draws the same terrain with an exaggeration of 1.5 over the Matterhorn.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 // The page has <div id="map" style="height: 400px"></div>.
@@ -22,9 +22,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 // The page has <div id="map" style="height: 400px"></div>.
@@ -87,9 +87,9 @@ The style [`elevation-zero.json`](https://map-jr.org/styles?style=elevation-zero
 `mapbox` (the default), `terrarium` or `custom`. A PMTiles archive also works, with the prefix `pmtiles://` before
 its URL.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -114,9 +114,9 @@ The control `terrain` of `@map-jr/map-jr-gl/controls` is a button that turns 3D 
 the `source` and the `exaggeration` of the terrain that it turns on. See [Controls](controls.md) for how to add
 controls to a map.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 import {navigation, terrain} from '@map-jr/map-jr-gl/controls';
 
@@ -128,9 +128,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {
   Map,
   NavigationControl,
@@ -155,9 +155,9 @@ control changes the terrain without loading the style. A `patch` of another fiel
 click on the control set. A new
 `terrain` or a new `style` replaces it.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 // The page has <input type="checkbox" id="relief" checked> beside the map.
@@ -203,9 +203,9 @@ A `hillshade` layer draws light and shadow from an elevation source. It does not
 `elevation-zero.json`. `before: 'water'` inserts the new layer below the style layer `water`, so that the water covers
 the shading.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -238,9 +238,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({
@@ -297,9 +297,9 @@ A `color-relief` layer gives each pixel a colour from its height in metres. `col
 expression of `["elevation"]`. Below the first stop, the layer has the colour of the first stop, and above the last
 stop it has the colour of the last stop.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -341,9 +341,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({
@@ -395,9 +395,9 @@ The server renderer does not draw a `color-relief` layer.
 A source of the type `contour` creates vector tiles with contour lines from an elevation source. A `line` layer draws
 the lines, and a `symbol` layer can label them. MapLibre GL JS has no such source and needs a plugin for it.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -439,9 +439,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({
@@ -518,9 +518,9 @@ The promise resolves to `null` when the source has no tile at the position. It r
 `raster-dem` source, for example after a change to a style without one. A `raster-dem` source of `sources` counts as
 a source of the style.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -535,9 +535,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({

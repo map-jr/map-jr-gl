@@ -27,21 +27,10 @@ sections:
   - title: Recipes
     folder: recipes
     pages:
-      - basic.md
       - reactive.md
-      - markers.md
-      - draggable.md
-      - images.md
       - query.md
-      - hover.md
-      - fit.md
-      - back.md
       - pmtiles.md
       - terrain.md
-      - globe.md
-      - clusters.md
-      - control.md
-      - shields.md
       - stores.md
   - title: Reference
     folder: reference

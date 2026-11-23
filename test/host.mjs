@@ -653,7 +653,7 @@ for (const renderer of renderers) {
         // source requests no tiles until the state shows the layer.
         const hiddenDem = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
-            const urls = [], style = {version: 8, state: {relief: {default: true}}, sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/no-such-dem-998/{z}/{x}/{y}.png'], tileSize: 256}},
+            const urls = [], style = {version: 8, state: {relief: {default: false}}, sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/no-such-dem-998/{z}/{x}/{y}.png'], tileSize: 256}},
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'relief', type: 'hillshade', source: 'dem', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}}]};
             let spec = {style, globalState: {relief: false}, renderer, attribution: false, initialView: {center: [0, 0], zoom: 3}, transformRequest: url => { if (url.includes('no-such-dem-998')) urls.push(url); }};
             const host = t.lib.createMap(el, spec), out = {};
@@ -671,7 +671,7 @@ for (const renderer of renderers) {
         // #1032: the attribution names a source only while a layer that the global state shows uses it.
         const credits = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
-            const style = {version: 8, state: {relief: {default: true}}, sources: {g: {type: 'geojson', attribution: 'Relief-1032', data: {type: 'FeatureCollection', features: []}}},
+            const style = {version: 8, state: {relief: {default: false}}, sources: {g: {type: 'geojson', attribution: 'Relief-1032', data: {type: 'FeatureCollection', features: []}}},
                 layers: [{id: 'c', type: 'circle', source: 'g', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}}]};
             let spec = {style, globalState: {relief: false}, renderer, attribution: {compact: false}, initialView: {center: [0, 0], zoom: 1}};
             const host = t.lib.createMap(el, spec), out = [], wait = ms => new Promise(r => setTimeout(r, ms));
@@ -2380,6 +2380,15 @@ for (const renderer of renderers) {
             const items = [...list.querySelectorAll('button')];
             out.open = `${!list.hidden}/${trigger.getAttribute('aria-expanded')}/${items.map(b => b.textContent).join(',')}/${items.map(b => b.getAttribute('aria-pressed')).join(',')}/${document.activeElement === items[0]}`;
             out.early = list.querySelectorAll('img').length; // (before the first idle of the map, no picture yet)
+            const fades = [];
+            list.addEventListener('animationstart', e => fades.push(e.animationName));
+            // (#1528) Before its picture, an entry shows the placeholder image; the label lies on the picture; the list
+            // takes the glass look of the other controls: a blur and a translucent background.
+            const bs = items, frame = b => b.querySelector('.map-jr-styles-pic');
+            out.placeholder = bs.map(b => getComputedStyle(frame(b)).backgroundImage.includes('data:image/svg+xml') ? 'p' : '-').join(',');
+            out.labelOn = bs.every(b => { const f = frame(b).getBoundingClientRect(), l = b.lastElementChild.getBoundingClientRect(); return l.top >= f.top && l.bottom <= f.bottom + .5 && l.height > 0; });
+            const ls = getComputedStyle(list);
+            out.glass = !CSS.supports('backdrop-filter', 'blur(1px)') || (ls.backdropFilter.includes('blur') && /^rgba\(.*, 0?\.\d+\)$/.test(ls.backgroundColor)) || `${ls.backdropFilter} ${ls.backgroundColor}`;
             document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
             out.escape = `${list.hidden}/${document.activeElement === trigger}`;
             // (A style that fails, by status, by network or with an answer that is not JSON, ends its picture at once.)
@@ -2389,8 +2398,22 @@ for (const renderer of renderers) {
             await until(() => list.querySelectorAll('img').length === 2 && !hidden());
             out.drawn = Date.now() - idleAt;
             await new Promise(r => setTimeout(r, 500));
+            const pageCss = document.head.appendChild(Object.assign(document.createElement('style'), {textContent: 'img{border:4px solid red;opacity:.5}'}));
             const imgs = [...list.querySelectorAll('button')].map(b => b.querySelector('img'));
+            // The fade runs once per new picture, not at each opening of the list.
+            const frames = n => new Promise(r => { const f = () => --n ? requestAnimationFrame(f) : r(); requestAnimationFrame(f); });
+            // (A picture that came while the list was closed fades in at this opening: the check reads after the fade.)
+            trigger.click();
+            if (imgs[0]?.className) await new Promise(r => { imgs[0].addEventListener('animationend', r, {once: true}); setTimeout(r, 3000); });
+            await frames(2);
+            out.pageRule = imgs[0] ? `${imgs[0].className || '-'}/${getComputedStyle(imgs[0]).borderTopWidth}/${getComputedStyle(imgs[0]).opacity}` : '';
+            pageCss.remove();
+            trigger.click(); await frames(2);
+            trigger.click(); await frames(2);
+            out.again = imgs[0] ? imgs[0].getAnimations().length : -1;
+            trigger.click();
             out.pictures = imgs.map(i => i ? 'img' : '-').join(',');
+            out.fade = [...new Set(fades)].join();
             if (imgs[1]) {
                 await imgs[1].decode();
                 const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
@@ -2419,8 +2442,18 @@ for (const renderer of renderers) {
             return out;
         }, renderer);
         check(`[${renderer}] the control styles() lists its entries at once, draws a picture of each style that loads after the first idle, and a choice sets the style, keeps the camera, calls onStyleChange once and returns the focus; a style that fails ends its picture at once, and focus that leaves closes the list`,
-            picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.drawn < 15000 && picked.red === true
+            picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.placeholder === 'p,p,p,p,p' && picked.labelOn && picked.glass === true && picked.fade === 'map-jr-styles-in' && picked.pageRule === '-/0px/1' && picked.again === 0 && picked.drawn < 15000 && picked.red === true
             && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut, JSON.stringify(picked));
+        // With prefers-reduced-motion a new picture does not fade in (#1528); the sheet of the control stays on the page.
+        await page.emulateMedia({reducedMotion: 'reduce'});
+        const stillFade = await page.evaluate(() => {
+            const f = document.body.appendChild(Object.assign(document.createElement('span'), {className: 'map-jr-styles-pic'})), img = f.appendChild(Object.assign(document.createElement('img'), {className: 'map-jr-styles-in'}));
+            const name = getComputedStyle(img).animationName;
+            f.remove();
+            return name;
+        });
+        await page.emulateMedia({reducedMotion: null});
+        check(`[${renderer}] a picture of the control styles() does not fade in with prefers-reduced-motion`, stillFade === 'none', stillFade);
         // Removing styles() while a picture is drawn removes the hidden map at once (#1504): here its tiles never answer.
         const removedWhileDrawing = await page.evaluate(async renderer => {
             const t = window.t, {styles} = await import('/dist/controls.js');
@@ -2523,6 +2556,85 @@ for (const renderer of renderers) {
         await page.emulateMedia({colorScheme: 'light'});
         check(`[${renderer}] with colorScheme 'auto' and the system in dark, a choice of the dark form of styles() keeps 'auto', the light form sets 'light', and the dark form then sets 'auto'`,
             darkSystem === 'auto,light,auto/light,auto', darkSystem);
+
+        // An entry of styles() sets terrain and global state with its style (#1505): a choice sets them together, the
+        // next choice gives back the values of the application, the entry that matches the most fields is current, and
+        // the picture of each entry shows its global state over that of the application.
+        const overridden = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const relief = {version: 8, state: {relief: {default: false}}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': ['case', ['global-state', 'relief'], '#ff0000', '#0000ff']}}]};
+            const entries = [{label: 'Plain', style: relief}, {label: 'Flat', style: relief, terrain: null}, {label: 'Radar', style: relief, globalState: {relief: false}}, {label: 'Other', style: relief, globalState: {other: 2}}];
+            const host = t.lib.createMap(el, {style: relief, globalState: {app: 1, relief: true}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, controls: [styles({entries, onStyleChange: e => calls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            const items = () => [...list.querySelectorAll('button')];
+            const pressed = () => { trigger.click(); const p = items().map(b => b.getAttribute('aria-pressed') === 'true' ? 1 : 0).join(''); trigger.click(); return p; };
+            const d = () => `${JSON.stringify(host.description.globalState)}/${'terrain' in host.description ? JSON.stringify(host.description.terrain) : '-'}`;
+            const pick = async i => { trigger.click(); items()[i].click(); await new Promise(r => setTimeout(r, 200)); return `${d()}/${pressed()}`; };
+            out.start = pressed();
+            out.flat = await pick(1);
+            out.radar = await pick(2);
+            out.other = await pick(3);
+            out.plain = await pick(0);
+            out.calls = calls.join(',');
+            host.patch({terrain: null}); // (by hand: Flat matches more fields than Plain, the last choice)
+            out.byHand = pressed();
+            await until(() => list.querySelectorAll('img').length === 4);
+            const colour = async img => {
+                await img.decode();
+                const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
+                g.drawImage(img, 0, 0, 4, 4);
+                const [r, , b] = g.getImageData(2, 2, 1, 1).data;
+                return r > 200 && b < 60 ? 'red' : b > 200 && r < 60 ? 'blue' : `${r},${b}`;
+            };
+            out.pictures = (await Promise.all([...list.querySelectorAll('img')].map(colour))).join(',');
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] an entry of styles() sets its terrain and global state with its style, the next choice gives back the values of the application, the entry that matches the most fields is current, and its picture shows its global state over that of the application`,
+            overridden.start === '1000' && overridden.flat === '{"app":1,"relief":true}/null/0100' && overridden.radar === '{"app":1,"relief":false}/-/0010'
+            && overridden.other === '{"app":1,"relief":true,"other":2}/-/0001' && overridden.plain === '{"app":1,"relief":true}/-/1000' && overridden.byHand === '0100'
+            && overridden.calls === 'Flat,Radar,Other,Plain' && overridden.pictures === 'red,red,blue,red', JSON.stringify(overridden));
+
+        // An entry of styles() with terrain, global state and a light and a dark form together (#1505, #1506): a form sets
+        // all of them with the scheme, the other form changes only the scheme, and the next entry gives back the rest.
+        await page.emulateMedia({colorScheme: 'light'});
+        const together = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const dark = ['==', ['global-state', 'color-scheme'], 'dark'];
+            const style = {version: 8, state: {relief: {default: true}}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color':
+                ['case', ['global-state', 'relief'], '#ff0000', ['case', dark, '#0000ff', '#00ff00']]}}]};
+            const entries = [{label: 'Plain', style}, {label: 'Both', style, terrain: null, globalState: {relief: false}, colorSchemes: true}];
+            const host = t.lib.createMap(el, {style, colorScheme: 'light', globalState: {app: 1}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, controls: [styles({entries, onStyleChange: e => calls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            const d = () => `${JSON.stringify(host.description.globalState)}/${'terrain' in host.description ? JSON.stringify(host.description.terrain) : '-'}/${host.description.colorScheme}`;
+            const pick = async i => { trigger.click(); list.querySelectorAll('button')[i].click(); await new Promise(r => setTimeout(r, 200)); trigger.click(); const p = [...list.querySelectorAll('button')].map(b => b.getAttribute('aria-pressed') === 'true' ? 1 : 0).join(''); trigger.click(); return `${d()}/${p}`; };
+            out.dark = await pick(2);
+            out.light = await pick(1);
+            out.plain = await pick(0);
+            out.calls = calls.join(',');
+            await until(() => list.querySelectorAll('img').length === 3);
+            const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d'), colors = [];
+            for (const img of list.querySelectorAll('img')) {
+                await img.decode();
+                g.drawImage(img, 0, 0, 4, 4);
+                const [r, gr, b] = g.getImageData(2, 2, 1, 1).data;
+                colors.push(r > 200 ? 'red' : gr > 200 ? 'green' : b > 200 ? 'blue' : `${r} ${gr} ${b}`);
+            }
+            out.pictures = colors.join(',');
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] an entry of styles() with terrain, global state and a light and a dark form sets them all with the scheme, its other form changes only the scheme, and the next entry gives back the rest`,
+            together.dark === '{"app":1,"relief":false}/null/dark/001' && together.light === '{"app":1,"relief":false}/null/light/010' && together.plain === '{"app":1}/-/light/100'
+            && together.calls === 'Both,Plain' && together.pictures === 'red,green,blue', JSON.stringify(together));
 
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.

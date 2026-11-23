@@ -18,7 +18,7 @@ import {made} from './svelte.js';
 const modules = import.meta.glob(['../*.js', '../*.svelte', '../*.html', '!../run.html'], {query: '?mount'});
 
 /** The forms of an example: the name in the address, the label, and the ending of the file (examples/<id><ending>). */
-export const FORMS = [['core', 'Main API', '.js'], ['compat', 'MapLibre compat', '.compat.js'], ['vue', 'Vue', '.vue'], ['nuxt', 'Nuxt', '.nuxt.vue'], ['react', 'React', '.jsx'], ['svelte', 'Svelte', '.svelte'], ['element', '<map-jr>', '.html']];
+export const FORMS = [['core', 'Map Jr', '.js'], ['compat', 'MapLibre', '.compat.js'], ['vue', 'Vue', '.vue'], ['nuxt', 'Nuxt', '.nuxt.vue'], ['react', 'React', '.jsx'], ['svelte', 'Svelte', '.svelte'], ['element', '<map-jr>', '.html']];
 
 // How each form that runs is mounted: `(module, stage) => map`, where `module` is the imported file of the form. A form
 // with no entry here is shown as text only: the Vue, Nuxt and React forms need an application of their framework.

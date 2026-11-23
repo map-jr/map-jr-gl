@@ -74,6 +74,12 @@ try {
         check('docs page: the title is the first heading of the file', await page.locator('h1').first().textContent() === 'Vue', await page.locator('h1').first().textContent());
         check('docs page: one h1', await page.locator('h1').count() === 1);
         check('docs page: the navigation has the section "Reference"', await page.locator('aside').getByText('Reference').count() > 0);
+        // Each title of the navigation fits at 1440 px without a cut (#1530).
+        const cutLinks = await page.locator('aside a').evaluateAll(links => links
+            .filter(link => [link, ...link.querySelectorAll('*')].some(element => element.scrollWidth > element.clientWidth + 1))
+            .map(link => link.textContent.trim()));
+        const linkCount = await page.locator('aside a[href^="/recipes/"]').count();
+        check('docs page: the navigation shows each title without a cut', linkCount > 0 && cutLinks.length === 0, cutLinks.join(', ') || `${await page.locator('aside a').count()} links`);
         check('docs page: the contents list names a heading', await page.getByRole('link', {name: 'MapJr', exact: true}).count() > 0);
         const edit = await page.getByRole('link', {name: 'Edit this page'}).first().getAttribute('href');
         check('docs page: "Edit this page" names the file', edit === 'https://github.com/map-jr/map-jr-gl/edit/main/docs/reference/vue.md', edit);
@@ -200,7 +206,7 @@ try {
         const headerLabel = () => page.locator('.variant-menu .variant-label:visible').textContent();
         const groups = await page.locator('.code-variants').count();
         check('variants: the page has groups, each with one visible panel', groups > 1 && (await shownPanels()).length === groups, `${groups} groups`);
-        check('variants: with no choice, the groups show the main API', await showsEverywhere('main') && await headerLabel() === 'Main API', (await shownPanels()).join(' '));
+        check('variants: with no choice, the groups show the main API', await showsEverywhere('main') && await headerLabel() === 'Map Jr', (await shownPanels()).join(' '));
         await page.locator('.code-variants').first().getByRole('tab', {name: 'Vue', exact: true}).click();
         check('variants: a tab of one group switches every group and the header', await showsEverywhere('vue') && await headerLabel() === 'Vue', (await shownPanels()).join(' '));
         check('variants: the chosen tab is selected', await page.locator('.code-variants').last().getByRole('tab', {name: 'Vue', exact: true}).getAttribute('aria-selected') === 'true');
@@ -461,6 +467,10 @@ try {
         await page.mouse.wheel(0, -60);
         await settle();
         await expectOne('a little above a heading', ids[ids.indexOf(middle) - 1]);
+        // A live example near the end starts its map when it comes into view, and that can change the height of the page,
+        // so the second scroll reaches the bottom of the page as it is then.
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await page.waitForTimeout(1500);
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
         await settle();
         await expectOne('at the bottom', ids.at(-1));
@@ -507,16 +517,40 @@ try {
         const textOf = editor => editor.evaluate(content => [...content.querySelectorAll('.cm-line')].map(line => line.textContent).join('\n'));
 
         // The editor takes the height of the code that it replaces, and "Close the editor" gives the code back at the same
-        // height (#1538). The line and the buttons under the map are not measured here (#1539).
+        // height (#1538). The line under the map is one line at 1440, and the line and its buttons stay inside the page at
+        // 390, while the reader reads and while the reader edits (#1539).
         for (const width of engine === 'chromium' ? [390, 1440] : []) {
             const sized = await own.newContext({viewport: {width, height: width === 390 ? 844 : 900}});
             const small = await sized.newPage();
-            await small.goto(base + '/recipes/basic', {waitUntil: 'networkidle'});
+            await small.goto(base + '/guide/globe', {waitUntil: 'networkidle'});
             const height = selector => small.locator(selector).first().evaluate(element => Math.round(element.getBoundingClientRect().height));
+            // The number of lines of the line under the map, whether its buttons share its row, and how far the line or
+            // a button reaches past the page.
+            const footer = () => small.locator('.live-example-line').first().evaluate(line => {
+                const lines = Math.round(line.getBoundingClientRect().height / parseFloat(getComputedStyle(line).lineHeight));
+                const boxes = [...line.parentElement.children].map(element => element.getBoundingClientRect());
+                const row = boxes.every(box => box.top < boxes[0].bottom && box.bottom > boxes[0].top);
+                const right = Math.max(...boxes.map(box => box.right));
+                return {lines, row, past: Math.round(right - document.documentElement.clientWidth), text: line.textContent.trim()};
+            });
+            const fits = ({lines, row, past}) => past <= 0 && (width !== 1440 || lines === 1 && row);
+            // A variant that the frame cannot run gives the longest line.
+            const unrun = small.locator('.live-example [role="tablist"]').first().getByRole('tab', {name: 'Vue', exact: true});
+            await unrun.click();
+            const other = await footer();
+            check(`${engine}: recipe: at ${width} the line under the map fits for a variant that does not run`, fits(other), JSON.stringify(other));
+            if (screenshots) { const file = `${screenshots}-live-example-vue-${width}.png`; await small.locator('.live-example').first().screenshot({path: file}); console.log('screenshot', file); }
+            await small.locator('.live-example [role="tablist"]').first().getByRole('tab').first().click();
             const code = await height('.live-example > div:last-child');
-            await small.getByRole('button', {name: 'Edit the Main API code'}).click();
+            const reading = await footer();
+            check(`${engine}: recipe: at ${width} the line under the map fits while reading`, fits(reading), JSON.stringify(reading));
+            if (screenshots) { const file = `${screenshots}-live-example-reading-${width}.png`; await small.locator('.live-example').first().screenshot({path: file}); console.log('screenshot', file); }
+            await small.getByRole('button', {name: 'Edit the Map Jr code'}).click();
             await small.locator('.live-example .cm-content').waitFor();
             const editing = await height('.live-example .code-editor');
+            const edited = await footer();
+            check(`${engine}: recipe: at ${width} the line under the map fits while editing`, fits(edited), JSON.stringify(edited));
+            if (screenshots) { const file = `${screenshots}-live-example-editing-${width}.png`; await small.locator('.live-example').first().screenshot({path: file}); console.log('screenshot', file); }
             await small.getByRole('button', {name: 'Close the editor'}).click();
             const closed = await height('.live-example > div:last-child');
             check(`${engine}: recipe: at ${width} the editor has the height of the code`, editing === code && closed === code, `code ${code}, editor ${editing}, after closing ${closed}`);
@@ -537,9 +571,12 @@ try {
             await sized.close();
         }
 
-        await page.goto(base + '/recipes/basic', {waitUntil: 'load'});
-        const frame =page.frameLocator('.live-example iframe');
-        check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
+        // The guide to the globe has one live example, so the locators below find one editor and one frame.
+        await page.goto(base + '/guide/globe', {waitUntil: 'load'});
+        // The frame starts its map when it comes into view, and the example is below the first screen of the guide.
+        await page.locator('.live-example .map-frame').first().scrollIntoViewIfNeeded();
+        const frame = page.frameLocator('.live-example iframe');
+        check(`${engine}: recipe: the map of the Map Jr code starts`, await shown(frame.locator('#map canvas').first()));
         // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
         const controlButton = frame.locator('.map-jr-ctrl-group button').first();
         check(`${engine}: recipe: a button of a map control has no margin, padding or border from the frame`, await shown(controlButton) && await controlButton.evaluate(button => {
@@ -548,7 +585,7 @@ try {
         }));
         const before = await loaded();
         check(`${engine}: recipe: the page loads no code of the editor before "Edit"`, !before.editor, `${(before.bytes / 1024).toFixed(1)} KB of scripts`);
-        await page.getByRole('button', {name: 'Edit the Main API code'}).click();
+        await page.getByRole('button', {name: 'Edit the Map Jr code'}).click();
         const editor = page.locator('.live-example .cm-content');
         await shown(editor);
         const after = await loaded();
@@ -558,10 +595,12 @@ try {
         await replace(editor, code + "\ndocument.body.append(Object.assign(document.createElement('output'), {id: 'edited'}));\n");
         await page.getByRole('button', {name: 'Run', exact: true}).click();
         check(`${engine}: recipe: a changed example runs`, await shown(frame.locator('#edited'), 'attached') && await frame.locator('#map canvas').count() > 0);
-        // On a page of its own, so that the later checks keep the page and the editor of the recipe "basic".
+        // On a page of its own, so that the later checks keep the page and the editor of the guide to the globe. The
+        // example "fit" is the first of the two live examples of the guide to the view.
         const fitPage = await context.newPage();
-        await fitPage.goto(base + '/recipes/fit', {waitUntil: 'load'});
-        const ownButton = fitPage.frameLocator('.live-example iframe').getByRole('button', {name: 'Show all landings'});
+        await fitPage.goto(base + '/guide/view-and-camera', {waitUntil: 'load'});
+        await fitPage.locator('.live-example .map-frame').first().scrollIntoViewIfNeeded();
+        const ownButton = fitPage.frameLocator('.live-example iframe').first().getByRole('button', {name: 'Show all landings'});
         check(`${engine}: recipe: a button of the example code keeps the style of the frame`, await shown(ownButton) && await ownButton.evaluate(button => {
             const style = getComputedStyle(button);
             return style.marginLeft === '12px' && style.paddingLeft === '10px' && style.borderTopWidth === '1px';

@@ -41,9 +41,9 @@ To change `tileWorkers`, destroy every map of the page (`destroy()` in `@map-jr/
 In `@map-jr/map-jr-gl`, `renderer` is also a field of the [description](../reference/description.md), and the field
 overrides `configure` for that map.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {configure, createMap} from '@map-jr/map-jr-gl';
 
 configure({workerUrl: '/assets/map-jr-gl-worker.js', tileWorkers: 2});
@@ -55,9 +55,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 // The page has <div id="map" style="height: 400px"></div>.
@@ -143,9 +143,9 @@ into the files of the application and preloads them itself. The worker file is n
 The standalone build contains the page script and the worker in one file. Use it where a second file is a problem,
 for example in an embedded widget. The page loads all of it before the map starts.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl/standalone';
 
 // The page has <div id="map" style="height: 400px"></div>.
@@ -155,9 +155,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat/standalone';
 
 // The page has <div id="map" style="height: 400px"></div>.
@@ -175,7 +175,7 @@ Import the entry from the CDN with the version in the URL. The map finds the wor
 
 ```js
 const {createMap} = await import(
-  'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js'
+  'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/map-jr-gl.js'
 );
 
 // The page has <div id="map" style="height: 400px"></div>.

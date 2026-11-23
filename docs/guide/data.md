@@ -10,9 +10,9 @@ GeoJSON sources. Each key is the id of a source, and its value is GeoJSON or the
 the style nor [`sources`](../reference/description.md#sources) has a source with that id, the map creates one:
 `{type: 'geojson'}` with no other option. The layers name the source by its key.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const route = to => ({
@@ -42,9 +42,9 @@ function extendRoute(to) {
 }
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const route = to => ({
@@ -279,99 +279,621 @@ A record whose position is not two finite numbers, such as `['2.3', '48.8']`, is
 A GeoJSON source with `cluster: true` groups the points that are near each other into one cluster feature. A
 cluster feature has the properties `cluster: true`, `cluster_id` and `point_count`.
 
-**Main API**
+This example groups about 6,100 earthquakes into clusters, shows the number of points on each cluster, and zooms in to
+a cluster on a click.
 
-```js [Main API]
+<!-- example:clusters:start -->
+**Map Jr**
+
+```js [Map Jr]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The map groups about 6,100 earthquakes into clusters, and a
+// line of text below the map says what a click on a cluster did.
 import {createMap} from '@map-jr/map-jr-gl';
 
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const earthquakes =
   'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
-const map = createMap('map', {
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+
+const container = document.getElementById('map');
+const readout = document.createElement('p');
+container.after(readout);
+readout.textContent = 'Click a cluster to zoom in to it.';
+
+const map = createMap(container, {
+  style,
   initialView: {center: [-103.6, 40.7], zoom: 3},
+  attribution: {compact: true},
+  // A source with options is declared in `sources`. With `cluster: true`, the
+  // points that are near each other on the screen become one cluster feature
+  // with the properties `cluster_id` and `point_count`.
   sources: {
     earthquakes: {
       type: 'geojson',
-      cluster: true,
       data: earthquakes,
+      cluster: true,
+      clusterRadius: 50,
     },
   },
   layers: [
+    // A circle for each cluster, larger for more points, with the number of
+    // points on it.
     {
       id: 'clusters',
       type: 'circle',
       source: 'earthquakes',
       filter: ['has', 'point_count'],
-      paint: {'circle-radius': 14, 'circle-color': '#2f7fd1'},
+      paint: {
+        'circle-color': '#2f7fd1',
+        'circle-radius': ['step', ['get', 'point_count'], 14, 100, 18, 750, 24],
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 2,
+      },
     },
+    {
+      id: 'cluster-count',
+      type: 'symbol',
+      source: 'earthquakes',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': 12,
+      },
+      paint: {'text-color': '#fff'},
+    },
+    // A small dot for each point that is in no cluster.
     {
       id: 'earthquakes',
       type: 'circle',
       source: 'earthquakes',
       filter: ['!', ['has', 'point_count']],
-      paint: {'circle-radius': 4, 'circle-color': '#d6453d'},
+      paint: {
+        'circle-color': '#d6453d',
+        'circle-radius': 4,
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 1,
+      },
     },
   ],
+  // A click reports the features of these layers in `features`.
   interactiveLayers: ['clusters'],
-  onClick: async event => {
-    const cluster = event.features[0];
+  onClick: async e => {
+    const cluster = e.features[0];
     if (!cluster) return;
-    // The zoom at which the cluster divides into smaller clusters or points.
+    // The zoom level at which the cluster divides into smaller clusters or
+    // points.
     const zoom = await map.clusterExpansionZoom(
       'earthquakes',
       cluster.properties.cluster_id,
     );
     map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
+    readout.textContent = `${cluster.properties.point_count} earthquakes. The cluster divides at zoom ${zoom}.`;
   },
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. The map groups about 6,100 earthquakes into clusters, and a
+// line of text below the map says what a click on a cluster did.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const earthquakes =
   'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
+
 const map = new Map({
   container: 'map',
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  style,
   center: [-103.6, 40.7],
   zoom: 3,
+  attributionControl: {compact: true},
 });
+const readout = document.createElement('p');
+map.getContainer().after(readout);
+readout.textContent = 'Click a cluster to zoom in to it.';
 
 map.on('load', () => {
+  // With `cluster: true`, the points that are near each other on the screen
+  // become one cluster feature with the properties `cluster_id` and
+  // `point_count`.
   map.addSource('earthquakes', {
     type: 'geojson',
-    cluster: true,
     data: earthquakes,
+    cluster: true,
+    clusterRadius: 50,
   });
+  // A circle for each cluster, larger for more points, with the number of
+  // points on it.
   map.addLayer({
     id: 'clusters',
     type: 'circle',
     source: 'earthquakes',
     filter: ['has', 'point_count'],
-    paint: {'circle-radius': 14, 'circle-color': '#2f7fd1'},
+    paint: {
+      'circle-color': '#2f7fd1',
+      'circle-radius': ['step', ['get', 'point_count'], 14, 100, 18, 750, 24],
+      'circle-stroke-color': '#fff',
+      'circle-stroke-width': 2,
+    },
   });
+  map.addLayer({
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'earthquakes',
+    filter: ['has', 'point_count'],
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-font': ['Noto Sans Bold'],
+      'text-size': 12,
+    },
+    paint: {'text-color': '#fff'},
+  });
+  // A small dot for each point that is in no cluster.
   map.addLayer({
     id: 'earthquakes',
     type: 'circle',
     source: 'earthquakes',
     filter: ['!', ['has', 'point_count']],
-    paint: {'circle-radius': 4, 'circle-color': '#d6453d'},
+    paint: {
+      'circle-color': '#d6453d',
+      'circle-radius': 4,
+      'circle-stroke-color': '#fff',
+      'circle-stroke-width': 1,
+    },
   });
 });
 
-map.on('click', 'clusters', async event => {
-  const cluster = event.features[0];
+map.on('click', 'clusters', async e => {
+  const cluster = e.features[0];
+  // The zoom level at which the cluster divides into smaller clusters or
+  // points.
   const zoom = await map
     .getSource('earthquakes')
     .getClusterExpansionZoom(cluster.properties.cluster_id);
-  map.easeTo({center: cluster.geometry.coordinates, zoom});
+  map.easeTo({center: cluster.geometry.coordinates, zoom, duration: 500});
+  readout.textContent = `${cluster.properties.point_count} earthquakes. The cluster divides at zoom ${zoom}.`;
+});
+map.on('mouseenter', 'clusters', () => {
+  map.getCanvas().style.cursor = 'pointer';
+});
+map.on('mouseleave', 'clusters', () => {
+  map.getCanvas().style.cursor = '';
 });
 ```
 
-A click on a blue circle zooms in until the cluster divides. In the main API, the map has three methods for a
+**Vue**
+
+```vue [Vue]
+<script setup>
+// The map fills its parent element, so give the parent a height.
+import {ref, useTemplateRef} from 'vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const earthquakes =
+  'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
+// A source with options is declared in `sources`. With `cluster: true`, the
+// points that are near each other on the screen become one cluster feature with
+// the properties `cluster_id` and `point_count`.
+const sources = {
+  earthquakes: {
+    type: 'geojson',
+    data: earthquakes,
+    cluster: true,
+    clusterRadius: 50,
+  },
+};
+const layers = [
+  // A circle for each cluster, larger for more points, with the number of
+  // points on it.
+  {
+    id: 'clusters',
+    type: 'circle',
+    source: 'earthquakes',
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-color': '#2f7fd1',
+      'circle-radius': ['step', ['get', 'point_count'], 14, 100, 18, 750, 24],
+      'circle-stroke-color': '#fff',
+      'circle-stroke-width': 2,
+    },
+  },
+  {
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'earthquakes',
+    filter: ['has', 'point_count'],
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-font': ['Noto Sans Bold'],
+      'text-size': 12,
+    },
+    paint: {'text-color': '#fff'},
+  },
+  // A small dot for each point that is in no cluster.
+  {
+    id: 'earthquakes',
+    type: 'circle',
+    source: 'earthquakes',
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+      'circle-color': '#d6453d',
+      'circle-radius': 4,
+      'circle-stroke-color': '#fff',
+      'circle-stroke-width': 1,
+    },
+  },
+];
+
+const map = useTemplateRef('map');
+const message = ref('Click a cluster to zoom in to it.');
+
+async function zoomIn(event) {
+  const cluster = event.features[0];
+  if (!cluster) return;
+  // The zoom level at which the cluster divides into smaller clusters or
+  // points.
+  const zoom = await map.value.clusterExpansionZoom(
+    'earthquakes',
+    cluster.properties.cluster_id,
+  );
+  map.value?.moveTo({
+    center: cluster.geometry.coordinates,
+    zoom,
+    duration: 500,
+  });
+  message.value = `${cluster.properties.point_count} earthquakes. The cluster divides at zoom ${zoom}.`;
+}
+</script>
+
+<template>
+  <!--
+    A click reports the features of the layers of `interactive-layers` in
+    `features`.
+  -->
+  <MapJr
+    ref="map"
+    :map-style="style"
+    :initial-view="{center: [-103.6, 40.7], zoom: 3}"
+    :sources="sources"
+    :layers="layers"
+    :interactive-layers="['clusters']"
+    :attribution="{compact: true}"
+    @click="zoomIn"
+  />
+  <p>{{ message }}</p>
+</template>
+```
+
+**React**
+
+```jsx [React]
+// The map fills its parent element, so give the parent a height.
+import {useRef, useState} from 'react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const earthquakes =
+  'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
+// A source with options is declared in `sources`. With `cluster: true`, the
+// points that are near each other on the screen become one cluster feature with
+// the properties `cluster_id` and `point_count`.
+const sources = {
+  earthquakes: {
+    type: 'geojson',
+    data: earthquakes,
+    cluster: true,
+    clusterRadius: 50,
+  },
+};
+const layers = [
+  // A circle for each cluster, larger for more points, with the number of
+  // points on it.
+  {
+    id: 'clusters',
+    type: 'circle',
+    source: 'earthquakes',
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-color': '#2f7fd1',
+      'circle-radius': ['step', ['get', 'point_count'], 14, 100, 18, 750, 24],
+      'circle-stroke-color': '#fff',
+      'circle-stroke-width': 2,
+    },
+  },
+  {
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'earthquakes',
+    filter: ['has', 'point_count'],
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-font': ['Noto Sans Bold'],
+      'text-size': 12,
+    },
+    paint: {'text-color': '#fff'},
+  },
+  // A small dot for each point that is in no cluster.
+  {
+    id: 'earthquakes',
+    type: 'circle',
+    source: 'earthquakes',
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+      'circle-color': '#d6453d',
+      'circle-radius': 4,
+      'circle-stroke-color': '#fff',
+      'circle-stroke-width': 1,
+    },
+  },
+];
+// A click reports the features of these layers in `features`.
+const interactiveLayers = ['clusters'];
+
+export default function Clusters() {
+  const map = useRef(null);
+  const [message, setMessage] = useState('Click a cluster to zoom in to it.');
+
+  async function zoomIn(event) {
+    const cluster = event.features[0];
+    if (!cluster) return;
+    // The zoom level at which the cluster divides into smaller clusters or
+    // points.
+    const zoom = await map.current.clusterExpansionZoom(
+      'earthquakes',
+      cluster.properties.cluster_id,
+    );
+    map.current?.moveTo({
+      center: cluster.geometry.coordinates,
+      zoom,
+      duration: 500,
+    });
+    setMessage(
+      `${cluster.properties.point_count} earthquakes. The cluster divides at zoom ${zoom}.`,
+    );
+  }
+
+  return (
+    <>
+      <MapJr
+        ref={map}
+        mapStyle={style}
+        initialView={{center: [-103.6, 40.7], zoom: 3}}
+        sources={sources}
+        layers={layers}
+        interactiveLayers={interactiveLayers}
+        attribution={{compact: true}}
+        onClick={zoomIn}
+      />
+      <p>{message}</p>
+    </>
+  );
+}
+```
+
+**Svelte**
+
+```svelte [Svelte]
+<script>
+  import {mapJr} from '@map-jr/map-jr-gl/svelte';
+
+  const earthquakes =
+    'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
+  let map = null;
+  let message = $state('Click a cluster to zoom in to it.');
+  const description = {
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    initialView: {center: [-103.6, 40.7], zoom: 3},
+    attribution: {compact: true},
+    // A source with options is declared in `sources`. With `cluster: true`, the
+    // points that are near each other on the screen become one cluster feature
+    // with the properties `cluster_id` and `point_count`.
+    sources: {
+      earthquakes: {
+        type: 'geojson',
+        data: earthquakes,
+        cluster: true,
+        clusterRadius: 50,
+      },
+    },
+    layers: [
+      // A circle for each cluster, larger for more points, with the number of
+      // points on it.
+      {
+        id: 'clusters',
+        type: 'circle',
+        source: 'earthquakes',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': '#2f7fd1',
+          'circle-radius': [
+            'step',
+            ['get', 'point_count'],
+            14,
+            100,
+            18,
+            750,
+            24,
+          ],
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+        },
+      },
+      {
+        id: 'cluster-count',
+        type: 'symbol',
+        source: 'earthquakes',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 12,
+        },
+        paint: {'text-color': '#fff'},
+      },
+      // A small dot for each point that is in no cluster.
+      {
+        id: 'earthquakes',
+        type: 'circle',
+        source: 'earthquakes',
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': '#d6453d',
+          'circle-radius': 4,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1,
+        },
+      },
+    ],
+    // A click reports the features of these layers in `features`.
+    interactiveLayers: ['clusters'],
+    onClick: async e => {
+      const cluster = e.features[0];
+      if (!cluster) return;
+      // The zoom level at which the cluster divides into smaller clusters or
+      // points.
+      const zoom = await map.clusterExpansionZoom(
+        'earthquakes',
+        cluster.properties.cluster_id,
+      );
+      map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
+      message = `${cluster.properties.point_count} earthquakes. The cluster divides at zoom ${zoom}.`;
+    },
+  };
+</script>
+
+<div
+  use:mapJr={{description, ready: instance => (map = instance)}}
+  style="height: 500px"
+></div>
+<p>{message}</p>
+```
+
+**`<map-jr>`**
+
+```html [<map-jr>]
+<!doctype html>
+<meta charset="utf-8" />
+<title>Group points into clusters</title>
+<!--
+  The map groups about 6,100
+  earthquakes into clusters, and a
+  line of text below the map says
+  what a click on a cluster did.
+-->
+<map-jr
+  id="map"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-103.6,40.7"
+  zoom="3"
+  interactive-layers="clusters"
+  attribution-compact
+  style="height: 500px"
+></map-jr>
+<p id="readout">Click a cluster to zoom in to it.</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+
+  const earthquakes =
+    'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  // A source with options is
+  // declared in `sources`. With
+  // `cluster: true`, the points
+  // that are near each other on
+  // the screen become one cluster
+  // feature with the properties
+  // `cluster_id` and
+  // `point_count`.
+  map.sources = {
+    earthquakes: {
+      type: 'geojson',
+      data: earthquakes,
+      cluster: true,
+      clusterRadius: 50,
+    },
+  };
+  map.layers = [
+    // A circle for each cluster,
+    // larger for more points,
+    // with the number of points
+    // on it.
+    {
+      id: 'clusters',
+      type: 'circle',
+      source: 'earthquakes',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#2f7fd1',
+        'circle-radius': ['step', ['get', 'point_count'], 14, 100, 18, 750, 24],
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 2,
+      },
+    },
+    {
+      id: 'cluster-count',
+      type: 'symbol',
+      source: 'earthquakes',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': 12,
+      },
+      paint: {'text-color': '#fff'},
+    },
+    // A small dot for each point
+    // that is in no cluster.
+    {
+      id: 'earthquakes',
+      type: 'circle',
+      source: 'earthquakes',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': '#d6453d',
+        'circle-radius': 4,
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 1,
+      },
+    },
+  ];
+
+  // A click reports the features
+  // of the layers of
+  // `interactive-layers` in
+  // `features`.
+  map.addEventListener('map-click', async event => {
+    const cluster = event.detail.features[0];
+    if (!cluster) return;
+    // The zoom level at which the
+    // cluster divides into
+    // smaller clusters or points.
+    const zoom = await map.map.clusterExpansionZoom(
+      'earthquakes',
+      cluster.properties.cluster_id,
+    );
+    map.map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
+    readout.textContent = `${cluster.properties.point_count} earthquakes. The cluster divides at zoom ${zoom}.`;
+  });
+</script>
+```
+<!-- example:clusters:end -->
+
+- The source is declared in [`sources`](../reference/description.md#sources), because a key of `data` makes a GeoJSON
+  source with no options. `clusterRadius` is the distance in pixels within which points join, 50 by default.
+  `clusterMaxZoom` is the last zoom level with clusters, and above it every point is drawn on its own.
+- `clusterProperties` of the source adds a property to each cluster, such as the largest magnitude of its points. Each
+  value is a pair of an operator and an expression that reads each point.
+- A cluster also has the property `point_count_abbreviated` (`1.2k`). The filter `['has', 'point_count']` selects the
+  clusters, and its negation selects the points that are in no cluster.
+- In the compat entry, the source has `getClusterExpansionZoom`, as in MapLibre GL JS.
+
+A click on a circle zooms in until the cluster divides. In the main API, the map has three methods for a
 cluster. Each is called with the id of the source and the `cluster_id` of the cluster, and returns a promise:
 
 | Method | The promise resolves to |
@@ -387,9 +909,9 @@ The promise rejects when the source has no cluster with that id.
 The state of a feature is an object that the application sets on one feature. A `feature-state` expression in a
 layer reads it, so the layer can draw a selected feature in another colour without new data.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 const museums = [
@@ -431,9 +953,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const museums = {
@@ -509,8 +1031,492 @@ Without `id`, `removeFeatureState` removes the state of all features of the sour
 
 The map keeps the state until the application removes it, also when the data or the style changes. A source of a new
 style with the same id draws the state that was set for the old source. The state is not part of the description, so
-`update` and `patch` do not change it. To highlight the feature under the pointer, set
-[`hoverState`](../reference/description.md#hoverstate) in place of this code.
+`update` and `patch` do not change it.
+
+### Highlight the feature under the pointer
+
+With [`hoverState`](../reference/description.md#hoverstate) set to `true`, the map gives the top feature of
+[`interactiveLayers`](../reference/description.md#interactivelayers) under the pointer the feature state `hover: true`,
+and the application sets no state itself. This example draws seven ferry landings of New York as circles, draws the
+landing under the pointer larger and in red, and names it below the map.
+
+<!-- example:hover:start -->
+**Map Jr**
+
+```js [Map Jr]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. A line of text below the map names the ferry landing under the
+// pointer.
+import {createMap, points} from '@map-jr/map-jr-gl';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const NYC = [-74.0065, 40.7085];
+
+const landings = [
+  {id: 1, name: 'Whitehall Terminal', lngLat: [-74.0131, 40.7013]},
+  {id: 2, name: 'Pier 11 / Wall St', lngLat: [-74.0067, 40.7034]},
+  {id: 3, name: 'Battery Park City', lngLat: [-74.0181, 40.7147]},
+  {id: 4, name: 'Dumbo', lngLat: [-73.9946, 40.7036]},
+  {id: 5, name: 'Governors Island', lngLat: [-74.0189, 40.6928]},
+  {id: 6, name: 'Corlears Hook', lngLat: [-73.9785, 40.7116]},
+  {id: 7, name: 'Brooklyn Bridge Park Pier 6', lngLat: [-73.9997, 40.693]},
+];
+// The map can set the state `hover` only on a feature that has an id. `points`
+// takes it from `id`.
+const data = {
+  landings: points(landings, {
+    lngLat: l => l.lngLat,
+    id: l => l.id,
+    properties: l => ({name: l.name}),
+  }),
+};
+// The layer reads the state `hover` with `feature-state`: the landing under the
+// pointer is larger and red.
+const hovered = ['boolean', ['feature-state', 'hover'], false];
+const layers = [
+  {
+    id: 'landings',
+    type: 'circle',
+    source: 'landings',
+    paint: {
+      'circle-radius': ['case', hovered, 11, 7],
+      'circle-color': ['case', hovered, '#d6453d', '#2f7fd1'],
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#fff',
+    },
+  },
+];
+
+const container = document.getElementById('map');
+const readout = document.createElement('p');
+container.after(readout);
+
+const map = createMap(container, {
+  style,
+  initialView: {center: NYC, zoom: 13.6},
+  attribution: {compact: true},
+  data,
+  layers,
+  // The map gives the top feature of these layers under the pointer the feature
+  // state `hover: true`, and removes it when the pointer leaves the feature.
+  interactiveLayers: ['landings'],
+  hoverState: true,
+});
+
+// `state.hover` has the features of `interactiveLayers` under the pointer, the
+// top one first.
+map.state.subscribe(
+  state => state.hover,
+  hover => {
+    readout.textContent =
+      hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.';
+  },
+);
+readout.textContent = 'Move the pointer over a ferry landing.';
+```
+
+**MapLibre**
+
+```js [MapLibre]
+// The module script of a page that has <div id="map" style="height:
+// 500px"></div>. A line of text below the map names the ferry landing under the
+// pointer.
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const NYC = [-74.0065, 40.7085];
+
+const landings = [
+  {id: 1, name: 'Whitehall Terminal', lngLat: [-74.0131, 40.7013]},
+  {id: 2, name: 'Pier 11 / Wall St', lngLat: [-74.0067, 40.7034]},
+  {id: 3, name: 'Battery Park City', lngLat: [-74.0181, 40.7147]},
+  {id: 4, name: 'Dumbo', lngLat: [-73.9946, 40.7036]},
+  {id: 5, name: 'Governors Island', lngLat: [-74.0189, 40.6928]},
+  {id: 6, name: 'Corlears Hook', lngLat: [-73.9785, 40.7116]},
+  {id: 7, name: 'Brooklyn Bridge Park Pier 6', lngLat: [-73.9997, 40.693]},
+];
+// The layer reads the state `hover` with `feature-state`: the landing under the
+// pointer is larger and red.
+const hovered = ['boolean', ['feature-state', 'hover'], false];
+const layer = {
+  id: 'landings',
+  type: 'circle',
+  source: 'landings',
+  paint: {
+    'circle-radius': ['case', hovered, 11, 7],
+    'circle-color': ['case', hovered, '#d6453d', '#2f7fd1'],
+    'circle-stroke-width': 2,
+    'circle-stroke-color': '#fff',
+  },
+};
+
+const map = new Map({
+  container: 'map',
+  style,
+  center: NYC,
+  zoom: 13.6,
+  attributionControl: {compact: true},
+});
+const readout = document.createElement('p');
+map.getContainer().after(readout);
+
+map.on('load', () => {
+  // A feature needs an id for its state. Here each feature has one;
+  // `generateId: true` on the source also gives them.
+  map.addSource('landings', {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features: landings.map(l => ({
+        type: 'Feature',
+        id: l.id,
+        properties: {name: l.name},
+        geometry: {type: 'Point', coordinates: l.lngLat},
+      })),
+    },
+  });
+  map.addLayer(layer);
+});
+
+// As in MapLibre GL JS, the code sets the state `hover` itself, and removes it
+// from the landing that it had before.
+let hoveredId = null;
+const leave = () => {
+  if (hoveredId !== null)
+    map.setFeatureState({source: 'landings', id: hoveredId}, {hover: false});
+  hoveredId = null;
+};
+map.on('mousemove', 'landings', e => {
+  const feature = e.features[0];
+  if (feature.id === hoveredId) return;
+  leave();
+  hoveredId = feature.id;
+  map.setFeatureState({source: 'landings', id: hoveredId}, {hover: true});
+  map.getCanvas().style.cursor = 'pointer';
+  readout.textContent = feature.properties.name;
+});
+map.on('mouseleave', 'landings', () => {
+  leave();
+  map.getCanvas().style.cursor = '';
+  readout.textContent = 'Move the pointer over a ferry landing.';
+});
+readout.textContent = 'Move the pointer over a ferry landing.';
+```
+
+**Vue**
+
+```vue [Vue]
+<script setup>
+// The map fills its parent element, so give the parent a height.
+import {ref} from 'vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+import {points} from '@map-jr/map-jr-gl';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const NYC = [-74.0065, 40.7085];
+
+const landings = [
+  {id: 1, name: 'Whitehall Terminal', lngLat: [-74.0131, 40.7013]},
+  {id: 2, name: 'Pier 11 / Wall St', lngLat: [-74.0067, 40.7034]},
+  {id: 3, name: 'Battery Park City', lngLat: [-74.0181, 40.7147]},
+  {id: 4, name: 'Dumbo', lngLat: [-73.9946, 40.7036]},
+  {id: 5, name: 'Governors Island', lngLat: [-74.0189, 40.6928]},
+  {id: 6, name: 'Corlears Hook', lngLat: [-73.9785, 40.7116]},
+  {id: 7, name: 'Brooklyn Bridge Park Pier 6', lngLat: [-73.9997, 40.693]},
+];
+// The map can set the state `hover` only on a feature that has an id. `points`
+// takes it from `id`.
+const data = {
+  landings: points(landings, {
+    lngLat: l => l.lngLat,
+    id: l => l.id,
+    properties: l => ({name: l.name}),
+  }),
+};
+// The layer reads the state `hover` with `feature-state`: the landing under the
+// pointer is larger and red.
+const hovered = ['boolean', ['feature-state', 'hover'], false];
+const layers = [
+  {
+    id: 'landings',
+    type: 'circle',
+    source: 'landings',
+    paint: {
+      'circle-radius': ['case', hovered, 11, 7],
+      'circle-color': ['case', hovered, '#d6453d', '#2f7fd1'],
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#fff',
+    },
+  },
+];
+// The features under the pointer, from the event `hover`.
+const hover = ref([]);
+</script>
+
+<template>
+  <!--
+    With `hover-state`, the map gives the top feature of `interactive-layers`
+    under the pointer the feature state `hover: true`, and removes it when the
+    pointer leaves the feature.
+  -->
+  <MapJr
+    :map-style="style"
+    :initial-view="{center: NYC, zoom: 13.6}"
+    :data="data"
+    :layers="layers"
+    :interactive-layers="['landings']"
+    hover-state
+    :attribution="{compact: true}"
+    @hover="hover = $event"
+  />
+  <p>
+    {{ hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.' }}
+  </p>
+</template>
+```
+
+**React**
+
+```jsx [React]
+// The map fills its parent element, so give the parent a height.
+import {useState} from 'react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+import {points} from '@map-jr/map-jr-gl';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const NYC = [-74.0065, 40.7085];
+
+const landings = [
+  {id: 1, name: 'Whitehall Terminal', lngLat: [-74.0131, 40.7013]},
+  {id: 2, name: 'Pier 11 / Wall St', lngLat: [-74.0067, 40.7034]},
+  {id: 3, name: 'Battery Park City', lngLat: [-74.0181, 40.7147]},
+  {id: 4, name: 'Dumbo', lngLat: [-73.9946, 40.7036]},
+  {id: 5, name: 'Governors Island', lngLat: [-74.0189, 40.6928]},
+  {id: 6, name: 'Corlears Hook', lngLat: [-73.9785, 40.7116]},
+  {id: 7, name: 'Brooklyn Bridge Park Pier 6', lngLat: [-73.9997, 40.693]},
+];
+// The map can set the state `hover` only on a feature that has an id. `points`
+// takes it from `id`.
+const data = {
+  landings: points(landings, {
+    lngLat: l => l.lngLat,
+    id: l => l.id,
+    properties: l => ({name: l.name}),
+  }),
+};
+// The layer reads the state `hover` with `feature-state`: the landing under the
+// pointer is larger and red.
+const hovered = ['boolean', ['feature-state', 'hover'], false];
+const layers = [
+  {
+    id: 'landings',
+    type: 'circle',
+    source: 'landings',
+    paint: {
+      'circle-radius': ['case', hovered, 11, 7],
+      'circle-color': ['case', hovered, '#d6453d', '#2f7fd1'],
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#fff',
+    },
+  },
+];
+
+export default function Hover() {
+  const [hover, setHover] = useState([]);
+  // With `hoverState`, the map gives the top feature of `interactiveLayers`
+  // under the pointer the feature state `hover: true`, and removes it when the
+  // pointer leaves the feature.
+  return (
+    <>
+      <MapJr
+        mapStyle={style}
+        initialView={{center: NYC, zoom: 13.6}}
+        data={data}
+        layers={layers}
+        interactiveLayers={['landings']}
+        hoverState
+        attribution={{compact: true}}
+        onHover={setHover}
+      />
+      <p>
+        {hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.'}
+      </p>
+    </>
+  );
+}
+```
+
+**Svelte**
+
+```svelte [Svelte]
+<script>
+  import {mapJr, mapState} from '@map-jr/map-jr-gl/svelte';
+  import {points} from '@map-jr/map-jr-gl';
+
+  const landings = [
+    {id: 1, name: 'Whitehall Terminal', lngLat: [-74.0131, 40.7013]},
+    {id: 2, name: 'Pier 11 / Wall St', lngLat: [-74.0067, 40.7034]},
+    {id: 3, name: 'Battery Park City', lngLat: [-74.0181, 40.7147]},
+    {id: 4, name: 'Dumbo', lngLat: [-73.9946, 40.7036]},
+    {id: 5, name: 'Governors Island', lngLat: [-74.0189, 40.6928]},
+    {id: 6, name: 'Corlears Hook', lngLat: [-73.9785, 40.7116]},
+    {id: 7, name: 'Brooklyn Bridge Park Pier 6', lngLat: [-73.9997, 40.693]},
+  ];
+  // The map can set the state `hover` only on a feature that has an id.
+  // `points` takes it from `id`.
+  const data = {
+    landings: points(landings, {
+      lngLat: l => l.lngLat,
+      id: l => l.id,
+      properties: l => ({name: l.name}),
+    }),
+  };
+  // The layer reads the state `hover` with `feature-state`: the landing under
+  // the pointer is larger and red.
+  const hovered = ['boolean', ['feature-state', 'hover'], false];
+  const layers = [
+    {
+      id: 'landings',
+      type: 'circle',
+      source: 'landings',
+      paint: {
+        'circle-radius': ['case', hovered, 11, 7],
+        'circle-color': ['case', hovered, '#d6453d', '#2f7fd1'],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#fff',
+      },
+    },
+  ];
+
+  const description = {
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+    attribution: {compact: true},
+    data,
+    layers,
+    // The map gives the top feature of these layers under the pointer the
+    // feature state `hover: true`, and removes it when the pointer leaves the
+    // feature.
+    interactiveLayers: ['landings'],
+    hoverState: true,
+  };
+  let map = $state(null);
+  // The state of the map as a store: `$live.hover` has the features under the
+  // pointer, the top one first.
+  const live = $derived(map && mapState(map));
+</script>
+
+<div
+  use:mapJr={{description, ready: instance => (map = instance)}}
+  style="height: 500px"
+></div>
+<p>
+  {$live?.hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.'}
+</p>
+```
+
+**`<map-jr>`**
+
+```html [<map-jr>]
+<!doctype html>
+<meta charset="utf-8" />
+<title>Highlight the feature under the pointer</title>
+<!--
+  A line of text below the map
+  names the ferry landing under
+  the pointer. With the attribute
+  `hover-state`, the map gives the
+  top feature of
+  `interactive-layers` under the
+  pointer the feature state
+  `hover: true`, and removes it
+  when the pointer leaves the
+  feature.
+-->
+<map-jr
+  id="map"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="13.6"
+  interactive-layers="landings"
+  hover-state
+  style="height: 500px"
+></map-jr>
+<p id="readout">Move the pointer over a ferry landing.</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {points} from '@map-jr/map-jr-gl';
+
+  const landings = [
+    {id: 1, name: 'Whitehall Terminal', lngLat: [-74.0131, 40.7013]},
+    {id: 2, name: 'Pier 11 / Wall St', lngLat: [-74.0067, 40.7034]},
+    {id: 3, name: 'Battery Park City', lngLat: [-74.0181, 40.7147]},
+    {id: 4, name: 'Dumbo', lngLat: [-73.9946, 40.7036]},
+    {id: 5, name: 'Governors Island', lngLat: [-74.0189, 40.6928]},
+    {id: 6, name: 'Corlears Hook', lngLat: [-73.9785, 40.7116]},
+    {id: 7, name: 'Brooklyn Bridge Park Pier 6', lngLat: [-73.9997, 40.693]},
+  ];
+  // The map can set the state
+  // `hover` only on a feature
+  // that has an id. `points`
+  // takes it from `id`.
+  const data = {
+    landings: points(landings, {
+      lngLat: l => l.lngLat,
+      id: l => l.id,
+      properties: l => ({name: l.name}),
+    }),
+  };
+  // The layer reads the state
+  // `hover` with `feature-state`:
+  // the landing under the pointer
+  // is larger and red.
+  const hovered = ['boolean', ['feature-state', 'hover'], false];
+  const layers = [
+    {
+      id: 'landings',
+      type: 'circle',
+      source: 'landings',
+      paint: {
+        'circle-radius': ['case', hovered, 11, 7],
+        'circle-color': ['case', hovered, '#d6453d', '#2f7fd1'],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#fff',
+      },
+    },
+  ];
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  map.attribution = {compact: true};
+  map.data = data;
+  map.layers = layers;
+
+  // The event `map-hover` has the
+  // features of
+  // `interactive-layers` under
+  // the pointer, the top one
+  // first.
+  map.addEventListener('map-hover', event => {
+    readout.textContent =
+      event.detail[0]?.properties.name ??
+      'Move the pointer over a ferry landing.';
+  });
+</script>
+```
+<!-- example:hover:end -->
+
+- The map removes the state when the pointer leaves the feature or the map.
+- The paint properties read the state with `['feature-state', 'hover']`. A feature that has no state yet has no value
+  there, so `['boolean', …, false]` gives `false` for it.
+- The map sets a state only on a feature that has an id. [`points`](../reference/exports.md#points) takes the id from
+  the option `id`. For GeoJSON of your own, give each feature an `id`, or declare the source with `promoteId` or
+  `generateId: true`.
+- [`state.hover`](../reference/state.md#mapstate) lists the features of `interactiveLayers` under the pointer, the top
+  one first. Vue has it in the event `hover`, React in `onHover`, Svelte in [`mapState`](../reference/svelte.md#mapstate)
+  and `<map-jr>` in the event `map-hover`.
+- In the compat entry, the code sets the state itself with `setFeatureState` on `mousemove` and `mouseleave` of the
+  layer, as in MapLibre GL JS.
 
 ## Show a video or a canvas
 
@@ -518,9 +1524,9 @@ A source of the type `video` or `canvas` draws a video or a `<canvas>` of the pa
 MapLibre GL JS. Declare it in the style, and draw it with a `raster` layer. The code of these sources loads only when
 a map has one of them.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -542,9 +1548,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({

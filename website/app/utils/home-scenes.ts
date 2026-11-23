@@ -21,7 +21,7 @@ export const stopScenes = {
     install: plain({center: [10, 48], zoom: 3.6}),
 };
 
-// A contour source and two layers for the Alps (the recipe "Show 3D terrain with contour lines").
+// A contour source and two layers for the Alps (the recipe "Show terrain and contours").
 const contours = {
     sources: {contours: {type: 'contour', source: 'terrarium', multiplier: 1, thresholds: {9: [200, 1000], 11: [100, 500], 12: [50, 200], 14: [20, 100], 15: [10, 50]}}},
     layers: [
@@ -55,14 +55,14 @@ export const showcases: Showcase[] = [
         link: '/play', linkLabel: 'Try it in the playground',
         scene: () => plain({center: [-74.0119, 40.7069], zoom: 16, pitch: 85, bearing: 30}, {maxPitch: 85})},
     {id: 'alps', label: 'The Alps in 3D', caption: 'Terrain, relief shading and labelled contour lines from one elevation source.',
-        link: '/recipes/terrain', linkLabel: 'Recipe: 3D terrain with contour lines',
+        link: '/recipes/terrain', linkLabel: 'Recipe: Show terrain and contours',
         scene: () => ({props: {mapStyle: terrainStyle, terrain: {source: 'terrarium', exaggeration: 1.5}, ...contours}, camera: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60, bearing: 25}})},
     {id: 'markers', label: '50,000 markers', caption: 'One symbol layer draws all of the points from a buffer on the GPU. The cost of a frame does not grow with their number.',
-        link: '/recipes/markers', linkLabel: 'Recipe: many markers',
+        link: '/guide/markers-and-popups#keep-many-markers-fast', linkLabel: 'Guide: many markers',
         scene: () => markers ??= {props: {mapStyle: flatStyle, images: {dot}, data: {places: markerData()},
             layers: [{id: 'dots', type: 'symbol', source: 'places', layout: {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]}, camera: {center: newYork, zoom: 11.4}}},
     {id: 'globe', label: 'The globe', caption: 'The world as a globe. Past zoom 12 the globe turns into the flat map.',
-        link: '/recipes/globe', linkLabel: 'Recipe: the globe',
+        link: '/guide/globe', linkLabel: 'Guide: the globe',
         scene: () => ({props: {mapStyle: globeStyle, projection: {type: 'globe'}}, camera: {center: [10, 30], zoom: 1.5, pitch: 0, bearing: 0}})},
 ];
 

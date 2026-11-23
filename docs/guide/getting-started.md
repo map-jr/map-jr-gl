@@ -37,12 +37,14 @@ the page.
 Each example shows a street map of Lower Manhattan in an element that is 400 pixels high. The style is the URL of a
 MapLibre style.
 
-**Main API**
+<!-- example:first-map:start -->
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
+// The module script of a page that has <div id="map" style="height:
+// 400px"></div>.
 import {createMap} from '@map-jr/map-jr-gl';
 
-// The page has <div id="map" style="height: 400px"></div>.
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
@@ -56,12 +58,13 @@ map.state.subscribe(
 );
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
+// The module script of a page that has <div id="map" style="height:
+// 400px"></div>.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-// The page has <div id="map" style="height: 400px"></div>.
 const map = new Map({
   container: 'map',
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
@@ -96,11 +99,9 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 **Nuxt**
 
 ```vue [Nuxt]
-<!--
-  nuxt.config.ts has: export default defineNuxtConfig({modules:
-  ['@map-jr/map-jr-gl/nuxt']})
--->
 <script setup>
+// A page of a Nuxt app whose nuxt.config.ts has modules:
+// ['@map-jr/map-jr-gl/nuxt'].
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 </script>
 
@@ -121,7 +122,7 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 import {useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
-export function CityMap() {
+export default function CityMap() {
   const [view, setView] = useState({center: [-74.0065, 40.7085], zoom: 13.6});
   return (
     <>
@@ -146,34 +147,39 @@ export function CityMap() {
 
   const description = {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
-    initialView: {
-      center: [-74.0065, 40.7085],
-      zoom: 13.6,
-    },
+    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   };
+  let zoom = $state(13.6);
+  // The state of the map is a store. The function runs after each change of the
+  // zoom, and not at the start.
   const ready = map =>
     map.state.subscribe(
       state => state.view.zoom,
-      zoom => console.log(zoom),
+      value => (zoom = value),
     );
 </script>
 
 <div use:mapJr={{description, ready}} style="height: 400px"></div>
+<p>Zoom {zoom.toFixed(1)}</p>
 ```
 
 **`<map-jr>`**
 
 ```html [<map-jr>]
-<!--
-  The main file of the application has: import '@map-jr/map-jr-gl/element';
--->
+<!doctype html>
+<meta charset="utf-8" />
+<title>A first map</title>
 <map-jr
   map-style="https://styles.map-jr.org/1/elevation-zero.json"
   center="-74.0065,40.7085"
   zoom="13.6"
   style="height: 400px"
 ></map-jr>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+</script>
 ```
+<!-- example:first-map:end -->
 
 The map shows the streets around City Hall, and the console or the paragraph shows the zoom when the user zooms.
 
@@ -203,18 +209,18 @@ or grid container.
 ## Load the library without a bundler
 
 A page without a bundler loads the built file from a CDN in a module script. Name the version in the URL, because
-the page file and the worker file must come from the same version. Replace `0.9.0` with the version that you use:
+the page file and the worker file must come from the same version. Replace the version in the URLs with the version that you use:
 [npm](https://www.npmjs.com/package/@map-jr/map-jr-gl) shows the latest.
 
-**Main API**
+**Map Jr**
 
-```html [Main API]
+```html [Map Jr]
 <!doctype html>
 <meta charset="utf-8" />
 <div id="map" style="height: 400px"></div>
 <script type="module">
   const {createMap} = await import(
-    'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js'
+    'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/map-jr-gl.js'
   );
 
   createMap('map', {
@@ -224,14 +230,14 @@ the page file and the worker file must come from the same version. Replace `0.9.
 </script>
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```html [MapLibre compat]
+```html [MapLibre]
 <!doctype html>
 <meta charset="utf-8" />
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  const cdn = 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/';
+  const cdn = 'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/';
   const {Map} = await import(cdn + 'map-jr-gl-maplibre-compat.js');
 
   new Map({
@@ -250,7 +256,7 @@ the page file and the worker file must come from the same version. Replace `0.9.
 <meta charset="utf-8" />
 <script
   type="module"
-  src="https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/element.js"
+  src="https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/element.js"
 ></script>
 
 <map-jr

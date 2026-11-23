@@ -208,8 +208,9 @@ the scheme opposite to that of the system, and the next click sets `'auto'` agai
 
 ## `styles()`
 
-Creates a button that opens a list of styles. Each entry shows its label and a picture of its style, and a choice
-sets the style of the map.
+Creates a button that opens a list of styles. Each entry shows a picture of its style with its label on top, and a
+choice sets the style of the map. Until a picture is drawn, and when the style of an entry fails to load, the entry
+shows a generic placeholder image. A new picture fades in over the old one, except with `prefers-reduced-motion`.
 
 ```ts
 styles(options: {
@@ -255,22 +256,58 @@ const map = createMap('map', {
 |---|---|---|
 | `label` **required** | `string` | The text of the entry. |
 | `style` **required** | the type of [`style`](description.md#style) | The style that the entry sets: a URL, a style object or `{light, dark}`. |
+| `terrain` | the type of [`terrain`](description.md#terrain) | The terrain that the entry sets. `null` turns off the terrain of the style. Without it, a choice leaves `terrain` as it is, unless the entry before set it. |
+| `globalState` | `Record<string, unknown>` | Values of global state that the entry sets, by name, for example `{relief: false}`. |
 | `colorSchemes` | `boolean` | `true` when the style reads the global state `color-scheme`, as the official styles of `https://styles.map-jr.org/1/` do. The entry then has a light and a dark form. Default `false`. |
 
-A choice sets `style` of the description with [`patch`](map.md#patch), so the camera and the other fields of the
-description stay. The control then calls `onStyleChange` once with the entry. A choice of the entry whose style the
-map has closes the list and calls nothing. The entry of the current style is marked with `aria-pressed="true"`: its
-`style` is the same value as `style` of the description, or equal to it as JSON.
+With `terrain` and `globalState`, one style gives several entries. These entries use one style of elevation:
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {styles} from '@map-jr/map-jr-gl/controls';
+
+const elevation = 'https://styles.map-jr.org/1/elevation.json';
+const map = createMap('map', {
+  style: elevation,
+  initialView: {center: [8.33, 47.03], zoom: 11},
+  controls: [
+    styles({
+      entries: [
+        {label: 'Elevation', style: elevation},
+        {label: 'Elevation flat', style: elevation, terrain: null},
+        {label: 'Radar', style: 'https://styles.map-jr.org/1/elevation-radar.json', globalState: {relief: false}},
+      ],
+    }),
+  ],
+});
+```
+
+A choice sets `style`, `terrain` and `globalState` of the description together with one [`patch`](map.md#patch), so
+the camera and the other fields of the description stay. The control then calls `onStyleChange` once with the entry.
+
+- **What the entry before set.** A choice gives the `terrain` and the names of `globalState` that the entry chosen
+  before set the values that the application had before that choice. A name that the application did not set is
+  removed, so the map uses the default of the style. Other names of `globalState` stay.
+- **The current entry.** The entry that the description shows is marked with `aria-pressed="true"`: its `style` is
+  the same value as `style` of the description, or equal to it as JSON, and so are its `terrain` and each value of
+  its `globalState`. When several entries match, the entry that sets the most fields is current, and of two that set
+  as many, the entry of the last choice. A choice of the current entry closes the list and calls nothing.
+- **A change by the application.** When the application later sets `terrain` or `globalState` with `update` or
+  `patch`, its values apply, and the marked entry follows the description. Once the description no longer shows
+  the entry of the last choice, a new choice keeps the values of the application.
 
 An application that passes `style` itself, as a component of Vue, React or Svelte does, keeps the new value in
-`onStyleChange`. Otherwise its next description sets the old style again. The map keeps the control while its
-options are equal as JSON (see [The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in
-a later description does not replace the first one.
+`onStyleChange`, and also `terrain` and `globalState` when an entry sets them. Otherwise its next description sets
+the old style again. The map keeps the control while its options are equal as JSON (see
+[The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in a later description does not
+replace the first one.
 
 The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
 [`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so
 that they do not delay the map, or at the first click on the button if that comes earlier. The list opens with the
 labels at once and shows each picture when it is ready.
+
+The picture of an entry shows its `terrain`, and its `globalState` over the `globalState` of the application.
 
 - **A style that fails.** An error before the style of an entry has loaded, such as a failed request or an answer that
   is not a style, ends its picture at once. A picture that takes more than 20 seconds also ends. The entry then has no
@@ -291,9 +328,9 @@ in `controls` of a map of `createMap`; the compat entry does not have it.
 An entry has two forms when its `style` is `{light, dark}`, or when it has `colorSchemes: true`. The list then shows
 the label of the entry above two pictures, one drawn with `colorScheme: 'light'` and one with `colorScheme: 'dark'`.
 
-A choice of a picture sets `style` and `colorScheme` of the description with one `patch`, calls `onStyleChange` when
-the style changed, and calls `onColorSchemeChange` of the description when the scheme changed. A choice of the other
-form of the current entry changes only the scheme. The picture of the current style and the current scheme is marked
+A choice of a picture sets `style`, `terrain`, `globalState` and `colorScheme` of the description with one `patch`,
+calls `onStyleChange` when the entry changed, and calls `onColorSchemeChange` of the description when the scheme changed. A choice of the other
+form of the current entry changes only the scheme, and keeps the terrain and the global state of the entry. The picture of the current style and the current scheme is marked
 with `aria-pressed="true"`.
 
 The scheme of a choice follows the rule of [`colorScheme()`](#colorscheme):
@@ -445,4 +482,4 @@ const map = createMap('map', {
 
 - [Controls](../guide/controls.md) for the look of the controls and a control of your own in Vue and React.
 - [`controls`](description.md#controls) and [`locale`](description.md#locale) in the reference of the description.
-- [Differences from MapLibre GL JS](maplibre-differences.md) for the controls of the compat entry.
+- [MapLibre differences](maplibre-differences.md) for the controls of the compat entry.

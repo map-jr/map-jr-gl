@@ -1,12 +1,12 @@
-# Show vector tiles from a PMTiles file
+# Show a PMTiles file
 
 This example draws the borders of countries and of states and provinces from one PMTiles file on a file host, over a base
 map, and lists the names of the areas at a click.
 
 <!-- example:pmtiles:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A legend is on the map, and a line of text below the map lists
 // what a click finds.
@@ -86,9 +86,9 @@ container.append(legend);
 show('Click to list the country and the state or province');
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map lists what a click finds.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -504,7 +504,7 @@ In the compat entry, the `pmtiles://` URL works with no `addProtocol` and no pmt
 
 ## Variations
 
-The variation changes the click handler of the Main API example. `e` is the event of the click, and `map` is the map.
+The variation changes the click handler of the Map Jr example. `e` is the event of the click, and `map` is the map.
 
 ### Handle a tile that does not load
 

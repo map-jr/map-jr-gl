@@ -1,5 +1,5 @@
 // Writes the code of each recipe from the files of its example, so that a recipe and its example cannot drift apart
-// (#1119). A recipe of docs/recipes/ has a block `<!-- example:<id>:start -->` … `<!-- example:<id>:end -->`; this
+// (#1119). A page of docs/recipes/ or docs/guide/ has a block `<!-- example:<id>:start -->` … `<!-- example:<id>:end -->`; this
 // script fills it with the forms of examples/<id>.*, formatted as docs-lint formats a fence (website/build/format.mjs).
 // The Nuxt form is left out when it differs from the Vue form only in its imports and its first comment, as the style
 // guide asks.
@@ -23,8 +23,8 @@ if (!format) {
 
 // The forms in the order of the style guide: the label, the file suffix and the language of the fence.
 const forms = [
-    ['Main API', '.js', 'js'],
-    ['MapLibre compat', '.compat.js', 'js'],
+    ['Map Jr', '.js', 'js'],
+    ['MapLibre', '.compat.js', 'js'],
     ['Vue', '.vue', 'vue'],
     ['Nuxt', '.nuxt.vue', 'vue'],
     ['React', '.jsx', 'jsx'],
@@ -67,10 +67,11 @@ async function fileBlock(name) {
     return `\`\`\`${language}\n${await formatted(read(name), language)}\n\`\`\``;
 }
 
-const dir = path.join(root, 'docs', 'recipes');
 let failures = 0;
-for (const file of readdirSync(dir).filter(f => f.endsWith('.md'))) {
-    const text = readFileSync(path.join(dir, file), 'utf8');
+const pages = ['recipes', 'guide'].flatMap(folder =>
+    readdirSync(path.join(root, 'docs', folder)).filter(f => f.endsWith('.md')).map(f => folder + '/' + f));
+for (const file of pages) {
+    const text = readFileSync(path.join(root, 'docs', file), 'utf8');
     let out = text;
     const blocks = [
         ...[...text.matchAll(/^<!-- (example):([\w-]+):start -->\n([\s\S]*?)^<!-- example:\2:end -->$/gm)],
@@ -78,21 +79,21 @@ for (const file of readdirSync(dir).filter(f => f.endsWith('.md'))) {
     ];
     for (const [whole, kind, id, current] of blocks) {
         if (!existsSync(path.join(root, 'examples', kind === 'file' ? id : id + '.js'))) {
-            console.log(`docs/recipes/${file}: ${kind === 'file' ? `the file examples/${id} does not exist` : `the example "${id}" has no files in examples/`}.`);
+            console.log(`docs/${file}: ${kind === 'file' ? `the file examples/${id} does not exist` : `the example "${id}" has no files in examples/`}.`);
             failures++;
             continue;
         }
         const wanted = kind === 'file' ? await fileBlock(id) : await block(id);
         if (current.replace(/\n$/, '') === wanted) continue;
         if (check) {
-            console.log(`docs/recipes/${file}: the code of "${id}" differs from examples/${kind === 'file' ? id : id + '.*'}. Change the example, then run node scripts/recipes.mjs.`);
+            console.log(`docs/${file}: the code of "${id}" differs from examples/${kind === 'file' ? id : id + '.*'}. Change the example, then run node scripts/recipes.mjs.`);
             failures++;
         }
         out = out.replace(whole, `<!-- ${kind}:${id}:start -->\n${wanted}\n<!-- ${kind}:${id}:end -->`);
     }
     if (!check && out !== text) {
-        writeFileSync(path.join(dir, file), out);
-        console.log(`recipes: wrote docs/recipes/${file}`);
+        writeFileSync(path.join(root, 'docs', file), out);
+        console.log(`recipes: wrote docs/${file}`);
     }
 }
 if (failures) process.exitCode = 1;
