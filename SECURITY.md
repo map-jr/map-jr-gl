@@ -32,7 +32,7 @@ untrusted input. These are vulnerabilities:
 - One failed or malformed request that stops the whole map instead of only its own tile or resource.
 - State of one map that another map on the same page can read or change.
 - A way around the limits of the server renderer (`timeout`, `requestTimeout`, `maxBytes`, `allowHosts`; see
-  [Server rendering](docs/server-rendering.md#limits-for-requests)), for example a request that is not counted.
+  [Server rendering](docs/guide/server-rendering.md#limit-the-requests-of-the-server)), for example a request that is not counted.
 
 ## What is not in scope
 
@@ -41,4 +41,4 @@ untrusted input. These are vulnerabilities:
 - Requests of the server renderer to hosts that a style names, when `allowHosts` is not set. The renderer fetches the
   URLs of the style from your server, and by default it allows all hosts and `maxBytes` has no limit. Set
   `allowHosts` and `maxBytes` when the style comes from users.
-- Problems in MapLibre GL JS, in the demo pages or in the gallery that do not affect the published package.
+- Problems in MapLibre GL JS, in the demo pages, the examples or the docs site that do not affect the published package.

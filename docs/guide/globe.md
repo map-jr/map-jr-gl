@@ -97,7 +97,7 @@ are ready for the globe, for at most 1 second.
 
 ## Let the user switch to the globe
 
-The control [`globe`](../api.md#controls) is a button that switches the projection between `globe` and `mercator`.
+The control [`globe`](controls.md) is a button that switches the projection between `globe` and `mercator`.
 
 **Main API**
 
@@ -150,18 +150,17 @@ The event `projectiontransition` fires when the name of the projection changes a
 ## What the globe draws
 
 On the globe, the map draws the layers of the types `background`, `fill`, `line`, `circle`, `heatmap`, `raster`,
-`hillshade` and `symbol`. The background covers only the sphere, and the space around the sphere is transparent. To
-fill it, set the CSS `background` of the container, the element that you pass to `createMap` or as `container`.
+`hillshade`, `fill-extrusion` and `symbol`. The background covers only the sphere, and the space around the sphere is
+transparent. To fill it, set the CSS `background` of the container, the element that you pass to `createMap` or as
+`container`.
 
-- The map draws no [3D terrain](terrain.md) and no `fill-extrusion` layers on the globe. For each of the two, it
-  writes one warning per map. With `globe`, they show past zoom 12, where the map is flat. The styles of
-  `https://styles.map-jr.org/1/` have a `fill-extrusion` layer for buildings, so a globe with one of them writes that
-  warning. The warning changes nothing else, and the buildings show past zoom 12.
-- The map draws no custom layers (the type `custom` of `@map-jr/map-jr-gl/maplibre-compat`) on the globe, also while
-  it changes between the globe and Mercator, because a custom layer draws in Mercator. It writes one warning per map.
-  Custom layers show past zoom 12 and with the projection `mercator`.
-- With a `sky` in the style, the map draws the atmosphere around the globe, as MapLibre GL JS does. It draws no sky
-  gradient and no fog on the globe. The property `atmosphere-blend` of `sky` sets the opacity of the atmosphere.
+- The map draws [3D terrain](terrain.md) on the sphere. A `fill-extrusion` layer follows the curve of the sphere,
+  so the buildings of the styles of `https://styles.map-jr.org/1/` stand on the globe as they do on the flat map.
+- A custom layer (the type `custom` of `@map-jr/map-jr-gl/maplibre-compat`) gets the projection data of the globe, as
+  in MapLibre GL JS: `shaderData`, `defaultProjectionData` and `getProjectionData` of its `render` describe the sphere,
+  also while the map changes between the globe and Mercator.
+- With a `sky` in the style, the map draws the sky and the atmosphere around the globe, as MapLibre GL JS does. The
+  property `atmosphere-blend` of `sky` sets the opacity of the atmosphere. The map draws no fog on the globe.
 - A label whose anchor turns to the far side of the globe is hidden. A `Marker` of the MapLibre compat entry on the far
   side takes the opacity `opacityWhenCovered` (0.2 by default).
 - The [server renderer](server-rendering.md) draws the flat map.
@@ -177,5 +176,5 @@ fill it, set the CSS `background` of the container, the element that you pass to
 ## See also
 
 - [`projection`](../reference/description.md#projection) of the description.
-- [Controls](../api.md#controls) for the options of `globe` and the other controls.
+- [Controls](controls.md) for the options of `globe` and the other controls.
 - [Terrain and elevation](terrain.md) for 3D terrain on the flat map.

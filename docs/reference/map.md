@@ -49,6 +49,9 @@ map.moveTo({zoom: 15, duration: 500});
 | [`container`](#container) (read only) | `HTMLElement` | The element that holds the map. |
 <!-- ref:MapInstance:end -->
 
+Members whose names start with `_` are private. They are not in the type `MapInstance`, and they can change in each
+release.
+
 ## `update`
 
 <!-- ref:MapInstance.update:start -->
@@ -89,9 +92,22 @@ The map compares each field with the field of the last description:
 - Each value of `data` is compared by identity only. To change the data of a source, pass a new object. A change of
   the old object in place has no effect.
 
-A changed paint value of a layer that stays in the style transitions from the old value to the new one, with the
-`*-transition` property of the layer, the `transition` of the style, or 300 ms. A new style that differs in more than
-its layers loads again, and its values change at once.
+A changed paint value of a layer that stays in the style transitions from the old value to the new one, as in MapLibre
+GL JS. This holds for `update`, `patch`, and in the compat entry for `setPaintProperty` and `setStyle` with `diff`.
+
+- The time comes from the `*-transition` property of the layer (`'fill-color-transition': {duration: 500}`), then from
+  the `transition` of the style, then from the default `{duration: 300, delay: 0}`, in milliseconds. The value waits
+  for `delay` and then moves over `duration` with a cubic ease in and out.
+- Colours, numbers and lists of numbers of the same length (`fill-translate`) move. A value that depends on the zoom
+  moves between the values at the zoom of each frame.
+- These change at once: a value that depends on the feature (`get` or `feature-state`, before or after the change),
+  `*-pattern`, `line-dasharray`, and a value of any other type.
+- Symbol layers, fill-extrusion layers and `fill-outline-color` do not transition. A new value shows when their tiles
+  are built again.
+- The map draws a frame for each animation frame until the last transition ends, and `idle` comes after it.
+- `{duration: 0}` in `transition` or in a `*-transition` makes changes instant. In the compat entry, `setStyle` with
+  `diff: false` changes every value at once, as in MapLibre GL JS.
+- A new style that differs in more than its layers loads again, and its values change at once.
 
 ## `patch`
 

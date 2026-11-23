@@ -20,7 +20,7 @@ The package contains its documentation as markdown, so you read the version that
 - `node_modules/@map-jr/map-jr-gl/docs/guide/which-entry.md` chooses the entry.
 - `node_modules/@map-jr/map-jr-gl/docs/reference/` has every option, method, event and type.
 - `node_modules/@map-jr/map-jr-gl/docs/recipes/` has complete examples.
-- `node_modules/@map-jr/map-jr-gl/docs/maplibre-compatibility.md` lists each difference from MapLibre GL JS.
+- `node_modules/@map-jr/map-jr-gl/docs/reference/maplibre-differences.md` lists each difference from MapLibre GL JS.
 - The same pages are at `https://map-jr.org/raw/<path>.md`, and `https://map-jr.org/llms.txt` lists them.
 
 ## Migrate from MapLibre GL JS

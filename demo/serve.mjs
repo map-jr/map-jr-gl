@@ -1,6 +1,7 @@
 /** Demo server: client-only page, server-rendered page with hydration, and a caching tile proxy. */
 import http from 'node:http';
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
+import {existsSync, statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import makeStyle from './style.mjs';
@@ -37,6 +38,16 @@ const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf
 #hud{position:absolute;left:8px;top:8px;z-index:2;background:#fff;padding:6px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003}</style></head>
 <body>${body}</body></html>`;
 
+const stylesClient = `<script type="module">
+import {createMap} from '/dist/map-jr-gl.js';
+import {navigation, styles} from '/dist/controls.js';
+const q = new URLSearchParams(location.search), base = 'https://styles.map-jr.org/1/';
+const entries = [['Elevation', 'elevation'], ['Elevation zero', 'elevation-zero'], ['Elevation radar', 'elevation-radar']].map(([label, name]) => ({label, style: base + name + '.json'}));
+const hud = document.getElementById('hud');
+const map = window.map = createMap('map', {style: entries[0].style, initialView: {center: [8.33, 47.03], zoom: 11}, renderer: q.get('renderer') || undefined,
+  controls: [navigation(), styles({entries, onStyleChange: e => { hud.textContent = 'style: ' + e.label; }})]});
+map.state.subscribe(s => s.renderer, r => { if (r) hud.textContent = 'renderer: ' + r; });
+</script>`;
 const client = (q) => `<script type="module">
 // ?standalone loads the single-file build (worker embedded); ?from=<origin> loads the library from another origin, as a CDN would serve it.
 const params = new URLSearchParams(location.search);
@@ -120,16 +131,21 @@ http.createServer(async (req, res) => {
             const file = path.join(root, 'node_modules/maplibre-gl/dist', path.basename(url.pathname));
             return send(200, file.endsWith('.css') ? 'text/css' : 'text/javascript', await readFile(file));
         }
-        // The gallery is a static site (built by `pnpm site` into site-dist/, the same files GitHub Pages serves).
-        if (url.pathname === '/gallery') { res.writeHead(302, {location: '/gallery/'}); return res.end(); }
-        if (url.pathname.startsWith('/gallery/')) {
-            // (A folder is its index.html, as on GitHub Pages: /gallery/bench/ is the benchmark page of the site.)
-            const file = path.join(root, 'site-dist', path.normalize((url.pathname.slice(9) || 'index.html').replace(/\/$/, '/index.html')));
+        // The static pages that `pnpm site` builds into site-dist/: the harness page of the examples at /site/examples/run.html,
+        // and the benchmark page at /site/bench/ (a folder is its index.html), as the docs site publishes it.
+        if (url.pathname.startsWith('/site/')) {
+            const file = path.join(root, 'site-dist', path.normalize(url.pathname.slice(6).replace(/\/$/, '/index.html')));
             if (!file.startsWith(path.join(root, 'site-dist'))) return send(403, 'text/plain', 'Forbidden');
+            // A folder without its slash (/site/bench) goes to the folder, whose relative URLs need the slash.
+            if (!existsSync(file)) return send(404, 'text/plain', 'Not found');
+            if (!url.pathname.endsWith('/') && statSync(file).isDirectory()) { res.writeHead(302, {location: url.pathname + '/' + url.search}); return res.end(); }
             const types = {'.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.css': 'text/css'};
             return send(200, types[path.extname(file)] ?? 'application/octet-stream', await readFile(file));
         }
-        if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div><a href="/gallery" style="position:absolute;left:8px;bottom:34px;z-index:2;background:#fff;padding:5px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003;color:#222;text-decoration:none">Feature gallery</a>${client()}`));
+        // /?styles is a map of the main API with the control styles() (#1504) and three official styles; ?renderer=main or
+        // ?renderer=worker chooses the renderer.
+        if (url.pathname === '/' && url.searchParams.has('styles')) return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${stylesClient}`));
+        if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${client()}`));
         if (url.pathname === '/map.jpg') {
             const q = url.searchParams, ratio = +(q.get('ratio') || 1);
             const {image, contentType} = await renderToImage({style, ...view, zoom: +(q.get('zoom') || view.zoom), bearing: +(q.get('bearing') || 0),

@@ -21,7 +21,7 @@ The docs are in `node_modules/@map-jr/map-jr-gl/docs/`. Read these before you ch
 - `migrate/from-maplibre.md` for the compat entry.
 - `migrate/compat-to-main-api.md` for the main API.
 - `migrate/wrappers.md` for wrappers and plugins.
-- `maplibre-compatibility.md` for every difference and for what is not available.
+- `reference/maplibre-differences.md` for every difference and for what is not available.
 - `reference/` for `MapDescription`, the map and the state. `guide/which-entry.md` for the choice of entry.
 
 ## 3. Choose the entry
@@ -61,9 +61,9 @@ Main API (see `migrate/compat-to-main-api.md` for the full table):
 ## 5. Do not
 
 - Do not remove `maplibre-gl` while a wrapper, a plugin or the types of the project still import it. Step 7 says when to remove it.
-- Do not use an API that the docs do not list. Look up each name in `reference/` or in `maplibre-compatibility.md`; do not guess a method from MapLibre GL JS.
+- Do not use an API that the docs do not list. Look up each name in `reference/`, including `reference/maplibre-differences.md`; do not guess a method from MapLibre GL JS.
 - Do not write an alias that matches `maplibre-gl/dist/...`. The build stops.
-- Do not copy the style of a layer that the library cannot draw (video and canvas sources, `within` and `distance`, MapLibre Tiles). Report it to the user.
+- Do not copy the style of a layer that the library cannot draw (`within` and `distance`, MapLibre Tiles). Report it to the user.
 - Do not rewrite the application. Change imports, calls and options only, and leave the structure of the code. The removals in step 7 are part of the migration.
 - Do not leave `strict: true` or a workaround in the final code. Step 7 removes `strict: true`.
 - Do not mark the work as done before the checks in step 6 pass.

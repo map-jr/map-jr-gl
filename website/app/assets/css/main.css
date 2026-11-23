@@ -19,7 +19,7 @@
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Paper and ink. 50 is the paper of the gallery (#f6f5f2), 900 its ink (#1d1d1f) and 950 its night (#17181a). */
+  /* Paper and ink. 50 is the paper (#f6f5f2), 900 its ink (#1d1d1f) and 950 its night (#17181a). */
   --color-paper-50: #f6f5f2;
   --color-paper-100: #eeece7;
   --color-paper-200: #e3e1dc;

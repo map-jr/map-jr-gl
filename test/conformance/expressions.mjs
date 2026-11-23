@@ -54,7 +54,7 @@ const deliberate = [
     {label: 'projection-transition', decision: 'later', match: f => f.id.startsWith('interpolate/projection'),
         reason: 'An "interpolate" between two projections gives the first projection, and not the transition between the two ({from, to, transition}).'},
     {label: 'vertical-align', decision: 'later', match: f => /^format\/(basic|data-driven-vertical-align|image-sections)$/.test(f.id),
-        reason: 'The option "vertical-align" of "format" is not implemented (docs/maplibre-compatibility.md).'},
+        reason: 'The option "vertical-align" of "format" is not implemented (docs/reference/maplibre-differences.md).'},
     {label: 'upstream-fixture', decision: 'later', match: f => f.id === 'legacy/identity/enum',
         reason: 'The fixture wants "c", which is not a value of the enum, from an identity function with no default; "legacy/identity/enum-default" and the identity function of MapLibre GL JS replace such a value. The fixture is to be corrected upstream (#656).'},
     {label: 'array-types', decision: 'later', match: f => /^legacy\/identity\/(color_array|number_array)$/.test(f.id),

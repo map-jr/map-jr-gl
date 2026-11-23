@@ -132,7 +132,7 @@ Two settings override `initialView`:
 
 ## Move the camera from code
 
-In the main API, [`map.moveTo`](../api.md#the-camera) moves the camera each time that it is called. It accepts the
+In the main API, [`map.moveTo`](view-and-camera.md) moves the camera each time that it is called. It accepts the
 members of the view, or `bounds` with `fitPadding` and `fitMaxZoom` as in `initialView`, and two members for the movement:
 
 | Member | Type | Default | Effect |
@@ -270,7 +270,7 @@ A member that `moveTo` is not passed keeps its value, so `{zoom: 15}` keeps the 
 
 When the system asks for reduced motion (`prefers-reduced-motion: reduce`), the camera jumps.
 
-[`map.fitBounds(bounds, options)`](../api.md#the-camera) is the same as `map.moveTo({bounds, ...options})`. It
+[`map.fitBounds(bounds, options)`](view-and-camera.md) is the same as `map.moveTo({bounds, ...options})`. It
 jumps unless `options` sets `duration` or `fly`.
 
 ### Fly along a curve
@@ -526,5 +526,5 @@ map.state.subscribe(state => state.view, showView);
 - [`initialView`](../reference/description.md#initialview), [`view` and `onViewChange`](../reference/description.md#view-and-onviewchange),
   [`padding`](../reference/description.md#padding), [`hash`](../reference/description.md#hash) and
   [`maxBounds`](../reference/description.md#maxbounds) in the reference of the description.
-- [The camera](../api.md#the-camera) for `moveTo` and `fitBounds`.
-- [The view of `v-model:view`](../vue.md#the-view-of-v-modelview) for the Vue component.
+- [The camera](view-and-camera.md) for `moveTo` and `fitBounds`.
+- [The view of `v-model:view`](../reference/vue.md#view) for the Vue component.

@@ -112,11 +112,13 @@ A change is done when all of these that apply are true. The pull request templat
    entry gets it too. Things that exist only to be MapLibre-compatible go in `src/compat-map.ts`, not in the core.
 3. **Every adapter.** A new field of the description (`MapDescription`) is a prop of the Vue component and reaches React
    and Svelte. `pnpm test:consistency` fails if the Vue prop or the documentation is missing.
-4. **Documentation.** `docs/api.md` for the main API; `docs/vue.md` / `docs/react.md` / `docs/svelte.md` for
-   adapters; `docs/maplibre-compatibility.md` when behaviour differs from MapLibre (including anything accepted
-   that has no effect). If the README shows it, update the README.
-5. **Examples.** A gallery row has seven forms in `examples/` (`.js`, `.compat.js`, `.vue`, `.nuxt.vue`, `.jsx`,
-   `.svelte`, and `.html` for `<map-jr>`), each complete on its own. Comments in examples must stay true: reread them when behaviour changes.
+4. **Documentation.** `docs/reference/` for each function, field, event and type (`description.md`, `map.md`,
+   `vue.md`, `react.md`, `svelte.md`, `element.md` and the others), `docs/guide/` or `docs/recipes/` when a task
+   changes, and `docs/reference/maplibre-differences.md` when behaviour differs from MapLibre (including anything
+   accepted that has no effect). If the README shows it, update the README.
+5. **Examples.** An example has seven forms in `examples/` (`.js`, `.compat.js`, `.vue`, `.nuxt.vue`, `.jsx`,
+   `.svelte`, and `.html` for `<map-jr>`), each complete on its own, and its recipe in `docs/recipes/` shows them.
+   Comments in examples must stay true: reread them when behaviour changes.
 6. **Mistakes get a message.** A mistake by the user gets a message that says what is wrong and what to write
    instead. An option or method that is accepted but has no effect warns once. The library does not ignore input
    in silence.
@@ -151,7 +153,7 @@ following are true. Otherwise leave the pull request open and ask the owner.
   every copy, a minified one included. For Apache-2.0, also copy the project's `NOTICE` file if it has one, and say in
   the file that the code was changed.
 - **No endorsement.** Do not use the name of the project or of its authors to promote this library (the third clause
-  of BSD-3-Clause). Naming them in the acknowledgements and in `docs/maplibre-compatibility.md` is fine.
+  of BSD-3-Clause). Naming them in the acknowledgements and in `docs/reference/maplibre-differences.md` is fine.
 
 Copyright protects the expression of code, and not an idea, an algorithm or a formula. New code that implements a
 method (for example the curve of `flyTo`) needs only the line in `ACKNOWLEDGEMENTS.md`. A library that the built files
@@ -183,7 +185,7 @@ before you write or change a page of the docs or a TSDoc comment on a public typ
 - **Be exact.** State the default, the unit, what happens on failure and what is not supported. If you did not
   verify a claim, do not write it as a fact.
 - **An example must run as it is written.** It has all of its imports, it uses real URLs, and it does not leave out
-  setup. `pnpm test:examples` compiles the examples of the gallery.
+  setup. `pnpm test:examples` compiles the examples of `examples/`.
 - **Do not use sales language** such as "blazing", "simply" or "just". Leave out sentences that carry no
   information, and do not apologise.
 - **An error or warning message** starts with `[map-jr-gl]`, names the thing by the name that the user wrote, and
@@ -277,6 +279,6 @@ CI runs all of these except `test:cloudflare`. Run locally what your change can 
   - The new hostname can take a minute to resolve on the Mac, while the phone resolves it at once. To check it from
     the Mac, resolve it through `1.1.1.1`: `curl --resolve <host>:443:$(dig +short <host> @1.1.1.1 | head -1) https://<host>/`.
   - The demo's `/style.json` names the host that the page came through, so tiles load through the tunnel (#910).
-    Pages of the demo: `/?sky&pitch=85`, `/bench`; the playground of the gallery site (#912) needs no tunnel.
+    Pages of the demo: `/?sky&pitch=85`, `/bench`; the playground of the docs site (`https://map-jr.org/play`) needs no tunnel.
 - For a larger change, ask for an independent review before merging: a reviewer that has not seen your reasoning,
   told to reproduce what it suspects. The reviews of 2026-11-12 found 25 reproducible faults this way.

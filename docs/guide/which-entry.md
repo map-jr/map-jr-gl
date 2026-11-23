@@ -19,7 +19,7 @@ for MapLibre GL JS that you want to keep.
 ## The main API and its adapters
 
 The description ([`MapDescription`](../reference/description.md)) is one object that states everything that a map
-shows: the style, the data, the view and the controls. [`createMap`](../api.md#make-a-map) creates a map from a
+shows: the style, the data, the view and the controls. [`createMap`](../reference/create-map.md) creates a map from a
 description. To change the map, pass a new description to [`update`](../reference/map.md#update), and the map applies
 what is different. The state of the map, such as the view and the feature under the pointer, is a store that your
 code can subscribe to.
@@ -47,10 +47,10 @@ description, with the names of props and attributes (`map-style` for `style`). N
 
 | Adapter | Form | Server rendering of the first view |
 |---|---|---|
-| [Vue and Nuxt](../vue.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and composables | The `ssr` prop |
-| [React](../react.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and hooks | The `firstView` prop, from `renderFirstView` of `@map-jr/map-jr-gl/server` |
-| [Svelte](../svelte.md) | The action `mapJr` and the store `mapState` | `renderFirstView` of `@map-jr/map-jr-gl/server` |
-| [The element](../element.md) | The custom element `<map-jr>` | `renderElement` of `@map-jr/map-jr-gl/server` |
+| [Vue and Nuxt](../reference/vue.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and composables | The `ssr` prop |
+| [React](../reference/react.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and hooks | The `firstView` prop, from `renderFirstView` of `@map-jr/map-jr-gl/server` |
+| [Svelte](../reference/svelte.md) | The action `mapJr` and the store `mapState` | `renderFirstView` of `@map-jr/map-jr-gl/server` |
+| [The element](../reference/element.md) | The custom element `<map-jr>` | `renderElement` of `@map-jr/map-jr-gl/server` |
 
 ## The compat entry
 
@@ -84,7 +84,7 @@ map.on('load', () => {
 ```
 
 A wrapper of MapLibre GL JS for a framework, such as react-map-gl 8, works with the compat entry through an alias of
-the module name `maplibre-gl`. See [MapLibre compatibility](../maplibre-compatibility.md) for the alias and for the
+the module name `maplibre-gl`. See [Differences from MapLibre GL JS](../reference/maplibre-differences.md) for the alias and for the
 differences in behaviour.
 
 ## Use both entries in one application
@@ -98,5 +98,5 @@ old pages and the main API for new pages. A map belongs to one entry: a map of `
 
 - [Getting started](getting-started.md) to install the package and show a first map in each variant.
 - [The description](../reference/description.md) for every field of `MapDescription`.
-- [The main API](../api.md) for `update`, `patch`, the state and the queries.
+- [The main API](../reference/create-map.md) for `update`, `patch`, the state and the queries.
 - [From MapLibre GL JS](../migrate/from-maplibre.md) for the steps to move an application to the compat entry.

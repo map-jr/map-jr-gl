@@ -110,7 +110,7 @@ export interface InitialView extends ViewInput {
     /** A box to fit into the map. It overrides `center` and `zoom`. */
     bounds?: Bounds;
     /**
-     * Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. It has no effect without `bounds`.
+     * Space in CSS pixels around `bounds` for this fit, which `moveTo` adds to `padding` of the description and the first fit of `initialView` does not. It has no effect without `bounds`.
      * @default 0
      */
     fitPadding?: PaddingInput;
@@ -343,7 +343,7 @@ export interface MapSetup {
      * @default false
      */
     hash?: boolean | string | null;
-    /** The nonce of a [Content Security Policy](docs/loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. */
+    /** The nonce of a [Content Security Policy](docs/guide/loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. */
     nonce?: string | null;
 }
 

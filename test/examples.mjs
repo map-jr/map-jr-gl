@@ -1,4 +1,4 @@
-// Checks the example files of the gallery (examples/*): each must compile, and must import only names that the
+// Checks the example files (examples/*): each must compile, and must import only names that the
 // entries of the library have. A Svelte form compiles with no warning, a <map-jr> form (.html) has the element and
 // one module script, and a Nuxt form (.nuxt.vue) uses only the names that the module for Nuxt registers.
 //   node test/examples.mjs   (after pnpm build)

@@ -1,5 +1,6 @@
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules: ['@map-jr/map-jr-gl/nuxt'].
+// The map fills its parent element, so give the parent a height.
 import {points} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';

@@ -39,7 +39,7 @@ These differences change the code of most applications:
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
   `error` with that error and shows a message in the container. Call `supported()` before you create the map.
 
-[MapLibre compatibility](../maplibre-compatibility.md) is the complete list of the differences, of what is not
+[Differences from MapLibre GL JS](maplibre-differences.md) is the complete list of the differences, of what is not
 available, and of the types that differ.
 
 ## Options of `new Map`
@@ -52,7 +52,7 @@ available, and of the types that differ.
 | [`strict`](#strict) | `boolean` | `false` | Whether an option or a call that the map cannot carry out throws an error. |
 | `fonts` | `FontSource[]` | | Web fonts for labels, for example `[{family: 'Open Sans', src: '/fonts/open-sans.woff2', weight: '300 800'}]`. |
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font. |
-| `nonce` | `string` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`. |
+| `nonce` | `string` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
 These options of MapLibre GL JS have no effect: `renderWorldCopies: false`, `canvasContextAttributes` other than
 `antialias`, `logoPosition`, `validate` with any value, `fadeDuration` other than 300, `pitchWithRotate: false`, and
@@ -355,6 +355,20 @@ map.on('load', async () => {
 
 An image that draws itself with WebGL (`renderWithWebGL`) is not supported, and the promise rejects.
 
+## Video and canvas sources
+
+`getSource(id)` of a source of the type `video` or `canvas` has these methods, as in MapLibre GL JS. They exist once the
+code of these sources has loaded, which the map requests when a style with such a source has loaded. Until then,
+`getSource(id)` returns the specification without them.
+
+| Method | Source | Description |
+|---|---|---|
+| `getVideo()` | `video` | Returns the `<video>` element. |
+| `getCanvas()` | `canvas` | Returns the `<canvas>` element. |
+| `play()`, `pause()` | both | Start and stop the video, or the copy of the canvas in each frame. |
+| `seek(seconds)` | `video` | Sets the time of the video. |
+| `setCoordinates(coordinates)` | both | Moves the four corners. |
+
 ## Other exports
 
 | Export | Description |
@@ -366,7 +380,7 @@ An image that draws itself with WebGL (`renderWithWebGL`) is not supported, and 
 | `Point` | A point with `convert`, `clone`, `add`, `sub`, `mult`, `div`, `round`, `mag`, `dist` and `equals`, and none of the other methods. |
 | `addProtocol`, `removeProtocol` | Add and remove a function of the page that loads the URLs that start with a name. |
 | `supported()` | Only in this library: returns `false` in a browser without WebGL2. |
-| `configure(options)` | Only in this library: sets how the library loads its workers. See [Loading](../loading.md). |
+| `configure(options)` | Only in this library: sets how the library loads its workers. See [Loading](../guide/loading.md). |
 | `setWorkerUrl`, `getWorkerUrl` | Set and read the URL of the worker file of this library. A URL of the worker file of MapLibre GL JS is ignored. |
 | `setWorkerCount`, `getWorkerCount` | Set and read the number of tile workers. |
 | `setMaxParallelImageRequests`, `setRTLTextPlugin` | Accepted with no effect, with the getters `getMaxParallelImageRequests` and `getRTLTextPluginStatus`. |
@@ -374,6 +388,7 @@ An image that draws itself with WebGL (`renderWithWebGL`) is not supported, and 
 | `Hash` | Keeps the camera in the fragment of the URL, like the `hash` option. See [Hash](#hash-and-config). |
 | `config` | The settings object of MapLibre GL JS, with three fields. See [Hash](#hash-and-config). |
 | `Evented`, `EXTENT` | The class with `on`, `off`, `once` and `fire` that `Marker`, `Popup` and `FullscreenControl` use for their own events, and the tile size 8192. |
+| `createTileMesh(options, forceIndicesSize?)` | Returns the vertices and indices of a mesh that covers a tile, as in MapLibre GL JS 6.17. It throws when `forceIndicesSize` is `'16bit'` and the mesh needs 32-bit indices. |
 | `GPUInitializationError` | The error of the `error` event when the map cannot start. The constructor does not throw it. |
 | `MapLibreMap` | Another name of `Map`. |
 | `InteractionHandler` | Only in this library: the class of `map.dragPan` and the other handlers. |
@@ -382,6 +397,10 @@ An image that draws itself with WebGL (`renderWithWebGL`) is not supported, and 
 The entry also exports the types of MapLibre GL JS under their names, such as `MapOptions`, `StyleSpecification`
 and `MapMouseEvent`. An event type or a source type, such as `MapMouseEvent` or `GeoJSONSource`, is a type only, so
 `new` and `instanceof` do not work with it. `Event`, `CanvasSource` and `VideoSource` are types for the same reason.
+
+`map.style.projection.subdivisionGranularity` has the granularities of MapLibre GL JS 6.17 for the projection of the
+style (`fill`, `line`, `tile`, `stencil` with `getGranularityForZoomLevel(zoom)`, and `circle`), for custom layers that
+build their meshes with `createTileMesh`.
 
 ## Hash and config
 
@@ -397,7 +416,7 @@ worker URL like `setWorkerUrl`. The other fields of MapLibre GL JS are not there
 ## Exports of `maplibre-gl` that the entry lacks
 
 An import of a name in this list fails when the application is built, and `maplibregl.Name` is `undefined` at run
-time. The last table of [Types](../maplibre-compatibility.md#types) says why each group of names is missing.
+time. The last table of [Types](maplibre-differences.md#types) says why each group of names is missing.
 
 <!-- exports:start -->
 **A type here, not a value** (20): `CanvasSource`, `ErrorEvent`, `Event`, `GeoJSONSource`, `ImageSource`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource`.

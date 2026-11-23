@@ -28,7 +28,7 @@ that this page lists. The page is written for an application that uses MapLibre 
    ```
 
 3. Remove the CSS file and the worker file of MapLibre GL JS. The library adds its own styles and loads its own
-   worker file. See [Loading](../loading.md) for a page with a Content Security Policy or files on a CDN.
+   worker file. See [Loading](../guide/loading.md) for a page with a Content Security Policy or files on a CDN.
 
    Before:
 
@@ -109,7 +109,7 @@ that this page lists. The page is written for an application that uses MapLibre 
 | MapLibre GL JS | Map Jr. GL | Notes |
 |---|---|---|
 | `'maplibre-gl'` | `'@map-jr/map-jr-gl/maplibre-compat'` | It exports `Map`, `Marker`, `Popup`, the control classes, `LngLat`, `LngLatBounds`, `Point`, `addProtocol` and `setWorkerUrl`, and a default export with the same names. |
-| Other exports, such as `Evented`, `Hash`, `addSourceType` and `prewarm` | None | An import of a name that the entry does not export fails when the application is built. |
+| Other exports, such as `addSourceType` and `prewarm` | None | An import of a name that the entry does not export fails when the application is built. |
 | `maplibre-gl/dist/maplibre-gl.css` | None | The map adds its styles to the page. |
 | `setWorkerUrl(url)`, `workerUrl` of react-map-gl | None | A URL of the worker file of MapLibre GL JS is ignored. |
 | `map.queryRenderedFeatures(...)` | `await map.queryRenderedFeatures(...)` | The arguments and the features are the same. |
@@ -265,16 +265,21 @@ wrappers and plugins that run with this library, and their types.
 
 The library does not have these parts of MapLibre GL JS, among others:
 
-- Video and canvas sources, and MapLibre Tiles (MLT).
+- MapLibre Tiles (MLT). A vector source with `encoding: 'mlt'` draws nothing and writes a `[map-jr-gl]` warning.
 - The expressions `within` and `distance`.
 - `text-writing-mode`.
 - Roll, a field of view other than the default, and a pitch above 90 degrees.
 - Custom layers with the worker renderer.
 
-See [MapLibre compatibility](../maplibre-compatibility.md) for the full list of differences and of everything that
+See [Differences from MapLibre GL JS](../reference/maplibre-differences.md) for the full list of differences and of everything that
 is not available, and [The compat entry](../reference/maplibre-compat.md) for every member of `Map`.
+
+## A coding agent
+
+The [migration prompt](prompt.md) lets a coding agent do these steps. The package contains these docs as Markdown in
+`node_modules/@map-jr/map-jr-gl/docs/`, and an `AGENTS.md` for agents.
 
 ## See also
 
 - [Markers and popups](../guide/markers-and-popups.md) for markers with both entries.
-- [The main API](../api.md) for a map from one description, which new code can use in place of the compat entry.
+- [The main API](../reference/create-map.md) for a map from one description, which new code can use in place of the compat entry.

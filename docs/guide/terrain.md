@@ -83,7 +83,7 @@ The field [`terrain`](../reference/description.md#terrain) of the description ov
 of the style. `exaggeration` multiplies the heights and is 1 by default.
 
 `source` is the id of a `raster-dem` source of the style or of [`sources`](../reference/description.md#sources).
-The style `elevation-zero.json` has no elevation source, so this example adds one in `sources`. `encoding` is
+The style [`elevation-zero.json`](https://map-jr.org/styles/elevation-zero) has no elevation source, so this example adds one in `sources`. `encoding` is
 `mapbox` (the default), `terrarium` or `custom`. A PMTiles archive also works, with the prefix `pmtiles://` before
 its URL.
 
@@ -186,9 +186,14 @@ document
 - The roof of a building follows the slope of the ground under it.
 - When a movement stops, the map moves the centre of the view to the ground that the camera looks at. The view on the
   screen does not move, but the `center` and the `zoom` of the view change by a small amount.
+- When the camera would be inside the terrain, it rises above the ground, and the map solves the pitch and the zoom
+  again, as MapLibre GL JS does. `view` of the state reports the solved values, and so do `getPitch()` and
+  `getZoom()` in `@map-jr/map-jr-gl/maplibre-compat`. A pitch or rotate gesture keeps its values.
+- The heights come from the full elevation image, so `queryTerrainElevation` and the height of the camera agree with
+  MapLibre GL JS within 5 %.
 - With a `sky` in the style, the map draws fog on the terrain above a pitch of 60 degrees. The properties
   `fog-color`, `fog-ground-blend` and `horizon-fog-blend` of `sky` set the fog.
-- On the [globe](globe.md), the map draws no 3D terrain.
+- On the [globe](globe.md), the map draws the 3D terrain on the sphere. It draws no fog there.
 - The [server renderer](server-rendering.md) draws no 3D terrain.
 
 ## Shade the relief
@@ -566,5 +571,5 @@ the number is the height multiplied by the exaggeration of the terrain:
 
 - [`terrain`](../reference/description.md#terrain), [`sources`](../reference/description.md#sources) and
   [`layers`](../reference/description.md#layers) of the description.
-- [The globe](globe.md), which draws no 3D terrain.
+- [The globe](globe.md), which draws the 3D terrain on the sphere.
 - [Server rendering](server-rendering.md) for contour lines in an image that a server renders.

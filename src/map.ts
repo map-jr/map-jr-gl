@@ -1710,7 +1710,7 @@ export class Map {
      * `width`/`height` are the display size in CSS pixels; they default to the image's natural size.
      *
      * An SVG document with slots (`{{name}}`) is a template. It is drawn one time for each different set of values that
-     * the features of a layer give its slots: see "Images for style layers" in docs/api.md.
+     * the features of a layer give its slots: see "images" in docs/reference/description.md.
      */
     addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) { return this.putImage(name, source, options); }
     /** `variant`: the image is one variant of a template. It is not an image that the page added, and it is not looked at for slots. */

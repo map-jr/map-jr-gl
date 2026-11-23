@@ -1,6 +1,7 @@
 # Builds the docs site (website/) and publishes it to Cloudflare at https://map-jr.org/.
 #
 # A pull request builds and checks the site and keeps the output as an artifact. A push to main also deploys it.
+# The site also has the benchmark page at /bench/.
 # One-time setup by the owner: the repository secrets CLOUDFLARE_API_TOKEN (a token with the permission
 # "Edit Cloudflare Workers" for the account) and CLOUDFLARE_ACCOUNT_ID, and the zone map-jr.org in that account.
 # Without the secrets, the deploy step writes a notice and the job passes.
@@ -13,10 +14,10 @@ name: Docs site
 on:
   pull_request:
     # package.json is here because the header of the site shows the version of the library.
-    paths: ['website/**', 'docs/**', 'examples/**', 'package.json', '.github/workflows/site.yml']
+    paths: ['website/**', 'docs/**', 'examples/**', 'demo/bench.*', 'scripts/site.mjs', 'package.json', '.github/workflows/site.yml']
   push:
     branches: [main]
-    paths: ['website/**', 'docs/**', 'examples/**', 'package.json', '.github/workflows/site.yml']
+    paths: ['website/**', 'docs/**', 'examples/**', 'demo/bench.*', 'scripts/site.mjs', 'package.json', '.github/workflows/site.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -46,6 +47,14 @@ jobs:
       - run: pnpm build
       - run: pnpm install --frozen-lockfile
         working-directory: website
+      # The clones of the styles repositories that the pages of /styles read (website/build/styles.ts). With a clone
+      # from the cache, the build fetches it again and keeps the old clone when github.com does not answer, so one failed
+      # fetch does not fail the build (#1515). Each run saves a new entry and restores the newest one.
+      - uses: actions/cache@v6
+        with:
+          path: website/.data/sources
+          key: site-sources-${{ github.run_id }}
+          restore-keys: site-sources-
       - run: pnpm generate
         working-directory: website
       - uses: actions/upload-artifact@v7
@@ -67,6 +76,15 @@ jobs:
           for i in 1 2 3; do pnpm exec playwright install --with-deps chromium webkit && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
       - run: pnpm check --no-map
         working-directory: website
+      # The benchmark page at /bench/, so that a phone or a device farm can open it with no server of the project
+      # (scripts/site.mjs builds it into site-dist/bench/). The site drops the trailing slash of a folder, so the page
+      # gets a <base> that keeps its relative URLs in /bench/.
+      - name: Add the benchmark page
+        run: |
+          node scripts/site.mjs
+          cp -r site-dist/bench website/.output/public/bench
+          sed -i 's|<head>|<head><base href="/bench/">|' website/.output/public/bench/index.html
+          grep -q '<base href="/bench/">' website/.output/public/bench/index.html
       - name: Deploy to Cloudflare
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         working-directory: website

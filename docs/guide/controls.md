@@ -122,7 +122,7 @@ These functions are available. Each one also accepts `position`.
 | `styles({entries})` | A button that opens a list of styles with a picture of each, and sets the chosen style: see [`styles()`](../reference/controls.md#styles) | `entries` (required): `{label, style}` for each style; `preview`, `onStyleChange` |
 | `custom({key, element})` | A control of your own: see [Add a control of your own](#add-a-control-of-your-own) | |
 
-See [Controls](../api.md#controls) for what each option does.
+See [Controls](controls.md) for what each option does.
 
 ## Change or remove a control
 
@@ -240,7 +240,7 @@ map.addControl(new FullscreenControl());
 ```
 
 The texts are the labels that a screen reader reads and the titles that the browser shows over a button. See
-[The texts of the controls](../api.md#the-texts-of-the-controls) for every key and its English text. The library
+[The texts of the controls](../reference/controls.md#the-texts-of-the-controls) for every key and its English text. The library
 includes no translations, and `locale` does not change the language of the labels of the map.
 
 ## Change the look of the controls
@@ -448,5 +448,5 @@ method of a map of MapLibre GL JS. A control that calls another method, such as 
 
 - [`controls`](../reference/description.md#controls), [`locale`](../reference/description.md#locale) and
   [`attribution`](../reference/description.md#attribution) in the reference of the description.
-- [Controls](../api.md#controls) for every option of each control.
+- [Controls](controls.md) for every option of each control.
 - [Light and dark maps](color-scheme.md) for the colours of the controls in a dark map.

@@ -1,5 +1,5 @@
 // In-browser benchmark: this library against MapLibre GL JS on the visitor's own GPU (#29). See bench.html.
-// (The URLs are relative: the page is at /bench of the demo server, and in the folder bench/ of the gallery site.)
+// (The URLs are relative: the page is at /bench of the demo server, and at https://map-jr.org/bench/.)
 //
 // The query of the page (test/bench/browsers.mjs and test/bench/webdriver.mjs use it):
 //   auto              runs the scenarios that are checked when the page opens, and sets window.benchResults at the end
@@ -13,7 +13,7 @@
 //   libs=a,b          only these libraries (maplibre, main, worker)
 //   latency=MS        the delay that the runner adds to each request; the page only names it in the cold start's note
 //   style=URL         another style (the default is OpenFreeMap Liberty)
-//   commit=SHA        the commit that the copied results name (the gallery site writes commit.txt instead)
+//   commit=SHA        the commit that the copied results name (the copy that scripts/site.mjs makes has commit.txt instead)
 //
 // The page keeps each finished pair of a scenario and a library in sessionStorage (#977). When a scenario ends the
 // page (Safari on an iPhone can lose the tab), a reload shows the kept results with a note that names the pair that
@@ -62,8 +62,8 @@ let commit = q.get('commit') ?? '';
 const gpu = (info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || gl?.getParameter(gl.RENDERER) || 'not given by the browser';
 const env = () => `GPU: ${gpu} · screen pixel ratio ${devicePixelRatio} · map-jr-gl ${compat.getVersion()}, commit ${commit || 'unknown'} · MapLibre GL JS ${maplibre.getVersion()} · ${navigator.userAgent.replace(/^.*?\) /, '')}`;
 $('env').textContent = env();
-// (The gallery site has commit.txt next to the page, at bench/; the demo server has none.)
-if (!commit && location.pathname.endsWith('/')) fetch('commit.txt').then(r => r.ok ? r.text() : '').then(t => { if (/^[0-9a-f]{7,40}$/.test(t.trim())) { commit = t.trim().slice(0, 12); $('env').textContent = env(); } }).catch(() => {});
+// (The copy of scripts/site.mjs has commit.txt next to the page, at bench/; the demo server has none, and answers 404.)
+if (!commit) fetch('commit.txt').then(r => r.ok ? r.text() : '').then(t => { if (/^[0-9a-f]{7,40}$/.test(t.trim())) { commit = t.trim().slice(0, 12); $('env').textContent = env(); } }).catch(() => {});
 
 const LIBS = {maplibre: 'MapLibre GL JS', main: 'This library, main thread', worker: 'This library, worker'};
 const ALL = Object.keys(LIBS).filter(l => !q.get('libs') || q.get('libs').split(',').includes(l));
@@ -129,7 +129,7 @@ async function settleHost(map, armed = map.once('idle'), limit = 60000) {
 let styleJSON;
 const loadStyle = async () => structuredClone(styleJSON ??= await (await fetch(STYLE)).json());
 const sourceIds = style => Object.keys(style.sources ?? {});
-/** Elevation, relief shading and terrain on the style (Mapterhorn tiles, as in the gallery). */
+/** Elevation, relief shading and terrain on the style (Mapterhorn tiles, as in the examples). */
 function withTerrain(style) {
     style.sources.benchdem = {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12};
     const firstSymbol = style.layers.findIndex(l => l.type === 'symbol');
