@@ -2525,6 +2525,31 @@ for (const renderer of renderers) {
         check(`[${renderer}] a picture of styles() that fails warns once with the label and the reason, later pictures draw, a style of addProtocol has a picture, and a preview with center and no zoom warns`,
             pictureFaults.pics === '-,-,-,-,img,img' && pictureFaults.labels === 'Throws,Number,Missing,Hangs' && /threw "boom"/.test(pictureFaults.text) && /returned 42/.test(pictureFaults.text)
             && /HTTP 404/.test(pictureFaults.text) && /did not answer in 20 s/.test(pictureFaults.text) && pictureFaults.half, JSON.stringify(pictureFaults));
+        // A request of a style that fails warns with one prefix, and removing styles() while a style request hangs aborts it
+        // and removes the hidden box at once (#1507).
+        const styleRequest = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); warn.apply(console, a); };
+            let aborted = false, asked = false;
+            t.lib.addProtocol('fail1507', async () => { throw new Error('Failed to fetch'); });
+            t.lib.addProtocol('stall1507', (_, ac) => { asked = true; ac.signal.addEventListener('abort', () => { aborted = true; }); return new Promise(() => {}); });
+            const red = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const until = async (f, ms = 20000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); return f(); };
+            const boxes = () => [...document.body.children].filter(e => e.getAttribute('aria-hidden') === 'true' && e.style.position === 'fixed').length;
+            const host = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries: [{label: 'Fails', style: 'fail1507://x'}, {label: 'Stalls', style: 'stall1507://x'}]})]});
+            await until(() => asked);
+            const before = boxes();
+            host.destroy();
+            await new Promise(r => setTimeout(r, 200));
+            const out = {before, after: boxes(), aborted, warning: warns.find(w => w.includes('"Fails"')) ?? ''};
+            out.prefixes = out.warning.split('[map-jr-gl]').length - 1;
+            el.remove();
+            console.warn = warn;
+            return out;
+        }, renderer);
+        check(`[${renderer}] a failed style request of styles() warns with one prefix, and removing the control while a style request hangs aborts it and removes the hidden box`,
+            styleRequest.before === 1 && styleRequest.after === 0 && styleRequest.aborted && styleRequest.prefixes === 1 && /Failed to fetch/.test(styleRequest.warning), JSON.stringify(styleRequest));
         // Removing styles() while a picture is drawn removes the hidden map at once (#1504): here its tiles never answer.
         const removedWhileDrawing = await page.evaluate(async renderer => {
             const t = window.t, {styles} = await import('/dist/controls.js');

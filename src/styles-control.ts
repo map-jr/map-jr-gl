@@ -43,14 +43,14 @@ const isStyle = (s: any) => !!s && typeof s === 'object' && 'version' in s && !!
  * `server` is false (hidden, filter, minzoom, maxzoom, paint and layout, never simplify or minSize); and then `transform`
  * of `preview.style`. A failure is an error whose message is the reason and what to do.
  */
-async function pictureStyle(given: unknown, server: boolean, transform: ((s: StyleSpecification) => StyleSpecification | void) | undefined, get: typeof fetch): Promise<unknown> {
+async function pictureStyle(given: unknown, server: boolean, transform: ((s: StyleSpecification) => StyleSpecification | void) | undefined, get: typeof fetch, signal: AbortSignal): Promise<unknown> {
     if (!server && !transform) return given;
     let s: any = given;
     if (typeof given === 'string') {
         const base = new URL(given, location.href).href;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const res = await Promise.race([get(base), new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error(`the style ${given} did not answer in ${WAIT / 1000} s. Check the URL`)), WAIT); })])
-            .catch(e => { throw e instanceof Error && e.message.startsWith('the style') ? e : new Error(`the request for the style ${given} failed (${e?.message ?? e}). Check the URL and that the server allows it`); })
+        const res = await Promise.race([get(base, {signal}), new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error(`the style ${given} did not answer in ${WAIT / 1000} s. Check the URL`)), WAIT); signal.addEventListener('abort', () => no(new Error('removed'))); })])
+            .catch(e => { throw e instanceof Error && e.message.startsWith('the style') ? e : new Error(`the request for the style ${given} failed (${String(e?.message ?? e).replace(/^\[map-jr-gl\] /, '')}). Check the URL and that the server allows it`); })
             .finally(() => clearTimeout(timer));
         if (!res.ok) throw new Error(`the style ${given} answered HTTP ${res.status}. Check the URL`);
         s = await res.json().catch(() => undefined);
@@ -124,6 +124,8 @@ export class StylesControl implements Control {
     private stops: (() => void)[] = [];
     /** The entries whose picture failed with a warning: each warns once. */
     private warned = new Set<StyleEntry>();
+    /** Aborts the request of the style of the picture that is being drawn. */
+    private abort?: AbortController;
     /** Warns once for the entry that its picture was not drawn, with the reason and what to do. */
     private fail(entry: StyleEntry, reason: string) {
         if (this.warned.has(entry)) return;
@@ -309,7 +311,7 @@ export class StylesControl implements Control {
                 let given: unknown;
                 try {
                     given = await pictureStyle(styleFor(style, scheme === 'dark' || scheme === 'auto' && !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches),
-                        p?.ssr ?? true, transform && (s => transform(s, slots[i].entry)), get);
+                        p?.ssr ?? true, transform && (s => transform(s, slots[i].entry)), get, (this.abort = new AbortController()).signal);
                 } catch (e) { if (!this.removed) this.fail(slots[i].entry, (e as Error).message); continue; }
                 if (this.removed) break;
                 const spec: MapDescription = {...base, style: given as MapDescription['style'], colorScheme: scheme};
@@ -355,6 +357,7 @@ export class StylesControl implements Control {
 
     onRemove() {
         this.removed = true;
+        this.abort?.abort();
         this.wake();
         this.small?.destroy();
         for (const stop of this.stops) stop();
