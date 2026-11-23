@@ -278,6 +278,6 @@ CI runs all of these except `test:cloudflare`. Run locally what your change can 
   - The new hostname can take a minute to resolve on the Mac, while the phone resolves it at once. To check it from
     the Mac, resolve it through `1.1.1.1`: `curl --resolve <host>:443:$(dig +short <host> @1.1.1.1 | head -1) https://<host>/`.
   - The demo's `/style.json` names the host that the page came through, so tiles load through the tunnel (#910).
-    Pages of the demo: `/?sky&pitch=85`, `/bench`; the playground of the gallery site (#912) needs no tunnel.
+    Pages of the demo: `/?sky&pitch=85`, `/bench`; the playground of the docs site (`https://map-jr.org/play`) needs no tunnel.
 - For a larger change, ask for an independent review before merging: a reviewer that has not seen your reasoning,
   told to reproduce what it suspects. The reviews of 2026-11-12 found 25 reproducible faults this way.

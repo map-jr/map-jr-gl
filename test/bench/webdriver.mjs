@@ -9,7 +9,7 @@
 //   WD_CAPS      the capabilities as JSON (the default is {"browserName":"safari"})
 //   WD_NAME      the name of the result files (the default is the browser name that the server reports)
 //   BENCH_BASE   where the demo server is (the default is http://localhost:8080). With BENCH_URL, the benchmark page
-//                is opened there (for example the page of the gallery site), and the short checks are left out.
+//                is opened there (for example https://map-jr.org/bench/), and the short checks are left out.
 //   BENCH_SECONDS, BENCH_QUERY   the length of each animation, and more of the query of the benchmark page
 //   BENCH_RUNS, BENCH_BUDGET_MIN   the page runs again, up to BENCH_RUNS times (3), while another run, as long as
 //                the longest so far, still ends within BENCH_BUDGET_MIN minutes (12; the Safari job has a limit of 30 minutes)

@@ -1,4 +1,5 @@
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';

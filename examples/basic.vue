@@ -1,4 +1,5 @@
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 
