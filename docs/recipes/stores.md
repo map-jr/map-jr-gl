@@ -1,4 +1,4 @@
-# Test a component that has a map
+# Test a map component
 
 This example is a component with a map of three stores and a button for each store, and a test of it for Vue, React and
 Svelte. The test environment (happy-dom or jsdom) has no WebGL, so the test replaces the map with a stub and checks what

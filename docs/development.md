@@ -94,7 +94,7 @@ After you change a feature, do these steps:
 2. Run `pnpm test`.
 3. Run `pnpm test:render` if you changed how the map is drawn.
 4. Run `pnpm status`.
-5. Update [Differences from MapLibre GL JS](reference/maplibre-differences.md) if a difference changed.
+5. Update [MapLibre differences](reference/maplibre-differences.md) if a difference changed.
 
 ### Render tests
 

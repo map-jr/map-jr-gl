@@ -1,4 +1,4 @@
-# Differences from MapLibre GL JS
+# MapLibre differences
 
 This page compares the library with [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/) version 6. The API of
 MapLibre GL JS is in the entry `@map-jr/map-jr-gl/maplibre-compat`: [The compat entry](maplibre-compat.md) lists its

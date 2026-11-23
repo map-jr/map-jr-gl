@@ -80,7 +80,7 @@ Compatibility with MapLibre GL JS, tested with the entry `@map-jr/map-jr-gl/mapl
 | MapLibre render tests, the same or near | 1574 | 1741 | 90.4% | [Render tests](docs/development.md#render-tests) |
 <!-- status:end -->
 
-The library is new. Read [Differences from MapLibre GL JS](docs/reference/maplibre-differences.md) before you use it in production.
+The library is new. Read [MapLibre differences](docs/reference/maplibre-differences.md) before you use it in production.
 
 ## Install
 

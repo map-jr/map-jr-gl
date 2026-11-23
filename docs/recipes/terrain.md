@@ -1,4 +1,4 @@
-# Show 3D terrain with contour lines
+# Show terrain and contours
 
 This example shows the Matterhorn in 3D with relief shading and labelled contour lines, and reads the height of the
 ground at a click. Two buttons switch the contour lines between feet and metres and turn the 3D terrain on and off.

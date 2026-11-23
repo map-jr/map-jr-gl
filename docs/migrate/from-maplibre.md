@@ -271,7 +271,7 @@ The library does not have these parts of MapLibre GL JS, among others:
 - Roll, a field of view other than the default, and a pitch above 90 degrees.
 - Custom layers with the worker renderer.
 
-See [Differences from MapLibre GL JS](../reference/maplibre-differences.md) for the full list of differences and of everything that
+See [MapLibre differences](../reference/maplibre-differences.md) for the full list of differences and of everything that
 is not available, and [The compat entry](../reference/maplibre-compat.md) for every member of `Map`.
 
 ## A coding agent
