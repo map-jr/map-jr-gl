@@ -1,7 +1,7 @@
 <script>
   import {mapJr} from '@map-jr/map-jr-gl/svelte';
 
-  const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+  const boundaryFile = 'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
   let map = null;
   let names = $state('Click to list the country and the state or province');

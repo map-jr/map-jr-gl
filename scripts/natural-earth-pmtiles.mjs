@@ -1,9 +1,12 @@
-// Builds website/public/data/natural-earth.pmtiles, the PMTiles file of the PMTiles example (examples/pmtiles.*).
+// Builds natural-earth-5.1.2.pmtiles, the PMTiles file of the PMTiles example (examples/pmtiles.*). The file is not in
+// this repository: map-jr/map-jr-styles publishes it as data/natural-earth-5.1.2.pmtiles, at
+// https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles. A new build gets a new name there, so that a cached copy
+// of the old file never mixes with the new one.
 // The data is Natural Earth 5.1.2 (public domain): the countries and the states and provinces at the scale 1:50m.
 // The tiles are made with @maplibre/geojson-vt and @maplibre/vt-pbf. The script takes them from the installed
 // maplibre-gl (they are its dependencies, not ours), so another version of MapLibre GL JS can change the bytes of the
 // file. This script writes the PMTiles version 3 archive itself (one root directory, gzip everywhere).
-//   node scripts/natural-earth-pmtiles.mjs
+//   node scripts/natural-earth-pmtiles.mjs [output file]   (the default is natural-earth-5.1.2.pmtiles here)
 import {createRequire} from 'node:module';
 import {realpathSync, writeFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
@@ -107,6 +110,6 @@ header[101] = MAXZOOM;
 header.writeInt32LE(-180e7, 102); header.writeInt32LE(-85e7, 106); header.writeInt32LE(180e7, 110); header.writeInt32LE(85e7, 114);
 header[118] = 2; header.writeInt32LE(0, 119); header.writeInt32LE(20e7, 123);
 
-const out = 'website/public/data/natural-earth.pmtiles';
+const out = process.argv[2] ?? 'natural-earth-5.1.2.pmtiles';
 writeFileSync(out, Buffer.concat([header, root, metadata, ...tiles.map(t => t.data)]));
 console.log(`${out}: ${tiles.length} tiles, zoom 0 to ${MAXZOOM}, ${dataOffset + size} bytes`);

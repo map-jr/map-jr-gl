@@ -13,7 +13,8 @@ map, and lists the names of the areas at a click.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+const boundaryFile =
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
 // the tiles that it needs with HTTP range requests.
@@ -93,7 +94,8 @@ show('Click to list the country and the state or province');
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+const boundaryFile =
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 const map = new Map({
   container: 'map',
@@ -146,7 +148,8 @@ import {ref, useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+const boundaryFile =
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
 // the tiles that it needs with HTTP range requests.
@@ -205,7 +208,8 @@ import {useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+const boundaryFile =
+  'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
 // the tiles that it needs with HTTP range requests.
@@ -269,7 +273,8 @@ export default function Boundaries() {
 <script>
   import {mapJr} from '@map-jr/map-jr-gl/svelte';
 
-  const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+  const boundaryFile =
+    'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
   let map = null;
   let names = $state('Click to list the country and the state or province');
@@ -434,7 +439,8 @@ export default function Boundaries() {
 <script type="module">
   import '@map-jr/map-jr-gl/element';
 
-  const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+  const boundaryFile =
+    'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
   const map = document.getElementById('map');
   const readout = document.getElementById('readout');
@@ -482,12 +488,10 @@ export default function Boundaries() {
 - A PMTiles archive is one static file of tiles. A `url` that starts with `pmtiles://` followed by the URL of the file
   loads the tiles from it, with HTTP range requests. The host must answer range requests, and it must allow them from
   other origins (CORS) when the file is on another host than the page.
-- The file is `https://map-jr.org/data/natural-earth.pmtiles` (1.9 MB, zoom 0 to 6). It holds the countries and the
-  states and provinces of [Natural Earth](https://www.naturalearthdata.com/) at the scale 1:50m, which are public domain.
-  The docs site serves it with CORS for any origin, so your own page can read it too. Above zoom 6 the map draws the
-  tiles of zoom 6 larger.
-- The docs site does not answer range requests yet: it sends the whole file (1.9 MB) at the first request, and the map
-  reads the tiles from that copy. A file of up to 64 MB works this way.
+- The file is `https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles` (1.9 MB, zoom 0 to 6). It holds the
+  countries and the states and provinces of [Natural Earth](https://www.naturalearthdata.com/) at the scale 1:50m,
+  which are public domain. The host answers range requests and allows them from any origin (CORS), so your own page can
+  read it too. Above zoom 6 the map draws the tiles of zoom 6 larger.
 - The source in [`sources`](../reference/description.md#sources) is a usual `vector` source. Its layers name the layers
   of the file in `source-layer`: `countries` and `states`. Each feature has the property `name`; a country also has
   `iso_a3` and `continent`, and a state has `country` and `iso_3166_2`.

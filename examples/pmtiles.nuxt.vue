@@ -3,7 +3,7 @@
 // The map fills its parent element, so give the parent a height.
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+const boundaryFile = 'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads the tiles that it needs with HTTP
 // range requests.

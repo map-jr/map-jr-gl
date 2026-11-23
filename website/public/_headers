@@ -3,11 +3,6 @@
 # library need CORS.
 /lib/*
   Access-Control-Allow-Origin: *
-# The PMTiles file of the PMTiles recipe (scripts/natural-earth-pmtiles.mjs), which pages of other origins read with range requests.
-/data/*
-  Access-Control-Allow-Origin: *
-  Access-Control-Expose-Headers: Content-Range, Content-Length, ETag
-  Cache-Control: public, max-age=86400
 # The wide and the dark first paints of the home page (scripts/first-paint.mjs). The file changes only when the script writes it again.
 /home-first-paint-wide.svg
   Cache-Control: public, max-age=86400

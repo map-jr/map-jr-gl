@@ -3,7 +3,7 @@
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const boundaryFile = 'https://map-jr.org/data/natural-earth.pmtiles';
+const boundaryFile = 'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
 const map = new Map({container: 'map', style, center: [-98, 39], zoom: 3.2, attributionControl: {compact: true}});
 const readout = document.createElement('p');
