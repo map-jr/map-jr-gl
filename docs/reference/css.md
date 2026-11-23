@@ -55,5 +55,5 @@ structure can change in any release, so do not select them.
 ## See also
 
 - [Controls](../guide/controls.md) for the controls that these properties style.
-- [Content Security Policy](../loading.md#content-security-policy) for `nonce`, which a strict `style-src` needs for the
+- [Content Security Policy](../guide/loading.md#content-security-policy) for `nonce`, which a strict `style-src` needs for the
   style sheet of the map.

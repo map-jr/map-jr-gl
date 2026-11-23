@@ -26,8 +26,8 @@ test('a missing member of MapLibre warns once, and other reads do not warn', () 
         assert.equal(typeof map.toString, 'function');
         assert.ok(map instanceof Map && map instanceof Base);
         assert.deepEqual(warnings, [
-            '[map-jr-gl] map.cameraHelper is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.',
-            '[map-jr-gl] ScaleControl.setUnit is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.',
+            '[map-jr-gl] map.cameraHelper is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.',
+            '[map-jr-gl] ScaleControl.setUnit is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.',
             '[map-jr-gl] map.transform is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. Use getCenter(), getZoom(), getBearing(), getPitch() and project(). react-map-gl 8 does not read it.',
         ]);
     } finally { console.warn = warn; }

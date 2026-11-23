@@ -62,25 +62,20 @@ sections:
       - svelte.md
       - element.md
       - maplibre-compat.md
-      - messages.md
+      - maplibre-differences.md
   - title: Migrate
     folder: migrate
     pages:
       - from-maplibre.md
       - wrappers.md
       - compat-to-main-api.md
-  # The documents from before the docs site. A document leaves this list when the four folders have its content.
-  - title: Current docs
+  # The official styles and the tools around them (#1129). The pages come from map-jr/map-jr-styles, map-jr/maputnik
+  # and map-jr/maplibre-style-spec when the site builds (website/build/styles.ts); they are not in docs/. A page for
+  # each style of map-jr-styles follows these three.
+  - title: Styles
+    folder: styles
+    generated: true
     pages:
-      - api.md
-      - vue.md
-      - react.md
-      - svelte.md
-      - element.md
-      - markers.md
-      - terrain-and-elevation.md
-      - loading.md
-      - server-rendering.md
-      - maplibre-compatibility.md
-      - accessibility.md
-      - browser-support.md
+      - index.md
+      - editing.md
+      - spec.md

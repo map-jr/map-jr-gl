@@ -91,7 +91,7 @@ test('the blocks of the conformance tools keep what a scenario found out of the 
 
     const api = apiBlock({have: ['a', 'b', 'c'], accepted: ['setRoll'], extra: ['querySource'], missing: [], notCounted: ['x', 'y']});
     assert.deepEqual(cellsOf(api), [['Available', '3', '75.0%'], ['Accepted, with no effect', '1', '25.0%'], ['Not available', '0', '0.0%'], ['Only in this library', '1', ''], ['Internal to MapLibre GL JS, not counted', '2', '']]);
-    assert.match(api, /\*\*Not available:\*\* \n/);
+    assert.match(api, /\n- \*\*Not available:\*\* none\n/);
 });
 
 test('the blocks in the README and in the documents have no sentence in a cell', () => {

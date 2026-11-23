@@ -234,7 +234,7 @@ const map = createMap('map', {
 
 ## Convert records to points
 
-[`points(records, options)`](../api.md#points-from-records) from `@map-jr/map-jr-gl` returns a GeoJSON
+[`points(records, options)`](data.md#convert-records-to-points) from `@map-jr/map-jr-gl` returns a GeoJSON
 `FeatureCollection` with a point for each record. It needs no map, so a server can call it too.
 
 ```js
@@ -584,4 +584,4 @@ map.on('load', () => {
 - [`update` and `patch`](../reference/map.md#update) for `update` and `patch`.
 - [Markers and popups](markers-and-popups.md) for points with an image.
 - [Query what is at a position](../recipes/query.md) to find the features at a click.
-- [Changes inside the data of a source](../vue.md#changes-inside-the-data-of-a-source) for Vue.
+- [Changes inside the data of a source](../reference/vue.md#how-mapjr-sees-changes) for Vue.

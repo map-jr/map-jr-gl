@@ -242,7 +242,7 @@ Pass `element`, or `onAdd` with `onRemove`. When both are passed, the map uses `
   work as in MapLibre GL JS. Another method can be missing or differ from MapLibre GL JS. To move the map from such a
   control, call the methods of the map that `createMap` returns, as the example below does.
 
-The button of this example calls [`map.moveTo`](../api.md#the-camera) on a click, after `createMap` has returned.
+The button of this example calls [`map.moveTo`](../guide/view-and-camera.md) on a click, after `createMap` has returned.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -319,4 +319,4 @@ const map = createMap('map', {
 
 - [Controls](../guide/controls.md) for the look of the controls and a control of your own in Vue and React.
 - [`controls`](description.md#controls) and [`locale`](description.md#locale) in the reference of the description.
-- [MapLibre compatibility](../maplibre-compatibility.md) for the controls of the compat entry.
+- [Differences from MapLibre GL JS](maplibre-differences.md) for the controls of the compat entry.

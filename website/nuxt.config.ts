@@ -2,7 +2,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {formatFences, liveExamples, transformPage, repositoryUrl} from './build/markdown';
 import {libraryFolder} from './build/library';
-import {docsDir, navFile, readNav, routeOf} from './build/nav';
+import {navFile, readNav, routeOf, sourceDirOf} from './build/nav';
 import {variantHeadScript} from './build/variants';
 
 const nav = readNav();
@@ -105,15 +105,15 @@ export default defineNuxtConfig({
             'prerender:generate'(route) {
                 const match = /^\/raw\/(.+)\.md$/.exec(route.route);
                 if (!match || route.error) return;
-                const file = [match[1] + '.md', match[1] + '/index.md'].find(candidate => routeOf(candidate, nav) && existsSync(resolve(docsDir, candidate)));
-                if (file) route.contents = readFileSync(resolve(docsDir, file), 'utf8');
+                const file = [match[1] + '.md', match[1] + '/index.md'].find(candidate => routeOf(candidate, nav) && existsSync(resolve(sourceDirOf(candidate, nav), candidate)));
+                if (file) route.contents = readFileSync(resolve(sourceDirOf(file, nav), file), 'utf8');
             },
         },
         prerender: {
             crawlLinks: true,
             failOnError: true,
             // The section pages exist also while their folders of docs/ are empty and nothing links to a page in them.
-            routes: ['/', '/styles', '/play', ...nav.filter(section => section.folder).map(section => '/' + section.folder)],
+            routes: ['/', '/play', ...nav.filter(section => section.folder).map(section => '/' + section.folder)],
         },
     },
     hooks: {

@@ -85,7 +85,7 @@ An image is an SVG document as a string, the URL of an image, an `ImageBitmap`, 
 
 An SVG document can have slots (`{{color}}`) that each feature fills from its properties. See
 [Markers and popups](markers-and-popups.md#draw-markers-with-a-symbol-layer) for an example, and
-[An image that is a template](../api.md#an-image-that-is-a-template) for the parameters and the limits.
+[An image that is a template](../reference/description.md#images) for the parameters and the limits.
 
 ## Use the images of a sprite
 
@@ -395,7 +395,7 @@ files that a text needs.
 
 ### Which text uses the web fonts
 
-- A style without `glyphs`, such as `elevation-zero.json`, draws all of its text with the web fonts and the fonts of
+- A style without `glyphs`, such as [`elevation-zero.json`](https://map-jr.org/styles/elevation-zero), draws all of its text with the web fonts and the fonts of
   the browser.
 - A style with `glyphs` draws its text from the glyph files of its server. A web font then draws only the text that
   the glyph files do not have: a font or a character that the server does not have, and text that the browser must
@@ -420,9 +420,15 @@ the style out of the name, and the rest of the name is the family.
 `Thin` and `Extra Light` have no weight of their own: the map draws them at 400 and 300.
 
 So `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A label uses each family of its
-`text-font` list in order, with the weight and the style of the first name. A CSS generic family, such as
-`system-ui` or `sans-serif`, uses the fonts of the system: `['system-ui Semibold', 'sans-serif']` draws in the font of
-the operating system at weight 600.
+`text-font` list in order, with the weight and the style of the first name, and then `fontFamily`. A family that
+appears twice is used once. A CSS generic family uses the fonts of the system: `['system-ui Semibold', 'sans-serif']`
+draws in the font of the operating system at weight 600 (SF Pro on Apple systems, Segoe UI on Windows, Roboto on
+Android).
+
+The generic families are `system-ui`, `sans-serif`, `serif`, `monospace`, `cursive`, `fantasy`, `math`,
+`emoji`, `fangsong`, `ui-sans-serif`, `ui-serif`, `ui-monospace` and `ui-rounded`; the map quotes every other family.
+The family list does not change which glyph files a style with `glyphs` requests: `{fontstack}` is still the names of
+the list as they are written, joined by commas.
 
 ### When a font does not load
 
@@ -446,5 +452,5 @@ sans-serif`. The map reads it only when it is created: to change it, destroy the
 - [`images`](../reference/description.md#images), [`sprite`](../reference/description.md#sprite) and
   [`fonts`](../reference/description.md#fonts) in the reference of the description.
 - [Markers and popups](markers-and-popups.md) for markers drawn with an image.
-- [An image that is a template](../api.md#an-image-that-is-a-template) for images whose colours each feature sets.
-- [Server rendering](../server-rendering.md) for images and fonts in an image that a server renders.
+- [An image that is a template](../reference/description.md#images) for images whose colours each feature sets.
+- [Server rendering](server-rendering.md) for images and fonts in an image that a server renders.

@@ -2,7 +2,7 @@
 // For example: node scripts/agents/suite.mjs test/host.mjs, or node scripts/agents/suite.mjs test/interact.mjs .cache/shots
 //
 // 1. It builds what is older than its sources: `dist/` (node build.mjs) and, for a suite that uses the demo server,
-//    the gallery in `site-dist/` (node scripts/site.mjs).
+//    the pages in `site-dist/` (node scripts/site.mjs).
 // 2. For a suite that reads PORT (host.mjs, interact.mjs, loading.mjs), it starts the demo server on a free port and
 //    waits until the server answers. Several agents can run suites at the same time, each with its own server.
 // 3. It runs the suite with BROWSER=chromium when BROWSER is not a browser of Playwright (the Mac sets BROWSER=open).
@@ -58,7 +58,7 @@ try { createRequire(path.join(root, 'package.json')).resolve('playwright'); } ca
 
 if (!noBuild) {
     if (newest(['src', 'build.mjs', 'scripts/private-names.mjs', 'package.json']) > age('dist/map-jr-gl.js')) run('building dist/ (node build.mjs)', process.execPath, ['build.mjs']);
-    if (usesServer && newest(['site', 'examples', 'dist', 'demo', 'scripts/site.mjs']) > age('site-dist/index.html')) run('building the gallery (node scripts/site.mjs)', process.execPath, ['scripts/site.mjs']);
+    if (usesServer && newest(['examples', 'dist', 'demo', 'scripts/site.mjs', 'scripts/examples-plugins.mjs']) > age('site-dist/examples/run.html')) run('building site-dist (node scripts/site.mjs)', process.execPath, ['scripts/site.mjs']);
 }
 
 /** A port that no process listens on now. */

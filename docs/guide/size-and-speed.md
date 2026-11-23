@@ -23,6 +23,14 @@ Sizes in KB, compressed with gzip, next to MapLibre GL JS 6.17.0. The page scrip
   says which other files a map loads and when.
 - The server renderer is the file of `@map-jr/map-jr-gl/server`. A page in the browser does not load it.
 
+The file `vue.js` of `@map-jr/map-jr-gl/vue` and what it imports up front are about 3.7 KB. The code of the map loads
+when `MapJr` is mounted.
+
+A server render of a city as SVG can be some hundred KB. Three overrides of the server render (no buildings, no
+building outlines, no small roads) make a page of 245 KB into one of 115 KB. The export of the browser example in
+[Server rendering](server-rendering.md#export-an-svg-in-the-browser) gives an SVG of 428 KB in 0.8 s in Chromium and
+0.4 s in WebKit; Firefox and Safari on a device are not tested.
+
 ## Speed in browsers
 
 <!-- speed:start -->
@@ -75,7 +83,7 @@ libraries, not as the speed of a real device.
 
 ## Measure on your device
 
-Open [the benchmark page](https://map-jr.github.io/map-jr-gl/bench/) of the gallery site in the browser that you
+Open [the benchmark page](https://map-jr.org/bench/) in the browser that you
 want to test. The page loads the same map with MapLibre GL JS and with each renderer of Map Jr. GL, and shows the
 time to idle and the frames per second of each. It also shows the GPU that the browser reports.
 

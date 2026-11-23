@@ -64,7 +64,7 @@ export type MapLayerEventType = Each<'click' | 'mousemove' | 'mouseenter' | 'mou
 
 /**
  * The options of `new Map(options)`. The options of MapLibre GL JS that are listed here and not in the main API are
- * accepted with no effect (see docs/maplibre-compatibility.md).
+ * accepted with no effect (see docs/reference/maplibre-differences.md).
  */
 export type MapOptions = CoreMapOptions & {
     /** No effect: labels show and hide without a fade. */
@@ -103,7 +103,7 @@ export type ProjectionData = {
 export type CustomLayerProjectionDataParams = {tileID: {canonical: {x: number; y: number; z: number}; wrap?: number}; aligned?: boolean; applyTerrainMatrix?: boolean; applyGlobeMatrix?: boolean};
 /**
  * What `render` and `prerender` of a custom layer get: the fields of MapLibre GL JS 6, with values that put a point on
- * the same pixel. The near and the far plane, and so the depth, differ (see docs/maplibre-compatibility.md). The
+ * the same pixel. The near and the far plane, and so the depth, differ (see docs/reference/maplibre-differences.md). The
  * matrices are `Float64Array`s. `renderTerrainHeightMap` is never set.
  */
 export type CustomRenderMethodInput = {
@@ -122,7 +122,7 @@ export type CustomRenderMethodInput = {
 export type CustomRenderMethod = (gl: WebGL2RenderingContext, options: CustomRenderMethodInput) => void;
 /**
  * A layer that draws with WebGL into the context of the map, as in MapLibre GL JS. It needs a map made with
- * `renderer: 'main'`. See "Custom layers" in docs/maplibre-compatibility.md.
+ * `renderer: 'main'`. See "Custom layers" in docs/reference/maplibre-differences.md.
  */
 export interface CustomLayerInterface {
     id: string; type: 'custom';
@@ -181,7 +181,7 @@ export type ColorReliefLayerSpecification = LayerOf<'color-relief'>;
 export type SymbolLayerSpecification = LayerOf<'symbol', 'text' | 'icon', 'text' | 'icon' | 'symbol'>;
 /**
  * The projection of a style: `{type: 'mercator'}`, `{type: 'globe'}`, `{type: 'vertical-perspective'}`, or an expression
- * of these names (see `projection` in docs/api.md for what the globe draws).
+ * of these names (see `projection` in docs/reference/description.md for what the globe draws).
  */
 export type ProjectionSpecification = {type?: PropertyValueSpecification<string>};
 export type SourceSpecification = {type: string; [key: string]: unknown};
@@ -313,7 +313,7 @@ export type Coordinates = [[number, number], [number, number], [number, number],
 export type UpdateImageOptions = Parameters<ImageSource['updateImage']>[0];
 /**
  * The description of a canvas source of MapLibre GL JS. This library does not draw canvas sources (see "What is not
- * available" in docs/maplibre-compatibility.md).
+ * available" in docs/reference/maplibre-differences.md).
  */
 export type CanvasSourceSpecification = {type: 'canvas'; coordinates: Coordinates; animate?: boolean; canvas?: string | HTMLCanvasElement};
 

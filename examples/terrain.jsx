@@ -1,3 +1,4 @@
+// The map fills its parent element, so give the parent a height.
 import {useMemo, useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 

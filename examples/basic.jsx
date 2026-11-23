@@ -1,3 +1,4 @@
+// The map fills its parent element, so give the parent a height.
 import {MapJr, useMapState} from '@map-jr/map-jr-gl/react';
 import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 

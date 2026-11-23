@@ -1,5 +1,6 @@
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules: ['@map-jr/map-jr-gl/nuxt'].
+// The map fills its parent element, so give the parent a height.
 
 const styles = ['elevation-zero', 'openfreemap-positron', 'openfreemap-dark'];
 const current = ref(0);

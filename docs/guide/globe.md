@@ -97,7 +97,7 @@ are ready for the globe, for at most 1 second.
 
 ## Let the user switch to the globe
 
-The control [`globe`](../api.md#controls) is a button that switches the projection between `globe` and `mercator`.
+The control [`globe`](controls.md) is a button that switches the projection between `globe` and `mercator`.
 
 **Main API**
 
@@ -176,5 +176,5 @@ transparent. To fill it, set the CSS `background` of the container, the element 
 ## See also
 
 - [`projection`](../reference/description.md#projection) of the description.
-- [Controls](../api.md#controls) for the options of `globe` and the other controls.
+- [Controls](controls.md) for the options of `globe` and the other controls.
 - [Terrain and elevation](terrain.md) for 3D terrain on the flat map.

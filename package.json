@@ -220,8 +220,10 @@
     "ACKNOWLEDGEMENTS.md",
     "THIRD-PARTY-LICENSES.md",
     "AGENTS.md",
-    "docs/**/*.md",
-    "!docs/agents"
+    "docs/guide",
+    "docs/reference",
+    "docs/recipes",
+    "docs/migrate"
   ],
   "sideEffects": [
     "./dist/element.js",
@@ -231,7 +233,7 @@
     "type": "git",
     "url": "git+https://github.com/map-jr/map-jr-gl.git"
   },
-  "homepage": "https://map-jr.github.io/map-jr-gl/",
+  "homepage": "https://map-jr.org/",
   "bugs": {
     "url": "https://github.com/map-jr/map-jr-gl/issues"
   }

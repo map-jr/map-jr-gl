@@ -39,7 +39,7 @@ These differences change the code of most applications:
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
   `error` with that error and shows a message in the container. Call `supported()` before you create the map.
 
-[MapLibre compatibility](../maplibre-compatibility.md) is the complete list of the differences, of what is not
+[Differences from MapLibre GL JS](maplibre-differences.md) is the complete list of the differences, of what is not
 available, and of the types that differ.
 
 ## Options of `new Map`
@@ -52,7 +52,7 @@ available, and of the types that differ.
 | [`strict`](#strict) | `boolean` | `false` | Whether an option or a call that the map cannot carry out throws an error. |
 | `fonts` | `FontSource[]` | | Web fonts for labels, for example `[{family: 'Open Sans', src: '/fonts/open-sans.woff2', weight: '300 800'}]`. |
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font. |
-| `nonce` | `string` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`. |
+| `nonce` | `string` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
 These options of MapLibre GL JS have no effect: `renderWorldCopies: false`, `canvasContextAttributes` other than
 `antialias`, `logoPosition`, `validate` with any value, `fadeDuration` other than 300, `pitchWithRotate: false`, and
@@ -380,7 +380,7 @@ code of these sources has loaded, which the map requests when a style with such 
 | `Point` | A point with `convert`, `clone`, `add`, `sub`, `mult`, `div`, `round`, `mag`, `dist` and `equals`, and none of the other methods. |
 | `addProtocol`, `removeProtocol` | Add and remove a function of the page that loads the URLs that start with a name. |
 | `supported()` | Only in this library: returns `false` in a browser without WebGL2. |
-| `configure(options)` | Only in this library: sets how the library loads its workers. See [Loading](../loading.md). |
+| `configure(options)` | Only in this library: sets how the library loads its workers. See [Loading](../guide/loading.md). |
 | `setWorkerUrl`, `getWorkerUrl` | Set and read the URL of the worker file of this library. A URL of the worker file of MapLibre GL JS is ignored. |
 | `setWorkerCount`, `getWorkerCount` | Set and read the number of tile workers. |
 | `setMaxParallelImageRequests`, `setRTLTextPlugin` | Accepted with no effect, with the getters `getMaxParallelImageRequests` and `getRTLTextPluginStatus`. |
@@ -416,7 +416,7 @@ worker URL like `setWorkerUrl`. The other fields of MapLibre GL JS are not there
 ## Exports of `maplibre-gl` that the entry lacks
 
 An import of a name in this list fails when the application is built, and `maplibregl.Name` is `undefined` at run
-time. The last table of [Types](../maplibre-compatibility.md#types) says why each group of names is missing.
+time. The last table of [Types](maplibre-differences.md#types) says why each group of names is missing.
 
 <!-- exports:start -->
 **A type here, not a value** (20): `CanvasSource`, `ErrorEvent`, `Event`, `GeoJSONSource`, `ImageSource`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource`.

@@ -1,5 +1,5 @@
 // The images of a style in metadata['map-jr:images'] (#495). The page loads this file only for a style that has the key.
-/** The key of the metadata of a style that carries images (see "Images for style layers" in docs/api.md). */
+/** The key of the metadata of a style that carries images (see "images" in docs/reference/description.md). */
 export const STYLE_IMAGES = 'map-jr:images';
 /**
  * The bounds for the images of a style, which comes from another party: the number of images, and the length of the text of one.
