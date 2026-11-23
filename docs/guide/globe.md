@@ -8,9 +8,9 @@ what changes on the globe. The flat map is the Web Mercator projection (`mercato
 The field [`projection`](../reference/description.md#projection) of the description selects the projection. It
 overrides the `projection` of the style.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 // The page has <div id="map" style="height: 400px"></div>.
@@ -21,9 +21,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 // The page has <div id="map" style="height: 400px"></div>.
@@ -100,9 +100,9 @@ are ready for the globe, for at most 1 second.
 The control [`globe`](controls.md) is a button that switches the projection between `globe` and `mercator`.
 
 <!-- example:globe:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map names the projection.
 import {createMap} from '@map-jr/map-jr-gl';
@@ -130,9 +130,9 @@ map.listen('projectiontransition', e => {
 readout.textContent = 'Projection: globe';
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map names the projection.
 import {

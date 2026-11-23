@@ -36,8 +36,8 @@ export interface VariantSet {
 }
 
 export const variants: Variant[] = [
-    {label: 'Main API', slug: 'main'},
-    {label: 'MapLibre compat', slug: 'compat'},
+    {label: 'Map Jr', slug: 'main'},
+    {label: 'MapLibre', slug: 'compat'},
     {label: 'Vue', slug: 'vue'},
     {label: 'Nuxt', slug: 'nuxt'},
     {label: 'React', slug: 'react'},

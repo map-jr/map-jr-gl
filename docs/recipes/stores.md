@@ -7,9 +7,9 @@ the component gives to the map and what it asks the map to do.
 In a Nuxt app with the [module for Nuxt](../reference/nuxt.md), the Vue code works as it is.
 
 <!-- example:stores:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map shows three stores, and a button below the map for
 // each store moves the map to it.
@@ -62,9 +62,9 @@ container.after(
 );
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map shows three stores, and a button below the map for
 // each store moves the map to it.

@@ -4,9 +4,9 @@ This example adds and removes markers with a button, tilts the camera with anoth
 style layer under the pointer. The map follows a description that the application changes.
 
 <!-- example:reactive:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text with the state of the
 // map and two buttons.
@@ -85,9 +85,9 @@ tilt.onclick = () =>
   map.moveTo({pitch: map.state.get().view.pitch ? 0 : 50, duration: 600});
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text with the state of the
 // map and two buttons.

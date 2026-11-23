@@ -10,9 +10,9 @@ GeoJSON sources. Each key is the id of a source, and its value is GeoJSON or the
 the style nor [`sources`](../reference/description.md#sources) has a source with that id, the map creates one:
 `{type: 'geojson'}` with no other option. The layers name the source by its key.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const route = to => ({
@@ -42,9 +42,9 @@ function extendRoute(to) {
 }
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const route = to => ({
@@ -283,9 +283,9 @@ This example groups about 6,100 earthquakes into clusters, shows the number of p
 a cluster on a click.
 
 <!-- example:clusters:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map groups about 6,100 earthquakes into clusters, and a
 // line of text below the map says what a click on a cluster did.
@@ -373,9 +373,9 @@ const map = createMap(container, {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map groups about 6,100 earthquakes into clusters, and a
 // line of text below the map says what a click on a cluster did.
@@ -909,9 +909,9 @@ The promise rejects when the source has no cluster with that id.
 The state of a feature is an object that the application sets on one feature. A `feature-state` expression in a
 layer reads it, so the layer can draw a selected feature in another colour without new data.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 const museums = [
@@ -953,9 +953,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const museums = {
@@ -1041,9 +1041,9 @@ and the application sets no state itself. This example draws seven ferry landing
 landing under the pointer larger and in red, and names it below the map.
 
 <!-- example:hover:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map names the ferry landing under the
 // pointer.
@@ -1115,9 +1115,9 @@ map.state.subscribe(
 readout.textContent = 'Move the pointer over a ferry landing.';
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map names the ferry landing under the
 // pointer.
@@ -1524,9 +1524,9 @@ A source of the type `video` or `canvas` draws a video or a `<canvas>` of the pa
 MapLibre GL JS. Declare it in the style, and draw it with a `raster` layer. The code of these sources loads only when
 a map has one of them.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -1548,9 +1548,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({

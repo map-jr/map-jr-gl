@@ -3,8 +3,8 @@
   makes this block from the marks "example:<id>:start" and "example:<id>:end" of docs/recipes/ and docs/guide/, and the default slot is
   the group of the variants of the code.
 
-  The map runs the variant that the reader reads when a frame can run it (Main API, MapLibre compat, <map-jr>), and
-  the Main API variant otherwise. "Edit" replaces the code with an editor of the code that the map runs; the editor
+  The map runs the variant that the reader reads when a frame can run it (Map Jr, MapLibre, <map-jr>), and
+  the Map Jr variant otherwise. "Edit" replaces the code with an editor of the code that the map runs; the editor
   (CodeEditor.vue, with CodeMirror) is loaded only then. The code comes from the code block of the page, so the
   editor starts with the text that the reader sees. The editor takes the height of the code that it replaces, so that
   the page does not move when the reader opens or closes it (#1538).
@@ -69,7 +69,7 @@ function close() {
         <p class="me-auto text-sm text-muted">
           <template v-if="editing">Editing the {{ label(editing) }} code. Run it with Ctrl+Enter (⌘+Enter on a Mac).</template>
           <template v-else-if="shown && shown !== running">
-            The map runs the Main API code. The {{ label(shown) }} code needs a {{ label(shown) }} application, so it does not run on this page.
+            The map runs the Map Jr code. The {{ label(shown) }} code needs a {{ label(shown) }} application, so it does not run on this page.
           </template>
           <template v-else>The map runs the {{ label(running) }} code below.</template>
         </p>

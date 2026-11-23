@@ -19,9 +19,9 @@ Start with a symbol layer when you are not sure.
 The markers need an image, a GeoJSON source with a point for each marker, and a symbol layer that draws the image
 at each point.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 // {{color}} is a slot: each marker fills it from its property "color".
@@ -63,9 +63,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 // {{color}} is a slot: each marker fills it from its property "color". MapLibre
@@ -245,9 +245,9 @@ Set new GeoJSON on the source. In the main API, [`map.patch`](../reference/map.m
 is passed and keeps the other fields of the description. It merges `data` by key, so pass only the sources that
 change.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 let places = [
@@ -289,9 +289,9 @@ function removePlaces() {
 }
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const places = {
@@ -356,9 +356,9 @@ A marker of a symbol layer is a feature of that layer, so a click finds it. In t
 [`map.overlay`](../reference/map.md#overlay) places an element of the page at a position of the map,
 and `popup: true` shows the element in a popup. `MapOverlay` does the same in Vue and React.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 const pin =
@@ -416,9 +416,9 @@ const map = createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const pin =
@@ -623,9 +623,9 @@ An element of the page can be a marker: an image, a button or any other HTML. Wi
 with the mouse, a finger or a pen.
 
 <!-- example:draggable:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map gives the position of the pin.
 import {createMap, defaultPin} from '@map-jr/map-jr-gl';
@@ -659,9 +659,9 @@ map.overlay(defaultPin({color: '#d6453d'}), {
 show(`Drag the pin. It is at ${at(NYC)}`);
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map gives the position of the pin.
 import {Map, Marker} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -936,9 +936,9 @@ This example draws 50,000 markers and opens a popup at the marker that the user 
 markers change from a dot to a pin.
 
 <!-- example:markers:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map gives the frame rate.
 import {createMap, points} from '@map-jr/map-jr-gl';
@@ -1039,9 +1039,9 @@ readout.textContent =
   '50,000 markers. Zoom in past 12: 500 of them become pins. Click one.';
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. A line of text below the map gives the frame rate.
 import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';

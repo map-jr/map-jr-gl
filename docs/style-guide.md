@@ -252,8 +252,8 @@ The library has seven ways to write the same map. A page shows a variant when it
 
 | Label | For | Fence |
 |---|---|---|
-| `[Main API]` | `@map-jr/map-jr-gl` | `js` or `ts` |
-| `[MapLibre compat]` | `@map-jr/map-jr-gl/maplibre-compat` | `js` or `ts` |
+| `[Map Jr]` | `@map-jr/map-jr-gl` | `js` or `ts` |
+| `[MapLibre]` | `@map-jr/map-jr-gl/maplibre-compat` | `js` or `ts` |
 | `[Vue]` | `@map-jr/map-jr-gl/vue` | `vue` |
 | `[Nuxt]` | `@map-jr/map-jr-gl/nuxt` | `vue` |
 | `[React]` | `@map-jr/map-jr-gl/react` | `jsx` or `tsx` |
@@ -268,15 +268,15 @@ The library has seven ways to write the same map. A page shows a variant when it
   builds the switcher.
 
   ````markdown
-  **Main API**
+  **Map Jr**
 
-  ```js [Main API]
+  ```js [Map Jr]
   map.patch({cursor: 'crosshair'});
   ```
 
-  **MapLibre compat**
+  **MapLibre**
 
-  ```js [MapLibre compat]
+  ```js [MapLibre]
   map.getCanvas().style.cursor = 'crosshair';
   ```
   ````
@@ -285,6 +285,8 @@ The library has seven ways to write the same map. A page shows a variant when it
 - Leave out a variant whose code would be the same as another one. Leave out `[Nuxt]` when it differs from `[Vue]`
   only in the imports. Do not write that Nuxt or its module imports or registers anything for the page (auto-imports).
   Neither the text of a page nor a comment of an example mentions them.
+- The labels `[Map Jr]` and `[MapLibre]` name the two entries in a tab. Where a sentence means the entry and not
+  the tab, it names the entry by its package name (`@map-jr/map-jr-gl`).
 - A page about one entry (`reference/vue.md`) has no labels.
 
 An install command is written for each package manager, with the same rules for the labels, the bold lines and the

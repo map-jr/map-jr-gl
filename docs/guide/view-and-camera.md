@@ -15,9 +15,9 @@ the view in the state of the application, and read the view.
 [`initialView`](../reference/description.md#initialview) sets the camera once, when the map is created. After that,
 the user moves the map.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 createMap('map', {
@@ -26,9 +26,9 @@ createMap('map', {
 });
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 new Map({
@@ -82,9 +82,9 @@ into the view. This example starts the map with all seven ferry landings of New 
 them again when the user presses a button:
 
 <!-- example:fit:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text and a button that fits
 // the map to the data again.
@@ -152,9 +152,9 @@ showAll.onclick = () => map.fitBounds(bounds, {fitPadding: 40, duration: 600});
 readout.textContent = 'Move the map, then press Show all landings.';
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text and a button that fits
 // the map to the data again.
@@ -556,9 +556,9 @@ members of the view, or `bounds` with `fitPadding` and `fitMaxZoom` as in `initi
 
 The examples read the current zoom from [`map.state`](#read-the-view).
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
@@ -586,9 +586,9 @@ function showManhattan() {
 }
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({
@@ -710,9 +710,9 @@ view in its own state, for example to show it or to store it in a URL. The map r
 passes the view back in the next description, and a view that the map reported does not move it. To move the map, the application
 passes a different view.
 
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 import {createMap} from '@map-jr/map-jr-gl';
 
 let view = {center: [-74.0065, 40.7085], zoom: 13.6};
@@ -807,9 +807,9 @@ view often does nothing. Call `moveTo` with the stored view instead: `moveTo` al
 entry, `jumpTo`, `easeTo` and `flyTo` always move the map, as in MapLibre GL JS.
 
 <!-- example:back:start -->
-**Main API**
+**Map Jr**
 
-```js [Main API]
+```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text and a button that goes
 // back to the view before the last click.
@@ -884,9 +884,9 @@ back.onclick = () => {
 readout.textContent = 'Click a ferry landing to zoom in.';
 ```
 
-**MapLibre compat**
+**MapLibre**
 
-```js [MapLibre compat]
+```js [MapLibre]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. Below the map, it adds a line of text and a button that goes
 // back to the view before the last click.
@@ -1346,7 +1346,7 @@ export default function Back() {
 
 A click on a ferry landing zooms to it, and the button Back below the map returns to the view before the click.
 
-- The click handler stores the view before it moves the map. The Main API, Svelte and `<map-jr>` forms read it from
+- The click handler stores the view before it moves the map. The Map Jr, Svelte and `<map-jr>` forms read it from
   [`state.get().view`](../reference/state.md#mapstate). The Vue and React forms keep the view in the application with
   `view` and `onViewChange`, and read it there.
 - The stored view has `center`, `zoom`, `bearing` and `pitch`, and not `bounds`. A target of `moveTo` with `bounds`
