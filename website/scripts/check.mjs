@@ -1086,6 +1086,8 @@ try {
             await page.locator('[data-copy-url]').click();
             const copied = await page.evaluate(() => navigator.clipboard.readText());
             check(`${at}: the copy button copies the URL of the chosen style`, copied === 'https://styles.map-jr.org/1/elevation.json', copied);
+            const said = await page.locator('[data-copy-status]').textContent();
+            check(`${at}: a live status says that the URL was copied`, said === 'The URL was copied.', said);
             await page.locator('[data-library-button="maplibre"]').click();
             const maplibre = await page.locator('[data-style-url] input, input[data-style-url]').first().inputValue();
             await page.locator('[data-copy-url]').click();
@@ -1097,6 +1099,7 @@ try {
             // A style that does not read `color-scheme` has its scheme buttons off.
             await page.locator('[data-style-button="openfreemap-liberty"]').click();
             await page.waitForURL(/style=openfreemap-liberty/, {waitUntil: 'commit'});
+            check(`${at}: the address has no scheme for a style without color-scheme`, !new URL(page.url()).searchParams.has('scheme'), page.url());
             check(`${at}: the scheme buttons are off for openfreemap-liberty`, await page.locator('[data-scheme-button="dark"]').isDisabled());
             const wide = await overflow(page);
             check(`${at}: no horizontal scroll`, wide <= 0, String(wide));

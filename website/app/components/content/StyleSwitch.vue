@@ -22,6 +22,9 @@ const scheme = ref<'light' | 'dark'>('light');
 const chosen = computed(() => styles.find(style => style.name === name.value) ?? styles[0]);
 const state = ref<'loading' | 'idle' | 'error'>('loading');
 const copied = ref(false);
+// The text that a screen reader announces after a copy.
+const status = ref('');
+const urlField = useTemplateRef<HTMLElement>('urlField');
 // The library of the URL in the field.
 const library = ref<'map-jr' | 'maplibre'>('map-jr');
 const shownUrl = computed(() => library.value === 'maplibre' && chosen.value?.maplibre ? chosen.value.maplibre.url : chosen.value?.url ?? '');
@@ -39,14 +42,24 @@ function fromAddress() {
 const ready = ref(false);
 onMounted(() => { fromAddress(); ready.value = true; });
 watch(() => [route.query.style, route.query.scheme], fromAddress);
-// A new style or scheme draws again, and the map sends `idle` when it is ready.
+// A new style or scheme draws again, and the map sends `idle` when it is ready. An `idle` of an older style can arrive
+// while the new style loads, so after a change of the style an `idle` counts only after `styleload` of the new style.
+const styleLoaded = ref(true);
+watch(() => chosen.value?.url, () => { styleLoaded.value = false; });
 watch(() => [chosen.value?.url, scheme.value], () => { state.value = 'loading'; });
+function onIdle() {
+    if (styleLoaded.value) state.value = 'idle';
+}
 
 function choose(next: {style?: string; scheme?: 'light' | 'dark'}) {
     const style = next.style ?? name.value;
     const wanted = next.scheme ?? scheme.value;
     if (style === name.value && wanted === scheme.value) return;
-    router.replace({query: {...route.query, style, scheme: wanted}});
+    // A choice replaces the entry of the history, so that Back leaves the page. A style without `color-scheme` has no
+    // scheme in the address.
+    const reads = styles.find(candidate => candidate.name === style)?.schemes;
+    const {scheme: _, ...query} = route.query;
+    router.replace({query: {...query, style, ...(reads ? {scheme: wanted} : {})}});
 }
 
 async function copy() {
@@ -54,8 +67,11 @@ async function copy() {
     try {
         await navigator.clipboard.writeText(shownUrl.value);
         copied.value = true;
+        status.value = 'The URL was copied.';
         setTimeout(() => { copied.value = false; }, 2000);
     } catch (error) {
+        status.value = 'The copy failed. Select the URL and copy it.';
+        urlField.value?.querySelector('input')?.select();
         console.warn('[map-jr site] The copy of the URL of the style failed. Select the URL and copy it.', error);
     }
 }
@@ -102,7 +118,8 @@ async function copy() {
           :color-scheme="chosen.schemes ? scheme : 'light'"
           :controls="controls"
           cooperative-gestures
-          @idle="state = 'idle'"
+          @styleload="styleLoaded = true"
+          @idle="onIdle"
           @error="state = 'error'"
         />
       </div>
@@ -123,14 +140,15 @@ async function copy() {
       />
     </div>
     <div class="mt-1.5 flex min-w-0 items-center gap-1.5">
-      <UInput :model-value="shownUrl" readonly aria-label="URL of the style" class="min-w-0 flex-1 font-mono" size="sm" data-style-url @focus="(event: FocusEvent) => (event.target as HTMLInputElement).select()" />
+      <div ref="urlField" class="min-w-0 flex-1"><UInput :model-value="shownUrl" readonly aria-label="URL of the style" class="w-full font-mono" size="sm" data-style-url @focus="(event: FocusEvent) => (event.target as HTMLInputElement).select()" /></div>
       <UButton :label="copied ? 'Copied' : 'Copy'" :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'" color="neutral" variant="outline" size="sm" data-copy-url @click="copy" />
     </div>
     <p class="mt-1 figure-text text-muted">
       <template v-if="library === 'map-jr' || !chosen.maplibre">For Map Jr. GL.<template v-if="!chosen.maplibre"> This style has no form for MapLibre GL JS.</template></template>
       <template v-else-if="chosen.maplibre.own">For MapLibre GL JS 5.16.0 or later.</template>
-      <template v-else>For MapLibre GL JS: the style of OpenFreeMap.</template>
+      <template v-else>This is the style of OpenFreeMap for MapLibre GL JS.</template>
     </p>
+    <p class="sr-only" aria-live="polite" data-copy-status>{{ status }}</p>
 
     <dl class="mt-4 grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]" data-style-details>
       <dt class="font-medium">Style</dt>
