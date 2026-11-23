@@ -188,7 +188,7 @@ pnpm serve                            # a plain static server for that output, h
 pnpm check                            # checks that output in Chromium (once: pnpm exec playwright install chromium)
 ```
 
-`pnpm check` opens a docs page, uses the navigation, the search and the colour mode, loads the pages at the width
+`pnpm check` opens a docs page, uses the navigation, the search and the color mode, loads the pages at the width
 of a phone (390 px), and waits until the map of the home page is idle. `--no-map` leaves the map out, as the
 workflow does, because the map needs the style and the tiles of other hosts. `--screenshots=<path>` also saves
 pictures of the home page and of one docs page. It also edits and runs the code of a recipe and of `/play`, in the
@@ -233,8 +233,8 @@ Which files are pages:
 
 Where the design is:
 
-- `website/app/assets/css/main.css` has the design tokens: the colour scales `paper` (the neutral colour) and
-  `survey` (the primary colour), the fonts, the values of the semantic colours of Nuxt UI for the light and the dark
+- `website/app/assets/css/main.css` has the design tokens: the color scales `paper` (the neutral color) and
+  `survey` (the primary color), the fonts, the values of the semantic colors of Nuxt UI for the light and the dark
   mode with their contrast, and the classes for the contour lines and the contents list.
 - `website/app/app.config.ts` gives the scales to Nuxt UI and sets the classes of its components.
 - A component uses the semantic classes of Nuxt UI (`text-muted`, `bg-elevated`, `text-primary`), and not a shade of
@@ -285,7 +285,7 @@ a source map only when its developer tools are open, and `pnpm test:size` does n
 the text of the files of `src/`. A plugin of the build that changes code must return a source map of its change
 (`withMap` in `build.mjs`): `pnpm test:package` fails when a map points at the wrong lines.
 
-The first line of each built file that `package.json` names is a comment with the name, the version and the licence
+The first line of each built file that `package.json` names is a comment with the name, the version and the license
 of the package. The chunks that these files share do not have the comment, because each line counts against the size
 budgets.
 
@@ -300,7 +300,7 @@ use the name of a local variable of a shader in JavaScript.
 ## Other browsers and operating systems
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
-benchmark page and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS and Windows. WebKit is the
+benchmark page and the behavior tests in Chromium, Firefox and WebKit on Linux, macOS and Windows. WebKit is the
 engine of Safari.
 
 The same workflow has a job `safari`, which runs only when you start the workflow by hand. It runs the benchmark
@@ -363,7 +363,7 @@ time, because the tiles come from the live network. A test that fails two times 
 
 A pull request runs `browser` and `render` only when it needs them. The job `changes` reads the changed files:
 
-- The browser jobs are skipped when every changed file is a document (`docs/`, a `.md` file, a licence file, an issue template).
+- The browser jobs are skipped when every changed file is a document (`docs/`, a `.md` file, a license file, an issue template).
 - `render` runs only when a file that the built files or the render tests are made from changed: `src/`, `build.mjs`,
   `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `scripts/private-names.mjs`, `test/conformance/render*` or
   `.github/workflows/ci.yml`.
@@ -461,9 +461,9 @@ the tag `v<version>`, and makes the release on GitHub. Nobody pushes a tag or ma
    `https://map-jr.org/` when a pull request merges, so the pages must describe the version before it is released.
    For each entry of the new section of [CHANGELOG.md](../CHANGELOG.md), read the pages of `docs/guide/`,
    `docs/reference/` and `docs/migrate/` that describe its subject, and change each page that still describes the
-   behaviour before the release. A breaking change also needs the step in `docs/migrate/` that a user follows.
+   behavior before the release. A breaking change also needs the step in `docs/migrate/` that a user follows.
 4. **Consider the recipes.** For each new feature, decide whether a user would copy it from a recipe, and add a
-   recipe with its example in `examples/` when one would. For each change of behaviour, read the recipes and the
+   recipe with its example in `examples/` when one would. For each change of behavior, read the recipes and the
    examples that use the changed option or method, and update them. A pull request for these pages names the
    recipes that it adds or updates, and the new features that it leaves without a recipe, with the reason. Steps 3
    and 4 go into pull requests of their own, which merge before the release. The pages follow

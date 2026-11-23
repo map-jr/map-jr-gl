@@ -1,12 +1,12 @@
 # Similarity scan
 
 The similarity scan compares the source of Map Jr. GL (`src/`) with the source of the projects that it follows, to
-check that it contains no code of those projects without the notice that their licence requires. Run it before a
+check that it contains no code of those projects without the notice that their license requires. Run it before a
 release and after a change that follows another project. Both tools run on your computer and upload nothing.
 
 ## Projects that the scan compares
 
-| Project | Version | Licence | Where the source comes from |
+| Project | Version | License | Where the source comes from |
 |---|---|---|---|
 | MapLibre GL JS | 6.17.0 | BSD-3-Clause | `node_modules/maplibre-gl/src` after `pnpm install` (test files removed) |
 | supercluster | 8.0.1 | ISC | `npm pack supercluster@8.0.1`, file `index.js` |
@@ -49,7 +49,7 @@ Then run the two tools:
    ```
 
 Read each reported block next to its source. Decide for each one whether it is a method that `ACKNOWLEDGEMENTS.md`
-names, a copy that needs its licence text in `THIRD-PARTY-LICENSES.md` (see "Code and methods from other projects" in
+names, a copy that needs its license text in `THIRD-PARTY-LICENSES.md` (see "Code and methods from other projects" in
 `CLAUDE.md`), or unrelated code that looks the same because the API or the task is the same.
 
 ## Result of 2026-11-14
@@ -78,5 +78,5 @@ MapLibre GL JS.
 
 No block is a copy of code. No change to `ACKNOWLEDGEMENTS.md` or `THIRD-PARTY-LICENSES.md` was needed. The CSS that
 the compat entry copies from `maplibre-gl.css` (the rule for pseudo fullscreen and the hint of
-`cooperativeGestures`) is acknowledged, and its licence text is in `THIRD-PARTY-LICENSES.md`. The scan compares code
+`cooperativeGestures`) is acknowledged, and its license text is in `THIRD-PARTY-LICENSES.md`. The scan compares code
 and does not prove the absence of a copy that was rewritten line by line.

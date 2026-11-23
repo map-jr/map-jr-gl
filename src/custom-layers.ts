@@ -6,7 +6,7 @@ import type {Scene} from './gl.ts';
 import type {Map} from './compat-map.ts';
 import type {CustomLayerInterface, CustomRenderMethodInput, ProjectionData} from './compat-types.ts';
 
-/** The circumference of the earth at the equator in metres, from the radius that MapLibre GL JS uses (as `MercatorCoordinate`). */
+/** The circumference of the earth at the equator in meters, from the radius that MapLibre GL JS uses (as `MercatorCoordinate`). */
 const EARTH = 2 * Math.PI * 6371008.8;
 /** The vertical field of view of the camera in radians (36.87°, as in geo.ts). */
 const FOV = 0.6435011087932844;
@@ -73,7 +73,7 @@ const projection = (mainMatrix: Float32Array | Float64Array, tileMercatorCoords:
     ({mainMatrix, fallbackMatrix: mainMatrix, tileMercatorCoords, clippingPlane: [0, 0, 0, 0], projectionTransition: 0, clipAntimeridian: false});
 
 /**
- * What `render` gets, from the transform of the frame. `mainMatrix` is the matrix of the tile under the map centre at
+ * What `render` gets, from the transform of the frame. `mainMatrix` is the matrix of the tile under the map center at
  * the zoom below (whose values are small, so they are exact in 32 bits), times the step from Mercator coordinates to
  * the units of that tile in 64 bits: a model the size of a building does not shake at a high zoom.
  */
@@ -81,7 +81,7 @@ function inputs(tr: Transform, globeness: number): CustomRenderMethodInput {
     const z = Math.max(0, Math.floor(tr.zoom)), n = 2 ** z, ws = tr.worldSize, metres = EARTH * Math.cos(tr.lat * Math.PI / 180);
     const x = Math.min(n - 1, Math.floor(mercX(tr.lng) * n)), y = Math.min(n - 1, Math.floor(mercY(tr.lat) * n)), k = n * 4096;
     const tile = tr.tileMatrix4({z, x, y, w: 0, key: ''});
-    // (x and y: Mercator to tile units; z: Mercator units to metres, as MapLibre GL JS reckons them at the map centre.)
+    // (x and y: Mercator to tile units; z: Mercator units to meters, as MapLibre GL JS reckons them at the map center.)
     const main = multiply(tile, [k, 0, 0, 0, 0, k, 0, 0, 0, 0, metres, 0, -x * 4096, -y * 4096, 0, 1]);
     // The depth runs from -1 to 1 between the near and the far plane: Z = A·W + B. (Read from the tile matrix, whose
     // translation is small: in `main` it is large, and the rounding of its 32-bit values would show.)
@@ -94,7 +94,7 @@ function inputs(tr: Transform, globeness: number): CustomRenderMethodInput {
         // On the globe (also while it turns into Mercator) MapLibre GL JS gives the matrix from the unit sphere to clip
         // space, the plane of the horizon, and the globeness; the Mercator matrices are the fallback. The depth is that
         // of the fill-extrusion layers on the globe (toClip3D in gl.ts), so that a '3d' layer and the buildings below it
-        // hide each other: z = w - 0.0005 · (the distance from the camera to the centre of the sphere). That is a
+        // hide each other: z = w - 0.0005 · (the distance from the camera to the center of the sphere). That is a
         // projection with no far plane whose near plane is half that distance (#1431).
         const g = tr.globe.frame(tr), m = Float64Array.from(g.m), k = 0.0005 * g.m[15], gNear = k / 2, gFar = Infinity;
         for (let c = 0; c < 4; c++) m[c * 4 + 2] = m[c * 4 + 3] - (c === 3 ? k : 0);
@@ -111,7 +111,7 @@ function inputs(tr: Transform, globeness: number): CustomRenderMethodInput {
     return {
         nearZ: near, farZ: far, fov: FOV,
         modelViewProjectionMatrix: multiply(main, scale(1 / ws, 1 / ws, 1 / metres)),
-        // (The padding moves the centre of the perspective, as `m[8]` and `m[9]` do in MapLibre GL JS.)
+        // (The padding moves the center of the perspective, as `m[8]` and `m[9]` do in MapLibre GL JS.)
         projectionMatrix: perspective(near, far),
         shaderData: {variantName: 'mercator', vertexShaderPrelude: PRELUDE, define: '#define PROJECTION_MERCATOR'},
         defaultProjectionData: projection(main, [0, 0, 1, 1]),

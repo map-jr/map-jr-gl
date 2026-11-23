@@ -61,7 +61,7 @@ export const firstState = (): DemoState => ({style: 'elevation-zero', language: 
 
 const lucerne: [number, number] = [8.33, 47.03];
 const newYork: [number, number] = [-74.0065, 40.7085];
-// The first view of the page. scripts/first-paint.mjs has the same centre and zoom.
+// The first view of the page. scripts/first-paint.mjs has the same center and zoom.
 export const firstCamera: Camera = {center: lucerne, zoom: 10.6};
 const cameras = {
     globe: {center: [10, 30], zoom: 1.5},

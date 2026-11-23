@@ -1,6 +1,6 @@
 <!--
   The live map of the home page, framed as a map sheet: a double border, the coordinates of the north-west corner and
-  the zoom above it, and the centre and the south-east corner below it. `data-map-state` is "idle" when the map is drawn and ready (the checks read it).
+  the zoom above it, and the center and the south-east corner below it. `data-map-state` is "idle" when the map is drawn and ready (the checks read it).
 -->
 <script setup lang="ts">
 const colorMode = useColorMode();
@@ -37,7 +37,7 @@ function onView(next: View) {
       </div>
     </div>
     <figcaption class="mt-1.5 flex flex-wrap justify-between gap-x-4 figure-text text-muted whitespace-pre">
-      <span class="hidden sm:inline">centre {{ formatCoordinates(view.center) }}</span>
+      <span class="hidden sm:inline">center {{ formatCoordinates(view.center) }}</span>
       <span class="ms-auto" aria-hidden="true">{{ bounds ? formatCoordinates([bounds[1][0], bounds[0][1]]) : ' ' }}</span>
     </figcaption>
   </figure>

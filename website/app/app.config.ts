@@ -1,4 +1,4 @@
-// The colours and the classes of the components of Nuxt UI. The scales `paper` and `survey` and the other tokens
+// The colors and the classes of the components of Nuxt UI. The scales `paper` and `survey` and the other tokens
 // are in app/assets/css/main.css.
 export default defineAppConfig({
     ui: {

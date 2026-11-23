@@ -3,7 +3,7 @@
  * Covers the commonly used subset of the MapLibre expression language plus legacy filters and legacy `stops` functions.
  */
 export interface Feature { type: number; id?: number | string; properties: Record<string, any>; /** Set while a tile is built: the feature's state, for `feature-state`. */ state?: Record<string, unknown> }
-export interface Ctx { zoom: number; f: Feature | null; /** The value so far, when a cluster property is combined from its points. */ accumulated?: unknown; /** Heatmap colour ramps are evaluated over this, from 0 to 1. */ density?: number }
+export interface Ctx { zoom: number; f: Feature | null; /** The value so far, when a cluster property is combined from its points. */ accumulated?: unknown; /** Heatmap color ramps are evaluated over this, from 0 to 1. */ density?: number }
 export type Fn = (c: Ctx) => any;
 /** `list`: a value of a `raw` property; when its first item is no operator, it is a list of values (fonts, anchors). */
 export interface Flags { dd: boolean; zoom: boolean; list?: unknown }
@@ -11,10 +11,10 @@ export type RGBA = [number, number, number, number];
 import {bezier} from './geo.ts';
 import {VARIANT} from './markers.ts';
 
-// Every CSS colour name, as "name:hex" pairs in one string (much smaller in the bundle than an object literal).
+// Every CSS color name, as "name:hex" pairs in one string (much smaller in the bundle than an object literal).
 const NAMED: Record<string, string> = Object.fromEntries('aliceblue:f0f8ff antiquewhite:faebd7 aqua:0ff aquamarine:7fffd4 azure:f0ffff beige:f5f5dc bisque:ffe4c4 black:000 blanchedalmond:ffebcd blue:00f blueviolet:8a2be2 brown:a52a2a burlywood:deb887 cadetblue:5f9ea0 chartreuse:7fff00 chocolate:d2691e coral:ff7f50 cornflowerblue:6495ed cornsilk:fff8dc crimson:dc143c cyan:0ff darkblue:00008b darkcyan:008b8b darkgoldenrod:b8860b darkgray:a9a9a9 darkgreen:006400 darkgrey:a9a9a9 darkkhaki:bdb76b darkmagenta:8b008b darkolivegreen:556b2f darkorange:ff8c00 darkorchid:9932cc darkred:8b0000 darksalmon:e9967a darkseagreen:8fbc8f darkslateblue:483d8b darkslategray:2f4f4f darkslategrey:2f4f4f darkturquoise:00ced1 darkviolet:9400d3 deeppink:ff1493 deepskyblue:00bfff dimgray:696969 dimgrey:696969 dodgerblue:1e90ff firebrick:b22222 floralwhite:fffaf0 forestgreen:228b22 fuchsia:f0f gainsboro:dcdcdc ghostwhite:f8f8ff gold:ffd700 goldenrod:daa520 gray:808080 green:008000 greenyellow:adff2f grey:808080 honeydew:f0fff0 hotpink:ff69b4 indianred:cd5c5c indigo:4b0082 ivory:fffff0 khaki:f0e68c lavender:e6e6fa lavenderblush:fff0f5 lawngreen:7cfc00 lemonchiffon:fffacd lightblue:add8e6 lightcoral:f08080 lightcyan:e0ffff lightgoldenrodyellow:fafad2 lightgray:d3d3d3 lightgreen:90ee90 lightgrey:d3d3d3 lightpink:ffb6c1 lightsalmon:ffa07a lightseagreen:20b2aa lightskyblue:87cefa lightslategray:789 lightslategrey:789 lightsteelblue:b0c4de lightyellow:ffffe0 lime:0f0 limegreen:32cd32 linen:faf0e6 magenta:f0f maroon:800000 mediumaquamarine:66cdaa mediumblue:0000cd mediumorchid:ba55d3 mediumpurple:9370db mediumseagreen:3cb371 mediumslateblue:7b68ee mediumspringgreen:00fa9a mediumturquoise:48d1cc mediumvioletred:c71585 midnightblue:191970 mintcream:f5fffa mistyrose:ffe4e1 moccasin:ffe4b5 navajowhite:ffdead navy:000080 oldlace:fdf5e6 olive:808000 olivedrab:6b8e23 orange:ffa500 orangered:ff4500 orchid:da70d6 palegoldenrod:eee8aa palegreen:98fb98 paleturquoise:afeeee palevioletred:db7093 papayawhip:ffefd5 peachpuff:ffdab9 peru:cd853f pink:ffc0cb plum:dda0dd powderblue:b0e0e6 purple:800080 rebeccapurple:639 red:f00 rosybrown:bc8f8f royalblue:4169e1 saddlebrown:8b4513 salmon:fa8072 sandybrown:f4a460 seagreen:2e8b57 seashell:fff5ee sienna:a0522d silver:c0c0c0 skyblue:87ceeb slateblue:6a5acd slategray:708090 slategrey:708090 snow:fffafa springgreen:00ff7f steelblue:4682b4 tan:d2b48c teal:008080 thistle:d8bfd8 tomato:ff6347 turquoise:40e0d0 violet:ee82ee wheat:f5deb3 white:fff whitesmoke:f5f5f5 yellow:ff0 yellowgreen:9acd32'.split(' ').map(pair => { const [name, hex] = pair.split(':'); return [name, '#' + hex]; }));
 const colorCache = new Map<string, RGBA | null>();
-/** Arrays known to be colours, so interpolation can treat them differently from plain number arrays. */
+/** Arrays known to be colors, so interpolation can treat them differently from plain number arrays. */
 const COLORS = new WeakSet<object>();
 const color = (c: RGBA): RGBA => { COLORS.add(c); return c; };
 
@@ -74,13 +74,13 @@ export function warnOnce(msg: string) {
 
 function lerp(a: any, b: any, t: number): any {
     if (typeof a === 'number') return a + (b - a) * t;
-    // Colours interpolate channel by channel without premultiplying alpha, matching the current style specification.
+    // Colors interpolate channel by channel without premultiplying alpha, matching the current style specification.
     if (COLORS.has(a) && COLORS.has(b)) return color(a.map((v: number, i: number) => v + (b[i] - v) * t) as RGBA);
     if (Array.isArray(a)) return a.map((v, i) => v + (b[i] - v) * t);
     return t < 1 ? a : b;
 }
 
-/** Interpolation outputs written as colour strings are converted once, at compile time or first use. */
+/** Interpolation outputs written as color strings are converted once, at compile time or first use. */
 /**
  * The state of one map on this thread: an engine or a tile builder has one. Two maps on a page (or in one tile
  * worker) each have their own, so that they do not read the state of the other.
@@ -97,7 +97,7 @@ let compiling: MapStates = {g: {}, f: {}};
 export function compileFor(states: MapStates) { compiling = states; }
 
 /** An image inside label text (`format` with `image`) travels through the text as its name between these two characters. */
-/** Rich text (`format` with options): the size, font and colour of the text that follows, between these two characters. */
+/** Rich text (`format` with options): the size, font and color of the text that follows, between these two characters. */
 export const STYLE_OPEN = '\uE002', STYLE_CLOSE = '\uE003';
 export const IMAGE_OPEN = '\uE000', IMAGE_CLOSE = '\uE001', IMAGE_IN_TEXT = /\uE000([^\uE001]*)\uE001/g;
 /**
@@ -113,8 +113,8 @@ export const pickImage = (name: string, has: (name: string) => unknown) => {
 };
 
 /**
- * A heatmap's colour for each density from 0 to 1, as 256 premultiplied RGBA pixels: the `heatmap-color` expression
- * evaluated once, so the GPU only has to look colours up. With `at`, the result has one pixel for each of these
+ * A heatmap's color for each density from 0 to 1, as 256 premultiplied RGBA pixels: the `heatmap-color` expression
+ * evaluated once, so the GPU only has to look colors up. With `at`, the result has one pixel for each of these
  * inputs instead (the elevations of the stops of a `color-relief` layer).
  */
 export function colorRamp(expression: unknown, at?: ArrayLike<number>): Uint8Array {
@@ -131,7 +131,7 @@ export function colorRamp(expression: unknown, at?: ArrayLike<number>): Uint8Arr
 const SPACES: Record<string, 'hcl' | 'lab' | undefined> = {hcl: 'hcl', lab: 'lab'};
 const SURROGATE = /[\ud800-\udfff]/;
 
-// Colours in the CIELAB space (and its polar form, HCL), with the constants that MapLibre uses.
+// Colors in the CIELAB space (and its polar form, HCL), with the constants that MapLibre uses.
 const XN = 0.96422, ZN = 0.82521, T0 = 4 / 29, T1 = 6 / 29, T2 = 3 * T1 * T1, T3 = T1 * T1 * T1;
 const toLinear = (v: number) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 const fromLinear = (v: number) => Math.min(1, Math.max(0, v <= 0.00304 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
@@ -146,13 +146,13 @@ function fromLab([l, a, b, alpha]: number[]): RGBA {
     x = XN * labInv(x); y = labInv(y); z = ZN * labInv(z);
     return color([fromLinear(3.1338561 * x - 1.6168667 * y - 0.4906146 * z), fromLinear(-0.9787684 * x + 1.9161415 * y + 0.0334540 * z), fromLinear(0.0719453 * x - 0.2289914 * y + 1.4052427 * z), alpha]);
 }
-/** Interpolates two colours in Lab, or in HCL where the hue takes the short way round. */
+/** Interpolates two colors in Lab, or in HCL where the hue takes the short way round. */
 function lerpInSpace(from: RGBA, to: RGBA, t: number, space: 'hcl' | 'lab'): RGBA {
     const a = toLab(from), b = toLab(to), mix = (i: number) => a[i] + (b[i] - a[i]) * t;
     if (space === 'lab') return fromLab([mix(0), mix(1), mix(2), mix(3)]);
     const c0 = Math.hypot(a[1], a[2]), c1 = Math.hypot(b[1], b[2]);
     let h0 = Math.atan2(a[2], a[1]), h1 = Math.atan2(b[2], b[1]);
-    // A grey has no hue of its own: it takes the hue of the other colour.
+    // A gray has no hue of its own: it takes the hue of the other color.
     if (c0 < 1e-4) h0 = h1; else if (c1 < 1e-4) h1 = h0;
     let dh = h1 - h0;
     if (dh > Math.PI) dh -= 2 * Math.PI; else if (dh < -Math.PI) dh += 2 * Math.PI;
@@ -181,7 +181,7 @@ function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step
         return mixValues(from, to, t, space);
     };
 }
-/** Interpolates numbers, colours (in the colour space, if one is given) and arrays of these. */
+/** Interpolates numbers, colors (in the color space, if one is given) and arrays of these. */
 function mixValues(from: any, to: any, t: number, space?: 'hcl' | 'lab'): any {
     if (Array.isArray(from) && Array.isArray(to) && !COLORS.has(from) && typeof from[0] !== 'number') return from.map((v, i) => mixValues(colorize(v), colorize(to[i]), t, space));
     return space && COLORS.has(from) && COLORS.has(to) ? lerpInSpace(from as RGBA, to as RGBA, t, space) : lerp(from, to, t);
@@ -327,7 +327,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
             };
         }
         case 'to-rgba': {
-            // An array that is not a colour is a colour written as [r, g, b] or [r, g, b, a], with r, g and b from 0 to 255.
+            // An array that is not a color is a color written as [r, g, b] or [r, g, b, a], with r, g and b from 0 to 255.
             const a = arg(1);
             return c => { const v = colorize(a(c)); return !Array.isArray(v) ? null : COLORS.has(v) ? [v[0] * 255, v[1] * 255, v[2] * 255, v[3]] : [v[0], v[1], v[2], v[3] ?? 1]; };
         }
@@ -433,7 +433,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
                 const part = e[i];
                 if (Array.isArray(part) && part[0] === 'image') { const name = compileExpr(part, flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
                 else if (typeof part !== 'object' || Array.isArray(part)) {
-                    // The options after a section change its size, font or colour. They go in the string as a marker
+                    // The options after a section change its size, font or color. They go in the string as a marker
                     // before the section (see STYLE_OPEN); an empty marker after the section ends them.
                     const text = arg(i), o = e[i + 1], styled = o && typeof o === 'object' && !Array.isArray(o) && (o['font-scale'] != null || o['text-font'] != null || o['text-color'] != null);
                     if (!styled) { parts.push(text); continue; }

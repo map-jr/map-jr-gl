@@ -61,8 +61,8 @@ test('text from the description is escaped, the nonce goes on the style, and a c
     assert.doesNotMatch(html, /style="/, 'no style attribute: a strict style-src does not block the layout');
 });
 
-test('the colour scheme sets the class of the layer, and auto gets rules for the browser scheme and both icons', () => {
-    assert.match(controlsMarkup(base({controls: [colorScheme()], colorScheme: 'dark'})), /map-jr-glass map-jr-dark map-jr-ssr-layer.*Use light colours/s);
+test('the color scheme sets the class of the layer, and auto gets rules for the browser scheme and both icons', () => {
+    assert.match(controlsMarkup(base({controls: [colorScheme()], colorScheme: 'dark'})), /map-jr-glass map-jr-dark map-jr-ssr-layer.*Use light colors/s);
     const auto = controlsMarkup(base({controls: [colorScheme()], colorScheme: 'auto'}));
     assert.match(auto, /map-jr-glass map-jr-auto map-jr-ssr-layer/);
     assert.match(auto, /@media \(prefers-color-scheme:dark\)\{:where\(\.map-jr-auto\) :where\(\.map-jr-ctrl\)\{/);

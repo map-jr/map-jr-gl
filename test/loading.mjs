@@ -202,7 +202,7 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
         check(`example ${file} runs as written and reaches idle`, ok && !errors.length && text.trim() !== '', `idle=${ok} text="${text}" errors=${errors.join(' | ')}`);
         if (file === 'color-scheme.html') {
             // The scheme that the button sets stays when the element sends its next description.
-            await page.click('button[aria-label="Use dark colours"]');
+            await page.click('button[aria-label="Use dark colors"]');
             const dark = await page.waitForFunction(() => document.querySelector('.map-jr-dark'), null, {timeout: 5000}).then(() => true, () => false);
             await page.evaluate(() => { document.querySelector('map-jr').attribution = {compact: false}; });
             await page.waitForTimeout(500);

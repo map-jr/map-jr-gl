@@ -6,14 +6,14 @@ import type {TileLayers} from './tile.ts';
 /**
  * Contour lines computed from elevation tiles, in the tile workers. A `contour` source names a `raster-dem` source
  * and says which intervals to draw at which zooms; its tiles then behave like any vector tiles, with one line
- * layer whose features carry the elevation and how "major" the line is. Modelled on maplibre-contour.
+ * layer whose features carry the elevation and how "major" the line is. Modeled on maplibre-contour.
  */
 export interface ContourConfig {
     /** Tile URL template, encoding, size and deepest zoom of the elevation source the contours are derived from. */
     tiles: string[]; encoding: DemEncoding; demMaxzoom: number; demMinzoom: number;
     /** Intervals by zoom: `{9: [200, 1000], 12: [50, 200]}` draws 200 (minor) and 1000 (major) from zoom 9, and so on. */
     thresholds: Record<string, number[]>;
-    /** Elevation is multiplied by this first; 3.28084 turns metres into feet. */
+    /** Elevation is multiplied by this first; 3.28084 turns meters into feet. */
     multiplier: number;
     /** Use elevation tiles this many levels shallower than the contour tile: fewer downloads, smoother lines. */
     overzoom: number;
@@ -35,14 +35,14 @@ export async function decodePixels(bytes: Uint8Array | ImageBitmap, decode?: Ima
     if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Elevation tiles need a browser or decodeImage');
     const image = given ? bytes : await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
     const {width, height} = image; // read before close(), which zeroes them
-    // Heights are in the colour channels, so pixels must be exact: see `imagePixels`.
+    // Heights are in the color channels, so pixels must be exact: see `imagePixels`.
     const data = imagePixels(image, width, height);
     image.close();
     return {width, height, data};
 }
 
 /**
- * Decodes an elevation tile image into metres, with `decode` if given (the server renderer passes its own decoders)
+ * Decodes an elevation tile image into meters, with `decode` if given (the server renderer passes its own decoders)
  * and otherwise the browser's.
  */
 export async function decodeDEM(bytes: Uint8Array | ImageBitmap, encoding: DemEncoding, decode?: ImageDecoder): Promise<DEM> {
@@ -62,7 +62,7 @@ export function thresholdsAt(thresholds: Record<string, number[]>, z: number): n
 /**
  * Marching squares over a grid of `n` x `n` heights. Returns, per contour value, the polylines it forms in grid
  * coordinates (flat x, y pairs). Crossing points are identified by the grid edge they lie on, so the pieces from
- * neighbouring cells join exactly.
+ * neighboring cells join exactly.
  */
 export function isolines(v: Float32Array, n: number, interval: number): Map<number, number[][]> {
     // Per level: segments as [edgeA, ax, ay, edgeB, bx, by].
@@ -143,7 +143,7 @@ export async function contourTile(cfg: ContourConfig, z: number, x: number, y: n
     const tx = Math.floor(x / 2 ** k), ty = Math.floor(y / 2 ** k), centre = await loadDEM(url(tx, ty)!);
     if (!centre) return {};
     const P = centre.width, S = P / 2 ** k, X0 = (x - tx * 2 ** k) * S, Y0 = (y - ty * 2 ** k) * S;
-    // Lines must meet across tile edges, so heights along an edge are sampled from the neighbouring elevation
+    // Lines must meet across tile edges, so heights along an edge are sampled from the neighboring elevation
     // tile too whenever this tile reaches the edge of its own.
     const tiles = new Map<string, DEM | null>([['0,0', centre]]);
     const need: [number, number][] = [];

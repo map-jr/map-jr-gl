@@ -45,7 +45,7 @@ export function svgSize(svg: string): [number, number] {
     return box ? [+box[1], +box[2]] : [length('width'), length('height')];
 }
 
-/** Rewrites the root element with explicit pixel dimensions, which every browser needs to rasterise an SVG image reliably. */
+/** Rewrites the root element with explicit pixel dimensions, which every browser needs to rasterize an SVG image reliably. */
 export function sizedSVG(svg: string, w: number, h: number): string {
     const {viewBox, inner} = parseSVG(svg);
     return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${viewBox ?? '0 0 ' + svgSize(svg).join(' ')}">${inner}</svg>`;
@@ -72,7 +72,7 @@ export function withData(style: any, data: Record<string, unknown> | undefined, 
 /** The error of a key of `data` that is the id of a source of another type. */
 /** A pair of styles `{light, dark}` in `style`: an object with `light` or `dark` and no `layers` (a style has `layers`). */
 export const isStylePair = (s: unknown): s is {light?: unknown; dark?: unknown} => !!s && typeof s === 'object' && !('layers' in s) && ('light' in s || 'dark' in s);
-/** The style for the colour scheme: of a pair the value of the scheme (or the other one when it is missing), else `style` itself. */
+/** The style for the color scheme: of a pair the value of the scheme (or the other one when it is missing), else `style` itself. */
 export const styleFor = (s: unknown, dark: boolean): unknown => isStylePair(s) ? (dark ? s.dark ?? s.light : s.light ?? s.dark) : s;
 export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl] data: the source "${id}" has the type "${type}", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`);
 

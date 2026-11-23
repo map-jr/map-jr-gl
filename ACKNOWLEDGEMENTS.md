@@ -4,7 +4,7 @@ Map Jr. GL is possible because of the work of other projects. Thank you to the p
 
 ## MapLibre GL JS
 
-[MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) is the model for this library. Its licence is
+[MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) is the model for this library. Its license is
 BSD-3-Clause.
 
 - Map Jr. GL reads the MapLibre style specification and has an API that follows the API of MapLibre GL JS.
@@ -22,7 +22,7 @@ BSD-3-Clause.
 - The sky and the fog of the root property `sky` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shaders `sky` and `terrain` and `fog` in `shaders/_prelude_fog`). The code in `src/gl.ts` is new; the sky on the globe follows the blend of `u_sky_blend` in `sky.fragment.glsl` and `skyUniformValues`. The atmosphere on the globe is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS (BSD-3-Clause), changed, and follows its `drawAtmosphere`, `getSunPos` and `getAtmosphereAltitudeBlend`; the notice is in `THIRD-PARTY-LICENSES.md`.
 - The prelude that custom layers get on the globe (`src/custom-layers.ts`) is a close translation of `_projection_globe.vertex.glsl` of MapLibre GL JS 6.17 (BSD-3-Clause), shortened; the notice is in `THIRD-PARTY-LICENSES.md`.
 - The placement of `text-variable-anchor` and `text-variable-anchor-offset` follows `placeLayerBucketPart` and `attemptAnchorPlacement` of MapLibre GL JS 6.17 (BSD-3-Clause): the anchor of the previous placement first, then every anchor without overlap, then every anchor with overlap, and an icon of `icon-text-fit` tested at each anchor. The code is new.
-- `fill-extrusion-pattern` follows the method of the shader `fill_extrusion_pattern` and of `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): the image lies on the roof by tile position and on the walls by the distance along the ring and the height, and the light of a patterned wall is computed with a grey of 0.5. The code is new.
+- `fill-extrusion-pattern` follows the method of the shader `fill_extrusion_pattern` and of `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): the image lies on the roof by tile position and on the walls by the distance along the ring and the height, and the light of a patterned wall is computed with a gray of 0.5. The code is new.
 - The level of detail of a pitched view (`lodZoom` in `src/geo.ts`, used with 3D terrain and by `setSourceTileLodParams`) follows the formula of `createCalculateTileZoomFunction` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
 - glsl-atmosphere (github.com/wwwtyro/glsl-atmosphere, Unlicense): the atmosphere shader of MapLibre GL JS, which the shader of the atmosphere on the globe copies, follows its scattering method.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
@@ -30,7 +30,7 @@ BSD-3-Clause.
   on 3D terrain.
 - The layer type `color-relief` follows the method of MapLibre GL JS (BSD-3-Clause; `color_relief_style_layer.ts` and
   the shader `color_relief`): the stops of the `interpolate` expression go to the GPU, and the shader searches the two
-  stops around an elevation and mixes their colours. The code in `src/style.ts` and `src/gl.ts` is new.
+  stops around an elevation and mixes their colors. The code in `src/style.ts` and `src/gl.ts` is new.
 - The methods of `hillshade-method` (`basic`, `combined`, `igor`, `multidirectional`) and
   `hillshade-illumination-altitude` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shader `hillshade` and
   `hillshade_style_layer.ts`), which says that it bases them on `gdaldem` of GDAL (MIT). The code in `src/style.ts`
@@ -48,7 +48,7 @@ BSD-3-Clause.
 - `calculateCameraOptionsFromTo`, `calculateCameraOptionsFromCameraLngLatAltRotation` and
   `calculateAnchoredCameraOptions` of the compat entry follow the Mercator camera math of MapLibre GL JS 6.17
   (BSD-3-Clause; `mercator_transform.ts`, `mercator_camera_helper.ts` and `camera.ts`), including its earth radius and its search
-  for the centre along the view. The code in `src/compat-map.ts` is new.
+  for the center along the view. The code in `src/compat-map.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
@@ -71,7 +71,7 @@ BSD-3-Clause.
   (`src/ui/camera.ts`), which implements the method of van Wijk and Nuij, "Smooth and efficient zooming and panning"
   (2003), with the same options and defaults.
 - `fitScreenCoordinates` of the compat entry follows the method of `_cameraForBoxAndBearing` of MapLibre GL JS 6.17
-  (`src/ui/camera.ts`, BSD-3-Clause) for the zoom and the centre of a box at a bearing. The code is new.
+  (`src/ui/camera.ts`, BSD-3-Clause) for the zoom and the center of a box at a bearing. The code is new.
 - The check for a canvas that adds noise to `getImageData` (`src/exact-pixels.ts`) follows `isOffscreenCanvasDistorted`
   of MapLibre GL JS 6.17.0 (`src/util/offscreen_canvas_distorted.ts`, BSD-3-Clause), and so does reading elevation
   tiles through WebGL when the canvas is distorted. The code is new.
@@ -87,13 +87,13 @@ BSD-3-Clause.
   -32768 and 32767 for the pole vertices. The code is new, and the size of the grid is not that of MapLibre.
 - The globe (`src/globe.ts` and the `GLOBE` variant of the programs in `src/gl.ts`) follows the globe of MapLibre GL JS
   6.17 (`src/geo/projection/vertical_perspective_transform.ts`, `globe_utils.ts`, `_projection_globe.vertex.glsl`,
-  BSD-3-Clause): the radius that keeps the scale of Mercator at the centre, the matrix from the unit sphere to clip
+  BSD-3-Clause): the radius that keeps the scale of Mercator at the center, the matrix from the unit sphere to clip
   space, the plane of the horizon as clip-space z, the mix with Mercator between zoom 11 and 12, the formula with
   `exp` for the sphere, the width of lines toward the poles, and the change of zoom with the latitude during a drag.
   A drag on the globe (`drag` in `src/globe.ts`) follows `versorSetLocationAtPoint` and `panSurfaceLocation` in
   `globe_utils.ts`: the rotation from the last pointer to the new one, the eased curve near the edge of the globe, and
-  the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the centre
-  can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the centre (`interpolateLngLatForGlobe`). The code is new.
+  the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the center
+  can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the center (`interpolateLngLatForGlobe`). The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them. `test/conformance/render.mjs` applies
   the operations of a render test in the order and with the arguments of `applyOperations` in
@@ -108,12 +108,12 @@ MapLibre GL JS started from Mapbox GL JS (version 1.13 and earlier, BSD-3-Clause
   that the built files contain.
 - [Material Symbols](https://github.com/google/material-design-icons) (Apache-2.0, Google): the button of the
   compact attribution of the main API draws the icon "info i" (rounded). Its path is copied unchanged, in the form
-  on a grid of 24 by 24 units. The licence text is in `THIRD-PARTY-LICENSES.md`.
+  on a grid of 24 by 24 units. The license text is in `THIRD-PARTY-LICENSES.md`.
 
 ## Methods from other projects
 
 - The compass of the main API takes the idea of the compass of Apple Maps (maps.apple.com): a dial with ticks, a
-  mark of north on the rim and the letter of the direction in the centre. The drawing is new and copies no file or
+  mark of north on the rim and the letter of the direction in the center. The drawing is new and copies no file or
   code of Apple.
 
 - [supercluster](https://github.com/mapbox/supercluster) (ISC, Mapbox): the method that makes clusters of points.
@@ -150,4 +150,4 @@ person gave the directions, reviewed the results on real devices and made the de
 - Nobody reviewed every line of the code.
 - Review the code and run your own tests before you use the library for important work.
 
-The full licence texts of the other projects are in `THIRD-PARTY-LICENSES.md`.
+The full license texts of the other projects are in `THIRD-PARTY-LICENSES.md`.

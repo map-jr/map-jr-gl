@@ -2,7 +2,7 @@
 //
 // The lines are the contours of a height field that is a sum of a few waves. Each wave has a whole number of periods
 // across the tile, so the left edge of the tile continues the right edge, and the top continues the bottom. The CSS
-// uses the file as a mask and repeats it (see `.contours` in app/assets/css/main.css), so the lines take the colour
+// uses the file as a mask and repeats it (see `.contours` in app/assets/css/main.css), so the lines take the color
 // of the theme. Every fifth line is an index contour and is thicker, as on a topographic map.
 import {writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';

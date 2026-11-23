@@ -84,7 +84,7 @@ export type Command =
     | {type: 'custom'; id: number; draw: GLRenderer['custom']}
     | {type: 'bound'; id: number; fn: ((tr: Transform) => void) | null};
 export type EngineEvent =
-    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean;
+    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the center with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean;
         /** During a drag: the ground that it grabbed, and the number of the command that grabbed it (#38). */
         grab?: [number, number, number];
         /** The number of the last command that the engine has applied (see `seq` in map.ts). */
@@ -138,7 +138,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not cancelled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -178,7 +178,7 @@ export const fadeStep = (opacity: number, target: number, dt: number, fade: numb
 /**
  * The curve of flyTo (van Wijk and Nuij, as `flyTo` of MapLibre GL JS 6.17) from `tr` to `to`. `o` is [curve, speed,
  * screenSpeed, minZoom, maxDuration, 1 when the duration follows from the distance]. Returns [r0, rho, S, the factor of
- * u, the sign of an exponential zoom when the centre does not move (else 0), the duration in milliseconds]; S is 0 when
+ * u, the sign of an exponential zoom when the center does not move (else 0), the duration in milliseconds]; S is 0 when
  * the camera eases instead (nothing to fly, or longer than maxDuration, which is then a jump).
  */
 function flight(tr: Transform, to: Transform, [rho, speed, screenSpeed, minZoom, maxDuration, auto]: number[], given: number, globe = false) {
@@ -207,7 +207,7 @@ function flight(tr: Transform, to: Transform, [rho, speed, screenSpeed, minZoom,
     return [r0, rho, jump || still ? 0 : S, w0 / u1 / rho2, sign, jump ? 1 : !auto ? given : still ? 500 : duration];
 }
 /**
- * The centre at the part `t` of a way on the globe, as MapLibre GL JS's `interpolateLngLatForGlobe`: the latitude
+ * The center at the part `t` of a way on the globe, as MapLibre GL JS's `interpolateLngLatForGlobe`: the latitude
  * changes evenly, and the longitude at a speed of 1 / cos(latitude), so that the globe seems to turn evenly.
  */
 function globeWay([lng0, lat0, dLng, dLat]: number[], t: number): [number, number] {
@@ -391,7 +391,7 @@ export class Engine {
         if (version === this.demVersion) return false;
         const a = this.demArrivals, n = 2 ** id.z, x0 = id.x / n, y0 = id.y / n, x1 = (id.x + 1) / n, y1 = (id.y + 1) / n;
         if (!a.length || a[0].version > version + 1) return true; // older than what is remembered
-        // (Tiles that only touch count: the heights on an edge of a tile come from its neighbour.)
+        // (Tiles that only touch count: the heights on an edge of a tile come from its neighbor.)
         for (const d of a) if (d.version > version && d.x0 <= x1 && d.x1 >= x0 && d.y0 <= y1 && d.y1 >= y0) return true;
         return false;
     }
@@ -403,15 +403,15 @@ export class Engine {
     /** 3D terrain: an elevation tile that the ground needs is still loading in this frame. */
     private demLoading = false;
     private grab: {lng: number; lat: number; at: number; seq: number} | null = null;
-    /** 3D terrain: the centre was set by the API rather than reached by a gesture, so it keeps its position. */
+    /** 3D terrain: the center was set by the API rather than reached by a gesture, so it keeps its position. */
     private centreGiven = true;
     private unplacedSince = 0;
     private easeHeights: {ease: unknown; from: number} | null = null;
-    /** 3D terrain: height of the ground at the map centre in real (unexaggerated) metres. */
+    /** 3D terrain: height of the ground at the map center in real (unexaggerated) meters. */
     private rawElevation = 0;
     private lastPose = '';
     private movedAt = -1e9;
-    /** When the centre last took the height of the ground (a centre set outright is not moved along the line of sight before the map moves, as in MapLibre GL JS, #1480). */
+    /** When the center last took the height of the ground (a center set outright is not moved along the line of sight before the map moves, as in MapLibre GL JS, #1480). */
     private placedAt = -1e9;
     private lastTilt = '';
     private tiltedAt = -1e9;
@@ -424,7 +424,7 @@ export class Engine {
     private invalidate() { this.placeDirty = true; this.repaint(); }
 
     /** The deepest loaded elevation tile at or above a position, and its zoom. */
-    /** Metres by which the ground reaches above the camera or above 9 points of the near clipping plane (MapLibre's 1/50 of the height); 0 or less while clear. */
+    /** Meters by which the ground reaches above the camera or above 9 points of the near clipping plane (MapLibre's 1/50 of the height); 0 or less while clear. */
     private terrainAboveCamera(tr: Transform): number {
         const [cx, cy, ch] = tr.cameraPosition(), ws = tr.worldSize, ppm = tr.pixelsPerMetre, d = tr.cameraDistance, n = tr.height / 50;
         const p = tr.pitch * Math.PI / 180, a = -tr.bearing * Math.PI / 180, sa = Math.sin(a), ca = Math.cos(a), sp = Math.sin(p), cp = Math.cos(p);
@@ -448,18 +448,18 @@ export class Engine {
         return null;
     }
 
-    /** Ground height at a mercator position in metres (exaggerated), from the best elevation tile loaded so far. */
+    /** Ground height at a mercator position in meters (exaggerated), from the best elevation tile loaded so far. */
     private heightAt = (mx: number, my: number): number => this.rawHeightAt(mx, my) * this.exaggeration;
     /** Height grids of the loaded elevation tiles, keyed "z/x/y"; mirrored to the page so it can project onto the ground too. */
     private heights = new Map<string, Float32Array>();
     private rawHeightAt(mx: number, my: number): number {
         const src = this.style.terrain && this.style.sources[this.style.terrain.source];
-        return src ? groundHeight(this.heights, mx, my, src.maxzoom, src.minzoom, this.rawElevation) : 0; // where nothing is known yet, level with the centre; // always the most detailed data, so heights do not shift with zoom
+        return src ? groundHeight(this.heights, mx, my, src.maxzoom, src.minzoom, this.rawElevation) : 0; // where nothing is known yet, level with the center; // always the most detailed data, so heights do not shift with zoom
     }
 
     /**
      * Heights at the 65 x 65 corners of a ground tile's mesh. Nearly all of them lie inside one elevation tile's grid
-     * and are read straight from it; only points on the far edges (which belong to the neighbouring tiles) and tiles
+     * and are read straight from it; only points on the far edges (which belong to the neighboring tiles) and tiles
      * with no single grid under them go through the general lookup.
      */
     private fillMesh(data: Float32Array, id: TileID) {
@@ -520,7 +520,7 @@ export class Engine {
     }
     /**
      * An image source is one picture stretched between four corners. It is drawn like a tile: positioned relative to
-     * a tile near the view's centre (which keeps the numbers small and exact), reaching outside it as far as it needs.
+     * a tile near the view's center (which keeps the numbers small and exact), reaching outside it as far as it needs.
      * A video or canvas source has no URL: its pictures are the frames that the page sends (`frame`).
      */
     private pictureItems(source: string, tr: Transform): RenderItem<GLTile>[] {
@@ -633,7 +633,7 @@ export class Engine {
         for (const id of tr.tileCover(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
             // Each tile's picture is drawn once for a whole level of zoom: with the style as it is three quarters of the way
             // through the level of the map, and stretched as the map zooms inside that level. A ground tile can be of a
-            // coarser level than the map (far ground, and with a steep tilt also the ground at the centre) or of a finer one
+            // coarser level than the map (far ground, and with a steep tilt also the ground at the center) or of a finer one
             // (ground near the camera). Its picture still uses the style of the map's level, as in MapLibre: the same layers
             // show, and lines have the same width.
             const zt = Math.floor(tr.zoom) + 0.75, tkey = `${id.key}|${id.w}`;
@@ -820,7 +820,7 @@ export class Engine {
     private newData(source: string) {
         for (const [key, t] of this.tiles) {
             if (!key.startsWith(source + '|')) continue;
-            // Tiles on screen or still loading are rebuilt in place once they can be; cancelling loads here
+            // Tiles on screen or still loading are rebuilt in place once they can be; canceling loads here
             // would starve a map that is being moved while its data updates.
             if (t.state === 'loading' || t.used >= this.frameNo - 1) { t.stale = true; t.rev = ++this.tilesVersion; } else this.dropTile(key, t);
         }
@@ -939,7 +939,7 @@ export class Engine {
                 let db = to.bearing - tr.bearing;
                 db = ((db + 180) % 360 + 360) % 360 - 180;
                 // On the globe the zoom is animated as the zoom that the same size of the globe has at the equator, so
-                // that the globe keeps its size while the centre moves north or south (as in MapLibre GL JS).
+                // that the globe keeps its size while the center moves north or south (as in MapLibre GL JS).
                 const globe = !!tr.globeness && !c.around, z = (t: Transform) => globe ? t.zoom + keepSize(t.lat, 0) : t.zoom;
                 const fly = c.fly && flight(tr, to, c.fly, c.duration, globe);
                 this.ease = {
@@ -948,7 +948,7 @@ export class Engine {
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined, globe,
                     way: globe ? [tr.lng, tr.lat, ((to.lng - tr.lng) % 360 + 540) % 360 - 180, to.lat - tr.lat] : undefined,
                 };
-                // (With `around`, the end differs from `to` in its centre: the point under `around` stays there.)
+                // (With `around`, the end differs from `to` in its center: the point under `around` stays there.)
                 if (c.around && this.ease.anchor) to.setLocationAt(this.ease.anchor[0], this.ease.anchor[1], c.around[0], c.around[1]);
                 this.aim(to);
                 this.centreGiven = !c.around;
@@ -962,7 +962,7 @@ export class Engine {
                 // On the globe each move turns the globe from the last pointer to this one, as MapLibre GL JS does (globe.ts).
                 if (tr.globeness) { tr.globe!.drag(tr, c.x - c.dx, c.y - c.dy, c.x, c.y); tr.constrain(); this.grab = null; break; }
                 // A drag holds on to the ground (and its height) where it began; each move puts that point under the pointer.
-                // (A new drag is recognised by a pause, or by the pointer not being where the held point is.)
+                // (A new drag is recognized by a pause, or by the pointer not being where the held point is.)
                 const held = this.grab && now - this.grab.at < 300 ? tr.project(this.grab.lng, this.grab.lat) : null;
                 if (!held || Math.hypot(held[0] - (c.x - c.dx), held[1] - (c.y - c.dy)) > 24) {
                     const [lng, lat] = tr.unproject(c.x - c.dx, c.y - c.dy);
@@ -1258,7 +1258,7 @@ export class Engine {
             let part = k;
             if (e.fly) {
                 // flyTo (van Wijk and Nuij, as in MapLibre GL JS): w is the width of the view relative to the start, u the
-                // part of the way that the centre has gone.
+                // part of the way that the center has gone.
                 const [r0, rho, S, c, sign] = e.fly, s = k * S;
                 const u = sign ? 0 : c * (Math.cosh(r0) * Math.tanh(r0 + rho * s) - Math.sinh(r0));
                 v[0] = e.from[0] + (e.to[0] - e.from[0]) * u; v[1] = e.from[1] + (e.to[1] - e.from[1]) * u; part = u;
@@ -1547,7 +1547,7 @@ export class Engine {
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
         let complete = true; const loading = new Set<string>();
         const wanted = new Set<string>();
-        // 3D terrain: the camera follows the ground under the map centre, easing so that newly loaded heights do not jolt it.
+        // 3D terrain: the camera follows the ground under the map center, easing so that newly loaded heights do not jolt it.
         // Seen from straight above, relief changes nothing that matters, so the flat (sharper, cheaper) path is used; the
         // relief then grows in over the first ten degrees of tilt rather than popping.
         const tilt = clamp(tr.pitch / 10, 0, 1);
@@ -1555,7 +1555,7 @@ export class Engine {
         const globeness = tr.globeness;
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
         if (terrain && globeness) {
-            // On the globe the camera looks at the ground under the centre (see `frame` in globe.ts), and screen positions
+            // On the globe the camera looks at the ground under the center (see `frame` in globe.ts), and screen positions
             // follow the ground as in Mercator (#1430). The camera does not ease or keep its height while it moves.
             tr.heightAt = this.heightAt;
             tr.elevation = this.heightAt(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat));
@@ -1565,9 +1565,9 @@ export class Engine {
             tr.groundRange = [lo, hi];
         } else if (terrain) {
             tr.heightAt = this.heightAt;
-            // The centre's height is remembered in real metres, so it shrinks and grows together with the relief.
+            // The center's height is remembered in real meters, so it shrinks and grows together with the relief.
             tr.elevation = this.rawElevation * this.exaggeration;
-            // The lowest and highest ground on the elevation tiles in use: valleys far below the centre (or peaks far
+            // The lowest and highest ground on the elevation tiles in use: valleys far below the center (or peaks far
             // above it) reach further across the screen than flat ground would.
             let lo = tr.elevation, hi = tr.elevation;
             for (const [key, t] of this.tiles) {
@@ -1575,12 +1575,12 @@ export class Engine {
                 lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration);
             }
             tr.groundRange = [lo, hi];
-            // While the map is being moved the centre keeps its height: the camera goes where it is sent rather than
-            // bobbing over every ridge. At rest the centre is put back on the ground the camera is looking at, with
+            // While the map is being moved the center keeps its height: the camera goes where it is sent rather than
+            // bobbing over every ridge. At rest the center is put back on the ground the camera is looking at, with
             // the camera left exactly where it is, so nothing on screen moves when a gesture ends or heights arrive.
             const pose = `${tr.lng},${tr.lat},${tr.zoom}`;
-            // (The first pose is not a movement: a map that starts is at rest, so the centre takes the height of the
-            // ground as soon as it is known, and `idle` does not come with the centre still at sea level, #793.)
+            // (The first pose is not a movement: a map that starts is at rest, so the center takes the height of the
+            // ground as soon as it is known, and `idle` does not come with the center still at sea level, #793.)
             if (pose !== this.lastPose) { if (this.lastPose) this.movedAt = now; this.lastPose = pose; }
             const moving = cameraAnimating || now - this.movedAt < 150;
             // (A turn or a tilt is a movement too while the camera is kept clear of the ground.)
@@ -1590,7 +1590,7 @@ export class Engine {
             const known = (mx: number, my: number) => !!this.demTile(mx - Math.floor(mx), my, 30);
             const e = this.ease;
             if (e && !e.around) {
-                // An animation to a stated place: the centre's height eases to the ground there along with everything else.
+                // An animation to a stated place: the center's height eases to the ground there along with everything else.
                 if (this.easeHeights?.ease !== e) this.easeHeights = {ease: e, from: this.rawElevation};
                 if (known(e.to[0], e.to[1])) {
                     const k = defaultEasing(clamp((now - e.start) / e.duration, 0, 1));
@@ -1598,7 +1598,7 @@ export class Engine {
                 }
             } else if (!moving) {
                 if (this.centreGiven) {
-                    // The centre was set outright (jumpTo, the end of an animation, terrain switched on): it stays where
+                    // The center was set outright (jumpTo, the end of an animation, terrain switched on): it stays where
                     // it was put and takes the height of the ground there, as soon as that is known.
                     // It waits for the detailed elevation tile of the view (one level above the map, as `viewCover` selects)
                     // while that is loading: a height from the coarse tile of the surroundings would fix the camera at
@@ -1609,9 +1609,9 @@ export class Engine {
             }
             // Never inside the mountain (as MapLibre GL JS's _terrainHeightAboveCamera and _raiseCameraByPitchAndZoom,
             // #1480, #1486): the ground under the camera and under 9 points of the near clipping plane stays below them.
-            // During a gesture or an animation the centre's height rises instead, so that the pitch and the zoom that the
+            // During a gesture or an animation the center's height rises instead, so that the pitch and the zoom that the
             // movement edits are kept. At rest the camera rises over the same point of the ground and keeps the same
-            // centre: the pitch and the zoom are solved again. Not while the centre waits for its own height.
+            // center: the pitch and the zoom are solved again. Not while the center waits for its own height.
             for (let pass = 0; pass < 3 && !this.centreGiven; pass++) {
                 const lift = this.terrainAboveCamera(tr);
                 if (lift <= 0) break;
@@ -1626,7 +1626,7 @@ export class Engine {
             tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0;
             const st = this.style.terrain, src = st && this.style.sources[st.source];
             if (src) {
-                // Looking straight down the relief is not drawn, but the height under the centre is still tracked (it
+                // Looking straight down the relief is not drawn, but the height under the center is still tracked (it
                 // needs one elevation tile), so that tilting starts from the right place.
                 const z = clamp(Math.round(tr.zoom), src.minzoom, src.maxzoom), n = 2 ** z, mx = mercX(tr.lng) - Math.floor(mercX(tr.lng));
                 const id = {z, x: Math.floor(mx * n), y: clamp(Math.floor(mercY(tr.lat) * n), 0, n - 1), w: 0, key: ''};
@@ -1715,7 +1715,7 @@ export class Engine {
                 }
             }
             // The tiles of the view at the end of the movement under way, requested at its start (#361). A few at most per
-            // source, the nearest to the centre of that view first. When a newer movement starts, the tiles of the older one
+            // source, the nearest to the center of that view first. When a newer movement starts, the tiles of the older one
             // that were not requested yet are not requested, and those on their way finish and stay in the cache.
             const aim = this.target;
             if (aim) {
@@ -1748,7 +1748,7 @@ export class Engine {
         for (const key of this.early) if (this.tiles.get(key)?.state !== 'loading') this.early.delete(key);
         for (const [key, t] of this.tiles) {
             // (A tile that is built and waits for its upload is kept: its work is done, and a view that turns or pans back
-            // often needs it again a moment later. With 3D terrain, a tile at the edge of the view was cancelled there and
+            // often needs it again a moment later. With 3D terrain, a tile at the edge of the view was canceled there and
             // requested again 1.4 s later, #384.)
             if (t.state === 'loading' && !t.built && !wanted.has(key) && !this.early.has(key)) this.dropTile(key, t);
         }
@@ -1852,7 +1852,7 @@ export class Engine {
             }
         }
         // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
-        // at the centre is known the camera cannot be placed, and drawing from sea level would show the wrong view and
+        // at the center is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
         const unplaced = !!terrain && !globeness && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;

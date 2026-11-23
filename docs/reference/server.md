@@ -45,7 +45,7 @@ and the sprite.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | [`style`](#style) **required** | `unknown` | | The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as `style` of `MapDescription`. |
-| `colorScheme` | `'auto' \| 'light' \| 'dark'` | | The colour scheme that selects the style of `{light, dark}` in `style`, and the colours of the credits of `renderFirstView`. |
+| `colorScheme` | `'auto' \| 'light' \| 'dark'` | | The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. |
 | `center` **required** | `LngLatLike` | | The center of the view, `[lng, lat]`. |
 | `zoom` **required** | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
@@ -83,7 +83,7 @@ and the sprite.
 | A style object | Draws it. |
 | `{light, dark}`, each a URL or a style object | Draws `dark` when `colorScheme` is `'dark'`, and `light` otherwise. |
 
-The server cannot read the colour scheme of the browser, so `colorScheme: 'auto'` selects `light`.
+The server cannot read the color scheme of the browser, so `colorScheme: 'auto'` selects `light`.
 
 ### `bounds` and `padding`
 
@@ -229,7 +229,7 @@ element of the map, which needs a `position` that is not `static`.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `attribution` | `string \| string[] \| false` | the attribution of the sources that a visible layer uses | The attribution as HTML. `false` shows none, also with `controls`. |
-| `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colours of the attribution and the controls, and the [style](#style) of a pair `{light, dark}`. |
+| `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colors of the attribution and the controls, and the [style](#style) of a pair `{light, dark}`. |
 | `controls` | `ControlSpec[]` | | The controls of the description, for example `[navigation(), scale()]`. With the option (also `[]`), the HTML has these controls and the attribution as markup. `custom()` controls are left out. |
 | `locale` | `Record<string, string>` | | The texts of the controls, as `locale` of the description. It has an effect with `controls`. |
 | `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'` for the style sheet of the controls. It has an effect with `controls`. |
@@ -238,15 +238,15 @@ element of the map, which needs a `position` that is not `static`.
 | `attributionOptions` | `{compact?: boolean; customAttribution?: string \| string[]}` | | The options of the attribution, as `attribution` of the description. It has an effect with `controls`. |
 
 The HTML keeps only the text and the links to `http` and `https` URLs of the attribution. Without `controls`, and with
-`'auto'`, the box of the credits follows the colour scheme of the browser with the CSS function `light-dark()`, and the
-render uses the `light` style. A browser without `light-dark()` shows the light colours. With `controls`, the style
+`'auto'`, the box of the credits follows the color scheme of the browser with the CSS function `light-dark()`, and the
+render uses the `light` style. A browser without `light-dark()` shows the light colors. With `controls`, the style
 sheet has a copy of the dark rules inside `@media (prefers-color-scheme: dark)`.
 
 Without `controls`, the HTML has the credits in a plain box and no controls. With `controls`, it has:
 
 - The markup of the attribution and the controls, in the corners and the look of the map, and the style sheet of the
   controls. The markup has no `style` attribute.
-- The scale with the length that it has at the centre of the view, and the compass with the bearing of the view.
+- The scale with the length that it has at the center of the view, and the compass with the bearing of the view.
 - The attribution folded to a button when `width` is 640 or less, as the map folds it for an element of that size.
   `attributionOptions.compact` sets it.
 - The attribute `data-map-jr-ssr` on the SVG, the style sheet and the markup. The map removes them together when it
@@ -311,10 +311,10 @@ default of `highDensity` is `true` when `pixelRatio` is more than 1. A value tha
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `options` **required** | [`ImageOptions`](#imageoptions) | | The options of `renderToSVG`, the rasteriser and the format. |
+| `options` **required** | [`ImageOptions`](#imageoptions) | | The options of `renderToSVG`, the rasterizer and the format. |
 
 **Returns** a promise of [`ImageResult`](#imageresult). The promise rejects in the cases of
-[`renderToSVG`](#rendertosvg), and when the rasteriser throws.
+[`renderToSVG`](#rendertosvg), and when the rasterizer throws.
 
 ### `ImageOptions`
 
@@ -325,7 +325,7 @@ default of `highDensity` is `true` when `pixelRatio` is more than 1. A value tha
 |---|---|---|---|
 | `rasteriser` **required** | `Rasteriser` | | The renderer that converts the SVG to an image. |
 | `format` | `'jpeg' \| 'webp' \| 'png'` | `'jpeg'` | The format of the image. |
-| `quality` | `number` | `75` | The quality of a `'jpeg'` or `'webp'` image, as the rasteriser reads it. |
+| `quality` | `number` | `75` | The quality of a `'jpeg'` or `'webp'` image, as the rasterizer reads it. |
 | `pixelRatio` | `number` | `1` | The number of image pixels for one CSS pixel. |
 <!-- ref:ImageOptions:end -->
 

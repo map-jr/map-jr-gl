@@ -1,4 +1,4 @@
-<!-- The wordmark: the mark, the name in the display face, and "GL" in the mono face and the survey colour. -->
+<!-- The wordmark: the mark, the name in the display face, and "GL" in the mono face and the survey color. -->
 <template>
   <span class="inline-flex items-center gap-2 text-highlighted">
     <SiteMark class="size-7 shrink-0" />

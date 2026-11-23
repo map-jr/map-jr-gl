@@ -292,9 +292,9 @@ export class Map {
         c.classList.add(...mapClass);
         this.canvas = document.createElement('canvas');
         this.canvas.className = 'map-jr-canvas';
-        // `object-fit: none` shows the canvas's current frame unscaled and centred, whatever size that frame is. With
+        // `object-fit: none` shows the canvas's current frame unscaled and centered, whatever size that frame is. With
         // worker rendering a new frame arrives a moment after the container resizes; until it does, the old frame simply
-        // stays centred instead of being stretched to the new shape. The box is sized in device pixels and scaled back
+        // stays centered instead of being stretched to the new shape. The box is sized in device pixels and scaled back
         // down so one frame pixel is one screen pixel.
         this.canvas.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;object-fit:none;object-position:center;touch-action:none;outline:none;max-width:none';
         // A first view from the server is under the canvas until `load`: the canvas stays hidden while it draws, so it never shows half a map over the picture.
@@ -415,7 +415,7 @@ export class Map {
         // the sources are resolved and the engine chunk has loaded; the engine takes these answers (#371).
         const early = engine ? undefined : this.spriteFiles(this.rawStyle.sprite);
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
-        // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
+        // the camera: with a zoom in the options and no center, the center is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         const restyled = this.restyled, [first] = await Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed, this.geojsonBuffer()), this.globeReady()]);
@@ -1090,7 +1090,7 @@ export class Map {
         if (o.offset) {
             const [ox, oy] = Array.isArray(o.offset) ? o.offset : [o.offset.x, o.offset.y];
             if (ox || oy) {
-                // The view at the end, with the given centre moved to the offset point (with bearing and pitch).
+                // The view at the end, with the given center moved to the offset point (with bearing and pitch).
                 const to = Object.assign(new Transform(), this.tr, padding && {padding});
                 to.set(center, zoom, bearing, pitch);
                 to.setLocationAt(to.lng, to.lat, to.cx + ox, to.cy + oy);
@@ -1123,9 +1123,9 @@ export class Map {
     /** Stops the animation of the camera, where it is. */
     stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
 
-    /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
+    /** The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
     cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number} = {}) {
-        // The map's own padding already moves the centre; padding given here is on top of it.
+        // The map's own padding already moves the center; padding given here is on top of it.
         const pad = sides(o.padding), own = this.tr.padding;
         return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom), bearing: 0};
     }
@@ -1184,7 +1184,7 @@ export class Map {
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
     /** Returns the ratio of device pixels to CSS pixels that the canvas uses. */
     getPixelRatio() { return this.dpr; }
-    /** Returns the elevation of the ground at a position in metres, multiplied by the exaggeration as in MapLibre GL JS, or `null` without 3D terrain. */
+    /** Returns the elevation of the ground at a position in meters, multiplied by the exaggeration as in MapLibre GL JS, or `null` without 3D terrain. */
     queryTerrainElevation(lngLat: LngLatLike): number | null {
         const [lng, lat] = toLngLat(lngLat);
         return this.tr.heightAt ? this.tr.heightAt(mercX(lng), mercY(lat)) : null;
@@ -1707,7 +1707,7 @@ export class Map {
     addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
 
     /**
-     * Makes an image available to `icon-image` under `name`, and returns a promise of the map; MapLibre GL JS returns the map. `source` may be an SVG document (rasterised at the
+     * Makes an image available to `icon-image` under `name`, and returns a promise of the map; MapLibre GL JS returns the map. `source` may be an SVG document (rasterized at the
      * screen's pixel density, so it stays sharp), an image URL, or anything drawable such as an ImageBitmap or canvas.
      * `width`/`height` are the display size in CSS pixels; they default to the image's natural size.
      *
@@ -1912,7 +1912,7 @@ export class Map {
 
 
 
-    /** Only in this library: returns a promise of the elevation of the ground in metres at a position, from the raster-dem source of the style, or `null` where it has no data. */
+    /** Only in this library: returns a promise of the elevation of the ground in meters at a position, from the raster-dem source of the style, or `null` where it has no data. */
     queryElevation(at: LngLatLike | {x: number; y: number}, options: {source?: string; zoom?: number} = {}): Promise<number | null> {
         const [lng, lat] = 'x' in at ? this.tr.unproject(at.x, at.y) : toLngLat(at);
         return this.ask(id => ({type: 'elevation', id, lng, lat, ...options}));
@@ -1993,9 +1993,9 @@ export class Map {
 
         // A rotate drag (the right mouse button, or Ctrl with the left one) turns the map as the default of MapLibre GL JS
         // does (`generateMouseRotationHandler` in its `src/ui/handler/mouse.ts`; the code here is new, #557). More than 100
-        // pixels above or below the centre of the map, the map turns by the angle that the sideways movement of the pointer
-        // makes around that centre. Nearer to the centre, the map turns by 0.8 degrees for each pixel: with the pointer
-        // below the centre a drag to the right increases the bearing, and above the centre it decreases the bearing.
+        // pixels above or below the center of the map, the map turns by the angle that the sideways movement of the pointer
+        // makes around that center. Nearer to the center, the map turns by 0.8 degrees for each pixel: with the pointer
+        // below the center a drag to the right increases the bearing, and above the center it decreases the bearing.
         const turn = (a: {x: number; y: number}, b: {x: number; y: number}) => {
             const [cx, cy] = this.tr.project(this.tr.lng, this.tr.lat), y = b.y - cy, x0 = a.x - cx, x1 = b.x - cx;
             return Math.abs(cy - a.y) > 100 ? Math.atan2(y * (x1 - x0), x1 * x0 + y * y) * 180 / Math.PI : (x1 - x0) * (y < 0 ? -.8 : .8);

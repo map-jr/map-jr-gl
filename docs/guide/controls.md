@@ -458,17 +458,17 @@ attribution, the scale bar and the popup.
 | Custom property | What it sets | Default |
 |---|---|---|
 | `--map-control-size` | The width and the height of a button | `32px`, and `44px` on a touch screen |
-| `--map-control-color` | The colour of the icons and the text | `#222`, dark `#e6e6e6`. The text of the attribution and the scale bar: `rgb(0 0 0 / .62)`, dark `rgb(255 255 255 / .66)` |
+| `--map-control-color` | The color of the icons and the text | `#222`, dark `#e6e6e6`. The text of the attribution and the scale bar: `rgb(0 0 0 / .62)`, dark `rgb(255 255 255 / .66)` |
 | `--map-control-background` | The background of a group of buttons | white, dark `rgb(30 30 34)`, both translucent |
 | `--map-control-opacity` | The opacity of that background, from 0 to 1 (main API only) | `.55`, dark `.45` |
 | `--map-control-radius` | The radius of the corners of a group of buttons | half of `--map-control-size` |
-| `--map-control-focus` | The colour of the outline of the button that has the keyboard focus | `#2f7fd1` |
+| `--map-control-focus` | The color of the outline of the button that has the keyboard focus | `#2f7fd1` |
 | `--map-attribution-background` | The background of the attribution and the scale bar | as the controls |
 | `--map-popup-background` | The background of a popup | white at `.65`, dark `rgb(43 43 43)` at `.55` |
 | `--map-popup-color` | The text of a popup | `#222`, dark `#e6e6e6` |
 
 The defaults in the table are those of the main API. The dark values apply while the
-[colour scheme](color-scheme.md) of the map is dark. A rule of your page for these elements overrides the rules of the
+[color scheme](color-scheme.md) of the map is dark. A rule of your page for these elements overrides the rules of the
 library.
 
 The controls of the main API are translucent and blur the map behind them. A browser without `backdrop-filter` shows
@@ -896,4 +896,4 @@ method of a map of MapLibre GL JS. A control that calls another method, such as 
 - [`controls`](../reference/description.md#controls), [`locale`](../reference/description.md#locale) and
   [`attribution`](../reference/description.md#attribution) in the reference of the description.
 - [Controls](controls.md) for every option of each control.
-- [Light and dark maps](color-scheme.md) for the colours of the controls in a dark map.
+- [Light and dark maps](color-scheme.md) for the colors of the controls in a dark map.

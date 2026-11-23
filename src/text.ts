@@ -1,9 +1,9 @@
 /**
  * Text shaping and the glyph atlas.
  *
- * Glyphs are rasterised from local fonts with Canvas2D and converted to signed distance fields, one grapheme at a
+ * Glyphs are rasterized from local fonts with Canvas2D and converted to signed distance fields, one grapheme at a
  * time, so layout (advances, wrapping, collision boxes) is computed by our own code and behaves the same in every
- * browser. Scripts that need contextual shaping or bidi reordering (Arabic, Hebrew, Indic, Thai, ...) are rasterised
+ * browser. Scripts that need contextual shaping or bidi reordering (Arabic, Hebrew, Indic, Thai, ...) are rasterized
  * a whole line at a time instead, letting the browser's own shaper do the work.
  */
 /** How far below the middle of a line the baseline is, in ems. The value puts text where MapLibre draws it. */
@@ -22,7 +22,7 @@ export interface Glyph {
     x: number; y: number; w: number; h: number; left: number; top: number; advance: number;
     /** An image in the text rather than a character: its name and height (in the same units as `advance`, which is its width). */
     image?: string; imageHeight?: number;
-    /** Rich text: the size of this glyph relative to the text size, and its own colour. */
+    /** Rich text: the size of this glyph relative to the text size, and its own color. */
     scale?: number; color?: number[];
 }
 /** Images that can appear inside text: their size in pixels, or undefined while one is not available yet. */
@@ -64,7 +64,7 @@ export function graphemes(s: string): string[] {
 /**
  * Breaks text into lines the way MapLibre does: not by filling each line, but by choosing the breaks that leave the
  * lines closest to one even width (so a label is a balanced block rather than a long line and a stub). A short last
- * line is penalised less, a long one more. Widths ignore the spaces themselves, as MapLibre's do.
+ * line is penalized less, a long one more. Widths ignore the spaces themselves, as MapLibre's do.
  */
 function wrap(text: string, maxWidth: number, measure: (s: string) => number): string[] {
     const lines: string[] = [], paras = text.split('\n');

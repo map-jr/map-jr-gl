@@ -1,6 +1,6 @@
 // Reads the pixels of an image exactly. Some browsers add noise to the pixels that `getImageData` returns, to make
 // fingerprinting harder (Safari in private browsing does this, also on an OffscreenCanvas). Heights of elevation
-// tiles are stored in the colour channels, so that noise turns terrain into spikes. The check for a distorted canvas
+// tiles are stored in the color channels, so that noise turns terrain into spikes. The check for a distorted canvas
 // follows the method of MapLibre GL JS (`isOffscreenCanvasDistorted`, BSD-3-Clause); the code here is new. When the
 // canvas is distorted, the image is read through WebGL (`texImage2D` and `readPixels`), which is not distorted.
 //
@@ -26,7 +26,7 @@ export function canvasDistorted(): boolean {
         try {
             const n = 5, ctx = canvas(n, n).getContext('2d', {willReadFrequently: true}) as CanvasRenderingContext2D | null;
             if (ctx) {
-                // Pixel i gets the colour (4i, 4i + 1, 4i + 2), so byte k of the result must be k (alpha aside).
+                // Pixel i gets the color (4i, 4i + 1, 4i + 2), so byte k of the result must be k (alpha aside).
                 for (let i = 0; i < n * n; i++) { ctx.fillStyle = `rgb(${i * 4},${i * 4 + 1},${i * 4 + 2})`; ctx.fillRect(i % n, i / n | 0, 1, 1); }
                 const d = ctx.getImageData(0, 0, n, n).data;
                 for (let k = 0; k < d.length; k++) if (k % 4 !== 3 && d[k] !== k) { distorted = true; break; }

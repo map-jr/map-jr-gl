@@ -28,8 +28,8 @@ Open issues carry a priority label (`P0` to `P3`) and an area label. `needs: own
 the owner. Size and speed are the reasons this library exists: a change that grows a built file past its budget
 needs a strong reason.
 
-## Licence
+## License
 
-MIT. By contributing you agree that your contribution has this licence. If your change follows a method from
+MIT. By contributing you agree that your contribution has this license. If your change follows a method from
 another project, name it in `ACKNOWLEDGEMENTS.md`. Before a release, the [similarity scan](docs/similarity-scan.md)
 checks that the source contains no code of another project without its notice.

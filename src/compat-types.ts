@@ -108,7 +108,7 @@ export type CustomLayerProjectionDataParams = {tileID: {canonical: {x: number; y
  */
 export type CustomRenderMethodInput = {
     farZ: number; nearZ: number; /** The vertical field of view in radians. */ fov: number;
-    /** From world pixels (x and y from 0 to the size of the world) and metres (z) to clip space. */
+    /** From world pixels (x and y from 0 to the size of the world) and meters (z) to clip space. */
     modelViewProjectionMatrix: Float64Array;
     /** From view space to clip space. */
     projectionMatrix: Float64Array;

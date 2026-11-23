@@ -166,7 +166,7 @@ export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
  */
 export interface MapDescription extends MapSetup {
     /**
-     * The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark colour scheme.
+     * The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark color scheme.
      * With `{light, dark}`, the map uses the style of the resolved `colorScheme`, and loads the other style when the scheme changes.
      */
     style: string | StyleSpecification | {light: string | StyleSpecification; dark: string | StyleSpecification};
@@ -275,7 +275,7 @@ export interface MapDescription extends MapSetup {
      */
     cooperativeGestures?: boolean | null;
     /**
-     * The colour scheme of the controls, the popup and the attribution. `'auto'` follows `prefers-color-scheme` of the
+     * The color scheme of the controls, the popup and the attribution. `'auto'` follows `prefers-color-scheme` of the
      * browser. The resolved scheme is also the global state `color-scheme` of the style, unless `globalState` sets it.
      * @default 'light'
      */
@@ -363,7 +363,7 @@ export interface MapState {
     pointer: PointerPosition | null;
     /** The thread that renders the map, or `undefined` until `loaded` is `true`. */
     renderer: 'worker' | 'main' | undefined;
-    /** The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
+    /** The color scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
     colorScheme: 'light' | 'dark';
 }
 
@@ -541,7 +541,7 @@ export interface MapEvents {
     wheel: MapPointerEvent<'wheel', WheelEvent>;
     /** A zoom to a box drawn with the Shift key and a drag starts. `boxzoomend` has the bounds of the box. */
     boxzoomstart: MapEventBase<'boxzoomstart'> & {originalEvent: PointerEvent};
-    /** A zoom to a box is cancelled. */
+    /** A zoom to a box is canceled. */
     boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
     /** A zoom to a box ends, with the bounds of the box as `boxZoomBounds`. */
     boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: [[number, number], [number, number]]};
@@ -637,7 +637,7 @@ export interface MapInstance {
      * Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, read from the elevation tiles
      * of the first `raster-dem` source of the style. The `exaggeration` of the terrain does not change it.
      * @param at A position, `[lng, lat]`, or a point of the screen, `{x, y}` in CSS pixels.
-     * @returns A promise of the height in metres, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
+     * @returns A promise of the height in meters, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
      */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /**

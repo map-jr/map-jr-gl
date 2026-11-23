@@ -910,7 +910,7 @@ The promise rejects when the source has no cluster with that id.
 ## Highlight a feature with its state
 
 The state of a feature is an object that the application sets on one feature. A `feature-state` expression in a
-layer reads it, so the layer can draw a selected feature in another colour without new data.
+layer reads it, so the layer can draw a selected feature in another color without new data.
 
 **Map Jr**
 

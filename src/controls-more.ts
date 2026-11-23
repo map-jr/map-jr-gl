@@ -54,7 +54,7 @@ function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
         // A drag on the compass turns the map by 0.4 degrees of bearing for each pixel sideways (a drag to the right
         // decreases the bearing) and by 0.5 degrees of pitch for each pixel up. The owner decided on 2026-11-16 that the
         // compass keeps this method, while the rotate drag on the map follows MapLibre GL JS (#557). (0.8 degrees turned the map by more than a full turn on a drag across a map of 600 pixels. An angle around the
-        // centre of the button, as before #548, jumped by up to 180 degrees when the pointer passed near that centre.)
+        // center of the button, as before #548, jumped by up to 180 degrees when the pointer passed near that center.)
         // The drag keeps its own bearing and pitch, as the engine does for that drag: with the worker renderer,
         // getBearing() returns the camera that the engine last reported, which a fast drag has already passed, and a turn
         // added to it was lost or went backwards.
@@ -89,7 +89,7 @@ export class NavigationControl implements Control {
         let letter: SVGTextElement | null = null;
         if (this.options.showCompass !== false) {
             // The compass of the main API: a dial with heavy ticks at east, south and west, light ticks between them and
-            // a mark of north on the rim, which turn with the map, and in the centre the letter of the direction that the
+            // a mark of north on the rim, which turn with the map, and in the center the letter of the direction that the
             // map faces (the nearest of N, E, S and W), which stays upright.
             let ticks = '', light = '';
             for (let a = 30; a < 360; a += 30) {

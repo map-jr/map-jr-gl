@@ -82,18 +82,18 @@ const SCENARIOS = {
         await p.close();
         return {ok: names.length > 0, detail: `properties of the layer "building": ${names.length ? names.join(', ') : 'none'}`};
     },
-    // Maputnik colours the icons of the navigation control by `.maplibregl-ctrl-icon` (#758).
-    'Shows the icons of the navigation control in the colours of the editor': async browser => {
+    // Maputnik colors the icons of the navigation control by `.maplibregl-ctrl-icon` (#758).
+    'Shows the icons of the navigation control in the colors of the editor': async browser => {
         const {p} = await open(browser);
         const icons = await p.evaluate(() => [...document.querySelectorAll('.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon, .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon, .maplibregl-ctrl-compass .maplibregl-ctrl-icon')]
             .filter(e => getComputedStyle(e).backgroundImage.includes('a4a4a4')).length);
         await p.close();
-        return {ok: icons === 3, detail: `icons with the colour of the editor: ${icons} of 3`};
+        return {ok: icons === 3, detail: `icons with the color of the editor: ${icons} of 3`};
     },
 };
 
 // The issue of each scenario that this library does not pass yet. The report names it next to a failure.
-const ISSUES = {'Suggests the properties of a source layer in the filter editor': '#765, #766', 'Shows the icons of the navigation control in the colours of the editor': '#758'};
+const ISSUES = {'Suggests the properties of a source layer in the filter editor': '#765, #766', 'Shows the icons of the navigation control in the colors of the editor': '#758'};
 
 // ---- One build of the editor for each renderer: its server, the end-to-end tests, the scenarios. ----
 const builds = [{name: `MapLibre GL JS ${maplibreVersion}`, env: {MAPUTNIK_RENDERER: 'maplibre'}}, {name: 'this library', env: {}}];

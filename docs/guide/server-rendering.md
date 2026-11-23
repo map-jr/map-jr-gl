@@ -204,7 +204,7 @@ and `attribution` of the description, and no option is needed. With React or Sve
 `renderFirstView` (`attribution: false` of the description is `attribution: false` there, and its other
 `attribution` options are `attributionOptions`).
 
-- The scale has the length that it has at the centre of the first view. The compass shows the bearing of the view.
+- The scale has the length that it has at the center of the first view. The compass shows the bearing of the view.
 - A button of the first view does nothing until the map takes over. When the map never takes over (the style does not
   load, or the script does not run), the markup stays, its buttons stay without effect, and the buttons of the map stay
   hidden. The map fires `error` for a style that does not load, and the page can listen for it and remove the markup. A control from `custom()` is left out, because
@@ -212,7 +212,7 @@ and `attribution` of the description, and no option is needed. With React or Sve
 - The server cannot know the width of the element, so it folds the attribution to a button when `width` is 640 or
   less, as the map does for an element of that size. When the element has another width, the map replaces the
   attribution at the take-over.
-- With `colorScheme: 'auto'`, the style sheet follows the colour scheme of the browser, and the control `colorScheme()`
+- With `colorScheme: 'auto'`, the style sheet follows the color scheme of the browser, and the control `colorScheme()`
   has both icons, of which the browser shows one. The style of the first view is the `light` style of a pair.
 - With a [Content Security Policy](loading.md#content-security-policy), pass the `nonce` of the description. The
   markup of the controls has no `style` attribute, and its style sheet has the nonce. The `style` attribute of the SVG

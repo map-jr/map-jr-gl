@@ -249,7 +249,7 @@ map.on('load', () => {
     data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
   });
   // 'circle-colour' is not a paint property. The map fires no error event,
-  // and the circle has the default colour.
+  // and the circle has the default color.
   map.addLayer({
     id: 'stops',
     type: 'circle',

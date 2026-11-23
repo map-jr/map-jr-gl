@@ -21,7 +21,7 @@ export interface Geom {
 export interface Batch {
     type: 'fill' | 'line' | 'circle';
     geom: Geom;
-    /** Per-feature straight-alpha RGBA, present only when colour or opacity is data-driven. */
+    /** Per-feature straight-alpha RGBA, present only when color or opacity is data-driven. */
     color?: Uint8Array;
     width?: Float32Array;
     radius?: Float32Array;
@@ -35,11 +35,11 @@ export interface Batch {
     /** `line-miter-limit` and `line-round-limit`: the longest miter (in line widths) drawn as a miter or kept sharp instead of rounded. */
     miterLimit?: number;
     roundLimit?: number;
-    /** Fill layers with an explicit outline colour. */
+    /** Fill layers with an explicit outline color. */
     outline?: boolean;
     /** False when the style turns edge smoothing off for a fill layer. */
     antialias?: boolean;
-    /** Building extrusions: per-feature top and bottom heights in metres. */
+    /** Building extrusions: per-feature top and bottom heights in meters. */
     height?: Float32Array;
     base?: Float32Array;
     /** Building extrusions with fill-extrusion-pattern: the walls carry the distance along their ring, for the image. */
@@ -66,7 +66,7 @@ export interface LabelSrc {
     /** With `line`: `symbol-spacing` in tile units, tile units per pixel, the over-scaling of the tile, and the stretch of line kept for curved text. */
     lineSpacing?: number; tpr?: number; ov?: number; window?: number;
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number; haloBlur: number;
-    /** How the lines of a multi-line label align with each other: -1 left, 0 centre, 1 right. */
+    /** How the lines of a multi-line label align with each other: -1 left, 0 center, 1 right. */
     justify: number;
     /** `text-rotate`, in radians clockwise. */
     rotate: number;
@@ -88,7 +88,7 @@ export interface LabelSrc {
     justifyAuto: boolean;
     icon?: {
         name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
-        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide, blurred over this many pixels. */ halo: RGBA; haloWidth: number; haloBlur: number; ignore: boolean; /** `icon-padding`: top, right, bottom, left. */ padding: [number, number, number, number];
+        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this color, this many pixels wide, blurred over this many pixels. */ halo: RGBA; haloWidth: number; haloBlur: number; ignore: boolean; /** `icon-padding`: top, right, bottom, left. */ padding: [number, number, number, number];
         overlap: boolean; optional: boolean; upright: boolean; /** `icon-pitch-alignment` */ flat: boolean; /** `icon-keep-upright` */ keepUpright: boolean;
     };
 }
@@ -166,7 +166,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const labels: LabelSrc[] = [], keys: number[] = [], sorted = p.sortKey.dd || p.sortKey.eval(z) !== 0;
             type Piece = {base: any; ring: number[]; type: number; along: boolean | 'center'; spacing: number; key: number};
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
-            // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and colour, and no order.)
+            // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and color, and no order.)
             const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconPitch.dd && p.iconPitch.eval(z) !== 'map' && !(p.iconPitch.eval(z) === 'auto' && p.iconAlign.eval(z) === 'map') && !p.iconColor.dd && !p.iconPadding.dd;
             const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
             let iconAvoid: boolean | undefined;
@@ -260,7 +260,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null)) {
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
-                    // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
+                    // road with twenty anchors does not carry twenty copies of its text, colors and fonts.
                     const ic = base.icon;
                     if (plain && ic && !text && !along && ic.overlap && ic.fit === 'none' && !(ic.haloWidth > 0 && ic.halo[3] > 0) && (iconAvoid ??= !ic.ignore) === !ic.ignore) {
                         let n = iconNames.get(ic.name);
@@ -498,7 +498,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
         }
         if (!idx.length) return null;
         // Without multisampling, triangle edges are jagged; a one-pixel line along every polygon edge smooths them
-        // (and carries the outline colour when the style sets one). Edges created by clipping at the tile border are skipped.
+        // (and carries the outline color when the style sets one). Edges created by clipping at the tile border are skipped.
         let edges: Uint32Array | undefined;
         if (b.antialias !== false || b.outline) {
             const list: number[] = [], out = (i: number, j: number, k: number) => (coords[i * 2 + k] <= 0 && coords[j * 2 + k] <= 0) || (coords[i * 2 + k] >= EXTENT && coords[j * 2 + k] >= EXTENT);
@@ -587,7 +587,7 @@ function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: num
 /**
  * The fourth value of a building vertex says which face it is on. A roof is ROOF. A wall is the angle of its normal
  * (0 to 2 pi), plus WALL_TOP at the top edge, plus WALL_OTHER times the height of the other end of the wall in whole
- * metres: the light on a wall depends on the base and the height together.
+ * meters: the light on a wall depends on the base and the height together.
  */
 export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
 
@@ -676,7 +676,7 @@ function tessellateLine(b: Batch): GLBatch | null {
     let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
         if (b.progress) {
-            // The place along the whole line goes in the colour's red and green bytes, as one 16-bit number.
+            // The place along the whole line goes in the color's red and green bytes, as one 16-bit number.
             const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 65535);
             color.push(t >> 8, t & 255, 0, 255);
             // The dashes of a line with a gradient: MapLibre measures such a line as 16383 tile units from end to
