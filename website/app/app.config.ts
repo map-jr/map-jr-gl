@@ -26,7 +26,7 @@ export default defineAppConfig({
             slots: {
                 root: 'border-accented py-10',
                 headline: 'label-text font-medium',
-                title: 'font-display font-medium tracking-tight text-4xl sm:text-5xl',
+                title: 'font-display font-semibold tracking-tight text-4xl sm:text-5xl',
             },
         },
         contentNavigation: {
@@ -52,9 +52,9 @@ export default defineAppConfig({
             },
         },
         prose: {
-            h2: {slots: {base: 'font-medium text-3xl mt-14 pb-2 border-b border-default'}},
-            h3: {slots: {base: 'font-medium text-2xl'}},
-            h4: {slots: {base: 'font-medium text-xl'}},
+            h2: {slots: {base: 'font-semibold text-3xl mt-14 pb-2 border-b border-default'}},
+            h3: {slots: {base: 'font-semibold text-2xl'}},
+            h4: {slots: {base: 'font-semibold text-xl'}},
             // A code block never wraps its lines (#1250). The site formats the code to the width of the screen
             // (build/format.mjs); a line that is still longer scrolls sideways. The code is as wide as its longest
             // line, so that the background of a highlighted line reaches the end of the scroll.

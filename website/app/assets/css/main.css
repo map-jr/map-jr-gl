@@ -15,7 +15,7 @@
 
 @theme static {
   /* @nuxt/fonts loads the families that these names start with, and serves them from the site. */
-  --font-display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-display: 'Besley', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
@@ -148,7 +148,8 @@
 
   h1, h2, h3, h4 {
     font-family: var(--font-display);
-    font-optical-sizing: auto;
+    /* Besley, a Clarendon, at its weight 600, which is the only weight that the site loads. */
+    font-weight: 600;
     letter-spacing: -0.01em;
     text-wrap: balance;
   }

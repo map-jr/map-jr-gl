@@ -922,37 +922,77 @@ try {
         const idle = await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
         check('home page: the map reaches idle', idle, idle ? `${Date.now() - started} ms after the load event` : await page.locator('[data-home-map]').getAttribute('data-map-state'));
         check('home page: the map has a canvas', await page.locator('[data-home-map] canvas').count() > 0);
-        // The scale bar shows what the browser measured: the check waits for the value.
-        await page.locator('[data-home-measure][data-state="measured"]').waitFor({timeout: 30000}).catch(() => {});
-        const bytes = await page.locator('[data-home-bytes]').textContent();
-        check('home page: the scale bar shows the bytes of the map in KB', /^\d[\d,]* KB$/.test(bytes ?? ''), bytes ?? '');
-        // The number counts the library files (gzip, as the server sent them). `pnpm status` measures the same files in dist/: the
-        // page script and the worker file of the main entry are in docs/status.json. The home page also loads the controls and
-        // the adapter, so the number is allowed to differ by 10%.
-        const measured = Number(await page.locator('[data-home-bytes]').getAttribute('data-bytes'));
+        // The card of the size shows the figure of docs/status.json (`pnpm status` computes it from the built files), and the page
+        // measures nothing: the page script and the worker file of the main entry, in KB (gzip).
         const status = JSON.parse(readFileSync(new URL('../../docs/status.json', import.meta.url), 'utf8'));
-        const expected = status.sizes.find(row => row.file.startsWith('Page script and worker file of `@map-jr/map-jr-gl`')).bytes;
-        check('home page: the bytes of the map are within 10% of the page script and the worker file of docs/status.json', Math.abs(measured - expected) <= expected * 0.1, `${measured} B measured, ${expected} B in docs/status.json`);
+        const expected = (status.sizes.find(row => row.file.startsWith('Page script and worker file of `@map-jr/map-jr-gl`')).bytes / 1024).toFixed(1);
+        const shown = await page.locator('[data-home-size]').textContent();
+        check('home page: the card of the size shows the page script and the worker file of docs/status.json in KB', shown === expected, `${shown} shown, ${expected} in docs/status.json`);
         const fetched = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname));
         check('home page: no development file of the library is fetched', !fetched.some(path => /\.dev\.js$|mistakes/.test(path)), fetched.filter(path => /\.dev\.js$|mistakes/.test(path)).join(' '));
 
-        // The map does not take the wheel before "Explore the map": the wheel scrolls the page, and the map is inert.
-        check('home page: the map is inert before the button', await page.locator('[data-home-map]').evaluate(element => element.inert));
-        await page.mouse.move(720, 450);
+        // The wheel over the map scrolls the page and does not zoom the map (`cooperativeGestures`).
+        const zoomBefore = await page.evaluate(() => document.querySelector('[data-home-map]').__homeMap.state.get().view.zoom);
+        const stage = await page.locator('[data-home-map]').boundingBox();
+        await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
         await page.mouse.wheel(0, 600);
         const scrolled = await page.waitForFunction(() => scrollY > 100, null, {timeout: 5000}).then(() => true, () => false);
-        check('home page: the wheel over the map scrolls the page before the button', scrolled);
+        check('home page: the wheel over the map scrolls the page', scrolled);
+        check('home page: the wheel over the map does not zoom the map', await page.evaluate(() => document.querySelector('[data-home-map]').__homeMap.state.get().view.zoom) === zoomBefore);
         await page.evaluate(() => scrollTo(0, 0));
         await page.waitForFunction(() => scrollY === 0);
-        await page.locator('[data-explore]').click();
-        check('home page: after the button the map takes the pointer and the page does not scroll', await page.locator('[data-home-map]').evaluate(element => !element.inert) && await page.evaluate(() => getComputedStyle(document.documentElement).overflow === 'hidden'));
-        await page.getByRole('button', {name: 'Back to the page'}).click();
-        check('home page: "Back to the page" gives the scroll back', await page.evaluate(() => getComputedStyle(document.documentElement).overflow !== 'hidden'));
 
-        // The camera flies to a stop.
-        await page.evaluate(() => document.querySelector('[data-stop="compat"]').scrollIntoView({block: 'center'}));
+        // A choice of the panel changes the description of the map, and the text of the description shows the change.
+        await page.locator('[data-home-demo] [data-choice="ja"]').click();
+        const language = await page.waitForFunction(() => document.querySelector('[data-home-map]').__homeMap.description.globalState?.language === 'ja', null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the choice "日本語" sets the global state `language` of the map', language);
+        check('home page: the description of the panel shows the choice', (await page.locator('[data-home-code]').textContent()).includes("globalState: {language: 'ja'}"));
+        // The choice "Dark" changes the map and not the page.
+        const pageDark = () => page.evaluate(() => document.documentElement.classList.contains('dark'));
+        const wasDark = await pageDark();
+        await page.locator('[data-home-demo] [data-choice="dark"]').click();
+        const mapDark = await page.waitForFunction(() => document.querySelector('[data-home-map]').__homeMap.state.get().colorScheme === 'dark', null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the choice "Dark" of the panel makes the map dark and leaves the page as it was', mapDark && await pageDark() === wasDark);
+        await page.locator('[data-home-demo] [data-choice="light"]').click();
+        // Another demo flies the camera to its place and draws its markers.
+        await page.locator('[data-demo-tab="markers"]').click();
         const flight = await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.camera || false, null, {timeout: 15000}).then(handle => handle.jsonValue(), () => '');
-        check('home page: the camera flies to the next stop', flight === 'fly', flight);
+        check('home page: the camera flies to the place of another demo', flight === 'fly', flight);
+        const layers = await page.waitForFunction(() => document.querySelector('[data-home-map]').__homeMap.description.layers?.[0]?.id === 'places', null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the demo "Markers" adds its symbol layer to the map', layers);
+        // A click on the map adds a marker of the visitor.
+        const stageBox = await page.locator('[data-home-map]').boundingBox();
+        await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.mapState === 'idle', null, {timeout: 60000}).catch(() => {});
+        await page.mouse.click(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2);
+        const added = await page.getByText('1 added with a click.').waitFor({timeout: 5000}).then(() => true, () => false);
+        check('home page: a click on the map in the demo "Markers" adds a marker', added);
+        // The demo "Camera": a slider sets the pitch of the map, and the panel shows the view of the map.
+        await page.locator('[data-demo-tab="camera"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.mapState === 'idle', null, {timeout: 60000}).catch(() => {});
+        await page.locator('[data-home-slider="pitch"]').fill('20');
+        const pitched = await page.waitForFunction(() => Math.round(document.querySelector('[data-home-map]').__homeMap.state.get().view.pitch) === 20, null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the slider "Pitch" of the demo "Camera" sets the pitch of the map', pitched);
+        // The demo "Query": a click asks the map, and the panel shows the answer.
+        await page.locator('[data-demo-tab="query"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.mapState === 'idle', null, {timeout: 60000}).catch(() => {});
+        await page.waitForTimeout(500);
+        await page.mouse.click(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2);
+        const answered = await page.locator('[data-home-answer]').getByText('queryFeatures:').waitFor({timeout: 15000}).then(() => true, () => false);
+        check('home page: a click in the demo "Query" shows the features and the elevation at the point', answered && /queryElevation: [\d,]+ m/.test(await page.locator('[data-home-answer]').textContent()), await page.locator('[data-home-answer]').textContent());
+        // The demo "Worker" names the renderer, and its button blocks the page and then says so.
+        await page.locator('[data-demo-tab="worker"]').click();
+        const renderer = await page.locator('[data-home-renderer]').getAttribute('data-renderer');
+        check('home page: the demo "Worker" names the renderer of the map', renderer === 'worker' || renderer === 'main', renderer ?? '');
+        await page.locator('[data-home-block]').click();
+        const blockedText = await page.getByText('The page drew no frame for 2 seconds').waitFor({timeout: 15000}).then(() => true, () => false);
+        check('home page: the button of the demo "Worker" blocks the page and reports it', blockedText);
+        // The shields of the section of the styles grow with the route number.
+        const shieldWidth = () => page.locator('[data-home-shields] svg').first().evaluate(element => element.getBoundingClientRect().width);
+        const narrow = await shieldWidth();
+        await page.locator('[data-home-route]').fill('1234');
+        check('home page: a road shield is wider around a longer route number', await shieldWidth() > narrow + 5, `${narrow} -> ${await shieldWidth()}`);
+        await page.locator('[data-home-route-up]').click();
+        check('home page: the button "One higher" steps the route number', await page.locator('[data-home-route]').inputValue() === '1235');
         check('home page: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
     }
@@ -979,7 +1019,7 @@ try {
                     holder.innerHTML = wideSvg;
                     document.body.append(holder);
                 }
-                return {wide: background.display !== 'none', stage: [stage.width, stage.height], labels: Object.fromEntries([...document.querySelectorAll('svg text')].map(label => {
+                return {wide: background.display !== 'none', stage: [stage.width, stage.height], left: stage.left, labels: Object.fromEntries([...document.querySelectorAll('svg text')].map(label => {
                     const box = label.getBoundingClientRect();
                     return [label.textContent.trim(), [box.x + box.width / 2, box.y + box.height / 2]];
                 }))};
@@ -999,12 +1039,14 @@ try {
             });
             const fetchedWide = await page.evaluate(() => performance.getEntriesByType('resource').some(entry => entry.name.endsWith('/home-first-paint-wide.svg')));
             check(`home page at ${width} px: the wide first paint is ${painted.wide ? '' : 'not '}fetched`, fetchedWide === painted.wide);
-            const matches = Object.keys(live).filter(name => painted.labels?.[name]).map(name => ({name, dx: painted.labels[name][0] - live[name].x, dy: painted.labels[name][1] - live[name].y}));
+            const matches = Object.keys(live).filter(name => painted.labels?.[name]).map(name => ({name, dx: painted.labels[name][0] - painted.left - live[name].x, dy: painted.labels[name][1] - live[name].y}));
             const dys = matches.map(match => match.dy).sort((x, y) => x - y);
             const median = dys[Math.floor(dys.length / 2)];
             const wide = matches.filter(match => Math.abs(match.dx) > 3);
             const same = matches.filter(match => Math.abs(match.dy - median) <= 3).length;
-            check(`home page at ${width} px: the places of the first paint are where the idle map has them`, matches.length >= 6 && wide.length === 0 && same >= matches.length * 0.7,
+            // The labels are places of the window, and the map gives places of the stage, which starts beside the panel from 1024 px (`painted.left`).
+            // On a phone the stage is 44% of the height of the window and shows fewer places.
+            check(`home page at ${width} px: the places of the first paint are where the idle map has them`, matches.length >= (width < 640 ? 4 : 6) && wide.length === 0 && same >= matches.length * 0.7,
                 `${matches.length} places, ${wide.length} off by more than 3 px across (${wide.map(match => `${match.name} ${match.dx.toFixed(1)}`).join(', ')}), ${same} with the usual offset of ${median?.toFixed(1)} px down`);
             await close();
         }
@@ -1085,37 +1127,37 @@ try {
         // A reader who prefers reduced motion gets a cut.
         const {page, close} = await open('/', {reducedMotion: 'reduce'});
         await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});
-        await page.evaluate(() => document.querySelector('[data-stop="compat"]').scrollIntoView({block: 'center'}));
+        await page.locator('[data-demo-tab="markers"]').click();
         const flight = await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.camera || false, null, {timeout: 15000}).then(handle => handle.jsonValue(), () => '');
         check('home page: reduced motion makes a cut and no flight', flight === 'cut', flight);
         await close();
     }
     {
-        // Without WebGL 2 the SVG stays, and the text and the stops of the page work.
+        // Without WebGL 2 the SVG stays, and the text and the sections of the page work.
         const init = `const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (type, ...rest) { return type === 'webgl2' ? null : get.call(this, type, ...rest); };`;
         const {page, close} = await open('/', {init});
         await page.waitForFunction(() => document.querySelector('[data-home-map]')?.dataset.mapState === 'error' || document.querySelector('.map-jr-unavailable'), null, {timeout: 30000}).catch(() => {});
         check('home page without WebGL 2: the SVG of the first paint stays', await page.locator('svg[data-map-jr-ssr]').count() > 0);
         check('home page without WebGL 2: the page still shows its text', await page.locator('h1').first().isVisible() && await page.getByRole('link', {name: 'Read the docs'}).first().isVisible());
-        await page.evaluate(() => document.querySelector('[data-stop="limits"]').scrollIntoView({block: 'center'}));
-        check('home page without WebGL 2: a stop still scrolls into view', await page.getByRole('heading', {name: 'What it does not do'}).isVisible());
+        await page.evaluate(() => document.querySelector('[data-home-section="limits"]').scrollIntoView({block: 'start'}));
+        check('home page without WebGL 2: a section still scrolls into view', await page.getByRole('heading', {name: 'What it does not do'}).isVisible());
         await close();
     }
     if (withMap) {
         const {page, problems, close} = await open('/', {width: 390, height: 844});
         const idle = await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).then(() => true, () => false);
         check('home page at 390 px: the map reaches idle', idle);
-        const unreachable = [];
-        for (const name of ['scale', 'compat', 'play', 'showcase', 'limits', 'install']) {
-            await page.evaluate(name => document.querySelector(`[data-stop="${name}"]`).scrollIntoView({block: 'center'}), name);
-            await page.waitForTimeout(300);
-            const reachable = await page.evaluate(() => {
-                const box = document.querySelector('[data-explore]').getBoundingClientRect();
-                return !!document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest('[data-explore]') && box.top >= 0 && box.bottom <= innerHeight;
-            });
-            if (!reachable) unreachable.push(name);
-        }
-        check('home page at 390 px: the button "Explore the map" is in the window and nothing covers it at each stop', unreachable.length === 0, unreachable.join(' '));
+        // On a phone the map stays at the top of the window while the panel scrolls, so a choice and the map show together.
+        await page.locator('[data-home-demo] [data-choice="globe"]').scrollIntoViewIfNeeded();
+        await page.evaluate(() => document.querySelector('[data-home-demo] [data-choice="globe"]').scrollIntoView({block: 'end'}));
+        await page.waitForTimeout(300);
+        const together = await page.evaluate(() => {
+            const map = document.querySelector('[data-home-map]').getBoundingClientRect(), choice = document.querySelector('[data-home-demo] [data-choice="globe"]').getBoundingClientRect();
+            const header = document.querySelector('header')?.getBoundingClientRect().bottom ?? 0;
+            const hit = document.elementFromPoint(choice.x + choice.width / 2, choice.y + choice.height / 2);
+            return {map: Math.min(map.bottom, innerHeight) - Math.max(map.top, header), choice: choice.top >= map.bottom - 1 && choice.bottom <= innerHeight && !!hit?.closest('[data-choice="globe"]')};
+        });
+        check('home page at 390 px: a choice of the panel and at least 200 px of the map are in the window together', together.choice && together.map >= 200, JSON.stringify(together));
         const wide = await overflow(page);
         check('home page at 390 px: no horizontal scroll', wide <= 0, String(wide));
         check('home page at 390 px: no failed request and no error', problems.length === 0, problems.join(' | '));

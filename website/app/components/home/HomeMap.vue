@@ -1,18 +1,16 @@
 <!--
-  The one live map of the home page (pages/index.vue). It fills the stage behind the text. The first paint is the SVG
-  of the server renderer from a file of the repository, and the map takes over when it has loaded. The map takes no pointer, wheel or key until
-  `exploring` is true: the wrapper is `inert` before that, so the page scrolls over it.
+  The one live map of the home page (pages/index.vue). The first paint is the SVG of the server renderer from a file of the
+  repository, and the map takes over when it has loaded. The visitor can drag the map; the wheel zooms only with Ctrl (⌘ on a
+  Mac) and a touch pans only with two fingers (`cooperativeGestures`), so the page scrolls over the map.
 
-  A new `scene` changes the props of the map, and the camera moves to the camera of the scene: a flight, or a cut when
-  the system asks for reduced motion. `data-map-state` is "idle" when the map is drawn and ready, "error" when it
-  cannot be shown (the SVG stays), and the checks read it.
-
-  When the map is idle, the component sends `measure`: the time from the load of the page to idle, and the size of the
-  files of the library that the browser fetched: its chunks (the page script) and the worker file, each counted once.
+  `mapProps` are the props of the map, and a new `camera` moves the camera: a flight, or a cut when the system asks for
+  reduced motion. The map draws the color scheme `scheme`, which the panel sets, and
+  the stage has the paper of that scheme behind the map, so that nothing shows through around the globe. `data-map-state` is "idle" when the map is drawn and ready, "error" when it cannot be shown (the SVG
+  stays), and the checks read it. `renderer` is the thread that draws, once the map has loaded.
 -->
 <script setup lang="ts">
 import type {MapJrExposed} from '@map-jr/map-jr-gl/vue';
-import type {Scene} from '~/utils/home-scenes';
+import type {Camera, HomeClick, HomeView} from '~/utils/home-scenes';
 // The first paint: a render of the first scene by the server renderer, written by scripts/first-paint.mjs. It is a file of
 // the repository, so the build needs no network (#1391).
 import firstPaint from '~/assets/home-first-paint.html?raw';
@@ -30,24 +28,22 @@ useHead({link: [
     {rel: 'preload', as: 'image', href: '/home-first-paint-dark.svg', media: `${small} and (prefers-color-scheme: dark)`},
 ]});
 
-const props = defineProps<{scene: Scene; exploring: boolean}>();
-const emit = defineEmits<{measure: [{idleMs: number; bytes: number; files: number}]; state: [string]}>();
+const props = defineProps<{mapProps: Record<string, unknown>; camera: Camera; scheme: 'light' | 'dark'}>();
+const emit = defineEmits<{state: [string]; renderer: [string]; view: [HomeView]; click: [HomeClick]}>();
 
-const colorMode = useColorMode();
 const view = useHomeView();
 const state = ref<'loading' | 'idle' | 'error'>('loading');
 const map = useTemplateRef<MapJrExposed>('map');
 const controls = [navigationControl(), scaleControl()];
 // The camera of the first scene is the first view of the map, and a later scene moves the camera.
-const first = props.scene.camera;
+const first = props.camera;
 let ready = false;
-let measured = false;
 // How the last move went, "fly" or "cut" (the checks read it).
 const how = ref('');
 
 watch(state, value => emit('state', value));
 
-function move(camera: Scene['camera']) {
+function move(camera: Camera) {
     if (!ready || !map.value) return;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const target = {center: camera.center, zoom: camera.zoom, bearing: camera.bearing ?? 0, pitch: camera.pitch ?? 0};
@@ -55,7 +51,7 @@ function move(camera: Scene['camera']) {
     how.value = reduced ? 'cut' : 'fly';
     map.value.moveTo(reduced ? target : {...target, fly: {maxDuration: 5000}});
 }
-watch(() => props.scene, scene => move(scene.camera));
+watch(() => props.camera, move);
 
 // The checks read the map through the element (`__homeMap`) to compare its places with those of the first paint.
 const root = useTemplateRef<HTMLElement & {__homeMap?: unknown}>('root');
@@ -63,7 +59,8 @@ function onLoad() {
     ready = true;
     if (root.value) root.value.__homeMap = map.value;
     // The map is at its first view already. A flight here would show a half-drawn map under the first paint.
-    const now = props.scene.camera;
+    emit('renderer', map.value?.state.get().renderer ?? '');
+    const now = props.camera;
     if (now.center[0] === first.center[0] && now.center[1] === first.center[1] && now.zoom === first.zoom && (now.bearing ?? 0) === (first.bearing ?? 0) && (now.pitch ?? 0) === (first.pitch ?? 0)) return;
     move(now);
 }
@@ -73,18 +70,6 @@ function onIdle() {
     // The first paint covers the map and its controls until the map has drawn its first view. It goes in the same frame
     // as the idle state, so the map and the controls show together (#1416).
     showFirst.value = false;
-    if (measured) return;
-    measured = true;
-    // The files of the library: the chunks of the build that keep "map-jr-gl" in their names (nuxt.config.ts) and the worker
-    // file. A file is counted once, also when the browser lists it twice (a preload and an import). The number is the
-    // size of the body as the server sent it (`encodedBodySize`): gzip on a server that compresses.
-    const scripts = new Map<string, number>();
-    for (const entry of performance.getEntriesByType('resource') as PerformanceResourceTiming[]) {
-        const path = new URL(entry.name, location.href).pathname;
-        if (path.startsWith('/_nuxt/map-jr-gl') && path.endsWith('.js')) scripts.set(path, entry.encodedBodySize);
-    }
-    const bytes = [...scripts.values()].reduce((sum, size) => sum + size, 0);
-    emit('measure', {idleMs: Math.round(performance.now()), bytes, files: scripts.size});
 }
 
 // Without WebGL 2 the map cannot start, and the library would show a message. The first paint is outside of the map and stays,
@@ -103,21 +88,29 @@ onMounted(() => {
     unsupported.value = true;
     state.value = 'error';
 });
-type View = {center: [number, number]; zoom: number};
-const onView = (next: View) => { view.value = {center: next.center, zoom: next.zoom}; };
+const onView = (next: HomeView) => {
+    view.value = {center: next.center, zoom: next.zoom};
+    emit('view', {center: next.center, zoom: next.zoom, bearing: next.bearing, pitch: next.pitch});
+};
+const onClick = (event: HomeClick) => emit('click', {point: event.point, lngLat: event.lngLat});
+
+// The map, for the panel of demos: `null` until the map has loaded.
+defineExpose({instance: () => ready ? map.value : null});
 </script>
 
 <template>
-  <div ref="root" class="absolute inset-0" :class="exploring ? '' : 'pointer-events-none'" :inert="!exploring" data-home-map :data-map-state="state" :data-camera="how">
+  <div ref="root" class="absolute inset-0" :style="{backgroundColor: scheme === 'dark' ? '#17181a' : '#f6f5f2'}" data-home-map :data-map-state="state" :data-camera="how">
     <p v-if="unsupported" class="absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] border border-accented bg-default/90 px-3 py-1 text-center text-sm text-muted">This browser has no WebGL 2, so the map is a still picture.</p>
     <MapJr
       v-if="!unsupported"
       ref="map"
-      v-bind="scene.props"
+      v-bind="mapProps"
       :initial-view="first"
-      :color-scheme="colorMode.value === 'dark' ? 'dark' : 'light'"
+      cooperative-gestures
+      :color-scheme="scheme"
       :controls="controls"
       @update:view="onView"
+      @click="onClick"
       @load="onLoad"
       @idle="onIdle"
       @error="state = 'error'"
@@ -140,7 +133,8 @@ const onView = (next: View) => { view.value = {center: next.center, zoom: next.z
 @media not all and (max-width: 1000px) and (max-height: 1060px) { .home-first-small, .dark .home-first-small-dark { display: none; } }
 /* The controls come in the light and the dark colors: the rules of the dark ones sit under `.map-jr-dark` in the sheet of the file. */
 .dark .home-first-light, :root:not(.dark) .home-first-dark { display: none; }
-/* The controls and the credits of the first paint are at the corners of the stage, in the form that the map has at this width. */
-@media (max-width: 640px) { .home-first-regular { display: none; } }
-@media (min-width: 641px) { .home-first-compact { display: none; } }
+/* The controls and the credits of the first paint are at the corners of the stage, in the form that the map has at the width of the stage. */
+[data-home-map] { container-type: inline-size; }
+@container (max-width: 640px) { .home-first-regular { display: none; } }
+@container (min-width: 641px) { .home-first-compact { display: none; } }
 </style>

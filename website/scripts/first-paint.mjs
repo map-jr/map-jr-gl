@@ -11,7 +11,7 @@
 //   site sets it in the head, before the first paint) shows and fetches them (HomeMap.vue).
 // Both have the center and the zoom of the live map's first view, and the page sets them at 1:1 CSS pixels, centered on the
 // stage, which crops them, so the first paint has the scale and the center of the live map at every size (#1393).
-// Run it when the first scene of app/utils/home-scenes.ts or the renderer changes: `pnpm --dir website first-paint` (it needs
+// Run it when the first view of app/utils/home-scenes.ts or the renderer changes: `pnpm --dir website first-paint` (it needs
 // `pnpm build` in the root of the repository, and the network). `--check` renders again and exits with 1 when a file differs.
 import {readFileSync, writeFileSync} from 'node:fs';
 import {renderFirstView} from '../../dist/server.js';
@@ -26,7 +26,7 @@ const darkStyle = await (await fetch(styleUrl)).json();
 if (darkStyle.state?.['color-scheme']?.default !== 'light') throw new Error('[map-jr-gl site] first-paint: the style has no state "color-scheme" with the default "light".');
 darkStyle.state['color-scheme'].default = 'dark';
 const render = ({width, height}, controls, colorScheme = 'light') => renderFirstView({
-    // The first scene (`stopScenes.hero` of app/utils/home-scenes.ts).
+    // The first view (`firstCamera` of app/utils/home-scenes.ts, with the first style of the demo "styles").
     style: colorScheme === 'dark' ? darkStyle : styleUrl, center: [8.33, 47.03], zoom: 10.6, width, height,
     colorScheme, timeout: 120000, requestTimeout: 30000, ...(controls && {controls: [navigation(), scale()]}),
 });
