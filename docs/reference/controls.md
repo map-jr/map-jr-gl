@@ -208,8 +208,9 @@ the scheme opposite to that of the system, and the next click sets `'auto'` agai
 
 ## `styles()`
 
-Creates a button that opens a list of styles. Each entry shows its label and a picture of its style, and a choice
-sets the style of the map.
+Creates a button that opens a list of styles. Each entry shows a picture of its style with its label on top, and a
+choice sets the style of the map. Until a picture is drawn, and when the style of an entry fails to load, the entry
+shows a generic placeholder image. A new picture fades in over the old one, except with `prefers-reduced-motion`.
 
 ```ts
 styles(options: {
