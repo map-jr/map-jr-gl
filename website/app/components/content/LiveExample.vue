@@ -1,6 +1,6 @@
 <!--
   The code of an example of examples/ on a recipe page, with the map that it makes above it. website/build/markdown.ts
-  makes this block from the marks "example:<id>:start" and "example:<id>:end" of docs/recipes/, and the default slot is
+  makes this block from the marks "example:<id>:start" and "example:<id>:end" of docs/recipes/ and docs/guide/, and the default slot is
   the group of the variants of the code.
 
   The map runs the variant that the reader reads when a frame can run it (Main API, MapLibre compat, <map-jr>), and

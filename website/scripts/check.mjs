@@ -506,7 +506,8 @@ try {
         // The text of a CodeMirror editor that shows all of its lines.
         const textOf = editor => editor.evaluate(content => [...content.querySelectorAll('.cm-line')].map(line => line.textContent).join('\n'));
 
-        await page.goto(base + '/recipes/basic', {waitUntil: 'load'});
+        // The guide to the globe has one live example, so the locators below find one editor and one frame.
+        await page.goto(base + '/guide/globe', {waitUntil: 'load'});
         const frame = page.frameLocator('.live-example iframe');
         check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
         // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
@@ -527,10 +528,11 @@ try {
         await replace(editor, code + "\ndocument.body.append(Object.assign(document.createElement('output'), {id: 'edited'}));\n");
         await page.getByRole('button', {name: 'Run', exact: true}).click();
         check(`${engine}: recipe: a changed example runs`, await shown(frame.locator('#edited'), 'attached') && await frame.locator('#map canvas').count() > 0);
-        // On a page of its own, so that the later checks keep the page and the editor of the recipe "basic".
+        // On a page of its own, so that the later checks keep the page and the editor of the guide to the globe. The
+        // example "fit" is the first of the two live examples of the guide to the view.
         const fitPage = await context.newPage();
-        await fitPage.goto(base + '/recipes/fit', {waitUntil: 'load'});
-        const ownButton = fitPage.frameLocator('.live-example iframe').getByRole('button', {name: 'Show all landings'});
+        await fitPage.goto(base + '/guide/view-and-camera', {waitUntil: 'load'});
+        const ownButton = fitPage.frameLocator('.live-example iframe').first().getByRole('button', {name: 'Show all landings'});
         check(`${engine}: recipe: a button of the example code keeps the style of the frame`, await shown(ownButton) && await ownButton.evaluate(button => {
             const style = getComputedStyle(button);
             return style.marginLeft === '12px' && style.paddingLeft === '10px' && style.borderTopWidth === '1px';
