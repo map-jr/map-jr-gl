@@ -461,6 +461,10 @@ try {
         await page.mouse.wheel(0, -60);
         await settle();
         await expectOne('a little above a heading', ids[ids.indexOf(middle) - 1]);
+        // A live example near the end starts its map when it comes into view, and that can change the height of the page,
+        // so the second scroll reaches the bottom of the page as it is then.
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await page.waitForTimeout(1500);
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
         await settle();
         await expectOne('at the bottom', ids.at(-1));
@@ -508,6 +512,8 @@ try {
 
         // The guide to the globe has one live example, so the locators below find one editor and one frame.
         await page.goto(base + '/guide/globe', {waitUntil: 'load'});
+        // The frame starts its map when it comes into view, and the example is below the first screen of the guide.
+        await page.locator('.live-example .map-frame').first().scrollIntoViewIfNeeded();
         const frame = page.frameLocator('.live-example iframe');
         check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
         // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
@@ -532,6 +538,7 @@ try {
         // example "fit" is the first of the two live examples of the guide to the view.
         const fitPage = await context.newPage();
         await fitPage.goto(base + '/guide/view-and-camera', {waitUntil: 'load'});
+        await fitPage.locator('.live-example .map-frame').first().scrollIntoViewIfNeeded();
         const ownButton = fitPage.frameLocator('.live-example iframe').first().getByRole('button', {name: 'Show all landings'});
         check(`${engine}: recipe: a button of the example code keeps the style of the frame`, await shown(ownButton) && await ownButton.evaluate(button => {
             const style = getComputedStyle(button);
