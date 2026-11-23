@@ -103,6 +103,9 @@ keeps the view and the other fields of the description.
 the source of the style that has the same id. See [`layers`](#layers) for an example
 of a source with its layer.
 
+A source has one of the types of the MapLibre style specification, `video` and `canvas` included. See
+[Show a video or a canvas](../guide/data.md#show-a-video-or-a-canvas).
+
 To change the features of a GeoJSON source, set them in [`data`](#data). A changed source in `sources` [loads the style again](#style).
 
 ## `layers`

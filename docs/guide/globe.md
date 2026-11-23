@@ -150,8 +150,9 @@ The event `projectiontransition` fires when the name of the projection changes a
 ## What the globe draws
 
 On the globe, the map draws the layers of the types `background`, `fill`, `line`, `circle`, `heatmap`, `raster`,
-`hillshade`, `fill-extrusion` and `symbol`. The background covers only the sphere, and the space around the sphere is transparent. To
-fill it, set the CSS `background` of the container, the element that you pass to `createMap` or as `container`.
+`hillshade`, `fill-extrusion` and `symbol`. The background covers only the sphere, and the space around the sphere is
+transparent. To fill it, set the CSS `background` of the container, the element that you pass to `createMap` or as
+`container`.
 
 - The map draws [3D terrain](terrain.md) on the sphere. A `fill-extrusion` layer follows the curve of the sphere,
   so the buildings of the styles of `https://styles.map-jr.org/1/` stand on the globe as they do on the flat map.

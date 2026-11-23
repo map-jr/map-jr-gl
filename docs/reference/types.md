@@ -64,7 +64,7 @@ A view that the application passes, for [`view`](description.md#view-and-onviewc
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `bounds` | `Bounds` | | A box to fit into the map. |
-| `fitPadding` | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for this fit. |
+| `fitPadding` | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for this fit, which `moveTo` adds to `padding` of the description and the first fit of `initialView` does not. |
 | `fitMaxZoom` | `number` | | The largest zoom level of the fit of `bounds`, for a small box. |
 <!-- ref:InitialView:end -->
 

@@ -187,8 +187,8 @@ document
 - When a movement stops, the map moves the centre of the view to the ground that the camera looks at. The view on the
   screen does not move, but the `center` and the `zoom` of the view change by a small amount.
 - When the camera would be inside the terrain, it rises above the ground, and the map solves the pitch and the zoom
-  again, as MapLibre GL JS does. The view and `getState()` report the solved values. A pitch or rotate gesture keeps
-  its values.
+  again, as MapLibre GL JS does. `view` of the state reports the solved values, and so do `getPitch()` and
+  `getZoom()` in `@map-jr/map-jr-gl/maplibre-compat`. A pitch or rotate gesture keeps its values.
 - The heights come from the full elevation image, so `queryTerrainElevation` and the height of the camera agree with
   MapLibre GL JS within 5 %.
 - With a `sky` in the style, the map draws fog on the terrain above a pitch of 60 degrees. The properties

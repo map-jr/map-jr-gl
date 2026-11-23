@@ -524,7 +524,7 @@ a map has one of them.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {
-  style: 'https://styles.map-jr.org/1/liberty.json',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-122.514, 37.562], zoom: 17},
   sources: {
     drone: {
@@ -542,14 +542,40 @@ const map = createMap('map', {
 });
 ```
 
+**MapLibre compat**
+
+```js [MapLibre compat]
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-122.514, 37.562],
+  zoom: 17,
+});
+map.on('load', () => {
+  map.addSource('drone', {
+    type: 'video',
+    urls: ['https://static-assets.mapbox.com/mapbox-gl-js/drone.mp4'],
+    coordinates: [
+      [-122.51596391201019, 37.56238816766053],
+      [-122.51467645168304, 37.56410183312965],
+      [-122.51309394836426, 37.563391708549425],
+      [-122.51423120498657, 37.56161849366671],
+    ],
+  });
+  map.addLayer({id: 'drone', type: 'raster', source: 'drone'});
+});
+```
+
 - The video is muted, plays in a loop and starts when the source is added. A video of another origin needs CORS
-  headers. When none of `urls` loads, the map calls `onError`.
+  headers. When none of `urls` loads, the main API calls `onError`, and the compat entry fires `error`.
 - `canvas` is the id of a `<canvas>` of the page. With `animate: true` (the default), the map copies the canvas in
   each frame; with `animate: false`, it copies it once.
 - While a video or an animated canvas plays, the map does not become idle.
 - In `@map-jr/map-jr-gl/maplibre-compat`, `getSource(id)` of a video source has `getVideo`, `play`, `pause`, `seek` and
   `setCoordinates`, and a canvas source has `getCanvas`, `play`, `pause` and `setCoordinates`. These methods exist once
-  the code of the source has loaded, one request after the style.
+  the code of the source has loaded, which the map requests when the style with the source has loaded.
 
 ## See also
 
