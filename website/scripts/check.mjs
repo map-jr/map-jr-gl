@@ -943,16 +943,42 @@ try {
         await page.waitForFunction(() => scrollY === 0);
 
         // A choice of the panel changes the description of the map, and the text of the description shows the change.
-        await page.locator('[data-home-demo] [data-choice="de"]').click();
-        const language = await page.waitForFunction(() => document.querySelector('[data-home-map]').__homeMap.description.globalState?.language === 'de', null, {timeout: 5000}).then(() => true, () => false);
-        check('home page: the choice "Deutsch" sets the global state `language` of the map', language);
-        check('home page: the description of the panel shows the choice', (await page.locator('[data-home-code]').textContent()).includes("globalState: {language: 'de'}"));
+        await page.locator('[data-home-demo] [data-choice="ja"]').click();
+        const language = await page.waitForFunction(() => document.querySelector('[data-home-map]').__homeMap.description.globalState?.language === 'ja', null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the choice "日本語" sets the global state `language` of the map', language);
+        check('home page: the description of the panel shows the choice', (await page.locator('[data-home-code]').textContent()).includes("globalState: {language: 'ja'}"));
+        // The choice "Dark" changes the map and not the page.
+        const pageDark = () => page.evaluate(() => document.documentElement.classList.contains('dark'));
+        const wasDark = await pageDark();
+        await page.locator('[data-home-demo] [data-choice="dark"]').click();
+        const mapDark = await page.waitForFunction(() => document.querySelector('[data-home-map]').__homeMap.state.get().colorScheme === 'dark', null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the choice "Dark" of the panel makes the map dark and leaves the page as it was', mapDark && await pageDark() === wasDark);
+        await page.locator('[data-home-demo] [data-choice="light"]').click();
         // Another demo flies the camera to its place and draws its markers.
         await page.locator('[data-demo-tab="markers"]').click();
         const flight = await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.camera || false, null, {timeout: 15000}).then(handle => handle.jsonValue(), () => '');
         check('home page: the camera flies to the place of another demo', flight === 'fly', flight);
         const layers = await page.waitForFunction(() => document.querySelector('[data-home-map]').__homeMap.description.layers?.[0]?.id === 'places', null, {timeout: 5000}).then(() => true, () => false);
         check('home page: the demo "Markers" adds its symbol layer to the map', layers);
+        // A click on the map adds a marker of the visitor.
+        const stageBox = await page.locator('[data-home-map]').boundingBox();
+        await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.mapState === 'idle', null, {timeout: 60000}).catch(() => {});
+        await page.mouse.click(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2);
+        const added = await page.getByText('1 added with a click.').waitFor({timeout: 5000}).then(() => true, () => false);
+        check('home page: a click on the map in the demo "Markers" adds a marker', added);
+        // The demo "Camera": a slider sets the pitch of the map, and the panel shows the view of the map.
+        await page.locator('[data-demo-tab="camera"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.mapState === 'idle', null, {timeout: 60000}).catch(() => {});
+        await page.locator('[data-home-slider="pitch"]').fill('20');
+        const pitched = await page.waitForFunction(() => Math.round(document.querySelector('[data-home-map]').__homeMap.state.get().view.pitch) === 20, null, {timeout: 5000}).then(() => true, () => false);
+        check('home page: the slider "Pitch" of the demo "Camera" sets the pitch of the map', pitched);
+        // The demo "Query": a click asks the map, and the panel shows the answer.
+        await page.locator('[data-demo-tab="query"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-home-map]').dataset.mapState === 'idle', null, {timeout: 60000}).catch(() => {});
+        await page.waitForTimeout(500);
+        await page.mouse.click(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2);
+        const answered = await page.locator('[data-home-answer]').getByText('queryFeatures:').waitFor({timeout: 15000}).then(() => true, () => false);
+        check('home page: a click in the demo "Query" shows the features and the elevation at the point', answered && /queryElevation: [\d,]+ m/.test(await page.locator('[data-home-answer]').textContent()), await page.locator('[data-home-answer]').textContent());
         // The demo "Worker" names the renderer, and its button blocks the page and then says so.
         await page.locator('[data-demo-tab="worker"]').click();
         const renderer = await page.locator('[data-home-renderer]').getAttribute('data-renderer');
@@ -960,6 +986,13 @@ try {
         await page.locator('[data-home-block]').click();
         const blockedText = await page.getByText('The page drew no frame for 2 seconds').waitFor({timeout: 15000}).then(() => true, () => false);
         check('home page: the button of the demo "Worker" blocks the page and reports it', blockedText);
+        // The shields of the section of the styles grow with the route number.
+        const shieldWidth = () => page.locator('[data-home-shields] svg').first().evaluate(element => element.getBoundingClientRect().width);
+        const narrow = await shieldWidth();
+        await page.locator('[data-home-route]').fill('1234');
+        check('home page: a road shield is wider around a longer route number', await shieldWidth() > narrow + 5, `${narrow} -> ${await shieldWidth()}`);
+        await page.locator('[data-home-route-up]').click();
+        check('home page: the button "One higher" steps the route number', await page.locator('[data-home-route]').inputValue() === '1235');
         check('home page: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
     }

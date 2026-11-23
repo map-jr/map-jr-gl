@@ -29,7 +29,7 @@ const prompt = async () => {
     </p>
     <p class="mt-5 text-toned">To move a project from MapLibre GL JS, give a coding agent the migration prompt.</p>
     <div class="mt-3 flex flex-wrap gap-3">
-      <UButton :icon="copied === 'prompt' ? 'i-lucide-check' : 'i-lucide-sparkles'" @click="copy('prompt', prompt)">{{ copied === 'prompt' ? 'Copied' : 'Copy the migration prompt' }}</UButton>
+      <UButton :icon="copied === 'prompt' ? 'i-lucide-check' : 'i-lucide-sparkles'" @click="copy('prompt', prompt)">{{ copied === 'prompt' ? 'Copied' : 'Copy prompt' }}</UButton>
       <UButton to="/migrate/from-maplibre" color="neutral" variant="outline">Migration guide</UButton>
     </div>
     <p class="mt-3 text-sm text-muted">

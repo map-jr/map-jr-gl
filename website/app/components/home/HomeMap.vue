@@ -4,12 +4,13 @@
   Mac) and a touch pans only with two fingers (`cooperativeGestures`), so the page scrolls over the map.
 
   `mapProps` are the props of the map, and a new `camera` moves the camera: a flight, or a cut when the system asks for
-  reduced motion. `data-map-state` is "idle" when the map is drawn and ready, "error" when it cannot be shown (the SVG
+  reduced motion. The map draws the color scheme `scheme`, which the panel sets, and
+  the stage has the paper of that scheme behind the map, so that nothing shows through around the globe. `data-map-state` is "idle" when the map is drawn and ready, "error" when it cannot be shown (the SVG
   stays), and the checks read it. `renderer` is the thread that draws, once the map has loaded.
 -->
 <script setup lang="ts">
 import type {MapJrExposed} from '@map-jr/map-jr-gl/vue';
-import type {Camera} from '~/utils/home-scenes';
+import type {Camera, HomeClick, HomeView} from '~/utils/home-scenes';
 // The first paint: a render of the first scene by the server renderer, written by scripts/first-paint.mjs. It is a file of
 // the repository, so the build needs no network (#1391).
 import firstPaint from '~/assets/home-first-paint.html?raw';
@@ -17,8 +18,8 @@ import firstPaint from '~/assets/home-first-paint.html?raw';
 // Windows up to 1000 px wide and 1060 px high have a stage of at most 1000 by 1000 and take the inline SVG of 1000 by 1000. Other
 // windows take the SVG of 2560 by 1600 from public/, which starts to load with the HTML only for them (scripts/first-paint.mjs).
 const small = '(max-width: 1000px) and (max-height: 1060px)';
-// The dark pictures load only on a page with the class `dark` on <html>, which the colour mode of the site sets in the head before the
-// first paint. A preload cannot read the class, so it follows `prefers-color-scheme`, which is the colour mode unless the visitor has
+// The dark pictures load only on a page with the class `dark` on <html>, which the color mode of the site sets in the head before the
+// first paint. A preload cannot read the class, so it follows `prefers-color-scheme`, which is the color mode unless the visitor has
 // stored the other one: then the picture loads when the style sheet applies, a little later.
 const wideMedia = (scheme: string) => `((width > 1000px) or (height > 1060px)) and (prefers-color-scheme: ${scheme})`;
 useHead({link: [
@@ -27,10 +28,9 @@ useHead({link: [
     {rel: 'preload', as: 'image', href: '/home-first-paint-dark.svg', media: `${small} and (prefers-color-scheme: dark)`},
 ]});
 
-const props = defineProps<{mapProps: Record<string, unknown>; camera: Camera}>();
-const emit = defineEmits<{state: [string]; renderer: [string]}>();
+const props = defineProps<{mapProps: Record<string, unknown>; camera: Camera; scheme: 'light' | 'dark'}>();
+const emit = defineEmits<{state: [string]; renderer: [string]; view: [HomeView]; click: [HomeClick]}>();
 
-const colorMode = useColorMode();
 const view = useHomeView();
 const state = ref<'loading' | 'idle' | 'error'>('loading');
 const map = useTemplateRef<MapJrExposed>('map');
@@ -88,23 +88,18 @@ onMounted(() => {
     unsupported.value = true;
     state.value = 'error';
 });
-type View = {center: [number, number]; zoom: number};
-const onView = (next: View) => { view.value = {center: next.center, zoom: next.zoom}; };
+const onView = (next: HomeView) => {
+    view.value = {center: next.center, zoom: next.zoom};
+    emit('view', {center: next.center, zoom: next.zoom, bearing: next.bearing, pitch: next.pitch});
+};
+const onClick = (event: HomeClick) => emit('click', {point: event.point, lngLat: event.lngLat});
 
-/**
- * Turns the map by `degrees` in `duration` milliseconds. It returns false when the map cannot turn: it has not loaded,
- * or the system asks for reduced motion.
- */
-function turn(degrees: number, duration: number) {
-    if (!ready || !map.value || matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
-    map.value.moveTo({bearing: map.value.state.get().view.bearing + degrees, duration});
-    return true;
-}
-defineExpose({turn});
+// The map, for the panel of demos: `null` until the map has loaded.
+defineExpose({instance: () => ready ? map.value : null});
 </script>
 
 <template>
-  <div ref="root" class="absolute inset-0" data-home-map :data-map-state="state" :data-camera="how">
+  <div ref="root" class="absolute inset-0" :style="{backgroundColor: scheme === 'dark' ? '#17181a' : '#f6f5f2'}" data-home-map :data-map-state="state" :data-camera="how">
     <p v-if="unsupported" class="absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] border border-accented bg-default/90 px-3 py-1 text-center text-sm text-muted">This browser has no WebGL 2, so the map is a still picture.</p>
     <MapJr
       v-if="!unsupported"
@@ -112,9 +107,10 @@ defineExpose({turn});
       v-bind="mapProps"
       :initial-view="first"
       cooperative-gestures
-      :color-scheme="colorMode.value === 'dark' ? 'dark' : 'light'"
+      :color-scheme="scheme"
       :controls="controls"
       @update:view="onView"
+      @click="onClick"
       @load="onLoad"
       @idle="onIdle"
       @error="state = 'error'"
@@ -135,7 +131,7 @@ defineExpose({turn});
 .dark .home-first-small { display: none; }
 @media (max-width: 1000px) and (max-height: 1060px) { .home-first-wide { display: none; } }
 @media not all and (max-width: 1000px) and (max-height: 1060px) { .home-first-small, .dark .home-first-small-dark { display: none; } }
-/* The controls come in the light and the dark colours: the rules of the dark ones sit under `.map-jr-dark` in the sheet of the file. */
+/* The controls come in the light and the dark colors: the rules of the dark ones sit under `.map-jr-dark` in the sheet of the file. */
 .dark .home-first-light, :root:not(.dark) .home-first-dark { display: none; }
 /* The controls and the credits of the first paint are at the corners of the stage, in the form that the map has at the width of the stage. */
 [data-home-map] { container-type: inline-size; }

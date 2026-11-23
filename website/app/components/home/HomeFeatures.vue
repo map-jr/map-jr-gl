@@ -22,7 +22,12 @@ const width = (bytes: number) => bytes / home.sizes.maplibre.total * 100 + '%';
 const slowest = Math.max(...home.speed.load.map(row => Math.max(row.maplibre, row.mapJr)));
 const at = (ms: number) => ms / slowest * 100 + '%';
 
-// Markers: three points, each with a colour that a click changes.
+const template = `<svg viewBox="0 0 24 31">
+  <path fill="{{color}}" stroke="#fff" d="…"/>
+</svg>`;
+const importDiff = `- import {Map} from 'maplibre-gl';
++ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';`;
+// Markers: three points, each with a color that a click changes.
 const colors = ['#d6453d', '#2f7fd1', '#2e9d5b', '#8a4fd3', '#e08a1e'];
 const points = ref([0, 1, 2]);
 const next = (index: number) => { points.value[index] = (points.value[index]! + 1) % colors.length; };
@@ -211,11 +216,9 @@ onMounted(() => {
     <article class="home-card" data-card="markers">
       <div class="home-figure">
         <span class="label-text text-muted">An SVG template with a slot</span>
-        <pre class="mt-2 overflow-x-auto font-mono text-[0.75rem] leading-relaxed text-(--site-pre-fg)"><code>&lt;svg viewBox="0 0 24 31"&gt;
-  &lt;path fill="<mark class="home-slot" v-text="'{{color}}'" />" stroke="#fff" d="…"/&gt;
-&lt;/svg&gt;</code></pre>
+        <HomeCode :code="template" class="mt-2" />
         <div class="mt-3 grid grid-cols-3 gap-2">
-          <button v-for="(color, index) in points" :key="index" type="button" class="home-point" :aria-label="`Point ${index + 1}: change the colour`" @click="next(index)">
+          <button v-for="(color, index) in points" :key="index" type="button" class="home-point" :aria-label="`Point ${index + 1}: change the color`" @click="next(index)">
             <svg viewBox="0 0 24 31" class="h-9 w-7" aria-hidden="true"><path :fill="colors[color]" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z" /></svg>
             <span class="figure-text text-muted">{color: '<span class="text-highlighted">{{ colors[color] }}</span>'}</span>
           </button>
@@ -232,8 +235,7 @@ onMounted(() => {
     <!-- Compatibility -->
     <article class="home-card" data-card="compat">
       <div class="home-figure">
-        <pre class="overflow-x-auto font-mono text-[0.75rem] leading-relaxed" aria-label="The change of the import"><code><span class="text-error">- import {Map} from 'maplibre-gl';</span>
-<span class="text-success">+ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';</span></code></pre>
+        <HomeCode :code="importDiff" aria-label="The change of the import" />
         <div class="mt-4 space-y-2.5 figure-text">
           <div v-for="row in checks" :key="row.label">
             <div class="flex justify-between gap-3"><span class="text-muted">{{ row.label }}</span><span class="text-highlighted">{{ row.passing }} of {{ row.total }}</span></div>
@@ -271,7 +273,7 @@ onMounted(() => {
         <div class="flex overflow-x-auto border-b border-accented" role="tablist" aria-label="Form of the code">
           <button v-for="item in forms" :id="`home-form-${item.id}`" :key="item.id" type="button" role="tab" :aria-selected="form === item.id" aria-controls="home-form-code" class="home-tab shrink-0 px-3!" @click="form = item.id">{{ item.label }}</button>
         </div>
-        <pre id="home-form-code" role="tabpanel" :aria-labelledby="`home-form-${form}`" tabindex="0" class="h-64 overflow-auto p-4 font-mono text-[0.75rem] leading-relaxed text-(--site-pre-fg)"><code>{{ formCode }}</code></pre>
+        <HomeCode id="home-form-code" :code="formCode" role="tabpanel" :aria-labelledby="`home-form-${form}`" tabindex="0" class="h-64 overflow-auto! p-4" />
       </div>
       <div class="home-card-text">
         <h3>One description, in your framework</h3>
@@ -297,7 +299,6 @@ onMounted(() => {
 .home-speed-row { display: grid; grid-template-columns: 8.75rem 1fr 5.25rem; align-items: center; gap: 0.625rem; min-height: 1.375rem; }
 .home-speed-line { position: absolute; top: 50%; height: 2px; width: 0; margin-top: -1px; background: var(--ui-text-dimmed); transition: width 0.9s cubic-bezier(0.2, 0.7, 0.2, 1); }
 [data-seen] .home-speed-line { width: var(--w); }
-.home-slot { background: color-mix(in oklab, var(--ui-primary) 22%, transparent); color: inherit; padding: 0 0.15em; }
 .home-point { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.5rem 0.25rem; border: 1px solid var(--ui-border); background: var(--ui-bg); min-width: 0; }
 .home-point:hover { border-color: var(--ui-border-inverted); }
 .home-point:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: -2px; }

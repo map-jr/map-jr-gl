@@ -8,7 +8,7 @@
   narrower window the map comes between the title and the panel, and it stays at the top while the panel scrolls.
 -->
 <script setup lang="ts">
-import {demoProps, firstCamera, firstState, type Camera} from '~/utils/home-scenes';
+import {demoProps, firstCamera, firstState, type Camera, type HomeClick, type HomeView} from '~/utils/home-scenes';
 
 const {site} = useAppConfig();
 const {start} = await useDocs();
@@ -23,42 +23,43 @@ const ways = [
 
 const mapProps = shallowRef<Record<string, unknown>>(demoProps('styles', firstState()));
 const camera = shallowRef<Camera>(firstCamera);
+// The color scheme of the map: the color mode of the site at first, and then the choice of the panel (HomeDemo.vue).
+// The panel sets it when the page runs in the browser, before the map is made.
+const scheme = ref<'light' | 'dark'>('light');
 const renderer = ref('');
-const map = useTemplateRef<{turn: (degrees: number, duration: number) => boolean}>('map');
-const turn = (degrees: number, duration: number) => map.value?.turn(degrees, duration) ?? false;
+const view = shallowRef<HomeView>();
+const click = shallowRef<HomeClick>();
+const map = useTemplateRef<{instance: () => any}>('map');
+const instance = () => map.value?.instance() ?? null;
 </script>
 
 <template>
   <div id="top">
     <div class="home-stage border-b border-accented">
       <div class="home-stage-hero">
-        <p class="label-text font-medium text-primary">A map library for the web / v{{ site.version }}</p>
-        <h1 class="mt-3 font-display text-5xl tracking-tight text-highlighted sm:text-6xl">
-          Map Jr. <span class="font-mono text-[0.42em] font-medium tracking-normal text-primary">GL</span>
-        </h1>
-        <p class="mt-3 max-w-md text-lg text-pretty text-toned">{{ site.description }}</p>
-        <div class="mt-5 flex flex-wrap gap-3">
+        <h1 class="font-display text-4xl tracking-tight text-highlighted sm:text-[2.75rem] sm:leading-[1.08]">A small, fast map library for the web</h1>
+        <p class="mt-3 max-w-md text-lg text-pretty text-toned">Map Jr. GL reads MapLibre styles and draws them in a worker.</p>
+        <div class="mt-5 flex flex-wrap items-center gap-3">
           <UButton :to="start" size="lg" trailing-icon="i-lucide-arrow-right">Read the docs</UButton>
           <UButton :to="site.repository" target="_blank" size="lg" color="neutral" variant="outline" icon="i-simple-icons-github">GitHub</UButton>
+          <span class="figure-text text-muted" data-home-version>v{{ site.version }}</span>
         </div>
       </div>
       <div class="home-stage-map">
-        <HomeMap ref="map" :map-props="mapProps" :camera="camera" @renderer="renderer = $event" />
+        <HomeMap ref="map" :map-props="mapProps" :camera="camera" :scheme="scheme" @renderer="renderer = $event" @view="view = $event" @click="click = $event" />
       </div>
       <div class="home-stage-panel">
-        <HomeDemo :renderer="renderer" :turn="turn" @update:map-props="mapProps = $event" @update:camera="camera = $event" />
+        <HomeDemo :map="instance" :view="view" :click="click" :renderer="renderer" @update:map-props="mapProps = $event" @update:camera="camera = $event" @update:scheme="scheme = $event" />
       </div>
     </div>
 
     <UContainer class="py-14 lg:py-20">
       <section aria-labelledby="home-why" data-home-section="why">
-        <p class="label-text font-medium text-primary">Why use it</p>
         <h2 id="home-why" class="home-title">Six reasons to switch</h2>
         <HomeFeatures class="mt-8" />
       </section>
 
       <section class="mt-20 lg:mt-28" aria-labelledby="home-built-in" data-home-section="built-in">
-        <p class="label-text font-medium text-primary">Without a plugin</p>
         <h2 id="home-built-in" class="home-title">What the library has built in</h2>
         <HomeBuiltIn class="mt-8" />
       </section>
@@ -68,7 +69,6 @@ const turn = (degrees: number, duration: number) => map.value?.turn(degrees, dur
       <div class="contours contours-rising" aria-hidden="true" />
       <UContainer class="relative py-14 lg:py-20">
         <section aria-labelledby="home-styles" data-home-section="styles">
-          <p class="label-text font-medium text-primary">Styles</p>
           <h2 id="home-styles" class="home-title">Styles that carry their fonts, icons and shields</h2>
           <HomeStyles class="mt-8" />
         </section>
@@ -77,7 +77,6 @@ const turn = (degrees: number, duration: number) => map.value?.turn(degrees, dur
 
     <UContainer class="py-14 lg:py-20">
       <section aria-labelledby="home-limits" data-home-section="limits">
-        <p class="label-text font-medium text-primary">Before you switch</p>
         <h2 id="home-limits" class="home-title">What it does not do</h2>
         <HomeLimits class="mt-8" />
       </section>
@@ -93,7 +92,7 @@ const turn = (degrees: number, duration: number) => map.value?.turn(degrees, dur
 </template>
 
 <style>
-.home-title { margin-top: 0.75rem; max-width: 46rem; font-size: 2.25rem; line-height: 1.1; color: var(--ui-text-highlighted); }
+.home-title { max-width: 46rem; font-size: 2.25rem; line-height: 1.1; color: var(--ui-text-highlighted); }
 @media (min-width: 40rem) { .home-title { font-size: 2.75rem; } }
 
 /* The stage: the title, the map and the panel. */

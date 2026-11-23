@@ -7,7 +7,7 @@ const items = [
     {icon: 'i-lucide-waves', title: 'Contour lines', to: '/recipes/terrain', text: 'A source of the type <code>contour</code> makes contour lines from the elevation tiles in the browser.'},
     {icon: 'i-lucide-mountain-snow', title: 'Terrain and elevation queries', to: '/guide/terrain', text: '3D terrain, hillshade and <code>queryElevation</code> read the same elevation source.'},
     {icon: 'i-lucide-package', title: 'PMTiles', to: '/recipes/pmtiles', text: 'A source URL that starts with <code>pmtiles://</code> reads a PMTiles file. The page needs no plugin.'},
-    {icon: 'i-lucide-sun-moon', title: 'Colour scheme', to: '/guide/color-scheme', text: 'With <code>colorScheme: \'auto\'</code>, the map, the controls and the popups follow the setting of the system.'},
+    {icon: 'i-lucide-sun-moon', title: 'Color scheme', to: '/guide/color-scheme', text: 'With <code>colorScheme: \'auto\'</code>, the map, the controls and the popups follow the setting of the system.'},
     {icon: 'i-lucide-layers', title: 'A control for styles', to: '/reference/controls#styles', text: 'The control <code>styles()</code> opens a list of styles with a picture of each, and sets the chosen style.'},
     {icon: 'i-lucide-languages', title: 'Text in every script', to: '/reference/maplibre-differences', text: 'The fonts of the browser draw the characters that the glyph files of a style do not have, and the text that a browser must shape, such as Arabic.'},
     {icon: 'i-lucide-search', title: 'Queries of the data', to: '/recipes/query', text: '<code>querySource</code> reads the tile data of a source and returns a promise. It needs no style layer.'},
