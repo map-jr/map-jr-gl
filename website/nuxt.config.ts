@@ -3,6 +3,7 @@ import {resolve} from 'node:path';
 import {formatFences, liveExamples, transformPage, repositoryUrl} from './build/markdown';
 import {libraryFolder} from './build/library';
 import {navFile, readNav, routeOf, sourceDirOf} from './build/nav';
+import {writeStylePages} from './build/styles';
 import {variantHeadScript} from './build/variants';
 
 const nav = readNav();
@@ -36,6 +37,8 @@ export default defineNuxtConfig({
             version: library.version as string,
             maplibre: {version: status.maplibre as string, bytes: maplibreBytes},
             sections: nav,
+            // The styles of the switch of /styles (build/styles.ts).
+            styles: nav.some(section => section.generated) ? writeStylePages() : [],
         },
     },
     // Each file of dist/ is a chunk of its own with "map-jr-gl" in its name, so that the home page can count the files that

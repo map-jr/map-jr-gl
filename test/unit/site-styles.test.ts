@@ -2,7 +2,7 @@
 // map-jr/map-jr-styles, map-jr/maputnik and map-jr/maplibre-style-spec. The fixtures have the shape of those files.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {absoluteLinks, attributionText, safeMarkdown, editingPage, headingOf, indexPage, sectionOf, specAdditions, specPage, stylePage, styleRows} from '../../website/build/styles.ts';
+import {absoluteLinks, safeMarkdown, editingPage, headingOf, indexPage, attributionParts, sectionOf, specAdditions, specPage, styleChoice, styleRows} from '../../website/build/styles.ts';
 
 const readme = `# map-jr-styles
 
@@ -60,39 +60,47 @@ test('the rows of the table of the styles, with 〃 as the text of the row above
     assert.equal(rows[2]!.text, 'The styles of OpenFreeMap.');
 });
 
-test('/styles links each style to its page and leaves out the release', () => {
+test('/styles has one map with the switch, links each style to its view on the map, and leaves out the release', () => {
     const page = indexPage(readme, styleRows(readme));
-    assert.match(page, /\| \[Elevation\]\(\/styles\/elevation\) \| A terrain map\. \|/);
+    assert.equal(page.match(/^::style-switch$/gm)?.length, 1);
+    assert.match(page, /\| \[Elevation\]\(\/styles\?style=elevation\) \| A terrain map\. \|/);
     assert.ok(page.indexOf('### From OpenFreeMap') > page.indexOf('[Elevation]'), 'the styles of OpenFreeMap come after the own styles');
-    assert.match(page, /The styles of OpenFreeMap\. Their pages: \[Bright\]\(\/styles\/openfreemap-bright\), \[Dark\]\(\/styles\/openfreemap-dark\)\./);
+    assert.match(page, /\[Bright\]\(\/styles\?style=openfreemap-bright\), \[Dark\]\(\/styles\?style=openfreemap-dark\)\./);
+    assert.doesNotMatch(page, /\]\(\/styles\/(?!editing|spec)/);
     assert.doesNotMatch(page, /\| OpenFreeMap Bright \|/);
     assert.match(page, /blob\/main\/CHANGELOG\.md/);
+    assert.match(page, /The licence is MIT\./);
     assert.doesNotMatch(page, /maintainers/);
     assert.match(page, /^editUrl: /m);
 });
 
 const stateRows = [['`color-scheme`', '`light`, `dark`', 'The branch.'], ['`relief`', '`true`, `false`', 'The hillshade.']];
 
-test('a style page has its URLs, its global state, its sources and a map in light and dark', () => {
-    const style = {state: {'color-scheme': {default: 'light'}}, sources: {
+test('a style of the switch has its URLs, its text, its global state and its sources', () => {
+    const [own, copy] = styleRows(readme);
+    const choice = styleChoice(own!, {state: {'color-scheme': {default: 'light'}}, sources: {
         openmaptiles: {type: 'vector', url: 'https://tiles.openfreemap.org/planet'},
-        terrarium: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], attribution: '© Mapterhorn'},
-    }};
-    const page = stylePage(styleRows(readme)[0]!, style, readme, stateRows);
-    assert.match(page, /::style-preview\{style-url="https:\/\/styles\.map-jr\.org\/1\/elevation\.json"\}/);
-    assert.match(page, /`https:\/\/styles\.map-jr\.org\/1\/maplibre\/elevation\.json` \(5\.16\.0 or later\)/);
-    assert.match(page, /`color-scheme`/);
-    assert.doesNotMatch(page, /`relief`/);
-    assert.match(page, /\| `openmaptiles` \| vector \| `https:\/\/tiles\.openfreemap\.org\/planet` \| From its TileJSON \|/);
-    assert.match(page, /© Mapterhorn/);
-    assert.match(page, /The licence is MIT\./);
+        terrarium: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], attribution: '<a href="https://mapterhorn.com/attribution">&copy; Mapterhorn</a>'},
+    }}, stateRows);
+    assert.equal(choice.url, 'https://styles.map-jr.org/1/elevation.json');
+    assert.deepEqual(choice.maplibre, {url: 'https://styles.map-jr.org/1/maplibre/elevation.json', own: true});
+    assert.equal(choice.text, 'A terrain map.');
+    assert.equal(choice.schemes, true);
+    assert.deepEqual(choice.state, [{property: 'color-scheme', values: 'light, dark', effect: 'The branch.'}]);
+    assert.deepEqual(choice.sources, [
+        {id: 'openmaptiles', type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: 'tilejson'},
+        {id: 'terrarium', type: 'raster-dem', url: 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp', attribution: [{text: '© Mapterhorn', href: 'https://mapterhorn.com/attribution'}]},
+    ]);
+    const other = styleChoice(copy!, {}, stateRows);
+    assert.deepEqual(other.maplibre, {url: 'https://tiles.openfreemap.org/styles/bright', own: false});
+    assert.equal(other.schemes, false);
+    assert.deepEqual(other.state, []);
 });
 
-test('a style without color-scheme shows one map and says why', () => {
-    const page = stylePage(styleRows(readme)[1]!, {sources: {}}, readme, stateRows);
-    assert.match(page, /:single="true"/);
-    assert.match(page, /The style reads no global state\./);
-    assert.match(page, /The style of OpenFreeMap: `https:\/\/tiles\.openfreemap\.org\/styles\/bright`/);
+test('an attribution keeps its https links and drops other HTML', () => {
+    const parts = attributionParts('<a href="javascript:alert(1)">x</a> <img src=x onerror=alert(1)> <script>alert(1)</script> <a href="https://osm.org">OSM</a>');
+    assert.ok(parts.every(part => !/[<>]/.test(part.text) && (!part.href || part.href.startsWith('https://'))), JSON.stringify(parts));
+    assert.deepEqual(parts.at(-1), {text: 'OSM', href: 'https://osm.org'});
 });
 
 test('/styles/editing has the note of the fork of Maputnik without the quote marks', () => {
@@ -123,13 +131,4 @@ test('raw HTML and component blocks of another repository show as text, and code
     assert.match(hostile, /^<div><\/div>$/m);
     const page = indexPage(safeMarkdown(readme.replace('Map styles for map-jr-gl.', 'Map styles <iframe src="https://evil.example"></iframe>.')), styleRows(readme));
     assert.doesNotMatch(page, /<iframe/);
-});
-
-test('an attribution keeps its https links as markdown links and drops other HTML', () => {
-    assert.equal(attributionText('<a href="https://mapterhorn.com/attribution">&copy; Mapterhorn</a>'), '[© Mapterhorn](https://mapterhorn.com/attribution)');
-    const hostile = attributionText('<a href="javascript:alert(1)">x</a> <img src=x onerror=alert(1)> <script>alert(1)</script>| [y](javascript:z)');
-    assert.doesNotMatch(hostile, /<|javascript:alert|(?<!\\)\]\(javascript/);
-    assert.match(hostile, /\\\|/);
-    const page = stylePage(styleRows(readme)[0]!, {sources: {a: {type: 'vector', url: 'https://t.org', attribution: '<img src=x onerror=alert(1)>Bad'}}}, readme, stateRows);
-    assert.doesNotMatch(page, /<img/);
 });

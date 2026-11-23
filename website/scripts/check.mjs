@@ -7,7 +7,7 @@
 //                  and of the code of /reference/server, each 1440 and 390 wide.
 //   --browsers     the browsers of Playwright for the checks of the editor and of /play, separated by commas
 //                  (chromium, firefox, webkit). The default is chromium.
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import * as playwright from 'playwright';
 import {serve} from './serve.mjs';
 import {chromiumOptions} from '../../test/launch.mjs';
@@ -1052,25 +1052,71 @@ try {
         await close();
     }
 
-    // The section /styles, written from the other repositories at build (build/styles.ts, #1129).
+    // The section /styles, written from the other repositories at build (build/styles.ts, #1129). /styles is one map
+    // with a switch of the style and of the colour scheme, and the address keeps the choice (#1523).
     {
         const {page, close} = await open('/styles');
-        const links = await page.locator('main a[href^="/styles/"]').evaluateAll(list => list.map(link => link.getAttribute('href')));
-        check('/styles links the page of each style, /styles/editing and /styles/spec', ['/styles/elevation', '/styles/openfreemap-liberty', '/styles/editing', '/styles/spec'].every(href => links.includes(href)), links.join(' '));
+        const links = await page.locator('main a[href^="/styles"]').evaluateAll(list => list.map(link => link.getAttribute('href')));
+        check('/styles links /styles/editing, /styles/spec and each style on the map', ['/styles?style=elevation', '/styles?style=openfreemap-liberty', '/styles/editing', '/styles/spec'].every(href => links.includes(href)), links.join(' '));
+        check('/styles links no page of a style', !links.some(href => /^\/styles\/(?!editing$|spec$)/.test(href)), links.join(' '));
         for (const path of ['/styles/editing', '/styles/spec']) {
             await page.goto(base + path);
             check(`${path} has a heading and text`, await page.locator('h1').count() === 1 && (await page.locator('main').innerText()).length > 400);
         }
         await close();
-        const style = await open('/styles/elevation');
-        const schemes = await style.page.locator('[data-color-scheme]').evaluateAll(list => list.map(map => map.dataset.colorScheme));
-        check('/styles/elevation shows a map in light and a map in dark', schemes.join(' ') === 'light dark', schemes.join(' '));
-        if (withMap) {
-            const idle = await style.page.locator('[data-color-scheme][data-map-state="idle"]').nth(1).waitFor({timeout: 90000}).then(() => true, () => false);
-            check('/styles/elevation: both maps reach idle', idle);
-            check('/styles/elevation: no failed request and no error', style.problems.length === 0, style.problems.join(' | '));
+        check('the build writes no page for a style', !existsSync(new URL('../.output/public/styles/elevation', import.meta.url)));
+        const gone = (await fetch(base + '/styles/elevation', {redirect: 'manual'})).status;
+        check('/styles/elevation answers 404 (no page and no redirect for a style)', gone === 404, String(gone));
+
+        for (const [width, height] of [[1440, 900], [390, 844]]) {
+            const at = `/styles at ${width} px`;
+            const styles = await open('/styles', {width, height});
+            const {page} = styles;
+            await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {origin: base});
+            const maps = await page.locator('[data-style-switch] [data-map-state]').count();
+            check(`${at}: one map`, maps === 1, String(maps));
+            const map = page.locator('[data-style-switch] [data-map-state]');
+            // A style that reads `color-scheme`: the scheme buttons switch it and the address keeps it.
+            // Elevation is the first style, which /styles shows without a query.
+            await page.locator('[data-scheme-button="dark"]').click();
+            await page.waitForURL(/style=elevation&scheme=dark/, {waitUntil: 'commit'});
+            check(`${at}: the buttons choose elevation in dark`, await map.getAttribute('data-style') === 'elevation' && await map.getAttribute('data-color-scheme') === 'dark',
+                `${await map.getAttribute('data-style')} ${await map.getAttribute('data-color-scheme')}`);
+            check(`${at}: the field shows the URL of the chosen style`, await page.locator('[data-style-url] input, input[data-style-url]').first().inputValue() === 'https://styles.map-jr.org/1/elevation.json');
+            await page.locator('[data-copy-url]').click();
+            const copied = await page.evaluate(() => navigator.clipboard.readText());
+            check(`${at}: the copy button copies the URL of the chosen style`, copied === 'https://styles.map-jr.org/1/elevation.json', copied);
+            await page.locator('[data-library-button="maplibre"]').click();
+            const maplibre = await page.locator('[data-style-url] input, input[data-style-url]').first().inputValue();
+            await page.locator('[data-copy-url]').click();
+            const copiedMaplibre = await page.evaluate(() => navigator.clipboard.readText());
+            check(`${at}: the switch shows and copies the URL for MapLibre GL JS`, maplibre === 'https://styles.map-jr.org/1/maplibre/elevation.json' && copiedMaplibre === maplibre, `${maplibre} ${copiedMaplibre}`);
+            await page.locator('[data-library-button="map-jr"]').click();
+            const details = await page.locator('[data-style-details]').innerText();
+            check(`${at}: the details name the global state and the sources of the style`, /color-scheme/.test(details) && /Attribution/.test(details), details.slice(0, 200));
+            // A style that does not read `color-scheme` has its scheme buttons off.
+            await page.locator('[data-style-button="openfreemap-liberty"]').click();
+            await page.waitForURL(/style=openfreemap-liberty/, {waitUntil: 'commit'});
+            check(`${at}: the scheme buttons are off for openfreemap-liberty`, await page.locator('[data-scheme-button="dark"]').isDisabled());
+            const wide = await overflow(page);
+            check(`${at}: no horizontal scroll`, wide <= 0, String(wide));
+            if (withMap) {
+                const idle = await page.locator('[data-style-switch] [data-map-state="idle"][data-style="openfreemap-liberty"]').waitFor({timeout: 90000}).then(() => true, () => false);
+                check(`${at}: the map of the chosen style reaches idle`, idle);
+                check(`${at}: no failed request and no error`, styles.problems.length === 0, styles.problems.join(' | '));
+            }
+            await styles.close();
         }
-        await style.close();
+
+        // A link opens the view that it names.
+        for (const [path, style, scheme] of [['/styles?style=elevation&scheme=dark', 'elevation', 'dark']]) {
+            const {page, close} = await open(path);
+            const map = page.locator('[data-style-switch] [data-map-state]');
+            await page.waitForFunction(name => document.querySelector('[data-style-switch] [data-map-state]')?.getAttribute('data-style') === name, style, {timeout: 10000}).catch(() => {});
+            const shown = `${new URL(page.url()).pathname}${new URL(page.url()).search} ${await map.getAttribute('data-style')} ${await map.getAttribute('data-color-scheme')}`;
+            check(`${path} opens /styles with ${style}${scheme ? ' in ' + scheme : ''}`, new URL(page.url()).pathname === '/styles' && await map.getAttribute('data-style') === style && (!scheme || await map.getAttribute('data-color-scheme') === scheme), shown);
+            await close();
+        }
     }
 
     if (screenshots) {
