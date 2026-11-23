@@ -1,4 +1,4 @@
-# Change the map from the state of your application
+# Update the map from app state
 
 This example adds and removes markers with a button, tilts the camera with another button, and shows the zoom and the
 style layer under the pointer. The map follows a description that the application changes.

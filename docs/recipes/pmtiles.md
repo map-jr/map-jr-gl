@@ -1,4 +1,4 @@
-# Show vector tiles from a PMTiles file
+# Show a PMTiles file
 
 This example draws the borders of countries and of states and provinces from one PMTiles file on a file host, over a base
 map, and lists the names of the areas at a click.

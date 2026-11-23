@@ -74,6 +74,12 @@ try {
         check('docs page: the title is the first heading of the file', await page.locator('h1').first().textContent() === 'Vue', await page.locator('h1').first().textContent());
         check('docs page: one h1', await page.locator('h1').count() === 1);
         check('docs page: the navigation has the section "Reference"', await page.locator('aside').getByText('Reference').count() > 0);
+        // The title of each recipe fits the navigation at 1440 px without a cut (#1530).
+        const cutRecipes = await page.locator('aside a[href^="/recipes/"]').evaluateAll(links => links
+            .filter(link => [link, ...link.querySelectorAll('*')].some(element => element.scrollWidth > element.clientWidth + 1))
+            .map(link => link.textContent.trim()));
+        const recipeCount = await page.locator('aside a[href^="/recipes/"]').count();
+        check('docs page: the navigation shows each recipe title without a cut', recipeCount > 0 && cutRecipes.length === 0, cutRecipes.join(', ') || `${recipeCount} recipes`);
         check('docs page: the contents list names a heading', await page.getByRole('link', {name: 'MapJr', exact: true}).count() > 0);
         const edit = await page.getByRole('link', {name: 'Edit this page'}).first().getAttribute('href');
         check('docs page: "Edit this page" names the file', edit === 'https://github.com/map-jr/map-jr-gl/edit/main/docs/reference/vue.md', edit);
