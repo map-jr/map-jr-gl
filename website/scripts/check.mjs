@@ -511,16 +511,40 @@ try {
         const textOf = editor => editor.evaluate(content => [...content.querySelectorAll('.cm-line')].map(line => line.textContent).join('\n'));
 
         // The editor takes the height of the code that it replaces, and "Close the editor" gives the code back at the same
-        // height (#1538). The line and the buttons under the map are not measured here (#1539).
+        // height (#1538). The line under the map is one line at 1440, and the line and its buttons stay inside the page at
+        // 390, while the reader reads and while the reader edits (#1539).
         for (const width of engine === 'chromium' ? [390, 1440] : []) {
             const sized = await own.newContext({viewport: {width, height: width === 390 ? 844 : 900}});
             const small = await sized.newPage();
             await small.goto(base + '/guide/globe', {waitUntil: 'networkidle'});
             const height = selector => small.locator(selector).first().evaluate(element => Math.round(element.getBoundingClientRect().height));
+            // The number of lines of the line under the map, whether its buttons share its row, and how far the line or
+            // a button reaches past the page.
+            const footer = () => small.locator('.live-example-line').first().evaluate(line => {
+                const lines = Math.round(line.getBoundingClientRect().height / parseFloat(getComputedStyle(line).lineHeight));
+                const boxes = [...line.parentElement.children].map(element => element.getBoundingClientRect());
+                const row = boxes.every(box => box.top < boxes[0].bottom && box.bottom > boxes[0].top);
+                const right = Math.max(...boxes.map(box => box.right));
+                return {lines, row, past: Math.round(right - document.documentElement.clientWidth), text: line.textContent.trim()};
+            });
+            const fits = ({lines, row, past}) => past <= 0 && (width !== 1440 || lines === 1 && row);
+            // A variant that the frame cannot run gives the longest line.
+            const unrun = small.locator('.live-example [role="tablist"]').first().getByRole('tab', {name: 'Vue', exact: true});
+            await unrun.click();
+            const other = await footer();
+            check(`${engine}: recipe: at ${width} the line under the map fits for a variant that does not run`, fits(other), JSON.stringify(other));
+            if (screenshots) { const file = `${screenshots}-live-example-vue-${width}.png`; await small.locator('.live-example').first().screenshot({path: file}); console.log('screenshot', file); }
+            await small.locator('.live-example [role="tablist"]').first().getByRole('tab').first().click();
             const code = await height('.live-example > div:last-child');
+            const reading = await footer();
+            check(`${engine}: recipe: at ${width} the line under the map fits while reading`, fits(reading), JSON.stringify(reading));
+            if (screenshots) { const file = `${screenshots}-live-example-reading-${width}.png`; await small.locator('.live-example').first().screenshot({path: file}); console.log('screenshot', file); }
             await small.getByRole('button', {name: 'Edit the Main API code'}).click();
             await small.locator('.live-example .cm-content').waitFor();
             const editing = await height('.live-example .code-editor');
+            const edited = await footer();
+            check(`${engine}: recipe: at ${width} the line under the map fits while editing`, fits(edited), JSON.stringify(edited));
+            if (screenshots) { const file = `${screenshots}-live-example-editing-${width}.png`; await small.locator('.live-example').first().screenshot({path: file}); console.log('screenshot', file); }
             await small.getByRole('button', {name: 'Close the editor'}).click();
             const closed = await height('.live-example > div:last-child');
             check(`${engine}: recipe: at ${width} the editor has the height of the code`, editing === code && closed === code, `code ${code}, editor ${editing}, after closing ${closed}`);
