@@ -33,9 +33,12 @@ const thresholds = {
 
 // Additions to the style, which has the elevation source "terrarium" and relief
 // shading: contour lines and stronger 3D terrain. `null` makes the map flat,
-// although the style has a terrain.
+// although the style has a terrain. The style shows the heights of peaks in the
+// unit of its state "elevation-unit", so `globalState` sets the unit of the
+// contour lines there too.
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
+  globalState: {'elevation-unit': unit},
   sources: {
     // For each zoom level, `thresholds` sets the interval between lines and
     // between major lines, in feet or metres.
@@ -128,11 +131,28 @@ readout.textContent = 'Click the map to read the elevation';
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map gives the elevation at a click.
+// 500px"></div>. Below the map, it adds a line of text with the elevation at a
+// click and two buttons.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation.json';
 const MATTERHORN = [7.6586, 45.9763];
+const thresholds = {
+  ft: {
+    9: [500, 1000],
+    11: [200, 1000],
+    12: [100, 500],
+    14: [50, 200],
+    15: [20, 100],
+  },
+  m: {
+    9: [200, 1000],
+    11: [100, 500],
+    12: [50, 200],
+    14: [20, 100],
+    15: [10, 50],
+  },
+};
 
 const map = new Map({
   container: 'map',
@@ -141,42 +161,101 @@ const map = new Map({
   zoom: 12.4,
   pitch: 60,
   bearing: 25,
+  attributionControl: {compact: true},
 });
 const readout = document.createElement('p');
-map.getContainer().after(readout);
+const units = Object.assign(document.createElement('button'), {
+  textContent: 'Contours in metres',
+});
+const flat = Object.assign(document.createElement('button'), {
+  textContent: 'Flat map',
+});
+map.getContainer().after(readout, units, flat);
+
+let unit = 'ft',
+  terrain = true;
+// Adds the contour lines and their labels in the current unit. A contour source
+// is an addition of this library: it makes lines from the elevation tiles. For
+// each zoom level, `thresholds` sets the interval between lines and between
+// major lines, in feet or metres.
+function addContours() {
+  map.addSource('contours', {
+    type: 'contour',
+    source: 'terrarium',
+    multiplier: unit === 'ft' ? 3.28084 : 1,
+    thresholds: thresholds[unit],
+  });
+  map.addLayer(
+    {
+      id: 'contour-lines',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      paint: {
+        'line-color': 'hsla(25, 30%, 35%, 0.55)',
+        'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5],
+      },
+    },
+    'water',
+  );
+  map.addLayer({
+    id: 'contour-labels',
+    type: 'symbol',
+    source: 'contours',
+    'source-layer': 'contours',
+    filter: ['>', ['get', 'level'], 0],
+    layout: {
+      'symbol-placement': 'line',
+      'text-size': 10,
+      'text-font': ['Noto Sans Bold'],
+      'text-field': [
+        'concat',
+        ['number-format', ['get', 'ele'], {}],
+        unit === 'ft' ? "'" : ' m',
+      ],
+    },
+    paint: {
+      'text-color': '#6b5a48',
+      'text-halo-color': '#fff',
+      'text-halo-width': 1.5,
+    },
+  });
+}
 
 map.on('load', () => {
   // The style has the elevation source "terrarium", relief shading and a
   // terrain with exaggeration 0.5.
   map.setTerrain({source: 'terrarium', exaggeration: 1.5});
-
-  // A contour source is an addition of this library: lines from the elevation
-  // tiles.
-  map.addSource('contours', {
-    type: 'contour',
-    source: 'terrarium',
-    multiplier: 3.28084, // metres to feet
-    thresholds: {11: [200, 1000], 12: [100, 500], 14: [50, 200]},
-  });
-  map.addLayer(
-    {
-      id: 'lines',
-      type: 'line',
-      source: 'contours',
-      'source-layer': 'contours',
-      paint: {'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5]},
-    },
-    'water',
-  );
+  addContours();
 });
 
 map.on('click', async e => {
   const metres = await map.queryElevation(e.lngLat);
+  const feet = metres * 3.28084;
   readout.textContent =
     metres === null
       ? 'No elevation data here'
-      : `${metres.toFixed(0)} m above sea level`;
+      : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
 });
+
+units.onclick = () => {
+  unit = unit === 'ft' ? 'm' : 'ft';
+  units.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+  // The style shows the heights of peaks in the unit of its state
+  // "elevation-unit".
+  map.setGlobalStateProperty('elevation-unit', unit);
+  // The options of a source do not change after it is added, so the source and
+  // its layers are added again.
+  map.removeLayer('contour-labels');
+  map.removeLayer('contour-lines');
+  map.removeSource('contours');
+  addContours();
+};
+flat.onclick = () => {
+  terrain = !terrain;
+  flat.textContent = terrain ? 'Flat map' : '3D terrain';
+  map.setTerrain(terrain ? {source: 'terrarium', exaggeration: 1.5} : null);
+};
 readout.textContent = 'Click the map to read the elevation';
 ```
 
@@ -209,9 +288,12 @@ const thresholds = {
 
 // Additions to the style, which has the elevation source "terrarium" and relief
 // shading: contour lines and stronger 3D terrain. `null` makes the map flat,
-// although the style has a terrain.
+// although the style has a terrain. The style shows the heights of peaks in the
+// unit of its state "elevation-unit", so `globalState` sets the unit of the
+// contour lines there too.
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
+  globalState: {'elevation-unit': unit},
   sources: {
     // For each zoom level, `thresholds` sets the interval between lines and
     // between major lines, in feet or metres.
@@ -324,9 +406,12 @@ const thresholds = {
 
 // Additions to the style, which has the elevation source "terrarium" and relief
 // shading: contour lines and stronger 3D terrain. `null` makes the map flat,
-// although the style has a terrain.
+// although the style has a terrain. The style shows the heights of peaks in the
+// unit of its state "elevation-unit", so `globalState` sets the unit of the
+// contour lines there too.
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
+  globalState: {'elevation-unit': unit},
   sources: {
     // For each zoom level, `thresholds` sets the interval between lines and
     // between major lines, in feet or metres.
@@ -435,9 +520,12 @@ export default function Terrain() {
 
   // Additions to the style, which has the elevation source "terrarium" and
   // relief shading: contour lines and stronger 3D terrain. `null` makes the map
-  // flat, although the style has a terrain.
+  // flat, although the style has a terrain. The style shows the heights of
+  // peaks in the unit of its state "elevation-unit", so `globalState` sets the
+  // unit of the contour lines there too.
   const elevation = (unit, terrain) => ({
     terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
+    globalState: {'elevation-unit': unit},
     sources: {
       // For each zoom level, `thresholds` sets the interval between lines and
       // between major lines, in feet or metres.
@@ -581,11 +669,18 @@ export default function Terrain() {
   // shading: contour lines and
   // stronger 3D terrain. `null`
   // makes the map flat, although
-  // the style has a terrain.
+  // the style has a terrain. The
+  // style shows the heights of
+  // peaks in the unit of its
+  // state "elevation-unit", so
+  // `globalState` sets the unit
+  // of the contour lines there
+  // too.
   let unit = 'ft',
     terrain = true;
   const showElevation = () => {
     map.terrain = terrain ? {source: 'terrarium', exaggeration: 1.5} : null;
+    map.globalState = {'elevation-unit': unit};
     map.sources = {
       // For each zoom level,
       // `thresholds` sets the
@@ -670,12 +765,18 @@ export default function Terrain() {
   major lines. The intervals are in metres multiplied by `multiplier`, so in feet with `3.28084`.
 - The `line` layer draws the lines below the layer `water` of the style (`before`), and the `symbol` layer labels the
   major lines with the property `ele`.
+- The style shows the heights of peaks in feet or metres, as its state `elevation-unit` says (`'ft'` by default).
+  [`globalState`](../reference/description.md#globalstate) sets it to the unit of the contour lines, so that the labels
+  of the peaks change with the button too.
 - [`queryElevation`](../reference/map.md#queryelevation) resolves to the height of the ground in metres. It resolves to
   `null` when the elevation tile has no data, and it rejects when the style has no `raster-dem` source.
 - Each button calls [`update`](../reference/map.md#update) with a new description from `describe`. A change of `terrain`
   or of a source in `sources` [loads the style again](../reference/description.md#style).
 
-The compat example sets the terrain with `setTerrain` and adds the contour source and one `line` layer on `load`.
+The compat example sets the terrain with `setTerrain` and adds the contour source and its two layers on `load`. Its
+unit button sets the state with `setGlobalStateProperty`, and it removes the source and its layers and adds them again,
+because the options of a source do not change after it is added. Its terrain button calls `setTerrain`, and `null`
+shows a flat map.
 
 ## Variations
 
