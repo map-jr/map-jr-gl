@@ -121,11 +121,22 @@ test('/styles/spec lists the docs of the reference that name Map Jr. GL', () => 
     assert.throws(() => specPage({}), /names Map Jr\. GL/);
 });
 
+test('an inline component, and HTML after a fence that holds the other marker, show as text (#1551)', () => {
+    const inline = safeMarkdown('A :badge[x]{color=red} and :icon{name=x} here, and `:code[x]` stays.\n');
+    assert.match(inline, /A \\:badge\[x\]\{color=red\} and \\:icon\{name=x\} here, and `:code\[x\]` stays\./);
+    assert.match(safeMarkdown('See https://example.com.\n'), /https:\/\/example\.com/);
+    for (const [open, inner] of [['~~~', '```'], ['```', '~~~'], ['````', '```']]) {
+        const out = safeMarkdown(`${open}md\n${inner}\n<b>in code</b>\n${open}\n\nAfter <img src=x onerror=alert(1)> :badge[x]\n`);
+        assert.match(out, /^<b>in code<\/b>$/m, open);
+        assert.match(out, /^After &lt;img src=x onerror=alert\(1\)&gt; \\:badge\[x\]$/m, open);
+    }
+});
+
 test('raw HTML and component blocks of another repository show as text, and code stays', () => {
     const hostile = safeMarkdown('# x\n\nA <script>alert(1)</script> & <img src=x onerror=alert(1)>.\n::style-preview{style-url="https://evil.example"}\n::\n> a quote with <b>\n\n`<code>` and\n\n```html\n<div></div>\n```\n');
     assert.doesNotMatch(hostile.replace(/`[^`]*`|```[\s\S]*?```/g, ''), /<|^::/m);
     assert.match(hostile, /A &lt;script&gt;alert\(1\)&lt;\/script&gt; &amp; &lt;img/);
-    assert.match(hostile, /^\\::style-preview/m);
+    assert.match(hostile, /^\\:\\:style-preview/m);
     assert.match(hostile, /^> a quote with &lt;b&gt;$/m);
     assert.match(hostile, /`<code>`/);
     assert.match(hostile, /^<div><\/div>$/m);

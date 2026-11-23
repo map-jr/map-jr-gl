@@ -75,17 +75,24 @@ export function sectionOf(markdown: string, heading: string, file = 'README.md o
 }
 
 // The text of another repository is untrusted input (CLAUDE.md, "Definition of done" 8): outside code, `<`, `>` and `&`
-// become entities, so that raw HTML shows as text, and a line that starts with `::` (a component block of Nuxt
-// Content) starts with `\:`. The marks of a quote at the start of a line stay. Markdown links, tables and code stay as they are.
+// become entities, so that raw HTML shows as text, and a `:` before a letter, `:`, `[` or `{` becomes `\:`, so that no
+// component of Nuxt Content (`::block`, `:inline[x]{a=b}`) starts there. The marks of a quote at the start of a line
+// stay. Markdown links, tables and code stay as they are. A fence closes as in CommonMark: with the character of its
+// opening fence, at least as many of them, and nothing else on the line, so a ~~~ fence can hold a ``` line.
 export function safeMarkdown(markdown: string): string {
-    let fence = false;
+    let fence: {char: string; length: number} | undefined;
     return markdown.split('\n').map(line => {
-        if (/^\s*```/.test(line)) { fence = !fence; return line; }
-        if (fence) return line;
+        const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (fence) {
+            if (marker && marker[1]![0] === fence.char && marker[1]!.length >= fence.length && !marker[2]!.trim()) fence = undefined;
+            return line;
+        }
+        if (marker && !(marker[1]![0] === '`' && marker[2]!.includes('`'))) { fence = {char: marker[1]![0]!, length: marker[1]!.length}; return line; }
         // The marks of a quote at the start of the line stay.
         const quote = /^(\s*>\s?)*/.exec(line)![0];
-        const text = line.slice(quote.length).split(/(`+[^`]*`+)/).map((part, index) => index % 2 ? part : part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('');
-        return quote + text.replace(/^(\s*):/, '$1\\:');
+        const text = line.slice(quote.length).split(/(`+[^`]*`+)/).map((part, index) => index % 2 ? part
+            : part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/:(?=[A-Za-z:[{])/g, '\\:')).join('');
+        return quote + text;
     }).join('\n');
 }
 
