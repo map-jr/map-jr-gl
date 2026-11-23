@@ -258,9 +258,21 @@ const map = createMap('map', {
 | `style` | `(style: StyleSpecification, entry: StyleEntry) => StyleSpecification \| void` | Changes the style of a picture only. It gets a copy of the style of the entry with absolute URLs, and changes it in place or returns another style. The map keeps the style of the entry. |
 | `ssr` | `boolean` | Applies the overrides of `metadata["map-jr:ssr"]` of each layer to the pictures, before `style`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint` and `layout`. Default `true`. |
 
-For `style`, and for `ssr` unless it is `false`, the control fetches a style that is a URL once more with `fetch`, without the
-`transformRequest` of the map. The map has usually loaded it before, so the browser cache answers. A style of a
-`{light, dark}` entry is the form of the picture.
+For `ssr` and `style`, the control loads a style that is a URL itself, through the request path of the map: the
+protocols of [`addProtocol`](exports.md#addprotocol), the `transformRequest` of the description and its timeout. The
+map has usually loaded the style before, so the browser cache answers. The hidden maps also use the `transformRequest`
+of the description. The picture of a `{light, dark}` entry uses `light` for the button "Light" and `dark` for the
+button "Dark".
+
+When a picture fails, its entry shows the placeholder, the control warns once for that entry, and the next picture
+starts. The warning names the label of the entry and the reason:
+
+- the style URL answers with an HTTP error, or its answer is not a style;
+- the style URL does not answer in 20 seconds;
+- `preview.style` throws, or returns a value that is not a style object with `version`, `sources` and `layers`;
+- the hidden map reports an error before the style has loaded.
+
+A `preview` with `center` and no `zoom`, or `zoom` and no `center`, warns, and the pictures show the view of the map.
 
 In the official styles, the overrides hide most labels, the buildings and most roads at zoom 14, and the dark style
 draws as an almost even dark area. With `ssr: false`, the pictures show the full style.

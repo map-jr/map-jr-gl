@@ -2489,6 +2489,42 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] preview.style and the default preview.ssr of styles() change the style of the pictures only, preview.ssr false draws the full style, and a style of a URL comes to preview.style with absolute URLs`,
             pictureOnly.count === 3 && pictureOnly.colors === 'rb' && pictureOnly.off === 'g' && pictureOnly.seen === 'Hidden:1,Blue:1,URL:true' && pictureOnly.mapColor === '#ff0000' && pictureOnly.entryColor === '#ff0000', JSON.stringify(pictureOnly));
+        // A picture of styles() that fails warns once for its entry, and the later pictures still draw (#1507): preview.style
+        // that throws or returns no style, an HTTP error, and a style URL that never answers. A style of a protocol of
+        // addProtocol loads through the request path of the map. A preview with center and no zoom warns.
+        const pictureFaults = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); warn.apply(console, a); };
+            const red = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            t.lib.addProtocol('rev1507', async () => ({data: red}));
+            t.lib.addProtocol('hang1507', () => new Promise(() => {}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const entries = [{label: 'Throws', style: red}, {label: 'Number', style: red}, {label: 'Missing', style: '/no-such-style-1507.json'}, {label: 'Hangs', style: 'hang1507://style'},
+                {label: 'Protocol', style: 'rev1507://style'}, {label: 'Last', style: red}];
+            const preview = {style: (s, e) => { if (e.label === 'Throws') throw new Error('boom'); if (e.label === 'Number') return 42; }};
+            const start = Date.now();
+            const host = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries, preview})]});
+            const until = async (f, ms = 60000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); return f(); };
+            const pics = () => [...el.querySelectorAll('.map-jr-styles-pic')].map(f => f.querySelector('img') ? 'img' : '-').join(',');
+            await until(() => pics() === '-,-,-,-,img,img');
+            const out = {pics: pics(), seconds: Math.round((Date.now() - start) / 1000)};
+            el.querySelector('.map-jr-ctrl-styles').click(); // (opening the list does not draw the failed pictures again or warn again)
+            await new Promise(r => setTimeout(r, 500));
+            host.destroy();
+            const half = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries: [{label: 'A', style: red}], preview: {center: [0, 0]}})]});
+            await until(() => warns.some(w => w.includes('preview has')), 5000);
+            half.destroy();
+            el.remove();
+            console.warn = warn;
+            const mine = warns.filter(w => w.startsWith('[map-jr-gl] styles():'));
+            out.labels = mine.filter(w => w.includes('no picture')).map(w => w.match(/"([^"]+)"/)[1]).join(',');
+            out.text = mine.join(' | ');
+            out.half = mine.some(w => w.includes('preview has "center" without "zoom"'));
+            return out;
+        }, renderer);
+        check(`[${renderer}] a picture of styles() that fails warns once with the label and the reason, later pictures draw, a style of addProtocol has a picture, and a preview with center and no zoom warns`,
+            pictureFaults.pics === '-,-,-,-,img,img' && pictureFaults.labels === 'Throws,Number,Missing,Hangs' && /threw "boom"/.test(pictureFaults.text) && /returned 42/.test(pictureFaults.text)
+            && /HTTP 404/.test(pictureFaults.text) && /did not answer in 20 s/.test(pictureFaults.text) && pictureFaults.half, JSON.stringify(pictureFaults));
         // Removing styles() while a picture is drawn removes the hidden map at once (#1504): here its tiles never answer.
         const removedWhileDrawing = await page.evaluate(async renderer => {
             const t = window.t, {styles} = await import('/dist/controls.js');

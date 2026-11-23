@@ -33,25 +33,39 @@ const CSS = `.map-jr-styles{position:relative}
 @media (forced-colors:active){.map-jr-styles-list{border:1px solid CanvasText}}`;
 /** A URL of the style made absolute against the URL of the style; the braces of a template (`{z}`, `{fontstack}`) stay. */
 const abs = (u: unknown, base: string) => typeof u !== 'string' || /^[a-z][a-z\d+.-]*:/i.test(u) ? u : new URL(u, base).href.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
+/** How long a picture may take, its style included; after that the next picture starts. */
+const WAIT = 20000;
+/** Whether `s` is a style object: `version`, `sources` and `layers`. */
+const isStyle = (s: any) => !!s && typeof s === 'object' && 'version' in s && !!s.sources && typeof s.sources === 'object' && Array.isArray(s.layers);
 /**
- * The style of a picture: the style of the URL, with its URLs made absolute, with the adjustments of
- * `metadata["map-jr:ssr"]` unless `server` is false (#1507): hidden, filter, minzoom, maxzoom, paint and layout, never simplify or minSize, and then `transform` of `preview.style`.
+ * The style of a picture (#1507): the style of the URL, loaded with `get` (the request path of the map: its protocols,
+ * `transformRequest` and timeout) and with its URLs made absolute; with the overrides of `metadata["map-jr:ssr"]` unless
+ * `server` is false (hidden, filter, minzoom, maxzoom, paint and layout, never simplify or minSize); and then `transform`
+ * of `preview.style`. A failure is an error whose message is the reason and what to do.
  */
-async function pictureStyle(given: unknown, server: boolean, transform: ((s: StyleSpecification) => StyleSpecification | void) | undefined): Promise<unknown> {
+async function pictureStyle(given: unknown, server: boolean, transform: ((s: StyleSpecification) => StyleSpecification | void) | undefined, get: typeof fetch): Promise<unknown> {
     if (!server && !transform) return given;
     let s: any = given;
     if (typeof given === 'string') {
-        const base = new URL(given, location.href).href, res = await fetch(base);
-        if (!res.ok) throw new Error(`[map-jr-gl] styles(): the style ${given} answered HTTP ${res.status}.`);
-        s = await res.json();
-        if (!s || !Array.isArray(s.layers)) return given; // the map gives the message
+        const base = new URL(given, location.href).href;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const res = await Promise.race([get(base), new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error(`the style ${given} did not answer in ${WAIT / 1000} s. Check the URL`)), WAIT); })])
+            .catch(e => { throw e instanceof Error && e.message.startsWith('the style') ? e : new Error(`the request for the style ${given} failed (${e?.message ?? e}). Check the URL and that the server allows it`); })
+            .finally(() => clearTimeout(timer));
+        if (!res.ok) throw new Error(`the style ${given} answered HTTP ${res.status}. Check the URL`);
+        s = await res.json().catch(() => undefined);
+        if (!isStyle(s)) throw new Error(`the answer of ${given} is not a style. Give the URL of a style JSON with "version", "sources" and "layers"`);
         s.sprite = Array.isArray(s.sprite) ? s.sprite.map((x: {url: string}) => ({...x, url: abs(x.url, base)})) : abs(s.sprite, base);
         s.glyphs = abs(s.glyphs, base);
-        for (const src of Object.values<any>(s.sources ?? {})) { src.url = abs(src.url, base); if (typeof src.data === 'string') src.data = abs(src.data, base); if (Array.isArray(src.tiles)) src.tiles = src.tiles.map((t: string) => abs(t, base)); }
+        for (const src of Object.values<any>(s.sources)) { src.url = abs(src.url, base); if (typeof src.data === 'string') src.data = abs(src.data, base); if (Array.isArray(src.tiles)) src.tiles = src.tiles.map((t: string) => abs(t, base)); }
         for (const k of Object.keys(s)) if (s[k] === undefined) delete s[k];
     } else s = structuredClone(s);
-    if (server) s.layers = applySSROverrides(s.layers as LayerJSON[]);
-    return transform?.(s) ?? s;
+    if (server && Array.isArray(s?.layers)) s.layers = applySSROverrides(s.layers as LayerJSON[]);
+    if (!transform) return s;
+    let out: unknown;
+    try { out = transform(s) ?? s; } catch (e) { throw new Error(`preview.style threw "${(e as Error)?.message ?? e}". Fix the function, or return the style unchanged`); }
+    if (!isStyle(out)) throw new Error(`preview.style returned ${JSON.stringify(out)?.slice(0, 40)}, which is not a style. Change the style in place and return nothing, or return a style object with "version", "sources" and "layers"`);
+    return out;
 }
 const sheets = new WeakMap<Document, CSSStyleSheet>();
 
@@ -108,6 +122,14 @@ export class StylesControl implements Control {
     private small?: MapInstance;
     private wake = () => {};
     private stops: (() => void)[] = [];
+    /** The entries whose picture failed with a warning: each warns once. */
+    private warned = new Set<StyleEntry>();
+    /** Warns once for the entry that its picture was not drawn, with the reason and what to do. */
+    private fail(entry: StyleEntry, reason: string) {
+        if (this.warned.has(entry)) return;
+        this.warned.add(entry);
+        console.warn(`[map-jr-gl] styles(): no picture for "${entry.label}": ${reason}.`);
+    }
     constructor(private options: StylesOptions, private instance?: () => MapInstance) {}
 
     onAdd(map: Map) {
@@ -125,6 +147,8 @@ export class StylesControl implements Control {
         t.setAttribute('aria-controls', list.id = 'map-jr-styles-' + Math.random().toString(36).slice(2));
         const entries = this.options.entries ?? [];
         if (!instance) { console.warn('[map-jr-gl] styles(): the control works only in the controls of a map of the main API (createMap).'); return el; }
+        const p = this.options.preview;
+        if (p && (p.center === undefined) !== (p.zoom === undefined)) console.warn(`[map-jr-gl] styles(): preview has "${p.center === undefined ? 'zoom' : 'center'}" without "${p.center === undefined ? 'center' : 'zoom'}", so the pictures show the view of the map. Give both "center" and "zoom", or neither.`);
         if (!entries.length) console.warn('[map-jr-gl] styles(): "entries" is empty. Write styles({entries: [{label: "Streets", style: "https://…/style.json"}, …]}).');
         const add = (parent: HTMLElement, entry: StyleEntry, text: string, scheme?: Scheme) => {
             const b = parent.appendChild(document.createElement('button')), i = this.items.length;
@@ -269,20 +293,24 @@ export class StylesControl implements Control {
         let failed = false;
         // An error before the style has loaded (a failed request, an answer that is not a style) ends the picture at
         // once; an error of a tile after that does not.
-        const onError = () => { if (!(this.small as unknown as {_map?: Map} | undefined)?._map?.isStyleLoaded()) { failed = true; this.wake(); } };
-        const base: MapDescription = {style: slots[0].entry.style, initialView: view, interactive: false, attribution: false, colorScheme: instance.state.get().colorScheme, onError};
+        // (The control takes the errors of the hidden map, so it warns itself.)
+        let slot = slots[0];
+        const onError = (e: Error) => { if (!(this.small as unknown as {_map?: Map} | undefined)?._map?.isStyleLoaded()) { failed = true; this.fail(slot.entry, `${e?.message?.replace(/^\[map-jr-gl\] /, '').replace(/\.$/, '') ?? 'the style did not load'}`); this.wake(); } };
+        const get = (instance as unknown as {_map: Map})._map._fetch('Style');
+        const base: MapDescription = {style: slots[0].entry.style, initialView: view, interactive: false, attribution: false, colorScheme: instance.state.get().colorScheme, transformRequest: instance.description.transformRequest, onError};
         try {
             for (let i = 0; i < slots.length && !this.removed; i++) {
                 if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
+                slot = slots[i];
                 // (The picture shows the terrain and the global state that the entry sets, over the global state of the application.)
                 const {style, terrain, globalState} = slots[i].entry, state = {...own.state, ...globalState}, scheme = slots[i].scheme ?? base.colorScheme;
                 const p = this.options.preview, transform = p?.style;
                 let given: unknown;
                 try {
                     given = await pictureStyle(styleFor(style, scheme === 'dark' || scheme === 'auto' && !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches),
-                        p?.ssr ?? true, transform && (s => transform(s, slots[i].entry)));
-                } catch { continue; }
+                        p?.ssr ?? true, transform && (s => transform(s, slots[i].entry)), get);
+                } catch (e) { if (!this.removed) this.fail(slots[i].entry, (e as Error).message); continue; }
                 if (this.removed) break;
                 const spec: MapDescription = {...base, style: given as MapDescription['style'], colorScheme: scheme};
                 if (terrain !== undefined) spec.terrain = terrain;
@@ -292,7 +320,7 @@ export class StylesControl implements Control {
                 this.small?.destroy();
                 const m = this.small = createMap(box, spec);
                 await new Promise<void>(resolve => {
-                    const timer = setTimeout(this.wake = () => { clearTimeout(timer); stop(); resolve(); }, 20000);
+                    const timer = setTimeout(this.wake = () => { clearTimeout(timer); stop(); resolve(); }, WAIT);
                     const stop = m.state.subscribe(s => s.idle, on => { if (on) this.wake(); });
                 });
                 if (this.removed) break;
