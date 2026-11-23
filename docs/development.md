@@ -439,12 +439,22 @@ the tag `v<version>`, and makes the release on GitHub. Nobody pushes a tag or ma
    (`git fetch origin bench-results && git show origin/bench-results:README.md`).
 2. **Choose the version** with the table above, from the pull requests since the last tag
    (`git log v0.3.0..origin/main --oneline`, with the last tag in place of `v0.3.0`).
-3. **Open a pull request for the release** (`docs/release-0.4.0`). It changes `"version"` in `package.json`, adds
+3. **Check the docs site against the changes.** The workflow `site.yml` publishes the pages of `docs/` at
+   `https://map-jr.org/` when a pull request merges, so the pages must describe the version before it is released.
+   For each entry of the new section of [CHANGELOG.md](../CHANGELOG.md), read the pages of `docs/guide/`,
+   `docs/reference/` and `docs/migrate/` that describe its subject, and change each page that still describes the
+   behaviour before the release. A breaking change also needs the step in `docs/migrate/` that a user follows.
+4. **Consider the recipes.** For each new feature, decide whether a user would copy it from a recipe, and add a
+   recipe with its example in `examples/` when one would. For each change of behaviour, read the recipes and the
+   examples that use the changed option or method, and update them. A pull request for these pages names the
+   recipes that it adds or updates, and the new features that it leaves without a recipe, with the reason. Steps 3
+   and 4 go into pull requests of their own, which merge before the release.
+5. **Open a pull request for the release** (`docs/release-0.4.0`). It changes `"version"` in `package.json`, adds
    the section `## 0.4.0 (date)` to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](browser-support.md)
    when the results of the browsers changed. The entry is written for a reader who decides whether to update:
    breaking changes first, then what is new, then what was fixed, each with a link to its pull request. The text of
    the section, without its heading, becomes the text of the release on GitHub.
-4. **Check the package** on that branch:
+6. **Check the package** on that branch:
 
    ```bash
    pnpm build && pnpm test && pnpm test:package && node scripts/release-notes.mjs 0.4.0
@@ -452,8 +462,8 @@ the tag `v<version>`, and makes the release on GitHub. Nobody pushes a tag or ma
 
    `pnpm test:package` packs the tarball and checks it (see [Commands](#commands)). The last command prints the text
    of the release, and it fails when `CHANGELOG.md` has no section for the version.
-5. **Merge** the pull request with squash when `CI` is green. Who may merge it is in [CLAUDE.md](../CLAUDE.md).
-6. **Read the result** of the workflow `Release` for the merge commit. When it fails before `npm publish`, nothing
+7. **Merge** the pull request with squash when `CI` is green. Who may merge it is in [CLAUDE.md](../CLAUDE.md).
+8. **Read the result** of the workflow `Release` for the merge commit. When it fails before `npm publish`, nothing
    was published: fix the cause in a pull request, and the merge of that pull request runs the workflow again (or
    start it by hand from the Actions tab with "Run workflow").
 
@@ -512,7 +522,7 @@ workflow publishes the versions after it.
 
 **The first version (0.2.0), by hand:**
 
-4. Do steps 1 to 6 of [The steps](#the-steps). For step 4, use a clean checkout of the commit that the tag names.
+4. Do steps 1 to 8 of [The steps](#the-steps). For step 6, use a clean checkout of the commit that the tag names.
 5. On your computer, in that checkout, sign in to npm with `npm login`, and then publish:
 
    ```bash
