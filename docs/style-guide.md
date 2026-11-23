@@ -309,8 +309,8 @@ Do not mix the labels of the two tables in one group.
 - A table cell is at most 200 characters (lint). A cell holds a value or one sentence.
 - A number has its own column, so that the reader can compare down the column.
 - A callout is a GitHub alert: a quote whose first line is `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]`. GitHub shows
-  it as an alert, and the docs site shows it as a note, tip or warning block. Choose the kind by what the reader
-  loses when they miss it:
+  it as an alert, and the docs site shows it as a note, tip or warning block. Choose the kind by what the block
+  says:
 
   | Kind | Use it for |
   |---|---|

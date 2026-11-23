@@ -80,7 +80,10 @@ test.
 | Linux | Worker renderer | Worker renderer | Main-thread renderer |
 | Windows | Worker renderer | Worker renderer | Main-thread renderer, and flat terrain, because WebKit has no `OffscreenCanvas` there |
 
-The WebKit of Playwright is not Safari. Safari itself is not checked by the workflow that runs after each change.
+> [!NOTE]
+> The WebKit of Playwright is not Safari.
+
+Safari itself is not checked by the workflow that runs after each change.
 
 ## Browsers that no test covers
 

@@ -150,8 +150,10 @@ map.on('mousemove', async event => {
 
 ### Read the canvas with `toBlob`
 
-`canvasContextAttributes: {preserveDrawingBuffer: true}` has no effect. To read the image of the
-map, call `map.toBlob(type, quality)`. It waits until the map is idle and resolves to a `Blob` of the canvas.
+> [!NOTE]
+> `canvasContextAttributes: {preserveDrawingBuffer: true}` has no effect.
+
+To read the image of the map, call `map.toBlob(type, quality)`. It waits until the map is idle and resolves to a `Blob` of the canvas.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
@@ -226,9 +228,11 @@ map.on('moveend', () => console.log(map.getZoom()));
 
 ### The style is not validated
 
-The library does not validate the style and does not check the types of expressions. A mistake in the style that
-MapLibre GL JS reports with an `error` event, such as the wrong name of a property, has no effect here and fires no
-`error` event. Validate a style that you write yourself with `@maplibre/maplibre-gl-style-spec`.
+The library does not validate the style and does not check the types of expressions.
+
+> [!WARNING]
+> A mistake in the style that MapLibre GL JS reports with an `error` event, such as the wrong name of a property, has
+> no effect here and fires no `error` event. Validate a style that you write yourself with `@maplibre/maplibre-gl-style-spec`.
 
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
