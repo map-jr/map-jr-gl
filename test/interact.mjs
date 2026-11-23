@@ -5341,6 +5341,45 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     } catch (e) { check('[main] 3D terrain: the checks of the camera above the ground ran (#1480)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer
+// after 1.5 s, which is more than the half second for which an incomplete picture held `idle` back before. One tile
+// fails, and `idle` still comes.
+for (const mode of renderers) {
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + `/?renderer=${mode}&nomarkers`);
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    try {
+        const got = await page.evaluate(async ([mode]) => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const png = async colour => { const c = new OffscreenCanvas(256, 256), g = c.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 256, 256); return (await c.convertToBlob()).arrayBuffer(); };
+            const flat = await png('rgb(128,0,0)'), red = await png('#f00');
+            const state = window.state1493 = {asked: 0, answered: 0, failed: 0};
+            for (const p of ['dem1493', 'slow1493']) try { mod.removeProtocol(p); } catch { /* not added yet */ }
+            mod.addProtocol('dem1493', async () => ({data: flat.slice(0)}));
+            mod.addProtocol('slow1493', async request => {
+                const n = ++state.asked;
+                await new Promise(r => setTimeout(r, 1500));
+                // (One tile of the view fails: it must not hold `idle` back for ever.)
+                if (n === 2) { state.failed++; state.answered++; throw new Error('tile 1493 failed'); }
+                state.answered++;
+                return {data: red.slice(0)};
+            });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:9'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem1493://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: 12},
+                r: {type: 'raster', tiles: ['slow1493://{z}/{x}/{y}'], tileSize: 256}},
+                layers: [{id: 'r', type: 'raster', source: 'r'}], terrain: {source: 'dem', exaggeration: 1}};
+            const m = new mod.Map({container: el, renderer: mode, style, center: [10, 45], zoom: 13, pitch: 60, attributionControl: false});
+            m.on('error', () => {});
+            const start = performance.now();
+            const idle = await new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const at = {idle, ms: Math.round(performance.now() - start), asked: state.asked, answered: state.answered, failed: state.failed};
+            m.remove(); el.remove();
+            return at;
+        }, [mode]);
+        check(`[${mode}] 3D terrain: idle waits for the raster tiles of the ground pictures, and a tile that fails does not hold it back (#1493)`, got.idle && got.asked > 1 && got.failed === 1 && got.answered === got.asked, JSON.stringify(got));
+    } catch (e) { check(`[${mode}] 3D terrain: the check of idle and the tiles of the ground pictures ran (#1493)`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A lost WebGL context when the style came from a URL in another folder. The relative URLs of the style still belong
 // to that folder after the restart, and a source that is loaded says so before the tiles of the other sources are there.
 {
@@ -5395,6 +5434,6 @@ await page.screenshot({path: `${out}/ssr-after.png`});
 const preloads = await page.evaluate(() => document.querySelectorAll('link[rel=preload]').length);
 check('[ssr] tile preload links emitted', preloads > 0, `${preloads} links`);
 // (Chromium on 2026-11-19 printed 218 results with RENDERER=main and 160 with RENDERER=worker.)
-tally((renderers.includes('main') ? 195 : 0) + (renderers.includes('worker') ? 145 : 0));
+tally((renderers.includes('main') ? 196 : 0) + (renderers.includes('worker') ? 146 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);
