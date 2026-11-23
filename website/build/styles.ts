@@ -110,7 +110,7 @@ export function stylePage(row: StyleRow, style: any, readme: string, stateRows: 
     const url = stylesBase + row.name + '.json';
     const state = Object.keys(style.state ?? {});
     const schemes = state.includes('color-scheme');
-    const ownMaplibre = row.maplibre.includes(`${stylesBase}maplibre/`);
+    const ownMaplibre = isOwn(row);
     const maplibreUrl = /\]\(([^)]+)\)/.exec(row.maplibre)?.[1];
     const out = [`# ${row.title}`, '', absoluteLinks(row.text, sources.styles), ''];
     out.push(`::style-preview{style-url="${url}"${schemes ? '' : ' :single="true"'}}`, '::', '');
@@ -143,11 +143,23 @@ export function stylePage(row: StyleRow, style: any, readme: string, stateRows: 
     return frontmatter({editUrl: githubUrl(sources.styles, 'README.md')}) + out.join('\n');
 }
 
+// A style of map-jr-styles itself has its own version for MapLibre GL JS; a copy of a style of OpenFreeMap has not.
+const isOwn = (row: StyleRow) => row.maplibre.includes(`${stylesBase}maplibre/`);
+
 // The page /styles: the introduction and the use of the styles, without the parts for those who release and build them.
 export function indexPage(readme: string, rows: StyleRow[]): string {
     const intro = readme.slice(readme.indexOf('\n') + 1, readme.indexOf('\n## ')).trim();
-    let styles = sectionOf(readme, '## The styles');
-    for (const row of rows) styles = styles.replace(`| ${row.title} |`, `| [${row.title}](/styles/${row.name}) |`);
+    // The styles of map-jr-styles come first, in a table. The copies of the styles of OpenFreeMap follow as a short list
+    // (the owner's decision in #1129): they are the styles of OpenFreeMap with the sprite inside.
+    const lines = sectionOf(readme, '## The styles').split('\n');
+    const first = lines.findIndex(line => line.startsWith('|'));
+    const last = lines.findLastIndex(line => line.startsWith('|'));
+    const own = rows.filter(row => isOwn(row));
+    const copies = rows.filter(row => !isOwn(row));
+    const styles = [...lines.slice(0, first),
+        table([['Style', 'What it is'], ['---', '---'], ...own.map(row => [`[${row.title}](/styles/${row.name})`, row.text])]),
+        ...(copies.length ? ['', '### From OpenFreeMap', '', `${copies[0]!.text} Their pages: ${copies.map(row => `[${row.title.replace(/^OpenFreeMap /, '')}](/styles/${row.name})`).join(', ')}.`] : []),
+        ...lines.slice(last + 1)].join('\n');
     const body = ['# Styles', '', intro, '', '## The styles', '', styles, '', '## Use', '', sectionOf(readme, '## Use'), '',
         '## Editing a style', '', 'To change a style, open it in the Maputnik of Map Jr. GL. [Editing a style](/styles/editing) says how, and [the style specification of Map Jr. GL](/styles/spec) lists what Map Jr. GL reads beyond the MapLibre style specification.', ''].join('\n');
     return frontmatter({editUrl: githubUrl(sources.styles, 'README.md')}) + absoluteLinks(body, sources.styles);

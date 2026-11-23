@@ -62,7 +62,10 @@ test('the rows of the table of the styles, with 〃 as the text of the row above
 
 test('/styles links each style to its page and leaves out the release', () => {
     const page = indexPage(readme, styleRows(readme));
-    assert.match(page, /\| \[Elevation\]\(\/styles\/elevation\) \|/);
+    assert.match(page, /\| \[Elevation\]\(\/styles\/elevation\) \| A terrain map\. \|/);
+    assert.ok(page.indexOf('### From OpenFreeMap') > page.indexOf('[Elevation]'), 'the styles of OpenFreeMap come after the own styles');
+    assert.match(page, /The styles of OpenFreeMap\. Their pages: \[Bright\]\(\/styles\/openfreemap-bright\), \[Dark\]\(\/styles\/openfreemap-dark\)\./);
+    assert.doesNotMatch(page, /\| OpenFreeMap Bright \|/);
     assert.match(page, /blob\/main\/CHANGELOG\.md/);
     assert.doesNotMatch(page, /maintainers/);
     assert.match(page, /^editUrl: /m);
