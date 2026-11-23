@@ -288,7 +288,7 @@ export function headingOf(path: string): string {
 export function specPage(reference: unknown): string {
     const additions = specAdditions(reference);
     if (!additions.length) fail('src/reference/v8.json of map-jr/maplibre-style-spec (branch map-jr-main) has no doc that names Map Jr. GL.');
-    const body = ['# The style specification of Map Jr. GL', '',
+    const body = ['# Style spec additions', '',
         `The [Maputnik of Map Jr. GL](/styles/editing) validates styles with a fork of the MapLibre style specification, [map-jr/maplibre-style-spec](${githubUrl(sources.spec)}) (branch \`${sources.spec.branch}\`), which adds what styles for Map Jr. GL use. This page lists the docs of the reference of the fork (\`src/reference/v8.json\`) that name Map Jr. GL.`, '',
         ...additions.flatMap(({path, doc}) => [`## ${headingOf(path)}`, '', `Its path in the reference is \`${path}\`.`, '', safeMarkdown(doc), '']),
         `The rest of the specification is the [MapLibre style specification](https://maplibre.org/maplibre-style-spec/).`, ''].join('\n');

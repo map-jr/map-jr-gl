@@ -95,4 +95,4 @@ The block above is also served as plain markdown at `https://map-jr.org/raw/migr
 
 - [From MapLibre GL JS](from-maplibre.md) for the steps and the differences, each with code.
 - [Wrappers and plugins](wrappers.md) for the alias in each bundler.
-- [From the compat entry to the main API](compat-to-main-api.md) for the move to the main API.
+- [From compat to the main API](compat-to-main-api.md) for the move to the main API.

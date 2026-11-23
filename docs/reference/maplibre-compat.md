@@ -39,7 +39,7 @@ These differences change the code of most applications:
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
   `error` with that error and shows a message in the container. Call `supported()` before you create the map.
 
-[Differences from MapLibre GL JS](maplibre-differences.md) is the complete list of the differences, of what is not
+[MapLibre differences](maplibre-differences.md) is the complete list of the differences, of what is not
 available, and of the types that differ.
 
 ## Options of `new Map`
@@ -428,6 +428,6 @@ time. The last table of [Types](maplibre-differences.md#types) says why each gro
 ## See also
 
 - [From MapLibre GL JS](../migrate/from-maplibre.md) for the steps to move an application to this entry.
-- [From the compat entry to the main API](../migrate/compat-to-main-api.md) for the calls of the main API that
+- [From compat to the main API](../migrate/compat-to-main-api.md) for the calls of the main API that
   replace the methods of `Map`.
 - [Wrappers and plugins](../migrate/wrappers.md) for react-map-gl and the other wrappers.

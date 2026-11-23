@@ -481,4 +481,4 @@ const map = createMap('map', {
 
 - [Controls](../guide/controls.md) for the look of the controls and a control of your own in Vue and React.
 - [`controls`](description.md#controls) and [`locale`](description.md#locale) in the reference of the description.
-- [Differences from MapLibre GL JS](maplibre-differences.md) for the controls of the compat entry.
+- [MapLibre differences](maplibre-differences.md) for the controls of the compat entry.
