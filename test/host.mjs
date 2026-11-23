@@ -2391,6 +2391,14 @@ for (const renderer of renderers) {
             await new Promise(r => setTimeout(r, 500));
             const imgs = [...list.querySelectorAll('button')].map(b => b.querySelector('img'));
             out.pictures = imgs.map(i => i ? 'img' : '-').join(',');
+            // (#1528) An entry without a picture shows the placeholder image; the label lies on the picture; the list
+            // takes the glass look of the other controls.
+            const bs = [...list.querySelectorAll('button')], frame = b => b.querySelector('.map-jr-styles-pic');
+            out.placeholder = bs.map(b => getComputedStyle(frame(b)).backgroundImage.includes('data:image/svg+xml') ? 'p' : '-').join(',');
+            out.labelOn = bs.every(b => { const f = frame(b).getBoundingClientRect(), l = b.lastElementChild.getBoundingClientRect(); return l.top >= f.top && l.bottom <= f.bottom + .5 && l.height > 0; });
+            const ls = getComputedStyle(list);
+            out.glass = !CSS.supports('backdrop-filter', 'blur(1px)') || (ls.backdropFilter.includes('blur') && ls.backgroundColor === getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backgroundColor);
+            out.fade = imgs[0] ? getComputedStyle(imgs[0]).animationName : '';
             if (imgs[1]) {
                 await imgs[1].decode();
                 const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
@@ -2419,8 +2427,18 @@ for (const renderer of renderers) {
             return out;
         }, renderer);
         check(`[${renderer}] the control styles() lists its entries at once, draws a picture of each style that loads after the first idle, and a choice sets the style, keeps the camera, calls onStyleChange once and returns the focus; a style that fails ends its picture at once, and focus that leaves closes the list`,
-            picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.drawn < 15000 && picked.red === true
+            picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.placeholder === 'p,p,p,p,p' && picked.labelOn && picked.glass && picked.fade === 'map-jr-styles-in' && picked.drawn < 15000 && picked.red === true
             && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut, JSON.stringify(picked));
+        // With prefers-reduced-motion a new picture does not fade in (#1528); the sheet of the control stays on the page.
+        await page.emulateMedia({reducedMotion: 'reduce'});
+        const stillFade = await page.evaluate(() => {
+            const f = document.body.appendChild(Object.assign(document.createElement('span'), {className: 'map-jr-styles-pic'})), img = f.appendChild(document.createElement('img'));
+            const name = getComputedStyle(img).animationName;
+            f.remove();
+            return name;
+        });
+        await page.emulateMedia({reducedMotion: null});
+        check(`[${renderer}] a picture of the control styles() does not fade in with prefers-reduced-motion`, stillFade === 'none', stillFade);
         // Removing styles() while a picture is drawn removes the hidden map at once (#1504): here its tiles never answer.
         const removedWhileDrawing = await page.evaluate(async renderer => {
             const t = window.t, {styles} = await import('/dist/controls.js');
