@@ -343,17 +343,35 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {navigation, styles} from '@map-jr/map-jr-gl/controls';
 
 const entries = [
-  {label: 'Elevation', style: 'https://styles.map-jr.org/1/elevation-zero.json'},
-  {label: 'Positron', style: 'https://styles.map-jr.org/1/openfreemap-positron.json'},
+  {
+    label: 'Elevation',
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  },
+  {
+    label: 'Positron',
+    style: 'https://styles.map-jr.org/1/openfreemap-positron.json',
+  },
   {label: 'Dark', style: 'https://styles.map-jr.org/1/openfreemap-dark.json'},
 ];
 const mapStyle = ref(entries[0].style);
-const controls = [navigation(), styles({entries, onStyleChange: entry => { mapStyle.value = entry.style; }})];
+const controls = [
+  navigation(),
+  styles({
+    entries,
+    onStyleChange: entry => {
+      mapStyle.value = entry.style;
+    },
+  }),
+];
 </script>
 
 <template>
   <div style="height: 400px">
-    <MapJr :map-style="mapStyle" :initial-view="{center: [8.33, 47.03], zoom: 11}" :controls="controls" />
+    <MapJr
+      :map-style="mapStyle"
+      :initial-view="{center: [8.33, 47.03], zoom: 11}"
+      :controls="controls"
+    />
   </div>
 </template>
 ```
