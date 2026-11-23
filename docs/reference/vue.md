@@ -541,6 +541,33 @@ A new array or object with the same content as the last one changes nothing. A s
 creates at each render is compared by its content, which costs time for a large style: pass the URL of the style, or
 an object that is created once.
 
+## Plugins that need a MapLibre map
+
+`MapJr` does not support plugins that take a MapLibre map object, such as deck.gl `MapboxOverlay` (`@deck.gl/mapbox`),
+`@mapbox/mapbox-gl-draw` and terra-draw with `terra-draw-maplibre-gl-adapter`. The `MapInstance` of
+`@map-jr/map-jr-gl` is not a MapLibre map. Create the map with `new Map()` of `@map-jr/map-jr-gl/maplibre-compat` in
+your component, in place of `MapJr`, and give that map to the plugin. deck.gl in its default (non-interleaved) mode,
+mapbox-gl-draw and terra-draw in polygon mode run this way.
+
+## Load `MapJr` lazily without Nuxt
+
+`MapJr` works in a page that a server renders without `<ClientOnly>`: on the server it renders an empty element, and
+the map starts in that element in the browser. Without the module for Nuxt, load the component lazily with
+`defineAsyncComponent` of Vue:
+
+```js
+import {defineAsyncComponent, hydrateOnVisible} from 'vue';
+
+const MapJr = defineAsyncComponent({
+  loader: () => import('@map-jr/map-jr-gl/vue').then(m => m.MapJr),
+  hydrate: hydrateOnVisible(),
+});
+```
+
+The other exports of `@map-jr/map-jr-gl/vue` do not load the code of the map. `MapJr` and `useMapJr` load it with
+`import()` when the map is mounted, so `MapOverlay`, `MapImage` and `useMapInstance` bring no map code into the page.
+The `map` of `useMapJr` is `null` until that code has loaded, also in `onMounted`.
+
 ## See also
 
 - [The description](description.md) for what each prop does.

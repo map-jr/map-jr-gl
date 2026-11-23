@@ -312,6 +312,15 @@ asks for less motion (`prefers-reduced-motion`), so a camera animation that is n
 The machines have a virtual GPU, and a simulator has the memory and the GPU of its host: these runs do not replace
 a measurement on a phone.
 
+What Safari did in these places (from the comment of 2026-11-12 on
+[issue 17](https://github.com/map-jr/map-jr-gl/issues/17), and later runs):
+
+| Browser | Where | Seen |
+|---|---|---|
+| Safari 27.2, macOS 26.7.2 | Hosted GitHub runner with a virtual GPU, through `safaridriver` | A worker has `OffscreenCanvas` with a WebGL2 context and a 2D context. The map loads with the main-thread renderer. With the worker renderer, a worker draws one frame and then answers nothing, and its WebGL context is lost about 2.4 seconds later. A second worker does the same with no event (the debug record of run 43328734147). The map then goes to the main thread and loads: run 43334734769 (commit `ceb1b8c`, 2026-11-13) reports "worker: loaded, renderer main", and 21.9 seconds from load to idle on the benchmark page. Why the worker stops is not known ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78)). Run 45021588591 (commit `e5191a5`, 2026-11-22) gives the same: the page that asks for the worker renderer reports "renderer main" and takes 8.3 seconds from load to idle, and the main-thread renderer takes 0.44 seconds. |
+| Safari 27.2 | The owner's Mac with a GPU, by hand | The worker renderer works. No numbers were recorded. |
+| Safari 26.5, iOS 26.5 | iOS Simulator (iPhone 17 Pro) on the hosted runner | The map loads with the worker renderer and with the main-thread renderer. The benchmark did not finish, so there are no numbers. |
+
 The workflow writes the results to the branch `bench-results`. Read `README.md` on that branch:
 
 ```bash

@@ -251,9 +251,7 @@ setting.
 
 ## Next.js
 
-The configuration of this section ran with Next.js 16.4.6 and React 19.3, with `next build` (Turbopack) and
-`next build --webpack`: in both builds, `next start` showed the map with the renderer `'worker'`. The development
-servers were not run for it. Create the map in `useEffect` of a client component. The server can import the library, so `next/dynamic` is not
+The configuration of this section is for Next.js 15 and 16, with Turbopack and with webpack. Create the map in `useEffect` of a client component. The server can import the library, so `next/dynamic` is not
 needed. webpack and Turbopack load the worker file with no setting.
 
 ```jsx
@@ -331,9 +329,8 @@ condition, so a bundler that sets the condition takes it in development and take
 | A bundler that builds for production | No. |
 | The file `dist/map-jr-gl.js` by URL, with no bundler | No. Import `dist/map-jr-gl.dev.js` instead while you develop. |
 
-Vite sets the condition (ran with Vite 8: the development server takes the development build, and `vite build` takes
-the production build). The development server of webpack in Next.js 14.2 and 16 takes the development build. Node.js
-takes it with `--conditions=development`. Nuxt is not checked. The production build makes no request for the checks
+The development server of Vite takes the development build, and `vite build` takes the production build. Node.js
+takes it with `--conditions=development`. The production build makes no request for the checks
 and writes none of their warnings. [Messages](../reference/messages.md) lists each warning.
 
 ## See also

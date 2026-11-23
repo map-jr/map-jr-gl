@@ -124,7 +124,7 @@ as `map.transform` or `map.painter`, does not. These plugins run with this libra
 | `@deck.gl/mapbox` with `interleaved: false` | 9.4.1 |
 | `pmtiles` | 4.5.0 |
 
-A source URL that starts with `pmtiles://` works without the `pmtiles` plugin. deck.gl with `interleaved: true` is not checked. See [Ecosystem](../ecosystem.md) for the
+A source URL that starts with `pmtiles://` works without the `pmtiles` plugin. deck.gl with `interleaved: true` is not checked. See [Ecosystem](https://github.com/map-jr/map-jr-gl/blob/main/docs/ecosystem.md) for the
 methods that more plugins use.
 
 ## Types

@@ -274,6 +274,11 @@ The library does not have these parts of MapLibre GL JS, among others:
 See [Differences from MapLibre GL JS](../reference/maplibre-differences.md) for the full list of differences and of everything that
 is not available, and [The compat entry](../reference/maplibre-compat.md) for every member of `Map`.
 
+## A coding agent
+
+The [migration prompt](prompt.md) lets a coding agent do these steps. The package contains these docs as Markdown in
+`node_modules/@map-jr/map-jr-gl/docs/`, and an `AGENTS.md` for agents.
+
 ## See also
 
 - [Markers and popups](../guide/markers-and-popups.md) for markers with both entries.

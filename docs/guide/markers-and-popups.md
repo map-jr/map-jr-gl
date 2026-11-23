@@ -776,10 +776,13 @@ be true:
 - The feature has no text.
 - `symbol-placement` is `point` (the default).
 - `icon-allow-overlap` is `true`. The icon is then always shown.
-- `icon-text-fit` is `none` (the default), and the icon has no halo (`icon-halo-width`).
-- The layer has no `symbol-sort-key`, and `icon-anchor`, `icon-offset`, `icon-rotation-alignment`, `icon-color` and
-  `icon-padding` have one value for the layer. `icon-size`, `icon-rotate` and `icon-opacity` can have a value for
-  each feature.
+- `icon-text-fit` is `none` (the default).
+- The layer has no `symbol-sort-key`, and `icon-anchor`, `icon-offset`, `icon-rotation-alignment`,
+  `icon-pitch-alignment`, `icon-color` and `icon-padding` have one value for the layer. `icon-size`, `icon-rotate` and
+  `icon-opacity` can have a value for each feature.
+- `icon-pitch-alignment` is not `map`, and it is not `auto` together with `icon-rotation-alignment: 'map'`.
+- `icon-ignore-placement` has the same value for every feature of the tile.
+- A halo counts only when it is not transparent: `icon-halo-width` above 0 with an `icon-halo-color` that has alpha.
 
 The map places other icons among the labels, and their cost grows with their number. An icon from a buffer differs
 from a placed icon in these points:

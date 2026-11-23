@@ -109,8 +109,14 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### Text
 
-- **MapLibre GL JS:** Reads glyph files from the `glyphs` URL.
-- **This library:** The same: glyphs and their widths come from the glyph files. Two cases use the fonts of the browser, or the web fonts of `fonts` (the option of the compat entry, or the field of the description of the main API): a character, font stack or range that the files do not have (most ideographs, emoji), and text that the browser must shape (Arabic, Hebrew, Indic scripts). This is like `localIdeographFontFamily` of MapLibre GL JS. A label waits for its glyph file, as in MapLibre GL JS. The map requests the file of the first 256 characters (`0-255`) of each font stack of the symbol layers in view when it starts, at the same time as the first tiles; MapLibre GL JS requests a glyph file only once a tile needs it. In both, text drawn with the fonts of the browser uses each name of the `text-font` list in order, with the weight and the style of the first name. Where this library differs: it takes the weight and style words out of each name (`Open Sans Bold` is the family `Open Sans`, where MapLibre GL JS asks for a family named `Open Sans Bold`), it quotes every name except a CSS generic family keyword (MapLibre GL JS leaves nearly every name unquoted, and a name that is not a valid CSS identifier, such as one that starts with a digit, makes the font string invalid), and it tries `fontFamily` after the list, where MapLibre GL JS tries `sans-serif`. MapLibre GL JS uses `localIdeographFontFamily` alone for ideographs of the default font stack; this library has no such option and draws them with the same family list.
+- MapLibre GL JS reads glyph files from the `glyphs` URL.
+- This library does the same: glyphs and their widths come from the glyph files. Two cases use the fonts of the browser, or the web fonts of `fonts` (the option of the compat entry, or the field of the description of the main API): a character, font stack or range that the files do not have (most ideographs, emoji), and text that the browser must shape (Arabic, Hebrew, Indic scripts).
+  This is like `localIdeographFontFamily` of MapLibre GL JS. A label waits for its glyph file, as in MapLibre GL JS. The map requests the file of the first 256 characters (`0-255`) of each font stack of the symbol layers in view when it starts, at the same time as the first tiles; MapLibre GL JS requests a glyph file only once a tile needs it.
+- In both, text drawn with the fonts of the browser uses each name of the `text-font` list in order, with the weight and the style of the first name.
+- This library takes the weight and style words out of each name (`Open Sans Bold` is the family `Open Sans`, where MapLibre GL JS asks for a family named `Open Sans Bold`).
+- This library quotes every name except a CSS generic family keyword (MapLibre GL JS leaves nearly every name unquoted, and a name that is not a valid CSS identifier, such as one that starts with a digit, makes the font string invalid).
+- This library tries `fontFamily` after the list, where MapLibre GL JS tries `sans-serif`.
+- MapLibre GL JS uses `localIdeographFontFamily` alone for ideographs of the default font stack; this library has no such option and draws them with the same family list.
 
 ### Text on lines
 
@@ -125,7 +131,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Order of symbol layers
 
 - **MapLibre GL JS:** A symbol layer draws at its position in the layer list.
-- **This library:** The same without 3D terrain: a fill, line or other layer between two symbol layers draws over the labels of the symbol layers before it and below the labels of those after it. Symbol layers that follow each other with no other visible layer between them draw their labels together. With 3D terrain, the labels of all symbol layers draw together, at the position of the last symbol layer that has labels, and the layers on the ground draw below all labels.
+- This library does the same without 3D terrain: a fill, line or other layer between two symbol layers draws over the labels of the symbol layers before it and below the labels of those after it. Symbol layers that follow each other with no other visible layer between them draw their labels together. With 3D terrain, the labels of all symbol layers draw together, at the position of the last symbol layer that has labels, and the layers on the ground draw below all labels.
 
 ### A heatmap below an opaque layer
 
@@ -145,7 +151,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Queries on labels
 
 - **MapLibre GL JS:** A label is found on the collision boxes of its text and of its icon.
-- **This library:** The same for text at a point and for icons. Text that follows a line is found within 10 pixels of the point of its label, and so is a label whose text is not shown at the moment.
+- This library does the same for text at a point and for icons. Text that follows a line is found within 10 pixels of the point of its label, and so is a label whose text is not shown at the moment.
 
 ### Feature state
 
@@ -159,8 +165,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### 3D terrain
 
-- **MapLibre GL JS:** Draws terrain at each tilt.
-- **This library:** Draws a flat map when you look vertically down. See [Terrain and elevation](../guide/terrain.md).
+- MapLibre GL JS draws terrain at each tilt.
+- This library draws a flat map when you look vertically down. See [Terrain and elevation](../guide/terrain.md).
 
 ### Camera
 
@@ -170,52 +176,52 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Miter joins longer than about 2
 
 - **MapLibre GL JS:** A miter join whose length is more than 127/63 (about 2.02) times the line width breaks into a notch, because the extrusion of the vertex overflows its byte (the render test `line-miter-limit/global-state` shows it).
-- **This library:** Draws the full miter up to `line-miter-limit`.
+- This library draws the full miter up to `line-miter-limit`.
 
 ### The lowest zoom
 
 - **MapLibre GL JS:** `minZoom` is -2 by default. The world is never less tall than the map.
-- **This library:** The same.
+- This library does the same.
 
 ### The `cooperativeGestures` option
 
 - **MapLibre GL JS:** The wheel zooms only with Ctrl (⌘ on a Mac), one finger scrolls the page, two fingers move the map, and a hint shows over the map. `map.cooperativeGestures` has `enable()`, `disable()`, `isEnabled()` and `isBypassed()`.
-- **This library:** The same behaviour and the same hint. The option `locale` changes the text of the hint, with the keys of MapLibre GL JS (`CooperativeGesturesHandler.WindowsHelpText`, `MacHelpText` and `MobileHelpText`). The event `cooperativegestureprevented` fires with `gestureType` (`'wheel_zoom'` or `'touch_pan'`) and `originalEvent`. `isBypassed()` is not there. The code of the hint loads on demand when the option is on. Until it has loaded, the gestures are blocked and the hint does not show. The hint has its look in its `style` attribute, and the class `maplibregl-cooperative-gesture-screen` for stylesheets.
+- This library does the same behaviour and the same hint. The option `locale` changes the text of the hint, with the keys of MapLibre GL JS (`CooperativeGesturesHandler.WindowsHelpText`, `MacHelpText` and `MobileHelpText`). The event `cooperativegestureprevented` fires with `gestureType` (`'wheel_zoom'` or `'touch_pan'`) and `originalEvent`. `isBypassed()` is not there. The code of the hint loads on demand when the option is on. Until it has loaded, the gestures are blocked and the hint does not show. The hint has its look in its `style` attribute, and the class `maplibregl-cooperative-gesture-screen` for stylesheets.
 
 ### The `hash` option
 
 - **MapLibre GL JS:** The camera in the fragment of the URL.
-- **This library:** The same, with the same format.
+- This library does the same, with the same format.
 
 ### Tile URLs
 
 - **MapLibre GL JS:** `{z}`, `{x}`, `{y}`, `{bbox-epsg-3857}`, `{quadkey}`, `{ratio}`, `{prefix}`; the `scheme` `tms`.
-- **This library:** The same. `{bbox-epsg-3857}` is for WMS servers. `{ratio}` is `@2x` when the pixel ratio of the map is above 1, for every kind of source, as in MapLibre GL JS.
+- This library does the same. `{bbox-epsg-3857}` is for WMS servers. `{ratio}` is `@2x` when the pixel ratio of the map is above 1, for every kind of source, as in MapLibre GL JS.
 
 ### The `bounds` of a source
 
 - **MapLibre GL JS:** A tile outside the bounds is not requested.
-- **This library:** The same, for bounds in the style and in the TileJSON. Not for the bounds in the header of a PMTiles file.
+- This library does the same, for bounds in the style and in the TileJSON. Not for the bounds in the header of a PMTiles file.
 
 ### An image tile that the server does not have (404)
 
 - **MapLibre GL JS:** The nearest tile above it is drawn in its place.
-- **This library:** The same, for raster and elevation tiles.
+- This library does the same, for raster and elevation tiles.
 
 ### GeoJSON sources
 
 - **MapLibre GL JS:** `setData`, `getData`, `updateData`, the cluster methods.
-- **This library:** The same. `updateData` makes the new data from the old data and the changes, and then replaces the data of the source in one step. The `buffer` option sets how far past its edges a tile keeps the features, in pixels of a tile 512 pixels wide, as in MapLibre GL JS (at most 512). Without `buffer`, a tile keeps 128 pixels, as in MapLibre GL JS (the main entry `@map-jr/map-jr-gl` keeps 16).
+- This library does the same. `updateData` makes the new data from the old data and the changes, and then replaces the data of the source in one step. The `buffer` option sets how far past its edges a tile keeps the features, in pixels of a tile 512 pixels wide, as in MapLibre GL JS (at most 512). Without `buffer`, a tile keeps 128 pixels, as in MapLibre GL JS (the main entry `@map-jr/map-jr-gl` keeps 16).
 
 ### `Marker` and `Popup`
 
 - **MapLibre GL JS:** Rotation, pitch alignment, offsets, class names.
-- **This library:** The same methods. `pitchAlignment` is kept but has no effect: a marker is always upright on the screen. `Popup` has the options `focusAfterOpen`, `closeOnMove`, `trackPointer` and `subpixelPositioning` with the defaults of MapLibre GL JS, and the methods `trackPointer()` and `setSubpixelPositioning()`. A popup that follows the pointer does not move with a touch. With the worker renderer, a marker or popup moves in the same frame as the map during a drag, but it can trail an `easeTo`, `flyTo`, a fling or a pinch by about one frame, because the page learns the camera from the worker after the frame. A symbol layer never trails. See [How closely an element of the page follows the map](map.md#overlay).
+- This library does the same methods. `pitchAlignment` is kept but has no effect: a marker is always upright on the screen. `Popup` has the options `focusAfterOpen`, `closeOnMove`, `trackPointer` and `subpixelPositioning` with the defaults of MapLibre GL JS, and the methods `trackPointer()` and `setSubpixelPositioning()`. A popup that follows the pointer does not move with a touch. With the worker renderer, a marker or popup moves in the same frame as the map during a drag, but it can trail an `easeTo`, `flyTo`, a fling or a pinch by about one frame, because the page learns the camera from the worker after the frame. A symbol layer never trails. See [How closely an element of the page follows the map](map.md#overlay).
 
 ### `Point`
 
-- **MapLibre GL JS:** Re-exports `Point` of `@mapbox/point-geometry`, with about 30 methods.
-- **This library:** Exports a smaller `Point` with `convert`, `clone`, `add`, `sub`, `mult`, `div`, `round`, `mag`, `dist` and `equals`. The other methods (for example `rotate`, `unit`, `angle`, `matMult`) do not exist.
+- MapLibre GL JS re-exports `Point` of `@mapbox/point-geometry`, with about 30 methods.
+- This library exports a smaller `Point` with `convert`, `clone`, `add`, `sub`, `mult`, `div`, `round`, `mag`, `dist` and `equals`. The other methods (for example `rotate`, `unit`, `angle`, `matMult`) do not exist.
 
 ### Private members that wrappers read
 
@@ -224,23 +230,23 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### TypeScript types
 
-- **MapLibre GL JS:** Exports types and classes such as `MapMouseEvent`, `StyleSpecification`, `GeoJSONSource`.
-- **This library:** Exports types with the same names (`src/compat-types.ts`). The event and source names are types only: you cannot use them with `new` or `instanceof`. The style types do not check each property: `LayerSpecification` accepts any string as `type` and any names in `paint` and `layout`. `map.on`, `map.once` and `map.off` give the listener the event type that belongs to the name of the event (`MapEventType`, `MapLayerEventType`), and an event name that is not in those lists gets an event of the type `any`. The geometry of a queried feature is the library's own `Geometry` type, which has no `GeometryCollection`. The compat types accept values that are typed with `maplibre-gl`, such as a `StyleSpecification`, a layer, a source or a filter. The reverse direction does not work: a value typed with the compat entry is not always assignable to a type of `maplibre-gl`, and a compat `MapLayerMouseEvent` is not assignable to the one of react-map-gl. A project that uses react-map-gl therefore keeps `maplibre-gl` installed and imports its types from `maplibre-gl`.
+- MapLibre GL JS exports types and classes such as `MapMouseEvent`, `StyleSpecification`, `GeoJSONSource`.
+- This library exports types with the same names (`src/compat-types.ts`). The event and source names are types only: you cannot use them with `new` or `instanceof`. The style types do not check each property: `LayerSpecification` accepts any string as `type` and any names in `paint` and `layout`. `map.on`, `map.once` and `map.off` give the listener the event type that belongs to the name of the event (`MapEventType`, `MapLayerEventType`), and an event name that is not in those lists gets an event of the type `any`. The geometry of a queried feature is the library's own `Geometry` type, which has no `GeometryCollection`. The compat types accept values that are typed with `maplibre-gl`, such as a `StyleSpecification`, a layer, a source or a filter. The reverse direction does not work: a value typed with the compat entry is not always assignable to a type of `maplibre-gl`, and a compat `MapLayerMouseEvent` is not assignable to the one of react-map-gl. A project that uses react-map-gl therefore keeps `maplibre-gl` installed and imports its types from `maplibre-gl`.
 
 ### `isSourceLoaded`
 
-- **MapLibre GL JS:** Gives a result for one source. An id that the style does not have fires `error`, and the result is `undefined`.
-- **This library:** The same. The message of the error is `There is no source with ID "<id>"`, and MapLibre GL JS 6.17 writes `There is no tile manager with ID '<id>'`.
+- MapLibre GL JS gives a result for one source. An id that the style does not have fires `error`, and the result is `undefined`.
+- This library does the same. The message of the error is `There is no source with ID "<id>"`, and MapLibre GL JS 6.17 writes `There is no tile manager with ID '<id>'`.
 
 ### `addImage`
 
-- **MapLibre GL JS:** Accepts images and pixel data.
-- **This library:** Accepts the same, and also an SVG string or a URL. It returns a promise.
+- MapLibre GL JS accepts images and pixel data.
+- This library accepts the same, and also an SVG string or a URL. It returns a promise.
 
 ### `easeTo`, `flyTo`
 
-- **MapLibre GL JS:** Accept an `easing` function and an `offset`.
-- **This library:** Accept both, as MapLibre GL JS does. `offset` ([x, y] or {x, y}, in CSS pixels) puts `center` at that distance from the centre of the view at the end, also with `bearing` and `pitch`. The library samples the `easing` function at 65 points when the call is made and interpolates linearly between them, so a curve with a change that is narrower than 1/64 of the duration is smoothed. `flyTo` zooms out and back in along the curve of MapLibre GL JS 6.17 (van Wijk and Nuij), with the options `curve`, `speed`, `screenSpeed`, `minZoom` and `maxDuration`; without `duration`, the duration follows from the distance. When the system asks for reduced motion and `essential` is not `true`, `flyTo` jumps, as in MapLibre GL JS. `fitBounds` and `fitScreenCoordinates` fly in the same way, or ease as `easeTo` does when the options set `linear`, as in MapLibre GL JS.
+- Both accept an `easing` function and an `offset`.
+- Both accept both, as MapLibre GL JS does. `offset` ([x, y] or {x, y}, in CSS pixels) puts `center` at that distance from the centre of the view at the end, also with `bearing` and `pitch`. The library samples the `easing` function at 65 points when the call is made and interpolates linearly between them, so a curve with a change that is narrower than 1/64 of the duration is smoothed. `flyTo` zooms out and back in along the curve of MapLibre GL JS 6.17 (van Wijk and Nuij), with the options `curve`, `speed`, `screenSpeed`, `minZoom` and `maxDuration`; without `duration`, the duration follows from the distance. When the system asks for reduced motion and `essential` is not `true`, `flyTo` jumps, as in MapLibre GL JS. `fitBounds` and `fitScreenCoordinates` fly in the same way, or ease as `easeTo` does when the options set `linear`, as in MapLibre GL JS.
 
 ### Events
 
@@ -250,17 +256,17 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Data events of tiles
 
 - **MapLibre GL JS:** `data` and `sourcedata` fire with `dataType: 'source'` and `e.tile` for each tile that loads. `e.tile` is a `Tile` object.
-- **This library:** The same events fire for each tile that loads, after a listener for `data` or `sourcedata` has been added (tiles that loaded before do not fire). `e.tile` is a plain object with `tileID` (`canonical` with `z`, `x`, `y` and `key`, `overscaledZ`, `wrap` that is always `0`, `key`) and `state` that is `'loaded'`; it has no other member of the `Tile` class. `e.coord` is the same `tileID`, and `e.source` is the result of `getSource(sourceId)`.
+- This library does the same events fire for each tile that loads, after a listener for `data` or `sourcedata` has been added (tiles that loaded before do not fire). `e.tile` is a plain object with `tileID` (`canonical` with `z`, `x`, `y` and `key`, `overscaledZ`, `wrap` that is always `0`, `key`) and `state` that is `'loaded'`; it has no other member of the `Tile` class. `e.coord` is the same `tileID`, and `e.source` is the result of `getSource(sourceId)`.
 
 ### Events for one layer
 
 - **MapLibre GL JS:** `map.on('click', layerId, fn)` calls the listener synchronously.
-- **This library:** The same call works, also with an array of layer ids (`map.on('mouseenter', ['a', 'b'], fn)`). A second argument that is neither a layer id, an array of layer ids nor a function makes `on` throw a `[map-jr-gl]` error. The event fires shortly after the pointer event, because the library reads the tile data.
+- This library does the same call works, also with an array of layer ids (`map.on('mouseenter', ['a', 'b'], fn)`). A second argument that is neither a layer id, an array of layer ids nor a function makes `on` throw a `[map-jr-gl]` error. The event fires shortly after the pointer event, because the library reads the tile data.
 
 ### Interaction handlers
 
 - **MapLibre GL JS:** `map.dragPan`, `map.scrollZoom`, `map.boxZoom` and others, each with `enable()` and `disable()`.
-- **This library:** The same objects are available: `dragPan`, `scrollZoom`, `doubleClickZoom`, `dragRotate`, `touchZoomRotate`, `touchPitch`, `keyboard`, `boxZoom`. `isActive()` is `true` during the gesture for `dragPan` (from the press of the mouse button, or from the first movement of one finger), `dragRotate` (from the first movement of a rotate drag), `touchZoomRotate` (a pinch), `touchPitch` (a tilt with two fingers) and `boxZoom` (from the press of the mouse button with Shift held). It is `false` again when a pointer of the gesture lifts, and during the movement that follows a drag. `isActive()` of `scrollZoom`, `doubleClickZoom`, `keyboard` and `cooperativeGestures` always returns `false`, and `dragPan.isActive()` stays `false` during a pinch. Box zoom works as in MapLibre GL JS: a drag with Shift held and the left mouse button draws a box, zooms to it, and fires `boxzoomstart`, `boxzoomend` (with `boxZoomBounds`) or `boxzoomcancel`. Box zoom does not work with touch input. With `interactive: false`, every handler is off, and the map still fires `click`, `mousemove` and the events of layers, as in MapLibre. The `interactive` option of `@map-jr/map-jr-gl` behaves the same.
+- This library does the same objects are available: `dragPan`, `scrollZoom`, `doubleClickZoom`, `dragRotate`, `touchZoomRotate`, `touchPitch`, `keyboard`, `boxZoom`. `isActive()` is `true` during the gesture for `dragPan` (from the press of the mouse button, or from the first movement of one finger), `dragRotate` (from the first movement of a rotate drag), `touchZoomRotate` (a pinch), `touchPitch` (a tilt with two fingers) and `boxZoom` (from the press of the mouse button with Shift held). It is `false` again when a pointer of the gesture lifts, and during the movement that follows a drag. `isActive()` of `scrollZoom`, `doubleClickZoom`, `keyboard` and `cooperativeGestures` always returns `false`, and `dragPan.isActive()` stays `false` during a pinch. Box zoom works as in MapLibre GL JS: a drag with Shift held and the left mouse button draws a box, zooms to it, and fires `boxzoomstart`, `boxzoomend` (with `boxZoomBounds`) or `boxzoomcancel`. Box zoom does not work with touch input. With `interactive: false`, every handler is off, and the map still fires `click`, `mousemove` and the events of layers, as in MapLibre. The `interactive` option of `@map-jr/map-jr-gl` behaves the same.
 
 ### Rotate drag (the right mouse button, or Ctrl with the left one)
 
@@ -270,17 +276,17 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Pointer events
 
 - **MapLibre GL JS:** `mousedown`, `mouseup`, `touchstart` and others, with `preventDefault()`.
-- **This library:** The same events. A listener that calls `preventDefault()` on `mousedown`, `touchstart`, `wheel` or `dblclick` stops the map from acting on that gesture.
+- This library does the same events. A listener that calls `preventDefault()` on `mousedown`, `touchstart`, `wheel` or `dblclick` stops the map from acting on that gesture.
 
 ### `setWorkerUrl`
 
-- **MapLibre GL JS:** Sets the URL of the worker file of MapLibre GL JS.
-- **This library:** Sets `workerUrl` of `configure`. The URL must point to `map-jr-gl-worker.js`. A URL whose file name contains `maplibre-gl` and `worker` (such as `maplibre-gl-worker.mjs`) is ignored with one warning, and `getWorkerUrl()` then still returns `''`. Remove the call: the library finds its worker file itself.
+- MapLibre GL JS sets the URL of the worker file of MapLibre GL JS.
+- This library sets `workerUrl` of `configure`. The URL must point to `map-jr-gl-worker.js`. A URL whose file name contains `maplibre-gl` and `worker` (such as `maplibre-gl-worker.mjs`) is ignored with one warning, and `getWorkerUrl()` then still returns `''`. Remove the call: the library finds its worker file itself.
 
 ### Requests
 
 - **MapLibre GL JS:** The `transformRequest` option and `addProtocol`.
-- **This library:** The same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source has the request type `image`, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file. An image of `addImage` and the image of a sprite have the type `arrayBuffer` (MapLibre GL JS gives `image`), and only bytes are read as their answer.
+- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source has the request type `image`, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file. An image of `addImage` and the image of a sprite have the type `arrayBuffer` (MapLibre GL JS gives `image`), and only bytes are read as their answer.
 
 ### `Marker`, `Popup`
 
@@ -289,58 +295,58 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### The Escape key in a `Popup`
 
-- **MapLibre GL JS:** Does not close the popup. An application adds a listener for the key.
-- **This library:** Closes a popup that has a close button while the keyboard focus is inside the popup, as a click on the button does: the popup fires `close`, and the focus returns to the marker of the popup, or to the canvas of the map. The popup calls `preventDefault()` and `stopPropagation()` on that `keydown` event. A popup with `closeButton: false` does not react, and neither does a popup whose content called `preventDefault()` on the event.
+- MapLibre GL JS does not close the popup. An application adds a listener for the key.
+- This library closes a popup that has a close button while the keyboard focus is inside the popup, as a click on the button does: the popup fires `close`, and the focus returns to the marker of the popup, or to the canvas of the map. The popup calls `preventDefault()` and `stopPropagation()` on that `keydown` event. A popup with `closeButton: false` does not react, and neither does a popup whose content called `preventDefault()` on the event.
 
 ### `addImage` with an image that draws with WebGL
 
-- **MapLibre GL JS:** Accepts an image whose `data` has `renderWithWebGL` (`StyleImageWebGLData`).
+- MapLibre GL JS accepts an image whose `data` has `renderWithWebGL` (`StyleImageWebGLData`).
 - **This library:** Not supported. The promise rejects with an error that names the image, and the map keeps working.
 
 ### `updateImage`
 
-- **MapLibre GL JS:** Replaces the pixels of an image in place and keeps its options. New pixels of another size fire an `error` event, and the image stays as it was.
-- **This library:** Replaces the pixels in place and keeps the options, as MapLibre GL JS does, and the icons keep their places. New pixels of another size replace the image as `addImage` would, with the old options. It accepts a URL and an SVG string as `addImage` does, and it returns a promise. Pixels, ImageData and drawables are sent to the map at the end of the task, so of several calls in one task only the last is drawn.
+- MapLibre GL JS replaces the pixels of an image in place and keeps its options. New pixels of another size fire an `error` event, and the image stays as it was.
+- This library replaces the pixels in place and keeps the options, as MapLibre GL JS does, and the icons keep their places. New pixels of another size replace the image as `addImage` would, with the old options. It accepts a URL and an SVG string as `addImage` does, and it returns a promise. Pixels, ImageData and drawables are sent to the map at the end of the task, so of several calls in one task only the last is drawn.
 
 ### `getImage`
 
-- **MapLibre GL JS:** Returns the decoded RGBA pixels.
-- **This library:** Returns `{width, height, data: Uint8Array}` RGBA pixels for an image added as pixels, a canvas, an image element or a bitmap. For an image added as a URL or as SVG text, `data` is the string that `addImage` was given, because decoding it again is asynchronous.
+- MapLibre GL JS returns the decoded RGBA pixels.
+- This library returns `{width, height, data: Uint8Array}` RGBA pixels for an image added as pixels, a canvas, an image element or a bitmap. For an image added as a URL or as SVG text, `data` is the string that `addImage` was given, because decoding it again is asynchronous.
 
 ### `snapToNorth`
 
-- **MapLibre GL JS:** Turns the map north when the bearing is within the option `bearingSnap` (7 degrees by default).
-- **This library:** Turns the map north when the bearing is within 7 degrees. The option `bearingSnap` has no effect.
+- MapLibre GL JS turns the map north when the bearing is within the option `bearingSnap` (7 degrees by default).
+- This library turns the map north when the bearing is within 7 degrees. The option `bearingSnap` has no effect.
 
 ### `setStyle`
 
-- **MapLibre GL JS:** Returns the map.
-- **This library:** Returns a promise that settles when the new style has loaded.
+- MapLibre GL JS returns the map.
+- This library returns a promise that settles when the new style has loaded.
 
 ### `setFeatureState`, `getFeatureState` without an `id`
 
-- **MapLibre GL JS:** Fire `error`.
-- **This library:** Warn once. `setFeatureState` changes nothing, and `getFeatureState` returns `{}`.
+- Both fire `error`.
+- Both warn once. `setFeatureState` changes nothing, and `getFeatureState` returns `{}`.
 
 ### `coveringTiles`
 
-- **MapLibre GL JS:** Returns `OverscaledTileID` objects.
-- **This library:** Returns plain objects with the same fields: `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`.
+- MapLibre GL JS returns `OverscaledTileID` objects.
+- This library returns plain objects with the same fields: `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`.
 
 ### Touch gestures
 
 - **MapLibre GL JS:** You can configure each gesture.
-- **This library:** The same gestures. They are always on.
+- This library does the same gestures. They are always on.
 
 ### Expressions
 
-- **MapLibre GL JS:** Checks the types.
-- **This library:** Does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, or a second one in the same expression, is drawn as it reads, where MapLibre GL JS rejects the style. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property; the entry `@map-jr/map-jr-gl/maplibre-compat` writes none.
+- MapLibre GL JS checks the types.
+- This library does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, or a second one in the same expression, is drawn as it reads, where MapLibre GL JS rejects the style. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property; the entry `@map-jr/map-jr-gl/maplibre-compat` writes none.
 
 ### Style validation
 
-- **MapLibre GL JS:** Reports errors in the style.
-- **This library:** Does not validate the style. It writes a warning for each layer or property that it cannot draw. Five calls fire `error` and change nothing, as in MapLibre GL JS: `addLayer` with an id that exists, `addLayer` with a source that the style does not have, `addLayer` with a source object when the style has a source with the id of the layer, `addSource` with an id that exists, and `removeSource` of a source that a layer uses. (MapLibre GL JS throws in the third case.) That the production build does not validate the style is a decision and will stay. Validation in the development build is possible later.
+- MapLibre GL JS reports errors in the style.
+- This library does not validate the style. It writes a warning for each layer or property that it cannot draw. Five calls fire `error` and change nothing, as in MapLibre GL JS: `addLayer` with an id that exists, `addLayer` with a source that the style does not have, `addLayer` with a source object when the style has a source with the id of the layer, `addSource` with an id that exists, and `removeSource` of a source that a layer uses. (MapLibre GL JS throws in the third case.) That the production build does not validate the style is a decision and will stay. Validation in the development build is possible later.
 
 ### Reading the canvas
 
@@ -354,8 +360,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### `setTransformCameraUpdate`
 
-- **MapLibre GL JS:** Calls the function before each frame and draws the camera that it returns. react-map-gl 8 gives every map such a function, so that a controlled map (`viewState` with `onMove`) never draws a camera that differs from `viewState`.
-- **This library:** Calls the function after each `move` event and does not apply what it returns. A controlled react-map-gl map works when `onMove` sets `viewState` to `e.viewState`, and a change of `viewState` from outside moves the map. When `onMove` changes the camera (for example when it limits the latitude), the map draws the camera of the gesture, and goes to the camera of `viewState` when the movement ends. The map writes one warning the first time the function changes the camera, and no warning for a map where it does not. To keep the map in a region, use the option `maxBounds`.
+- MapLibre GL JS calls the function before each frame and draws the camera that it returns. react-map-gl 8 gives every map such a function, so that a controlled map (`viewState` with `onMove`) never draws a camera that differs from `viewState`.
+- This library calls the function after each `move` event and does not apply what it returns. A controlled react-map-gl map works when `onMove` sets `viewState` to `e.viewState`, and a change of `viewState` from outside moves the map. When `onMove` changes the camera (for example when it limits the latitude), the map draws the camera of the gesture, and goes to the camera of `viewState` when the movement ends. The map writes one warning the first time the function changes the camera, and no warning for a map where it does not. To keep the map in a region, use the option `maxBounds`.
 
 ### A listener that throws
 
@@ -399,22 +405,22 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### `addControl` with a value that is not a control
 
-- **MapLibre GL JS:** Fires `error` when a position is given. Without a position, `addControl(undefined)` throws a `TypeError`.
+- MapLibre GL JS fires `error` when a position is given. Without a position, `addControl(undefined)` throws a `TypeError`.
 - **This library:** In `@map-jr/map-jr-gl/maplibre-compat`, fires `error` and returns the map, with or without a position. A position that does not exist throws an error that names it, before `onAdd` runs; MapLibre GL JS calls `onAdd` and then throws a `TypeError`.
 
 ### The `locale` option
 
-- **MapLibre GL JS:** Changes the UI strings, with keys such as `'NavigationControl.ZoomIn'` (see `src/ui/default_locale.ts` of MapLibre GL JS). A missing key keeps the English text.
-- **This library:** The same keys as MapLibre GL JS 6.17.0, for the buttons of the controls, the units of `ScaleControl` and the hint of `cooperativeGestures`. A missing key keeps the English text of this library, which differs from MapLibre's in places (the compass is "Reset bearing to north"). `map._getUIString(key)` returns the text of the option, or `undefined` for a key that the option does not have. The close button of `Popup` (`Popup.Close`) and the name of the default `Marker` (`Marker.Title`) take the text when they are added to the map; a `Marker` with an element of your own keeps its attributes. The `aria-label` of the canvas takes `Map.Title` when the map is made. A value that is not an object writes a warning and is ignored.
+- MapLibre GL JS changes the UI strings, with keys such as `'NavigationControl.ZoomIn'` (see `src/ui/default_locale.ts` of MapLibre GL JS). A missing key keeps the English text.
+- This library does the same keys as MapLibre GL JS 6.17.0, for the buttons of the controls, the units of `ScaleControl` and the hint of `cooperativeGestures`. A missing key keeps the English text of this library, which differs from MapLibre's in places (the compass is "Reset bearing to north"). `map._getUIString(key)` returns the text of the option, or `undefined` for a key that the option does not have. The close button of `Popup` (`Popup.Close`) and the name of the default `Marker` (`Marker.Title`) take the text when they are added to the map; a `Marker` with an element of your own keeps its attributes. The `aria-label` of the canvas takes `Map.Title` when the map is made. A value that is not an object writes a warning and is ignored.
 
 ### `FullscreenControl`
 
-- **MapLibre GL JS:** Uses the Fullscreen API, and falls back to "pseudo fullscreen" (the class `maplibregl-pseudo-fullscreen`, which makes the container fill the window) where the browser has none, or with `pseudo: true`.
-- **This library:** The same, with the option `pseudo` and the same class (the container has `map-jr-pseudo-fullscreen` too). `fullscreenstart` and `fullscreenend` fire in both modes. The control does not use the prefixed `webkitRequestFullscreen`, so Safari on an iPad older than 16.4 gets the pseudo fullscreen. Removing the control ends a pseudo fullscreen. As in MapLibre GL JS, `cooperativeGestures` is off while the map is fullscreen (in both modes), and on again when it leaves fullscreen if it was on before.
+- MapLibre GL JS uses the Fullscreen API, and falls back to "pseudo fullscreen" (the class `maplibregl-pseudo-fullscreen`, which makes the container fill the window) where the browser has none, or with `pseudo: true`.
+- This library does the same, with the option `pseudo` and the same class (the container has `map-jr-pseudo-fullscreen` too). `fullscreenstart` and `fullscreenend` fire in both modes. The control does not use the prefixed `webkitRequestFullscreen`, so Safari on an iPad older than 16.4 gets the pseudo fullscreen. Removing the control ends a pseudo fullscreen. As in MapLibre GL JS, `cooperativeGestures` is off while the map is fullscreen (in both modes), and on again when it leaves fullscreen if it was on before.
 
 ### `GeolocateControl`
 
-- **MapLibre GL JS:** Can track the position, shows a dot at it, and draws an accuracy circle.
+- MapLibre GL JS can track the position, shows a dot at it, and draws an accuracy circle.
 - **This library:** Without `trackUserLocation`, moves the map to the position once per click or `trigger()` call. With `trackUserLocation`, the button turns tracking on and off as in MapLibre GL JS: the map follows the position until it moves for another reason, and a click returns to the position. The button gets the classes `maplibregl-ctrl-geolocate-waiting`, `-active`, `-active-error`, `-background` and `-background-error`, and `showUserLocation` (default `true`) shows the element `maplibregl-user-location-dot` while tracking is on. The control fires `geolocate`, `error`, `outofmaxbounds`, `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and `userlocationlostfocus` on itself (`on`, `off`, `once`), and `geolocate` and `error` also on the map. A position outside `maxBounds` fires `outofmaxbounds` and does not move the map. The code of tracking loads on demand at the first click or `trigger()` call, so the first step of tracking happens once that file has loaded. The accuracy circle is not drawn: `showAccuracyCircle: true` warns once. `fitBoundsOptions` is not read; the map zooms to `zoom` (default 14).
 
 ### Plugins
@@ -434,7 +440,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### The root property `sky`, `setSky`, `getSky`
 
-- **MapLibre GL JS:** Draws a gradient above the horizon, fog on 3D terrain, and the atmosphere around the globe. The values can change with a transition.
+- MapLibre GL JS draws a gradient above the horizon, fog on 3D terrain, and the atmosphere around the globe. The values can change with a transition.
 - **This library:** In Mercator, the map draws the gradient from `sky-color` to `horizon-color` above the horizon (`sky-horizon-blend`), and on 3D terrain the fog (`fog-color`, `fog-ground-blend`, `horizon-fog-blend`) above a pitch of 60, as MapLibre GL JS does. The values can be zoom functions and expressions with global state. A change of the values takes effect at once, with no transition. On the globe the map draws the sky as MapLibre GL JS 6.17 does: the gradient starts at the edge of the sphere instead of the horizon of Mercator, in proportion to the change from Mercator to the globe, and it is drawn only where a ray passes through the atmosphere, with the opacity 1 - `atmosphere-blend`. As in MapLibre GL JS, the globe draws no fog on 3D terrain while the change to the globe is above 0. Over the globe it draws the atmosphere as MapLibre GL JS does: the scattering of the light of the sun, whose direction comes from the `position` and `anchor` of `light`, with the opacity `atmosphere-blend` (default 0.8) times the change from Mercator to the globe, fading out as the camera comes within 1 000 km of the ground. A style with no `sky` draws no atmosphere, as in MapLibre GL JS. The 14 render tests of `atmosphere-blend` and `projection/globe/atmosphere` match. The server renderer draws no sky. `setSky` replaces the `sky` of the style, and `setSky(null)` removes it. `getSky` returns the `sky` of the style, `undefined` when the style has none, and `null` after `setSky(null)`, as in MapLibre GL JS.
 
 ### Custom layers
@@ -445,7 +451,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### The layer type `color-relief`
 
 - **MapLibre GL JS:** `color-relief-color` is an `interpolate` expression of `["elevation"]`. The colour between two stops is a linear mix, also when the expression names another interpolation.
-- **This library:** The same, with up to 2048 stops. The stops after these are not used. A `color-relief-color` that is not an `interpolate` expression draws nothing, as in MapLibre GL JS. A `raster-dem` source with `encoding: 'custom'` uses `redFactor`, `greenFactor`, `blueFactor` (default 1) and `baseShift` (default 0) for every layer of the source; when one of them is not a finite number, the library warns and reads the source as `mapbox`. The server renderer does not draw the layer.
+- This library does the same, with up to 2048 stops. The stops after these are not used. A `color-relief-color` that is not an `interpolate` expression draws nothing, as in MapLibre GL JS. A `raster-dem` source with `encoding: 'custom'` uses `redFactor`, `greenFactor`, `blueFactor` (default 1) and `baseShift` (default 0) for every layer of the source; when one of them is not a finite number, the library warns and reads the source as `mapbox`. The server renderer does not draw the layer.
 
 ### `hillshade-method` `multidirectional`
 
@@ -455,7 +461,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `map.painter` and `GPUInitializationError`
 
 - **MapLibre GL JS:** The map has a `painter`. When WebGL cannot start, the constructor throws a `GPUInitializationError`.
-- **This library:** The map has no `painter`, so a check such as `if (!map.painter) throw new GPUInitializationError(...)` throws for every map. Call `supported()` before you create the map instead. In the development build (the `development` export condition, `dist/*.dev.js`), reading `map.painter` warns once per map and says what to write instead; the value is `undefined` in both builds. `@map-jr/map-jr-gl/maplibre-compat` exports `GPUInitializationError` (also on the default export). When the map cannot start, the constructor does not throw: the map fires `error` with a `GPUInitializationError` and shows a message in the container.
+- **This library:** The map has no `painter`, so a check such as `if (!map.painter) throw new GPUInitializationError(...)` throws for every map, and `supported()` gives the answer that such a check looks for. In the development build (the `development` export condition, `dist/*.dev.js`), reading `map.painter` warns once per map and says what to write instead; the value is `undefined` in both builds. `@map-jr/map-jr-gl/maplibre-compat` exports `GPUInitializationError` (also on the default export). When the map cannot start, the constructor does not throw: the map fires `error` with a `GPUInitializationError` and shows a message in the container.
 
 ## What is not available
 

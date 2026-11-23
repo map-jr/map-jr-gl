@@ -287,7 +287,7 @@ if (supported()) {
 
 Without the check, the map reports an error to `onError` of the [description](../reference/description.md#mapdescription),
 or to the console when the description has no `onError`. It also shows the text "This browser cannot show the map." in
-the container. See [A browser without WebGL2](getting-started.md#show-other-content-in-a-browser-without-webgl2) for how to change that text.
+the container. See [A browser without WebGL2](../reference/create-map.md#a-browser-without-webgl2) for how to change that text.
 
 ## See also
 
