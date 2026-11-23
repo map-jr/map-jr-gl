@@ -2353,11 +2353,11 @@ for (const renderer of renderers) {
             }, start);
         }
         await page.emulateMedia({colorScheme: null});
-        const L2 = 'light/light/Use dark colours', D2 = 'dark/dark/Use light colours';
+        const L2 = 'light/light/Use dark colors', D2 = 'dark/dark/Use light colors';
         const wantToggles = {
-            none: `-/light/Use dark colours > ${D2} > ${L2} calls dark,light`,
-            autoDark: `auto/dark/Use light colours > ${L2} > auto/dark/Use light colours calls light,auto`,
-            autoLight: `auto/light/Use dark colours > ${D2} > auto/light/Use dark colours calls dark,auto`,
+            none: `-/light/Use dark colors > ${D2} > ${L2} calls dark,light`,
+            autoDark: `auto/dark/Use light colors > ${L2} > auto/dark/Use light colors calls light,auto`,
+            autoLight: `auto/light/Use dark colors > ${D2} > auto/light/Use dark colors calls dark,auto`,
             fixedDark: `${D2} > ${L2} > ${D2} calls light,dark`,
         };
         check(`[${renderer}] the control colorScheme() flips light and dark, and from 'auto' sets the opposite of the system and then 'auto' again, with onColorSchemeChange and a label that names the action`,

@@ -85,7 +85,7 @@ map.on('load', () => {
 
 A wrapper of MapLibre GL JS for a framework, such as react-map-gl 8, works with the compat entry through an alias of
 the module name `maplibre-gl`. See [MapLibre differences](../reference/maplibre-differences.md) for the alias and for the
-differences in behaviour.
+differences in behavior.
 
 ## Use both entries in one application
 

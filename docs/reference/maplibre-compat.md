@@ -96,9 +96,9 @@ library" names a member that MapLibre GL JS does not have.
 | `setVerticalFieldOfView` | `(fov?: number \| undefined) => Map` | Has no effect: the vertical field of view stays at 36.87 degrees. |
 | `getVerticalFieldOfView` | `() => number` | Returns 36.87, the vertical field of view of the camera in degrees, which is the default of MapLibre GL JS. |
 | `coveringTiles` | `(o: {tileSize: number; minzoom?: number; maxzoom?: number; roundZoom?: boolean}) => {canonical: {z: number; x: number; y: number; key: string}; wrap: number; overscaledZ: number; key: string}[]` | Returns the tiles that cover the view as plain objects `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`; MapLibre GL JS returns `OverscaledTileID` objects. |
-| `calculateCameraOptionsFromTo` | `(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; pitch: number; bearing: number}` | The camera options that look from `from` at `altitudeFrom` metres to `to` at `altitudeTo` metres, as in MapLibre GL JS. |
-| `calculateCameraOptionsFromCameraLngLatAltRotation` | `(cameraLngLat: LngLatLike, cameraAlt: number, bearing: number, pitch: number, roll?: number \| undefined) => object` | The camera options that put the camera at `cameraLngLat` and `cameraAlt` metres with this rotation, as in MapLibre GL JS. |
-| `calculateAnchoredCameraOptions` | `(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) => {center: LngLat; zoom: number}` | The centre and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. |
+| `calculateCameraOptionsFromTo` | `(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; pitch: number; bearing: number}` | The camera options that look from `from` at `altitudeFrom` meters to `to` at `altitudeTo` meters, as in MapLibre GL JS. |
+| `calculateCameraOptionsFromCameraLngLatAltRotation` | `(cameraLngLat: LngLatLike, cameraAlt: number, bearing: number, pitch: number, roll?: number \| undefined) => object` | The camera options that put the camera at `cameraLngLat` and `cameraAlt` meters with this rotation, as in MapLibre GL JS. |
+| `calculateAnchoredCameraOptions` | `(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) => {center: LngLat; zoom: number}` | The center and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. |
 | `setCenterClampedToGround` | `(clamped?: boolean \| undefined) => Map` | Has no effect: the map center is always on the ground. |
 | `getCenterClampedToGround` | `() => boolean` | Returns `true`: the map center is always on the ground. |
 | `setCenterElevation` | `(elevation?: number \| undefined) => Map` | Has no effect: the map center is always on the ground. |
@@ -113,7 +113,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setTransformConstrain` | `(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) \| null \| undefined) => Map` | As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. |
 | `setZoomSnap` | `(snap: number) => Map` | Sets the step of the zoom, as in MapLibre GL JS: above 0, a camera method ends at the nearest multiple of it. |
 | `getZoomSnap` | `() => number` | Returns the step of the zoom that the option `zoomSnap` or `setZoomSnap` set, or 0 when the zoom does not snap. |
-| `cameraForBounds` | `(bounds: LngLatBoundsInput, o?: {padding?: PaddingInput; maxZoom?: number} \| undefined) => {center: {lng: number; lat: number}; zoom: number; bearing: number}` | The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. |
+| `cameraForBounds` | `(bounds: LngLatBoundsInput, o?: {padding?: PaddingInput; maxZoom?: number} \| undefined) => {center: {lng: number; lat: number}; zoom: number; bearing: number}` | The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. |
 | `setEventedParent` | `(parent?: {fire(e: object): unknown; listens?(type: string): boolean} \| null \| undefined, data?: object \| (() => object) \| undefined) => Map` | As in MapLibre GL JS: each event of the map also goes to `parent.fire`, as one object with the fields of `data` (or of what the function `data` returns), while `parent.listens(type)` is true. |
 | `fire` | `(type: string \| {type: string}, data?: Record<string, unknown>) => void \| PromiseLike<unknown>` | Calls the listeners of the event `type` with `data` as the event, as in MapLibre GL JS. |
 | `setMissingStyleImageResolver` | `(resolver: ((id: string) => void \| Promise<void>) \| null) => Map` | Sets a function that supplies images on demand, as in MapLibre GL JS. |
@@ -146,8 +146,8 @@ library" names a member that MapLibre GL JS does not have.
 | `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of MapLibre GL JS has no effect. |
 | `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
 | `getRoll` | `() => number` | Returns 0: the camera has no roll. |
-| `getCenterElevation` | `() => number` | Returns the elevation of the ground at the map center in metres, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. |
-| `getCameraTargetElevation` | `() => number` | Returns the elevation of the ground at the map center in metres, as `getCenterElevation` does. |
+| `getCenterElevation` | `() => number` | Returns the elevation of the ground at the map center in meters, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. |
+| `getCameraTargetElevation` | `() => number` | Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. |
 | `isZooming` | `() => boolean` | Whether the zoom level changes now, by the user or by a camera method. |
 | `isRotating` | `() => boolean` | Whether the bearing changes now, by the user or by a camera method. |
 | `isRolling` | `() => boolean` | Returns `false`: the camera has no roll. |
@@ -216,7 +216,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setMaxBounds` | `(bounds?: LngLatBoundsInput \| null \| undefined) => Map` | Keeps the map center inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. |
 | `getMaxBounds` | `() => {getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number; toArray: () => number[][]} \| null` | Returns the box that the map center stays in, or `null` when there is none. |
 | `getPixelRatio` | `() => number` | Returns the ratio of device pixels to CSS pixels that the canvas uses. |
-| `queryTerrainElevation` | `(lngLat: LngLatLike) => number \| null` | Returns the elevation of the ground at a position in metres, multiplied by the exaggeration as in MapLibre GL JS, or `null` without 3D terrain. |
+| `queryTerrainElevation` | `(lngLat: LngLatLike) => number \| null` | Returns the elevation of the ground at a position in meters, multiplied by the exaggeration as in MapLibre GL JS, or `null` without 3D terrain. |
 | `isSourceLoaded` | `(id: string) => boolean` | Whether the data of one source is loaded for the current view. |
 | `isStyleLoaded` | `() => boolean` | Whether the style has loaded. |
 | `areTilesLoaded` | `() => boolean` | Whether the tiles of the current view have loaded. |
@@ -245,7 +245,7 @@ library" names a member that MapLibre GL JS does not have.
 | `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
 | `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| `[`FeatureOptions`](map.md#featureoptions)`, o?: `[`FeatureOptions`](map.md#featureoptions)`) => Promise<`[`RenderedFeature`](types.md#renderedfeature)`[]>` | Only in this library: returns a promise of the features that the style layers draw, the top one first. |
 | `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| `[`SourceOptions`](map.md#sourceoptions)`, o?: `[`SourceOptions`](map.md#sourceoptions)`) => Promise<`[`QueriedFeature`](types.md#queriedfeature)`[]>` | Only in this library: returns a promise of the features of the tile data of the source `sourceId`. |
-| `queryElevation` | `(at: LngLatLike \| {x: number; y: number}, options?: {source?: string; zoom?: number}) => Promise<number \| null>` | Only in this library: returns a promise of the elevation of the ground in metres at a position, from the raster-dem source of the style, or `null` where it has no data. |
+| `queryElevation` | `(at: LngLatLike \| {x: number; y: number}, options?: {source?: string; zoom?: number}) => Promise<number \| null>` | Only in this library: returns a promise of the elevation of the ground in meters at a position, from the raster-dem source of the style, or `null` where it has no data. |
 | `getAttributions` | `() => string[]` | Only in this library: returns the attribution texts of the sources of the style as they are written, which can be HTML that the attribution control shows. |
 <!-- ref:CompatMap:end -->
 

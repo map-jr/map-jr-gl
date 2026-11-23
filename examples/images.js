@@ -1,5 +1,5 @@
 // The module script of a page that has <div id="map" style="height: 500px"></div>. The map shows four places. Each has
-// an SVG image of the description in the colour of its kind, and its name beside it.
+// an SVG image of the description in the color of its kind, and its name beside it.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';

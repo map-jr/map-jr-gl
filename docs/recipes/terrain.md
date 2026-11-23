@@ -1,7 +1,7 @@
 # Show terrain and contours
 
-This example shows the Matterhorn in 3D with relief shading and labelled contour lines, and reads the height of the
-ground at a click. Two buttons switch the contour lines between feet and metres and turn the 3D terrain on and off.
+This example shows the Matterhorn in 3D with relief shading and labeled contour lines, and reads the height of the
+ground at a click. Two buttons switch the contour lines between feet and meters and turn the 3D terrain on and off.
 
 <!-- example:terrain:start -->
 **Map Jr**
@@ -41,7 +41,7 @@ const elevation = (unit, terrain) => ({
   globalState: {'elevation-unit': unit},
   sources: {
     // For each zoom level, `thresholds` sets the interval between lines and
-    // between major lines, in feet or metres.
+    // between major lines, in feet or meters.
     contours: {
       type: 'contour',
       source: 'terrarium',
@@ -89,7 +89,7 @@ const elevation = (unit, terrain) => ({
 const container = document.getElementById('map');
 const readout = document.createElement('p');
 const units = Object.assign(document.createElement('button'), {
-  textContent: 'Contours in metres',
+  textContent: 'Contours in meters',
 });
 const flat = Object.assign(document.createElement('button'), {
   textContent: 'Flat map',
@@ -104,19 +104,19 @@ const describe = () => ({
   initialView: {center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25},
   attribution: {compact: true},
   onClick: async e => {
-    const metres = await map.queryElevation(e.lngLat);
-    const feet = metres * 3.28084;
+    const meters = await map.queryElevation(e.lngLat);
+    const feet = meters * 3.28084;
     readout.textContent =
-      metres === null
+      meters === null
         ? 'No elevation data here'
-        : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+        : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   },
 });
 const map = createMap(container, describe());
 
 units.onclick = () => {
   unit = unit === 'ft' ? 'm' : 'ft';
-  units.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+  units.textContent = unit === 'ft' ? 'Contours in meters' : 'Contours in feet';
   map.update(describe());
 };
 flat.onclick = () => {
@@ -165,7 +165,7 @@ const map = new Map({
 });
 const readout = document.createElement('p');
 const units = Object.assign(document.createElement('button'), {
-  textContent: 'Contours in metres',
+  textContent: 'Contours in meters',
 });
 const flat = Object.assign(document.createElement('button'), {
   textContent: 'Flat map',
@@ -177,7 +177,7 @@ let unit = 'ft',
 // Adds the contour lines and their labels in the current unit. A contour source
 // is an addition of this library: it makes lines from the elevation tiles. For
 // each zoom level, `thresholds` sets the interval between lines and between
-// major lines, in feet or metres.
+// major lines, in feet or meters.
 function addContours() {
   map.addSource('contours', {
     type: 'contour',
@@ -230,17 +230,17 @@ map.on('load', () => {
 });
 
 map.on('click', async e => {
-  const metres = await map.queryElevation(e.lngLat);
-  const feet = metres * 3.28084;
+  const meters = await map.queryElevation(e.lngLat);
+  const feet = meters * 3.28084;
   readout.textContent =
-    metres === null
+    meters === null
       ? 'No elevation data here'
-      : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+      : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
 });
 
 units.onclick = () => {
   unit = unit === 'ft' ? 'm' : 'ft';
-  units.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+  units.textContent = unit === 'ft' ? 'Contours in meters' : 'Contours in feet';
   // The style shows the heights of peaks in the unit of its state
   // "elevation-unit".
   map.setGlobalStateProperty('elevation-unit', unit);
@@ -296,7 +296,7 @@ const elevation = (unit, terrain) => ({
   globalState: {'elevation-unit': unit},
   sources: {
     // For each zoom level, `thresholds` sets the interval between lines and
-    // between major lines, in feet or metres.
+    // between major lines, in feet or meters.
     contours: {
       type: 'contour',
       source: 'terrarium',
@@ -370,7 +370,7 @@ async function read(event) {
     }}
   </p>
   <button @click="unit = unit === 'ft' ? 'm' : 'ft'">
-    Contours in {{ unit === 'ft' ? 'metres' : 'feet' }}
+    Contours in {{ unit === 'ft' ? 'meters' : 'feet' }}
   </button>
   <button @click="terrain = !terrain">
     {{ terrain ? 'Flat map' : '3D terrain' }}
@@ -414,7 +414,7 @@ const elevation = (unit, terrain) => ({
   globalState: {'elevation-unit': unit},
   sources: {
     // For each zoom level, `thresholds` sets the interval between lines and
-    // between major lines, in feet or metres.
+    // between major lines, in feet or meters.
     contours: {
       type: 'contour',
       source: 'terrarium',
@@ -485,7 +485,7 @@ export default function Terrain() {
           : `${height.toFixed(0)} m above sea level`}
       </p>
       <button onClick={() => setUnit(unit === 'ft' ? 'm' : 'ft')}>
-        Contours in {unit === 'ft' ? 'metres' : 'feet'}
+        Contours in {unit === 'ft' ? 'meters' : 'feet'}
       </button>
       <button onClick={() => setTerrain(!terrain)}>
         {terrain ? 'Flat map' : '3D terrain'}
@@ -528,7 +528,7 @@ export default function Terrain() {
     globalState: {'elevation-unit': unit},
     sources: {
       // For each zoom level, `thresholds` sets the interval between lines and
-      // between major lines, in feet or metres.
+      // between major lines, in feet or meters.
       contours: {
         type: 'contour',
         source: 'terrarium',
@@ -605,7 +605,7 @@ export default function Terrain() {
     : `${height.toFixed(0)} m above sea level`}
 </p>
 <button onclick={() => (unit = unit === 'ft' ? 'm' : 'ft')}
-  >Contours in {unit === 'ft' ? 'metres' : 'feet'}</button
+  >Contours in {unit === 'ft' ? 'meters' : 'feet'}</button
 >
 <button onclick={() => (terrain = !terrain)}
   >{terrain ? 'Flat map' : '3D terrain'}</button
@@ -635,7 +635,7 @@ export default function Terrain() {
   style="height: 500px"
 ></map-jr>
 <p id="readout">Click the map to read the elevation</p>
-<button id="units">Contours in metres</button>
+<button id="units">Contours in meters</button>
 <button id="flat">Flat map</button>
 <script type="module">
   import '@map-jr/map-jr-gl/element';
@@ -686,7 +686,7 @@ export default function Terrain() {
       // `thresholds` sets the
       // interval between lines
       // and between major lines,
-      // in feet or metres.
+      // in feet or meters.
       contours: {
         type: 'contour',
         source: 'terrarium',
@@ -733,17 +733,17 @@ export default function Terrain() {
   showElevation();
 
   map.addEventListener('map-click', async event => {
-    const metres = await map.map.queryElevation(event.detail.lngLat);
-    const feet = metres * 3.28084;
+    const meters = await map.map.queryElevation(event.detail.lngLat);
+    const feet = meters * 3.28084;
     readout.textContent =
-      metres === null
+      meters === null
         ? 'No elevation data here'
-        : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+        : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   });
   units.onclick = () => {
     unit = unit === 'ft' ? 'm' : 'ft';
     units.textContent =
-      unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+      unit === 'ft' ? 'Contours in meters' : 'Contours in feet';
     showElevation();
   };
   flat.onclick = () => {
@@ -762,13 +762,13 @@ export default function Terrain() {
   shows a flat map.
 - A source of the type `contour` in [`sources`](../reference/description.md#sources) creates contour lines from the
   elevation source. Each key of `thresholds` is a zoom level, and its value is two intervals: between lines, and between
-  major lines. The intervals are in metres multiplied by `multiplier`, so in feet with `3.28084`.
+  major lines. The intervals are in meters multiplied by `multiplier`, so in feet with `3.28084`.
 - The `line` layer draws the lines below the layer `water` of the style (`before`), and the `symbol` layer labels the
   major lines with the property `ele`.
-- The style shows the heights of peaks in feet or metres, as its state `elevation-unit` says (`'ft'` by default).
+- The style shows the heights of peaks in feet or meters, as its state `elevation-unit` says (`'ft'` by default).
   [`globalState`](../reference/description.md#globalstate) sets it to the unit of the contour lines, so that the labels
   of the peaks change with the button too.
-- [`queryElevation`](../reference/map.md#queryelevation) resolves to the height of the ground in metres. It resolves to
+- [`queryElevation`](../reference/map.md#queryelevation) resolves to the height of the ground in meters. It resolves to
   `null` when the elevation tile has no data, and it rejects when the style has no `raster-dem` source.
 - Each button calls [`update`](../reference/map.md#update) with a new description from `describe`. A change of `terrain`
   or of a source in `sources` [loads the style again](../reference/description.md#style).
@@ -794,5 +794,5 @@ they are drawn, and the default is `1`.
 
 ## See also
 
-- [Terrain](../guide/terrain.md) for 3D terrain, relief shading, colour by height and the options of a contour source.
+- [Terrain](../guide/terrain.md) for 3D terrain, relief shading, color by height and the options of a contour source.
 - [Ask for the height of the ground](../guide/terrain.md#ask-for-the-height-of-the-ground).

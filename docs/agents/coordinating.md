@@ -60,7 +60,7 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   that fails in some runs, or a dated comment with what was measured.
 - **Check your own premise before you send a worker back.** On 2026-11-17 a pull request (#801) went back with the
   claim that MapLibre GL JS falls back to a full load for another sprite; its source showed that it does not. Ask the
-  worker to read the behaviour of MapLibre GL JS from its source or to measure it at `/ml/`, and to say so when your
+  worker to read the behavior of MapLibre GL JS from its source or to measure it at `/ml/`, and to say so when your
   premise is wrong.
 - **Another session can coordinate on the same repository at the same time.** Leave its pull requests to it, and
   give it a message (`SendMessage` to the address of its message) when `main` is red or before a release, so that it
@@ -107,7 +107,7 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   fault of the pull request. File the check at once and give it to one worker with a narrow brief; the CI logs were
   enough to fix the three of 2026-11-16, which did not fail on the Mac even with the CPU throttled 40 times. Do not
   start a failed job again in the hope of a lucky run.
-- **The `browser` summary job reports a cancelled run as failed** until it is changed, so each re-push sends a false
+- **The `browser` summary job reports a canceled run as failed** until it is changed, so each re-push sends a false
   failure event for the old head. Read whether the head is current before you act on a failure event.
 - **A cloud session cannot delete merged branches** (`git push origin --delete` gives 403).
 - **A pull request with no CI after 5 minutes** (`prs.mjs --watch` says so) missed its event: close it and open it

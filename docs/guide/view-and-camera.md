@@ -5,7 +5,7 @@ the view in the state of the application, and read the view.
 
 | Member | Type | Meaning |
 |---|---|---|
-| `center` | `[lng, lat]` | The position at the centre of the map. |
+| `center` | `[lng, lat]` | The position at the center of the map. |
 | `zoom` | `number` | The zoom level. |
 | `bearing` | `number` | The compass direction at the top of the map, in degrees: 90 puts east at the top. |
 | `pitch` | `number` | The tilt in degrees: 0 looks straight down. The largest pitch is `maxPitch` of the description, 60 by default. |
@@ -674,10 +674,10 @@ export function Places() {
 }
 ```
 
-A member that `moveTo` is not passed keeps its value, so `{zoom: 15}` keeps the centre. With `bounds`:
+A member that `moveTo` is not passed keeps its value, so `{zoom: 15}` keeps the center. With `bounds`:
 
 - The map turns to bearing 0 unless `bearing` is set.
-- `pitch` does not change the fit. The map computes the centre and the zoom of the fit at the current pitch, so with
+- `pitch` does not change the fit. The map computes the center and the zoom of the fit at the current pitch, so with
   a different `pitch` the box can extend past the edges of the map. To fit a box at a pitch, set the pitch first.
 - The `fitPadding` of `moveTo` is added to the [`padding`](../reference/description.md#padding) of the description.
   `moveTo` does not change the `padding` of the description.

@@ -9,7 +9,7 @@ export class LngLat {
     wrap() { return new LngLat(((this.lng + 180) % 360 + 360) % 360 - 180, this.lat); }
     toArray(): [number, number] { return [this.lng, this.lat]; }
     toString() { return `LngLat(${this.lng}, ${this.lat})`; }
-    /** The distance to another position in metres, on a sphere. */
+    /** The distance to another position in meters, on a sphere. */
     distanceTo(other: LngLatInput) {
         const o = LngLat.convert(other), rad = Math.PI / 180, lat1 = this.lat * rad, lat2 = o.lat * rad;
         const a = Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos((o.lng - this.lng) * rad);

@@ -34,7 +34,7 @@ const contours = {
 
 const dot = '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="{{color}}" stroke="#fff" stroke-width="1.5"/></svg>';
 
-// 50,000 points around New York in five colours. The generator is deterministic, so a visit always shows the same points.
+// 50,000 points around New York in five colors. The generator is deterministic, so a visit always shows the same points.
 function markerData() {
     const colors = ['#d6453d', '#2f7fd1', '#2e9d5b', '#8a4fd3', '#e08a1e'];
     let seed = 7;
@@ -54,7 +54,7 @@ export const showcases: Showcase[] = [
     {id: 'pitch', label: 'Manhattan at pitch 85', caption: 'Lower Manhattan at a pitch of 85 degrees. `maxPitch` is 60 when the description leaves it out, and the description of this map sets it to 85.',
         link: '/play', linkLabel: 'Try it in the playground',
         scene: () => plain({center: [-74.0119, 40.7069], zoom: 16, pitch: 85, bearing: 30}, {maxPitch: 85})},
-    {id: 'alps', label: 'The Alps in 3D', caption: 'Terrain, relief shading and labelled contour lines from one elevation source.',
+    {id: 'alps', label: 'The Alps in 3D', caption: 'Terrain, relief shading and labeled contour lines from one elevation source.',
         link: '/recipes/terrain', linkLabel: 'Recipe: Show terrain and contours',
         scene: () => ({props: {mapStyle: terrainStyle, terrain: {source: 'terrarium', exaggeration: 1.5}, ...contours}, camera: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60, bearing: 25}})},
     {id: 'markers', label: '50,000 markers', caption: 'One symbol layer draws all of the points from a buffer on the GPU. The cost of a frame does not grow with their number.',

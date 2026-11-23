@@ -56,7 +56,7 @@ async function open(path, {width = 1440, height = 900, scheme = 'light', reduced
     await page.goto(base + path, {waitUntil: path === '/' ? 'load' : 'networkidle'});
     return {page, problems, close: () => context.close()};
 }
-// The contrast ratio of WCAG 2 between two colours written as #RRGGBB.
+// The contrast ratio of WCAG 2 between two colors written as #RRGGBB.
 function contrast(a, b) {
     const luminance = hex => {
         const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
@@ -111,24 +111,24 @@ try {
             check('search: a result leads to a page', new URL(page.url()).pathname !== '/reference/react' || !!new URL(page.url()).hash, page.url().slice(base.length));
         }
 
-        // Colour mode.
+        // Color mode.
         await page.goto(base + docsPage, {waitUntil: 'networkidle'});
         const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
         const light = await background();
         await page.getByRole('button', {name: /switch to dark mode/i}).first().click();
         await page.waitForFunction(() => document.documentElement.classList.contains('dark'));
         const dark = await background();
-        check('colour mode: the light page is #ffffff and the night is #17181a', light === 'rgb(255, 255, 255)' && dark === 'rgb(23, 24, 26)', `${light} / ${dark}`);
+        check('color mode: the light page is #ffffff and the night is #17181a', light === 'rgb(255, 255, 255)' && dark === 'rgb(23, 24, 26)', `${light} / ${dark}`);
         await page.reload({waitUntil: 'networkidle'});
-        check('colour mode: the choice stays after a load', await page.evaluate(() => document.documentElement.classList.contains('dark')));
+        check('color mode: the choice stays after a load', await page.evaluate(() => document.documentElement.classList.contains('dark')));
         check('docs page: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
     }
 
-    // The colours of the code (#1209): the tokens have the colours of the theme of the scheme, the block has the
-    // sheet of the code, and each token has 4.5:1 or more against it. The lists are the foreground colours of the
+    // The colors of the code (#1209): the tokens have the colors of the theme of the scheme, the block has the
+    // sheet of the code, and each token has 4.5:1 or more against it. The lists are the foreground colors of the
     // themes github-light-default and github-dark-default of Shiki 4.6.0. The block has its own background (#1331), and
-    // the light tokens are darkened by 15% (color-mix in main.css), so that the comment colour keeps 4.5:1 on it.
+    // the light tokens are darkened by 15% (color-mix in main.css), so that the comment color keeps 4.5:1 on it.
     {
         const darken = colour => '#' + [1, 3, 5].map(i => Math.round(parseInt(colour.slice(i, i + 2), 16) * 0.85).toString(16).padStart(2, '0')).join('').toUpperCase();
         const themes = {
@@ -139,11 +139,11 @@ try {
             const {page, problems, close} = await open('/guide/getting-started', {scheme});
             await page.waitForFunction(scheme => document.documentElement.classList.contains(scheme), scheme);
             const blocks = await page.locator('main pre.shiki').evaluateAll(blocks => {
-                // The computed colour is rgb(r, g, b), or color(srgb r g b) with fractions from color-mix.
+                // The computed color is rgb(r, g, b), or color(srgb r g b) with fractions from color-mix.
                 const hex = colour => '#' + (colour.startsWith('color(') ? colour.match(/[\d.]+/g).slice(-3).map(n => Math.round(Number(n) * 255)) : colour.match(/\d+/g).slice(0, 3).map(Number)).map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase();
                 return blocks.map(block => ({
                     sheet: hex(getComputedStyle(block).backgroundColor),
-                    // A block in a language that Shiki did not load has no token colours and takes the text colour.
+                    // A block in a language that Shiki did not load has no token colors and takes the text color.
                     highlighted: !!block.querySelector('code span[style*="--shiki"], code span[class^="s"]'),
                     colours: [...block.querySelectorAll('code span')].filter(span => !span.children.length && span.textContent.trim()).map(span => hex(getComputedStyle(span).color)),
                 }));
@@ -155,7 +155,7 @@ try {
             // The browser and darken() can round a half differently, so a channel may differ by 1.
             const near = (a, b) => [1, 3, 5].every(i => Math.abs(parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)) <= 1);
             const foreign = used.filter(colour => !colours.some(expected => near(colour, expected)));
-            check(`code in ${scheme}: the tokens have the colours of the theme`, foreign.length === 0, foreign.join(' '));
+            check(`code in ${scheme}: the tokens have the colors of the theme`, foreign.length === 0, foreign.join(' '));
             const low = used.map(colour => [colour, contrast(colour, sheet)]).filter(([, ratio]) => ratio < 4.5);
             check(`code in ${scheme}: every token has 4.5:1 or more on the sheet`, low.length === 0, low.map(([colour, ratio]) => `${colour} ${ratio.toFixed(2)}`).join(' ') || 'lowest ' + Math.min(...used.map(colour => contrast(colour, sheet))).toFixed(2));
             check(`code in ${scheme}: no failed request and no error`, problems.length === 0, problems.join(' | '));
@@ -957,12 +957,12 @@ try {
         await close();
     }
     if (withMap) {
-        // The first paint has the scale and the centre of the live map at every size of the window (#1393). The labels of places in
+        // The first paint has the scale and the center of the live map at every size of the window (#1393). The labels of places in
         // the SVG (the page without JavaScript) are where the places of the idle map are: every label has the same horizontal
-        // distance (within 3 px) to its place, so the scale and the centre agree, and most labels have the same vertical
+        // distance (within 3 px) to its place, so the scale and the center agree, and most labels have the same vertical
         // distance to their place, which is the offset of the label from the dot. (A label of two lines has another offset.)
         // Windows up to 1000 by 1060 px have the inline SVG of 1000 by 1000. The others have the SVG of 2560 by 1600 from /home-first-paint-wide.svg
-        // as the background of the stage; the check puts that file where the style puts it (centred on the stage, 1:1) and measures it.
+        // as the background of the stage; the check puts that file where the style puts it (centered on the stage, 1:1) and measures it.
         const wideSvg = await (await fetch(base + '/home-first-paint-wide.svg')).text();
         for (const [width, height] of [[390, 844], [768, 1024], [1024, 768], [1440, 900]]) {
             const plain = await browser.newContext({viewport: {width, height}, javaScriptEnabled: false});
@@ -972,7 +972,7 @@ try {
                 const background = getComputedStyle(document.querySelector('.home-first-wide'));
                 const stage = document.querySelector('[data-home-map]').getBoundingClientRect();
                 if (background.display !== 'none') {
-                    // The style of the wide picture: centred, 2560 by 1600, no repeat.
+                    // The style of the wide picture: centered, 2560 by 1600, no repeat.
                     if (background.backgroundSize !== '2560px 1600px' || background.backgroundRepeat !== 'no-repeat' || background.backgroundPositionX !== '50%' || background.backgroundPositionY !== '50%') return {wrong: `${background.backgroundSize} ${background.backgroundRepeat} ${background.backgroundPosition}`};
                     const holder = document.createElement('div');
                     holder.style.cssText = `position:absolute;left:${stage.x + stage.width / 2 - 1280}px;top:${stage.y + stage.height / 2 - 800}px;width:2560px;height:1600px`;
@@ -984,7 +984,7 @@ try {
                     return [label.textContent.trim(), [box.x + box.width / 2, box.y + box.height / 2]];
                 }))};
             }, wideSvg);
-            check(`home page at ${width} px: the first paint is the ${painted.wide ? 'wide' : 'inline'} picture, centred at 1:1 and larger than the stage`, !painted.wrong && (painted.wide ? 2560 >= painted.stage[0] && 1600 >= painted.stage[1] : 1000 >= painted.stage[0] && 1000 >= painted.stage[1]), painted.wrong ?? `stage ${painted.stage?.map(Math.round).join(' x ')}`);
+            check(`home page at ${width} px: the first paint is the ${painted.wide ? 'wide' : 'inline'} picture, centered at 1:1 and larger than the stage`, !painted.wrong && (painted.wide ? 2560 >= painted.stage[0] && 1600 >= painted.stage[1] : 1000 >= painted.stage[0] && 1000 >= painted.stage[1]), painted.wrong ?? `stage ${painted.stage?.map(Math.round).join(' x ')}`);
             await plain.close();
             const {page, close} = await open('/', {width, height});
             await page.locator('[data-home-map][data-map-state="idle"]').waitFor({timeout: 90000}).catch(() => {});
@@ -1042,7 +1042,7 @@ try {
             };
             requestAnimationFrame(tick);
         })()`;
-        // The first paint has the scheme of the page (#1422): the colour mode of the site sets the class `dark` on <html> in the head, from
+        // The first paint has the scheme of the page (#1422): the color mode of the site sets the class `dark` on <html> in the head, from
         // the stored choice or else from `prefers-color-scheme`. `stored` is the choice in localStorage, and `system` the media query.
         const stores = value => `try { localStorage.setItem('nuxt-color-mode', '${value}'); } catch {}`;
         const cases = [
@@ -1057,7 +1057,7 @@ try {
             const label = `home page at ${width} px in ${expect}${stored ? ` (stored, system ${system})` : ''}`;
             // Every frame with the first paint has the scheme of the page, and the page has the expected scheme from the first frame.
             const wrongScheme = frames.filter(frame => frame.page !== expect || (frame.first && frame.paint !== expect));
-            check(`${label}: the first paint has the colours of the page in every frame`, frames.length > 5 && wrongScheme.length === 0,
+            check(`${label}: the first paint has the colors of the page in every frame`, frames.length > 5 && wrongScheme.length === 0,
                 `${frames.length} frames, ${wrongScheme.length} wrong (${[...new Set(wrongScheme.map(frame => `page ${frame.page}, paint ${frame.paint}`))].join('; ')})`);
             // The page fetches the pictures of its scheme only. The inline picture of the light scheme is part of the HTML.
             const fetchedPictures = (await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname))).filter(path => path.startsWith('/home-first-paint'));
@@ -1123,7 +1123,7 @@ try {
     }
 
     // The section /styles, written from the other repositories at build (build/styles.ts, #1129). /styles is one map
-    // with a switch of the style and of the colour scheme, and the address keeps the choice (#1523).
+    // with a switch of the style and of the color scheme, and the address keeps the choice (#1523).
     {
         const {page, close} = await open('/styles');
         const links = await page.locator('main a[href^="/styles"]').evaluateAll(list => list.map(link => link.getAttribute('href')));

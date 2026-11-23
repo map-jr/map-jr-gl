@@ -16,7 +16,7 @@ const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
   globalState: {'elevation-unit': unit},
   sources: {
-    // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or metres.
+    // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or meters.
     contours: {type: 'contour', source: 'terrarium', multiplier: unit === 'ft' ? 3.28084 : 1, thresholds: thresholds[unit]},
   },
   layers: [
@@ -31,7 +31,7 @@ const elevation = (unit, terrain) => ({
 
 const container = document.getElementById('map');
 const readout = document.createElement('p');
-const units = Object.assign(document.createElement('button'), {textContent: 'Contours in metres'});
+const units = Object.assign(document.createElement('button'), {textContent: 'Contours in meters'});
 const flat = Object.assign(document.createElement('button'), {textContent: 'Flat map'});
 container.after(readout, units, flat);
 
@@ -42,16 +42,16 @@ const describe = () => ({
   initialView: {center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25},
   attribution: {compact: true},
   onClick: async e => {
-    const metres = await map.queryElevation(e.lngLat);
-    const feet = metres * 3.28084;
-    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
+    const meters = await map.queryElevation(e.lngLat);
+    const feet = meters * 3.28084;
+    readout.textContent = meters === null ? 'No elevation data here' : `${meters.toFixed(0)} m (${feet.toFixed(0)} ft) above sea level`;
   },
 });
 const map = createMap(container, describe());
 
 units.onclick = () => {
   unit = unit === 'ft' ? 'm' : 'ft';
-  units.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+  units.textContent = unit === 'ft' ? 'Contours in meters' : 'Contours in feet';
   map.update(describe());
 };
 flat.onclick = () => {

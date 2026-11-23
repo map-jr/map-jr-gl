@@ -309,7 +309,7 @@ const MapJrComponent = defineComponent({
          */
         cooperativeGestures: {type: Boolean, default: undefined},
         /**
-         * The colour scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. `'auto'` follows the browser.
+         * The color scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. `'auto'` follows the browser.
          * @default 'light'
          */
         colorScheme: String as PropType<MapDescription['colorScheme']>,

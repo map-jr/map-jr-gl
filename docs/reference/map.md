@@ -98,7 +98,7 @@ GL JS. This holds for `update`, `patch`, and in the compat entry for `setPaintPr
 - The time comes from the `*-transition` property of the layer (`'fill-color-transition': {duration: 500}`), then from
   the `transition` of the style, then from the default `{duration: 300, delay: 0}`, in milliseconds. The value waits
   for `delay` and then moves over `duration` with a cubic ease in and out.
-- Colours, numbers and lists of numbers of the same length (`fill-translate`) move. A value that depends on the zoom
+- Colors, numbers and lists of numbers of the same length (`fill-translate`) move. A value that depends on the zoom
   moves between the values at the zoom of each frame.
 - These change at once: a value that depends on the feature (`get` or `feature-state`, before or after the change),
   `*-pattern`, `line-dasharray`, and a value of any other type.
@@ -531,10 +531,10 @@ queryElevation(
 |---|---|---|---|
 | `at` **required** | `Position \| {x: number; y: number}` | | A position, `[lng, lat]`, or a point of the screen, `{x, y}` in CSS pixels. |
 
-**Returns:** `Promise<number \| null>`. A promise of the height in metres, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
+**Returns:** `Promise<number \| null>`. A promise of the height in meters, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
 <!-- ref:MapInstance.queryElevation:end -->
 
-The height is in metres, and the `exaggeration` of the terrain does not change it. The promise resolves to `null`
+The height is in meters, and the `exaggeration` of the terrain does not change it. The promise resolves to `null`
 when the elevation tile has no data, and it rejects when the style has no `raster-dem` source.
 
 ## `toBlob`

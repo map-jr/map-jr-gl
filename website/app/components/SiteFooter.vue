@@ -6,7 +6,7 @@ const links = [
     {label: 'GitHub', to: site.repository},
     {label: 'npm', to: 'https://www.npmjs.com/package/@map-jr/map-jr-gl'},
     {label: 'Changelog', to: `${site.repository}/blob/main/CHANGELOG.md`},
-    {label: 'Licence (MIT)', to: `${site.repository}/blob/main/LICENSE`},
+    {label: 'License (MIT)', to: `${site.repository}/blob/main/LICENSE`},
 ];
 </script>
 
@@ -27,9 +27,9 @@ const links = [
             <ULink :to="link.to" target="_blank" class="underline-offset-4 hover:underline">{{ link.label }}</ULink>
           </li>
         </ul>
-        <!-- The centre of the map on the home page. It follows the map while the visitor moves it. -->
+        <!-- The center of the map on the home page. It follows the map while the visitor moves it. -->
         <p class="figure-text text-muted whitespace-pre-wrap">
-          <NuxtLink to="/" class="hover:text-default" aria-label="The centre of the map on the home page">{{ formatCoordinates(view.center) }}</NuxtLink>
+          <NuxtLink to="/" class="hover:text-default" aria-label="The center of the map on the home page">{{ formatCoordinates(view.center) }}</NuxtLink>
           <span class="mx-2" aria-hidden="true">/</span>v{{ site.version }}
         </p>
       </div>

@@ -1,5 +1,5 @@
 <!--
-  The map of /styles (website/build/styles.ts writes the block): one map, buttons that choose the style and the colour
+  The map of /styles (website/build/styles.ts writes the block): one map, buttons that choose the style and the color
   scheme, the URL of the chosen style for Map Jr. GL or for MapLibre GL JS with one copy button, and the details of the
   style (its text, its global state and its sources with attribution). The styles come from the app config (`site.styles`). The
   query of the address keeps the choice (`?style=elevation&scheme=dark`), so a link opens the same view. The scheme
@@ -30,7 +30,7 @@ const library = ref<'map-jr' | 'maplibre'>('map-jr');
 const shownUrl = computed(() => library.value === 'maplibre' && chosen.value?.maplibre ? chosen.value.maplibre.url : chosen.value?.url ?? '');
 const controls = [navigationControl()];
 
-// The choice of the address, or the first style and the colour mode of the site. The server renders the default, and
+// The choice of the address, or the first style and the color mode of the site. The server renders the default, and
 // the page reads the address once it runs, so that the first render matches.
 function fromAddress() {
     const style = typeof route.query.style === 'string' ? route.query.style : '';
@@ -92,7 +92,7 @@ async function copy() {
         @click="choose({style: style.name})"
       />
     </div>
-    <div class="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Colour scheme">
+    <div class="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Color scheme">
       <UButton
         v-for="option in (['light', 'dark'] as const)"
         :key="option"

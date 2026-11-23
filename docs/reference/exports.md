@@ -87,7 +87,7 @@ defaultPin(options?: {
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `options` | `{color?: string; scale?: number}` | | `color` is a CSS colour, and `scale` multiplies the size (default 1). |
+| `options` | `{color?: string; scale?: number}` | | `color` is a CSS color, and `scale` multiplies the size (default 1). |
 
 **Returns:** `HTMLElement`. A new element.
 <!-- ref:MainExports.defaultPin:end -->

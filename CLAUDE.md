@@ -59,13 +59,13 @@ to protect those qualities.
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
   - changes the hard line of the size or a ceiling in `scripts/size-check.mjs` (see "Size");
-  - adds a dependency to the built files, or takes code or a method from a project whose licence is not on the list
+  - adds a dependency to the built files, or takes code or a method from a project whose license is not on the list
     in "Code and methods from other projects";
   - changes this file or the release process (the workflow `Release` included);
   - changes what the CI workflows check: removes or skips a job or a test, lowers a floor, or makes a job pass when
     a check fails. A change of how a workflow runs needs no owner: a retry, a cache, a timeout, a version of a tool
     or of an action, or the order of steps. Its pull request says why the change is needed;
-  - is labelled `needs: owner`.
+  - is labeled `needs: owner`.
 - **Before version 1.0, a correction does not need the owner.** A change that makes the types stricter, or that
   corrects a result, so that an entry agrees with its documentation or with MapLibre GL JS can be merged on green CI,
   even when code that compiled or ran before can break. The pull request lists what can break.
@@ -114,11 +114,11 @@ A change is done when all of these that apply are true. The pull request templat
    and Svelte. `pnpm test:consistency` fails if the Vue prop or the documentation is missing.
 4. **Documentation.** `docs/reference/` for each function, field, event and type (`description.md`, `map.md`,
    `vue.md`, `react.md`, `svelte.md`, `element.md` and the others), `docs/guide/` or `docs/recipes/` when a task
-   changes, and `docs/reference/maplibre-differences.md` when behaviour differs from MapLibre (including anything
+   changes, and `docs/reference/maplibre-differences.md` when behavior differs from MapLibre (including anything
    accepted that has no effect). If the README shows it, update the README.
 5. **Examples.** An example has seven forms in `examples/` (`.js`, `.compat.js`, `.vue`, `.nuxt.vue`, `.jsx`,
    `.svelte`, and `.html` for `<map-jr>`), each complete on its own, and its recipe in `docs/recipes/` shows them.
-   Comments in examples must stay true: reread them when behaviour changes.
+   Comments in examples must stay true: reread them when behavior changes.
 6. **Mistakes get a message.** A mistake by the user gets a message that says what is wrong and what to write
    instead. An option or method that is accepted but has no effect warns once. The library does not ignore input
    in silence.
@@ -134,21 +134,21 @@ A change is done when all of these that apply are true. The pull request templat
 10. **Size.** `pnpm test:size` passes, and the pull request says what the change adds. See "Size" below.
 11. **Numbers.** After a change that affects results or sizes, run `pnpm status` (it rewrites the status table in
     the README) and commit the result.
-12. **Licence.** `ACKNOWLEDGEMENTS.md` and `THIRD-PARTY-LICENSES.md` are correct when a library is added to the
-    built files or a method follows another project. The licence is MIT.
+12. **License.** `ACKNOWLEDGEMENTS.md` and `THIRD-PARTY-LICENSES.md` are correct when a library is added to the
+    built files or a method follows another project. The license is MIT.
 
 ## Code and methods from other projects
 
 A change may follow a method of another project, or copy its code, texts or CSS, without the owner when all of the
 following are true. Otherwise leave the pull request open and ask the owner.
 
-- **The licence is permissive:** MIT, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, Apache-2.0, or public domain (CC0,
-  Unlicense). Read the licence file of the project at the version that you use. Do not copy from GPL, LGPL, AGPL,
-  MPL or CC BY-SA sources (CC BY-SA includes answers on Stack Overflow), or from code that has no licence.
-- **`ACKNOWLEDGEMENTS.md` names it.** The line names the project, its licence and what follows it (the method, the
+- **The license is permissive:** MIT, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, Apache-2.0, or public domain (CC0,
+  Unlicense). Read the license file of the project at the version that you use. Do not copy from GPL, LGPL, AGPL,
+  MPL or CC BY-SA sources (CC BY-SA includes answers on Stack Overflow), or from code that has no license.
+- **`ACKNOWLEDGEMENTS.md` names it.** The line names the project, its license and what follows it (the method, the
   texts, the CSS), and says whether the code in this library is new or copied.
 - **Copied text keeps its notice.** When code, texts or CSS are copied or closely translated, and not only the method
-  is followed, `THIRD-PARTY-LICENSES.md` has the licence text of the project with its copyright line. The package
+  is followed, `THIRD-PARTY-LICENSES.md` has the license text of the project with its copyright line. The package
   publishes that file with the built files. This meets the condition of MIT, ISC and BSD that the notice goes with
   every copy, a minified one included. For Apache-2.0, also copy the project's `NOTICE` file if it has one, and say in
   the file that the code was changed.
@@ -180,14 +180,15 @@ before you write or change a page of the docs or a TSDoc comment on a public typ
 - **Use one name for each thing, and use the standard name.** Write "attribution", "hillshade", "pitch", "hash",
   "popup", "image", "render", "URL", "GPU" and "required", because these are the words that developers search for.
   Do not replace a standard term with a plainer synonym, and do not use two words for one concept. "The
-  description" is `MapDescription`; say so once and keep to it.
+  description" is `MapDescription`; say so once and keep to it. Use US spelling ("color", "behavior", "gray",
+  "center", "license", "initialize"); names of code, CSS and the style specification stay as they are.
 - **Say which entry** an example or a statement belongs to (`@map-jr/map-jr-gl` or `@map-jr/map-jr-gl/maplibre-compat`).
 - **Be exact.** State the default, the unit, what happens on failure and what is not supported. If you did not
   verify a claim, do not write it as a fact.
 - **An example must run as it is written.** It has all of its imports, it uses real URLs, and it does not leave out
   setup. `pnpm test:examples` compiles the examples of `examples/`.
 - **Do not use sales language** such as "blazing", "simply" or "just". Leave out sentences that carry no
-  information, and do not apologise.
+  information, and do not apologize.
 - **An error or warning message** starts with `[map-jr-gl]`, names the thing by the name that the user wrote, and
   says what to do. For example:
   `[map-jr-gl] update(): the description has no "style". Pass the complete description.`

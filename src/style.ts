@@ -35,7 +35,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
         pitchAlign: ['circle-pitch-alignment', 'string', 'viewport'], pitchScale: ['circle-pitch-scale', 'string', 'map'],
     },
     heatmap: {
-        // (`color` and `opacity` are also read by the code shared with other layer types; a heatmap's colour is its ramp.)
+        // (`color` and `opacity` are also read by the code shared with other layer types; a heatmap's color is its ramp.)
         color: ['heatmap-no-such-property', 'raw', null], opacity: ['heatmap-opacity', 'number', 1],
         weight: ['heatmap-weight', 'number', 1], intensity: ['heatmap-intensity', 'number', 1], radius: ['heatmap-radius', 'number', 30],
     },
@@ -117,7 +117,7 @@ export function applySSROverrides(layers: LayerJSON[]): LayerJSON[] {
     return out;
 }
 
-/** The style specification's default heatmap colours. */
+/** The style specification's default heatmap colors. */
 const HEATMAP_COLORS = ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0, 0, 255, 0)', 0.1, 'royalblue', 0.3, 'cyan', 0.5, 'lime', 0.7, 'yellow', 1, 'red'];
 
 export interface CompiledLayer {
@@ -126,11 +126,11 @@ export interface CompiledLayer {
     /** The paint values as JSON, as they were when the layer was compiled (the page can change the style object in place). */
     paint: Record<string, string>;
     ssr?: SSROverrides;
-    /** Heatmap layers: the colour for each density (see colorRamp). Line layers: the colours of `line-gradient` along the line. */
+    /** Heatmap layers: the color for each density (see colorRamp). Line layers: the colors of `line-gradient` along the line. */
     ramp?: Uint8Array;
     /**
-     * `color-relief` layers: the elevations in metres of the stops of `color-relief-color`, in rising order. `ramp` has
-     * the colour at each. As in MapLibre GL JS, only an `interpolate` expression gives stops, and the colour between two
+     * `color-relief` layers: the elevations in meters of the stops of `color-relief-color`, in rising order. `ramp` has
+     * the color at each. As in MapLibre GL JS, only an `interpolate` expression gives stops, and the color between two
      * stops is a linear mix. Any other value gives one transparent stop, so that the layer draws nothing.
      */
     relief?: Float32Array;
@@ -157,7 +157,7 @@ export function screenTranslate(t: unknown, anchor: unknown, bearing: number): [
 /**
  * The lights of a `hillshade` layer at a zoom, as the `hillshade` program takes them. `method` is 0 for `standard`,
  * 1 for `combined`, 2 for `igor` and 3 for `basic` and `multidirectional`. `sun` has the direction (with `bearing`
- * added) and the altitude of each light in radians, and `shadow` and `highlight` have a premultiplied colour for each.
+ * added) and the altitude of each light in radians, and `shadow` and `highlight` have a premultiplied color for each.
  * As in MapLibre GL JS, only `multidirectional` has more than one light, and a list that is shorter than the longest
  * list repeats its last value.
  */
@@ -227,7 +227,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
 
 const ease = (t: number) => 4 * (t < 0.5 ? t * t * t : 3 * (t - t * t) + t * t * t - 0.75);
 const numbers = (a: any) => Array.isArray(a) && a.every(x => typeof x == 'number');
-/** The value at `t` between `a` and `b`: numbers, and lists of numbers of one length (a colour premultiplied), else `b`. */
+/** The value at `t` between `a` and `b`: numbers, and lists of numbers of one length (a color premultiplied), else `b`. */
 function blend(a: any, b: any, t: number, color: boolean): any {
     if (typeof a == 'number' && typeof b == 'number') return a + (b - a) * t;
     if (!numbers(a) || !numbers(b) || a.length !== b.length) return b;

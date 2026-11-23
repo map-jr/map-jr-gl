@@ -11,9 +11,9 @@ style itself, and how to draw labels with web fonts.
 
 A `fill-pattern` or `line-pattern` can be an expression that reads the properties of the feature, such as
 `['get', 'surface']`, and then each feature draws its own image. An SDF image (an image with `sdf: true`) as
-`fill-pattern` takes the colour of `fill-color`.
+`fill-pattern` takes the color of `fill-color`.
 
-This example draws an SVG pin with the name of the place beside it for four places, and colours each pin by the kind
+This example draws an SVG pin with the name of the place beside it for four places, and colors each pin by the kind
 of the place.
 
 <!-- example:images:start -->
@@ -22,7 +22,7 @@ of the place.
 ```js [Map Jr]
 // The module script of a page that has <div id="map" style="height:
 // 500px"></div>. The map shows four places. Each has an SVG image of the
-// description in the colour of its kind, and its name beside it.
+// description in the color of its kind, and its name beside it.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -428,8 +428,8 @@ export default function Images() {
 <title>SVG images for symbol layers, with a label beside each</title>
 <!--
   The map shows four places. Each
-  has an SVG image in the colour
-  of its kind, and its name beside
+  has an SVG image in the color of
+  its kind, and its name beside
   it.
 -->
 <map-jr
@@ -519,10 +519,10 @@ export default function Images() {
   source and a symbol layer to the style. `text-field` draws the name beside the icon, and `text-font` names a font of
   the `glyphs` of the style.
 - The SVG document `pin` has a slot (`{{color}}`), so it is a template. The `image` expression of `icon-image` fills
-  the slot with its `params`, here a colour that `match` selects from the property `kind`. Without `params`, each
+  the slot with its `params`, here a color that `match` selects from the property `kind`. Without `params`, each
   feature fills a slot from its property of the same name.
 - In the compat entry, `addImage` accepts an SVG document as a string, which MapLibre GL JS does not. The compat
-  example adds one image for each colour and selects it with `match`, as an application for MapLibre GL JS does.
+  example adds one image for each color and selects it with `match`, as an application for MapLibre GL JS does.
 
 An image is an SVG document as a string, the URL of an image, an `ImageBitmap`, a canvas, an image element or
 `ImageData`. See [`images`](../reference/description.md#images) for each form and its size.
@@ -1535,5 +1535,5 @@ sans-serif`. The map reads it only when it is created: to change it, destroy the
 - [`images`](../reference/description.md#images), [`sprite`](../reference/description.md#sprite) and
   [`fonts`](../reference/description.md#fonts) in the reference of the description.
 - [Markers and popups](markers-and-popups.md) for markers drawn with an image.
-- [An image that is a template](../reference/description.md#images) for images whose colours each feature sets.
+- [An image that is a template](../reference/description.md#images) for images whose colors each feature sets.
 - [Server rendering](server-rendering.md) for images and fonts in an image that a server renders.

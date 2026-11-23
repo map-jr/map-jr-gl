@@ -44,7 +44,7 @@ function onMessage(event: MessageEvent) {
     }
 }
 
-// The document of the frame gets the colour scheme and, in the form "description", the code once it has loaded.
+// The document of the frame gets the color scheme and, in the form "description", the code once it has loaded.
 function onLoad() {
     send({mapFrame: 'scheme', scheme: scheme()});
     if (described.value) send({mapFrame: 'description', code: props.code});

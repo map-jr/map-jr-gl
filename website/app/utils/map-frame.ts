@@ -43,7 +43,7 @@ button[aria-pressed="true"]:not(.map-jr-map *) { background: #8b949e44; }
 
 /**
  * The text of the document (`srcdoc`) of a frame that runs `code`. `library` is the absolute URL of /lib/ of the site,
- * `scheme` the colour scheme of the page when the frame starts, and `view` the first view of the form "description".
+ * `scheme` the color scheme of the page when the frame starts, and `view` the first view of the form "description".
  */
 export function frameDocument({form, code, library, scheme, view}: {form: FrameForm; code: string; library: string; scheme: 'light' | 'dark'; view?: FrameView}): string {
     const imports = Object.fromEntries(Object.entries(entries).map(([name, file]) => [name, library + file]));

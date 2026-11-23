@@ -59,7 +59,7 @@ before. React reads such a store with `useSyncExternalStore`, Vue with a `shallo
 | `hover` | [`RenderedFeature`](types.md#renderedfeature)`[]` | The features of `interactiveLayers` under the pointer, the top one first. |
 | `pointer` | [`PointerPosition`](#pointerposition)` \| null` | Where the pointer is over the map, or `null` when it is not over the map. |
 | `renderer` | `'worker' \| 'main' \| undefined` | The thread that renders the map, or `undefined` until `loaded` is `true`. |
-| `colorScheme` | `'light' \| 'dark'` | The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. |
+| `colorScheme` | `'light' \| 'dark'` | The color scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. |
 <!-- ref:MapState:end -->
 
 - `loaded` becomes `true` before `idle` does, in the same task. A listener of `load` and a subscriber of `loaded` see

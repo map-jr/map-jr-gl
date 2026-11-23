@@ -16,7 +16,7 @@ const alpha = (name: string, a: number) => a < 0.999 ? ` ${name}="${num(a)}"` : 
 
 /**
  * Path data for one feature, or '' when nothing of it would be visible. `box` is the viewport in tile units;
- * `minSize` and `tol` (quantised units) drop features and vertices too small to see at this scale.
+ * `minSize` and `tol` (quantized units) drop features and vertices too small to see at this scale.
  */
 function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number): string {
     const {coords, ringEnds, featEnds} = b.geom;
@@ -62,7 +62,7 @@ export interface SVGScene {
 }
 
 /**
- * Serialises one frame as a standalone SVG document. Pure string building: runs on any JavaScript server.
+ * Serializes one frame as a standalone SVG document. Pure string building: runs on any JavaScript server.
  * @internal Used by `renderToSVG` of `@map-jr/map-jr-gl/server`; not exported from any entry.
  */
 export function renderSVG(s: SVGScene): string {
@@ -164,7 +164,7 @@ export function renderSVG(s: SVGScene): string {
         body[i] = `<use href="#${id}" ${attrs}/>`;
     }
 
-    // A symbol on the ground of a tilted map (`Placed.frame`) is drawn with its frame about its centre, and others turn by their angle.
+    // A symbol on the ground of a tilted map (`Placed.frame`) is drawn with its frame about its center, and others turn by their angle.
     const turn = (x: number, y: number, a: number, f?: number[]) => f
         ? ` transform="matrix(${f.slice(0, 4).map(v => Math.round(v * 1e3) / 1e3).join(' ')} ${num(x - f[0] * x - f[2] * y)} ${num(y - f[1] * x - f[3] * y)})"`
         : a ? ` transform="rotate(${num(a * 180 / Math.PI)} ${num(x)} ${num(y)})"` : '';

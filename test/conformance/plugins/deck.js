@@ -12,9 +12,9 @@ export async function run({map, wait}) {
     map.jumpTo({center: [-74.0, 40.715], zoom: 14, pitch: 40, bearing: 20});
     await wait(1500);
     const canvas = [...map.getContainer().querySelectorAll('canvas')].find(c => c !== map.getCanvas());
-    // The point at the map centre must be at the centre of the deck.gl canvas: its view follows the map.
+    // The point at the map center must be at the center of the deck.gl canvas: its view follows the map.
     const picked = overlay.pickObject({x: map.getContainer().clientWidth / 2, y: map.getContainer().clientHeight / 2, radius: 4});
     map.removeControl(overlay);
     return {ok: !!canvas && before > 0 && drawn > before && picked?.object === data[1],
-        detail: `deck.gl canvas: ${!!canvas}; frames drawn: ${before} then ${drawn}; the point at the map centre was picked there: ${picked?.object === data[1]}`};
+        detail: `deck.gl canvas: ${!!canvas}; frames drawn: ${before} then ${drawn}; the point at the map center was picked there: ${picked?.object === data[1]}`};
 }

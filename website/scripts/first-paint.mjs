@@ -1,16 +1,16 @@
 // Renders the first paint of the home page and writes four files, so that the build needs no network (#1391):
 // - app/assets/home-first-paint.html: an SVG of 1000 by 1000 CSS pixels, and the controls of the map, which HomeMap.vue puts
 //   into the page. The controls (and the credits) are not part of the picture: they sit at the corners of the stage, as in the live map,
-//   so the file has them as a layer of their own, in two forms (the credits are folded up to 640 px wide, as the map folds them), each in the light and in the dark colours
+//   so the file has them as a layer of their own, in two forms (the credits are folded up to 640 px wide, as the map folds them), each in the light and in the dark colors
 //   (a few hundred bytes more after gzip, because the two layers differ in one class). It covers a window up to 1000 px wide and 1060 px high (phones and tablets), whose stage is at most 1000 by 1000.
 // - public/home-first-paint-wide.svg: an SVG of 2560 by 1600, for wider or higher windows. The page loads it only there
 //   (a preload and a background image, both with the media query of HomeMap.vue).
-// - public/home-first-paint-dark.svg and public/home-first-paint-wide-dark.svg: the same two pictures in the dark colours. The live map
-//   follows the colour mode of the site, and its style reads the global state `color-scheme`. The server renderer does not set that state,
-//   so the script gives the style as an object with the default `dark`. Only a page with the class `dark` on <html> (the colour mode of the
+// - public/home-first-paint-dark.svg and public/home-first-paint-wide-dark.svg: the same two pictures in the dark colors. The live map
+//   follows the color mode of the site, and its style reads the global state `color-scheme`. The server renderer does not set that state,
+//   so the script gives the style as an object with the default `dark`. Only a page with the class `dark` on <html> (the color mode of the
 //   site sets it in the head, before the first paint) shows and fetches them (HomeMap.vue).
-// Both have the centre and the zoom of the live map's first view, and the page sets them at 1:1 CSS pixels, centred on the
-// stage, which crops them, so the first paint has the scale and the centre of the live map at every size (#1393).
+// Both have the center and the zoom of the live map's first view, and the page sets them at 1:1 CSS pixels, centered on the
+// stage, which crops them, so the first paint has the scale and the center of the live map at every size (#1393).
 // Run it when the first scene of app/utils/home-scenes.ts or the renderer changes: `pnpm --dir website first-paint` (it needs
 // `pnpm build` in the root of the repository, and the network). `--check` renders again and exits with 1 when a file differs.
 import {readFileSync, writeFileSync} from 'node:fs';

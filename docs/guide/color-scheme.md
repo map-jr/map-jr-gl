@@ -1,9 +1,9 @@
 # Light and dark maps
 
-This page shows how to draw the map in light or dark colours, follow the setting of the operating system, and let the
+This page shows how to draw the map in light or dark colors, follow the setting of the operating system, and let the
 user switch.
 
-## Follow the colour scheme of the system
+## Follow the color scheme of the system
 
 Set [`colorScheme`](../reference/description.md#colorscheme-and-oncolorschemechange) to `'auto'`. The map then follows
 the media query `prefers-color-scheme` of the browser, also when it changes while the page is open.
@@ -70,7 +70,7 @@ On a system with a dark appearance, the map, the controls and the attribution ar
 
 - `colorScheme` is `'light'` (the default), `'dark'` or `'auto'`. Without the field, the map is light also on a dark
   system, so write `colorScheme: 'auto'` to follow the system.
-- The scheme sets the colours of the controls, the popups and the attribution. While the scheme is dark, the
+- The scheme sets the colors of the controls, the popups and the attribution. While the scheme is dark, the
   container of the map has the class `map-jr-dark`.
 - The canvas follows the scheme only when the style reads it. Of the official styles at
   `https://styles.map-jr.org/1/`, `elevation-zero.json`, `elevation.json` and `elevation-radar.json` read it. The
@@ -263,7 +263,7 @@ export default function SchemeMap() {
 ```html [<map-jr>]
 <!doctype html>
 <meta charset="utf-8" />
-<title>A map that follows the colour scheme</title>
+<title>A map that follows the color scheme</title>
 <!--
   A line of text below the map
   names the scheme that the button
@@ -324,7 +324,7 @@ style reads it with `['global-state', 'color-scheme']`.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-// The dark colour when the scheme is dark, and the light colour otherwise.
+// The dark color when the scheme is dark, and the light color otherwise.
 const scheme = (dark, light) => [
   'match',
   ['global-state', 'color-scheme'],
@@ -475,7 +475,7 @@ The map draws the style of the scheme that it shows.
 
 - A change of the scheme loads the other style: the map requests it and draws the map from the start. The view, and
   the `sources`, `layers`, `data` and `images` of the description, stay.
-- A style that reads `color-scheme` changes its colours without a request. Prefer it when you can write or edit the
+- A style that reads `color-scheme` changes its colors without a request. Prefer it when you can write or edit the
   style.
 - A pair with only one of the two values uses that style for both schemes.
 
@@ -508,6 +508,6 @@ For two styles, call `map.setStyle` with the other style when the media query ch
 - [`colorScheme` and `onColorSchemeChange`](../reference/description.md#colorscheme-and-oncolorschemechange),
   [`style`](../reference/description.md#style) and [`globalState`](../reference/description.md#globalstate) in the
   reference of the description.
-- [Change the look of the controls](controls.md#change-the-look-of-the-controls) for the colours of the controls in
+- [Change the look of the controls](controls.md#change-the-look-of-the-controls) for the colors of the controls in
   each scheme.
 - [Server rendering](server-rendering.md) for the scheme of an image that a server renders.

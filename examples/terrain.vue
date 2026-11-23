@@ -17,7 +17,7 @@ const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
   globalState: {'elevation-unit': unit},
   sources: {
-    // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or metres.
+    // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or meters.
     contours: {type: 'contour', source: 'terrarium', multiplier: unit === 'ft' ? 3.28084 : 1, thresholds: thresholds[unit]},
   },
   layers: [
@@ -43,6 +43,6 @@ async function read(event) {
 <template>
   <MapJr ref="map" :map-style="style" v-bind="additions" :initial-view="{center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25}" @click="read" />
   <p>{{ height === null ? 'Click the map to read the elevation' : `${height.toFixed(0)} m above sea level` }}</p>
-  <button @click="unit = unit === 'ft' ? 'm' : 'ft'">Contours in {{ unit === 'ft' ? 'metres' : 'feet' }}</button>
+  <button @click="unit = unit === 'ft' ? 'm' : 'ft'">Contours in {{ unit === 'ft' ? 'meters' : 'feet' }}</button>
   <button @click="terrain = !terrain">{{ terrain ? 'Flat map' : '3D terrain' }}</button>
 </template>

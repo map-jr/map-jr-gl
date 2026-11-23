@@ -25,7 +25,7 @@ if (supported()) {
   });
 } else {
   container.textContent =
-    'This browser cannot show the map. The office is at 1 Centre Street, NYC.';
+    'This browser cannot show the map. The office is at 1 Center Street, NYC.';
 }
 ```
 
@@ -43,7 +43,7 @@ The worker renderer draws the map in a worker, and the main-thread renderer draw
 | Worker renderer | `transferControlToOffscreen` on a canvas, and WebGL2 in a worker | The map draws on the main thread. |
 | Main-thread renderer | WebGL2 on the page | The container shows "This browser cannot show the map." |
 | Tile workers | A page that is allowed to start workers | The map builds the tiles on the main thread and writes a warning. |
-| 3D terrain | `OffscreenCanvas` in a worker | The terrain is flat: in WebKit on Windows, the height at the centre of the benchmark page is 0 m, and 10 m elsewhere. Elevation queries still return heights. |
+| 3D terrain | `OffscreenCanvas` in a worker | The terrain is flat: in WebKit on Windows, the height at the center of the benchmark page is 0 m, and 10 m elsewhere. Elevation queries still return heights. |
 
 The map also changes to the main thread after it started, when the worker loses its WebGL context before its first
 frame, loses it twice in 10 seconds, or draws nothing in the 5 seconds after its start. With `renderer: 'worker'`, it
@@ -70,7 +70,7 @@ map.state.subscribe(
 ## Browsers that the tests run in
 
 After each change, the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the
-behaviour tests and the benchmark page in the builds of Chromium, Firefox and WebKit that Playwright ships, on
+behavior tests and the benchmark page in the builds of Chromium, Firefox and WebKit that Playwright ships, on
 virtual machines. The machines for Linux and Windows draw WebGL in software. The branch lists the result of each
 test.
 

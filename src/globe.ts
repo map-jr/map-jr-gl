@@ -4,7 +4,7 @@
  * engine imports it with the rest of the engine; the page loads it on demand, only for a map with a globe.
  *
  * The method follows the globe of MapLibre GL JS 6.17 (BSD-3-Clause): the radius of the sphere makes the scale at the
- * centre that of Mercator at the same zoom, one matrix per frame takes the unit sphere to clip space, a plane through
+ * center that of Mercator at the same zoom, one matrix per frame takes the unit sphere to clip space, a plane through
  * the horizon hides the far side, and between zoom 11 and 12 the position mixes with the Mercator position in clip
  * space. The code is new.
  */
@@ -44,12 +44,12 @@ export function frame(tr: Transform): GlobeFrame {
     const key = [tr.width, tr.height, tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, ...tr.padding].join();
     const kept = frames.get(tr);
     if (kept?.key === key) return kept.f;
-    // The radius in pixels: the scale at the centre of the view is that of Mercator at the same zoom (as in MapLibre).
+    // The radius in pixels: the scale at the center of the view is that of Mercator at the same zoom (as in MapLibre).
     // (Past the edge of Mercator the radius stays that of 85.05°, as MapLibre's planetScaleAtLatitude does.)
     const R = tr.worldSize / (2 * PI * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD)), d = tr.cameraDistance, w = tr.width, h = tr.height;
     // (z and w of clip space are the distance along the view; the shader replaces z by the side of the horizon.)
     const proj = [2 * d / w, 0, 0, 0, 0, 2 * d / h, 0, 0, -(tr.cx - w / 2) * 2 / w, (tr.cy - h / 2) * 2 / h, -1, -1, 0, 0, 0, 0];
-    // With 3D terrain the camera looks at the ground under the centre: the sphere moves down by its height (`elevation`).
+    // With 3D terrain the camera looks at the ground under the center: the sphere moves down by its height (`elevation`).
     const lift = 1 + tr.elevation / 6371008.8;
     const view = [move(-d), rot(0, -tr.pitch * RAD), rot(2, tr.bearing * RAD), move(-R * lift), rot(0, tr.lat * RAD), rot(1, -tr.lng * RAD), [R, 0, 0, 0, 0, R, 0, 0, 0, 0, R, 0, 0, 0, 0, 1]].reduce(mul);
     // The camera: the inverse of the view applied to the origin, in radii.
@@ -89,7 +89,7 @@ export function hidden(tr: Transform, mx: number, my: number, slack = 0): boolea
 /**
  * The bounds of what the globe shows [west, south, east, north], as MapLibre GL JS gives them: points along the
  * edges of the screen (a point off the globe gives the nearest point of the horizon, so the visible edge of the globe
- * is in), measured from the centre; a pole in view makes the bounds reach it, with all longitudes.
+ * is in), measured from the center; a pole in view makes the bounds reach it, with all longitudes.
  */
 export function bounds(tr: Transform): [number, number, number, number] {
     const f = frame(tr), w = tr.width, h = tr.height, N = 16;
@@ -140,7 +140,7 @@ function surface(tr: Transform, px: number, py: number, r = 1): V3 {
     let p: number[];
     if (disc >= 0 && -b - Math.sqrt(disc) > 0) { const t = -b - Math.sqrt(disc); p = cam.map((v, i) => (v + dir[i] * t) / r); }
     else {
-        // The point of the horizon in the plane of the camera, the centre of the globe and the ray.
+        // The point of the horizon in the plane of the camera, the center of the globe and the ray.
         const cl = Math.hypot(...cam), u = cam.map(v => v / cl), q = cam.map((v, i) => v + dir[i] * Math.max(0, -b)), along = dot(q, u);
         const side = q.map((v, i) => v - u[i] * along), sl = Math.hypot(...side) || 1, hd = 1 / cl, r = Math.sqrt(Math.max(0, 1 - hd * hd));
         p = u.map((v, i) => v * hd + side[i] / sl * r);
@@ -150,7 +150,7 @@ function surface(tr: Transform, px: number, py: number, r = 1): V3 {
 
 /**
  * Turns the globe so that the place lng, lat comes under the screen point (a drag, or a zoom around the pointer).
- * A few steps of a fixed-point iteration: each step moves the centre by the angle between where the place is and
+ * A few steps of a fixed-point iteration: each step moves the center by the angle between where the place is and
  * where it should be. A change of latitude changes the zoom so that the planet keeps its size (MapLibre's
  * `getZoomAdjustment`), when `keepSize` is set.
  */
@@ -201,17 +201,17 @@ const rotate = (v: V3, k: V3, a: number): V3 => {
  * pole, so the drag stays smooth there. The zoom changes with the latitude, so that the planet keeps its size.
  */
 export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: number) {
-    // (A pointer off the globe turns it as a drag of the same length at the centre of the view does, as in MapLibre.)
+    // (A pointer off the globe turns it as a drag of the same length at the center of the view does, as in MapLibre.)
     const {cam} = frame(tr), dir = ray(tr, x1, y1), b = dot(cam, dir);
     if (b * b - dot(cam, cam) + 1 < 0 || b > 0) { x0 = tr.cx - (x1 - x0); y0 = tr.cy - (y1 - y0); x1 = tr.cx; y1 = tr.cy; }
     const from = aim(tr, x0, y0), to = aim(tr, x1, y1), axis = [from[1] * to[2] - from[2] * to[1], from[2] * to[0] - from[0] * to[2], from[0] * to[1] - from[1] * to[0]], l = Math.hypot(...axis);
     if (l < 1e-12) return;
     const k = axis.map(v => v / l) as V3, angle = Math.acos(clamp(dot(from, to), -1, 1));
-    // The camera moves the other way: the centre turns by the rotation from `to` back to `from`.
+    // The camera moves the other way: the center turns by the rotation from `to` back to `from`.
     const oldLng = tr.lng, oldLat = tr.lat, oldZoom = tr.zoom, c = rotate(toVector(oldLng, oldLat), k, -angle);
     let lat = Math.asin(clamp(c[1], -1, 1)) / RAD;
     const swingLng = Math.atan2(c[0], c[2]) / RAD;
-    // A swing over a pole turns the north of the view around: with the bearing held, the centre stops at the pole.
+    // A swing over a pole turns the north of the view around: with the bearing held, the center stops at the pole.
     const north = (lng: number, la: number): V3 => [-Math.sin(la * RAD) * Math.sin(lng * RAD), Math.cos(la * RAD), -Math.sin(la * RAD) * Math.cos(lng * RAD)];
     if (dot(rotate(north(oldLng, oldLat), k, -angle), north(swingLng, lat)) < 0) lat = lat > 0 ? 90 : -90;
     // Within 12 degrees of the edge of the Mercator world, the longitude comes more and more from the turn of the
@@ -225,7 +225,7 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
     }
     const swing = ((swingLng - oldLng) % 360 + 540) % 360 - 180;
     tr.lng = ((oldLng + (1 - dial) * swing + dial * dialLng) % 360 + 540) % 360 - 180;
-    // (The caller keeps the centre inside the latitudes that the zoom allows: see `constrain`.)
+    // (The caller keeps the center inside the latitudes that the zoom allows: see `constrain`.)
     tr.lat = clamp(lat, -90, 90);
     // (Past the edge of Mercator the radius stays that of 85.05°, so the zoom stays too: see `keepSize` in geo.ts.)
     tr.zoom = clamp(oldZoom + sizeZoom(oldLat, tr.lat), tr.minZoom, tr.maxZoom);
@@ -262,7 +262,7 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
         if (!inView) return;
         const ux = under[0] - Math.floor(under[0] - x / n + 0.5 - 0.5 / n), nearest = sphere(clamp(ux, x / n, (x + 1) / n), clamp(under[1], y / n, (y + 1) / n));
         const near = Math.min(...[...pts, nearest].map(p => Math.hypot(p[0] - f.cam[0], p[1] - f.cam[1], p[2] - f.cam[2])));
-        // A tile far from the latitude of the centre has other pixels on the sphere: Mercator tiles get smaller toward
+        // A tile far from the latitude of the center has other pixels on the sphere: Mercator tiles get smaller toward
         // the poles, by the cosine of the latitude (pts[12] is the middle of the tile).
         const cos = Math.max(1e-3, Math.sqrt(1 - pts[12][1] ** 2)) / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD);
         const wanted = Math.min(maxzoom, (round ? Math.round : Math.floor)(exact + Math.log2(unit / Math.max(near, 1e-9) * cos)));

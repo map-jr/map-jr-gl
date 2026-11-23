@@ -115,7 +115,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
                 if ((set.test && !set.test({zoom: q.zoom ?? q.z, f})) || (set.test2 && !set.test2({zoom: q.zoom ?? q.z, f}))) continue;
                 if (!c) {
                     f.geometry(EXTENT, c = [], ends);
-                    // A feature that has no id is in the buffer of a neighbour tile too. As in MapLibre GL JS, the
+                    // A feature that has no id is in the buffer of a neighbor tile too. As in MapLibre GL JS, the
                     // tile gives it only when its bounding box touches the tile, so that a query gives it one time.
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
@@ -153,7 +153,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
  */
 export type DemEncoding = string | number[];
 
-/** The factors of red, green and blue (0 to 255) and the shift that give the elevation in metres, for the shaders. */
+/** The factors of red, green and blue (0 to 255) and the shift that give the elevation in meters, for the shaders. */
 export const demUnpack = (encoding: DemEncoding) => typeof encoding != 'string' ? encoding : encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000];
 
 /** Decodes one elevation sample from RGBA pixels. */

@@ -238,9 +238,9 @@ export default {
   attribution: {compact: true},
 };
 `},
-        {label: 'Dark colours', icon: 'i-lucide-moon', code: `${controls}
+        {label: 'Dark colors', icon: 'i-lucide-moon', code: `${controls}
 
-// colorScheme sets the colours of the controls, and the style reads the scheme from the global state, so the map is
+// colorScheme sets the colors of the controls, and the style reads the scheme from the global state, so the map is
 // dark too. Write 'auto' to follow the setting of the visitor's browser.
 export default {
   style: '${style}',
