@@ -84,6 +84,7 @@ readout.textContent = 'Starting';
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 
@@ -115,7 +116,8 @@ const NYC = [-74.0065, 40.7085];
 ```vue [Nuxt]
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules:
-// ['@map-jr/map-jr-gl/nuxt'].
+// ['@map-jr/map-jr-gl/nuxt']. The map fills its parent element, so give the
+// parent a height.
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
@@ -143,6 +145,7 @@ const NYC = [-74.0065, 40.7085];
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {MapJr, useMapState} from '@map-jr/map-jr-gl/react';
 import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 

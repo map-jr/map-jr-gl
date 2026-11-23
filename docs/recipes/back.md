@@ -175,6 +175,7 @@ readout.textContent = 'Click a ferry landing to zoom in.';
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {ref, shallowRef, useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
@@ -270,6 +271,7 @@ function goBack() {
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';

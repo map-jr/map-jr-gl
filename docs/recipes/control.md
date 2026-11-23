@@ -101,6 +101,7 @@ readout.textContent = `Style: ${styles[current]}`;
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {onMounted, ref, shallowRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {navigation, custom} from '@map-jr/map-jr-gl/controls';
@@ -158,7 +159,8 @@ onMounted(() => {
 ```vue [Nuxt]
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules:
-// ['@map-jr/map-jr-gl/nuxt'].
+// ['@map-jr/map-jr-gl/nuxt']. The map fills its parent element, so give the
+// parent a height.
 
 const styles = ['elevation-zero', 'openfreemap-positron', 'openfreemap-dark'];
 const current = ref(0);
@@ -215,6 +217,7 @@ onMounted(() => {
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useEffect, useMemo, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {MapJr} from '@map-jr/map-jr-gl/react';

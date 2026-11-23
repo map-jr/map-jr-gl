@@ -192,6 +192,7 @@ map.on('mouseleave', 'clusters', () => {
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {ref, useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
@@ -294,6 +295,7 @@ async function zoomIn(event) {
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 

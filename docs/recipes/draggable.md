@@ -77,6 +77,7 @@ show(`Drag the pin. It is at ${at(marker.getLngLat())}`);
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {ref} from 'vue';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 
@@ -127,6 +128,7 @@ const moving = ref(false);
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useState} from 'react';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 

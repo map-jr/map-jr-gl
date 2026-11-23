@@ -222,6 +222,7 @@ map.on('styleimagemissing', e => {
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {shallowRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
@@ -326,6 +327,7 @@ function addShield(e) {
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 

@@ -147,6 +147,7 @@ readout.textContent = 'Move the map, then press Show all landings.';
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
@@ -218,6 +219,7 @@ const showAll = () =>
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useRef} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';

@@ -125,6 +125,7 @@ map.getContainer().after(
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
@@ -180,6 +181,7 @@ const show = store =>
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useRef} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';

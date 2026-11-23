@@ -209,6 +209,7 @@ map.on('stats', e => {
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {shallowRef} from 'vue';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
@@ -304,6 +305,7 @@ const selected = shallowRef(null);
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useMemo, useState} from 'react';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';

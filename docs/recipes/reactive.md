@@ -180,6 +180,7 @@ tilt.onclick = () =>
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {computed, ref} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {points} from '@map-jr/map-jr-gl';
@@ -249,6 +250,7 @@ const hover = ref([]);
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useMemo, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 import {points} from '@map-jr/map-jr-gl';

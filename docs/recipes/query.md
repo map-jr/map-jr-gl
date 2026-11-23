@@ -137,6 +137,7 @@ readout.textContent = 'Click the map to list what is there.';
 
 ```vue [Vue]
 <script setup>
+// The map fills its parent element, so give the parent a height.
 import {shallowRef, useTemplateRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
@@ -188,6 +189,7 @@ async function ask(event) {
 **React**
 
 ```jsx [React]
+// The map fills its parent element, so give the parent a height.
 import {useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
