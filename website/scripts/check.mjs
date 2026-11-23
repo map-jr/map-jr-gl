@@ -175,11 +175,11 @@ try {
         const {page, problems, close} = await open(docsPage, {width: 390, height: 844});
         check('phone: no horizontal scroll on a docs page', await overflow(page) <= 0, (await overflow(page)) + ' px');
         await page.getByRole('button', {name: 'Open the menu'}).click();
-        const link = page.getByRole('dialog').getByRole('link', {name: 'Svelte', exact: true});
+        const link = page.getByRole('dialog').getByRole('link', {name: 'The Svelte action and store', exact: true});
         await link.waitFor();
         await link.click();
-        await page.waitForURL('**/svelte');
-        check('phone: the menu leads to /svelte', true);
+        await page.waitForURL('**/reference/svelte');
+        check('phone: the menu leads to /reference/svelte', true);
         check('phone: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
         const home = await open('/', {width: 390, height: 844});
