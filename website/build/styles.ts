@@ -74,19 +74,67 @@ export function sectionOf(markdown: string, heading: string, file = 'README.md o
     return lines.slice(start + 1, end).join('\n').trim();
 }
 
-// The text of another repository is untrusted input (CLAUDE.md, "Definition of done" 8): outside code, `<`, `>` and `&`
-// become entities, so that raw HTML shows as text, and a line that starts with `::` (a component block of Nuxt
-// Content) starts with `\:`. The marks of a quote at the start of a line stay. Markdown links, tables and code stay as they are.
+// The text of another repository is untrusted input (CLAUDE.md, "Definition of done" 8). Code (fences, indented code and
+// code spans) stays as it is. Outside code:
+// - `<`, `>` and `&` become entities, so that raw HTML shows as text; an autolink `<https://…>` becomes the bare URL;
+// - every `{` becomes `\{`, so that no attributes of MDC (`**x**{style=…}`) attach to markup, and a `:` before a letter,
+//   `:` or `[` becomes `\:`, so that no component of Nuxt Content (`::block`, `:inline[x]`) starts there;
+// - a bare URL (`https://…`) stays as it is;
+// - an image from a host other than those of `imageHosts` becomes a link.
+// The marks of a quote at the start of a line stay. A fence opens and closes as in CommonMark, also after the marks of a
+// quote or of a list item. Code spans pair backtick runs of equal length, over the lines of one paragraph.
+const imageHosts = new Set(['github.com', 'raw.githubusercontent.com', 'styles.map-jr.org', 'map-jr.org']);
+const imageAllowed = (url: string) => {
+    if (!/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) return true;
+    try { const u = new URL(url); return u.protocol === 'https:' && imageHosts.has(u.hostname); } catch { return false; }
+};
+function escapeText(text: string): string {
+    return text.replace(/<(https?:\/\/[^>\s]+)>/g, '$1')
+        .replace(/!\[([^\]]*)\]\(\s*<?([^)\s>]*)/g, (all, _alt: string, url: string) => imageAllowed(url) ? all : all.slice(1))
+        .replace(/!\[/g, (all, offset: number, whole: string) => /^!\[[^\]]*\]\(/.test(whole.slice(offset)) ? all : '\\![')
+        .split(/(https?:\/\/[^\s<>{}()[\]"'`]+)/).map((part, index) => index % 2 ? part
+            : part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\{/g, '\\{').replace(/:(?=[A-Za-z:[])/g, '\\:')).join('');
+}
+const codeSpan = /((?<![`\\])(`+)(?!`)[\s\S]*?(?<!`)\2(?!`))/;
 export function safeMarkdown(markdown: string): string {
-    let fence = false;
-    return markdown.split('\n').map(line => {
-        if (/^\s*```/.test(line)) { fence = !fence; return line; }
-        if (fence) return line;
-        // The marks of a quote at the start of the line stay.
+    const out: string[] = [];
+    let fence: {char: string; length: number} | undefined;
+    let paragraph: {quote: string; text: string}[] = [];
+    let previous: 'blank' | 'code' | 'text' = 'blank';
+    let list = false;
+    const flush = () => {
+        if (!paragraph.length) return;
+        const texts = paragraph.map(line => line.text).join('\n').split(codeSpan)
+            .filter((_, index) => index % 3 !== 2).map((part, index) => index % 2 ? part : escapeText(part)).join('').split('\n');
+        paragraph.forEach((line, index) => out.push(line.quote + texts[index]));
+        paragraph = [];
+    };
+    for (const line of markdown.split('\n')) {
         const quote = /^(\s*>\s?)*/.exec(line)![0];
-        const text = line.slice(quote.length).split(/(`+[^`]*`+)/).map((part, index) => index % 2 ? part : part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('');
-        return quote + text.replace(/^(\s*):/, '$1\\:');
-    }).join('\n');
+        const inner = line.slice(quote.length).replace(/^(\s*([-*+]|\d{1,9}[.)])\s+)*/, '');
+        const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(inner);
+        if (fence) {
+            if (marker && marker[1]![0] === fence.char && marker[1]!.length >= fence.length && !marker[2]!.trim()) fence = undefined;
+            out.push(line);
+            continue;
+        }
+        if (marker && !(marker[1]![0] === '`' && marker[2]!.includes('`'))) {
+            flush();
+            fence = {char: marker[1]![0]!, length: marker[1]!.length};
+            out.push(line);
+            previous = 'code';
+            continue;
+        }
+        if (!line.slice(quote.length).trim()) { flush(); out.push(line); if (previous !== 'code') previous = 'blank'; continue; }
+        // Indented code: four spaces or a tab after a blank line or after code, outside a list (where it continues an item).
+        if (!quote && !list && /^( {4}|\t)/.test(line) && previous !== 'text') { flush(); out.push(line); previous = 'code'; continue; }
+        if (/^\s*([-*+]|\d{1,9}[.)])\s/.test(line.slice(quote.length))) list = true;
+        else if (!/^\s/.test(line)) list = false;
+        paragraph.push({quote, text: line.slice(quote.length)});
+        previous = 'text';
+    }
+    flush();
+    return out.join('\n');
 }
 
 // A relative link of a file of another repository leads to the file on GitHub.

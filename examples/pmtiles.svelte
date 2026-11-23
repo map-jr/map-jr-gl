@@ -1,10 +1,10 @@
 <script>
   import {mapJr} from '@map-jr/map-jr-gl/svelte';
 
-  const boundaryFile = 'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+  const boundaryFile = 'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
   let map = null;
-  let names = $state('Click to list the county, state and ZIP code');
+  let names = $state('Click to list the country and the state or province');
   const description = {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     // Additions to the style: a PMTiles file on a usual file host. The map reads the tiles that it needs with HTTP
@@ -13,16 +13,16 @@
       admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
     },
     layers: [
-      {id: 'zips', type: 'line', source: 'admin', 'source-layer': 'zip_features', minzoom: 9,
+      {id: 'states', type: 'line', source: 'admin', 'source-layer': 'states', minzoom: 3,
         paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6}},
-      {id: 'counties', type: 'line', source: 'admin', 'source-layer': 'county_features',
+      {id: 'countries', type: 'line', source: 'admin', 'source-layer': 'countries',
         paint: {'line-color': '#5746af', 'line-width': 2}},
     ],
-    initialView: {center: [-74.1, 40.75], zoom: 9.2},
+    initialView: {center: [-98, 39], zoom: 3.2},
     attribution: {compact: true},
     onClick: async e => {
       const features = await map.querySource('admin', e.lngLat);
-      names = features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here';
+      names = features.map(f => f.properties.name).filter(Boolean).join(' · ') || 'Nothing here';
     },
   };
 </script>
@@ -31,8 +31,8 @@
 <div use:mapJr={{description, ready: instance => map = instance}} style="height: 500px">
   <div class="legend">
     <b>From one PMTiles file</b>
-    <div><span style="border-top: 2px solid #5746af"></span>County boundaries</div>
-    <div><span style="border-top: 1px solid #7c66dc"></span>ZIP code areas (from zoom 9)</div>
+    <div><span style="border-top: 2px solid #5746af"></span>Country borders</div>
+    <div><span style="border-top: 1px solid #7c66dc"></span>States and provinces (from zoom 3)</div>
     <small>The base map below them is a usual tile source.</small>
   </div>
 </div>

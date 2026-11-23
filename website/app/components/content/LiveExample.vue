@@ -6,7 +6,8 @@
   The map runs the variant that the reader reads when a frame can run it (Main API, MapLibre compat, <map-jr>), and
   the Main API variant otherwise. "Edit" replaces the code with an editor of the code that the map runs; the editor
   (CodeEditor.vue, with CodeMirror) is loaded only then. The code comes from the code block of the page, so the
-  editor starts with the text that the reader sees.
+  editor starts with the text that the reader sees. The editor takes the height of the code that it replaces, so that
+  the page does not move when the reader opens or closes it (#1538).
 -->
 <script setup lang="ts">
 import {shownVariant, variantOfSlug} from '~~/build/variants';
@@ -16,6 +17,7 @@ const props = defineProps<{id: string}>();
 const {choice} = useCodeVariant();
 const root = useTemplateRef<HTMLElement>('root');
 const frame = useTemplateRef<{run: () => void}>('frame');
+const variants = useTemplateRef<HTMLElement>('variants');
 
 // The text of each variant of the group, by its slug, read from the code blocks once the page is in the browser.
 const texts = ref<Record<string, string>>({});
@@ -36,10 +38,12 @@ const label = (slug: string | undefined) => variantOfSlug(slug)?.label ?? '';
 const editing = ref<'main' | 'compat' | 'element'>();
 const draft = ref('');
 const ran = ref('');
+const editorHeight = ref(0);
 const form = computed(() => editing.value ?? running.value);
 const code = computed(() => editing.value ? ran.value : texts.value[running.value] ?? '');
 
 function edit() {
+    editorHeight.value = variants.value?.getBoundingClientRect().height ?? 0;
     editing.value = running.value;
     draft.value = ran.value = texts.value[running.value] ?? '';
 }
@@ -79,9 +83,10 @@ function close() {
     </div>
     <LazyCodeEditor
       v-if="editing" v-model="draft" :language="languageOf(editing)" :label="`The ${label(editing)} code of the example`"
-      class="mt-3 h-128 rounded-md border border-muted" @run="run"
+      class="rounded-md border border-muted" :class="editorHeight ? '' : 'h-128'"
+      :style="editorHeight ? {height: `${editorHeight}px`} : undefined" @run="run"
     />
-    <div v-show="!editing">
+    <div v-show="!editing" ref="variants">
       <slot />
     </div>
   </div>

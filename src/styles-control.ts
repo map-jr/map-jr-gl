@@ -45,13 +45,18 @@ function addSheet(el: HTMLElement, nonce?: string | null) {
 }
 
 const sameStyle = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** Whether the description shows the entry: its style, and the terrain and the global state that it sets (#1505). */
+const shows = (e: StyleEntry, d: MapDescription) => sameStyle(e.style, d.style) && (e.terrain === undefined || sameStyle(e.terrain, d.terrain))
+    && Object.keys(e.globalState ?? {}).every(k => sameStyle(e.globalState![k], d.globalState?.[k]));
+/** The number of fields that the entry sets besides `style`: of two entries that the description shows, the one that sets more is current. */
+const overrides = (e?: StyleEntry) => e ? +(e.terrain !== undefined) + Object.keys(e.globalState ?? {}).length : -1;
 /** An entry has a light and a dark form when its style is `{light, dark}` or when `colorSchemes` is set (#1506). */
 const twoForms = (e: StyleEntry) => !!e.colorSchemes || typeof e.style === 'object' && 'light' in e.style && 'dark' in e.style;
 type Scheme = 'light' | 'dark';
 
 /**
- * A button that opens a list of styles with a picture of each. A choice applies the style with `patch`, so the camera
- * stays, and calls `onStyleChange` with the entry. The pictures are made once the map is first idle, or at the first
+ * A button that opens a list of styles with a picture of each. A choice applies the style, the terrain and the global
+ * state of the entry with one `patch`, so the camera stays, and calls `onStyleChange` with the entry. The pictures are made once the map is first idle, or at the first
  * click if that comes earlier; without `preview`, they show the view of the map and are made again when the list opens
  * on a view that has changed. The label lies on the picture; an entry without a picture, or whose picture failed, shows
  * a placeholder.
@@ -66,6 +71,10 @@ export class StylesControl implements Control {
     private urls: string[] = [];
     private drawing?: Promise<void>;
     private drawn = '';
+    /** The index of the entry of the last choice. */
+    private chosen?: StyleEntry;
+    /** The values that the application had for the terrain and the names of global state that the entry of the last choice set. */
+    private saved: {terrain?: MapDescription['terrain']; state: Record<string, unknown>} = {state: {}};
     private removed = false;
     /** The description has had `'auto'`: a form of the scheme of the system sets `'auto'` again, as in `colorScheme()`. */
     private followed = false;
@@ -133,8 +142,8 @@ export class StylesControl implements Control {
 
     /** Marks the button of the current style and the current scheme. */
     private pressed(instance: MapInstance) {
-        const current = instance.description.style, scheme = instance.state.get().colorScheme;
-        this.items.forEach((b, i) => { const s = this.slots[i]; b.setAttribute('aria-pressed', String(sameStyle(s.entry.style, current) && (!s.scheme || s.scheme === scheme))); });
+        const current = this.current(instance.description), scheme = instance.state.get().colorScheme;
+        this.items.forEach((b, i) => { const s = this.slots[i]; b.setAttribute('aria-pressed', String(s.entry === current && (!s.scheme || s.scheme === scheme))); });
     }
 
     private toggle() { if (this.list!.hidden) this.open(); else this.close(true); }
@@ -159,18 +168,53 @@ export class StylesControl implements Control {
         if (focus) this.trigger!.focus();
     }
 
-    /** `scheme`: the form of an entry with two forms, which sets `colorScheme` too. */
+    /** The entry that the description shows and that sets the most fields; a tie goes to the last choice. */
+    private current(d: MapDescription) {
+        let best: StyleEntry | undefined, most = -1;
+        for (const e of this.options.entries) { const n = overrides(e) + (e === this.chosen ? .5 : 0); if (shows(e, d) && n > most) { best = e; most = n; } }
+        return best;
+    }
+
+    /**
+     * The terrain and the global state of the application: the description without what the entry of the last choice
+     * set, with the values that the application had before. When the description no longer shows that entry, the
+     * application has set these fields since, and they are its own.
+     */
+    private own(d: MapDescription) {
+        const e = this.chosen, state: Record<string, unknown> = {...d.globalState};
+        let terrain = d.terrain;
+        if (e && shows(e, d)) {
+            for (const k in e.globalState) if (k in this.saved.state) state[k] = this.saved.state[k]; else delete state[k];
+            if (e.terrain !== undefined) terrain = this.saved.terrain;
+        }
+        return {terrain, state};
+    }
+
+    /**
+     * Sets the style, the terrain and the global state of the entry in one `patch`, so the camera stays. What the entry
+     * before set goes back to the value of the application; the other names of `globalState` stay. `scheme`: the form
+     * of an entry with two forms, which sets `colorScheme` too.
+     */
     private choose(instance: MapInstance, entry: StyleEntry, scheme?: Scheme) {
         this.close(true);
         // As colorScheme() does: once the description has had 'auto', the scheme of the system gives 'auto'.
-        const d = instance.description.colorScheme, system: Scheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const desc = instance.description, d = desc.colorScheme, system: Scheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         if (d === 'auto') this.followed = true;
         const want = scheme && (this.followed && scheme === system ? 'auto' : scheme), to = want !== d ? want : undefined;
-        const same = sameStyle(entry.style, instance.description.style);
+        const same = this.current(desc) === entry;
         if (same && !to) return;
-        instance.patch({...same ? {} : {style: entry.style}, ...to ? {colorScheme: to} : {}});
+        const part: Parameters<MapInstance['patch']>[0] = to ? {colorScheme: to} : {};
+        if (!same) {
+            const {terrain, state} = this.own(desc), saved: Record<string, unknown> = {};
+            for (const k in entry.globalState) if (k in state) saved[k] = state[k];
+            this.saved = {terrain, state: saved};
+            Object.assign(state, entry.globalState);
+            this.chosen = entry;
+            Object.assign(part, {style: entry.style, terrain: entry.terrain !== undefined ? entry.terrain : terrain, globalState: Object.keys(state).length ? state : undefined});
+        }
+        instance.patch(part);
         if (!same) this.options.onStyleChange?.(entry);
-        if (to) instance.description.onColorSchemeChange?.(to);
+        if (to) desc.onColorSchemeChange?.(to);
     }
 
     /** The view of the pictures: `preview`, or the view of the map. */
@@ -195,7 +239,7 @@ export class StylesControl implements Control {
         const box = document.body.appendChild(document.createElement('div'));
         box.style.cssText = `position:fixed;left:-${W * 4}px;top:0;width:${W}px;height:${H}px;pointer-events:none`;
         box.setAttribute('aria-hidden', 'true');
-        const slots = this.slots;
+        const slots = this.slots, own = this.own(instance.description);
         let failed = false;
         // An error before the style has loaded (a failed request, an answer that is not a style) ends the picture at
         // once; an error of a tile after that does not.
@@ -205,7 +249,11 @@ export class StylesControl implements Control {
             for (let i = 0; i < slots.length && !this.removed; i++) {
                 if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
-                const spec = {...base, style: slots[i].entry.style, colorScheme: slots[i].scheme ?? base.colorScheme};
+                // (The picture shows the terrain and the global state that the entry sets, over the global state of the application.)
+                const {style, terrain, globalState} = slots[i].entry, state = {...own.state, ...globalState};
+                const spec: MapDescription = {...base, style, colorScheme: slots[i].scheme ?? base.colorScheme};
+                if (terrain !== undefined) spec.terrain = terrain;
+                if (Object.keys(state).length) spec.globalState = state;
                 // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of
                 // a new style that does not load, and the picture would show the old style.)
                 this.small?.destroy();
