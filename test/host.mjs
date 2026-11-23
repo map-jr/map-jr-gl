@@ -2400,12 +2400,14 @@ for (const renderer of renderers) {
             await new Promise(r => setTimeout(r, 500));
             const pageCss = document.head.appendChild(Object.assign(document.createElement('style'), {textContent: 'img{border:4px solid red;opacity:.5}'}));
             const imgs = [...list.querySelectorAll('button')].map(b => b.querySelector('img'));
-            out.pageRule = imgs[0] ? `${getComputedStyle(imgs[0]).borderTopWidth}/${getComputedStyle(imgs[0]).opacity}` : '';
-            pageCss.remove();
             // The fade runs once per new picture, not at each opening of the list.
-            // (The pictures came while the list was closed, so their fade runs at this opening.)
             const frames = n => new Promise(r => { const f = () => --n ? requestAnimationFrame(f) : r(); requestAnimationFrame(f); });
-            trigger.click(); await frames(3);
+            // (A picture that came while the list was closed fades in at this opening: the check reads after the fade.)
+            trigger.click();
+            if (imgs[0]?.className) await new Promise(r => { imgs[0].addEventListener('animationend', r, {once: true}); setTimeout(r, 3000); });
+            await frames(2);
+            out.pageRule = imgs[0] ? `${imgs[0].className || '-'}/${getComputedStyle(imgs[0]).borderTopWidth}/${getComputedStyle(imgs[0]).opacity}` : '';
+            pageCss.remove();
             trigger.click(); await frames(2);
             trigger.click(); await frames(2);
             out.again = imgs[0] ? imgs[0].getAnimations().length : -1;
@@ -2440,7 +2442,7 @@ for (const renderer of renderers) {
             return out;
         }, renderer);
         check(`[${renderer}] the control styles() lists its entries at once, draws a picture of each style that loads after the first idle, and a choice sets the style, keeps the camera, calls onStyleChange once and returns the focus; a style that fails ends its picture at once, and focus that leaves closes the list`,
-            picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.placeholder === 'p,p,p,p,p' && picked.labelOn && picked.glass === true && picked.fade === 'map-jr-styles-in' && picked.pageRule === '0px/1' && picked.again === 0 && picked.drawn < 15000 && picked.red === true
+            picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.placeholder === 'p,p,p,p,p' && picked.labelOn && picked.glass === true && picked.fade === 'map-jr-styles-in' && picked.pageRule === '-/0px/1' && picked.again === 0 && picked.drawn < 15000 && picked.red === true
             && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut, JSON.stringify(picked));
         // With prefers-reduced-motion a new picture does not fade in (#1528); the sheet of the control stays on the page.
         await page.emulateMedia({reducedMotion: 'reduce'});
