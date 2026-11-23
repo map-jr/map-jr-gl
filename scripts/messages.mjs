@@ -67,11 +67,6 @@ const placeholderNames = [
 /** The placeholders that say nothing about what they stand for. A piece of a message that gets one of these fails the check. */
 const genericNames = new Set(['name', 'value', 'v']);
 
-const sectionOfFile = {
-    'host.ts': 'main', 'markers.ts': 'main', 'points.ts': 'main', 'element.ts': 'element', 'vue.ts': 'vue', 'react.ts': 'vue',
-    'server.ts': 'server', 'compat-map.ts': 'compat', 'maplibre-compat.ts': 'compat', 'compat-style-images.ts': 'compat',
-    'controls-more.ts': 'controls', 'control-specs.ts': 'controls', 'color-scheme-control.ts': 'controls', 'controls.ts': 'controls',
-};
 
 const files = readdirSync(path.join(root, 'src')).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts')).sort();
 const problems = [];
@@ -159,13 +154,6 @@ for (const file of files) {
     };
     const enclosingFunction = node => { for (let p = node.parent; p; p = p.parent) if (/Function|MethodDefinition/.test(p.type)) return p; return ast; };
     const calleeName = c => c.type === 'Super' ? 'super' : c.type === 'Identifier' ? c.name : c.type === 'MemberExpression' ? text(c) : '';
-    /** Whether a node is inside code that exists only in the development build. */
-    const development = node => {
-        for (let p = node.parent; p; p = p.parent) {
-            if ((p.type === 'LogicalExpression' || p.type === 'IfStatement' || p.type === 'ConditionalExpression') && /\b__DEV__\b/.test(text(p.test ?? p.left))) return true;
-        }
-        return false;
-    };
     /** `Warning` when the message goes to console.warn, and `Error` when it is thrown, rejected, fired as an `error` event or logged with console.error. */
     const kindOf = node => {
         for (let p = node.parent; p; p = p.parent) {
@@ -185,19 +173,11 @@ for (const file of files) {
         }
         return '';
     };
-    const sectionOf = (node, message) => {
-        if (message.startsWith(PREFIX + ' <map-jr>')) return 'element';
-        if (message.startsWith(PREFIX + ' <MapJr>') || /MapImage/.test(message)) return 'vue';
-        if (functionOf(node) === 'watchMembers') return 'compat';
-        if (/^\[map-jr-gl\] (map\.painter|setTransform|setSourceTileLodParams|setWorkerUrl|Map:|new Map\(\)|getSource\(|[\w.]+ has no effect: this library)/.test(message)) return 'compat';
-        if (/^\[map-jr-gl\] colorScheme\(\)/.test(message)) return 'controls';
-        return sectionOfFile[file] ?? 'map';
-    };
     const add = (node, message, extra = {}) => {
         if (!/[a-z]{3}/.test(bare(message))) return;
         const kind = extra.kind || kindOf(node);
         if (!kind) problems.push(`${file}: cannot tell whether "${clean(message).slice(0, 60)}" is a warning or an error. Teach scripts/messages.mjs where it goes.`);
-        messages.push({section: extra.section ?? sectionOf(node, clean(message)), message: clean(message), kind, dev: extra.dev ?? development(node), file, at: node.start});
+        messages.push(clean(message));
     };
 
     /** A root of a message: climbs from a piece to the whole `+` chain that it belongs to. */
@@ -226,7 +206,7 @@ for (const file of files) {
             for (const v of render(node.arguments[0])) add(node, PREFIX + ' <method>(): ' + v, {kind: 'Error'});
         // `complete(spec, method, fix)` of host.ts: the message has the name of the method and the text of the call.
         if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'complete' && file === 'host.ts' && node.arguments[1]?.type === 'Literal' && stringy(node.arguments[2]))
-            for (const v of render(node.arguments[2])) add(node, `${PREFIX} ${node.arguments[1].value}(): the description has no "style". ${v}`, {kind: 'Error', section: 'main'});
+            for (const v of render(node.arguments[2])) add(node, `${PREFIX} ${node.arguments[1].value}(): the description has no "style". ${v}`, {kind: 'Error'});
         if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name in helperCalls) {
             const arg = node.arguments[helperCalls[node.callee.name]];
             if (arg && stringy(arg) && !(file === 'mistakes.ts')) for (const v of render(arg).map(clean)) add(arg, PREFIX + ' ' + v);
@@ -239,9 +219,7 @@ for (const file of files) {
     };
     if (file !== 'mistakes.ts') visit(ast);
     else {
-        // The numbered texts: the array `texts`, and the assignments `texts[n] = ...`. A text that is thrown has its code in a call.
-        const thrown = new Set();
-        for (const f of files) for (const m of readFileSync(path.join(root, 'src', f), 'utf8').matchAll(/\b(?:mistake|reject)\((\d+)/g)) thrown.add(Number(m[1]));
+        // The numbered texts: the array `texts`, and the assignments `texts[n] = ...`.
         const arrows = [];
         const find = node => {
             if (!node || typeof node.type !== 'string') return;
@@ -262,16 +240,15 @@ for (const file of files) {
                 for (const x of params) if (/^[ab]$/.test(x)) { problems.push(`${file}: text ${n} names a parameter "${x}". Name what it stands for, for example "layerId", so that the message reads <layer id>.`); break; }
                 const message = clean(v.replace(/\u0001([^\u0002]*)\u0002/g, (all, x) => params.has(x) ? PH(x.replace(/[A-Z]/g, c => ' ' + c.toLowerCase())) : all));
                 if (!/[a-z]{3}/.test(bare(message))) continue;
-                messages.push({section: /^<map-jr>/.test(message) ? 'element' : /^<MapJr>/.test(message) ? 'vue' : 'main', message: PREFIX + ' ' + message, kind: thrown.has(Number(n)) ? 'Error' : 'Warning', dev: true, file, at: Number(n)});
+                messages.push(PREFIX + ' ' + message);
             }
         }
         visit(ast);
     }
 }
 
-// The same text from two places is one entry.
-const unique = [], keys = new Set();
-for (const m of messages.filter(m => !m.message.endsWith('has no "style". <fix>'))) { const key = m.section + '\n' + m.message; if (!keys.has(key)) { keys.add(key); unique.push(m); } }
+// The same text from two places counts once.
+const unique = new Set(messages.filter(m => !m.endsWith('has no "style". <fix>')));
 
 if (problems.length) { for (const p of problems) console.error('FAIL  messages: ' + p); process.exit(1); }
-console.log(`ok    messages: ${unique.length} messages checked`);
+console.log(`ok    messages: ${unique.size} messages checked`);
