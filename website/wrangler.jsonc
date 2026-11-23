@@ -15,5 +15,10 @@
   // and the hostname must have no CNAME record of its own.
   "routes": [
     {"pattern": "map-jr.org", "custom_domain": true}
-  ]
+  ],
+  // The site is served only at map-jr.org, not at map-jr-site.<subdomain>.workers.dev. The preview of a pull request
+  // (site.yml) is at pr-<number>-map-jr-site.<subdomain>.workers.dev. Without this key, each `wrangler deploy` turns
+  // Preview URLs off, because the workers.dev route is off.
+  "workers_dev": false,
+  "preview_urls": true
 }
