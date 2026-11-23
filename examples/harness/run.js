@@ -2,8 +2,8 @@
 // tests and scripts/screenshots.mjs open this page, so they do not depend on the page that shows the examples to
 // visitors.
 //
-// The page has the same elements as the old gallery had for each example: <article id="<example>"> with the map in `.map > .live`, the
-// line of text of the example in `.readout` (the <p> of the example) and its buttons in `.actions`. When the map exists, it is
+// The page has the same elements as the old gallery had for each example: <article id="<example>"> with the map in
+// `.map > .live`, the line of text of the example in `.readout` (the <p> of the example) and its buttons in `.actions`. When the map exists, it is
 // `window.maps[<example>]`. When the example cannot run, `window.exampleError` is the message.
 import {configure} from '@map-jr/map-jr-gl';
 import {mount} from './mount.js';
