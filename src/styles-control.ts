@@ -59,6 +59,8 @@ export class StylesControl implements Control {
     private drawing?: Promise<void>;
     private drawn = '';
     private removed = false;
+    /** The description has had `'auto'`: a form of the scheme of the system sets `'auto'` again, as in `colorScheme()`. */
+    private followed = false;
     /** The hidden map of the picture that is being drawn, and the function that ends the wait for it. */
     private small?: MapInstance;
     private wake = () => {};
@@ -116,9 +118,15 @@ export class StylesControl implements Control {
         this.stops.push(() => document.removeEventListener('pointerdown', outside, true));
         // The pictures come after the first idle of the map, so that they do not delay it.
         const idle = instance.state.subscribe(s => s.idle, on => { if (on) { idle(); setTimeout(() => this.draw(instance)); } });
-        this.stops.push(idle);
+        this.stops.push(idle, instance.state.subscribe(s => s.colorScheme, () => { if (!list.hidden) this.pressed(instance); }));
         if (instance.state.get().idle) { idle(); setTimeout(() => this.draw(instance)); }
         return el;
+    }
+
+    /** Marks the button of the current style and the current scheme. */
+    private pressed(instance: MapInstance) {
+        const current = instance.description.style, scheme = instance.state.get().colorScheme;
+        this.items.forEach((b, i) => { const s = this.slots[i]; b.setAttribute('aria-pressed', String(sameStyle(s.entry.style, current) && (!s.scheme || s.scheme === scheme))); });
     }
 
     private toggle() { if (this.list!.hidden) this.open(); else this.close(true); }
@@ -126,8 +134,7 @@ export class StylesControl implements Control {
     private open() {
         const list = this.list!, el = this.el!, instance = this.instance?.();
         if (!instance) return;
-        const current = instance.description.style, scheme = instance.state.get().colorScheme;
-        this.items.forEach((b, i) => { const s = this.slots[i]; b.setAttribute('aria-pressed', String(sameStyle(s.entry.style, current) && (!s.scheme || s.scheme === scheme))); });
+        this.pressed(instance);
         // The list opens toward the middle of the map, and fits in its height.
         const box = el.getBoundingClientRect(), map = (el.closest('.map-jr-map') ?? el.parentElement!).getBoundingClientRect();
         const left = box.left + box.width / 2 < map.left + map.width / 2, top = box.top + box.height / 2 < map.top + map.height / 2;
@@ -147,7 +154,11 @@ export class StylesControl implements Control {
     /** `scheme`: the form of an entry with two forms, which sets `colorScheme` too. */
     private choose(instance: MapInstance, entry: StyleEntry, scheme?: Scheme) {
         this.close(true);
-        const same = sameStyle(entry.style, instance.description.style), to = scheme !== instance.state.get().colorScheme ? scheme : undefined;
+        // As colorScheme() does: once the description has had 'auto', the scheme of the system gives 'auto'.
+        const d = instance.description.colorScheme, system: Scheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (d === 'auto') this.followed = true;
+        const want = scheme && (this.followed && scheme === system ? 'auto' : scheme), to = want !== d ? want : undefined;
+        const same = sameStyle(entry.style, instance.description.style);
         if (same && !to) return;
         instance.patch({...same ? {} : {style: entry.style}, ...to ? {colorScheme: to} : {}});
         if (!same) this.options.onStyleChange?.(entry);

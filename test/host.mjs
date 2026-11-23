@@ -2443,6 +2443,7 @@ for (const renderer of renderers) {
             removedWhileDrawing.drawing && removedWhileDrawing.after === 0, JSON.stringify(removedWhileDrawing));
         // An entry of styles() with a light and a dark form (#1506), as a pair of styles or as a style that reads the global
         // state `color-scheme`: a picture of each form, and a choice of a form sets the style and the scheme.
+        await page.emulateMedia({colorScheme: 'light'});
         const forms = await page.evaluate(async renderer => {
             const t = window.t, {styles} = await import('/dist/controls.js'), styleCalls = [], schemeCalls = [];
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
@@ -2479,13 +2480,49 @@ for (const renderer of renderers) {
             trigger.click();
             buttons()[1].click(); // the current form: nothing
             out.calls = `${styleCalls.join(',')}/${schemeCalls.join(',')}`;
+            // A scheme that changes while the list is open moves aria-pressed.
+            trigger.click();
+            host.patch({colorScheme: 'dark'});
+            await new Promise(r => setTimeout(r, 50));
+            out.live = buttons().map(b => b.getAttribute('aria-pressed')).join(',');
+            // With 'auto', the light form (the system's) changes nothing, and the dark form sets 'dark'.
+            host.patch({colorScheme: 'auto'});
+            const calls = schemeCalls.length;
+            buttons()[1].click();
+            out.auto = `${host.description.colorScheme}/${schemeCalls.length - calls}`;
+            trigger.click();
+            buttons()[2].click();
+            out.auto += `/${host.description.colorScheme}/${schemeCalls.at(-1)}`;
+            trigger.click();
+            buttons()[1].click(); // the system's scheme after 'auto': 'auto' again
+            out.auto += `/${host.description.colorScheme}`;
             host.destroy();
             el.remove();
             return out;
         }, renderer);
         check(`[${renderer}] an entry of styles() with a light and a dark form, a pair or a style that reads the global state color-scheme, has a picture of each form, and a choice of a form sets the style and colorScheme and calls onStyleChange and onColorSchemeChange`,
             forms.names === 'Plain,Pair, Light,Pair, Dark,Reads, Light,Reads, Dark' && forms.colors === 'white,red,blue,green,blue' && forms.dark === 'true/dark/dark'
-            && forms.pressed === 'false,false,true,false,false' && forms.light === 'true/light' && forms.calls === 'Pair/dark,light', JSON.stringify(forms));
+            && forms.pressed === 'false,false,true,false,false' && forms.light === 'true/light' && forms.calls === 'Pair/dark,light'
+            && forms.live === 'false,false,true,false,false' && forms.auto === 'auto/0/dark/dark/auto', JSON.stringify(forms));
+        // The same with 'auto' and the system in dark: the dark form keeps 'auto', the light form sets 'light', and the
+        // dark form then sets 'auto' again.
+        await page.emulateMedia({colorScheme: 'dark'});
+        const darkSystem = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const entries = [{label: 'Reads', style: t.style, colorSchemes: true}];
+            const host = t.lib.createMap(el, {style: t.style, colorScheme: 'auto', renderer, attribution: false, onColorSchemeChange: s => calls.push(s), controls: [styles({entries})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), seen = [];
+            for (const i of [1, 0, 1]) { trigger.click(); list.querySelectorAll('button')[i].click(); seen.push(host.description.colorScheme); }
+            host.destroy();
+            el.remove();
+            return `${seen.join(',')}/${calls.join(',')}`;
+        }, renderer);
+        await page.emulateMedia({colorScheme: 'light'});
+        check(`[${renderer}] with colorScheme 'auto' and the system in dark, a choice of the dark form of styles() keeps 'auto', the light form sets 'light', and the dark form then sets 'auto'`,
+            darkSystem === 'auto,light,auto/light,auto', darkSystem);
 
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.
