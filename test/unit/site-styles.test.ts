@@ -2,7 +2,7 @@
 // map-jr/map-jr-styles, map-jr/maputnik and map-jr/maplibre-style-spec. The fixtures have the shape of those files.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {absoluteLinks, editingPage, headingOf, indexPage, sectionOf, specAdditions, specPage, stylePage, styleRows} from '../../website/build/styles.ts';
+import {absoluteLinks, attributionText, safeMarkdown, editingPage, headingOf, indexPage, sectionOf, specAdditions, specPage, stylePage, styleRows} from '../../website/build/styles.ts';
 
 const readme = `# map-jr-styles
 
@@ -111,4 +111,25 @@ test('/styles/spec lists the docs of the reference that name Map Jr. GL', () => 
     assert.equal(headingOf(additions[0]!.path), '`image` expression: `params`');
     assert.match(specPage(reference), /Map Jr\. GL fills the slots\./);
     assert.throws(() => specPage({}), /names Map Jr\. GL/);
+});
+
+test('raw HTML and component blocks of another repository show as text, and code stays', () => {
+    const hostile = safeMarkdown('# x\n\nA <script>alert(1)</script> & <img src=x onerror=alert(1)>.\n::style-preview{style-url="https://evil.example"}\n::\n> a quote with <b>\n\n`<code>` and\n\n```html\n<div></div>\n```\n');
+    assert.doesNotMatch(hostile.replace(/`[^`]*`|```[\s\S]*?```/g, ''), /<|^::/m);
+    assert.match(hostile, /A &lt;script&gt;alert\(1\)&lt;\/script&gt; &amp; &lt;img/);
+    assert.match(hostile, /^\\::style-preview/m);
+    assert.match(hostile, /^> a quote with &lt;b&gt;$/m);
+    assert.match(hostile, /`<code>`/);
+    assert.match(hostile, /^<div><\/div>$/m);
+    const page = indexPage(safeMarkdown(readme.replace('Map styles for map-jr-gl.', 'Map styles <iframe src="https://evil.example"></iframe>.')), styleRows(readme));
+    assert.doesNotMatch(page, /<iframe/);
+});
+
+test('an attribution keeps its https links as markdown links and drops other HTML', () => {
+    assert.equal(attributionText('<a href="https://mapterhorn.com/attribution">&copy; Mapterhorn</a>'), '[© Mapterhorn](https://mapterhorn.com/attribution)');
+    const hostile = attributionText('<a href="javascript:alert(1)">x</a> <img src=x onerror=alert(1)> <script>alert(1)</script>| [y](javascript:z)');
+    assert.doesNotMatch(hostile, /<|javascript:alert|(?<!\\)\]\(javascript/);
+    assert.match(hostile, /\\\|/);
+    const page = stylePage(styleRows(readme)[0]!, {sources: {a: {type: 'vector', url: 'https://t.org', attribution: '<img src=x onerror=alert(1)>Bad'}}}, readme, stateRows);
+    assert.doesNotMatch(page, /<img/);
 });

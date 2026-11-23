@@ -59,10 +59,10 @@ function checkout(source: Source): string {
 
 // The part of the markdown from the heading `heading` to the next heading of the same level or higher, without the
 // heading line itself.
-export function sectionOf(markdown: string, heading: string): string {
+export function sectionOf(markdown: string, heading: string, file = 'README.md of map-jr/map-jr-styles'): string {
     const lines = markdown.split('\n');
     const start = lines.findIndex(line => line === heading);
-    if (start < 0) fail(`the markdown has no heading "${heading}".`);
+    if (start < 0) fail(`${file} has no heading "${heading}", which the site reads. Restore the heading there, or change website/build/styles.ts.`);
     const level = heading.indexOf(' ');
     let fence = false;
     let end = start + 1;
@@ -72,6 +72,36 @@ export function sectionOf(markdown: string, heading: string): string {
         if (match && match[1]!.length <= level) break;
     }
     return lines.slice(start + 1, end).join('\n').trim();
+}
+
+// The text of another repository is untrusted input (CLAUDE.md, "Definition of done" 8): outside code, `<`, `>` and `&`
+// become entities, so that raw HTML shows as text, and a line that starts with `::` (a component block of Nuxt
+// Content) starts with `\:`. The marks of a quote at the start of a line stay. Markdown links, tables and code stay as they are.
+export function safeMarkdown(markdown: string): string {
+    let fence = false;
+    return markdown.split('\n').map(line => {
+        if (/^\s*```/.test(line)) { fence = !fence; return line; }
+        if (fence) return line;
+        // The marks of a quote at the start of the line stay.
+        const quote = /^(\s*>\s?)*/.exec(line)![0];
+        const text = line.slice(quote.length).split(/(`+[^`]*`+)/).map((part, index) => index % 2 ? part : part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('');
+        return quote + text.replace(/^(\s*):/, '$1\\:');
+    }).join('\n');
+}
+
+// The attribution of a source (HTML from the style) as markdown for a cell of a table: the text of each link becomes a
+// markdown link when its href is https, the other tags are removed, and the rest is plain text.
+export function attributionText(html: string): string {
+    const plain = (text: string) => text.replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39|copy);/g, (_, name: string) => ({amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", copy: '©'})[name]!)
+        .replace(/[\\`*_[\]|<>&]/g, char => ({'<': '&lt;', '>': '&gt;', '&': '&amp;'})[char] ?? '\\' + char).trim();
+    const out: string[] = [];
+    let last = 0;
+    for (const match of html.matchAll(/<a\s[^>]*?href\s*=\s*["'](https:\/\/[^"'\s()<>]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+        out.push(plain(html.slice(last, match.index)), `[${plain(match[2]!)}](${match[1]})`);
+        last = match.index! + match[0].length;
+    }
+    out.push(plain(html.slice(last)));
+    return out.filter(Boolean).join(' ');
 }
 
 // A relative link of a file of another repository leads to the file on GitHub.
@@ -136,7 +166,7 @@ export function stylePage(row: StyleRow, style: any, readme: string, stateRows: 
             `\`${id}\``,
             source.type,
             `\`${source.url ?? source.tiles?.[0] ?? source.data ?? ''}\``,
-            source.attribution ? source.attribution.replace(/\|/g, '\\|') : source.url ? 'From its TileJSON' : 'none',
+            typeof source.attribution === 'string' ? attributionText(source.attribution) : source.url ? 'From its TileJSON' : 'none',
         ]),
     ]), '');
     out.push(`The licences, from the README of [map-jr-styles](${githubUrl(sources.styles)}):`, '', absoluteLinks(sectionOf(readme, '## Sources and licences'), sources.styles), '');
@@ -160,14 +190,14 @@ export function indexPage(readme: string, rows: StyleRow[]): string {
         table([['Style', 'What it is'], ['---', '---'], ...own.map(row => [`[${row.title}](/styles/${row.name})`, row.text])]),
         ...(copies.length ? ['', '### From OpenFreeMap', '', `${copies[0]!.text} Their pages: ${copies.map(row => `[${row.title.replace(/^OpenFreeMap /, '')}](/styles/${row.name})`).join(', ')}.`] : []),
         ...lines.slice(last + 1)].join('\n');
-    const body = ['# Styles', '', intro, '', '## The styles', '', styles, '', '## Use', '', sectionOf(readme, '## Use'), '',
+    const body = ['# Styles', '', intro, '', '## The styles', '', styles, '', '## Use a style', '', sectionOf(readme, '## Use'), '',
         '## Editing a style', '', 'To change a style, open it in the Maputnik of Map Jr. GL. [Editing a style](/styles/editing) says how, and [the style specification of Map Jr. GL](/styles/spec) lists what Map Jr. GL reads beyond the MapLibre style specification.', ''].join('\n');
     return frontmatter({editUrl: githubUrl(sources.styles, 'README.md')}) + absoluteLinks(body, sources.styles);
 }
 
 // The page /styles/editing: the note on the fork of Maputnik, and the steps of map-jr-styles.
 export function editingPage(maputnik: string, readme: string): string {
-    const note = /^> \*\*This is the Map Jr\. GL fork of Maputnik\.\*\*[\s\S]*?(?=\n\n|\n[^>])/m.exec(maputnik)?.[0] ?? fail('the README of maputnik has no note "This is the Map Jr. GL fork of Maputnik."');
+    const note = /^> \*\*This is the Map Jr\. GL fork of Maputnik\.\*\*[\s\S]*?(?=\n\n|\n[^>])/m.exec(maputnik)?.[0] ?? fail('README.md of map-jr/maputnik (branch map-jr-main) has no note "This is the Map Jr. GL fork of Maputnik."');
     const body = ['# Editing a style', '', '## The Maputnik of Map Jr. GL', '', absoluteLinks(note.replace(/^> ?/gm, ''), sources.maputnik), '',
         '## Editing a style of map-jr-styles', '', absoluteLinks(sectionOf(readme, '## Editing a style with Maputnik'), sources.styles), ''].join('\n');
     return frontmatter({editUrl: githubUrl(sources.maputnik, 'README.md')}) + body;
@@ -197,10 +227,10 @@ export function headingOf(path: string): string {
 // The page /styles/spec.
 export function specPage(reference: unknown): string {
     const additions = specAdditions(reference);
-    if (!additions.length) fail('src/reference/v8.json of maplibre-style-spec has no doc that names Map Jr. GL.');
+    if (!additions.length) fail('src/reference/v8.json of map-jr/maplibre-style-spec (branch map-jr-main) has no doc that names Map Jr. GL.');
     const body = ['# The style specification of Map Jr. GL', '',
         `The [Maputnik of Map Jr. GL](/styles/editing) validates styles with a fork of the MapLibre style specification, [map-jr/maplibre-style-spec](${githubUrl(sources.spec)}) (branch \`${sources.spec.branch}\`), which adds what styles for Map Jr. GL use. This page lists the docs of the reference of the fork (\`src/reference/v8.json\`) that name Map Jr. GL.`, '',
-        ...additions.flatMap(({path, doc}) => [`## ${headingOf(path)}`, '', `In the reference: \`${path}\`.`, '', doc, '']),
+        ...additions.flatMap(({path, doc}) => [`## ${headingOf(path)}`, '', `Its path in the reference is \`${path}\`.`, '', safeMarkdown(doc), '']),
         `The rest of the specification is the [MapLibre style specification](https://maplibre.org/maplibre-style-spec/).`, ''].join('\n');
     return frontmatter({editUrl: githubUrl(sources.spec, 'src/reference/v8.json')}) + body;
 }
@@ -210,10 +240,10 @@ let written: string[] | undefined;
 export function writeStylePages(): string[] {
     if (written) return written;
     const stylesDir = checkout(sources.styles);
-    const readme = readFileSync(resolve(stylesDir, 'README.md'), 'utf8');
-    const maputnik = readFileSync(resolve(checkout(sources.maputnik), 'README.md'), 'utf8');
+    const readme = safeMarkdown(readFileSync(resolve(stylesDir, 'README.md'), 'utf8'));
+    const maputnik = safeMarkdown(readFileSync(resolve(checkout(sources.maputnik), 'README.md'), 'utf8'));
     const reference = JSON.parse(readFileSync(resolve(checkout(sources.spec), 'src/reference/v8.json'), 'utf8'));
-    const stateRows = (/\*\*Global state\.\*\*[\s\S]*?\n((?:\|.*\n)+)/.exec(readme)?.[1] ?? fail('the README of map-jr-styles has no table under "**Global state.**".'))
+    const stateRows = (/\*\*Global state\.\*\*[\s\S]*?\n((?:\|.*\n)+)/.exec(readme)?.[1] ?? fail('README.md of map-jr/map-jr-styles has no table under "**Global state.**".'))
         .trim().split('\n').slice(2).map(cells);
 
     const out = resolve(generatedDir, stylesFolder);
