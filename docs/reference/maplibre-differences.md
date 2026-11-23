@@ -391,7 +391,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Images added at run time
 
 - **MapLibre GL JS:** 
-- **This library:** All images that `addImage` adds share one texture of 2048 by 2048 pixels (in device pixels, so an image takes four times its area on a screen with a pixel ratio of 2). When a new image finds no free place, the map packs all of its images again; when they still do not fit, it reports one error, and later images are not drawn. Remove images that the map no longer needs. See `docs/api.md`.
+- **This library:** All images that `addImage` adds share one texture of 2048 by 2048 pixels (in device pixels, so an image takes four times its area on a screen with a pixel ratio of 2). When a new image finds no free place, the map packs all of its images again; when they still do not fit, it reports one error, and later images are not drawn. Remove images that the map no longer needs.
 
 ### Methods of sources
 

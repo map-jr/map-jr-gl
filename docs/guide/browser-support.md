@@ -91,8 +91,7 @@ No test runs in these browsers. Their support is not known:
 - a real GPU on Linux or Windows;
 - the released builds of Chrome, Edge and Firefox.
 
-To try a browser of this list, open [the benchmark page](https://map-jr.github.io/map-jr-gl/bench/) of the gallery
-site in it. The page shows the GPU that the browser reports, and loads the map with each renderer.
+To try a browser of this list, open [the benchmark page](https://map-jr.org/bench/) in it. The page shows the GPU that the browser reports, and loads the map with each renderer.
 
 ## See also
 

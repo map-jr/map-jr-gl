@@ -83,7 +83,7 @@ libraries, not as the speed of a real device.
 
 ## Measure on your device
 
-Open [the benchmark page](https://map-jr.github.io/map-jr-gl/bench/) of the gallery site in the browser that you
+Open [the benchmark page](https://map-jr.org/bench/) in the browser that you
 want to test. The page loads the same map with MapLibre GL JS and with each renderer of Map Jr. GL, and shows the
 time to idle and the frames per second of each. It also shows the GPU that the browser reports.
 
