@@ -110,7 +110,7 @@ export interface InitialView extends ViewInput {
     /** A box to fit into the map. It overrides `center` and `zoom`. */
     bounds?: Bounds;
     /**
-     * Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. It has no effect without `bounds`.
+     * Space in CSS pixels around `bounds` for this fit. `moveTo` adds it to `padding` of the description, and the first fit of `initialView` does not. It has no effect without `bounds`.
      * @default 0
      */
     fitPadding?: PaddingInput;

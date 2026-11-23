@@ -423,8 +423,7 @@ See [Controls](controls.md) for the functions and their options.
 
 On a globe:
 
-- The map does not draw 3D terrain and `fill-extrusion` layers. With `globe`, they show past zoom 12, where the map
-  is flat.
+- The map draws 3D terrain and `fill-extrusion` layers on the sphere.
 - `maxBounds` has no effect.
 - A move to a new centre with no `zoom` keeps the size of the globe on the screen, so the zoom of the view changes
   with the latitude. A `zoom` that is passed is applied unchanged.

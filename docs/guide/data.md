@@ -512,6 +512,45 @@ style with the same id draws the state that was set for the old source. The stat
 `update` and `patch` do not change it. To highlight the feature under the pointer, set
 [`hoverState`](../reference/description.md#hoverstate) in place of this code.
 
+## Show a video or a canvas
+
+A source of the type `video` or `canvas` draws a video or a `<canvas>` of the page at four corners on the map, as in
+MapLibre GL JS. Declare it in the style, and draw it with a `raster` layer. The code of these sources loads only when
+a map has one of them.
+
+**Main API**
+
+```js [Main API]
+import {createMap} from '@map-jr/map-jr-gl';
+
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/liberty.json',
+  initialView: {center: [-122.514, 37.562], zoom: 17},
+  sources: {
+    drone: {
+      type: 'video',
+      urls: ['https://static-assets.mapbox.com/mapbox-gl-js/drone.mp4'],
+      coordinates: [
+        [-122.51596391201019, 37.56238816766053],
+        [-122.51467645168304, 37.56410183312965],
+        [-122.51309394836426, 37.563391708549425],
+        [-122.51423120498657, 37.56161849366671],
+      ],
+    },
+  },
+  layers: [{id: 'drone', type: 'raster', source: 'drone'}],
+});
+```
+
+- The video is muted, plays in a loop and starts when the source is added. A video of another origin needs CORS
+  headers. When none of `urls` loads, the map calls `onError`.
+- `canvas` is the id of a `<canvas>` of the page. With `animate: true` (the default), the map copies the canvas in
+  each frame; with `animate: false`, it copies it once.
+- While a video or an animated canvas plays, the map does not become idle.
+- In `@map-jr/map-jr-gl/maplibre-compat`, `getSource(id)` of a video source has `getVideo`, `play`, `pause`, `seek` and
+  `setCoordinates`, and a canvas source has `getCanvas`, `play`, `pause` and `setCoordinates`. These methods exist once
+  the code of the source has loaded, one request after the style.
+
 ## See also
 
 - [`data`](../reference/description.md#data), [`sources`](../reference/description.md#sources) and
