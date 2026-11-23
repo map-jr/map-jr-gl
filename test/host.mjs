@@ -2454,6 +2454,102 @@ for (const renderer of renderers) {
         });
         await page.emulateMedia({reducedMotion: null});
         check(`[${renderer}] a picture of the control styles() does not fade in with prefers-reduced-motion`, stillFade === 'none', stillFade);
+        // preview.style of styles() changes the style of the pictures only, and the pictures apply map-jr:ssr unless preview.ssr is false (#1507).
+        const pictureOnly = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), seen = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const bg = (id, color, metadata) => ({id, type: 'background', paint: {'background-color': color}, ...(metadata && {metadata})});
+            const hidden = {version: 8, sources: {}, layers: [bg('bg', '#ff0000'), bg('cover', '#00ff00', {'map-jr:ssr': {hidden: true}})]};
+            const red = {version: 8, sources: {}, layers: [bg('bg', '#ff0000')]};
+            const entries = [{label: 'Hidden', style: hidden}, {label: 'Blue', style: red}, {label: 'URL', style: '/style.json'}];
+            const preview = {style: (s, e) => {
+                seen.push(e.label + ':' + (e.label === 'URL' ? /^https?:/.test(Object.values(s.sources)[0].url ?? Object.values(s.sources)[0].tiles?.[0] ?? '') : s.layers.length));
+                if (e.label === 'Blue') s.layers[0].paint['background-color'] = '#0000ff';
+            }};
+            const host = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries, preview})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            const imgs = () => [...el.querySelectorAll('.map-jr-styles-pic img')];
+            await until(() => imgs().length === 3);
+            const pixel = async img => { await img.decode(); const c = Object.assign(document.createElement('canvas'), {width: 10, height: 10}), g = c.getContext('2d'); g.drawImage(img, 0, 0, 10, 10); const d = g.getImageData(5, 5, 1, 1).data; return d[0] > 200 ? 'r' : d[1] > 200 ? 'g' : d[2] > 200 ? 'b' : '?'; };
+            const out = {count: imgs().length, colors: (await Promise.all(imgs().slice(0, 2).map(pixel))).join(''), seen: seen.join(',')};
+            el.querySelector('.map-jr-ctrl-styles').click();
+            el.querySelectorAll('.map-jr-styles-list button')[1].click();
+            await new Promise(r => setTimeout(r, 300));
+            out.mapColor = host._map.getStyle().layers[0].paint['background-color'];
+            out.entryColor = red.layers[0].paint['background-color'];
+            host.destroy();
+            el.replaceChildren();
+            // With preview.ssr false, the layer that map-jr:ssr hides is in the picture.
+            const off = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries: [entries[0]], preview: {ssr: false}})]});
+            await until(() => imgs().length === 1);
+            out.off = await pixel(imgs()[0]);
+            off.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] preview.style and the default preview.ssr of styles() change the style of the pictures only, preview.ssr false draws the full style, and a style of a URL comes to preview.style with absolute URLs`,
+            pictureOnly.count === 3 && pictureOnly.colors === 'rb' && pictureOnly.off === 'g' && pictureOnly.seen === 'Hidden:1,Blue:1,URL:true' && pictureOnly.mapColor === '#ff0000' && pictureOnly.entryColor === '#ff0000', JSON.stringify(pictureOnly));
+        // A picture of styles() that fails warns once for its entry, and the later pictures still draw (#1507): preview.style
+        // that throws or returns no style, an HTTP error, and a style URL that never answers. A style of a protocol of
+        // addProtocol loads through the request path of the map. A preview with center and no zoom warns.
+        const pictureFaults = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); warn.apply(console, a); };
+            const red = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            t.lib.addProtocol('rev1507', async () => ({data: red}));
+            t.lib.addProtocol('hang1507', () => new Promise(() => {}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const entries = [{label: 'Throws', style: red}, {label: 'Number', style: red}, {label: 'Missing', style: '/no-such-style-1507.json'}, {label: 'Hangs', style: 'hang1507://style'},
+                {label: 'Protocol', style: 'rev1507://style'}, {label: 'Last', style: red}];
+            const preview = {style: (s, e) => { if (e.label === 'Throws') throw new Error('boom'); if (e.label === 'Number') return 42; }};
+            const start = Date.now();
+            const host = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries, preview})]});
+            const until = async (f, ms = 60000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); return f(); };
+            const pics = () => [...el.querySelectorAll('.map-jr-styles-pic')].map(f => f.querySelector('img') ? 'img' : '-').join(',');
+            await until(() => pics() === '-,-,-,-,img,img');
+            const out = {pics: pics(), seconds: Math.round((Date.now() - start) / 1000)};
+            el.querySelector('.map-jr-ctrl-styles').click(); // (opening the list does not draw the failed pictures again or warn again)
+            await new Promise(r => setTimeout(r, 500));
+            host.destroy();
+            const half = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries: [{label: 'A', style: red}], preview: {center: [0, 0]}})]});
+            await until(() => warns.some(w => w.includes('preview has')), 5000);
+            half.destroy();
+            el.remove();
+            console.warn = warn;
+            const mine = warns.filter(w => w.startsWith('[map-jr-gl] styles():'));
+            out.labels = mine.filter(w => w.includes('no picture')).map(w => w.match(/"([^"]+)"/)[1]).join(',');
+            out.text = mine.join(' | ');
+            out.half = mine.some(w => w.includes('preview has "center" without "zoom"'));
+            return out;
+        }, renderer);
+        check(`[${renderer}] a picture of styles() that fails warns once with the label and the reason, later pictures draw, a style of addProtocol has a picture, and a preview with center and no zoom warns`,
+            pictureFaults.pics === '-,-,-,-,img,img' && pictureFaults.labels === 'Throws,Number,Missing,Hangs' && /threw "boom"/.test(pictureFaults.text) && /returned 42/.test(pictureFaults.text)
+            && /HTTP 404/.test(pictureFaults.text) && /did not answer in 20 s/.test(pictureFaults.text) && pictureFaults.half, JSON.stringify(pictureFaults));
+        // A request of a style that fails warns with one prefix, and removing styles() while a style request hangs aborts it
+        // and removes the hidden box at once (#1507).
+        const styleRequest = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); warn.apply(console, a); };
+            let aborted = false, asked = false;
+            t.lib.addProtocol('fail1507', async () => { throw new Error('Failed to fetch'); });
+            t.lib.addProtocol('stall1507', (_, ac) => { asked = true; ac.signal.addEventListener('abort', () => { aborted = true; }); return new Promise(() => {}); });
+            const red = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const until = async (f, ms = 20000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); return f(); };
+            const boxes = () => [...document.body.children].filter(e => e.getAttribute('aria-hidden') === 'true' && e.style.position === 'fixed').length;
+            const host = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries: [{label: 'Fails', style: 'fail1507://x'}, {label: 'Stalls', style: 'stall1507://x'}]})]});
+            await until(() => asked);
+            const before = boxes();
+            host.destroy();
+            await new Promise(r => setTimeout(r, 200));
+            const out = {before, after: boxes(), aborted, warning: warns.find(w => w.includes('"Fails"')) ?? ''};
+            out.prefixes = out.warning.split('[map-jr-gl]').length - 1;
+            el.remove();
+            console.warn = warn;
+            return out;
+        }, renderer);
+        check(`[${renderer}] a failed style request of styles() warns with one prefix, and removing the control while a style request hangs aborts it and removes the hidden box`,
+            styleRequest.before === 1 && styleRequest.after === 0 && styleRequest.aborted && styleRequest.prefixes === 1 && /Failed to fetch/.test(styleRequest.warning), JSON.stringify(styleRequest));
         // Removing styles() while a picture is drawn removes the hidden map at once (#1504): here its tiles never answer.
         const removedWhileDrawing = await page.evaluate(async renderer => {
             const t = window.t, {styles} = await import('/dist/controls.js');
