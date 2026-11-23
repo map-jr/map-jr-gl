@@ -41,47 +41,33 @@ the map, so that they are on the page from the first paint (see [Controls in the
 **Main API**
 
 ```js [Main API]
-import http from 'node:http';
-import path from 'node:path';
-import {readFile} from 'node:fs/promises';
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const view = {center: [-74.0065, 40.7085], zoom: 13.6};
-const options = JSON.stringify({style, initialView: view});
-// The page imports the library from the built files of the package.
-const dist = path.resolve('node_modules/@map-jr/map-jr-gl/dist');
+const lib = 'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/map-jr-gl.js';
 
-http
-  .createServer(async (req, res) => {
-    if (req.url.startsWith('/map-jr-gl/')) {
-      res.writeHead(200, {'content-type': 'text/javascript'});
-      return res.end(await readFile(path.join(dist, path.basename(req.url))));
-    }
-    // A failed render must not fail the page: the map then draws in the
-    // browser.
-    const firstView = await renderFirstView({
-      style,
-      ...view,
-      width: 800,
-      height: 500,
-    }).catch(error => {
-      console.error(error.message);
-      return '';
-    });
-    res.writeHead(200, {'content-type': 'text/html'});
-    res.end(`<!doctype html>
-<script type="importmap">
-  {"imports": {"@map-jr/map-jr-gl": "/map-jr-gl/map-jr-gl.js"}}
-</script>
+// Your server sends the string that page() returns as the HTML of the page.
+export async function page() {
+  // A failed render must not fail the page: the map then draws in the
+  // browser.
+  const firstView = await renderFirstView({
+    style,
+    ...view,
+    width: 800,
+    height: 500,
+  }).catch(error => {
+    console.error(error.message);
+    return '';
+  });
+  return `<!doctype html>
 <div id="map"
   style="position: relative; width: 800px; height: 500px">${firstView}</div>
 <script type="module">
-  import {createMap} from '@map-jr/map-jr-gl';
-  createMap('map', ${options});
-</script>`);
-  })
-  .listen(3000);
+  import {createMap} from '${lib}';
+  createMap('map', ${JSON.stringify({style, initialView: view})});
+</script>`;
+}
 ```
 
 **Vue**
@@ -106,20 +92,11 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 ```html [<map-jr>]
 <!doctype html>
-<!--
-  page.html. The server below writes the element of renderElement in place of
-  the last line.
--->
-<script type="importmap">
-  {
-    "imports": {
-      "@map-jr/map-jr-gl/element": "/map-jr-gl/element.js"
-    }
-  }
-</script>
-<script type="module">
-  import '@map-jr/map-jr-gl/element';
-</script>
+<!-- page.html. The server writes the element in place of the last line. -->
+<script
+  type="module"
+  src="https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/element.js"
+></script>
 MAP
 ```
 
@@ -127,40 +104,29 @@ The Vue component renders the first view on the server when it has the [`ssr` pr
 Without the `ssr` prop, the server renders an empty element and the map draws in the browser.
 
 For `<map-jr>`, [`renderElement`](../reference/server.md#renderelement) returns the element with its attributes and
-the first view inside it. This Node.js server sends `page.html` with the element and serves the built files of the
-package:
+the first view inside it. This function returns `page.html` with the element in place of its last line, `MAP`. Your server sends
+its result as the HTML of the page:
 
 ```js
-import http from 'node:http';
-import path from 'node:path';
 import {readFile} from 'node:fs/promises';
 import {renderElement} from '@map-jr/map-jr-gl/server';
 
-const dist = path.resolve('node_modules/@map-jr/map-jr-gl/dist');
-
-http
-  .createServer(async (req, res) => {
-    if (req.url.startsWith('/map-jr-gl/')) {
-      res.writeHead(200, {'content-type': 'text/javascript'});
-      return res.end(await readFile(path.join(dist, path.basename(req.url))));
-    }
-    const element = await renderElement(
-      {
-        style: 'https://styles.map-jr.org/1/elevation-zero.json',
-        initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
-      },
-      // width and height set the size of the render. The CSS height in
-      // attributes sets the size of the element.
-      {
-        width: 800,
-        height: 500,
-        attributes: {id: 'map', style: 'height: 500px'},
-      },
-    );
-    res.writeHead(200, {'content-type': 'text/html'});
-    res.end((await readFile('page.html', 'utf8')).replace('MAP', element));
-  })
-  .listen(3000);
+export async function page() {
+  const element = await renderElement(
+    {
+      style: 'https://styles.map-jr.org/1/elevation-zero.json',
+      initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+    },
+    // width and height set the size of the render. The CSS height in
+    // attributes sets the size of the element.
+    {
+      width: 800,
+      height: 500,
+      attributes: {id: 'map', style: 'height: 500px'},
+    },
+  );
+  return (await readFile('page.html', 'utf8')).replace('MAP', element);
+}
 ```
 
 With React, call `renderFirstView` on the server and pass the HTML to the `firstView` prop of `<MapJr>`. The
