@@ -9,6 +9,7 @@ import type * as More from './controls-more.ts';
 import type {Map} from './map.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {ControlSpec, MapDescription, MapInstance, Position} from './host.ts';
+import type {StyleSpecification} from './compat-types.ts';
 
 // The control classes import the map, so this file loads them with `import()` when the map adds a control. A page
 // that imports a control function before it makes the map then does not download the map with it (#160).
@@ -183,12 +184,31 @@ export interface StyleEntry {
      */
     colorSchemes?: boolean;
 }
+/** The options of the pictures of `styles()`. */
+export interface StylesPreview {
+    /** The center of the pictures, with `zoom`. Without the two, the pictures show the view of the map when the list opens. */
+    center?: Position;
+    /** The zoom of the pictures, with `center`. */
+    zoom?: number;
+    /**
+     * Whether a picture applies the adjustments that the style has for the server renderer, in `metadata["map-jr:ssr"]`
+     * of its layers. These hide most labels and the small features, and in the official styles also the buildings and
+     * most roads, so the pictures of two styles look more alike. Default `false`. A style without them is drawn as it is.
+     */
+    simplify?: boolean;
+    /**
+     * Changes the style of a picture only, for example to hide the labels. It gets a copy of the style of the entry
+     * (after `simplify`), which it can change, and returns the style to draw or nothing. The map of the control keeps
+     * the style of the entry as it is. A style of a URL is fetched once more for this.
+     */
+    style?: (style: StyleSpecification, entry: StyleEntry) => StyleSpecification | void;
+}
 /** The options of `styles()`. */
 export interface StylesOptions {
     /** The styles of the list, in their order. */
     entries: StyleEntry[];
-    /** The center and zoom of the pictures. Without it, the pictures show the view of the map when the list opens. */
-    preview?: {center: Position; zoom: number};
+    /** How the pictures are drawn. */
+    preview?: StylesPreview;
     /**
      * Called with the entry after a choice has set `style`, `terrain` and `globalState`. An application that passes these
      * fields itself keeps their values here, or its next description sets the old style again.

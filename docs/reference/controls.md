@@ -215,7 +215,7 @@ shows a generic placeholder image. A new picture fades in over the old one, exce
 ```ts
 styles(options: {
   entries: StyleEntry[];
-  preview?: {center: Position; zoom: number};
+  preview?: StylesPreview;
   onStyleChange?: (entry: StyleEntry) => void;
   position?: ControlPosition;
 }): ControlSpec
@@ -247,8 +247,47 @@ const map = createMap('map', {
 | Name | Type | Description |
 |---|---|---|
 | `entries` **required** | `StyleEntry[]` | The entries of the list, in their order. |
-| `preview` | `{center: Position; zoom: number}` | The center and the zoom of the pictures. Without it, the pictures show the center, the zoom, the bearing and the pitch of the map. |
+| `preview` | `StylesPreview` | How the pictures are drawn. |
 | `onStyleChange` | `(entry: StyleEntry) => void` | Called with the entry after a choice has set `style`. |
+
+### `StylesPreview`
+
+| Name | Type | Description |
+|---|---|---|
+| `center`, `zoom` | `Position`, `number` | The center and the zoom of the pictures, both together. Without them, the pictures show the center, the zoom, the bearing and the pitch of the map. |
+| `style` | `(style: StyleSpecification, entry: StyleEntry) => StyleSpecification \| void` | Changes the style of a picture only. It gets a copy of the style of the entry with absolute URLs, and changes it in place or returns another style. The map keeps the style of the entry. |
+| `simplify` | `boolean` | Applies the adjustments that the style has for the server renderer (`metadata["map-jr:ssr"]` of its layers) to the pictures, before `style`. Default `false`. |
+
+For `style` and `simplify`, the control fetches a style that is a URL once more with `fetch`, without the
+`transformRequest` of the map. The map has usually loaded it before, so the browser cache answers. A style of a
+`{light, dark}` entry is the form of the picture.
+
+The adjustments of `simplify` hide most labels and the small features. In the official styles they also hide the
+buildings and most roads at zoom 14, and the dark style draws as an almost even dark area. The pictures of different
+styles then look more alike, so the default is `false`.
+
+With `simplify`, six pictures of the official styles take about a quarter less time to draw: 4.9 s instead of 6.6 s
+at zoom 11, and 4.4 s instead of 5.6 s at zoom 14, on a machine without a GPU.
+
+This example hides the labels and the icons of the pictures:
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {styles} from '@map-jr/map-jr-gl/controls';
+
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/openfreemap-positron.json',
+  controls: [
+    styles({
+      entries: [
+        {label: 'Positron', style: 'https://styles.map-jr.org/1/openfreemap-positron.json'},
+        {label: 'Dark', style: 'https://styles.map-jr.org/1/openfreemap-dark.json'},
+      ],
+      preview: {style: style => { style.layers = style.layers.filter(layer => layer.type !== 'symbol'); }},
+    }),
+  ],
+});
+```
 
 ### `StyleEntry`
 

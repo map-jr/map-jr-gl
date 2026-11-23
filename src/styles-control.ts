@@ -7,6 +7,10 @@ import {createMap} from './host.ts';
 import {ui, type Control} from './controls.ts';
 import {button, group, svg} from './controls-more.ts';
 import type {StylesOptions, StyleEntry} from './control-specs.ts';
+import type {StyleSpecification} from './compat-types.ts';
+import {applySSROverrides} from './style.ts';
+import type {LayerJSON} from './resolve.ts';
+import {styleFor} from './markers.ts';
 
 const W = 120, H = 80;
 const CSS = `.map-jr-styles{position:relative}
@@ -27,6 +31,28 @@ const CSS = `.map-jr-styles{position:relative}
 .map-jr-glass .map-jr-styles-list{--map-jr-sr:var(--map-jr-rr);background:var(--map-control-background,var(--map-jr-bg));box-shadow:var(--map-jr-shadow);backdrop-filter:blur(5px)}}
 .map-jr-styles-pair{display:grid;grid-template-columns:auto auto;gap:4px 6px}.map-jr-styles-pair>span{grid-column:1/-1;padding:0 2px;font-weight:600}
 @media (forced-colors:active){.map-jr-styles-list{border:1px solid CanvasText}}`;
+/** A URL of the style made absolute against the URL of the style; the braces of a template (`{z}`, `{fontstack}`) stay. */
+const abs = (u: unknown, base: string) => typeof u !== 'string' || /^[a-z][a-z\d+.-]*:/i.test(u) ? u : new URL(u, base).href.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
+/**
+ * The style of a picture: the style of the URL, with its URLs made absolute, with the adjustments of
+ * `metadata["map-jr:ssr"]` when `server` is true (#1507), and then `transform` of `preview.style`.
+ */
+async function pictureStyle(given: unknown, server: boolean, transform: ((s: StyleSpecification) => StyleSpecification | void) | undefined): Promise<unknown> {
+    if (!server && !transform) return given;
+    let s: any = given;
+    if (typeof given === 'string') {
+        const base = new URL(given, location.href).href, res = await fetch(base);
+        if (!res.ok) throw new Error(`[map-jr-gl] styles(): the style ${given} answered HTTP ${res.status}.`);
+        s = await res.json();
+        if (!s || !Array.isArray(s.layers)) return given; // the map gives the message
+        s.sprite = Array.isArray(s.sprite) ? s.sprite.map((x: {url: string}) => ({...x, url: abs(x.url, base)})) : abs(s.sprite, base);
+        s.glyphs = abs(s.glyphs, base);
+        for (const src of Object.values<any>(s.sources ?? {})) { src.url = abs(src.url, base); if (typeof src.data === 'string') src.data = abs(src.data, base); if (Array.isArray(src.tiles)) src.tiles = src.tiles.map((t: string) => abs(t, base)); }
+        for (const k of Object.keys(s)) if (s[k] === undefined) delete s[k];
+    } else s = structuredClone(s);
+    if (server) s.layers = applySSROverrides(s.layers as LayerJSON[]);
+    return transform?.(s) ?? s;
+}
 const sheets = new WeakMap<Document, CSSStyleSheet>();
 
 /** Adds the style sheet of the control to the root node of the map: a constructed sheet is not subject to `style-src`. */
@@ -220,7 +246,7 @@ export class StylesControl implements Control {
     /** The view of the pictures: `preview`, or the view of the map. */
     private view(instance: MapInstance): ViewInput {
         const p = this.options.preview, v = instance.state.get().view;
-        return p ? {center: p.center, zoom: p.zoom} : {center: v.center, zoom: v.zoom, bearing: v.bearing, pitch: v.pitch};
+        return p?.center && p.zoom !== undefined ? {center: p.center, zoom: p.zoom} : {center: v.center, zoom: v.zoom, bearing: v.bearing, pitch: v.pitch};
     }
 
     /** Draws the pictures one after the other with one hidden map, unless they show the view already. */
@@ -250,8 +276,15 @@ export class StylesControl implements Control {
                 if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
                 // (The picture shows the terrain and the global state that the entry sets, over the global state of the application.)
-                const {style, terrain, globalState} = slots[i].entry, state = {...own.state, ...globalState};
-                const spec: MapDescription = {...base, style, colorScheme: slots[i].scheme ?? base.colorScheme};
+                const {style, terrain, globalState} = slots[i].entry, state = {...own.state, ...globalState}, scheme = slots[i].scheme ?? base.colorScheme;
+                const p = this.options.preview, transform = p?.style;
+                let given: unknown;
+                try {
+                    given = await pictureStyle(styleFor(style, scheme === 'dark' || scheme === 'auto' && !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches),
+                        !!p?.simplify, transform && (s => transform(s, slots[i].entry)));
+                } catch { continue; }
+                if (this.removed) break;
+                const spec: MapDescription = {...base, style: given as MapDescription['style'], colorScheme: scheme};
                 if (terrain !== undefined) spec.terrain = terrain;
                 if (Object.keys(state).length) spec.globalState = state;
                 // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of

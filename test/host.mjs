@@ -2454,6 +2454,35 @@ for (const renderer of renderers) {
         });
         await page.emulateMedia({reducedMotion: null});
         check(`[${renderer}] a picture of the control styles() does not fade in with prefers-reduced-motion`, stillFade === 'none', stillFade);
+        // preview.style and preview.simplify of styles() change the style of the pictures only (#1507).
+        const pictureOnly = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), seen = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const bg = (id, color, metadata) => ({id, type: 'background', paint: {'background-color': color}, ...(metadata && {metadata})});
+            const hidden = {version: 8, sources: {}, layers: [bg('bg', '#ff0000'), bg('cover', '#00ff00', {'map-jr:ssr': {hidden: true}})]};
+            const red = {version: 8, sources: {}, layers: [bg('bg', '#ff0000')]};
+            const entries = [{label: 'Hidden', style: hidden}, {label: 'Blue', style: red}, {label: 'URL', style: '/style.json'}];
+            const preview = {simplify: true, style: (s, e) => {
+                seen.push(e.label + ':' + (e.label === 'URL' ? /^https?:/.test(Object.values(s.sources)[0].url ?? Object.values(s.sources)[0].tiles?.[0] ?? '') : s.layers.length));
+                if (e.label === 'Blue') s.layers[0].paint['background-color'] = '#0000ff';
+            }};
+            const host = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries, preview})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            const imgs = () => [...el.querySelectorAll('.map-jr-styles-pic img')];
+            await until(() => imgs().length === 3);
+            const pixel = async img => { await img.decode(); const c = Object.assign(document.createElement('canvas'), {width: 10, height: 10}), g = c.getContext('2d'); g.drawImage(img, 0, 0, 10, 10); const d = g.getImageData(5, 5, 1, 1).data; return d[0] > 200 ? 'r' : d[1] > 200 ? 'g' : d[2] > 200 ? 'b' : '?'; };
+            const out = {count: imgs().length, colors: (await Promise.all(imgs().slice(0, 2).map(pixel))).join(''), seen: seen.join(',')};
+            el.querySelector('.map-jr-ctrl-styles').click();
+            el.querySelectorAll('.map-jr-styles-list button')[1].click();
+            await new Promise(r => setTimeout(r, 300));
+            out.mapColor = host._map.getStyle().layers[0].paint['background-color'];
+            out.entryColor = red.layers[0].paint['background-color'];
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] preview.style and preview.simplify of styles() change the style of the pictures only, and a style of a URL comes to preview.style with absolute URLs`,
+            pictureOnly.count === 3 && pictureOnly.colors === 'rb' && pictureOnly.seen === 'Hidden:1,Blue:1,URL:true' && pictureOnly.mapColor === '#ff0000' && pictureOnly.entryColor === '#ff0000', JSON.stringify(pictureOnly));
         // Removing styles() while a picture is drawn removes the hidden map at once (#1504): here its tiles never answer.
         const removedWhileDrawing = await page.evaluate(async renderer => {
             const t = window.t, {styles} = await import('/dist/controls.js');
