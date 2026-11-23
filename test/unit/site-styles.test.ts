@@ -121,11 +121,50 @@ test('/styles/spec lists the docs of the reference that name Map Jr. GL', () => 
     assert.throws(() => specPage({}), /names Map Jr\. GL/);
 });
 
+test('an inline component, and HTML after a fence that holds the other marker, show as text (#1551)', () => {
+    const inline = safeMarkdown('A :badge[x]{color=red} and :icon{name=x} here, and `:code[x]` stays.\n');
+    assert.match(inline, /A \\:badge\[x\]\\\{color=red\} and \\:icon\\\{name=x\} here, and `:code\[x\]` stays\./);
+    assert.match(safeMarkdown('See https://example.com.\n'), /https:\/\/example\.com/);
+    for (const [open, inner] of [['~~~', '```'], ['```', '~~~'], ['````', '```']]) {
+        const out = safeMarkdown(`${open}md\n${inner}\n<b>in code</b>\n${open}\n\nAfter <img src=x onerror=alert(1)> :badge[x]\n`);
+        assert.match(out, /^<b>in code<\/b>$/m, open);
+        assert.match(out, /^After &lt;img src=x onerror=alert\(1\)&gt; \\:badge\[x\]$/m, open);
+    }
+});
+
+test('code spans, attributes, indented code, fences in quotes and lists, URLs and images (#1551)', () => {
+    // Backtick runs of unequal length are no code span.
+    assert.match(safeMarkdown('a `` b :x[y] ` c\n'), /b \\:x\[y\] ` c/);
+    assert.match(safeMarkdown('```a :x[y]` <b>\n'), /\\:x\[y\]` &lt;b&gt;/);
+    assert.match(safeMarkdown('a `` b ` c `` :x[y]\n'), /^a `` b ` c `` \\:x\[y\]$/m);
+    // A code span over two lines of a paragraph, and an escaped backtick that opens none.
+    assert.match(safeMarkdown('a `b\nc` :x[y] `d`\n'), /^c` \\:x\[y\] `d`$/m);
+    assert.match(safeMarkdown('a \\` :x[y] `\n'), /\\:x\[y\]/);
+    // Attributes of MDC after markup.
+    assert.match(safeMarkdown('**x**{style="position:fixed;inset:0"}\n'), /^\*\*x\*\*\\\{style=/m);
+    // Indented code stays as it is, and a list item continues.
+    const indented = safeMarkdown('Text.\n\n    <b>code</b> :x[y]\n    more <i>\n\n- item\n\n    <b>in the item</b>\n');
+    assert.match(indented, /^    <b>code<\/b> :x\[y\]$/m);
+    assert.match(indented, /^    more <i>$/m);
+    assert.match(indented, /^    &lt;b&gt;in the item/m);
+    // Fences in a quote and in a list item.
+    assert.match(safeMarkdown('> ```\n> <b>quoted code</b>\n> ```\n> after <b>\n'), /^> <b>quoted code<\/b>$[\s\S]*^> after &lt;b&gt;$/m);
+    assert.match(safeMarkdown('- ```\n  <b>listed code</b>\n  ```\n- after <b>\n'), /^  <b>listed code<\/b>$[\s\S]*^- after &lt;b&gt;$/m);
+    // Bare URLs and autolinks.
+    assert.match(safeMarkdown('See https://example.com/a:b here.\n'), /See https:\/\/example\.com\/a:b here\./);
+    assert.match(safeMarkdown('See <https://example.com/x>.\n'), /^See https:\/\/example\.com\/x\.$/m);
+    // Images from other hosts become links.
+    assert.match(safeMarkdown('![x](https://evil.example/x.png)\n'), /^\[x\]\(https:\/\/evil\.example\/x\.png\)$/m);
+    assert.match(safeMarkdown('![x](https://raw.githubusercontent.com/map-jr/a/x.png)\n'), /^!\[x\]/m);
+    assert.match(safeMarkdown('![x](docs/x.png)\n'), /^!\[x\]\(docs\/x\.png\)$/m);
+    assert.match(safeMarkdown('![x][ref]\n\n[ref]: https://evil.example/x.png\n'), /^\\!\[x\]\[ref\]$/m);
+});
+
 test('raw HTML and component blocks of another repository show as text, and code stays', () => {
     const hostile = safeMarkdown('# x\n\nA <script>alert(1)</script> & <img src=x onerror=alert(1)>.\n::style-preview{style-url="https://evil.example"}\n::\n> a quote with <b>\n\n`<code>` and\n\n```html\n<div></div>\n```\n');
     assert.doesNotMatch(hostile.replace(/`[^`]*`|```[\s\S]*?```/g, ''), /<|^::/m);
     assert.match(hostile, /A &lt;script&gt;alert\(1\)&lt;\/script&gt; &amp; &lt;img/);
-    assert.match(hostile, /^\\::style-preview/m);
+    assert.match(hostile, /^\\:\\:style-preview/m);
     assert.match(hostile, /^> a quote with &lt;b&gt;$/m);
     assert.match(hostile, /`<code>`/);
     assert.match(hostile, /^<div><\/div>$/m);

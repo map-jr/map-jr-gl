@@ -37,12 +37,14 @@ the page.
 Each example shows a street map of Lower Manhattan in an element that is 400 pixels high. The style is the URL of a
 MapLibre style.
 
+<!-- example:first-map:start -->
 **Main API**
 
 ```js [Main API]
+// The module script of a page that has <div id="map" style="height:
+// 400px"></div>.
 import {createMap} from '@map-jr/map-jr-gl';
 
-// The page has <div id="map" style="height: 400px"></div>.
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
@@ -59,9 +61,10 @@ map.state.subscribe(
 **MapLibre compat**
 
 ```js [MapLibre compat]
+// The module script of a page that has <div id="map" style="height:
+// 400px"></div>.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-// The page has <div id="map" style="height: 400px"></div>.
 const map = new Map({
   container: 'map',
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
@@ -96,11 +99,9 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 **Nuxt**
 
 ```vue [Nuxt]
-<!--
-  nuxt.config.ts has: export default defineNuxtConfig({modules:
-  ['@map-jr/map-jr-gl/nuxt']})
--->
 <script setup>
+// A page of a Nuxt app whose nuxt.config.ts has modules:
+// ['@map-jr/map-jr-gl/nuxt'].
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 </script>
 
@@ -121,7 +122,7 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 import {useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
-export function CityMap() {
+export default function CityMap() {
   const [view, setView] = useState({center: [-74.0065, 40.7085], zoom: 13.6});
   return (
     <>
@@ -146,34 +147,39 @@ export function CityMap() {
 
   const description = {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
-    initialView: {
-      center: [-74.0065, 40.7085],
-      zoom: 13.6,
-    },
+    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   };
+  let zoom = $state(13.6);
+  // The state of the map is a store. The function runs after each change of the
+  // zoom, and not at the start.
   const ready = map =>
     map.state.subscribe(
       state => state.view.zoom,
-      zoom => console.log(zoom),
+      value => (zoom = value),
     );
 </script>
 
 <div use:mapJr={{description, ready}} style="height: 400px"></div>
+<p>Zoom {zoom.toFixed(1)}</p>
 ```
 
 **`<map-jr>`**
 
 ```html [<map-jr>]
-<!--
-  The main file of the application has: import '@map-jr/map-jr-gl/element';
--->
+<!doctype html>
+<meta charset="utf-8" />
+<title>A first map</title>
 <map-jr
   map-style="https://styles.map-jr.org/1/elevation-zero.json"
   center="-74.0065,40.7085"
   zoom="13.6"
   style="height: 400px"
 ></map-jr>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+</script>
 ```
+<!-- example:first-map:end -->
 
 The map shows the streets around City Hall, and the console or the paragraph shows the zoom when the user zooms.
 

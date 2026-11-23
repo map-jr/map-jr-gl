@@ -3,23 +3,23 @@
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const boundaryFile = 'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+const boundaryFile = 'https://styles.map-jr.org/data/natural-earth-5.1.2.pmtiles';
 
-const map = new Map({container: 'map', style, center: [-74.1, 40.75], zoom: 9.2, attributionControl: {compact: true}});
+const map = new Map({container: 'map', style, center: [-98, 39], zoom: 3.2, attributionControl: {compact: true}});
 const readout = document.createElement('p');
 map.getContainer().after(readout);
 
 map.on('load', () => {
   // A PMTiles file on a usual file host. You do not need the pmtiles library or `addProtocol`.
   map.addSource('admin', {type: 'vector', url: 'pmtiles://' + boundaryFile});
-  map.addLayer({id: 'zips', type: 'line', source: 'admin', 'source-layer': 'zip_features', minzoom: 9,
+  map.addLayer({id: 'states', type: 'line', source: 'admin', 'source-layer': 'states', minzoom: 3,
     paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6}});
-  map.addLayer({id: 'counties', type: 'line', source: 'admin', 'source-layer': 'county_features',
+  map.addLayer({id: 'countries', type: 'line', source: 'admin', 'source-layer': 'countries',
     paint: {'line-color': '#5746af', 'line-width': 2}});
 });
 
 map.on('click', async e => {
   const features = await map.querySource('admin', e.lngLat);
-  readout.textContent = features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here';
+  readout.textContent = features.map(f => f.properties.name).filter(Boolean).join(' · ') || 'Nothing here';
 });
-readout.textContent = 'Click to list the county, state and ZIP code';
+readout.textContent = 'Click to list the country and the state or province';

@@ -653,7 +653,7 @@ for (const renderer of renderers) {
         // source requests no tiles until the state shows the layer.
         const hiddenDem = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
-            const urls = [], style = {version: 8, state: {relief: {default: true}}, sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/no-such-dem-998/{z}/{x}/{y}.png'], tileSize: 256}},
+            const urls = [], style = {version: 8, state: {relief: {default: false}}, sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/no-such-dem-998/{z}/{x}/{y}.png'], tileSize: 256}},
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'relief', type: 'hillshade', source: 'dem', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}}]};
             let spec = {style, globalState: {relief: false}, renderer, attribution: false, initialView: {center: [0, 0], zoom: 3}, transformRequest: url => { if (url.includes('no-such-dem-998')) urls.push(url); }};
             const host = t.lib.createMap(el, spec), out = {};
@@ -671,7 +671,7 @@ for (const renderer of renderers) {
         // #1032: the attribution names a source only while a layer that the global state shows uses it.
         const credits = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
-            const style = {version: 8, state: {relief: {default: true}}, sources: {g: {type: 'geojson', attribution: 'Relief-1032', data: {type: 'FeatureCollection', features: []}}},
+            const style = {version: 8, state: {relief: {default: false}}, sources: {g: {type: 'geojson', attribution: 'Relief-1032', data: {type: 'FeatureCollection', features: []}}},
                 layers: [{id: 'c', type: 'circle', source: 'g', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}}]};
             let spec = {style, globalState: {relief: false}, renderer, attribution: {compact: false}, initialView: {center: [0, 0], zoom: 1}};
             const host = t.lib.createMap(el, spec), out = [], wait = ms => new Promise(r => setTimeout(r, ms));
@@ -2523,6 +2523,85 @@ for (const renderer of renderers) {
         await page.emulateMedia({colorScheme: 'light'});
         check(`[${renderer}] with colorScheme 'auto' and the system in dark, a choice of the dark form of styles() keeps 'auto', the light form sets 'light', and the dark form then sets 'auto'`,
             darkSystem === 'auto,light,auto/light,auto', darkSystem);
+
+        // An entry of styles() sets terrain and global state with its style (#1505): a choice sets them together, the
+        // next choice gives back the values of the application, the entry that matches the most fields is current, and
+        // the picture of each entry shows its global state over that of the application.
+        const overridden = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const relief = {version: 8, state: {relief: {default: false}}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': ['case', ['global-state', 'relief'], '#ff0000', '#0000ff']}}]};
+            const entries = [{label: 'Plain', style: relief}, {label: 'Flat', style: relief, terrain: null}, {label: 'Radar', style: relief, globalState: {relief: false}}, {label: 'Other', style: relief, globalState: {other: 2}}];
+            const host = t.lib.createMap(el, {style: relief, globalState: {app: 1, relief: true}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, controls: [styles({entries, onStyleChange: e => calls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            const items = () => [...list.querySelectorAll('button')];
+            const pressed = () => { trigger.click(); const p = items().map(b => b.getAttribute('aria-pressed') === 'true' ? 1 : 0).join(''); trigger.click(); return p; };
+            const d = () => `${JSON.stringify(host.description.globalState)}/${'terrain' in host.description ? JSON.stringify(host.description.terrain) : '-'}`;
+            const pick = async i => { trigger.click(); items()[i].click(); await new Promise(r => setTimeout(r, 200)); return `${d()}/${pressed()}`; };
+            out.start = pressed();
+            out.flat = await pick(1);
+            out.radar = await pick(2);
+            out.other = await pick(3);
+            out.plain = await pick(0);
+            out.calls = calls.join(',');
+            host.patch({terrain: null}); // (by hand: Flat matches more fields than Plain, the last choice)
+            out.byHand = pressed();
+            await until(() => list.querySelectorAll('img').length === 4);
+            const colour = async img => {
+                await img.decode();
+                const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d');
+                g.drawImage(img, 0, 0, 4, 4);
+                const [r, , b] = g.getImageData(2, 2, 1, 1).data;
+                return r > 200 && b < 60 ? 'red' : b > 200 && r < 60 ? 'blue' : `${r},${b}`;
+            };
+            out.pictures = (await Promise.all([...list.querySelectorAll('img')].map(colour))).join(',');
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] an entry of styles() sets its terrain and global state with its style, the next choice gives back the values of the application, the entry that matches the most fields is current, and its picture shows its global state over that of the application`,
+            overridden.start === '1000' && overridden.flat === '{"app":1,"relief":true}/null/0100' && overridden.radar === '{"app":1,"relief":false}/-/0010'
+            && overridden.other === '{"app":1,"relief":true,"other":2}/-/0001' && overridden.plain === '{"app":1,"relief":true}/-/1000' && overridden.byHand === '0100'
+            && overridden.calls === 'Flat,Radar,Other,Plain' && overridden.pictures === 'red,red,blue,red', JSON.stringify(overridden));
+
+        // An entry of styles() with terrain, global state and a light and a dark form together (#1505, #1506): a form sets
+        // all of them with the scheme, the other form changes only the scheme, and the next entry gives back the rest.
+        await page.emulateMedia({colorScheme: 'light'});
+        const together = await page.evaluate(async renderer => {
+            const t = window.t, {styles} = await import('/dist/controls.js'), calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:100'}));
+            const dark = ['==', ['global-state', 'color-scheme'], 'dark'];
+            const style = {version: 8, state: {relief: {default: true}}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color':
+                ['case', ['global-state', 'relief'], '#ff0000', ['case', dark, '#0000ff', '#00ff00']]}}]};
+            const entries = [{label: 'Plain', style}, {label: 'Both', style, terrain: null, globalState: {relief: false}, colorSchemes: true}];
+            const host = t.lib.createMap(el, {style, colorScheme: 'light', globalState: {app: 1}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, controls: [styles({entries, onStyleChange: e => calls.push(e.label)})]});
+            const until = async (f, ms = 30000) => { for (const end = Date.now() + ms; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+            await until(() => el.querySelector('.map-jr-ctrl-styles'));
+            const trigger = el.querySelector('.map-jr-ctrl-styles'), list = el.querySelector('.map-jr-styles-list'), out = {};
+            const d = () => `${JSON.stringify(host.description.globalState)}/${'terrain' in host.description ? JSON.stringify(host.description.terrain) : '-'}/${host.description.colorScheme}`;
+            const pick = async i => { trigger.click(); list.querySelectorAll('button')[i].click(); await new Promise(r => setTimeout(r, 200)); trigger.click(); const p = [...list.querySelectorAll('button')].map(b => b.getAttribute('aria-pressed') === 'true' ? 1 : 0).join(''); trigger.click(); return `${d()}/${p}`; };
+            out.dark = await pick(2);
+            out.light = await pick(1);
+            out.plain = await pick(0);
+            out.calls = calls.join(',');
+            await until(() => list.querySelectorAll('img').length === 3);
+            const c = Object.assign(document.createElement('canvas'), {width: 4, height: 4}), g = c.getContext('2d'), colors = [];
+            for (const img of list.querySelectorAll('img')) {
+                await img.decode();
+                g.drawImage(img, 0, 0, 4, 4);
+                const [r, gr, b] = g.getImageData(2, 2, 1, 1).data;
+                colors.push(r > 200 ? 'red' : gr > 200 ? 'green' : b > 200 ? 'blue' : `${r} ${gr} ${b}`);
+            }
+            out.pictures = colors.join(',');
+            host.destroy();
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] an entry of styles() with terrain, global state and a light and a dark form sets them all with the scheme, its other form changes only the scheme, and the next entry gives back the rest`,
+            together.dark === '{"app":1,"relief":false}/null/dark/001' && together.light === '{"app":1,"relief":false}/null/light/010' && together.plain === '{"app":1}/-/light/100'
+            && together.calls === 'Both,Plain' && together.pictures === 'red,green,blue', JSON.stringify(together));
 
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.

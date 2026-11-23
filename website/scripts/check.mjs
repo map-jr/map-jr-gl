@@ -461,6 +461,10 @@ try {
         await page.mouse.wheel(0, -60);
         await settle();
         await expectOne('a little above a heading', ids[ids.indexOf(middle) - 1]);
+        // A live example near the end starts its map when it comes into view, and that can change the height of the page,
+        // so the second scroll reaches the bottom of the page as it is then.
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await page.waitForTimeout(1500);
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
         await settle();
         await expectOne('at the bottom', ids.at(-1));
@@ -512,7 +516,7 @@ try {
         for (const width of engine === 'chromium' ? [390, 1440] : []) {
             const sized = await own.newContext({viewport: {width, height: width === 390 ? 844 : 900}});
             const small = await sized.newPage();
-            await small.goto(base + '/recipes/basic', {waitUntil: 'networkidle'});
+            await small.goto(base + '/guide/globe', {waitUntil: 'networkidle'});
             const height = selector => small.locator(selector).first().evaluate(element => Math.round(element.getBoundingClientRect().height));
             // The number of lines of the line under the map, whether its buttons share its row, and how far the line or
             // a button reaches past the page.
@@ -561,8 +565,11 @@ try {
             await sized.close();
         }
 
-        await page.goto(base + '/recipes/basic', {waitUntil: 'load'});
-        const frame =page.frameLocator('.live-example iframe');
+        // The guide to the globe has one live example, so the locators below find one editor and one frame.
+        await page.goto(base + '/guide/globe', {waitUntil: 'load'});
+        // The frame starts its map when it comes into view, and the example is below the first screen of the guide.
+        await page.locator('.live-example .map-frame').first().scrollIntoViewIfNeeded();
+        const frame = page.frameLocator('.live-example iframe');
         check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
         // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
         const controlButton = frame.locator('.map-jr-ctrl-group button').first();
@@ -582,10 +589,12 @@ try {
         await replace(editor, code + "\ndocument.body.append(Object.assign(document.createElement('output'), {id: 'edited'}));\n");
         await page.getByRole('button', {name: 'Run', exact: true}).click();
         check(`${engine}: recipe: a changed example runs`, await shown(frame.locator('#edited'), 'attached') && await frame.locator('#map canvas').count() > 0);
-        // On a page of its own, so that the later checks keep the page and the editor of the recipe "basic".
+        // On a page of its own, so that the later checks keep the page and the editor of the guide to the globe. The
+        // example "fit" is the first of the two live examples of the guide to the view.
         const fitPage = await context.newPage();
-        await fitPage.goto(base + '/recipes/fit', {waitUntil: 'load'});
-        const ownButton = fitPage.frameLocator('.live-example iframe').getByRole('button', {name: 'Show all landings'});
+        await fitPage.goto(base + '/guide/view-and-camera', {waitUntil: 'load'});
+        await fitPage.locator('.live-example .map-frame').first().scrollIntoViewIfNeeded();
+        const ownButton = fitPage.frameLocator('.live-example iframe').first().getByRole('button', {name: 'Show all landings'});
         check(`${engine}: recipe: a button of the example code keeps the style of the frame`, await shown(ownButton) && await ownButton.evaluate(button => {
             const style = getComputedStyle(button);
             return style.marginLeft === '12px' && style.paddingLeft === '10px' && style.borderTopWidth === '1px';
