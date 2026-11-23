@@ -51,7 +51,8 @@ const links = computed(() => {
     return [
         {label: copied.value === 'page' ? 'Copied' : 'Copy page as markdown', icon: copied.value === 'page' ? 'i-lucide-check' : 'i-lucide-copy', onClick: () => copyRaw('page', entry.value!.file)},
         {label: copied.value === 'prompt' ? 'Copied' : 'Copy migration prompt', icon: copied.value === 'prompt' ? 'i-lucide-check' : 'i-lucide-sparkles', onClick: () => copyRaw('prompt', 'migrate/prompt.md', true)},
-        {label: 'Edit this page', icon: 'i-lucide-pencil', to: `${site.repository}/edit/main/docs/${entry.value.file}`, target: '_blank'},
+        // A page of /styles is written from the text of another repository, which `editUrl` names.
+        {label: 'Edit this page', icon: 'i-lucide-pencil', to: page.value?.editUrl ?? `${site.repository}/edit/main/docs/${entry.value.file}`, target: '_blank'},
         {label: 'Report a problem with this page', icon: 'i-lucide-flag', to: `${site.repository}/issues/new?${report}`, target: '_blank'},
     ];
 });
