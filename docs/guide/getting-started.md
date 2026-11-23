@@ -220,7 +220,7 @@ the page file and the worker file must come from the same version. Replace `0.9.
 <div id="map" style="height: 400px"></div>
 <script type="module">
   const {createMap} = await import(
-    'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js'
+    'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/map-jr-gl.js'
   );
 
   createMap('map', {
@@ -237,7 +237,7 @@ the page file and the worker file must come from the same version. Replace `0.9.
 <meta charset="utf-8" />
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  const cdn = 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/';
+  const cdn = 'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/';
   const {Map} = await import(cdn + 'map-jr-gl-maplibre-compat.js');
 
   new Map({
@@ -256,7 +256,7 @@ the page file and the worker file must come from the same version. Replace `0.9.
 <meta charset="utf-8" />
 <script
   type="module"
-  src="https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/element.js"
+  src="https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/element.js"
 ></script>
 
 <map-jr
