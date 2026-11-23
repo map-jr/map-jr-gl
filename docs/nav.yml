@@ -83,3 +83,13 @@ sections:
       - maplibre-compatibility.md
       - accessibility.md
       - browser-support.md
+  # The official styles and the tools around them (#1129). The pages come from map-jr/map-jr-styles, map-jr/maputnik
+  # and map-jr/maplibre-style-spec when the site builds (website/build/styles.ts); they are not in docs/. A page for
+  # each style of map-jr-styles follows these three.
+  - title: Styles
+    folder: styles
+    generated: true
+    pages:
+      - index.md
+      - editing.md
+      - spec.md
