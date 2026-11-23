@@ -1,25 +1,21 @@
-// Writes the list of messages of the library into docs/reference/messages.md (#1125).
+// Checks the messages of the library in src/ (#1125, #1499). Run by pnpm test:consistency:
 //
-//   node scripts/messages.mjs --write   rewrites the tables between <!-- messages:start --> and <!-- messages:end -->
-//   node scripts/messages.mjs --check   fails when the tables are out of date, or when a message of src/ is not read
-//                                       (pnpm test:consistency)
+//   node scripts/messages.mjs --check   fails when a message of src/ cannot be read, has a placeholder that says nothing,
+//                                       or cannot be classed as a warning or an error
 //
 // A message is a text that starts with `[map-jr-gl]` or that goes through a helper that adds the prefix (`warnOnce`,
 // `refused`, `reject`, and `warn` in the check of the projection), and the numbered texts of src/mistakes.ts. The script
-// reads src/ with a parser, so a new message appears in the page after `--write`, and `--check` fails until then. A
-// piece of a message that the source builds at run time is written `<words>`, with the words of `placeholderNames` or the
-// name of the variable. A placeholder that is only `name`, `value` or `v` fails the check.
+// reads src/ with a parser. A piece of a message that the source builds at run time is written `<words>`, with the words
+// of `placeholderNames` or the name of the variable. A placeholder that is only `name`, `value` or `v` fails the check.
 // A place that adds the prefix to a text that the script cannot read fails the check: add it to `prefixHelpers`.
-import {readFileSync, readdirSync, writeFileSync} from 'node:fs';
+import {readFileSync, readdirSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
 import {parseAst} from 'vite';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const write = process.argv.includes('--write'), check = process.argv.includes('--check');
-if (write === check) { console.error('Usage: node scripts/messages.mjs --write | --check'); process.exit(2); }
-const page = path.join(root, 'docs/reference/messages.md');
+if (!process.argv.includes('--check')) { console.error('Usage: node scripts/messages.mjs --check'); process.exit(2); }
 const PREFIX = '[map-jr-gl]';
 
 /** The functions that add the prefix to their argument: the name, and the index of the argument that holds the text. */
@@ -71,15 +67,6 @@ const placeholderNames = [
 /** The placeholders that say nothing about what they stand for. A piece of a message that gets one of these fails the check. */
 const genericNames = new Set(['name', 'value', 'v']);
 
-const sections = [
-    ['main', 'Main API', 'The functions of `@map-jr/map-jr-gl` and the map that they make.'],
-    ['element', '`<map-jr>`', 'The element `<map-jr>`.'],
-    ['vue', 'Vue and React', 'The components of `@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/react` and the Nuxt module.'],
-    ['map', 'Map, styles and loading', 'The map, the style, its sources and images, and the files of the library. Both entries print these.'],
-    ['controls', 'Controls', 'The controls of the map.'],
-    ['compat', 'MapLibre compatibility', 'The entry `@map-jr/map-jr-gl/maplibre-compat`.'],
-    ['server', 'Server rendering', 'The functions of `@map-jr/map-jr-gl/server`.'],
-];
 const sectionOfFile = {
     'host.ts': 'main', 'markers.ts': 'main', 'points.ts': 'main', 'element.ts': 'element', 'vue.ts': 'vue', 'react.ts': 'vue',
     'server.ts': 'server', 'compat-map.ts': 'compat', 'maplibre-compat.ts': 'compat', 'compat-style-images.ts': 'compat',
@@ -272,7 +259,7 @@ for (const file of files) {
             for (const v of render(body)) {
                 // (A parameter of the text names what it stands for in camel case, for example `layerId`: the entry shows `<layer id>`.)
                 const params = new Set(arrow.params.map(x => x.name));
-                for (const x of params) if (/^[ab]$/.test(x)) { problems.push(`${file}: text ${n} names a parameter "${x}". Name what it stands for, for example "layerId", so that docs/reference/messages.md shows <layer id>.`); break; }
+                for (const x of params) if (/^[ab]$/.test(x)) { problems.push(`${file}: text ${n} names a parameter "${x}". Name what it stands for, for example "layerId", so that the message reads <layer id>.`); break; }
                 const message = clean(v.replace(/\u0001([^\u0002]*)\u0002/g, (all, x) => params.has(x) ? PH(x.replace(/[A-Z]/g, c => ' ' + c.toLowerCase())) : all));
                 if (!/[a-z]{3}/.test(bare(message))) continue;
                 messages.push({section: /^<map-jr>/.test(message) ? 'element' : /^<MapJr>/.test(message) ? 'vue' : 'main', message: PREFIX + ' ' + message, kind: thrown.has(Number(n)) ? 'Error' : 'Warning', dev: true, file, at: Number(n)});
@@ -286,25 +273,5 @@ for (const file of files) {
 const unique = [], keys = new Set();
 for (const m of messages.filter(m => !m.message.endsWith('has no "style". <fix>'))) { const key = m.section + '\n' + m.message; if (!keys.has(key)) { keys.add(key); unique.push(m); } }
 
-const cell = text => {
-    const body = text;
-    return body.includes('`') ? '`` ' + body + ' ``' : '`' + body + '`';
-};
-let out = '';
-for (const [key, title, intro] of sections) {
-    const list = unique.filter(m => m.section === key);
-    if (!list.length) continue;
-    out += `## ${title}\n\n${intro}\n\n`;
-    for (const m of list) out += `- ${cell(m.message)}\n  ${m.kind}${m.dev ? ', development build only' : ''}.\n`;
-    out += '\n';
-}
-out = out.trimEnd() + '\n';
-
 if (problems.length) { for (const p of problems) console.error('FAIL  messages: ' + p); process.exit(1); }
-const start = '<!-- messages:start -->', end = '<!-- messages:end -->';
-const current = readFileSync(page, 'utf8'), a = current.indexOf(start), b = current.indexOf(end);
-if (a < 0 || b < a) { console.error(`FAIL  messages: ${path.relative(root, page)} has no ${start} and ${end}.`); process.exit(1); }
-const next = current.slice(0, a + start.length) + '\n' + out + current.slice(b);
-if (write) { writeFileSync(page, next); console.log(`ok    messages: ${unique.length} messages written`); }
-else if (next !== current) { console.error(`FAIL  messages: ${path.relative(root, page)} is out of date (${unique.length} messages in src/). Run \`node scripts/messages.mjs --write\`.`); process.exit(1); }
-else console.log(`ok    messages: ${unique.length} messages up to date`);
+console.log(`ok    messages: ${unique.length} messages checked`);

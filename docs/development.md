@@ -371,12 +371,11 @@ or a member has no TSDoc. `Name` is a type of `scripts/reference/types.ts`, or `
 the parameters of one method. After a change of a type or a comment, run `node scripts/reference.mjs --write` and
 commit the pages.
 
-It also runs `node scripts/messages.mjs --check`. The script reads `src/` with a parser and writes the list of
-messages of `docs/reference/messages.md` between the comments `<!-- messages:start -->` and `<!-- messages:end -->`: the
+It also runs `node scripts/messages.mjs --check`. The script reads `src/` with a parser and checks the messages: the
 texts that start with `[map-jr-gl]`, the texts that `warnOnce`, `refused`, `reject` and `complete` give the prefix to, and
-the numbered texts of `src/mistakes.ts`. After a new message, run `node scripts/messages.mjs --write` and commit the
-page. The check also fails when the source adds the prefix to a text that the script cannot read; the message of the
-failure says which entry to add to `prefixHelpers`.
+the numbered texts of `src/mistakes.ts`. It fails when a placeholder says nothing about what it stands for, when a
+message cannot be classed as a warning or an error, and when the source adds the prefix to a text that the script
+cannot read; the message of the failure says which entry to add to `prefixHelpers`.
 
 ## Helpers for agents
 
