@@ -1,12 +1,12 @@
 // Takes the pictures the README shows, from the harness page of the examples (examples/run.html, built by `pnpm site`).
 // Run with the demo server up: pnpm screenshots
-// (The server is started by `pnpm demo`; set GALLERY to use another address of the built site.)
+// (The server is started by `pnpm demo`; set SITE to use another address of the built pages.)
 import {chromiumOptions} from '../test/launch.mjs';
 import {createRequire} from 'node:module';
 import {copyFileSync, existsSync, mkdirSync} from 'node:fs';
 
 const {chromium} = createRequire(import.meta.url)('playwright');
-const gallery = process.env.GALLERY ?? 'http://localhost:8080/gallery/';
+const gallery = process.env.SITE ?? 'http://localhost:8080/site/';
 const out = new URL('../docs/images/', import.meta.url).pathname;
 mkdirSync(out, {recursive: true});
 
@@ -25,6 +25,6 @@ for (const [id, seconds] of shots) {
     console.log(`docs/images/${id}.jpg`);
 }
 await browser.close();
-// The server-rendered picture is made by the site build, with no browser at all.
-const server = new URL('../site/public/ssr.jpg', import.meta.url).pathname;
+// The server-rendered picture is made by `pnpm site`, with no browser at all.
+const server = new URL('../site-dist/ssr.jpg', import.meta.url).pathname;
 if (existsSync(server)) { copyFileSync(server, out + 'server.jpg'); console.log('docs/images/server.jpg'); }

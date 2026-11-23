@@ -1,18 +1,17 @@
-// Builds the gallery as a static site (for GitHub Pages). The gallery imports the library by its package name, which
-// points at the built files in dist/, exactly as an application that installed the package would get it.
+// The Vite plugins and aliases of the build of the harness page of the examples (scripts/site.mjs). An example imports
+// the library by its package name, which points at the built files in dist/, as an application that installed the
+// package gets it.
 import {fileURLToPath} from 'node:url';
-import {defineConfig} from 'vite';
 import path from 'node:path';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-/** The entries of the package as the built files in dist/. The build of the harness page (scripts/site.mjs) uses them too. */
+/** The entries of the package as the built files in dist/. */
 export const alias = [{find: '@map-jr/map-jr-gl/controls', replacement: path.join(root, '../dist/controls.js')}, {find: '@map-jr/map-jr-gl/element', replacement: path.join(root, '../dist/element.js')}, {find: '@map-jr/map-jr-gl/svelte', replacement: path.join(root, '../dist/svelte.js')}, {find: '@map-jr/map-jr-gl/maplibre-compat', replacement: path.join(root, '../dist/map-jr-gl-maplibre-compat.js')}, {find: /^@map-jr\/map-jr-gl$/, replacement: path.join(root, '../dist/map-jr-gl.js')}];
 /**
  * Loads an example file (examples/<id>.js or examples/<id>.compat.js) imported with `?mount` as a module whose default
  * export is a function. An example file is the module script of a page, so an import of it would run it once; the
  * function runs the code of the file each time that it is called and resolves with the map of the file, `map`. The
- * import declarations stay at the top of the module. The harness (examples/harness/mount.js) uses this, and so the
- * gallery and the harness page, which scripts/site.mjs builds, both have this plugin.
+ * import declarations stay at the top of the module. The harness (examples/harness/mount.js) uses this.
  */
 export const examplesAsFunctions = {
     name: 'map-jr-examples-as-functions',
@@ -43,29 +42,8 @@ export const svelteExamples = {
         if (importer && /\.svelte(\?|$)/.test(importer) && (source === '@map-jr/map-jr-gl/svelte' || path.resolve(source) === svelteEntry)) return svelteShim;
     },
     async transform(code, id) {
-        if (!/\.svelte(\?mount)?$/.test(id)) return; // (not ?raw, which the gallery reads as text)
+        if (!/\.svelte(\?mount)?$/.test(id)) return; // (not ?raw, which reads the file as text)
         const {compile} = await import('svelte/compiler');
         return {code: compile(code, {filename: id.split('?')[0], generate: 'client', css: 'injected'}).js.code, map: null};
     },
 };
-/**
- * Loads a recipe (docs/recipes/<id>.md) imported with `?intro` as `{title, intro}`: its first heading and the paragraph
- * under it, or `null` when it does not start so. The gallery shows them on the row of the example <id> (#1119), and
- * the rest of the page stays out of the bundle.
- */
-export const recipeIntros = {
-    name: 'map-jr-recipe-intros',
-    enforce: 'pre',
-    transform(code, id) {
-        if (!/[\\/]docs[\\/]recipes[\\/][\w-]+\.md\?intro$/.test(id)) return;
-        const [, title, intro] = code.match(/^# (.+)\n\n((?:.+\n)+)/) ?? [];
-        return {code: `export default ${JSON.stringify(title ? {title, intro: intro.trim().replace(/\s+/g, ' ')} : null)};\n`, map: null};
-    },
-};
-export default defineConfig({
-    root,
-    plugins: [examplesAsFunctions, svelteExamples, recipeIntros],
-    base: './', // works from any path, e.g. https://<user>.github.io/<repository>/
-    resolve: {alias},
-    build: {outDir: path.join(root, '../site-dist'), emptyOutDir: true, target: 'es2022', rollupOptions: {input: {main: path.join(root, 'index.html'), playground: path.join(root, 'playground.html')}}},
-});

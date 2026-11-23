@@ -13,8 +13,8 @@ pnpm install
 | Command | What it does |
 |---|---|
 | `pnpm build` | Checks the types and builds the library into `dist` with Vite. `node build.mjs` is the same without the type check. Both write the type declarations into `dist/types` and a source map beside each built file. |
-| `pnpm demo` | Builds the library and the gallery. Then starts a server at `http://localhost:8080`. |
-| `pnpm site` | Builds the gallery into `site-dist`. GitHub Pages publishes this folder. |
+| `pnpm demo` | Builds the library and the pages of `site-dist`. Then starts a server at `http://localhost:8080`. |
+| `pnpm site` | Builds into `site-dist` the harness page of the examples, the benchmark page that the docs site publishes at `/bench/`, and the picture of the server renderer (`ssr.jpg`). |
 | `pnpm test` | Runs the unit tests, the MapLibre expression tests and the API check |
 | `pnpm test:browser` | Drives the map in a browser. Start `pnpm demo` first. Both commands read the port from the environment variable `PORT` (default 8080), so two checkouts can run their tests at the same time. |
 | `pnpm test:loading` | Checks each method of loading the library. Start `pnpm demo` first. |
@@ -28,11 +28,11 @@ pnpm install
 | `node test/conformance/maputnik.mjs --write` | Runs Maputnik, the style editor (the fork `map-jr/maputnik`), with MapLibre GL JS and with the library: Maputnik's own end-to-end tests and a few scenarios of its use. It writes the comparison into `docs/ecosystem.md`. It takes about 10 minutes, needs `pnpm build` and a free port 8888; `--no-suite` runs only the scenarios. |
 | `node test/conformance/styles.mjs --write` | Draws popular public styles with MapLibre GL JS and with the library, side by side, and writes how much each pair of images differs into `docs/ecosystem.md`. Start `pnpm demo` first. |
 | `pnpm status` | Writes the test results, the sizes and the speed into the README, and the same figures to `docs/status.json`, which the docs site can read. The package on npm does not have that file. Run it two times after a change of `scripts/status-tables.mjs`, because a unit test compares the README with the file. |
-| `pnpm screenshots` | Takes the screenshots in `docs/images` from the gallery. Start `pnpm demo` first. |
+| `pnpm screenshots` | Takes the screenshots in `docs/images` from the harness page of the examples. Start `pnpm demo` first. |
 | `pnpm bench` | Compares the speed with MapLibre GL JS in a browser without a GPU |
 | `BROWSER=webkit node test/bench/browsers.mjs out` | Runs the benchmark page and a short check in one browser (`chromium`, `firefox` or `webkit`). Start `pnpm demo` first. Every tool that starts a browser through `test/launch.mjs` reads `BROWSER` this way; any other value, such as the `BROWSER=open` of macOS, uses `chromium` and prints one line that says so. |
 | `PW_CHROMIUM=/path/to/chrome` | Names the Chromium executable that the tests, the benchmarks and `website/scripts/check.mjs` start (through `chromiumOptions()` in `test/launch.mjs`). Without it they use the build that Playwright pins (`pnpm exec playwright install chromium`, as CI does). When that build is missing and `/opt/pw-browsers/chromium` exists, as on the image of the cloud VM, they use that file. Firefox and WebKit are not affected. |
-| `WD_URL=http://localhost:4444 node test/bench/webdriver.mjs out` | The same through a WebDriver server, for a browser that Playwright cannot drive: Safari (`safaridriver -p 4444` on macOS), or a phone on a device farm. `WD_CAPS` has the capabilities as JSON. Start `pnpm demo` first, or give the page of the gallery site with `BENCH_URL`. |
+| `WD_URL=http://localhost:4444 node test/bench/webdriver.mjs out` | The same through a WebDriver server, for a browser that Playwright cannot drive: Safari (`safaridriver -p 4444` on macOS), or a phone on a device farm. `WD_CAPS` has the capabilities as JSON. Start `pnpm demo` first, or give the page of the docs site (`https://map-jr.org/bench/`) with `BENCH_URL`. |
 
 ### The development build
 
@@ -57,8 +57,8 @@ most 400 entries. `test/bench/webdriver.mjs` prints it for a renderer that did n
 | URL | Content |
 |---|---|
 | `/` | A map that fills the page. Add `?renderer=main` or `?renderer=worker` to select the renderer. Add `?style=` and a URL to load a different style. |
-| `/gallery/` | The gallery |
-| `/bench` | A speed comparison with MapLibre GL JS that runs in your browser. The gallery site has the same page at [`bench/`](https://map-jr.github.io/map-jr-gl/bench/), so a phone can open it with no server. `?auto` starts it. |
+| `/site/examples/run.html?id=basic&form=core` | The harness page: one form of one example of `examples/` |
+| `/bench` | A speed comparison with MapLibre GL JS that runs in your browser. The docs site has the same page at [`/bench/`](https://map-jr.org/bench/), so a phone can open it with no server. `?auto` starts it. |
 | `/ssr` | A page with a server-rendered map that the live map replaces |
 | `/static` | The server-rendered map only |
 
@@ -165,13 +165,10 @@ prints a line that starts with `STALE:` for a test that has a `wontfix` label an
 prints a line that starts with `UNUSED:` for an entry that fits no test. A label does not change the status of a
 test or the minimum.
 
-## The gallery and GitHub Pages
+## The old GitHub Pages address
 
-The gallery is in the `site` folder. It imports the library by its package name, as an application does.
-
-The workflow in `.github/workflows/pages.yml` builds the gallery and publishes it after each push to `main`.
-To use it, do this step one time: in the repository settings, open **Pages** and set **Source** to
-**GitHub Actions**.
+The gallery that `https://map-jr.github.io/map-jr-gl/` served is gone (#1124). The workflow
+`.github/workflows/pages.yml` publishes pages there that send the browser to the same path on `https://map-jr.org/`.
 
 ## The docs site
 
@@ -384,7 +381,7 @@ beyond the repository's own. Each prints its use with no arguments (`suite.mjs -
 
 | Command | What it does |
 |---|---|
-| `node scripts/agents/suite.mjs test/host.mjs` | Runs one browser suite: it builds `dist/` and the gallery when they are older than their sources, starts the demo server on a free port for a suite that reads `PORT`, sets `BROWSER=chromium` when `BROWSER` names no browser of Playwright, prints the PASS and FAIL counts and the FAIL lines, and stops the server also on failure or interruption. The output is in `.cache/agents/`. |
+| `node scripts/agents/suite.mjs test/host.mjs` | Runs one browser suite: it builds `dist/` and `site-dist/` when they are older than their sources, starts the demo server on a free port for a suite that reads `PORT`, sets `BROWSER=chromium` when `BROWSER` names no browser of Playwright, prints the PASS and FAIL counts and the FAIL lines, and stops the server also on failure or interruption. The output is in `.cache/agents/`. |
 | `node scripts/agents/without-fix.mjs -- <command>` | Runs a command in a temporary worktree in `.cache/agents/` that has the files of this checkout, with `src/` as at the point where the branch left `origin/main` (`--paths`, `--base` change that). It removes the worktree afterwards and does not change the checkout. |
 | `node scripts/agents/prs.mjs [--watch]` | Prints the state of the checks of each open pull request and of the last CI run on `main`. With `--watch` it prints one line each time the checks of a head finish, for a `Monitor`. Needs `gh`. |
 | `node scripts/agents/clean-worktrees.mjs [--apply]` | Lists the worktrees under `.claude/worktrees/` that it would remove, and keeps a worktree that is locked, has changed or untracked files, or has a commit that is neither in `origin/main` nor in a merged pull request. With `--apply` it removes the others and deletes their local branches. |
