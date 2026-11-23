@@ -801,8 +801,11 @@ ignores it, so a slow application does not pull the map back while the user move
 
 ### Return to a stored view
 
-A `view` has no effect when its `center`, `zoom`, `bearing` and `pitch` equal those of one of the last 60 views that
-the map reported to `onViewChange`, however long ago. So a button "back to where I was" that sets `view` to a stored
+> [!WARNING]
+> A `view` has no effect when its `center`, `zoom`, `bearing` and `pitch` equal those of one of the last 60 views
+> that the map reported to `onViewChange`, however long ago.
+
+So a button "back to where I was" that sets `view` to a stored
 view often does nothing. Call `moveTo` with the stored view instead: `moveTo` always moves the map. In the compat
 entry, `jumpTo`, `easeTo` and `flyTo` always move the map, as in MapLibre GL JS.
 

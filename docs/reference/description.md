@@ -671,7 +671,7 @@ its sources in the bottom right corner.
 | `{customAttribution}` | The attribution of the sources and then this text, or each text of a list. |
 | `false` | None. |
 
-> **Note**
+> [!WARNING]
 > Most sources require their attribution. With `attribution: false`, show it elsewhere on the page.
 
 ### `AttributionOptions`

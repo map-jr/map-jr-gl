@@ -308,8 +308,24 @@ Do not mix the labels of the two tables in one group.
 - Use a table for parallel items with the same parts, and a list for steps.
 - A table cell is at most 200 characters (lint). A cell holds a value or one sentence.
 - A number has its own column, so that the reader can compare down the column.
-- A page has at most two callouts (`> **Note**`), and never two in a row (lint). A callout is for something that
-  breaks the reader's code when they miss it.
+- A callout is a GitHub alert: a quote whose first line is `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]`. GitHub shows
+  it as an alert, and the docs site shows it as a note, tip or warning block. Choose the kind by what the block
+  says:
+
+  | Kind | Use it for |
+  |---|---|
+  | `[!WARNING]` | Something that breaks the reader's code, loses data, or breaks a licence or terms of use. |
+  | `[!NOTE]` | A fact that changes what the reader writes but does not break anything when missed. |
+  | `[!TIP]` | A shorter or faster way to do the task of the section. |
+
+  ```md
+  > [!WARNING]
+  > Do not pass the result to `update`. Its `style` replaces a URL with one fixed style.
+  ```
+
+- A callout holds one or two sentences and no list, table or code block. A longer text is a section. Do not write a
+  note as a paragraph that starts "Note:" or "**Note**", and do not use `[!IMPORTANT]` or `[!CAUTION]`.
+- A page has at most two callouts, and never two in a row (lint).
 - A heading names the task or the thing: "Change the data of a source", not "Data handling". No page has a
   heading "Overview" or "Introduction" (lint). A page has one `#` heading, and no level below `###` (lint).
 - A paragraph is at most 90 words (lint).

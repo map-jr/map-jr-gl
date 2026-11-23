@@ -1,5 +1,6 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {callouts} from './build/callouts';
 import {formatFences, liveExamples, transformPage, repositoryUrl} from './build/markdown';
 import {libraryFolder} from './build/library';
 import {navFile, readNav, routeOf, sourceDirOf} from './build/nav';
@@ -122,7 +123,7 @@ export default defineNuxtConfig({
     hooks: {
         // The desktop and the phone form of the code (build/format.mjs), and the blocks of the examples.
         async 'content:file:beforeParse'(ctx) {
-            if (ctx.file.extension === '.md' && typeof ctx.file.body === 'string') ctx.file.body = liveExamples(await formatFences(ctx.file.body));
+            if (ctx.file.extension === '.md' && typeof ctx.file.body === 'string') ctx.file.body = callouts(liveExamples(await formatFences(ctx.file.body)));
         },
         'content:file:afterParse'(ctx) {
             transformPage(ctx as any, nav);

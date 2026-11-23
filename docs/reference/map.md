@@ -170,8 +170,11 @@ The result differs from [`description`](#description) in two fields:
 - `globalState` is the global state in effect: the defaults of `state` of the style, `color-scheme`, and the values of
   `globalState` of the description.
 
-The map fires no event when only `globalState` changes. Call the method again after `update`. Do not pass the result
-to `update` or `patch`: its `style` replaces a URL or a `{light, dark}` pair with one fixed style.
+The map fires no event when only `globalState` changes. Call the method again after `update`.
+
+> [!WARNING]
+> Do not pass the result to `update` or `patch`: its `style` replaces a URL or a `{light, dark}` pair with one fixed
+> style.
 
 ## `destroy`
 

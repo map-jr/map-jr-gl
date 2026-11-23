@@ -156,8 +156,11 @@ export function Route({to}) {
 }
 ```
 
-The map compares the value of each key with the last one by identity. A change inside the old object, such as
-`features.push(feature)`, has no effect, so pass a new object. In the main API,
+> [!WARNING]
+> The map compares the value of each key with the last one by identity. A change inside the old object, such as
+> `features.push(feature)`, has no effect, so pass a new object.
+
+In the main API,
 [`map.patch`](../reference/map.md#patch) merges `data` by key: `map.patch({data: {route: next}})` changes only the
 source `route` and keeps the other keys, and `map.patch({data: {route: null}})` removes the source `route`. The
 adapters pass the complete description, so with an adapter pass the whole object `data`.

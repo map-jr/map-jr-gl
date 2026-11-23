@@ -135,7 +135,13 @@ for (const file of files) {
             }
             return;
         }
-        if (/^>\s*\*\*(Note|Warning|Tip|Important)\b|^>\s*\[!/.test(line)) {
+        if (/^(>\s*)?(\*\*)?(Note|Warning|Tip|Important|Caution)\b(:|\*\*)/.test(line)) find(i, 'a note or warning is a paragraph. Write it as a GitHub alert: "> [!NOTE]", "> [!TIP]" or "> [!WARNING]".');
+        if (/^\s+>\s*\[!/.test(line)) find(i, 'an alert must not be indented. Put "> [!NOTE]" at the start of the line, outside a list.');
+        if (/^>\s*\[!/.test(line)) {
+            let end = i + 1;
+            while (end < lines.length && lines[end].startsWith('>')) end++;
+            if (end < lines.length && lines[end].trim()) find(end, 'a line follows the alert without ">" or a blank line. GitHub keeps it in the alert, and the site does not: add ">" or a blank line.');
+            if (!/^> \[!(NOTE|TIP|WARNING)\]\s*$/.test(line)) find(i, 'the alert is not "> [!NOTE]", "> [!TIP]" or "> [!WARNING]" on a line of its own.');
             endParagraph();
             callouts++;
             if (lastCallout >= 0 && lines.slice(lastCallout + 1, i).every(l => !l.trim() || l.startsWith('>'))) find(i, 'two callouts follow each other. Keep one.');
