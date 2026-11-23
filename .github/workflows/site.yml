@@ -47,6 +47,14 @@ jobs:
       - run: pnpm build
       - run: pnpm install --frozen-lockfile
         working-directory: website
+      # The clones of the styles repositories that the pages of /styles read (website/build/styles.ts). With a clone
+      # from the cache, the build fetches it again and keeps the old clone when github.com does not answer, so one failed
+      # fetch does not fail the build (#1515). Each run saves a new entry and restores the newest one.
+      - uses: actions/cache@v6
+        with:
+          path: website/.data/sources
+          key: site-sources-${{ github.run_id }}
+          restore-keys: site-sources-
       - run: pnpm generate
         working-directory: website
       - uses: actions/upload-artifact@v7
