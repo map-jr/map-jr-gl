@@ -11,7 +11,7 @@
 // - its commit is in origin/main, or it is the head of a merged pull request or an ancestor of one (a squash merge
 //   leaves the commits of the branch out of main).
 // A worktree whose folder no longer exists is pruned (`git worktree prune`). It fetches origin/main first, and reads
-// the merged pull requests with `gh`; without `gh` only the test "in origin/main" applies.
+// the merged pull requests with `gh api` (REST); without `gh` only the test "in origin/main" applies.
 import {execFileSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
@@ -31,7 +31,11 @@ const main = list[0].worktree, dir = path.join(main, '.claude/worktrees') + path
 if (!process.argv.includes('--no-fetch')) { try { git(['fetch', '-q', 'origin', 'main'], main); } catch { console.log('could not fetch origin/main; using the local copy'); } }
 
 let merged = [];
-try { merged = JSON.parse(run('gh', ['pr', 'list', '--state', 'merged', '--limit', '1000', '--json', 'number,headRefOid'], main)); }
+// Through the REST API, because some sessions (Claude Code in the cloud) cannot use GraphQL, which `gh pr list` needs.
+try {
+    merged = run('gh', ['api', '--paginate', 'repos/{owner}/{repo}/pulls?state=closed&per_page=100',
+        '--jq', '.[] | select(.merged_at) | {number, headRefOid: .head.sha}'], main).split('\n').filter(Boolean).map(l => JSON.parse(l));
+}
 catch { console.log('could not read the merged pull requests with gh: only commits in origin/main count as done'); }
 const known = sha => tryGit(['cat-file', '-e', sha + '^{commit}'], main);
 const mergedHeads = merged.filter(p => known(p.headRefOid));
