@@ -44,7 +44,7 @@ console.log(`Internal to MapLibre GL JS, not counted: ${notCounted.length} (${no
 if (process.argv.includes('--missing')) console.log(`Missing: ${missing.join(', ')}`);
 if (process.argv.includes('--write')) {
     // Keep the compatibility document's method lists in step with the code.
-    const file = path.join(root, 'docs/maplibre-compatibility.md'), doc = readFileSync(file, 'utf8');
+    const file = path.join(root, 'docs/reference/maplibre-differences.md'), doc = readFileSync(file, 'utf8');
     const block = apiBlock({have, accepted, extra, missing, notCounted});
     writeFileSync(file, doc.replace(/<!-- api:start -->[\s\S]*<!-- api:end -->/, block));
 }

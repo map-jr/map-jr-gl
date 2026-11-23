@@ -3661,7 +3661,7 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check('a map in a shadow root was checked for focus and fullscreen (#828)', false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
-// A touch screen gets buttons of 44px, as docs/api.md says for `--map-control-size`, in both entries (#639). (A blank
+// A touch screen gets buttons of 44px, as docs/reference/css.md says for `--map-control-size`, in both entries (#639). (A blank
 // page: /bench loads the CSS of MapLibre GL JS, which sets the size of the buttons itself.)
 {
     const context = await browser.newContext({viewport: {width: 600, height: 400}, hasTouch: true, isMobile: true});

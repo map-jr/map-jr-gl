@@ -38,7 +38,7 @@ export interface Map {
     off(type: string, layerId: string | string[], listener: (e: any) => void): this;
     /**
      * Returns the specification of the source with this id and the methods of its type, or `undefined` when the style has
-     * no such source. MapLibre GL JS returns an object of a source class; see "Source methods" in docs/maplibre-compatibility.md for the methods.
+     * no such source. MapLibre GL JS returns an object of a source class; see "Source methods" in docs/reference/maplibre-differences.md for the methods.
      */
     getSource<T extends Source = Source>(id: string): T | undefined;
     /** Moves the camera to a view with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
@@ -79,7 +79,7 @@ declare const __DEV__: boolean;
 type EventData = Record<string, unknown>;
 /**
  * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports. It has the methods that
- * applications use most; see docs/maplibre-compatibility.md for the list.
+ * applications use most; see docs/reference/maplibre-differences.md for the list.
  */
 export class Point {
     constructor(public x: number, public y: number) {}
@@ -159,7 +159,7 @@ export class Map extends CoreMap {
     private incomplete(name: string, had: number, has: number) {
         if (this.warned.has(name)) return;
         this.warned.add(name);
-        console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md.`);
+        console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.`);
     }
     /** Has no effect: the map always draws copies of the world side by side. */
     setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }

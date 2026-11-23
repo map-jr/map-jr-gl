@@ -69,7 +69,7 @@ ignores a change in a later description. To change one, destroy the map and crea
 | `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
 | [`attribution`](#attribution) | `false \| `[`AttributionOptions`](#attributionoptions)` \| null` | | The options of the built-in attribution (`{compact, customAttribution}`), or `false` to hide it when the page shows the credits itself. |
 | [`hash`](#hash) | `boolean \| string \| null` | `false` | `true` keeps the view in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), and a string keeps it in the parameter of that name. |
-| `nonce` | `string \| null` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. |
+| `nonce` | `string \| null` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. |
 <!-- ref:MapSetup:end -->
 
 ## `style`
@@ -147,7 +147,7 @@ The map applies a change of `layers` in place. A new paint value transitions fro
 | `null` | No 3D terrain. `null` overrides the `terrain` of the style. |
 | `undefined`, or no field | The terrain of the style. |
 
-A change of `terrain` [loads the style again](#style). See [Terrain and elevation](../terrain-and-elevation.md).
+A change of `terrain` [loads the style again](#style). See [Terrain and elevation](../guide/terrain.md).
 
 ## `fonts`
 
@@ -350,7 +350,7 @@ A value (`ImageInput`) is one of these:
 | `{image, width, height, pixelRatio}` | One of the values above as `image`, with its size in CSS pixels. `stretchX`, `stretchY`, `content`, `textFitWidth` and `textFitHeight` work as in `addImage` of MapLibre GL JS. |
 
 An SVG document with slots (`{{name}}`) is a template: each feature fills the slots from its properties. See
-[An image that is a template](../api.md#an-image-that-is-a-template) for the parameters and the limits.
+[An image that is a template](description.md#images) for the parameters and the limits.
 
 To replace a bitmap or a canvas, pass a new object. The map reports an image that does not load to `onError`, with
 the name of the image, and draws the layer without it.
@@ -577,7 +577,7 @@ scheme of the map and then calls `onColorSchemeChange` with the new value.
 An application that keeps the description in its state must store the value there. Otherwise its next `update`
 passes the old value and changes the map back.
 
-See [Dark mode](../api.md#dark-mode) for a style that follows the scheme.
+See [Dark mode](../guide/color-scheme.md) for a style that follows the scheme.
 
 ## `locale`
 
@@ -654,7 +654,7 @@ does not treat a new function as a change, so a framework can pass a new functio
 | `'worker'` | As `'auto'`, and the map warns once when it draws on the main thread instead. |
 | `'main'` | On the main thread. |
 
-`renderer` of [the state of the map](state.md#mapstate) is the thread that draws. See [Loading](../loading.md) for the worker file and how the map loads it.
+`renderer` of [the state of the map](state.md#mapstate) is the thread that draws. See [Loading](../guide/loading.md) for the worker file and how the map loads it.
 
 ## `attribution`
 
@@ -705,5 +705,5 @@ writes `#map=zoom/lat/lng`.
 
 - [The map](map.md) for `update` and `patch`.
 - [Types](types.md) for `Position`, `Bounds`, `LayerInput` and the style types.
-- [Vue and Nuxt](../vue.md), [React](../react.md) and [Svelte](../svelte.md): the components accept the fields of the
+- [Vue and Nuxt](vue.md), [React](react.md) and [Svelte](svelte.md): the components accept the fields of the
   description as props.

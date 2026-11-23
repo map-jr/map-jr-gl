@@ -220,8 +220,10 @@
     "ACKNOWLEDGEMENTS.md",
     "THIRD-PARTY-LICENSES.md",
     "AGENTS.md",
-    "docs/**/*.md",
-    "!docs/agents"
+    "docs/guide",
+    "docs/reference",
+    "docs/recipes",
+    "docs/migrate"
   ],
   "sideEffects": [
     "./dist/element.js",

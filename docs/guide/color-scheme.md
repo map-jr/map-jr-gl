@@ -224,7 +224,7 @@ The background and Central Park are light on a light system and dark on a dark s
 
 - A change of the scheme requests neither the style nor the tiles. A paint property that reads `color-scheme` changes
   at the next frame.
-- A layout property, a filter, and a parameter of an [image template](../api.md#an-image-that-is-a-template) (a value
+- A layout property, a filter, and a parameter of an [image template](../reference/description.md#images) (a value
   that `params` of the `image` expression sets) that read `color-scheme` are part of the tiles.
   The map builds the tiles of their sources again, from the data that it has.
 - A style that already uses a state property `color-scheme` for something else receives the value of the map. Rename
@@ -355,4 +355,4 @@ For two styles, call `map.setStyle` with the other style when the media query ch
   reference of the description.
 - [Change the look of the controls](controls.md#change-the-look-of-the-controls) for the colours of the controls in
   each scheme.
-- [Server rendering](../server-rendering.md) for the scheme of an image that a server renders.
+- [Server rendering](server-rendering.md) for the scheme of an image that a server renders.

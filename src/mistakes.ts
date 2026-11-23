@@ -53,7 +53,7 @@ texts[685] = problem => `locale: ${problem}. Pass an object of strings by the ke
 texts[40] = scheme => `colorScheme: ${scheme} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
 texts[46] = (missing, used) => `style: the pair has no "${missing}", so the map uses "${used}" in both colour schemes. Give both "light" and "dark".`;
-texts[524] = field => `the description has no field "${field}", so the map ignores it. Check the spelling against MapDescription in docs/api.md, or remove "${field}".`;
+texts[524] = field => `the description has no field "${field}", so the map ignores it. Check the spelling against MapDescription in docs/reference/description.md, or remove "${field}".`;
 texts[10524] = () => 'the description has no field "extend", so the map ignores it. Write "sources", "layers" and "terrain" at the root of the description.';
 texts[826] = (attribute, kind) => `<map-jr>: the attribute ${attribute} cannot be read, so the element ignores it. ${({n: 'Write a number, for example zoom="11".', c: 'Write the longitude and the latitude with a comma between them, for example center="13.4,52.52".', p: 'Write "globe" or "mercator".'} as Record<string, string>)[kind] ?? ''}`;
 texts[1258] = (attribute, kind) => kind === 'o'
@@ -218,7 +218,7 @@ export function watchMembers(classes: Record<string, {prototype: object}>, membe
                 reported.add(name);
                 console.warn(cls === 'Map' && privateState[key]
                     ? `[map-jr-gl] ${name} is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. ${privateState[key]}`
-                    : `[map-jr-gl] ${name} is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.`);
+                    : `[map-jr-gl] ${name} is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.`);
             }
             break;
         }

@@ -92,8 +92,9 @@ An element without a style creates no map: `map` stays `null`, and `map-ready` i
 Each field of the description is a property of the element with the same name, except `style`, which is the
 property `mapStyle`. The table lists the members that the description does not have.
 
-- Objects, lists and functions, such as `layers`, `data`, `controls` and `transformRequest`, are properties only.
-  `center` and `zoom` are attributes only.
+- Objects, lists and functions are properties only: `initialView`, `view`, `sources`, `layers`, `terrain`, `data`,
+  `images`, `sprite`, `fonts`, `controls`, `globalState`, `locale`, `maxBounds` and `transformRequest`. `center` and
+  `zoom` are attributes only.
 - A property overrides the attribute of the same field. When the map is created, the fields of the property
   `initialView` override the attributes `center`, `zoom`, `bearing` and `pitch`.
 - A property returns the value that the page set, and not the value of the attribute.

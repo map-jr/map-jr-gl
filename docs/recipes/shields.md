@@ -692,6 +692,7 @@ export default function Shields() {
   SVG.
 - The map also fires the event for a name that your code does not create, such as an icon that the sprite of a style
   does not have. The listener leaves such names out.
+- The shield library of OSM Americana works with this library without changes.
 
 ## Variations
 

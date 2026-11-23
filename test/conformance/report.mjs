@@ -1,4 +1,4 @@
-// The Markdown that the conformance tools write into docs/ecosystem.md and docs/maplibre-compatibility.md, and the
+// The Markdown that the conformance tools write into docs/ecosystem.md and docs/reference/maplibre-differences.md, and the
 // tables of scripts/status-tables.mjs. A cell of a table has a name, a number or one word of result. A sentence about
 // a row goes into a list after the table (#1113). This file has no browser in it, so that
 // test/unit/status-tables.test.ts can test it.
@@ -23,7 +23,7 @@ export const share = (part, whole) => whole ? (100 * part / whole).toFixed(1) + 
 
 const code = names => names.map(n => '`' + n + '`').join(', ');
 
-/** The block of api.mjs in docs/maplibre-compatibility.md. Each argument is a sorted list of names of methods. */
+/** The block of api.mjs in docs/reference/maplibre-differences.md. Each argument is a sorted list of names of methods. */
 export function apiBlock({have, accepted, extra, missing, notCounted}) {
     const total = have.length + accepted.length + missing.length;
     return ['<!-- api:start -->',
@@ -35,11 +35,11 @@ export function apiBlock({have, accepted, extra, missing, notCounted}) {
             ['Only in this library', extra.length, ''],
             ['Internal to MapLibre GL JS, not counted', notCounted.length, ''],
         ], [1, 2]), '',
-        `**Available:** ${code(have)}`, '',
-        `**Accepted, with no effect** (a value that the library cannot do gives one warning, except for \`setAnisotropicFilterPitch\`, which gives none): ${code(accepted)}`, '',
-        `**Only in this library:** ${code(extra)}`, '',
-        `**Not available:** ${code(missing)}`, '',
-        `**Internal to MapLibre GL JS, not counted** (the declaration tags the method \`@internal\`, or only the class \`Camera\` has it, which the package does not export): ${code(notCounted)}`,
+        `- **Available:** ${code(have)}`,
+        `- **Accepted, with no effect** (a value that the library cannot do gives one warning, except for \`setAnisotropicFilterPitch\`, which gives none): ${code(accepted)}`,
+        `- **Only in this library:** ${code(extra)}`,
+        `- **Not available:** ${missing.length ? code(missing) : 'none'}`,
+        `- **Internal to MapLibre GL JS, not counted** (the declaration tags the method \`@internal\`, or only the class \`Camera\` has it, which the package does not export): ${code(notCounted)}`,
         '<!-- api:end -->'].join('\n');
 }
 

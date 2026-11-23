@@ -287,7 +287,7 @@ function shortType(text, page, self, context) {
 /** A Description cell with the sentence of `shortType`. */
 // (When the sentence would make the Description cell too long, it is left out, and the Description says what the object has.)
 const withNote = (description, note) => note && size(description) + note.length < LIMIT ? `${description} ${note}`.trim() : description;
-/** A Description cell. A link of the TSDoc to a file of the repository (`docs/loading.md#…`) is made relative to the page. */
+/** A Description cell. A link of the TSDoc to a file of the repository (`docs/guide/loading.md#…`) is made relative to the page. */
 const describe = (text, page) => cell(text.replace(/\]\(((?:docs\/|README\.md)[^)\s]*)\)/g, (_, target) => {
     const [file, anchor = ''] = target.split(/(?=#)/);
     return `](${hrefFrom(page, file, anchor)})`;
