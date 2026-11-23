@@ -283,24 +283,29 @@ const map = createMap('map', {
 A choice sets `style`, `terrain` and `globalState` of the description together with one [`patch`](map.md#patch), so
 the camera and the other fields of the description stay. The control then calls `onStyleChange` once with the entry.
 
-- **What the entry before set.** A choice removes the `terrain` and the names of `globalState` that the entry chosen
-  before set, so the map uses the terrain and the defaults of the style again. Other names of `globalState`, which
-  the application set, stay.
+- **What the entry before set.** A choice gives the `terrain` and the names of `globalState` that the entry chosen
+  before set the values that the application had before that choice. A name that the application did not set is
+  removed, so the map uses the default of the style. Other names of `globalState` stay.
 - **The current entry.** The entry that the description shows is marked with `aria-pressed="true"`: its `style` is
   the same value as `style` of the description, or equal to it as JSON, and so are its `terrain` and each value of
-  its `globalState`. When several entries match, the entry of the last choice is current, or else the entry that
-  sets the most fields. A choice of the current entry closes the list and calls nothing.
+  its `globalState`. When several entries match, the entry that sets the most fields is current, and of two that set
+  as many, the entry of the last choice. A choice of the current entry closes the list and calls nothing.
+- **A change by the application.** When the application later sets `terrain` or `globalState` with `update` or
+  `patch`, its values apply, and the marked entry follows the description. Once the description no longer shows
+  the entry of the last choice, a new choice keeps the values of the application.
 
 An application that passes `style` itself, as a component of Vue, React or Svelte does, keeps the new value in
-`onStyleChange`, and also `terrain` and `globalState` when an entry sets them. Otherwise its next description sets the old style again. The map keeps the control while its
+`onStyleChange`, and also `terrain` and `globalState` when an entry sets them. Otherwise its next description sets
+the old style again. The map keeps the control while its
 options are equal as JSON (see [The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in
 a later description does not replace the first one.
 
 The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
 [`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so
-that they do not delay the map, or at the first click on the button if that comes earlier. The picture of an entry
-shows its `terrain` and its `globalState`. The list opens with the
+that they do not delay the map, or at the first click on the button if that comes earlier. The list opens with the
 labels at once and shows each picture when it is ready.
+
+The picture of an entry shows its `terrain`, and its `globalState` over the `globalState` of the application.
 
 - **A style that fails.** An error before the style of an entry has loaded, such as a failed request or an answer that
   is not a style, ends its picture at once. A picture that takes more than 20 seconds also ends. The entry then has no

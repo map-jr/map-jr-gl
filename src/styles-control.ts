@@ -59,6 +59,8 @@ export class StylesControl implements Control {
     private drawn = '';
     /** The index of the entry of the last choice. */
     private chosen = -1;
+    /** The values that the application had for the terrain and the names of global state that the entry of the last choice set. */
+    private saved: {terrain?: MapDescription['terrain']; state: Record<string, unknown>} = {state: {}};
     private removed = false;
     /** The hidden map of the picture that is being drawn, and the function that ends the wait for it. */
     private small?: MapInstance;
@@ -133,34 +135,42 @@ export class StylesControl implements Control {
         if (focus) this.trigger!.focus();
     }
 
-    /** The index of the entry that the description shows: the entry of the last choice, or else the one that sets the most fields; -1 for none. */
+    /** The index of the entry that the description shows and that sets the most fields; a tie goes to the last choice. -1 for none. */
     private current(d: MapDescription) {
-        const entries = this.options.entries;
-        if (entries[this.chosen] && shows(entries[this.chosen], d)) return this.chosen;
-        let best = -1;
-        entries.forEach((e, i) => { if (shows(e, d) && (best < 0 || overrides(e) > overrides(entries[best]))) best = i; });
+        let best = -1, most = -1;
+        this.options.entries.forEach((e, i) => { const n = overrides(e) + (i === this.chosen ? .5 : 0); if (shows(e, d) && n > most) { best = i; most = n; } });
         return best;
     }
 
     /**
-     * Sets the style, the terrain and the global state of the entry in one `patch`, so the camera stays. The terrain
-     * and the names of global state that the entry before set are removed; the other names of `globalState` stay.
+     * The terrain and the global state of the application: the description without what the entry of the last choice
+     * set, with the values that the application had before. When the description no longer shows that entry, the
+     * application has set these fields since, and they are its own.
+     */
+    private own(d: MapDescription) {
+        const e = this.options.entries[this.chosen], state: Record<string, unknown> = {...d.globalState};
+        let terrain = d.terrain;
+        if (e && shows(e, d)) {
+            for (const k in e.globalState) if (k in this.saved.state) state[k] = this.saved.state[k]; else delete state[k];
+            if (e.terrain !== undefined) terrain = this.saved.terrain;
+        }
+        return {terrain, state};
+    }
+
+    /**
+     * Sets the style, the terrain and the global state of the entry in one `patch`, so the camera stays. What the entry
+     * before set goes back to the value of the application; the other names of `globalState` stay.
      */
     private choose(instance: MapInstance, i: number) {
         this.close(true);
-        const d = instance.description, at = this.current(d), entries = this.options.entries, entry = entries[i], before = entries[at];
-        if (at === i) return;
-        const part: Parameters<MapInstance['patch']>[0] = {style: entry.style};
-        if (entry.terrain !== undefined) part.terrain = entry.terrain;
-        else if (before?.terrain !== undefined) part.terrain = undefined;
-        if (entry.globalState || before?.globalState) {
-            const state: Record<string, unknown> = {...d.globalState};
-            for (const k in before?.globalState) delete state[k];
-            Object.assign(state, entry.globalState);
-            part.globalState = Object.keys(state).length ? state : undefined;
-        }
+        const d = instance.description, entry = this.options.entries[i];
+        if (this.current(d) === i) return;
+        const {terrain, state} = this.own(d), saved: Record<string, unknown> = {};
+        for (const k in entry.globalState) if (k in state) saved[k] = state[k];
+        this.saved = {terrain, state: saved};
+        Object.assign(state, entry.globalState);
         this.chosen = i;
-        instance.patch(part);
+        instance.patch({style: entry.style, terrain: entry.terrain !== undefined ? entry.terrain : terrain, globalState: Object.keys(state).length ? state : undefined});
         this.options.onStyleChange?.(entry);
     }
 
@@ -186,7 +196,7 @@ export class StylesControl implements Control {
         const box = document.body.appendChild(document.createElement('div'));
         box.style.cssText = `position:fixed;left:-${W * 4}px;top:0;width:${W}px;height:${H}px;pointer-events:none`;
         box.setAttribute('aria-hidden', 'true');
-        const entries = this.options.entries;
+        const entries = this.options.entries, own = this.own(instance.description);
         let failed = false;
         // An error before the style has loaded (a failed request, an answer that is not a style) ends the picture at
         // once; an error of a tile after that does not.
@@ -196,10 +206,10 @@ export class StylesControl implements Control {
             for (let i = 0; i < entries.length && !this.removed; i++) {
                 if (again && this.list!.hidden) { this.drawn = ''; break; } // drawn again at the next open
                 failed = false;
-                // (The picture shows the terrain and the global state that the entry sets.)
-                const {style, terrain, globalState} = entries[i], spec: MapDescription = {...base, style};
+                // (The picture shows the terrain and the global state that the entry sets, over the global state of the application.)
+                const {style, terrain, globalState} = entries[i], spec: MapDescription = {...base, style}, state = {...own.state, ...globalState};
                 if (terrain !== undefined) spec.terrain = terrain;
-                if (globalState) spec.globalState = globalState;
+                if (Object.keys(state).length) spec.globalState = state;
                 // (A new map for each picture: after `update`, an `idle` of the old style can come before the error of
                 // a new style that does not load, and the picture would show the old style.)
                 this.small?.destroy();
