@@ -2,7 +2,7 @@
 // map-jr/map-jr-styles, map-jr/maputnik and map-jr/maplibre-style-spec. The fixtures have the shape of those files.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {absoluteLinks, safeMarkdown, editingPage, headingOf, indexPage, attributionParts, sectionOf, specAdditions, specPage, styleChoice, styleRows} from '../../website/build/styles.ts';
+import {absoluteLinks, safeMarkdown, editingPage, indexPage, attributionParts, sectionOf, specPage, styleChoice, styleRows} from '../../website/build/styles.ts';
 
 const readme = `# map-jr-styles
 
@@ -112,13 +112,19 @@ test('/styles/editing has the note of the fork of Maputnik without the quote mar
     assert.match(page, /Open it in Maputnik\./);
 });
 
-test('/styles/spec lists the docs of the reference that name Map Jr. GL', () => {
-    const reference = {expression_name: {values: {image: {doc: 'Returns an image.', syntax: {parameters: [{name: 'a'}, {type: {params: {doc: 'Map Jr. GL fills the slots.'}}}]}}}}};
-    const additions = specAdditions(reference);
-    assert.equal(additions.length, 1);
-    assert.equal(headingOf(additions[0]!.path), '`image` expression: `params`');
-    assert.match(specPage(reference), /Map Jr\. GL fills the slots\./);
-    assert.throws(() => specPage({}), /names Map Jr\. GL/);
+test('/styles/spec is docs/map-jr.md of the fork, escaped, under the heading of the site', () => {
+    const page = specPage('# Additions of Map Jr. GL\n\nA <b>key</b> of [MapLibre](https://maplibre.org/).\n\n## `params`\n\n```json\n["image", "pin", {"params": {}}]\n```\n');
+    assert.match(page, /^# Style spec additions$/m);
+    assert.doesNotMatch(page, /^# Additions/m);
+    assert.match(page, /A &lt;b&gt;key&lt;\/b&gt;/);
+    assert.match(page, /\[MapLibre\]\(https:\/\/maplibre\.org\/\)/);
+    assert.match(page, /^## `params`$/m);
+    assert.match(page, /^\["image", "pin", \{"params": \{\}\}\]$/m);
+    assert.match(page, /blob\/map-jr-main\/docs\/map-jr\.md/);
+    assert.throws(() => specPage('no heading'), /no heading/);
+    assert.throws(() => specPage('```md\n# not a heading\n```\n'), /no heading/);
+    assert.throws(() => specPage('Text first.\n\n# Additions\n'), /text before its heading/);
+    assert.match(specPage('\n# Additions\n\nBody.\n'), /^Body\.$/m);
 });
 
 test('an inline component, and HTML after a fence that holds the other marker, show as text (#1551)', () => {

@@ -3,7 +3,7 @@
 //
 //   map-jr/map-jr-styles (main)                 README.md and dist/styles/*.json: /styles, one map with a switch of the style
 //   map-jr/maputnik (map-jr-main)               README.md, the note on the fork: /styles/editing
-//   map-jr/maplibre-style-spec (map-jr-main)    src/reference/v8.json, the docs that name Map Jr. GL: /styles/spec
+//   map-jr/maplibre-style-spec (map-jr-main)    docs/map-jr.md, the additions of the fork:     /styles/spec
 //
 // `writeStylePages` clones each repository into website/.data/sources/ (or fetches it again when the clone is there),
 // and writes the markdown of the pages to website/.data/generated/styles/. The collection `docs` reads that folder as
@@ -263,36 +263,22 @@ export function editingPage(maputnik: string, readme: string): string {
     return frontmatter({editUrl: githubUrl(sources.maputnik, 'README.md')}) + body;
 }
 
-// The entries of the reference whose doc names Map Jr. GL: the additions of the fork, with the path of each.
-export function specAdditions(reference: unknown): {path: string; doc: string}[] {
-    const found: {path: string; doc: string}[] = [];
-    const walk = (value: unknown, path: string[]) => {
-        if (Array.isArray(value)) return value.forEach((item, index) => walk(item, [...path, String(index)]));
-        if (!value || typeof value !== 'object') return;
-        const doc = (value as any).doc;
-        if (typeof doc === 'string' && doc.includes('Map Jr. GL')) found.push({path: path.join(' › '), doc});
-        for (const [key, child] of Object.entries(value)) walk(child, [...path, key]);
-    };
-    walk(reference, []);
-    return found;
-}
-
-// The heading of an addition: the expression and the key for the docs of an expression, and the key otherwise.
-export function headingOf(path: string): string {
-    const keys = path.split(' › ');
-    const key = keys.at(-1)!;
-    return keys[0] === 'expression_name' && keys[1] === 'values' && keys.length > 3 ? `\`${keys[2]}\` expression: \`${key}\`` : `\`${key}\``;
-}
-
-// The page /styles/spec.
-export function specPage(reference: unknown): string {
-    const additions = specAdditions(reference);
-    if (!additions.length) fail('src/reference/v8.json of map-jr/maplibre-style-spec (branch map-jr-main) has no doc that names Map Jr. GL.');
+// The page /styles/spec, from docs/map-jr.md of the fork of the style specification: the additions of the fork. The
+// heading of that file gives way to the heading of the page, and the rest is escaped.
+export const specFile = 'docs/map-jr.md';
+export function specPage(markdown: string): string {
+    const lines = markdown.split('\n');
+    let fence = false;
+    const start = lines.findIndex(line => {
+        if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+        return !fence && line.startsWith('# ');
+    });
+    if (start > 0 && lines.slice(0, start).some(line => line.trim())) fail(`${specFile} of map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has text before its heading "# ...", which the site would leave out. Start the file with the heading.`);
+    if (start < 0) fail(`${specFile} of map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has no heading "# ...", which the site reads. Restore the heading there, or change website/build/styles.ts.`);
     const body = ['# Style spec additions', '',
-        `The [Maputnik of Map Jr. GL](/styles/editing) validates styles with a fork of the MapLibre style specification, [map-jr/maplibre-style-spec](${githubUrl(sources.spec)}) (branch \`${sources.spec.branch}\`), which adds what styles for Map Jr. GL use. This page lists the docs of the reference of the fork (\`src/reference/v8.json\`) that name Map Jr. GL.`, '',
-        ...additions.flatMap(({path, doc}) => [`## ${headingOf(path)}`, '', `Its path in the reference is \`${path}\`.`, '', safeMarkdown(doc), '']),
-        `The rest of the specification is the [MapLibre style specification](https://maplibre.org/maplibre-style-spec/).`, ''].join('\n');
-    return frontmatter({editUrl: githubUrl(sources.spec, 'src/reference/v8.json')}) + body;
+        `The [Maputnik of Map Jr. GL](/styles/editing) validates styles with a fork of the MapLibre style specification, [map-jr/maplibre-style-spec](${githubUrl(sources.spec)}) (branch \`${sources.spec.branch}\`). This page is \`${specFile}\` of the fork.`, '',
+        safeMarkdown(lines.slice(start + 1).join('\n').trim()), ''].join('\n');
+    return frontmatter({editUrl: githubUrl(sources.spec, specFile)}) + body;
 }
 
 // Fetches the three repositories and writes the pages. It runs once for each start of Nuxt,
@@ -303,7 +289,9 @@ export function writeStylePages(): StyleChoice[] {
     const stylesDir = checkout(sources.styles);
     const readme = safeMarkdown(readFileSync(resolve(stylesDir, 'README.md'), 'utf8'));
     const maputnik = safeMarkdown(readFileSync(resolve(checkout(sources.maputnik), 'README.md'), 'utf8'));
-    const reference = JSON.parse(readFileSync(resolve(checkout(sources.spec), 'src/reference/v8.json'), 'utf8'));
+    const specPath = resolve(checkout(sources.spec), specFile);
+    if (!existsSync(specPath)) fail(`map-jr/maplibre-style-spec (branch ${sources.spec.branch}) has no ${specFile}, which the site reads for /styles/spec. Restore the file there, or change website/build/styles.ts.`);
+    const spec = readFileSync(specPath, 'utf8');
     const rows = styleRows(readme);
     const stateRows = (/\*\*Global state\.\*\*[\s\S]*?\n((?:\|.*\n)+)/.exec(readme)?.[1] ?? fail('README.md of map-jr/map-jr-styles has no table under "**Global state.**".'))
         .trim().split('\n').slice(2).map(cells);
@@ -316,7 +304,7 @@ export function writeStylePages(): StyleChoice[] {
     const out = resolve(generatedDir, stylesFolder);
     rmSync(out, {recursive: true, force: true});
     mkdirSync(out, {recursive: true});
-    const pages: Record<string, string> = {'index.md': indexPage(readme, rows), 'editing.md': editingPage(maputnik, readme), 'spec.md': specPage(reference)};
+    const pages: Record<string, string> = {'index.md': indexPage(readme, rows), 'editing.md': editingPage(maputnik, readme), 'spec.md': specPage(spec)};
     for (const [file, text] of Object.entries(pages)) writeFileSync(resolve(out, file), text);
     return written = choices;
 }
