@@ -359,7 +359,7 @@ A skipped job counts as passed for a required check. The job `browser` runs alwa
 were skipped. A push to `main` runs all of the jobs.
 
 `pnpm test:consistency` (`scripts/check-consistency.mjs`) fails when a field of the description has no Vue prop or
-no documentation, when a field, a member, an export or an event of the main API is not in its page of `docs/reference/`, when a gallery example lacks one of its four
+no documentation, when a field, a member, an export or an event of the main API is not in its page of `docs/reference/`, when an example lacks one of its four
 forms, when no document names an entry of the package, when a link between documents is broken, or when a number of
 a text or of a kind of check in `src/mistakes.ts` is taken twice.
 

@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 import {copyFileSync, existsSync, mkdirSync} from 'node:fs';
 
 const {chromium} = createRequire(import.meta.url)('playwright');
-const gallery = process.env.SITE ?? 'http://localhost:8080/site/';
+const site = process.env.SITE ?? 'http://localhost:8080/site/';
 const out = new URL('../docs/images/', import.meta.url).pathname;
 mkdirSync(out, {recursive: true});
 
@@ -15,7 +15,7 @@ const shots = [['basic', 6], ['markers', 7], ['terrain', 14], ['query', 6], ['pm
 const browser = await chromium.launch({...chromiumOptions(chromium), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
 const page = await browser.newPage({viewport: {width: 633, height: 700}, deviceScaleFactor: 2});
 for (const [id, seconds] of shots) {
-    await page.goto(new URL(`examples/run.html?id=${id}&form=core`, gallery).href);
+    await page.goto(new URL(`examples/run.html?id=${id}&form=core`, site).href);
     await page.waitForFunction(id => window.maps?.[id] || window.exampleError, id, {timeout: 60000});
     const error = await page.evaluate(() => window.exampleError);
     if (error) throw new Error(error);

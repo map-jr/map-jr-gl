@@ -62,7 +62,7 @@ for (const [, list] of read('src/index.ts').matchAll(/^export \{([^}]*)\}/gm)) {
     for (const name of list.split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type '))) if (!exportsDoc.includes('`' + name + '`') && !exportsDoc.includes(name + '(')) fail('docs/reference/exports.md', `the export \`${name}\` of src/index.ts is not mentioned`);
 }
 
-// 4. Each row of the gallery has its seven forms (#1115). (run.html is the harness page, not an example.)
+// 4. Each example has its seven forms (#1115). (run.html is the harness page, not an example.)
 const examples = readdirSync(path.join(root, 'examples')).filter(f => /\.(js|vue|jsx|svelte|html)$/.test(f) && f !== 'run.html');
 for (const row of new Set(examples.map(f => f.split('.')[0]))) {
     for (const ext of ['.js', '.compat.js', '.vue', '.nuxt.vue', '.jsx', '.svelte', '.html']) if (!examples.includes(row + ext)) fail('examples', `the example "${row}" has no ${ext} form`);

@@ -116,8 +116,9 @@ A change is done when all of these that apply are true. The pull request templat
    `vue.md`, `react.md`, `svelte.md`, `element.md` and the others), `docs/guide/` or `docs/recipes/` when a task
    changes, and `docs/reference/maplibre-differences.md` when behaviour differs from MapLibre (including anything
    accepted that has no effect). If the README shows it, update the README.
-5. **Examples.** A gallery row has seven forms in `examples/` (`.js`, `.compat.js`, `.vue`, `.nuxt.vue`, `.jsx`,
-   `.svelte`, and `.html` for `<map-jr>`), each complete on its own. Comments in examples must stay true: reread them when behaviour changes.
+5. **Examples.** An example has seven forms in `examples/` (`.js`, `.compat.js`, `.vue`, `.nuxt.vue`, `.jsx`,
+   `.svelte`, and `.html` for `<map-jr>`), each complete on its own, and its recipe in `docs/recipes/` shows them.
+   Comments in examples must stay true: reread them when behaviour changes.
 6. **Mistakes get a message.** A mistake by the user gets a message that says what is wrong and what to write
    instead. An option or method that is accepted but has no effect warns once. The library does not ignore input
    in silence.
@@ -184,7 +185,7 @@ before you write or change a page of the docs or a TSDoc comment on a public typ
 - **Be exact.** State the default, the unit, what happens on failure and what is not supported. If you did not
   verify a claim, do not write it as a fact.
 - **An example must run as it is written.** It has all of its imports, it uses real URLs, and it does not leave out
-  setup. `pnpm test:examples` compiles the examples of the gallery.
+  setup. `pnpm test:examples` compiles the examples of `examples/`.
 - **Do not use sales language** such as "blazing", "simply" or "just". Leave out sentences that carry no
   information, and do not apologise.
 - **An error or warning message** starts with `[map-jr-gl]`, names the thing by the name that the user wrote, and

@@ -230,7 +230,7 @@ The documentation is on [map-jr.org](https://map-jr.org/) and in four folders of
   [markers and popups](docs/guide/markers-and-popups.md), [terrain](docs/guide/terrain.md),
   [server rendering](docs/guide/server-rendering.md), [loading](docs/guide/loading.md),
   [browser support](docs/guide/browser-support.md) and [accessibility](docs/guide/accessibility.md).
-- [Recipes](docs/recipes/basic.md): complete examples in each form of the gallery.
+- [Recipes](docs/recipes/basic.md): complete examples in each of their seven forms.
 - [Reference](docs/reference/create-map.md): every function, field, event and type of each entry:
   [the description](docs/reference/description.md), [the map](docs/reference/map.md),
   [Vue](docs/reference/vue.md), [Nuxt](docs/reference/nuxt.md), [React](docs/reference/react.md),
