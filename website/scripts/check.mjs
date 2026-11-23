@@ -506,8 +506,25 @@ try {
         // The text of a CodeMirror editor that shows all of its lines.
         const textOf = editor => editor.evaluate(content => [...content.querySelectorAll('.cm-line')].map(line => line.textContent).join('\n'));
 
+        // The editor takes the height of the code that it replaces, and "Close the editor" gives the code back at the same
+        // height (#1538). The line and the buttons under the map are not measured here (#1539).
+        for (const width of engine === 'chromium' ? [390, 1440] : []) {
+            const sized = await own.newContext({viewport: {width, height: width === 390 ? 844 : 900}});
+            const small = await sized.newPage();
+            await small.goto(base + '/recipes/basic', {waitUntil: 'networkidle'});
+            const height = selector => small.locator(selector).first().evaluate(element => Math.round(element.getBoundingClientRect().height));
+            const code = await height('.live-example > div:last-child');
+            await small.getByRole('button', {name: 'Edit the Main API code'}).click();
+            await small.locator('.live-example .cm-content').waitFor();
+            const editing = await height('.live-example .code-editor');
+            await small.getByRole('button', {name: 'Close the editor'}).click();
+            const closed = await height('.live-example > div:last-child');
+            check(`${engine}: recipe: at ${width} the editor has the height of the code`, editing === code && closed === code, `code ${code}, editor ${editing}, after closing ${closed}`);
+            await sized.close();
+        }
+
         await page.goto(base + '/recipes/basic', {waitUntil: 'load'});
-        const frame = page.frameLocator('.live-example iframe');
+        const frame =page.frameLocator('.live-example iframe');
         check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
         // The stylesheet of the frame styles the buttons of the example code and not the buttons of the map controls (#1355).
         const controlButton = frame.locator('.map-jr-ctrl-group button').first();
