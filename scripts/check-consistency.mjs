@@ -110,5 +110,14 @@ for (const doc of [...docs, 'CLAUDE.md', 'CONTRIBUTING.md'].filter(f => existsSy
     once('check kind', [...m.matchAll(/kind === (\d+)\)/g)].map(x => x[1]));
 }
 
+// 8. A CDN URL (unpkg, jsdelivr) of the package in the documents and the examples names the version of package.json.
+for (const file of [...docs, ...readdirSync(path.join(root, 'examples'), {recursive: true}).map(f => 'examples/' + f.split(path.sep).join('/'))].filter(f => /\.(md|html|js|jsx|vue|svelte)$/.test(f))) {
+    read(file).split('\n').forEach((line, i) => {
+        for (const [url, version] of line.matchAll(/(?:unpkg\.com|cdn\.jsdelivr\.net\/npm)\/@map-jr\/map-jr-gl@([^/\s"'`)]+)/g)) {
+            if (version !== pkg.version) fail(`${file}:${i + 1}`, `the URL ${url} names version ${version}. Write @map-jr/map-jr-gl@${pkg.version}, the version of package.json.`);
+        }
+    });
+}
+
 if (failures.length) { console.error('FAIL  the parts of the project do not agree:\n' + failures.map(f => '  - ' + f).join('\n')); process.exit(1); }
 console.log(`ok    consistency: ${spec.length} fields of the description, ${fields(host, 'MapInstance').length} members of the map, ${docs.length} documents`);
