@@ -70,7 +70,7 @@ const figures = {
     ],
     compatibility: [
         {area: 'MapLibre expression tests', passing: exprPass, total: exprAll, details: tests},
-        {area: 'Methods of the MapLibre `Map` class', passing: num(api, /coverage: (\d+)/), total: num(api, /of (\d+) methods/), details: {text: 'Map methods', href: 'docs/maplibre-compatibility.md#map-methods'}},
+        {area: 'Methods of the MapLibre `Map` class', passing: num(api, /coverage: (\d+)/), total: num(api, /of (\d+) methods/), details: {text: 'Map methods', href: 'docs/reference/maplibre-differences.md#map-methods'}},
         {area: 'Properties of the MapLibre style specification', passing: num(spec, /: (\d+) of/), total: num(spec, /of (\d+) properties/), details: tests},
         ...(ran ? [{area: 'MapLibre plugins, run in a browser', passing: +ran[1], total: +ran[2], details: {text: 'Plugins that were run', href: 'docs/ecosystem.md#plugins-that-were-run'}}] : []),
         ...(audited ? [{area: 'Plugins and frameworks, read from npm', passing: +audited[1], total: +audited[2], details: {text: 'Each package', href: 'docs/ecosystem.md#each-package'}}] : []),

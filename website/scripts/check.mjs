@@ -16,7 +16,7 @@ const {chromium, devices, webkit} = playwright;
 const withMap = !process.argv.includes('--no-map');
 const screenshots = process.argv.find(argument => argument.startsWith('--screenshots='))?.slice('--screenshots='.length);
 const editorBrowsers = process.argv.find(argument => argument.startsWith('--browsers='))?.slice('--browsers='.length).split(',') ?? ['chromium'];
-const docsPage = '/vue';
+const docsPage = '/reference/vue';
 // A page with several groups of code variants and without Nuxt.
 const variantsPage = '/guide/markers-and-popups';
 // A page with a group of package managers first and then groups of code variants.
@@ -71,27 +71,27 @@ try {
     // A docs page: the title, the navigation at the left, the contents at the right, and the links to GitHub.
     {
         const {page, problems, close} = await open(docsPage);
-        check('docs page: the title is the first heading of the file', await page.locator('h1').first().textContent() === 'Vue and Nuxt', await page.locator('h1').first().textContent());
+        check('docs page: the title is the first heading of the file', await page.locator('h1').first().textContent() === 'Vue', await page.locator('h1').first().textContent());
         check('docs page: one h1', await page.locator('h1').count() === 1);
-        check('docs page: the navigation has the section "Current docs"', await page.locator('aside').getByText('Current docs').count() > 0);
-        check('docs page: the contents list names a heading', await page.getByRole('link', {name: 'The component', exact: true}).count() > 0);
+        check('docs page: the navigation has the section "Reference"', await page.locator('aside').getByText('Reference').count() > 0);
+        check('docs page: the contents list names a heading', await page.getByRole('link', {name: 'MapJr', exact: true}).count() > 0);
         const edit = await page.getByRole('link', {name: 'Edit this page'}).first().getAttribute('href');
-        check('docs page: "Edit this page" names the file', edit === 'https://github.com/map-jr/map-jr-gl/edit/main/docs/vue.md', edit);
+        check('docs page: "Edit this page" names the file', edit === 'https://github.com/map-jr/map-jr-gl/edit/main/docs/reference/vue.md', edit);
         const report = await page.getByRole('link', {name: 'Report a problem with this page'}).first().getAttribute('href');
         check('docs page: "Report a problem with this page" opens a new issue', !!report?.startsWith('https://github.com/map-jr/map-jr-gl/issues/new?title=Docs'), report);
         const hrefs = await page.locator('main a').evaluateAll(links => links.map(link => link.getAttribute('href')));
-        check('docs page: a link to api.md is the route /api', hrefs.includes('/api') && hrefs.some(href => href?.startsWith('/api#')));
+        check('docs page: a link to description.md is the route /reference/description', hrefs.some(href => href?.startsWith('/reference/description#')));
         check('docs page: no link names a .md file of the site', !hrefs.some(href => href && !href.startsWith('http') && /\.md(#|$)/.test(href)), hrefs.filter(href => href && !href.startsWith('http') && /\.md(#|$)/.test(href)).join(' '));
         check('docs page: no horizontal scroll at 1440', await overflow(page) <= 0);
 
         // Navigation: a click changes the page with no load of a document, and previous and next follow the manifest.
         await page.evaluate(() => { window.__sameDocument = true; });
-        await page.locator('aside a[href="/react"]').click();
-        await page.waitForURL('**/react');
+        await page.locator('aside a[href="/reference/react"]').click();
+        await page.waitForURL('**/reference/react');
         await page.locator('h1', {hasText: 'React'}).waitFor();
-        check('navigation: a click leads to /react in the same document', await page.evaluate(() => window.__sameDocument === true));
-        const surround = await page.locator('main a[href="/vue"], main a[href="/svelte"]').evaluateAll(links => links.map(link => link.getAttribute('href')));
-        check('navigation: previous is /vue and next is /svelte', surround.includes('/vue') && surround.includes('/svelte'), surround.join(' '));
+        check('navigation: a click leads to /reference/react in the same document', await page.evaluate(() => window.__sameDocument === true));
+        const surround = await page.locator('main a[href="/reference/server"], main a[href="/reference/svelte"]').evaluateAll(links => links.map(link => link.getAttribute('href')));
+        check('navigation: previous is /reference/server and next is /reference/svelte', surround.includes('/reference/server') && surround.includes('/reference/svelte'), surround.join(' '));
 
         // Search.
         await page.keyboard.press('ControlOrMeta+k');
@@ -102,7 +102,7 @@ try {
         if (options) {
             await page.getByRole('option').first().click();
             await page.waitForTimeout(800);
-            check('search: a result leads to a page', new URL(page.url()).pathname !== '/react' || !!new URL(page.url()).hash, page.url().slice(base.length));
+            check('search: a result leads to a page', new URL(page.url()).pathname !== '/reference/react' || !!new URL(page.url()).hash, page.url().slice(base.length));
         }
 
         // Colour mode.

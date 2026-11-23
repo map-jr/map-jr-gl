@@ -23,43 +23,43 @@ function fields(source, name) {
 }
 const kebab = s => s.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
 
-// 1. Each field of the description is in the documents of the main API.
+// 1. Each field of the description is in the reference of the description.
 const host = read('src/host.ts'), spec = [...new Set([...fields(host, 'MapSetup'), ...fields(host, 'MapDescription')])];
-const api = read('docs/api.md');
-for (const f of spec) if (!api.includes('`' + f + '`')) fail('docs/api.md', `the field \`${f}\` of the description (src/host.ts) is not mentioned`);
+const descriptionDoc = read('docs/reference/description.md'), mapDoc = read('docs/reference/map.md'), exportsDoc = read('docs/reference/exports.md'), eventsDoc = read('docs/reference/events.md');
+for (const f of spec) if (!descriptionDoc.includes('`' + f + '`')) fail('docs/reference/description.md', `the field \`${f}\` of the description (src/host.ts) is not mentioned`);
 
 // 2. Each field of the description is a prop (or an event) of the Vue component, and is in its document.
 //    A field that Vue gives in another way is named here with the reason.
 const vueOther = {style: 'the prop mapStyle', onViewChange: 'v-model:view', onColorSchemeChange: 'v-model:color-scheme', onClick: 'the event click', onError: 'the event error'};
-const vue = read('src/vue.ts'), vueDoc = read('docs/vue.md');
+const vue = read('src/vue.ts'), vueDoc = read('docs/reference/vue.md');
 const props = vue.slice(vue.indexOf('    props: {'), vue.indexOf('    emits: {'));
 for (const f of spec) {
     if (vueOther[f]) continue;
     if (!new RegExp(`(^|[\\s,{])${f}:`, 'm').test(props)) fail('src/vue.ts', `the component MapJr has no prop for the field \`${f}\` of the description`);
-    if (!vueDoc.includes('`' + kebab(f) + '`') && !vueDoc.includes('`' + f + '`') && !vueDoc.includes(':' + kebab(f)) && !vueDoc.includes(kebab(f) + '=')) fail('docs/vue.md', `the prop \`${kebab(f)}\` is not mentioned`);
+    if (!vueDoc.includes('`' + kebab(f) + '`') && !vueDoc.includes('`' + f + '`') && !vueDoc.includes(':' + kebab(f)) && !vueDoc.includes(kebab(f) + '=')) fail('docs/reference/vue.md', `the prop \`${kebab(f)}\` is not mentioned`);
 }
 
 // 2b. Each field of the description is a property or an attribute of the element <map-jr> (src/element.ts, and the
-//     table of attributes in src/element-attributes.ts), and is in docs/element.md. A field that the element gives in
+//     table of attributes in src/element-attributes.ts), and is in docs/reference/element.md. A field that the element gives in
 //     another way is named here with the word that the document must have.
 const elementOther = {nonce: 'nonce', onViewChange: 'map-viewchange', onColorSchemeChange: 'map-colorschemechange', onClick: 'map-click', onError: 'map-error'};
 {
-    const element = read('src/element.ts'), elementDoc = read('docs/element.md');
+    const element = read('src/element.ts'), elementDoc = read('docs/reference/element.md');
     const properties = element.match(/const PROPERTIES = \[([^\]]*)\]/)?.[1] ?? '', attributes = read('src/element-attributes.ts').match(/export const ATTRIBUTES = \{([^}]*)\}/)?.[1] ?? '';
     for (const f of spec) {
         const prop = f === 'style' ? 'mapStyle' : f, attr = f === 'style' ? 'map-style' : kebab(f);
-        if (elementOther[f]) { if (!elementDoc.includes('`' + elementOther[f] + '`')) fail('docs/element.md', `\`${elementOther[f]}\` (the field \`${f}\` of the description) is not mentioned`); continue; }
+        if (elementOther[f]) { if (!elementDoc.includes('`' + elementOther[f] + '`')) fail('docs/reference/element.md', `\`${elementOther[f]}\` (the field \`${f}\` of the description) is not mentioned`); continue; }
         if (!properties.includes(`'${prop}'`) && !new RegExp(`(^|[\\s,{])${f}:`).test(attributes)) fail('src/element.ts', `the element <map-jr> has no property (PROPERTIES) and no attribute (ATTRIBUTES in src/element-attributes.ts) for the field \`${f}\` of the description`);
-        if (!elementDoc.includes('`' + prop + '`') && !elementDoc.includes('`' + attr + '`')) fail('docs/element.md', `the property \`${prop}\` (the field \`${f}\` of the description) is not mentioned`);
+        if (!elementDoc.includes('`' + prop + '`') && !elementDoc.includes('`' + attr + '`')) fail('docs/reference/element.md', `the property \`${prop}\` (the field \`${f}\` of the description) is not mentioned`);
     }
 }
 
-// 3. Each member of the map object of the main API is in its document.
-for (const m of fields(host, 'MapInstance')) if (!api.includes(m)) fail('docs/api.md', `the member \`${m}\` of the map (MapInstance in src/host.ts) is not mentioned`);
+// 3. Each member of the map object of the main API is in the reference of the map.
+for (const m of fields(host, 'MapInstance')) if (!mapDoc.includes(m)) fail('docs/reference/map.md', `the member \`${m}\` of the map (MapInstance in src/host.ts) is not mentioned`);
 
-// 3b. Each value that the main entry exports (not the types) is in its document.
+// 3b. Each value that the main entry exports (not the types) is in the reference of the exports.
 for (const [, list] of read('src/index.ts').matchAll(/^export \{([^}]*)\}/gm)) {
-    for (const name of list.split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type '))) if (!api.includes('`' + name + '`') && !api.includes(name + '(')) fail('docs/api.md', `the export \`${name}\` of src/index.ts is not mentioned`);
+    for (const name of list.split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type '))) if (!exportsDoc.includes('`' + name + '`') && !exportsDoc.includes(name + '(')) fail('docs/reference/exports.md', `the export \`${name}\` of src/index.ts is not mentioned`);
 }
 
 // 4. Each row of the gallery has its seven forms (#1115). (run.html is the harness page, not an example.)
@@ -69,7 +69,7 @@ for (const row of new Set(examples.map(f => f.split('.')[0]))) {
 }
 
 // 5. Each entry of the package has its source file, and a document names it.
-const pkg = JSON.parse(read('package.json')), docs = ['README.md', ...readdirSync(path.join(root, 'docs')).filter(f => f.endsWith('.md')).map(f => 'docs/' + f)];
+const pkg = JSON.parse(read('package.json')), docs = ['README.md', ...readdirSync(path.join(root, 'docs'), {recursive: true}).filter(f => f.endsWith('.md')).map(f => 'docs/' + f.split(path.sep).join('/')).sort()];
 const allDocs = docs.map(read).join('\n');
 for (const entry of Object.keys(pkg.exports ?? {})) {
     if (entry === '.' || entry === './package.json') continue;
@@ -77,17 +77,17 @@ for (const entry of Object.keys(pkg.exports ?? {})) {
     if (!allDocs.includes(name)) fail('docs', `no document mentions the entry \`${name}\` (package.json "exports")`);
 }
 
-// 5b. Each event of the map (MapEvents in src/host.ts) is in the table of events of the main API, and the documents
+// 5b. Each event of the map (MapEvents in src/host.ts) is in the reference of the events, and the documents
 //     of the adapters say how an event is passed on.
 {
     const start = host.indexOf('export interface MapEvents'), block = host.slice(start, host.indexOf('\n}', start));
     const names = new Set([...block.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/'([a-z.]+)'|^\s+([a-z.]+):/gm)].map(m => m[1] ?? m[2]));
     for (const drop of ['boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'click', 'wheel', 'stats', 'styleimagemissing', 'terrain', 'geolocate', 'error']) names.add(drop);
-    for (const name of names) if (!api.includes('`' + name + '`')) fail('docs/api.md', `the event \`${name}\` of the map (MapEvents in src/host.ts) is not in the table of events`);
-    for (const [file, word] of [['docs/vue.md', '@moveend'], ['docs/react.md', 'onMoveend'], ['docs/svelte.md', 'listen('], ['docs/element.md', 'map-moveend']]) if (!read(file).includes(word)) fail(file, `the document does not say how an event of the map reaches the application (expected "${word}")`);
+    for (const name of names) if (!eventsDoc.includes('`' + name + '`')) fail('docs/reference/events.md', `the event \`${name}\` of the map (MapEvents in src/host.ts) is not in the table of events`);
+    for (const [file, word] of [['docs/reference/vue.md', '@moveend'], ['docs/reference/react.md', 'onMoveend'], ['docs/reference/svelte.md', 'listen('], ['docs/reference/element.md', 'map-moveend']]) if (!read(file).includes(word)) fail(file, `the document does not say how an event of the map reaches the application (expected "${word}")`);
 }
 
-// 6. Links between the documents lead to files that exist.
+// 6. Links between the documents, in every folder of docs/, lead to files that exist.
 for (const doc of [...docs, 'CLAUDE.md', 'CONTRIBUTING.md'].filter(f => existsSync(path.join(root, f)))) {
     for (const [, target] of read(doc).matchAll(/\]\((?!https?:|#|mailto:)([^)#\s]+)(?:#[^)]*)?\)/g)) {
         if (!existsSync(path.join(root, path.dirname(doc), target))) fail(doc, `the link to ${target} leads to no file`);

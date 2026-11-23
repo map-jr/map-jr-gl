@@ -1,6 +1,6 @@
 <!--
   Stop 6: what the library does not do. The list is taken from the section "What is not available" and the table
-  "What is different" of docs/maplibre-compatibility.md.
+  "What is different" of docs/reference/maplibre-differences.md.
 -->
 <script setup lang="ts">
 const items = [

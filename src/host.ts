@@ -343,7 +343,7 @@ export interface MapSetup {
      * @default false
      */
     hash?: boolean | string | null;
-    /** The nonce of a [Content Security Policy](docs/loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. */
+    /** The nonce of a [Content Security Policy](docs/guide/loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. */
     nonce?: string | null;
 }
 

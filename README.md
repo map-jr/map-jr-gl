@@ -30,7 +30,7 @@ uses the same renderer and has its own tests in a browser.
 - **It is small.** A page with a map transfers the page script and the worker file, which together are less than a
   third of what MapLibre GL JS transfers (page script, worker and CSS, gzip). The table of sizes in [Status](#status)
   has the current numbers for each entry, and `pnpm test:size` fails when the library is more than a third. The smaller size does not include other projections than Mercator and the globe, sky, fog and the other items in
-  [What is not available](docs/maplibre-compatibility.md#what-is-not-available). Custom layers are in the entry
+  [What is not available](docs/reference/maplibre-differences.md#what-is-not-available). Custom layers are in the entry
   `@map-jr/map-jr-gl/maplibre-compat` and need `renderer: 'main'`; their code loads with the first custom layer.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
 - **It draws many markers.** A symbol layer with an SVG template as its image draws 100,000 SVG markers at 60 frames
@@ -71,7 +71,7 @@ Compatibility with MapLibre GL JS, tested with the entry `@map-jr/map-jr-gl/mapl
 | Area | Passing | Total | Share | Details |
 |---|---:|---:|---:|---|
 | MapLibre expression tests | 358 | 583 | 61.4% | [Tests against MapLibre GL JS](docs/development.md#tests-against-maplibre-gl-js) |
-| Methods of the MapLibre `Map` class | 131 | 138 | 94.9% | [Map methods](docs/maplibre-compatibility.md#map-methods) |
+| Methods of the MapLibre `Map` class | 131 | 138 | 94.9% | [Map methods](docs/reference/maplibre-differences.md#map-methods) |
 | Properties of the MapLibre style specification | 227 | 244 | 93.0% | [Tests against MapLibre GL JS](docs/development.md#tests-against-maplibre-gl-js) |
 | MapLibre plugins, run in a browser | 16 | 16 | 100.0% | [Plugins that were run](docs/ecosystem.md#plugins-that-were-run) |
 | Plugins and frameworks, read from npm | 24 | 26 | 92.3% | [Each package](docs/ecosystem.md#each-package) |
@@ -80,7 +80,7 @@ Compatibility with MapLibre GL JS, tested with the entry `@map-jr/map-jr-gl/mapl
 | MapLibre render tests, the same or near | 1574 | 1741 | 90.4% | [Render tests](docs/development.md#render-tests) |
 <!-- status:end -->
 
-The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.
+The library is new. Read [Differences from MapLibre GL JS](docs/reference/maplibre-differences.md) before you use it in production.
 
 ## Install
 
@@ -123,7 +123,7 @@ not work: use `import`. The tests of the server renderer (`@map-jr/map-jr-gl/ser
 `package.json` asks for Node.js 22 or later. The module for Nuxt (`@map-jr/map-jr-gl/nuxt`) imports `@nuxt/kit`, which a Nuxt
 application has already. `package.json` names it as an optional peer dependency (version 3 or 4).
 
-A browser must have WebGL2. [Browser support](docs/browser-support.md) says what each renderer needs and in which
+A browser must have WebGL2. [Browser support](docs/guide/browser-support.md) says what each renderer needs and in which
 browsers the library was run.
 
 Each built file has a source map beside it (`dist/<file>.js.map`), so that an error tracker can show the lines of the
@@ -151,7 +151,7 @@ This example uses the entry `@map-jr/map-jr-gl`.
 ```
 
 To change the map, call `map.update` with the complete description again. The library finds what is different.
-You do not need a CSS file. See [The main API](docs/api.md).
+You do not need a CSS file. See [The main API](docs/reference/create-map.md).
 
 ![A street map with zoom, compass and scale controls](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/basic.jpg)
 
@@ -173,7 +173,7 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 ```
 
 With the `ssr` prop, a server (Nuxt) renders the first view as SVG into the page. The map takes over in the
-browser. See [Vue and Nuxt](docs/vue.md).
+browser. See [Vue and Nuxt](docs/reference/vue.md).
 
 ### Change from MapLibre GL JS
 
@@ -201,7 +201,7 @@ The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `ne
    so the complete result is a promise.
 4. Start your application and read the browser console. The library writes a warning for each style layer or
    property that it cannot draw.
-5. Read [MapLibre compatibility](docs/maplibre-compatibility.md) for the differences.
+5. Read [Differences from MapLibre GL JS](docs/reference/maplibre-differences.md) for the differences.
 
 To let a coding agent do these steps, give it the [migration prompt](docs/migrate/prompt.md). The package contains the
 docs as markdown in `node_modules/@map-jr/map-jr-gl/docs/` and an `AGENTS.md` for agents.
@@ -223,8 +223,8 @@ export default defineConfig({
 ```
 
 With Vite 5 in development, also add `optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']}`, or the map
-draws on the main thread; Vite 8 does not need it (see [Vite in development](docs/loading.md#vite-in-development)).
-For Next.js (webpack and Turbopack), see [Next.js](docs/loading.md#nextjs). In an import map:
+draws on the main thread; Vite 8 does not need it (see [Vite in development](docs/guide/loading.md#vite-in-development)).
+For Next.js (webpack and Turbopack), see [Next.js](docs/guide/loading.md#nextjs). In an import map:
 
 ```html
 <script type="importmap">{"imports": {"maplibre-gl": "/node_modules/@map-jr/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}</script>
@@ -271,10 +271,10 @@ const map = createMap(document.getElementById('map'), {
 ```
 
 With `@map-jr/map-jr-gl/maplibre-compat`, write the source and the layer yourself, as with MapLibre GL JS (`map.addImage`, `map.addSource`,
-`map.addLayer`). [Markers](docs/markers.md) has the code.
+`map.addLayer`). [Markers and popups](docs/guide/markers-and-popups.md) has the code.
 
 For a small number of markers with HTML content, use `map.overlay` (`@map-jr/map-jr-gl`) or `Marker` and `Popup`
-(`@map-jr/map-jr-gl/maplibre-compat`, the same API as MapLibre GL JS). See [Markers](docs/markers.md).
+(`@map-jr/map-jr-gl/maplibre-compat`, the same API as MapLibre GL JS). See [Markers and popups](docs/guide/markers-and-popups.md).
 
 ![Fifty thousand markers on a map](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/markers.jpg)
 
@@ -326,13 +326,13 @@ map.addLayer({id: 'contour-lines', type: 'line', source: 'contours', 'source-lay
 const metres = await map.queryElevation([7.6586, 45.9763]);
 ```
 
-See [Terrain and elevation](docs/terrain-and-elevation.md).
+See [Terrain and elevation](docs/guide/terrain.md).
 
 ### Find what is at a position
 
 With `@map-jr/map-jr-gl`, `querySource` reads the tile data of one source. It finds data that the style does not
 draw, and it also works for a position that is not on the screen. `queryFeatures` gives the features that the style
-layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in both methods. See [Queries](docs/api.md#queries).
+layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in both methods. See [Queries](docs/reference/map.md#queryfeatures).
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -381,7 +381,7 @@ const {svg} = await renderToSVG({
 
 Put the SVG in the map container of your HTML page. The live map replaces it when the map is ready.
 The same function runs in a browser, so a page can export a map as a vector SVG with no server.
-See [Server rendering](docs/server-rendering.md).
+See [Server rendering](docs/guide/server-rendering.md).
 
 ![A map that was drawn on the server](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/server.jpg)
 
@@ -411,7 +411,7 @@ The default configuration needs no settings.
   the file automatically.
 - If a worker cannot start, or loses its WebGL context again directly after the map has started it again, the library draws on the main thread and writes a warning. A map always appears.
 
-See [Loading](docs/loading.md) for a CDN, a strict Content Security Policy, the one-file
+See [Loading](docs/guide/loading.md) for a CDN, a strict Content Security Policy, the one-file
 build and other configurations.
 
 ## Speed
@@ -467,27 +467,30 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 
 ## Documents
 
-- [The main API](docs/api.md): `createMap`, the description of a map, the state, queries.
-- [Vue and Nuxt](docs/vue.md): the component, the composable, server rendering.
-- [React](docs/react.md): the component, the hooks, server rendering.
-- [Svelte](docs/svelte.md): an action and a store.
-- [The web component](docs/element.md): the element `<map-jr>`, for plain HTML and frameworks without an adapter.
-- [Loading](docs/loading.md): how the files load, and how to change that.
-- [Markers](docs/markers.md): symbol layers with images that are SVG templates, and DOM markers.
-- [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.
-- [Server rendering](docs/server-rendering.md): SVG and images on Node.js, on Cloudflare Workers and in a browser.
-- [Accessibility](docs/accessibility.md): what the library does for keyboard users and assistive technology, and what it
-  does not do yet.
-- [MapLibre compatibility](docs/maplibre-compatibility.md): what is the same, what is different, what is not
-  available.
+The documentation is on [map-jr.org](https://map-jr.org/) and in four folders of `docs/`, which the package contains:
+
+- [Guide](docs/guide/getting-started.md): how to do each task, from a first map to
+  [markers and popups](docs/guide/markers-and-popups.md), [terrain](docs/guide/terrain.md),
+  [server rendering](docs/guide/server-rendering.md), [loading](docs/guide/loading.md),
+  [browser support](docs/guide/browser-support.md) and [accessibility](docs/guide/accessibility.md).
+- [Recipes](docs/recipes/basic.md): complete examples in each form of the gallery.
+- [Reference](docs/reference/create-map.md): every function, field, event and type of each entry:
+  [the description](docs/reference/description.md), [the map](docs/reference/map.md),
+  [Vue](docs/reference/vue.md), [Nuxt](docs/reference/nuxt.md), [React](docs/reference/react.md),
+  [Svelte](docs/reference/svelte.md), [the element `<map-jr>`](docs/reference/element.md),
+  [the compat entry](docs/reference/maplibre-compat.md) and its
+  [differences from MapLibre GL JS](docs/reference/maplibre-differences.md).
+- [Migrate](docs/migrate/from-maplibre.md): the steps from MapLibre GL JS, from a wrapper, and from the compat entry to
+  the main API.
+
+These files are in the repository and not in the package:
+
 - [Plugins and frameworks](docs/ecosystem.md): which popular MapLibre plugins find the API that they use.
-- [Browser support](docs/browser-support.md): what a browser must have, what each renderer needs, and where the
-  library was run.
 - [Development](docs/development.md): how to build, test, measure and release the library.
-- [Changelog](CHANGELOG.md): what each version contains, and what is known not to work.
-- [Security](SECURITY.md): how to report a vulnerability privately, and what is in scope.
 - [Similarity scan](docs/similarity-scan.md): how the source was compared with MapLibre GL JS and other projects, and
   the result.
+- [Changelog](CHANGELOG.md): what each version contains, and what is known not to work. The package contains it.
+- [Security](SECURITY.md): how to report a vulnerability privately, and what is in scope.
 - [Contributing](CONTRIBUTING.md) and the [open issues](https://github.com/map-jr/map-jr-gl/issues): what is known to be wrong or missing, by priority.
 
 ## How this project is made

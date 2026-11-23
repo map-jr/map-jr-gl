@@ -62,6 +62,7 @@ sections:
       - svelte.md
       - element.md
       - maplibre-compat.md
+      - maplibre-differences.md
       - messages.md
   - title: Migrate
     folder: migrate
@@ -69,18 +70,3 @@ sections:
       - from-maplibre.md
       - wrappers.md
       - compat-to-main-api.md
-  # The documents from before the docs site. A document leaves this list when the four folders have its content.
-  - title: Current docs
-    pages:
-      - api.md
-      - vue.md
-      - react.md
-      - svelte.md
-      - element.md
-      - markers.md
-      - terrain-and-elevation.md
-      - loading.md
-      - server-rendering.md
-      - maplibre-compatibility.md
-      - accessibility.md
-      - browser-support.md

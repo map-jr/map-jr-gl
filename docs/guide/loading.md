@@ -251,7 +251,9 @@ setting.
 
 ## Next.js
 
-The configuration of this section is not checked with a current version of Next.js. Create the map in `useEffect` of a client component. The server can import the library, so `next/dynamic` is not
+The configuration of this section ran with Next.js 16.4.6 and React 19.3, with `next build` (Turbopack) and
+`next build --webpack`: in both builds, `next start` showed the map with the renderer `'worker'`. The development
+servers were not run for it. Create the map in `useEffect` of a client component. The server can import the library, so `next/dynamic` is not
 needed. webpack and Turbopack load the worker file with no setting.
 
 ```jsx
@@ -313,6 +315,26 @@ The package contains its type declarations. TypeScript finds the types of every 
 |---|---|
 | `"bundler"`, `"node16"`, `"nodenext"` | 5 and later |
 | `"node"` (or `"node10"`) | 5 and 6 |
+
+Under `"node"`, TypeScript reads the subpaths from `typesVersions` of `package.json`, so you do not need `paths`
+entries for them. TypeScript 7 removed `"node"`.
+
+## The development build
+
+The development build of `@map-jr/map-jr-gl` writes warnings for common mistakes, such as an id in
+`interactiveLayers` that is not in the style. `package.json` names that build under the `development` export
+condition, so a bundler that sets the condition takes it in development and takes the production build otherwise.
+
+| How the page gets `@map-jr/map-jr-gl` | Checks |
+|---|---|
+| A bundler in development that sets the `development` condition | Yes. The map loads the file of the checks after it has started. |
+| A bundler that builds for production | No. |
+| The file `dist/map-jr-gl.js` by URL, with no bundler | No. Import `dist/map-jr-gl.dev.js` instead while you develop. |
+
+Vite sets the condition (ran with Vite 8: the development server takes the development build, and `vite build` takes
+the production build). The development server of webpack in Next.js 14.2 and 16 takes the development build. Node.js
+takes it with `--conditions=development`. Nuxt is not checked. The production build makes no request for the checks
+and writes none of their warnings. [Messages](../reference/messages.md) lists each warning.
 
 ## See also
 

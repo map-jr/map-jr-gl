@@ -248,7 +248,7 @@ and `attribution` of the description, and no option is needed. With React or Sve
   attribution at the take-over.
 - With `colorScheme: 'auto'`, the style sheet follows the colour scheme of the browser, and the control `colorScheme()`
   has both icons, of which the browser shows one. The style of the first view is the `light` style of a pair.
-- With a [Content Security Policy](../loading.md#content-security-policy), pass the `nonce` of the description. The
+- With a [Content Security Policy](loading.md#content-security-policy), pass the `nonce` of the description. The
   markup of the controls has no `style` attribute, and its style sheet has the nonce. The `style` attribute of the SVG
   is not covered by this, so a strict policy still blocks it.
 - Each map carries its own copy of the style sheet of the controls, so the output for a page with several maps grows

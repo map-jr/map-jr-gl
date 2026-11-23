@@ -222,7 +222,7 @@ export function Places({places}) {
 The map shows a red and a blue pin, each with its tip on its position.
 
 In the main API and the adapters, the key `places` in `data` creates the GeoJSON source `places`.
-[`points`](../api.md#points-from-records) converts the records to GeoJSON.
+[`points`](data.md#convert-records-to-points) converts the records to GeoJSON.
 
 The layout properties decide how the markers behave among each other and among the labels of the map:
 
@@ -352,7 +352,7 @@ and pass a new `places` array to the component in React.
 ## Open a popup when the user clicks a marker
 
 A marker of a symbol layer is a feature of that layer, so a click finds it. In the main API,
-[`map.overlay`](../api.md#elements-of-the-page-on-the-map) places an element of the page at a position of the map,
+[`map.overlay`](../reference/map.md#overlay) places an element of the page at a position of the map,
 and `popup: true` shows the element in a popup. `MapOverlay` does the same in Vue and React.
 
 **Main API**
@@ -764,18 +764,47 @@ The user drags the pin, and the new position arrives as `[lng, lat]` when the dr
 
 After a drag, the pin stays where the user dropped it until `lngLat` changes. So store the position that the drag
 reports and pass it back, as the examples do. With Svelte and with the custom element `<map-jr>`, call `map.overlay` as in the main API. See
-[Svelte](../svelte.md) and [The element](../element.md) for how to get the map.
+[Svelte](../reference/svelte.md) and [The element](../reference/element.md) for how to get the map.
 
 ## Keep many markers fast
 
 A frame takes the same time for 100 markers and for 100,000 when the symbol layer has no text, has
 `symbol-placement: 'point'` (the default) and has `icon-allow-overlap: true`. The layers of this page are such
-layers. See [Which icons are fast](../markers.md#which-icons-are-fast) for the other conditions, and for how such
-icons differ from icons that the map places among the labels.
+layers. The map then draws the icons from a buffer on the GPU, without a place among the labels. All of these must
+be true:
+
+- The feature has no text.
+- `symbol-placement` is `point` (the default).
+- `icon-allow-overlap` is `true`. The icon is then always shown.
+- `icon-text-fit` is `none` (the default), and the icon has no halo (`icon-halo-width`).
+- The layer has no `symbol-sort-key`, and `icon-anchor`, `icon-offset`, `icon-rotation-alignment`, `icon-color` and
+  `icon-padding` have one value for the layer. `icon-size`, `icon-rotate` and `icon-opacity` can have a value for
+  each feature.
+
+The map places other icons among the labels, and their cost grows with their number. An icon from a buffer differs
+from a placed icon in these points:
+
+- With 3D terrain it stands on the ground, and ground in front of it does not hide it. (MapLibre GL JS and a placed
+  icon are hidden.)
+- It shows with its tile and does not fade in.
+- The icons of a layer that is above each layer with labels are drawn over the labels. The icons of another layer
+  are drawn below all labels and below all placed icons.
+- The map asks for the image of each icon of a tile (`styleimagemissing`), also for an icon outside the view.
 
 One cost still grows with the number of markers in view. Without `icon-ignore-placement: true`, the labels of the
 map avoid each marker, and the map does that work each time that it places the labels. So set
 `icon-ignore-placement: true` for very many markers.
+
+These are measurements with software WebGL (headless Chromium, the main-thread renderer, 500 different images), for
+the script time of one frame while the map moves. They were not made on a GPU.
+
+| Icons | Always shown, labels do not keep away | Always shown, labels keep away |
+|---|---|---|
+| 10,000 | 6 ms | 6 ms |
+| 100,000 | 5 to 8 ms | 14 to 20 ms on average; the frames that place the labels took more than 100 ms each |
+
+The data of a GeoJSON source is cut into tiles when it is given. With 100,000 points the map was ready 2 to 3 seconds
+after that in the same measurement, and with 200,000 points after 7 seconds or more.
 
 To show groups in place of single markers, see [Group points into clusters](../recipes/clusters.md).
 
@@ -784,7 +813,7 @@ To show groups in place of single markers, see [Group points into clusters](../r
 - [`data`](../reference/description.md#data), [`images`](../reference/description.md#images),
   [`layers`](../reference/description.md#layers), [`interactiveLayers`](../reference/description.md#interactivelayers)
   and [`onClick`](../reference/description.md#onclick) in the reference of the description.
-- [Elements of the page on the map](../api.md#elements-of-the-page-on-the-map) for every option of `overlay`.
-- [An image that is a template](../api.md#an-image-that-is-a-template) for slots that an expression fills.
+- [Elements of the page on the map](../reference/map.md#overlay) for every option of `overlay`.
+- [An image that is a template](../reference/description.md#images) for slots that an expression fills.
 - [Query what is at a position](../recipes/query.md) to find features that are not markers.
-- [Server rendering](../server-rendering.md) for markers in an image that a server renders.
+- [Server rendering](server-rendering.md) for markers in an image that a server renders.

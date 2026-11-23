@@ -1,6 +1,6 @@
 // Compares the source of this library with the source of other projects and prints the longest similar runs.
 // The comparison ignores names: every identifier becomes one token, so a copy with renamed variables still matches.
-// It runs locally and uploads nothing. See docs/provenance.md.
+// It runs locally and uploads nothing. See docs/similarity-scan.md.
 //
 // Usage: node scripts/similarity-scan.mjs <ours-dir> <theirs-dir> [more theirs-dirs...] [--k=40] [--top=20]
 import {readdirSync, readFileSync, statSync} from 'node:fs';

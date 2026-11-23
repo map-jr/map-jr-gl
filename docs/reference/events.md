@@ -85,7 +85,7 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
   changes the type. `newProjection` is `'mercator'`, `'globe'` or `'vertical-perspective'`. An expression results in
   `'globe'`, and a type that the library does not know results in `'mercator'`.
 - `stats` fires at most once a second while the map renders. `labels` counts the labels and icons that the last frame
-  placed. Icons that the map draws from buffers are not counted: see [Markers](../markers.md#which-icons-are-fast).
+  placed. Icons that the map draws from buffers are not counted: see [Markers and popups](../guide/markers-and-popups.md#keep-many-markers-fast).
 - `error` has the value that failed, which can be other than an `Error`. `onError` of the description receives the
   same errors as `Error` objects. Without `onError`, the map writes each error to the console.
 

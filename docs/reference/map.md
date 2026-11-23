@@ -49,6 +49,9 @@ map.moveTo({zoom: 15, duration: 500});
 | [`container`](#container) (read only) | `HTMLElement` | The element that holds the map. |
 <!-- ref:MapInstance:end -->
 
+Members whose names start with `_` are private. They are not in the type `MapInstance`, and they can change in each
+release.
+
 ## `update`
 
 <!-- ref:MapInstance.update:start -->

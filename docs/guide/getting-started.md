@@ -182,13 +182,13 @@ The map shows the streets around City Hall, and the console or the paragraph sho
 - The style is `style` in the description. The components and the element name it `map-style`, and React names it
   `mapStyle`, because `style` is already an attribute of every element.
 - [`map.state`](../reference/state.md#mapstate) is the state of the map. `subscribe` returns a function that stops the calls.
-- In Vue, [`v-model:view`](../vue.md#the-view-of-v-modelview) sets the view of the map and receives each new view.
+- In Vue, [`v-model:view`](../reference/vue.md#view) sets the view of the map and receives each new view.
   React does the same with `view` and `onViewChange`.
 - The Nuxt module provides `MapJr`, `MapOverlay` and `MapImage`. See
-  [The module for Nuxt](../vue.md#the-module-for-nuxt).
+  [The module for Nuxt](../reference/nuxt.md).
 - In Svelte, the action `mapJr` creates the map, and `ready` receives the map when it is created. A new description
-  for the action updates the map. See [Svelte](../svelte.md).
-- `<map-jr>` follows changes of its attributes. See [Attributes](../element.md#attributes) for each attribute and
+  for the action updates the map. See [Svelte](../reference/svelte.md).
+- `<map-jr>` follows changes of its attributes. See [Attributes](../reference/element.md#attributes) for each attribute and
   its format.
 
 ## Give the container a height
@@ -262,7 +262,7 @@ the page file and the worker file must come from the same version. Replace `0.9.
 ```
 
 A page with a Content Security Policy needs the CDN in `script-src` and `blob:` in `worker-src`. See
-[Content Security Policy](../loading.md#content-security-policy) for the complete policy, and [Loading](../loading.md)
+[Content Security Policy](loading.md#content-security-policy) for the complete policy, and [Loading](loading.md)
 for one file that contains the worker and for files on your own server.
 
 ## Show other content in a browser without WebGL2
@@ -287,14 +287,14 @@ if (supported()) {
 
 Without the check, the map reports an error to `onError` of the [description](../reference/description.md#mapdescription),
 or to the console when the description has no `onError`. It also shows the text "This browser cannot show the map." in
-the container. See [A browser without WebGL2](../api.md#a-browser-without-webgl2) for how to change that text.
+the container. See [A browser without WebGL2](getting-started.md#show-other-content-in-a-browser-without-webgl2) for how to change that text.
 
 ## See also
 
 - [Which entry to use](which-entry.md) to choose between the main API, the compat entry and the adapters.
 - [The description](../reference/description.md) for every field of `MapDescription`.
-- [The main API](../api.md) for `update`, `patch`, the state and the queries.
-- [Vue and Nuxt](../vue.md), [React](../react.md), [Svelte](../svelte.md) and [The element](../element.md) for each
+- [The main API](../reference/create-map.md) for `update`, `patch`, the state and the queries.
+- [Vue and Nuxt](../reference/vue.md), [React](../reference/react.md), [Svelte](../reference/svelte.md) and [The element](../reference/element.md) for each
   adapter.
 - [From MapLibre GL JS](../migrate/from-maplibre.md) to move an application to the compat entry.
 - [Markers and popups](markers-and-popups.md) for the next step.

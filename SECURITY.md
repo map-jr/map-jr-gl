@@ -32,7 +32,7 @@ untrusted input. These are vulnerabilities:
 - One failed or malformed request that stops the whole map instead of only its own tile or resource.
 - State of one map that another map on the same page can read or change.
 - A way around the limits of the server renderer (`timeout`, `requestTimeout`, `maxBytes`, `allowHosts`; see
-  [Server rendering](docs/server-rendering.md#limits-for-requests)), for example a request that is not counted.
+  [Server rendering](docs/guide/server-rendering.md#limit-the-requests-of-the-server)), for example a request that is not counted.
 
 ## What is not in scope
 

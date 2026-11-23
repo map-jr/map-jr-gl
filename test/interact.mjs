@@ -2593,7 +2593,7 @@ for (const mode of renderers) {
             return out;
         }, [lib, mode]);
         // (MapLibre GL JS 6.17 keeps the source in the attribution after the state hides its layers again, until a
-        // source changes: this library drops it, so only the first two steps are compared, see maplibre-compatibility.md.)
+        // source changes: this library drops it, so only the first two steps are compared, see docs/reference/maplibre-differences.md.)
         const ours = await run('ours', mode), ml = mode === 'main' ? await run('ml', mode) : [false, true, true];
         check(`[${mode}] compat: the attribution follows a visibility expression of the global state, as in MapLibre GL JS, and drops the source when the state hides it again (#1032)`,
             JSON.stringify(ours) === JSON.stringify([...ml.slice(0, 2), false]) && JSON.stringify(ml.slice(0, 2)) === '[false,true]', JSON.stringify({ours, maplibre: ml}));

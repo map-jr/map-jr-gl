@@ -73,7 +73,7 @@ Three tests compare the library with MapLibre GL JS:
   the `wontfix` fixtures, and `docs/status.json` has the count of each decision (`expressions`).
 - **API check.** `pnpm test:api` compares the methods of `Map` with the type declarations of MapLibre GL JS. It
   does not count a method that the declarations tag `@internal`, or one that only the class `Camera` has.
-  A method that is accepted and has no effect does not count as available. [Map methods](maplibre-compatibility.md#map-methods)
+  A method that is accepted and has no effect does not count as available. [Map methods](reference/maplibre-differences.md#map-methods)
   has the count and the names of each group.
 - **Style specification check.** `pnpm test:spec` compares each property of the style specification (`v8.json` of
   the copy of `@maplibre/maplibre-gl-style-spec` that MapLibre GL JS uses) with what the library reads, and with the
@@ -94,7 +94,7 @@ After you change a feature, do these steps:
 2. Run `pnpm test`.
 3. Run `pnpm test:render` if you changed how the map is drawn.
 4. Run `pnpm status`.
-5. Update [MapLibre compatibility](maplibre-compatibility.md) if a difference changed.
+5. Update [Differences from MapLibre GL JS](reference/maplibre-differences.md) if a difference changed.
 
 ### Render tests
 
@@ -217,7 +217,7 @@ Which files are pages:
 - A file of `docs/` that no section reaches is not on the site. This file, `style-guide.md` and `agents/` are for
   people who work on the library: do not add them to `docs/nav.yml`.
 - The title of a page is its first heading. The site draws it in the header of the page.
-- A relative link to another page (`[the main API](api.md#events)`) becomes the address of that page. A relative
+- A relative link to another page (`[the main API](reference/events.md)`) becomes the address of that page. A relative
   link to a file that the site does not show becomes a link to the file on GitHub. The build warns about a relative
   link that names no file. `website/build/markdown.ts` does this.
 
@@ -353,7 +353,7 @@ A skipped job counts as passed for a required check. The job `browser` runs alwa
 were skipped. A push to `main` runs all of the jobs.
 
 `pnpm test:consistency` (`scripts/check-consistency.mjs`) fails when a field of the description has no Vue prop or
-no documentation, when a member of the map is not in `docs/api.md`, when a gallery example lacks one of its four
+no documentation, when a field, a member, an export or an event of the main API is not in its page of `docs/reference/`, when a gallery example lacks one of its four
 forms, when no document names an entry of the package, when a link between documents is broken, or when a number of
 a text or of a kind of check in `src/mistakes.ts` is taken twice.
 
@@ -440,7 +440,7 @@ the tag `v<version>`, and makes the release on GitHub. Nobody pushes a tag or ma
 2. **Choose the version** with the table above, from the pull requests since the last tag
    (`git log v0.3.0..origin/main --oneline`, with the last tag in place of `v0.3.0`).
 3. **Open a pull request for the release** (`docs/release-0.4.0`). It changes `"version"` in `package.json`, adds
-   the section `## 0.4.0 (date)` to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](browser-support.md)
+   the section `## 0.4.0 (date)` to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](guide/browser-support.md)
    when the results of the browsers changed. The entry is written for a reader who decides whether to update:
    breaking changes first, then what is new, then what was fixed, each with a link to its pull request. The text of
    the section, without its heading, becomes the text of the release on GitHub.
@@ -562,7 +562,7 @@ faulty version with `npm deprecate` and a message that names the version to use.
 
 ## Facts about browsers that the code depends on
 
-See [Browser support](browser-support.md) for what was seen in which browser.
+See [Browser support](guide/browser-support.md) for what was seen in which browser.
 
 - **WebGL2 is required.** `supported()` of both entries tests for it. Without it the map fires one `error` and puts
   a message into the container (`.map-jr-unavailable`; see `cannotShow` in `src/map.ts`).

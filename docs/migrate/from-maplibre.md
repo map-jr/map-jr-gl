@@ -28,7 +28,7 @@ that this page lists. The page is written for an application that uses MapLibre 
    ```
 
 3. Remove the CSS file and the worker file of MapLibre GL JS. The library adds its own styles and loads its own
-   worker file. See [Loading](../loading.md) for a page with a Content Security Policy or files on a CDN.
+   worker file. See [Loading](../guide/loading.md) for a page with a Content Security Policy or files on a CDN.
 
    Before:
 
@@ -271,10 +271,10 @@ The library does not have these parts of MapLibre GL JS, among others:
 - Roll, a field of view other than the default, and a pitch above 90 degrees.
 - Custom layers with the worker renderer.
 
-See [MapLibre compatibility](../maplibre-compatibility.md) for the full list of differences and of everything that
+See [Differences from MapLibre GL JS](../reference/maplibre-differences.md) for the full list of differences and of everything that
 is not available, and [The compat entry](../reference/maplibre-compat.md) for every member of `Map`.
 
 ## See also
 
 - [Markers and popups](../guide/markers-and-popups.md) for markers with both entries.
-- [The main API](../api.md) for a map from one description, which new code can use in place of the compat entry.
+- [The main API](../reference/create-map.md) for a map from one description, which new code can use in place of the compat entry.

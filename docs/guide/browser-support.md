@@ -30,7 +30,7 @@ if (supported()) {
 ```
 
 `@map-jr/map-jr-gl/maplibre-compat` exports `supported()` too. See
-[A browser without WebGL2](../api.md#a-browser-without-webgl2) to change the text that the map shows.
+[A browser without WebGL2](getting-started.md#show-other-content-in-a-browser-without-webgl2) to change the text that the map shows.
 
 ## What each renderer needs
 

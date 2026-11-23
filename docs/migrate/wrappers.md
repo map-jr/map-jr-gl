@@ -47,9 +47,9 @@ in the bundler or in an import map. The code of the wrapper does not change.
 
 | Bundler | What to do |
 |---|---|
-| Vite 5 and Vite 8 | The alias, and in development `optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']}`: see [Vite in development](../loading.md#vite-in-development). Without it, the map draws on the main thread. |
+| Vite 5 and Vite 8 | The alias, and in development `optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']}`: see [Vite in development](../guide/loading.md#vite-in-development). Without it, the map draws on the main thread. |
 | Vite 6 and 7 | Not checked. Use the settings of Vite 8. |
-| Next.js | The alias in webpack and in Turbopack: see [Next.js](../loading.md#nextjs). |
+| Next.js | The alias in webpack and in Turbopack: see [Next.js](../guide/loading.md#nextjs). |
 | webpack, Rollup, esbuild | Not checked. Set an alias that matches the name `maplibre-gl` exactly. |
 | An import map | Serve every file of `dist/` of the package from one folder. The map loads `map-jr-gl-worker.js` from the folder of the file that the page imports. |
 

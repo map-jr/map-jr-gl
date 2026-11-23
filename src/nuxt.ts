@@ -18,7 +18,7 @@ const nuxtModule: any = defineNuxtModule({
     setup(_options: unknown, nuxt: any) {
         // (By package specifier, so that the generated `components.d.ts` and `imports.d.ts` take the types from `exports`.)
         const vue = '@map-jr/map-jr-gl/vue', controls = '@map-jr/map-jr-gl/controls';
-        // Vite in development must not pre-bundle the package, or the URL of the tile worker breaks (docs/loading.md).
+        // Vite in development must not pre-bundle the package, or the URL of the tile worker breaks (docs/guide/loading.md).
         const deps = ((nuxt.options.vite ||= {}).optimizeDeps ||= {});
         deps.exclude = [...(deps.exclude || []), '@map-jr/map-jr-gl', vue, controls];
         for (const name of ['MapJr', 'MapOverlay', 'MapImage']) addComponent({name, export: name, filePath: vue});

@@ -73,4 +73,4 @@ if (supported()) {
 
 - [The description](description.md) for every field of the second argument.
 - [The map](map.md) for the methods of the map that `createMap` returns.
-- [Loading](../loading.md) for the worker file and how the map loads it.
+- [Loading](../guide/loading.md) for the worker file and how the map loads it.

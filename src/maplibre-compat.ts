@@ -15,7 +15,7 @@ const noEffect: Record<string, 1> = {};
 const accepted = (type: string, options: Record<string, unknown>, names: string[]) => {
     for (const n of names) if (options[n] !== undefined && !noEffect[n]) {
         noEffect[n] = 1;
-        console.warn(`[map-jr-gl] ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/maplibre-compatibility.md.`);
+        console.warn(`[map-jr-gl] ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/reference/maplibre-differences.md.`);
     }
 };
 import {toLngLat, type LngLatLike as Where} from './geo.ts';
