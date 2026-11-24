@@ -55,6 +55,9 @@ async function shoot(context, name, variant) {
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR|favicon/.test(m.text())) errors.push(m.text().split('\n')[0]); });
     const file = path.join(out, `${name}-${variant}.png`);
     try {
+        // A page that asks random.org for numbers (add-live-realtime-data) gets the same numbers in both runs, so that
+        // both images show the same place (#669).
+        await page.route(/^https:\/\/(www\.)?random\.org\//, r => r.fulfill({status: 200, contentType: 'text/plain', headers: {'access-control-allow-origin': '*'}, body: '0.3141592654\n0.2718281828'}));
         await page.goto(`${origin}/${variant}/test/examples/${name}.html`, {waitUntil: 'load', timeout: 30000});
         await page.waitForLoadState('networkidle', {timeout: 15000}).catch(() => {});
         // The map has loaded, all its tiles are there and it does not move. (A page that animates the map never gets
