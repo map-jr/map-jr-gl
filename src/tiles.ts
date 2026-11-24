@@ -41,7 +41,7 @@ export class TileBuilder {
     private ids: Record<string, string | Record<string, string>> = {};
 
     /** Elevation tiles are shared between neighboring contour tiles, so decoded ones are kept for a while. */
-    private loadDEM = (url: string, encoding: DemEncoding, c: Parts['contour']): Promise<DEM | null> => {
+    private loadDEM = (url: string, encoding: DemEncoding, c: Parts['dem']): Promise<DEM | null> => {
         let dem = this.dems.get(url);
         if (!dem) {
             dem = fetchTile(url, this.fetchFn, undefined, undefined, true).then(bytes => bytes ? c.decodeDEM(bytes, encoding, this.decodeImage) : null);
@@ -54,7 +54,7 @@ export class TileBuilder {
     private async contour(url: string) {
         const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
         if (!cfg) return {};
-        const c = await part('contour');
+        const c = await part('dem');
         return c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c));
     }
 

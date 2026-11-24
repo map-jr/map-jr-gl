@@ -7,7 +7,9 @@ import {setPartLoader, type PartName} from './parts.ts';
 
 // What the parts that load on demand (parts.ts) take from this file. A part file is built with these modules left
 // out, and reads them from `MapJrWorker`, the global of this file (see build.mjs).
-export {EXTENT, mercX, mercY} from './geo.ts';
+export {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, clamp, latFromMerc, lngFromMerc, mercX, mercY, touches} from './geo.ts';
+export {SHADERS, VS_COMMON, opaque, skyValues} from './gl.ts';
+export {renderItems} from './placement.ts';
 export {compileExpr, compileFilter} from './expr.ts';
 export {decodeElevation} from './query.ts';
 export {decodePixels} from './exact-pixels.ts';
