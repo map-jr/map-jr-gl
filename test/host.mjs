@@ -585,6 +585,21 @@ for (const renderer of renderers) {
         check(`[${renderer}] queryElevation without a raster-dem source rejects with a [map-jr-gl] message that says to add one (#1214)`,
             noDem.startsWith('[map-jr-gl] queryElevation()') && noDem.includes('raster-dem'), noDem);
 
+        // #1213: the option `source` of queryElevation reads the named raster-dem source, and an unknown one rejects.
+        const named = await page.evaluate(async renderer => {
+            const tile = rgb => { const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d'); g.fillStyle = rgb; g.fillRect(0, 0, 256, 256); return c.toDataURL('image/png'); };
+            const dem = rgb => ({type: 'raster-dem', tiles: [tile(rgb)], encoding: 'terrarium', tileSize: 256, maxzoom: 10});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            // rgb(131,232,0) is 1000 m and rgb(135,208,0) is 2000 m in the terrarium encoding.
+            const host = window.t.lib.createMap(el, {style: {version: 8, sources: {a: dem('rgb(131,232,0)'), b: dem('rgb(135,208,0)')}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
+            const out = [Math.round(await host.queryElevation([0, 0])), Math.round(await host.queryElevation([0, 0], {source: 'b', zoom: 3}))];
+            out.push(await host.queryElevation([0, 0], {source: 'none'}).then(() => 'resolved', e => String(e?.message ?? e)));
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] queryElevation reads the raster-dem source that the option source names, and rejects for an unknown one (#1213)`,
+            named[0] === 1000 && named[1] === 2000 && String(named[2]).includes('"none"'), JSON.stringify(named));
+
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
         const projection = await page.evaluate(async renderer => {
