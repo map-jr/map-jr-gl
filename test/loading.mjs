@@ -146,6 +146,46 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
     check('worker blob URL: not revoked while a worker loads it, and a map made after the revoke starts', result.first === 'worker' && result.second === 'worker' && !result.early && !errors.length, `${JSON.stringify(result)} errors=${errors.join(' | ')}`);
     await page.close();
 }
+// The parts of the worker (#79): a GeoJSON style loads map-jr-gl-worker-geojson.js and draws its data with the default
+// URLs, with a plain workerUrl, with a workerUrl that is a blob: URL (the parts come from next to the module), and in
+// <map-jr>. (The requests of a worker are seen in Chromium only, so the files are not checked here: the drawn color is.)
+for (const how of ['default URLs', 'plain workerUrl', 'blob: workerUrl', '<map-jr> element']) {
+    const page = await browser.newPage({viewport: {width: 800, height: 500}}), pageErrors = [];
+    page.on('pageerror', e => pageErrors.push(e.message));
+    try {
+        await page.goto(`http://localhost:${port}/style.json`);
+        const r = await page.evaluate(async how => {
+            const errors = [], warnings = [], warn = console.warn;
+            console.warn = (...a) => { warnings.push(a.join(' ')); warn(...a); };
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}};
+            const style = {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]};
+            const el = document.body.appendChild(Object.assign(document.createElement(how === '<map-jr> element' ? 'map-jr' : 'div'), {style: 'display:block;width:200px;height:150px'}));
+            let host;
+            if (how === '<map-jr> element') {
+                await import('/dist/element.js');
+                el.addEventListener('map-error', e => errors.push(e.detail?.message ?? String(e.detail)));
+                el.initialView = {center: [0, 0], zoom: 1}; el.attribution = false; el.mapStyle = style;
+                for (let i = 0; i < 50 && !el.map; i++) await new Promise(r => setTimeout(r, 100));
+                host = el.map;
+            } else {
+                const lib = await import('/dist/map-jr-gl.js');
+                if (how === 'plain workerUrl') lib.configure({workerUrl: '/dist/map-jr-gl-worker.js'});
+                if (how === 'blob: workerUrl') lib.configure({workerUrl: URL.createObjectURL(await (await fetch('/dist/map-jr-gl-worker.js')).blob())});
+                host = lib.createMap(el, {style, initialView: {center: [0, 0], zoom: 1}, attribution: false, onError: e => errors.push(e.message)});
+            }
+            if (!host) return {idle: false, errors, warnings};
+            const idle = await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 15000); });
+            const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+            g.drawImage(bmp, 0, 0);
+            const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data), renderer = host.renderer;
+            el.remove();
+            return {idle, centre, renderer, errors, warnings: warnings.filter(w => w.includes('[map-jr-gl]'))};
+        }, how);
+        check(`parts of the worker (#79), ${how}: a GeoJSON source draws, with no error or warning`,
+            r.idle && r.centre?.[2] > 200 && r.centre[0] < 50 && !r.errors.length && !r.warnings.length && !pageErrors.length, JSON.stringify({...r, pageErrors}));
+    } catch (e) { check(`parts of the worker (#79), ${how}: the test was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The .js and .compat.js forms of the examples run as they are written: each is the module script of a bare page with
 // <div id="map"> and an import map, and reaches idle with no page error (#1156). The route appends only
 // `window.map = map` so that the test can read the map.

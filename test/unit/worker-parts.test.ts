@@ -13,7 +13,7 @@ test('each part of the worker has its URL on the page, and the worker file expor
     const loader = src('loader.ts'), worker = src('worker.ts');
     const exported = new Set([...worker.matchAll(/^export \{([^}]+)\} from/gm)].flatMap(m => m[1].split(',').map(s => s.trim())));
     for (const {name, file} of parts) {
-        assert.ok(loader.includes(`${name}: at('${name}', new URL(/* @vite-ignore */ './map-jr-gl-worker-${name}.js?no-inline', import.meta.url))`), `loader.ts has no URL for the part ${name}`);
+        assert.ok(loader.includes(`${name}: at('${name}', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-${name}.js?no-inline', import.meta.url))`), `loader.ts has no URL for the part ${name}`);
         // (A part file reads the modules that it imports from the worker file: a name that is not exported would be undefined.)
         for (const m of src(file + '.ts').matchAll(/^import \{([^}]+)\} from '\.\/[\w-]+\.ts';$/gm))
             for (const n of m[1].split(',').map(s => s.trim()).filter(s => !s.startsWith('type '))) assert.ok(exported.has(n), `worker.ts does not export ${n}, which the part ${name} imports`);

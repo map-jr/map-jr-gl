@@ -14,7 +14,7 @@ import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type Querie
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
-import {part, type PartName} from './parts.ts';
+import {oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
@@ -362,6 +362,8 @@ export class Engine {
     private dpr = 1;
 
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
+        // A part of the tile code that did not load fails each tile and query that needs it: the map reports it once (#79).
+        this.emit = oncePerPart(emit);
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
@@ -809,7 +811,7 @@ export class Engine {
             const parts = partsFor(style).filter(n => !this.partsSent.has(n));
             if (parts.length) { for (const n of parts) this.partsSent.add(n); for (const b of this.backends) b.need(parts); if (parts.includes('pmtiles')) part('pmtiles').catch(() => {}); }
             // Only the GeoJSON sources whose data or options changed are indexed again (#8).
-            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed); } }
+            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) Promise.resolve(b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed)).catch(err => this.emit({type: 'error', message: String(err.message)})); } }
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
             for (const {head} of Object.values(style.sources)) if (head && !heads.has(head.url)) { heads.set(head.url, head.bytes); for (const b of this.backends) b.setHead(head.url, head.bytes); }
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), ids = promoteIds(style), text = JSON.stringify([contours, ids]);

@@ -83,16 +83,27 @@ function workerHref(o: LoadOptions): string | undefined {
 export function partUrls(o: LoadOptions): Record<string, string> | undefined {
     const url = o.workerUrl ?? defaults.workerUrl;
     if (!url && !(o.createWorker ?? defaults.createWorker) && __WORKER_SRC__) return;
-    const page = globalThis.location?.href ?? import.meta.url;
-    const at = (name: string, own: URL) => new URL(url ? `map-jr-gl-worker-${name}.js` : own, url ? new URL(url, page) : page).href;
+    const page = globalThis.location?.href ?? import.meta.url, folder = (u: URL) => /^(https?|file):$/.test(u.protocol);
+    // A workerUrl that has no folder (a blob: or data: URL) takes the parts next to this module.
+    let base: URL | undefined;
+    try { base = url ? new URL(url, page) : undefined; } catch { /* the default below */ }
+    const at = (name: string, own: () => URL) => {
+        try { const u = base && folder(base) ? new URL(`map-jr-gl-worker-${name}.js`, base) : own(); return folder(u) ? u.href : undefined; } catch { return undefined; }
+    };
     // (Each URL is written out, so that a bundler finds it. The marker comment stops this library's own build from rewriting the line.
     // `?no-inline` keeps Vite from putting a file under 4 KB into the page script as a `data:` URL; a server ignores it.)
-    return {
-        geojson: at('geojson', new URL(/* @vite-ignore */ './map-jr-gl-worker-geojson.js?no-inline', import.meta.url)),
-        contour: at('contour', new URL(/* @vite-ignore */ './map-jr-gl-worker-contour.js?no-inline', import.meta.url)),
-        pmtiles: at('pmtiles', new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
+    const out = {
+        geojson: at('geojson', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-geojson.js?no-inline', import.meta.url)),
+        contour: at('contour', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-contour.js?no-inline', import.meta.url)),
+        pmtiles: at('pmtiles', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
     };
+    if (!out.geojson && !warnedParts) {
+        warnedParts = true;
+        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
+    }
+    return out as Record<string, string>;
 }
+let warnedParts = false;
 
 /**
  * The worker file, fetched once and kept as a blob URL so that the start-up workers share one request (#325). The URL

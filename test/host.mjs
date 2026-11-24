@@ -3386,13 +3386,16 @@ for (const renderer of ['worker', 'main']) {
                     const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
                     const host = lib.createMap(el, {style: {version: 8, sources: {sq: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'sq', type: 'circle', source: 'sq'}]}, renderer, attribution: false, onError: e => errors.push(e.message)});
                     for (let i = 0; i < 80 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+                    // (The tiles of the view, their retries and a query fail too: they add no second error.)
+                    await host.queryRenderedFeatures?.().catch?.(() => {});
+                    await new Promise(r => setTimeout(r, 2500));
                     host.destroy(); el.remove();
                     return errors;
                 }, renderer);
-                check(`[${renderer}] a part of the worker that does not load: the map reports an error that names the file (#79)`,
-                    failed.some(m => m.includes('[map-jr-gl] The worker could not load') && m.includes('map-jr-gl-worker-geojson.js')), JSON.stringify(failed));
+                check(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`,
+                    failed.length === 1 && failed[0].includes('[map-jr-gl] The worker could not load') && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
             } finally { await other.close(); }
-        } else skip(`[${renderer}] a part of the worker that does not load: the map reports an error that names the file (#79)`, `${browserName} does not show the requests of a worker to Playwright`);
+        } else skip(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`, `${browserName} does not show the requests of a worker to Playwright`);
     } catch (e) { check(`[${renderer}] the test of the parts of the worker was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }

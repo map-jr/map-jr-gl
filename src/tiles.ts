@@ -310,7 +310,11 @@ export function serveTiles(port: Port) {
         if (m.type === 'requests') rules = m.rules;
         else if (m.type === 'resourceResult') { asked.get(m.id)?.(m); asked.delete(m.id); }
         else if (m.type === 'style') builder.setStyle(m.layers, m.state);
-        else if (m.type === 'geojson') { try { await builder.setGeoJSON(m.source, m.bytes ? JSON.parse(new TextDecoder().decode(m.bytes)) : m.data, m.options, m.maxzoom); } finally { port.postMessage({id: m.id, result: null}); } }
+        // (A failure, as of the part of the GeoJSON code, goes back to the engine, which reports it: #79.)
+        else if (m.type === 'geojson') {
+            try { await builder.setGeoJSON(m.source, m.bytes ? JSON.parse(new TextDecoder().decode(m.bytes)) : m.data, m.options, m.maxzoom); port.postMessage({id: m.id, result: null}); }
+            catch (err) { port.postMessage({id: m.id, error: String((err as Error).message)}); }
+        }
         else if (m.type === 'need') builder.need(m.names);
         else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states, m.replace);
         else if (m.type === 'templates') builder.setTemplates(m.templates);

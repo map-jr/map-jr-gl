@@ -23,7 +23,8 @@ const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null;
  */
 let partUrls: Partial<Record<PartName, string>> = {};
 const fromUrl = async (partName: PartName) => {
-    const url = partUrls[partName]!;
+    const url = partUrls[partName];
+    if (!url) throw new Error(`[map-jr-gl] The worker could not load map-jr-gl-worker-${partName}.js, the part of the worker for ${partName}: it has no URL. Set workerUrl to an http(s) URL of map-jr-gl-worker.js.`);
     let blob = '';
     try {
         const res = await fetch(url);

@@ -32,6 +32,22 @@ export function setPartLoader(f: (name: PartName) => Promise<unknown>) { load = 
 const loading = new Map<PartName, Promise<unknown>>();
 export function part<K extends PartName>(name: K): Promise<Parts[K]> {
     let p = loading.get(name);
-    if (!p) { loading.set(name, p = load(name)); p.catch(() => {}); }
+    if (!p) {
+        const partName = name;
+        p = load(name).catch((err: Error) => { throw isPartFailure(err.message) ? err : new Error(`[map-jr-gl] The page could not load the part of the library for ${partName} (${err.message}). Serve the chunks of the library from the same folder and version as its entry.`); });
+        loading.set(name, p); p.catch(() => {});
+    }
     return p as Promise<Parts[K]>;
+}
+
+/** Whether an error message is the failure of a part (see `fromUrl` in worker.ts). */
+const isPartFailure = (message: string) => message.startsWith('[map-jr-gl]') && /could not load .*the part of the /.test(message);
+
+/** Wraps the events of one map so that the failure of each part is reported once, and not by each tile and query (#79). */
+export function oncePerPart<E extends {type: string; message?: string}>(emit: (e: E) => void): (e: E) => void {
+    const seen = new Set<string>();
+    return e => {
+        if (e.type === 'error' && e.message && isPartFailure(e.message)) { if (seen.has(e.message)) return; seen.add(e.message); }
+        emit(e);
+    };
 }
