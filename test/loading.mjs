@@ -174,7 +174,8 @@ for (const how of ['default URLs', 'plain workerUrl', 'blob: workerUrl', '<map-j
                 host = lib.createMap(el, {style, initialView: {center: [0, 0], zoom: 1}, attribution: false, onError: e => errors.push(e.message)});
             }
             if (!host) return {idle: false, errors, warnings};
-            const idle = await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 15000); });
+            // subscribe() calls only at a change, so a map that is idle already (the element is polled for above) counts at once.
+            const idle = host.state.get().idle || await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 15000); });
             const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
             g.drawImage(bmp, 0, 0);
             const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data), renderer = host.renderer;
