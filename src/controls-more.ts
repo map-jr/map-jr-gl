@@ -220,9 +220,14 @@ export class TerrainControl implements Control {
         const b = button(el, 'terrain', '', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => { map.setTerrain(map.getTerrain() ? null : this.options); name(); });
         const name = () => { const on = !!map.getTerrain(); b.title = ui(map, on ? 'TerrainControl.Disable' : 'TerrainControl.Enable', on ? 'Disable terrain' : 'Enable terrain'); b.setAttribute('aria-label', b.title); };
         name();
+        // The label follows a setTerrain or setStyle call of the app, as in MapLibre GL JS.
+        map.on('terrain', name);
+        map.on('styledata', name);
+        this.off = () => { map.off('terrain', name); map.off('styledata', name); };
         return el;
     }
-    onRemove() { this.el?.remove(); }
+    private off = () => {};
+    onRemove() { this.off(); this.el?.remove(); }
 }
 
 /**
