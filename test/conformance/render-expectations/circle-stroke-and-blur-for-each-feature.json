@@ -1,0 +1,7 @@
+{
+  "label": "circle stroke and blur for each feature",
+  "decision": "later",
+  "issue": 1703,
+  "reason": "Circle stroke and blur that are different for each feature are not applied.",
+  "pattern": "^circle-(stroke-color|stroke-width|stroke-opacity|blur)/(zoom-and-)?property-function$|^circle-blur/blending$|^regressions/mapbox-gl-js#6655$"
+}
