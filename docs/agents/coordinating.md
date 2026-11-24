@@ -79,6 +79,12 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 
 ## Merging
 
+- **Merge when `checks`, the four `browser-*` jobs and `render` have passed** (see `CLAUDE.md`). Do not wait for the
+  summary job `browser`: on 2026-11-24 it ran for about 6 s and waited for a runner 10.7 min (median of 15 runs,
+  #1602). A browser job that the job `changes` skipped counts as passed.
+- **Keep about eight pull requests in CI at once.** The account ran at most 27 jobs at the same time on 2026-11-24, and
+  a pull request that changes `src/` uses about 40 runner-minutes, so 25 open pull requests made each job wait up to
+  30 minutes. Start new workers as pull requests merge, not all at once.
 - **Read the source diff before you merge** (`git diff origin/main...origin/<branch> -- src | grep -E "^[+-]"`), and
   merge with the head SHA that you read.
 - **Test the merge after a worker rebased or force-pushed.** `t=$(git merge-tree --write-tree origin/main
