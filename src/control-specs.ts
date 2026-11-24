@@ -17,9 +17,10 @@ import type {StyleSpecification} from './compat-types.ts';
 // the file has loaded.
 const spec = <O extends object, M = typeof More>(name: string, make: (m: M, options: O, instance?: () => MapInstance) => Control, load: () => Promise<M> = () => import('./controls-more.ts') as Promise<M>, corner: ControlPosition = 'top-right') => (options: O & {position?: ControlPosition} = {} as O) => {
     const {position, ...rest} = options;
-    // The control reads this object, and a later spec with the same key copies its options into it, so that a new
-    // callback reaches a control that the map keeps (#1520).
-    const create = (instance?: () => MapInstance): Control & {update(o: object): void} => {
+    const create = (instance?: () => MapInstance): Control & {update(o: Record<string, unknown>): void} => {
+        // Each control reads its own copy of the options. A later spec with the same key replaces its functions, so that
+        // a new callback reaches a control that the map keeps, and a callback that the spec leaves out is gone (#1520).
+        const mine: Record<string, unknown> = {...rest};
         let real: Control | undefined, added = 0;
         const slot = document.createElement('div');
         slot.hidden = true;
@@ -30,13 +31,13 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
                 const now = ++added;
                 load().then(m => {
                     if (now !== added || !slot.parentNode) return; // removed (or added again) while the file loaded
-                    real = make(m, rest as O, instance);
+                    real = make(m, mine as O, instance);
                     slot.replaceWith(real.onAdd(map));
                 }, e => console.error(`[map-jr-gl] The control "${name}" could not be loaded. Check that the files of the library are served.`, e));
                 return slot;
             },
             onRemove(map: Map) { added++; slot.remove(); real?.onRemove(map); real = undefined; },
-            update(o) { Object.assign(rest, o); },
+            update(o) { for (const k in mine) if (typeof mine[k] === 'function' && !(k in o)) mine[k] = undefined; Object.assign(mine, o); },
         };
     };
     // (The key sorts the properties of each object, so that the order in which they are written does not matter; #1236.)

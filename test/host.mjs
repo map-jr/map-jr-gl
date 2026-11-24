@@ -2463,13 +2463,26 @@ for (const renderer of renderers) {
             list.querySelectorAll('button')[0].click();
             await new Promise(r => setTimeout(r, 300));
             out.newCallback = `${kept}/${later.join(',')}/${calls.length}`;
+            // One spec on two maps: an update of one map does not change the callback of the other (#1520).
+            const sharedA = [], sharedB = [], one = styles({entries, onStyleChange: e => sharedA.push(e.label)});
+            const el2 = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:400px;top:0;width:400px;height:300px;z-index:100'}));
+            const other = t.lib.createMap(el2, {style: t.style, renderer, attribution: false, controls: [one]});
+            host.update({...host.description, controls: []});
+            host.update({...host.description, controls: [one]});
+            host.update({...host.description, controls: [styles({entries, onStyleChange: e => sharedB.push(e.label)})]});
+            await until(() => el2.querySelector('.map-jr-ctrl-styles'));
+            el2.querySelector('.map-jr-ctrl-styles').click();
+            el2.querySelectorAll('.map-jr-styles-list button')[1].click();
+            await new Promise(r => setTimeout(r, 300));
+            out.twoMaps = `${sharedA.join(',')}/${sharedB.join(',')}`;
+            other.destroy(); el2.remove();
             host.destroy();
             el.remove();
             return out;
         }, renderer);
         check(`[${renderer}] the control styles() lists its entries at once, draws a picture of each style that loads after the first idle, and a choice sets the style, keeps the camera, calls onStyleChange once and returns the focus; a style that fails ends its picture at once, and focus that leaves closes the list`,
             picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.placeholder === 'p,p,p,p,p' && picked.labelOn && picked.glass === true && picked.fade === 'map-jr-styles-in' && picked.pageRule === '-/0px/1' && picked.again === 0 && picked.drawn < 15000 && picked.red === true
-            && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut && picked.newCallback === 'true/Streets/1', JSON.stringify(picked));
+            && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut && picked.newCallback === 'true/Streets/1' && picked.twoMaps === 'Red/', JSON.stringify(picked));
         // With prefers-reduced-motion a new picture does not fade in (#1528); the sheet of the control stays on the page.
         await page.emulateMedia({reducedMotion: 'reduce'});
         const stillFade = await page.evaluate(() => {
