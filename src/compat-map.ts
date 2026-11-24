@@ -750,7 +750,7 @@ export class Map extends CoreMap {
     listImages() { return [...this.imageNames]; }
     /** Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. */
     async loadImage(url: string) {
-        const res = await fetch(url);
+        const res = await this.fetchAs('Image')(url);
         if (!res.ok) throw httpError('image', url, res.status);
         return {data: await createImageBitmap(await res.blob())};
     }

@@ -1151,6 +1151,25 @@ for (const mode of renderers) {
     });
     check(`[${mode}] addProtocol: a raster and a raster-dem tile have the request type image, and an ImageBitmap, an HTMLImageElement and bytes are drawn; querySourceFeatures asks for the URL of a GeoJSON source as written (#603)`,
         Object.values(drawn.asked).length === 4 && Object.values(drawn.asked).every(a => a === 'image image/webp,*/*') && drawn.seen.bitmap === '255,0,0' && drawn.seen.element === '0,255,0' && drawn.seen.bytes === '0,0,255' && drawn.seen.demLoaded && drawn.keptWhole && drawn.urls.length === 2 && drawn.urls.every(u => u === 'drawn://https://example.com/points.json'), JSON.stringify(drawn));
+    // loadImage goes through the map's request path: a URL of addProtocol is answered by the protocol, and transformRequest
+    // sees the request (with the request type Image) and can rewrite its URL (#650).
+    {
+        const r = await page.evaluate(async () => {
+            const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = [], kinds = [];
+            const c = new OffscreenCanvas(3, 2), g = c.getContext('2d'); g.fillStyle = '#f00'; g.fillRect(0, 0, 3, 2);
+            const png = await (await c.convertToBlob({type: 'image/png'})).arrayBuffer();
+            mod.addProtocol('pic650', async request => { asked.push(request.url); return {data: png.slice(0)}; });
+            m.setTransformRequest((url, kind) => { if (url.startsWith('pic650:') || url.startsWith('https://example.com/')) kinds.push(kind); return url.startsWith('https://example.com/') ? {url: 'pic650://from-transform'} : undefined; });
+            const size = i => `${i.data.width}x${i.data.height}`;
+            try {
+                const direct = await m.loadImage('pic650://direct').then(size, e => String(e));
+                const rewritten = await m.loadImage('https://example.com/icon.png').then(size, e => String(e));
+                return {direct, rewritten, asked, kinds};
+            } finally { m.setTransformRequest(null); mod.removeProtocol('pic650'); }
+        });
+        check(`[${mode}] loadImage uses addProtocol and transformRequest (#650)`,
+            r.direct === '3x2' && r.rewritten === '3x2' && r.asked.join() === 'pic650://direct,pic650://from-transform' && r.kinds.join() === 'Image,Image', JSON.stringify(r));
+    }
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
