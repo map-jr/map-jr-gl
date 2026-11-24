@@ -3113,7 +3113,7 @@ for (const renderer of renderers) {
             a.destroy(); elA.remove();
             await new Promise(r => setTimeout(r, 300));
             const line = style.layers.find(l => l.type === 'line' && l['source-layer']);
-            b.update({style: {...style, layers: [...style.layers, {...line, id: 'w1141b', filter: ['y1141f']}]}, renderer, attribution: false});
+            b.update({style: {...style, layers: [...style.layers, {id: 'w1141b', type: 'symbol', source: line.source, 'source-layer': line['source-layer'], layout: {'text-field': ['number-format', 1, {locale: 'y1141-!!'}]}}]}, renderer, attribution: false});
             await new Promise(r => setTimeout(r, 300));
             await idle(b);
             await new Promise(r => setTimeout(r, 1000));
