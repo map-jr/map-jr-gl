@@ -94,6 +94,8 @@ async function main() {
     }
     if (left.length) {
         console.error(`[merge-main] These files have conflicts outside generated blocks. Resolve them, then \`git add\` them and \`git commit --no-edit\` (or \`git merge --abort\`):\n${left.map(f => '  ' + f).join('\n')}`);
+        // The generated blocks that took the text of main are written again only after the merge is complete.
+        for (const text of run.keys()) console.error(`[merge-main] Then run \`${text}\`, which writes the generated blocks that took the text of main, and commit the result.`);
         process.exit(1);
     }
     for (const [text, [cmd, ...args]] of run) {
