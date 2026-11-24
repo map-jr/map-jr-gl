@@ -53,10 +53,10 @@ What each scenario found:
 2. features after one click: 1
 3. slider at 200, zooms 14.00 and 14.00
 4. the second map is at 10.00, 50.00, zoom 6.00
-5. addProtocol and removeProtocol accepted the protocol
+5. a layer of a pmtiles:// source draws 92 features; the library read the archive itself (the protocol of the plugin was called 0 times)
 6. the control is in the page: true; fill-opacity after the slider: 0.7
 7. the inspect view is on; the style has 49 layers
-8. the control is in the page
+8. the control is in the page (an export of an image is not tested: the plugin reads map._requestManager, which the compat map does not have)
 9. events: move, load; layer from <Layer>: true; marker: true; control: true; popup: true; zoom after jumpTo: 13.00
 10. drag followed by the state: true; state change from outside: true; onMove that limits the latitude: true (after the drag: map 40.72000, limit 40.72000; during the drag the map went 0.01991° past the limit); warnings about setTransformCameraUpdate: 0 before the limit, 1 after it
 11. events: load; layer from <MglCircleLayer>: true; marker: true; control: true

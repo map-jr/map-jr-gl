@@ -111,6 +111,8 @@ test one status:
 | `skipped` | The run cannot do the test, and does not draw it. The test has the operation `pauseTiles`, or it compares a part of the canvas only (`reportWidth` or `reportHeight`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures` and the run could not download that package. |
 
 [Triage of the symbol render tests](render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
+[Triage of the other render-test groups](render-triage-other.md) does the same for `combinations`, `debug`,
+`hillshade-*`, `line-dasharray`, `line-gradient`, `line-pattern`, `regressions`, `sky` and `terrain`.
 [Triage of the globe render tests](render-triage-globe.md) does the same for the tests of `projection/globe/`.
 
 A test can script the map: `metadata.test.operations` of its style is a list of operations, and each operation is
@@ -310,6 +312,10 @@ The same step gives short names to the uniforms, attributes and varyings in the 
 `u_...`, `a_...` and `v_...`, and use those names only for that.
 It also gives short names to the local names in the shaders. Do not give a uniform a name without `u_`, and do not
 use the name of a local variable of a shader in JavaScript.
+
+The plugin `gl-constants` of `build.mjs` replaces each read of a WebGL constant such as `gl.TEXTURE_2D` with its
+number (`scripts/gl-constants.mjs`). It changes only reads from a variable named `gl`. When `src/` reads a constant
+that the table does not have, the build stops and names it: add its value from the WebGL specification.
 
 ## Other browsers and operating systems
 
