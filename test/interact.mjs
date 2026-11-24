@@ -2010,6 +2010,34 @@ for (const mode of renderers) {
         check(`[${mode}] the textures of colour ramps are deleted when their layers are removed or the style changes (#591)`,
             r.renderer === mode && r.start === 2 && r.removed === 0 && r.restyled === 2 && r.empty === 0, JSON.stringify(r));
     }
+    // #1698: line-gradient on a GeoJSON source is drawn whether `lineMetrics` is true, false or missing (the library
+    // measures the line for each source that a gradient uses). MapLibre GL JS rejects the style without `lineMetrics: true`.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:100px'}));
+            const out = {};
+            for (const lineMetrics of [true, false, undefined]) {
+                const src = {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20, 0], [20, 0]]}}, ...(lineMetrics === undefined ? {} : {lineMetrics})};
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {l: src}, layers: [
+                    {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'g', type: 'line', source: 'l', paint: {'line-width': 8, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, '#f00', 1, '#00f']}}]}});
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                const c = Object.assign(document.createElement('canvas'), {width: 200, height: 100}).getContext('2d');
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                c.drawImage(m.getCanvas(), 0, 0, 200, 100);
+                const px = x => [...c.getImageData(x, 50, 1, 1).data.slice(0, 3)];
+                out[String(lineMetrics)] = [px(60), px(140)];
+                m.remove();
+            }
+            el.remove();
+            return out;
+        });
+        // (Red is greater than blue at the start of the line, and the other way round at its end.)
+        const grad = ([a, b]) => a[0] > a[2] + 100 && b[2] > b[0] + 100;
+        check('[main] compat: line-gradient on a GeoJSON source is drawn along the line with lineMetrics true, false and missing (#1698)',
+            grad(r.true) && grad(r.false) && grad(r.undefined), JSON.stringify(r));
+    }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
     if (mode === 'main') {

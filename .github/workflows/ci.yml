@@ -198,6 +198,11 @@ jobs:
         with:
           path: .cache/maplibre-gl-js
           key: maplibre-tests-${{ hashFiles('test/conformance/render.mjs', 'test/conformance/maplibre-checkout.mjs') }}
+      # The tiles of the real-world tests (#665): a download of 32 MB that changes only with the version in the module.
+      - uses: actions/cache@v6
+        with:
+          path: .cache/mvt-fixtures-*
+          key: mvt-fixtures-${{ hashFiles('test/conformance/mvt-fixtures.mjs') }}
       - run: node build.mjs
       # (`shell: bash` sets pipefail, so a result below the floor fails the step and not only `tee`; #1481.)
       - run: pnpm test:render | tee render.txt

@@ -178,6 +178,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A miter join whose length is more than 127/63 (about 2.02) times the line width breaks into a notch, because the extrusion of the vertex overflows its byte (the render test `line-miter-limit/global-state` shows it).
 - This library draws the full miter up to `line-miter-limit`.
 
+### `line-gradient` and the GeoJSON option `lineMetrics`
+
+- **MapLibre GL JS:** A line layer with `line-gradient` needs a GeoJSON source with `lineMetrics: true`. Without it, the style fails to load with the error "layer specifies a line-gradient, which requires a GeoJSON source with `lineMetrics` enabled", and the map draws nothing.
+- This library measures the lines of each GeoJSON source that a `line-gradient` layer uses, so the gradient is drawn whether `lineMetrics` is `true`, `false` or missing. It does not read `lineMetrics` and does not warn when it is missing.
+
 ### The pixel ratio
 
 - **MapLibre GL JS:** Without the option `pixelRatio`, the canvas follows `devicePixelRatio` with no limit. A

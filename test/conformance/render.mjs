@@ -13,6 +13,7 @@ import path from 'node:path';
 import {chromiumOptions} from '../launch.mjs';
 import {ensureCheckout} from './maplibre-checkout.mjs';
 import {summarize, readExpectations, report, changes, skipReason} from './render-summary.mjs';
+import {ensureFixtures} from './mvt-fixtures.mjs';
 
 // An option that this script does not know, or --list without --filter, stops here instead of starting the full run of
 // about ten minutes (#1048). --help prints the comment above.
@@ -28,15 +29,18 @@ const root = path.resolve(import.meta.dirname, '../..'), repo = ensureCheckout()
 const arg = name => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const filter = arg('filter') ? new RegExp(arg('filter')) : null, limit = +(arg('limit') ?? Infinity), saveDir = arg('save');
 const testsDir = path.join(repo, 'test/integration/render/tests'), assets = path.join(repo, 'test/integration/assets');
+// The tiles of the real-world tests, which MapLibre's harness serves on port 2901 (#665); null when they could not be fetched.
+const fixtures = ensureFixtures();
 
 // Serves this library's build, the tests' assets (what their styles call local://) and the expected images.
 const types = {'.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.pbf': 'application/x-protobuf', '.mvt': 'application/x-protobuf', '.geojson': 'application/json', '.html': 'text/html'};
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), p = decodeURIComponent(url.pathname);
-    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p === '/' ? null : path.join(assets, p);
+    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p.startsWith('/mvt-fixtures/') && fixtures ? path.join(fixtures, p.slice(14)) : p === '/' ? null : path.join(assets, p);
     if (!file) { res.writeHead(200, {'content-type': 'text/html'}); return res.end('<body style="margin:0;background:#fff"><div id="map"></div>'); }
-    // A style or a TileJSON file of the assets names MapLibre's test server (local:// or port 2900): it gets this server.
-    try { let body = readFileSync(file); if (file.startsWith(assets) && file.endsWith('.json')) body = body.toString().replaceAll('local://', origin + '/').replaceAll('http://localhost:2900', origin); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(p.includes('/sparse204/') ? 204 : 404, {'access-control-allow-origin': '*'}); res.end(); } // (204 for those tiles, as the test server of MapLibre answers)
+    // A style or a TileJSON file of the assets names MapLibre's test servers (local://, port 2900, and port 2901 for the
+    // tiles of @mapbox/mvt-fixtures): they get this server.
+    try { let body = readFileSync(file); if (file.startsWith(assets) && file.endsWith('.json')) body = body.toString().replaceAll('local://', origin + '/').replaceAll('http://localhost:2900', origin).replaceAll('http://localhost:2901', origin + '/mvt-fixtures'); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(p.includes('/sparse204/') ? 204 : 404, {'access-control-allow-origin': '*'}); res.end(); } // (204 for those tiles, as the test server of MapLibre answers)
 }).listen(0);
 const origin = `http://localhost:${server.address().port}`;
 
@@ -99,7 +103,7 @@ async function worker(queue) {
         style['font-faces'] = {...fontFaces, ...style['font-faces']};
         const width = meta.width ?? 512, height = meta.height ?? 512;
         // A test stays skipped when it has an operation that this run cannot do. The reason is the name of the operation.
-        const why = skipReason(meta, name => { try { return readFileSync(path.join(assets, name), 'utf8'); } catch { return ''; } });
+        const why = skipReason(meta, name => { try { return readFileSync(path.join(assets, name), 'utf8'); } catch { return ''; } }, !!fixtures);
         if (why) { results.push({id, status: 'skipped', why}); continue; }
         // The time that the test waits by its own operations is added to the limit.
         const timeout = 8000 + (meta.operations ?? []).reduce((sum, o) => sum + ((o[0] === 'wait' || o[0] === 'sleep') && typeof o[1] === 'number' ? o[1] : 0), 0);
@@ -237,6 +241,19 @@ async function worker(queue) {
 }
 const queue = [...selected];
 await Promise.all(Array.from({length: 4}, () => worker(queue)));
+// A test whose status is not the one in render-tests.json runs again alone, and the second result counts. Four tests
+// at once load the machine, and a test near a limit can move under that load only (text-field/formatted-arabic gave
+// differ in full runs and 4.8%, near, in each of five runs alone, #1036). A change that the library causes shows alone
+// too. At most 50 tests run again, so that a change of many tests is not hidden and does not double the time.
+const perTest = path.join(root, 'test/conformance/render-tests.json');
+const committed = existsSync(perTest) ? JSON.parse(readFileSync(perTest, 'utf8')) : {};
+const moved = results.filter(r => r.status !== 'skipped' && committed[r.id.split(path.sep).join('/')] !== undefined && committed[r.id.split(path.sep).join('/')] !== r.status);
+if (moved.length && moved.length <= 50) {
+    const first = new Map(moved.map(r => [r.id, r]));
+    for (const r of moved) results.splice(results.indexOf(r), 1);
+    await worker(moved.map(r => r.id));
+    for (const r of results) if (first.has(r.id) && first.get(r.id).status !== r.status) console.log(`AGAIN: ${r.id.split(path.sep).join('/')} was ${first.get(r.id).status} with other tests at once and is ${r.status} alone; the second result counts.`);
+}
 await browser.close();
 server.close();
 // The ids have "/" between their parts on each system, so that the tracked files are the same everywhere.
@@ -253,8 +270,7 @@ for (const r of results) if (r.status === 'skipped') reasons[r.why] = (reasons[r
 if (summary.totals.skipped) console.log('Skipped, by reason: ' + Object.entries(reasons).map(([why, n]) => `${why} ${n}`).join(', '));
 for (const line of lines.slice(1)) console.log(line);
 // The tests whose status is not the one in the tracked file. A test near a limit can change with the machine.
-const perTest = path.join(dir, 'render-tests.json');
-if (existsSync(perTest)) for (const line of changes(JSON.parse(readFileSync(perTest, 'utf8')), summary.tests)) console.log(line);
+if (existsSync(perTest)) for (const line of changes(committed, summary.tests)) console.log(line);
 // A full run (no filter) records its totals, which the status table of the README is written from, and the status
 // of each test. The second file has no percentages and is sorted by id, so that its diff shows the tests that changed.
 // The files are written only from Playwright's own build of Chromium, which CI runs: another build draws some tests a
