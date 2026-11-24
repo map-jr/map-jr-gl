@@ -239,6 +239,51 @@ function blend(a: any, b: any, t: number, color: boolean): any {
 }
 
 /**
+ * EXPERIMENT (engine animations): a paint value of a layer that goes from one value to another and repeats. The engine
+ * evaluates it at each frame, so a value that is the same for all features of the layer reaches the GPU as a uniform,
+ * and no tile is built again.
+ */
+export interface LayerAnimation {
+    /** The id of the layer. */
+    layer: string;
+    /** For each paint property, the two values that it goes between. Each one is a value of the style specification. */
+    paint: Record<string, [unknown, unknown]>;
+    /** The time of one pass in milliseconds. */
+    duration: number;
+    /** Moves the start of the passes later, in milliseconds: two animations with another `delay` are out of step. */
+    delay?: number;
+    /** `true` starts each pass again at the first value, and `'alternate'` goes back and forth. @default true */
+    repeat?: boolean | 'alternate';
+    /** @default 'linear' */
+    easing?: 'linear' | 'ease' | 'ease-out';
+}
+/** The time of the frame that is drawn (the engine sets it): all animated values of a frame are of one moment. */
+export const clock = {now: 0};
+const EASINGS = {linear: (t: number) => t, ease, 'ease-out': (t: number) => 1 - (1 - t) ** 3};
+/**
+ * Puts the values of `a` into the layer. `start` is the time of the first pass. `live`: the engine draws the features of
+ * the layer one by one (see `live` in engine.ts), and a value can then be different for each feature.
+ */
+export function animateLayer(l: CompiledLayer, a: LayerAnimation, start: number, live: boolean) {
+    for (const k in l.p) {
+        const [name, kind, def, values] = SPEC[l.type][k], ends = a.paint?.[name], base = l.p[k];
+        if (!ends) continue;
+        if (kind !== 'number' && kind !== 'color') { warnOnce(`animations: "${name}" of the layer "${l.id}" is not a number or a color, and it is not animated.`); continue; }
+        const from = compileProp(ends[0], kind, def, values), to = compileProp(ends[1], kind, def, values);
+        if (!live && (from.dd || to.dd || base.dd)) { warnOnce(`animations: "${name}" of the layer "${l.id}" has a value for each feature, and only a value for the whole layer is animated. Use a value without "get" and "feature-state".`); continue; }
+        const span = Math.max(1, +a.duration || 0), curve = EASINGS[a.easing ?? 'linear'] ?? EASINGS.linear, shift = start + (+a.delay! || 0);
+        l.p[k] = {dd: false, zoom: true, tokens: base.tokens, base, eval(zoom, f) {
+            let t = ((clock.now || performance.now()) - shift) / span;
+            if (a.repeat === false) t = clamp01(t);
+            else if (a.repeat === 'alternate') { t = (t % 2 + 2) % 2; if (t > 1) t = 2 - t; }
+            else t = (t % 1 + 1) % 1;
+            return blend(from.eval(zoom, f), to.eval(zoom, f), curve(t), kind === 'color');
+        }} as Prop;
+    }
+}
+const clamp01 = (t: number) => t < 0 ? 0 : t > 1 ? 1 : t;
+
+/**
  * Paint transitions (#960), as in MapLibre GL JS: a paint value of `l` (compiled from `json`) that differs from the one
  * of the same layer before (`was`, compiled from `old`) goes from the old value to the new one, eased, over the
  * `duration` after the `delay` (ms) of its `*-transition`, or else of the style's `transition`, or else 300 and 0.

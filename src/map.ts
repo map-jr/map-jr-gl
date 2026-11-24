@@ -6,7 +6,8 @@ import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeS
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
-import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
+import type {CameraOptions, Command, EngineEvent, FontSource, LivePoint} from './engine.ts';
+import type {LayerAnimation} from './style.ts';
 import type {QueriedFeature} from './query.ts';
 import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
@@ -669,6 +670,8 @@ export class Map {
         if (this.wantsTiles) this.post({type: 'tileLoads', on: true});
         if (this.videos) this.videos.frame();
         for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
+        if (this.animations) this.post({type: 'animations', list: this.animations});
+        for (const source in this.livePoints) this.post({type: 'live', source, ...this.livePoints[source]});
         // (The padding of the camera, the fonts of `addFonts` and the report of the benchmark page are set by calls; #1050.)
         if (this.tr.padding.some(Boolean)) { this.post({type: 'jump', padding: this.tr.padding}); this.jumped = this.seq; }
         if (this.fontsAdded.length) this.post({type: 'fonts', fonts: this.fontsAdded});
@@ -1426,6 +1429,35 @@ export class Map {
     getStyle() { return this.rawStyle ? plain(this.rawStyle) : undefined; }
     // ---- feature state ----
     private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
+    private animations?: LayerAnimation[];
+    private livePoints: Record<string, {points: LivePoint[]; duration: number}> = {};
+    /**
+     * EXPERIMENT (engine animations): the paint values that repeat, in place of the ones before. The engine evaluates
+     * them at each frame. They do not keep the map from `idle`.
+     */
+    setAnimations(list: LayerAnimation[]) {
+        this.post({type: 'animations', list: this.animations = list});
+        return this;
+    }
+    /**
+     * EXPERIMENT (engine animations): the points of a GeoJSON source that the engine draws itself at each frame, for the
+     * `circle` layers of the source. A point with an id that the source had moves from where it is drawn to its new
+     * position over `duration` milliseconds, and the numbers of its properties go to their new values. `null` gives the
+     * source its tiles back. A query does not find these points.
+     */
+    setLivePoints(source: string, points: LivePoint[] | null, duration = 0) {
+        if (points) this.livePoints[source] = {points, duration}; else delete this.livePoints[source];
+        this.post({type: 'live', source, points, duration});
+        return this;
+    }
+    /**
+     * EXPERIMENT (engine animations): the center of the camera follows a live point at each frame, until the user moves
+     * the map or another call moves the camera. `null` ends it.
+     */
+    followLivePoint(source: string | null, id?: string | number) {
+        this.post({type: 'follow', source, id});
+        return this;
+    }
     private warnedTextId = false;
     /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
     private sendFeatureState(source: string, keys: string[]) {

@@ -1,6 +1,6 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import {hillshadeLights, LIGHTS, withFilter, screenTranslate, type CompiledLayer, type Light} from './style.ts';
-import {compileProp} from './expr.ts';
+import {compileProp, type Feature} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
@@ -627,6 +627,8 @@ export interface TerrainTile {
 }
 
 export interface Scene {
+    /** EXPERIMENT (engine animations): the points that are drawn one by one, by source: the place in Mercator units of the world, and the feature. */
+    live?: Map<string, {x: number; y: number; f: Feature}[]>;
     tr: Transform;
     layers: CompiledLayer[];
     items: Map<string, RenderItem<GLTile>[]>;
@@ -1171,6 +1173,8 @@ export class GLRenderer {
                 }
             }
             if ((L.type === 'fill-extrusion' || L.type === 'circle' && !!s.terrain) !== (pass === 'buildings') && pass !== 'all') continue;
+            const live = L.type === 'circle' ? s.live?.get(L.source!) : undefined;
+            if (live) { this.drawLive(L, live, tr); continue; }
             if (L.type === 'background' && this.globe && pass === 'all') {
                 // On the globe the background covers the sphere, tile by tile, and not the whole canvas.
                 const name = L.p.pattern.eval(zoom), place = name != null ? pattern(name, L.p.opacity.eval(zoom)) : null;
@@ -1476,6 +1480,53 @@ export class GLRenderer {
     }
 
     /** The matrix of a tile, and with the globe the place of the tile on the sphere. */
+    /**
+     * EXPERIMENT (engine animations): the circles of a live source. Each point is a tile of its own whose corner is the
+     * point: the place of the point is in the matrix, which is computed in double precision at each frame, and the
+     * four vertices are at 0, 0. Each paint value is evaluated for the point and goes to the GPU as a uniform, so a
+     * point can move and change at each frame with no new buffer. (With 3D terrain the circle is at the height 0.)
+     */
+    private drawLive(L: CompiledLayer, points: {x: number; y: number; f: Feature}[], tr: Transform) {
+        const gl = this.gl, zoom = tr.zoom, p = L.p, u = this.use('circle', tr), z = Math.max(0, Math.floor(zoom)), n = 2 ** z;
+        if (!this.liveQuad) {
+            this.liveQuad = gl.createVertexArray()!;
+            gl.bindVertexArray(this.liveQuad);
+            gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+            gl.bufferData(gl.ARRAY_BUFFER, new Int16Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.SHORT, false, 0, 0);
+        }
+        gl.bindVertexArray(this.liveQuad);
+        // (Attributes without a buffer read these constants: the place 0, 0, a white color and the radius 1.)
+        gl.vertexAttrib4f(1, 1, 1, 1, 1); gl.vertexAttrib2f(2, 0, 0); gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1);
+        this.bindDem(u, null, 0, 0);
+        gl.uniform1f(u.u_zt, 0);
+        gl.uniform1f(u.u_scale, tr.worldSize / n / EXTENT);
+        gl.uniform1f(u.u_cam, tr.cameraDistance);
+        gl.uniform4f(u.u_clip, -1, -1, 1, 1);
+        gl.uniform1f(u.u_lift, 0);
+        gl.uniform1i(u.u_depth, 2);
+        const ctx = {zoom, f: null as Feature | null};
+        for (const {x, y, f} of points) {
+            ctx.f = f;
+            if (L.filter && !L.filter(ctx)) continue;
+            const c = p.color.eval(zoom, f), sc = p.strokeColor.eval(zoom, f), a = sc[3] * p.strokeOpacity.eval(zoom, f);
+            const tl = screenTranslate(p.translate.eval(zoom, f), p.translateAnchor.eval(zoom, f), tr.bearing);
+            gl.uniform4f(u.u_color, c[0], c[1], c[2], c[3] * p.opacity.eval(zoom, f));
+            gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
+            gl.uniform1f(u.u_radius, p.radius.eval(zoom, f));
+            gl.uniform1f(u.u_strokeWidth, p.strokeWidth.eval(zoom, f));
+            gl.uniform1f(u.u_blur, p.blur.eval(zoom, f));
+            gl.uniform2f(u.u_translate, tl[0], tl[1]);
+            gl.uniform2f(u.u_pitch, +(p.pitchAlign.eval(zoom, f) === 'map'), +(p.pitchScale.eval(zoom, f) !== 'viewport'));
+            // (The copy of the world that is nearest to the center of the map.)
+            const id = {z, x: x * n, y: y * n, w: Math.round(mercX(tr.lng) - x), key: ''};
+            this.placeTile(u, id, tr.tileMatrix4(id));
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+    }
+    private liveQuad?: WebGLVertexArrayObject;
+
     private placeTile(u: Record<string, WebGLUniformLocation>, id: TileID, m: Float32Array | number[]) {
         this.gl.uniformMatrix4fv(u.u_matrix, false, m);
         if (this.globe && u.u_tileMerc) {

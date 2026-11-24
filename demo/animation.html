@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Map Jr. GL: engine animations (experiment)</title>
+<style>
+html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+#map { position: absolute; inset: 0; }
+#hud { position: absolute; left: 8px; top: 8px; z-index: 2; background: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; box-shadow: 0 1px 4px #0003; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="hud"></div>
+<script type="module">
+// EXPERIMENT (engine animations). A location dot in the style of iOS that the renderer draws and moves, with a
+// simulated GPS that gives a position once a second.
+//
+// Parameters of the address:
+//   renderer=main|worker   the thread that draws (default: auto)
+//   hz=1                   positions each second
+//   glide=1000             the time of a move in ms (default: the time between two positions)
+//   speed=15               meters each second
+//   follow                 the camera follows the dot
+//   n=0                    more live points that move at random, to find the limit
+//   dots=0                 points in tiles whose radius pulses for the whole layer
+//   projection=globe, pitch=60
+//   off, pan               for a comparison: no animation, and a camera that moves all the time
+import {createMap, points} from '/dist/map-jr-gl.js';
+
+const q = new URLSearchParams(location.search), num = (k, d) => q.has(k) ? +q.get(k) : d;
+const hz = num('hz', 1), glide = num('glide', 1000 / hz), speed = num('speed', 15), extra = num('n', 0), dots = num('dots', 0);
+const START = [-74.0065, 40.7085], COS = Math.cos(START[1] * Math.PI / 180), M = 111320;
+// A route: a rectangle of streets, in meters east and north of the start.
+const route = [[0, 0], [600, 250], [450, 650], [-200, 420], [-350, -150], [0, 0]];
+const lengths = route.slice(1).map((p, i) => Math.hypot(p[0] - route[i][0], p[1] - route[i][1])), total = lengths.reduce((a, b) => a + b);
+function at(meters) {
+  let d = meters % total, i = 0;
+  while (d > lengths[i]) d -= lengths[i++];
+  const a = route[i], b = route[i + 1], t = d / lengths[i], e = a[0] + (b[0] - a[0]) * t, n = a[1] + (b[1] - a[1]) * t;
+  return [START[0] + e / M / COS, START[1] + n / M];
+}
+
+// Pixels for each meter at zoom 0 and at this latitude: the radius of the accuracy doubles with each zoom level.
+const K = 512 / (40075016.686 * COS);
+const meters = ['interpolate', ['exponential', 2], ['zoom'], 0, ['*', ['get', 'accuracy'], K], 24, ['*', ['get', 'accuracy'], K * 2 ** 24]];
+const BLUE = '#0a7aff';
+
+const hud = document.getElementById('hud');
+const map = createMap('map', {
+  style: '/style.json',
+  renderer: q.get('renderer') ?? 'auto',
+  projection: q.get('projection') ?? undefined,
+  initialView: {center: START, zoom: num('zoom', 15.5), pitch: num('pitch', 0)},
+  data: {
+    me: {type: 'FeatureCollection', features: []},
+    fixes: {type: 'FeatureCollection', features: []},
+    crowd: {type: 'FeatureCollection', features: []},
+    dots: points(Array.from({length: dots}, () => [START[0] + (Math.random() - 0.5) * 0.03, START[1] + (Math.random() - 0.5) * 0.02]), {lngLat: p => p, properties: () => ({})}),
+  },
+  layers: [
+    // Points in tiles: one radius for the whole layer, which the renderer changes at each frame.
+    {id: 'dots', type: 'circle', source: 'dots', paint: {'circle-radius': 4, 'circle-color': '#d6453d', 'circle-opacity': 0.8}},
+    // The positions as the GPS gave them, in tiles: each one jumps.
+    {id: 'fixes', type: 'circle', source: 'fixes', paint: {'circle-radius': 3, 'circle-color': '#555', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1}},
+    {id: 'crowd', type: 'circle', source: 'crowd', paint: {'circle-radius': 5, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5}},
+    // The location dot: the accuracy on the ground, a ring that grows and fades, and the dot.
+    {id: 'me-accuracy', type: 'circle', source: 'me', paint: {'circle-radius': meters, 'circle-color': BLUE, 'circle-opacity': 0.15, 'circle-pitch-alignment': 'map'}},
+    {id: 'me-pulse', type: 'circle', source: 'me', paint: {'circle-radius': 9, 'circle-color': BLUE, 'circle-opacity': 0.4}},
+    {id: 'me-dot', type: 'circle', source: 'me', paint: {'circle-radius': 7, 'circle-color': BLUE, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5}},
+  ],
+});
+
+await map.once('load');
+// (`off`: no animation, and `pan`: the camera moves all the time. Together they give the frame rate of a map that only moves.)
+if (q.has('pan')) { let k = 0; const go = () => map.moveTo({center: [START[0] + (k++ % 2 ? 0.004 : -0.004), START[1]], duration: 4000}); go(); setInterval(go, 4000); }
+if (!q.has('off')) map.setAnimations([
+  {layer: 'me-pulse', paint: {'circle-radius': [9, 30], 'circle-opacity': [0.4, 0]}, duration: 1800, easing: 'ease-out'},
+  {layer: 'me-dot', paint: {'circle-radius': [7, 8]}, duration: 900, repeat: 'alternate', easing: 'ease'},
+  ...(dots ? [{layer: 'dots', paint: {'circle-radius': [3, 7]}, duration: 1200, repeat: 'alternate', easing: 'ease'}] : []),
+]);
+
+// The simulated GPS.
+const colors = ['#d6453d', '#2e9d5b', '#8a4fd3', '#e08a1e'];
+const crowd = Array.from({length: extra}, (_, i) => ({id: i, lngLat: [START[0] + (Math.random() - 0.5) * 0.02, START[1] + (Math.random() - 0.5) * 0.014], properties: {color: colors[i % 4]}}));
+const began = performance.now();
+let count = 0;
+function fix() {
+  if (q.has('off')) return;
+  const traveled = (performance.now() - began) / 1000 * speed, lngLat = at(traveled);
+  const accuracy = 25 + 20 * Math.sin(count++ / 4);
+  map.setLivePoints('me', [{id: 'me', lngLat, properties: {accuracy}}], glide);
+  map.patch({data: {fixes: {type: 'Point', coordinates: lngLat}}});
+  if (extra) {
+    for (const p of crowd) p.lngLat = [p.lngLat[0] + (Math.random() - 0.5) * 0.0006, p.lngLat[1] + (Math.random() - 0.5) * 0.0004];
+    map.setLivePoints('crowd', crowd, glide);
+  }
+}
+fix();
+setInterval(fix, 1000 / hz);
+// (`follow=page`: the page moves the camera to each position, for a comparison.)
+if (q.get('follow') === 'page') setInterval(() => map.moveTo({center: at((performance.now() - began) / 1000 * speed), duration: glide}), 1000 / hz);
+else if (q.has('follow')) map.followLivePoint('me', 'me');
+
+// The frames of the page (the time between two animation frames), to see a frame that came late.
+let last = 0, worst = 0, late = 0, frames = 0, fps = 0;
+(function tick(now) {
+  if (last) { const dt = now - last; frames++; if (dt > worst) worst = dt; if (dt > 25) late++; }
+  last = now;
+  requestAnimationFrame(tick);
+})(performance.now());
+let frameMs = 0;
+map.listen('stats', e => { fps = e.fps; frameMs = e.frameMs; });
+setInterval(() => {
+  hud.textContent = `renderer: ${map.state.get().renderer}\nmap: ${fps.toFixed(0)} frames/s, ${frameMs.toFixed(2)} ms of CPU each\npage: worst frame ${worst.toFixed(0)} ms, ${late} of ${frames} late\nGPS: ${hz}/s, glide ${glide} ms, ${extra} more live points, ${dots} dots in tiles`;
+  (window.log ??= []).push({fps: +fps.toFixed(1), frameMs: +frameMs.toFixed(2), worst: Math.round(worst), late, frames});
+  worst = 0; late = 0; frames = 0;
+}, 1000);
+</script>
+</body>
+</html>

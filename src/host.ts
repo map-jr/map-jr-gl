@@ -642,6 +642,28 @@ export interface MapInstance {
      */
     setFeatureState(target: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>): void;
     /**
+     * EXPERIMENT (engine animations, not a part of the API): paint values that go from one value to another and repeat.
+     * The renderer evaluates them at each frame.
+     * @param list The animations, in place of the ones before.
+     */
+    setAnimations(list: import('./style.ts').LayerAnimation[]): void;
+    /**
+     * EXPERIMENT (engine animations, not a part of the API): the points of a GeoJSON source that the renderer draws
+     * itself at each frame, for the `circle` layers of the source. A point with an id that the source had moves to its
+     * new position over `duration` milliseconds, and the numbers of its properties go to their new values.
+     * @param source The id of the source.
+     * @param points The points, or `null` to give the source its tiles back.
+     * @param duration The time of a move in milliseconds.
+     */
+    setLivePoints(source: string, points: import('./engine.ts').LivePoint[] | null, duration?: number): void;
+    /**
+     * EXPERIMENT (engine animations, not a part of the API): the center of the camera follows a live point at each frame,
+     * until the user moves the map or another call moves the camera.
+     * @param source The id of the source, or `null` to end it.
+     * @param id The id of the point.
+     */
+    followLivePoint(source: string | null, id?: string | number): void;
+    /**
      * Removes one key of the feature state of a feature, or its whole state when `key` is left out.
      * @param target Without `id`, the state of all features of the source is removed.
      * @param key The key to remove. Without it, the whole state is removed.
@@ -1279,6 +1301,9 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         state,
         queryFeatures,
         setFeatureState(target, value) { if (alive) map.setFeatureState(target, value); },
+        setAnimations(list) { if (alive) map.setAnimations(list); },
+        setLivePoints(source, points, duration) { if (alive) map.setLivePoints(source, points, duration); },
+        followLivePoint(source, id) { if (alive) map.followLivePoint(source, id); },
         removeFeatureState(target, key) { if (alive) map.removeFeatureState(target, key); },
         clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),
         clusterChildren: (id, clusterId) => cluster('clusterChildren', id, s => s.getClusterChildren(clusterId)),

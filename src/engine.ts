@@ -4,7 +4,7 @@ import {globeBuild} from './subdivide.ts';
 import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
-import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, transition, animateLayer, clock, type LayerAnimation, isGeometrySource, screenTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -69,6 +69,16 @@ export type Command =
     | {type: 'queryRendered'; id: number; box: [number, number, number, number]; sets: (QuerySet & {source: string})[]; geometry?: boolean}
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'}
+    /** EXPERIMENT (engine animations): the paint values that repeat, in place of the ones before. */
+    | {type: 'animations'; list: LayerAnimation[]}
+    /**
+     * EXPERIMENT (engine animations): the points of a source that the engine draws itself at each frame, in place of
+     * tiles (`null`: the source has tiles again). A point with an id that the source had moves from where it is
+     * drawn now to its new position, and its numbers go to their new values, over `duration` milliseconds.
+     */
+    | {type: 'live'; source: string; points: LivePoint[] | null; duration: number}
+    /** EXPERIMENT (engine animations): the center of the camera follows a live point, until a gesture or another camera command (`source: null` ends it too). */
+    | {type: 'follow'; source: string | null; id?: string | number}
     /** The map was removed: free the memory of the GPU. */
     | {type: 'destroy'}
     /** Which requests the page wants to change (see requests.ts), and the page's answer to one question. */
@@ -148,6 +158,19 @@ interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An ima
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
  */
 interface LabelState { placed: Placed; opacity: number; target: number; drawn?: Placed; drawnFrom?: Placed; turned?: boolean }
+
+/** EXPERIMENT (engine animations): a point of a live source, as the page gives it. */
+export interface LivePoint { id: string | number; lngLat: [number, number]; properties?: Record<string, unknown> }
+/** A live point on its way: from where it was drawn (0) to where it goes (1), in Mercator units of the world, from `t0` for `span` ms. */
+interface LiveState { id: string | number; x0: number; y0: number; x1: number; y1: number; p0: Record<string, unknown>; p1: Record<string, unknown>; t0: number; span: number }
+type LivePoint3 = {x: number; y: number; f: {type: 1; id: string | number; properties: Record<string, unknown>}};
+/** Where a live point is at a time, and its properties: a number is between its two values, and another value is the new one. */
+function liveAt(p: LiveState, now: number): LivePoint3 {
+    const t = p.span ? Math.min(1, Math.max(0, (now - p.t0) / p.span)) : 1;
+    let properties = p.p1;
+    if (t < 1) { properties = {...p.p1}; for (const k in properties) { const a = p.p0[k], b = properties[k]; if (typeof a == 'number' && typeof b == 'number') properties[k] = a + (b - a) * t; } }
+    return {x: p.x0 + (p.x1 - p.x0) * t, y: p.y0 + (p.y1 - p.y0) * t, f: {type: 1, id: p.id, properties}};
+}
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
     ? cb => globalThis.requestAnimationFrame(cb) : cb => setTimeout(() => cb(performance.now()), 16);
@@ -317,6 +340,13 @@ export class Engine {
     private cameraMovedAt = -1e9;
     /** How many sprite and font downloads are in progress. */
     private spritePending = 0;
+    /** EXPERIMENT (engine animations): the paint values that repeat, and when each one started (by its JSON). */
+    private anims: LayerAnimation[] = [];
+    private animStarts = new Map<string, number>();
+    /** EXPERIMENT (engine animations): the points that the engine draws itself, by source and id. */
+    private live = new Map<string, Map<string | number, LiveState>>();
+    /** EXPERIMENT (engine animations): the live point (source, id) that the center of the camera follows, until the camera is moved in another way. */
+    private followed: [string, string | number] | null = null;
     /** When the last paint transition ends (#960): the map draws until then and is not idle. */
     private transitionEnd = 0;
     /** The answers that the page requested before the engine started, while the first style is set. */
@@ -777,6 +807,7 @@ export class Engine {
             const json = new Map(style.layers.map(l => [l.id, l]));
             for (const l of this.layers) { const was = olds.get(l.id); if (was) this.transitionEnd = Math.max(this.transitionEnd, transition(l, json.get(l.id)!, was, style.transition, at)); }
         }
+        this.applyAnimations();
         this.zoomBuilt = new Set(this.layers.filter(l => l.type === 'fill-extrusion' && Object.values(l.p).some((p: any) => p?.dd && p.zoom)).map(l => l.source));
         this.imageSources = Object.keys(style.sources).filter(name => /^raster/.test(style.sources[name].type) && this.layers.some(l => l.source === name && l.visible));
         if (style.sprite && style.sprite !== this.spriteUrl) {
@@ -1094,6 +1125,9 @@ export class Engine {
                 this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
             case 'repaint': break;
+            case 'animations': this.anims = c.list; this.applyAnimations(); break;
+            case 'live': this.setLive(c.source, c.points, c.duration); break;
+            case 'follow': this.followed = c.source == null ? null : [c.source, c.id!]; break;
             case 'destroy': this.lost = true; this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
@@ -1108,7 +1142,36 @@ export class Engine {
         this.repaint();
     }
 
-    private stop() { this.ease = null; this.wheel = null; this.fling = null; this.grab = null; this.target = null; }
+    /** EXPERIMENT (engine animations): puts the animations into the compiled layers, which a new style compiles again. */
+    private applyAnimations() {
+        const now = performance.now(), starts = new Map<string, number>();
+        for (const l of this.layers) for (const k in l.p) { const base = (l.p[k] as any).base; if (base) l.p[k] = base; }
+        for (const a of this.anims) {
+            const key = JSON.stringify(a), start = this.animStarts.get(key) ?? now, l = this.layers.find(x => x.id === a.layer);
+            starts.set(key, start);
+            if (l) animateLayer(l, a, start, this.live.has(l.source!));
+        }
+        this.animStarts = starts;
+    }
+
+    /** EXPERIMENT (engine animations): see the command `live`. */
+    private setLive(source: string, points: LivePoint[] | null, duration: number) {
+        const had = this.live.has(source), now = performance.now();
+        if (!points) this.live.delete(source);
+        else {
+            const before = this.live.get(source), next = new Map<string | number, LiveState>();
+            for (const p of points) {
+                const was = before?.get(p.id), at = was && liveAt(was, now), x = mercX(p.lngLat[0]), y = mercY(p.lngLat[1]), properties = p.properties ?? {};
+                // (The short way around the world.)
+                const x0 = at ? at.x : x, x1 = x0 + ((x - x0 + 0.5) % 1 + 1) % 1 - 0.5;
+                next.set(p.id, {id: p.id, x0, y0: at ? at.y : y, x1, y1: y, p0: at ? at.f.properties : properties, p1: properties, t0: now, span: at ? Math.max(0, duration) : 0});
+            }
+            this.live.set(source, next);
+        }
+        if (had !== this.live.has(source)) this.applyAnimations();
+    }
+
+    private stop() { this.followed = null; this.ease = null; this.wheel = null; this.fling = null; this.grab = null; this.target = null; }
 
     /** Sets the view whose tiles are requested early. A newer movement replaces the view of an older one. */
     private aim(to: Transform) { this.target = to; }
@@ -1342,6 +1405,10 @@ export class Engine {
             f.done = k;
             if (t >= 1) this.fling = null, this.target = null;
         }
+        // EXPERIMENT (engine animations): the camera follows a live point. The center is the place of the point at the
+        // time of this frame, which is also the time that the point is drawn at, so the point does not move on the screen.
+        const f = this.followed, point = f && !this.ease && this.live.get(f[0])?.get(f[1]);
+        if (point) { const at = liveAt(point, now); tr.lng = lngFromMerc(at.x); tr.lat = latFromMerc(at.y); tr.constrain(); if (now < point.t0 + point.span) return true; }
         return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || glide);
     }
 
@@ -1566,6 +1633,7 @@ export class Engine {
             this.warmed = this.layers;
             this.atlas.warm(this.layers.filter(l => l.type === 'symbol' && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && !l.p.font.dd && (l.p.field.dd || l.p.field.eval(tr.zoom) !== '')).map(l => l.p.font.eval(tr.zoom)));
         }
+        clock.now = now;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;
@@ -1901,7 +1969,15 @@ export class Engine {
             const f = tr.globe!.frame(tr);
             globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, cam: f.cam, rays: tr.globe!.rays(tr), t: globeness, cosLat: Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180), tiles: tr.tileCover(0, 5, TILE_SIZE)};
         }
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene,
+        // EXPERIMENT (engine animations): where each live point is now. A point that moves, and a paint value that
+        // repeats in a layer that is drawn at this zoom, ask for the next frame. Neither one keeps the map from `idle`.
+        let live: Map<string, LivePoint3[]> | undefined, playing = this.anims.some(a => this.layers.some(l => l.id === a.layer && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom));
+        for (const [source, points] of this.live) {
+            const list: LivePoint3[] = [];
+            for (const p of points.values()) { list.push(liveAt(p, now)); if (now < p.t0 + p.span) playing = true; }
+            (live ??= new Map()).set(source, list);
+        }
+        const behind = hold || this.renderer.render({live, tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 
@@ -1948,7 +2024,7 @@ export class Engine {
         if (began - this.lastFrameAt > 100) this.repaint();
         this.lastFrameAt = began;
         this.wasIdle = idle;
-        if (busy) this.repaint();
+        if (busy || playing) this.repaint();
         const st = this.stats, end = performance.now();
         st.frames++; st.cpu += end - began;
         if (!st.since) st.since = began;
@@ -1957,7 +2033,7 @@ export class Engine {
             this.stats = {since: end, frames: 0, cpu: 0};
         }
         // After a pause the next burst of frames starts a fresh measurement instead of averaging in the idle time.
-        if (!busy) this.stats.since = 0;
+        if (!busy && !playing) this.stats.since = 0;
     }
 
     /**
