@@ -497,7 +497,7 @@ another line. The options of a contour source:
 | Option | Default | Description |
 |---|---|---|
 | `source` **required** | | The id of a `raster-dem` source. |
-| `thresholds` | | The intervals for each zoom level. Without it, the source has no lines. |
+| `thresholds` | | The intervals for each zoom level. Without it, the source has no lines, and the map warns one time in the console. |
 | `multiplier` | `1` | The map multiplies each height by this number. Use `3.28084` for feet. |
 | `overzoom` | `1` | How many zoom levels the elevation tiles are below the contour tiles. `2` gives smoother, less exact lines from fewer requests. |
 | `contourLayer` | `'contours'` | The name of the layer in the contour tiles, which `source-layer` names. |

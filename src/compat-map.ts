@@ -501,7 +501,7 @@ export class Map extends CoreMap {
     }
     /** Removes a source from the style, as in MapLibre GL JS. */
     removeSource(id: string) {
-        const user = this.rawStyle?.layers.find((l: any) => l.source === id);
+        const user = this.rawStyle?.layers.find((l: any) => l?.source === id);
         return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
@@ -644,7 +644,7 @@ export class Map extends CoreMap {
     /** The style, as in MapLibre GL JS: without its custom layers. */
     getStyle() { const style = super.getStyle(); if (style) style.layers = style.layers.filter((l: {type: string}) => l.type !== 'custom'); return style; }
     /** Returns the ids of the style layers, from the bottom layer up. */
-    getLayersOrder(): string[] { return this.rawStyle?.layers.map((l: any) => l.id) ?? []; }
+    getLayersOrder(): string[] { return this.rawStyle?.layers.filter((l: any) => l).map((l: any) => l.id) ?? []; }
     /** Returns the value of a paint property as the style sets it, or `undefined` when the style does not set it. */
     getPaintProperty(layerId: string, name: string): unknown { return this.getLayer(layerId)?.paint?.[name]; }
     /** Returns the value of a layout property as the style sets it, or `undefined` when the style does not set it. */
@@ -809,8 +809,8 @@ export class Map extends CoreMap {
 
     protected override styleChanged() {
         this.styleImages();
-        if (this.customs) for (const l of this.rawStyle.layers ?? []) if (l.type === 'custom' && !l.implementation && this.customs.has(l.id)) Object.defineProperty(l, 'implementation', {value: this.customs.get(l.id)});
-        if (!this.syncQuery && Object.values<any>(this.rawStyle.sources ?? {}).some(src => src.type === 'geojson' && src.data && typeof src.data === 'object')) import('./sync-query.ts').then(m => { this.syncQuery = m; });
+        if (this.customs) for (const l of this.rawStyle.layers ?? []) if (l?.type === 'custom' && !l.implementation && this.customs.has(l.id)) Object.defineProperty(l, 'implementation', {value: this.customs.get(l.id)});
+        if (!this.syncQuery && Object.values<any>(this.rawStyle.sources ?? {}).some(src => src?.type === 'geojson' && src.data && typeof src.data === 'object')) import('./sync-query.ts').then(m => { this.syncQuery = m; });
     }
 
     /**

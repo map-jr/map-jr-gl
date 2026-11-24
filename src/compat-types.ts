@@ -231,8 +231,8 @@ type OptionsOf<C extends abstract new (...args: any) => unknown> = NonNullable<C
 export type NavigationControlOptions = OptionsOf<typeof NavigationControl>;
 /**
  * The options of `new GeolocateControl(options)`. `showAccuracyCircle` has no effect: the control shows a dot without
- * the circle. `zoom` is the lowest zoom that the map takes at the position (default 14). MapLibre GL JS has
- * `fitBoundsOptions` for that, which this library does not accept.
+ * the circle. `zoom` is the lowest zoom that the map takes at the position. Without `zoom`, `fitBoundsOptions.maxZoom`
+ * sets it, and the default is 14. The other members of `fitBoundsOptions` have no effect and warn once.
  */
 export type GeolocateControlOptions = OptionsOf<typeof GeolocateControl>;
 /** The options of `new FullscreenControl(options)`. `container` has no effect: the container of the map goes fullscreen. */

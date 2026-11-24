@@ -8,7 +8,9 @@ writing); this brief has the steps.
 1. Read the issue: `gh api repos/map-jr/map-jr-gl/issues/N` (and `…/N/comments`), or `mcp__github__issue_read`
    where `gh` is missing. Start at the files and lines that your prompt names; do not survey the repository. Check
    that the fault is still on `origin/main`. If it is fixed, change nothing and report the commit.
-2. `git fetch origin main && git checkout -b <branch> origin/main && pnpm install --frozen-lockfile`.
+2. `git fetch origin main && git checkout -b <branch> origin/main && pnpm install --frozen-lockfile &&
+   pnpm install --frozen-lockfile --dir website`. The packages of `website/` take about 5 s, and without them
+   `pnpm test` fails in `comment-reflow.test.ts` and `pnpm test:consistency` checks less than CI does (#1296).
 3. Make the smallest change that resolves the issue, with a test that fails without it. Do the parts that your
    prompt names, and leave out a part that is large or needs the owner.
 4. Run the new test against the code without the fix, and give both results in the report:
