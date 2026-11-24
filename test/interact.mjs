@@ -3613,6 +3613,10 @@ for (const mode of renderers) {
                 window.coopDrag.moves = [];
                 window.coopDrag.record = e => window.coopDrag.moves.push(e.touches.length + ':' + e.defaultPrevented);
                 document.addEventListener('touchmove', window.coopDrag.record);
+                // (The hint comes with the code of cooperativeGestures, which loads on demand.)
+                while (!el.querySelector('.map-jr-cooperative-gesture-screen')) await new Promise(r => setTimeout(r, 20));
+                const hint = el.querySelector('.map-jr-cooperative-gesture-screen');
+                new MutationObserver(() => { if (hint.style.opacity === '1') window.coopDrag.hintAt = performance.now(); }).observe(hint, {attributes: true});
             }, entry);
             const cdp = await page.context().newCDPSession(page);
             const touch = (type, touchPoints = []) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints});
@@ -3623,6 +3627,10 @@ for (const mode of renderers) {
             for (let i = 1; i <= 5; i++) await touch('touchMove', [{id: 0, x: 400, y: 300 - i * 4}]);
             await touch('touchEnd');
             out.one = await page.evaluate(() => window.coopDrag.moves.splice(0).join());
+            // (Chromium sends a touchstart that comes less than about 90 ms after the hint was drawn during a scroll of the
+            // page as uncancelable, and the first touchmove after it too. A hand cannot start a second touch that soon, so
+            // the check waits until the hint of the finger has shown and 300 ms have passed; #1679, #1687.)
+            await page.waitForFunction(() => window.coopDrag.hintAt && performance.now() - window.coopDrag.hintAt > 300, null, {timeout: 5000});
             for (const [name, target] of [['control', ctrl], ['outside', {x: 850, y: 120}]]) {
                 const at = i => { const x = 500 + (target.x - 500) * i / 20, y = 200 + (target.y - 200) * i / 20; return [{id: 0, x, y}, {id: 1, x: x - 100, y: y + 50}]; };
                 await touch('touchStart', at(0));
