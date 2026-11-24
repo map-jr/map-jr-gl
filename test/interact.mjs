@@ -4626,6 +4626,40 @@ for (const mode of renderers) {
         // The times are at least the duration (the old defaults were 300 and 500 ms) and less than twice it, for a loaded machine.
         check('[main] maplibre-compat: zoomIn and zoomOut take 500 ms and resetNorth and resetNorthPitch 1000 ms by default, as in MapLibre GL JS (#1242)',
             [m1242.ml, m1242.compat].every(t => [500, 500, 1000, 1000].every((d, i) => t[i] >= d - 20 && t[i] < 2 * d)), JSON.stringify(m1242));
+        // #1724: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (served at /ml/).
+        const m1724 = {};
+        for (const lib of ['ml', 'compat']) for (const snapAt of [0, 20]) {
+            await page.evaluate(async ([lib, snapAt]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m1724 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 15, bearingSnap: snapAt});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => { m.once('moveend', r); m.snapToNorth({duration: 0}); setTimeout(r, 300); });
+                window.m1724out = [+m.getBearing().toFixed(1)];
+                m.jumpTo({bearing: 0});
+            }, [lib, snapAt]);
+            // A slow rotate drag of a few degrees, released without inertia.
+            await page.mouse.move(200, 150); await page.mouse.down({button: 'right'});
+            for (let i = 1; i <= 10; i++) { await page.mouse.move(200 + i * 1.5, 150); await page.waitForTimeout(40); }
+            await page.waitForTimeout(300); await page.mouse.up({button: 'right'});
+            await page.evaluate(async () => { await new Promise(r => setTimeout(r, 1500)); window.m1724out.push(+window.m1724.getBearing().toFixed(1)); window.m1724.jumpTo({bearing: 3}); });
+            // A slow pan with the left button at bearing 3, released without inertia.
+            await page.mouse.move(200, 150); await page.mouse.down();
+            for (let i = 1; i <= 10; i++) { await page.mouse.move(200 + i * 5, 150 + i * 3); await page.waitForTimeout(40); }
+            await page.waitForTimeout(300); await page.mouse.up();
+            m1724[lib + snapAt] = await page.evaluate(async () => {
+                const m = window.m1724;
+                await new Promise(r => setTimeout(r, 1500));
+                const out = [...window.m1724out, +m.getBearing().toFixed(1)];
+                const el = m.getContainer(); m.remove(); el.remove();
+                return out;
+            });
+        }
+        // [bearing after snapToNorth from 15, after the rotate drag, after the pan from bearing 3]: 0 keeps all three; 20 turns all north.
+        check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
+            ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
+            && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
