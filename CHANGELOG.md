@@ -47,6 +47,9 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   flat files such as `docs/api.md` are removed. A link or a prompt that names a flat file names the page of
   `docs/reference/` or `docs/guide/` instead, for example `docs/reference/map.md` and
   `docs/reference/description.md` for `docs/api.md` ([#1510]).
+- Both entries: with `cooperativeGestures` on, two fingers pan, zoom and rotate the map and no longer change the
+  pitch, so a touch does not tilt the map while the option is on. MapLibre GL JS tilts with three fingers there
+  ([#1755]).
 
 ### New
 
@@ -55,6 +58,7 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   ([#1550]). The pictures apply the `map-jr:ssr` overrides of the style, `preview.ssr: false` turns them off, and
   `preview.style` changes the style of a picture only ([#1560]). The list has the glass look of the other controls
   ([#1529]). Its code loads only when a map adds the control.
+  The recipe `docs/recipes/styles.md` shows the control ([#1758]).
 - `@map-jr/map-jr-gl`: an overlay has `patch(options)`, which changes only the options that it gets ([#1645]).
 - `@map-jr/map-jr-gl`: `queryElevation` takes a second argument `{source, zoom}`, as in the compat entry ([#1623]).
 - `@map-jr/map-jr-gl/server`: `renderToSVG` and `renderFirstView` take `globalState`, and `renderElement` passes
@@ -70,6 +74,8 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   replaces the click.
 - `@map-jr/map-jr-gl/server`: `renderToSVG`, `renderFirstView` and `renderToImage` take `fitMaxZoom`, and the fit to
   `bounds` stops there, else at `maxZoom` of `renderFirstView`, else at 22, as the map does ([#1681]).
+- `@map-jr/map-jr-gl`: the entry exports the type `ResourceType` of the second parameter of `transformRequest`
+  ([#1754]).
 - `@map-jr/map-jr-gl/maplibre-compat`: the constructor reads `pixelRatio` ([#1621]), `GeolocateControl` reads
   `fitBoundsOptions.maxZoom` ([#1580]), and `LogoControl` takes `{compact}` and `crossSourceCollisions` has
   a type. `compact` and `crossSourceCollisions: false` have no effect and warn once ([#1576], [#1619]).
@@ -83,7 +89,8 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   compat entry, the constrain function and the tile cover parameters ([#1655]).
 - Both entries: `toBlob()` waits for a style that is still loading ([#1635]), a query leaves out the features of a
   layer removed while it runs ([#1642]), and `idle` with 3D terrain waits for the raster tiles drawn on the ground
-  ([#1521]). Text along a line on steep 3D terrain is no longer mirrored ([#1548]).
+  ([#1521]). `idle` waits for an overview tile that stands in for a failed tile while it waits between its first
+  retries ([#1750]). Text along a line on steep 3D terrain is no longer mirrored ([#1548]).
 - `@map-jr/map-jr-gl`: a change of `terrain` alone in `update()` or `patch()` no longer loads the style again, so the
   map reaches `idle` sooner and requests no style or TileJSON ([#1677]).
 - `@map-jr/map-jr-gl/maplibre-compat`: `cameraForBounds`, `fitBounds` and `fitScreenCoordinates` honor `bearing` and
@@ -105,6 +112,10 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   another size or shape, and it covers a larger element instead of leaving bands of the page; with `bounds` it has the
   size of the element ([#1665]). The SVG is now inside a box with `data-map-jr-ssr`: CSS or code that selects it as a
   direct child of the element (`#map > svg`) must use a descendant selector (`#map svg`) instead.
+- Both entries: with `cooperativeGestures` on, a two-finger touch no longer shows the hint or fires
+  `cooperativegestureprevented`, also when the fingers touch the map or lift one after the other ([#1755]).
+- `@map-jr/map-jr-gl/vue`: the server render of the `ssr` prop passes `globalState` and `initialView.fitMaxZoom`, so
+  the first view matches the live map ([#1756]).
 - `@map-jr/map-jr-gl/vue`: the optional props of `MapJr` accept `null` in their types ([#1585]).
   `@map-jr/map-jr-gl/react`: the files start with `'use client'` ([#1578]).
 - Messages: a mistake that had no message now gets one. In every build: a change of style with unsupported layer types
@@ -113,8 +124,9 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   and a `number-format` locale that is not text ([#1571]). In the development build: an unknown option of
   `overlay()`, `update()` and `patch()` ([#1660]), a duplicate control ([#1661]), `view` with `initialView.bounds`
   ([#1599]), an unknown paint or layout property of a layer, with the nearest name ([#1680]), and a misplaced
-  `["zoom"]`, for which the compat entry fires MapLibre's `error` ([#1667]). A warning of an expression prints once
-  on the page and not once per worker ([#1634]).
+  `["zoom"]`, for which the compat entry fires MapLibre's `error` ([#1667]). The layers of an `update()` that go to
+  the map as edits are checked at the call, not at the next `idle`, and get the check of `["zoom"]` too ([#1763]). A warning of
+  an expression prints once on the page and not once per worker ([#1634]).
 - Messages: the HTTP errors of the server renderer and of marker images ([#1572]) and the error of `queryElevation`
   without a `raster-dem` source ([#1597]) start with `[map-jr-gl]`. Messages and the labels of the `colorScheme()`
   control use US spelling ([#1563]). Code that matches the old texts must change.
@@ -185,6 +197,12 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
 [#1680]: https://github.com/map-jr/map-jr-gl/pull/1680
 [#1681]: https://github.com/map-jr/map-jr-gl/pull/1681
 [#1691]: https://github.com/map-jr/map-jr-gl/pull/1691
+[#1750]: https://github.com/map-jr/map-jr-gl/pull/1750
+[#1754]: https://github.com/map-jr/map-jr-gl/pull/1754
+[#1755]: https://github.com/map-jr/map-jr-gl/pull/1755
+[#1756]: https://github.com/map-jr/map-jr-gl/pull/1756
+[#1758]: https://github.com/map-jr/map-jr-gl/pull/1758
+[#1763]: https://github.com/map-jr/map-jr-gl/pull/1763
 
 ## 0.10.0 (2026-11-22)
 
