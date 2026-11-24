@@ -1,0 +1,7 @@
+{
+  "label": "line-gradient with step is blended into a smooth gradient or drawn in one color",
+  "decision": "later",
+  "issue": 1808,
+  "reason": "line-gradient with step is blended into a smooth gradient or drawn in one color.",
+  "pattern": "^(line-gradient/gradient-step-zoomed|line-gradient/gradient-step-zoomed-cross-continental)$"
+}

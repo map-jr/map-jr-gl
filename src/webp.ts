@@ -2,7 +2,7 @@
  * Image decoders for the server renderer, where there is no browser to decode elevation tiles: PNG, and lossless
  * WebP (VP8L), the usual format of WebP elevation tiles. Lossy WebP is not handled.
  */
-import type {Pixels} from './contour.ts';
+import type {Pixels} from './exact-pixels.ts';
 
 class Bits {
     private pos = 0; private bit = 0;

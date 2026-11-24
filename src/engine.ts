@@ -13,7 +13,8 @@ import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestA
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
-import {fetchTile, heads} from './pmtiles.ts';
+import {fetchTile, heads} from './tile-fetch.ts';
+import {oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
 
 export interface CameraOptions {
@@ -121,6 +122,21 @@ export type EngineEvent =
     | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string}
     /** After `tileLoads`: the tile `key` (`source|z/x/y`) has loaded. */
     | {type: 'tileLoaded'; key: string};
+
+/**
+ * The parts of the tile code (see parts.ts) that the sources of a style need. A part that is not named here still
+ * loads when a tile needs it; naming it saves the wait for its file at the first tile. (A part for an expression of
+ * the layers, as `within` would be, is chosen here from `style.layers`.)
+ */
+function partsFor(style: ResolvedStyle): PartName[] {
+    const out = new Set<PartName>();
+    for (const s of Object.values(style.sources)) {
+        if (s.type === 'geojson') out.add('geojson');
+        if (s.contour) out.add('contour');
+        if (s.tiles?.some(t => t.startsWith('pmtiles://'))) out.add('pmtiles');
+    }
+    return [...out];
+}
 
 /**
  * Describes what a source's tiles depend on: first the source itself, then everything about its layers that is baked
@@ -350,6 +366,8 @@ export class Engine {
     private dpr = 1;
 
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
+        // A part of the tile code that did not load fails each tile and query that needs it: the map reports it once (#79).
+        this.emit = oncePerPart(emit);
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
@@ -718,6 +736,8 @@ export class Engine {
      * showed through in wedges until the cut tiles arrived: #463.)
      */
     private globeWait: {stops: number[]; since: number} | null = null;
+    /** The parts of the tile code (see parts.ts) that the tile workers were told to load. */
+    private partsSent = new Set<PartName>();
     /** What the tile workers last got from `setStyle` and `setContours`: they get it again only when it changes. */
     private sentRules?: string;
     private sentContours?: string;
@@ -794,8 +814,11 @@ export class Engine {
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
         if (reload) {
+            // The parts of the tile code that the style needs start to load before the first tile asks for one (#79).
+            const parts = partsFor(style).filter(n => !this.partsSent.has(n));
+            if (parts.length) { for (const n of parts) this.partsSent.add(n); for (const b of this.backends) b.need(parts); if (parts.includes('pmtiles')) part('pmtiles').catch(() => {}); }
             // Only the GeoJSON sources whose data or options changed are indexed again (#8).
-            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed); } }
+            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) Promise.resolve(b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed)).catch(err => this.emit({type: 'error', message: String(err.message)})); } }
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
             for (const {head} of Object.values(style.sources)) if (head && !heads.has(head.url)) { heads.set(head.url, head.bytes); for (const b of this.backends) b.setHead(head.url, head.bytes); }
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), ids = promoteIds(style), text = JSON.stringify([contours, ids]);

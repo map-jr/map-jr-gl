@@ -66,14 +66,17 @@ writing); this brief has the steps.
   2026-11-19 a change left the filter NEAREST on a texture that terrain shares, and reported it as found, #1071.)
 - Measure the size before the change on `origin/main` (`pnpm test:size` in the copy of `without-fix.mjs`, or in a
   worktree of `origin/main`); do not write "not measured".
-- An entry with the label `wontfix` in `test/conformance/render-expectations.json` needs the owner: write it under
+- A file with the decision `wontfix` in `test/conformance/render-expectations/` needs the owner: write it under
   "Needs owner".
 - A new text or check kind of `src/mistakes.ts` takes the number of its issue (the comment above `texts[30]` says
   how). Do not take the next free number: another branch takes it too.
 - A test that fails locally but passes in the `checks` and `browser` jobs of `main` is load on this machine. Say so
   in the report, and do not change the test for it. A test that fails in CI too is a fault.
-- Bring your branch up to date by merging `origin/main`, not by a rebase that squashes it into one commit. After a
-  merge, a rebase or a force-push, check that `git diff origin/main...HEAD -- src` has only your lines.
+- Bring your branch up to date with `node scripts/agents/merge-main.mjs`, not with a bare `git merge origin/main` or a
+  rebase that squashes it into one commit. The script merges `origin/main`, writes again each generated block or
+  file that is in conflict (the reference tables, the recipes, `render-result.json`), commits the merge, and stops
+  with a list of the files when a conflict is outside generated text (#1863). After a merge, a rebase or a
+  force-push, check that `git diff origin/main...HEAD -- src` has only your lines.
 - Two switches help to reproduce faults in Chromium: `CPU_THROTTLE=<rate>` (in `test/host.mjs` and
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
   takes WebGL away from workers, as in WebKit on Linux and Windows.

@@ -19,7 +19,7 @@ so no line says "Not inspected".
 
 The column "Action" says what follows. An issue number is a cause that has its own issue; the list below the
 table names the causes that this triage found. "label" names a label of
-`test/conformance/render-expectations.json`; the section "Labels" says which of these the file already has.
+`test/conformance/render-expectations/`; the section "Labels" says which of these the folder already has.
 
 | Test | Result | Cause | Action |
 |---|---|---|---|
@@ -216,7 +216,7 @@ Three tests have a difference whose cause is not known: `regressions/mapbox-gl-j
 
 ## Labels
 
-The file `render-expectations.json` already gives a label to 29 tests of the table: the two
+The folder `render-expectations/` already gives a label to 29 tests of the table: the two
 `combinations/heatmap-translucent--*-opaque` tests, 13 `debug/` tests of the label "debug drawing", the six roll
 tests of `sky/roll/` and `terrain/fog-*-roll`, `line-dasharray/zero-length-gap`, `terrain/fog-sky-blend-globe`,
 `terrain/dem-cell-centre-hillshade-peak`, four `terrain/` tests of "pitch above 60 degrees" and

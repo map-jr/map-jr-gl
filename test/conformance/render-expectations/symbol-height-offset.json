@@ -1,0 +1,7 @@
+{
+  "label": "symbol-height-offset",
+  "decision": "later",
+  "issue": 1007,
+  "reason": "symbol-height-offset and its anchor are not read.",
+  "pattern": "^symbol-height-offset/|^projection/globe/symbol-height-offset-tile-retention$|^terrain/symbol-height-(offset(-building|-occluded-ground)?|anchor-(absolute|ground))$"
+}

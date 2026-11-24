@@ -54,6 +54,9 @@ const sizes = [
     ['react.js, without the page script', gz(['react.js']), 8],
     // The web component (`@map-jr/map-jr-gl/element`), without the page script that it imports, which is counted above (#826).
     ['element.js, without the page script', gz(['element.js']), 4],
+    // The parts of the worker that a worker loads when the style needs one (src/parts.ts, #79). They are not in the
+    // download of a usual map.
+    ...readdirSync('dist').filter(f => /^map-jr-gl-worker-\w+\.js$/.test(f)).map(f => [`${f}, on demand`, gz([f]), 8]),
     // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
     ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 56],
 ];

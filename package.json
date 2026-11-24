@@ -171,6 +171,10 @@
       "types": "./dist/types/worker.d.ts",
       "default": "./dist/map-jr-gl-worker.js"
     },
+    "./worker-*": {
+      "types": "./dist/types/worker-part.d.ts",
+      "default": "./dist/map-jr-gl-worker-*.js"
+    },
     "./package.json": "./package.json"
   },
   "module": "./dist/map-jr-gl.js",

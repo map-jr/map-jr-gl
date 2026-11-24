@@ -2,6 +2,8 @@
  * Reads tiles straight out of a PMTiles (v3) archive with HTTP range requests, so a whole tileset can sit on plain
  * static hosting. A source points at one with `url: "pmtiles://https://example.com/tiles.pmtiles"`.
  */
+import {heads} from './tile-fetch.ts';
+
 type Fetch = typeof fetch;
 interface Entry { id: number; offset: number; length: number; run: number }
 export interface PMHeader {
@@ -9,7 +11,6 @@ export interface PMHeader {
     internalCompression: number; tileCompression: number; tileType: number; minZoom: number; maxZoom: number;
 }
 
-export const PM_PREFIX = 'pmtiles://';
 const TILE_TYPES = ['', 'mvt', 'png', 'jpeg', 'webp', 'avif'];
 
 async function inflate(bytes: Uint8Array, compression: number): Promise<Uint8Array> {
@@ -54,9 +55,6 @@ function parseDirectory(b: Uint8Array): Entry[] {
     });
     return entries;
 }
-
-/** The first bytes of archives (header and root directory) that another thread has read already, by URL. */
-export const heads = new Map<string, Uint8Array>();
 
 const LIMIT = 64 << 20;
 const tooLarge = (url: string, n: number) => new Error(`[map-jr-gl] PMTiles ${url}: the server ignores Range requests, so each tile would download the whole file (${Math.round(n / 1048576)} MB). Serve the file from a server that supports Range requests.`);
@@ -155,24 +153,4 @@ export function archive(url: string, fetchFn?: Fetch): PMTiles {
     let a = archives.get(url);
     if (!a) archives.set(url, a = new PMTiles(url, fetchFn));
     return a;
-}
-
-/**
- * Fetches a tile by URL, wherever it lives: an ordinary tile URL, or `pmtiles://<archive>/{z}/{x}/{y}` for a tile
- * inside an archive. Returns null for tiles that do not exist.
- */
-export async function fetchTile(url: string, fetchFn?: Fetch, signal?: AbortSignal, state?: {missing?: boolean}): Promise<Uint8Array | null>;
-/** With `image`, the tile is an image (`raster`, `raster-dem`): a custom protocol can return it decoded, as an `ImageBitmap`. */
-export async function fetchTile(url: string, fetchFn: Fetch | undefined, signal: AbortSignal | undefined, state: {missing?: boolean} | undefined, image: true): Promise<Uint8Array | ImageBitmap | null>;
-export async function fetchTile(url: string, fetchFn: Fetch = (...a) => fetch(...a), signal?: AbortSignal, state?: {missing?: boolean}, image?: boolean): Promise<Uint8Array | ImageBitmap | null> {
-    if (url.startsWith(PM_PREFIX)) {
-        const m = /^pmtiles:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)$/.exec(url);
-        if (!m) throw new Error(`Malformed PMTiles tile address: ${url}`);
-        return archive(m[1], fetchFn).tile(+m[2], +m[3], +m[4], signal, fetchFn);
-    }
-    const res: Response & {image?: ImageBitmap} = await fetchFn(url, image ? {signal, image} as RequestInit : {signal});
-    // 404: the server does not have the tile (`state.missing`). 204: the server has the tile, and the tile is empty.
-    if (res.status === 404 || res.status === 204) { if (state) state.missing = res.status > 204; return null; }
-    if (!res.ok) throw Object.assign(new Error(`Tile ${url}: HTTP ${res.status}`), {final: res.status < 500});
-    return res.image ?? new Uint8Array(await res.arrayBuffer());
 }

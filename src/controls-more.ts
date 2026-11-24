@@ -9,7 +9,7 @@ export const svg = (path: string, extra = '') => `<svg width="18" height="18" vi
 /**
  * `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library.
  * The icon is in a span `maplibregl-ctrl-icon`, as in that library. A page that sets a `background-image` on that span sees its image in
- * place of the library's icon.
+ * place of the library's icon, also when that CSS loads after the control.
  */
 export function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
@@ -20,7 +20,18 @@ export function button(group: HTMLElement, name: string, label: string, icon: st
     const s = b.appendChild(document.createElement('span'));
     s.className = cls('ctrl-icon');
     s.innerHTML = icon;
-    requestAnimationFrame(() => { if (getComputedStyle(s).backgroundImage != 'none') s.style.color = 'transparent'; });
+    // The page's CSS can arrive after the control (a bundler injects a <style>, a <link> loads later): check again when the
+    // head gains a stylesheet or one loads, and stop when the button leaves the page (#770).
+    const check = () => {
+        if (!b.isConnected && seen) { mo.disconnect(); document.removeEventListener('load', check, true); return; }
+        seen ||= b.isConnected;
+        s.style.color = getComputedStyle(s).backgroundImage != 'none' ? 'transparent' : '';
+    };
+    let seen = false;
+    const mo = new MutationObserver(() => requestAnimationFrame(check));
+    mo.observe(document.head, {childList: true, subtree: true, characterData: true});
+    document.addEventListener('load', check, true);
+    requestAnimationFrame(check);
     b.addEventListener('click', onClick);
     return group.appendChild(b);
 }
