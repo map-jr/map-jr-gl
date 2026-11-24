@@ -414,7 +414,18 @@ export class Map extends CoreMap {
         // As in MapLibre GL JS, a rotate gesture (dragRotate or touchZoomRotate) that ends near north turns the map north.
         let byHand = false;
         this.on('rotate', () => { byHand ||= this.dragRotate.isActive() || this.touchZoomRotate.isActive(); });
-        this.on('rotateend', () => { if (byHand && this.tr.bearing !== 0) this.snapToNorth(); byHand = false; });
+        // (A pause during the gesture also ends a rotation: the snap waits until the pointers of the gesture lift.)
+        const end = () => {
+            if (!byHand || this.dragRotate.isActive() || this.touchZoomRotate.isActive() || this.isRotating()) return;
+            byHand = false;
+            if (this.tr.bearing !== 0) this.snapToNorth();
+        };
+        this.on('rotateend', end);
+        for (const type of ['pointerup', 'touchend'] as const) {
+            const lifted = () => setTimeout(end);
+            addEventListener(type, lifted, true);
+            this.once('remove', () => removeEventListener(type, lifted, true));
+        }
         super.setMissingStyleImageResolver(name => this.styleImage(name));
         this.once('remove', () => { this.imagesTurn++; });
     }
