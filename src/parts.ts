@@ -9,14 +9,14 @@
  */
 export interface Parts {
     geojson: typeof import('./geojson.ts');
-    contour: typeof import('./contour.ts');
+    dem: typeof import('./dem.ts');
     pmtiles: typeof import('./pmtiles.ts');
 }
 export type PartName = keyof Parts;
 
 const loaders: {[K in PartName]: () => Promise<Parts[K]>} = {
     geojson: () => import('./geojson.ts'),
-    contour: () => import('./contour.ts'),
+    dem: () => import('./dem.ts'),
     pmtiles: () => import('./pmtiles.ts'),
 };
 

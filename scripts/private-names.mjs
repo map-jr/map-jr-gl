@@ -96,14 +96,16 @@ export function privateNames(dir = src, internal = INTERNAL) {
 
 /**
  * The names of uniforms, attributes and varyings in the shaders (`u_matrix`, `a_pos`, `v_color`) get short names too.
- * They are only in src/gl.ts: in the GLSL text, and in the JavaScript that sets a uniform (`u.u_matrix`). The
- * JavaScript learns the names of the uniforms from the compiled program, so the two always agree.
+ * They are only in the files of SHADER_FILES: in the GLSL text, and in the JavaScript that sets a uniform (`u.u_matrix`).
+ * The JavaScript learns the names of the uniforms from the compiled program, so the two always agree. The names are
+ * counted in `files`, all the files of the shaders, so that each file gets the same short names: the shader of
+ * terrain.ts includes the GLSL of gl.ts (#1849).
  */
-function shortenShaderNames(code) {
-    const count = new Map();
-    for (const name of code.match(/\b[uav]_[A-Za-z0-9]+\b/g) ?? []) count.set(name, (count.get(name) ?? 0) + 1);
-    // A short name is a letter and a number in base 36 (`u0`, `u1f`). It must not be a name that the file has already.
-    const taken = new Set(code.match(/[A-Za-z_$][\w$]*/g)), next = {u: 0, a: 0, v: 0}, short = new Map();
+function shortenShaderNames(code, files = [code]) {
+    const count = new Map(), all = files.join('\n');
+    for (const name of all.match(/\b[uav]_[A-Za-z0-9]+\b/g) ?? []) count.set(name, (count.get(name) ?? 0) + 1);
+    // A short name is a letter and a number in base 36 (`u0`, `u1f`). It must not be a name that a file has already.
+    const taken = new Set(all.match(/[A-Za-z_$][\w$]*/g)), next = {u: 0, a: 0, v: 0}, short = new Map();
     for (const name of [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || (a < b ? -1 : 1))) {
         let s;
         do s = name[0] + (next[name[0]]++).toString(36); while (taken.has(s));
@@ -118,15 +120,15 @@ function shortenShaderNames(code) {
  * in them not the `${...}` parts, which are JavaScript. A name is changed only when the GLSL declares it with a type
  * and without `uniform`, so the names that JavaScript uses (the uniforms) and the names of GLSL itself stay.
  */
-function shortenShaderLocals(code) {
+function shortenShaderLocals(code, files = [code]) {
     const isShader = text => /void main|uniform |\bfloat /.test(text), literal = /`((?:[^`\\]|\\.)*)`/gs, hole = /(\$\{[^}]*\})/;
     const declared = /\b(uniform\s+)?(?:(?:highp|mediump|lowp)\s+)?(?:float|int|bool|vec[234]|ivec[234]|mat[234]|sampler2D)\s+([A-Za-z_]\w*)\s*(?=[=;,)(\[])/g;
     const count = new Map(), kept = new Set(['main']);
-    const texts = [...code.matchAll(literal)].map(m => m[1]).filter(isShader).flatMap(text => text.split(hole).filter((_, i) => i % 2 === 0));
+    const texts = files.flatMap(f => [...f.matchAll(literal)].map(m => m[1])).filter(isShader).flatMap(text => text.split(hole).filter((_, i) => i % 2 === 0));
     for (const text of texts) for (const m of text.matchAll(declared)) if (m[1]) kept.add(m[2]); else count.set(m[2], 0);
     for (const name of [...count.keys()]) if (kept.has(name) || name.length < 3 || /^[uav]\d|^gl_/.test(name)) count.delete(name);
     for (const text of texts) for (const word of text.match(/[A-Za-z_]\w*/g) ?? []) if (count.has(word)) count.set(word, count.get(word) + 1);
-    const taken = new Set(code.match(/[A-Za-z_$][\w$]*/g)), letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', short = new Map();
+    const taken = new Set(files.join('\n').match(/[A-Za-z_$][\w$]*/g)), letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', short = new Map();
     let next = 0;
     for (const name of [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || (a < b ? -1 : 1))) {
         let s;
@@ -137,6 +139,9 @@ function shortenShaderLocals(code) {
     return short.size ? code.replace(literal, (all, text) => !isShader(text) ? all
         : '`' + text.split(hole).map((part, i) => i % 2 ? part : part.replace(words, name => short.get(name))).join('') + '`') : code;
 }
+
+/** The files that have shaders. */
+const SHADER_FILES = ['gl.ts', 'terrain.ts'];
 
 /**
  * The Vite plugins: the first renames the members in each file of src/ before the file is compiled, and the second
@@ -160,9 +165,10 @@ export function shortenPrivateNames() {
         name: 'shorten-shader-names',
         enforce: 'pre',
         transform(code, id) {
-            if (path.resolve(id.split('?')[0]) !== path.join(src, 'gl.ts')) return null;
+            if (!SHADER_FILES.some(f => path.resolve(id.split('?')[0]) === path.join(src, f))) return null;
             // The renaming keeps each line on its line, so the source map is made line by line.
-            const edited = new MagicString(code), after = shortenShaderLocals(shortenShaderNames(code)).split('\n');
+            const files = SHADER_FILES.map(f => readFileSync(path.join(src, f), 'utf8'));
+            const edited = new MagicString(code), after = shortenShaderLocals(shortenShaderNames(code, files), files.map(f => shortenShaderNames(f, files))).split('\n');
             let at = 0;
             code.split('\n').forEach((line, i) => { if (line !== after[i] && line.length) edited.overwrite(at, at + line.length, after[i]); at += line.length + 1; });
             return map(edited, id);

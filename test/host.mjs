@@ -1065,7 +1065,7 @@ for (const renderer of renderers) {
         const nulls = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
             const idle = async host => { await wait(100); for (let i = 0; i < 200 && !host.state.get().idle; i++) await wait(50); };
-            const fields = ['fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'sources', 'layers', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale'];
+            const fields = ['fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'sources', 'layers', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'renderWorldCopies', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale'];
             const plain = {style: t.style, renderer};
             const withNulls = JSON.parse(JSON.stringify({...plain, ...Object.fromEntries(fields.map(k => [k, null]))}));
             const warned = [], warn = console.warn, error = console.error;
@@ -3358,7 +3358,12 @@ for (const renderer of ['worker', 'main']) {
         const run = (what, missing) => page.evaluate(async ({renderer, what, missing}) => {
             const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), errors = [];
             const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}};
+            // (The elevation tile of `terrain` is one picture in the page: 1000 m everywhere in the terrarium encoding.)
+            const dc = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), cg = dc.getContext('2d');
+            cg.fillStyle = 'rgb(131,232,0)'; cg.fillRect(0, 0, 256, 256);
             const spec = what === 'vector' ? {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}}
+                : what === 'terrain' ? {style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: [dc.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10}}, terrain: {source: 'dem'},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}]}, initialView: {center: [7.7, 46], zoom: 10, pitch: 50}}
                 : {style: {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]}, initialView: {center: [0, 0], zoom: 1}};
             const made = [0, 1].map(() => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
@@ -3369,12 +3374,19 @@ for (const renderer of ['worker', 'main']) {
             const b = await made[1].host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
             g.drawImage(bmp, 0, 0);
             const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            const ground = what === 'terrain' ? Math.round(await made[1].host.queryElevation([7.7, 46])) : undefined;
             for (const {host, el} of made) { host.destroy(); el.remove(); }
-            return {idle, centre, errors: [...new Set(errors)]};
+            return {idle, centre, ground, errors: [...new Set(errors)]};
         }, {renderer, what, missing});
         const vector = await run('vector'), afterVector = parts.splice(0);
         const geojson = await run('geojson'), afterGeoJSON = parts.splice(0);
+        const terrain = await run('terrain'), afterTerrain = parts.splice(0);
         const seen = browserName === 'chromium';
+        // 3D terrain (#1849): the engine loads the part for elevation data. In an engine worker that is the file of the part,
+        // which the page fetches once with the style; an engine on the page imports the chunk of the same part instead.
+        check(`[${renderer}] the parts of the worker: a map with 3D terrain loads the part dem (${renderer === 'worker' ? 'one request of the file' : 'its chunk, not the file'}) and is idle with the height of the ground (#1849)`,
+            terrain.idle.every(Boolean) && !terrain.errors.length && terrain.ground === 1000 && (!seen || (renderer === 'worker' ? afterTerrain.length === 1 && afterTerrain[0] === 'dem' : afterTerrain.length === 0)),
+            JSON.stringify({terrain, afterTerrain}));
         check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
             vector.idle.every(Boolean) && !vector.errors.length && geojson.idle.every(Boolean) && !geojson.errors.length && geojson.centre[2] > 200 && geojson.centre[0] < 50 &&
             (!seen || (afterVector.length === 0 && afterGeoJSON.length >= 1 && afterGeoJSON.length <= 4 && afterGeoJSON.every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
@@ -3398,6 +3410,32 @@ for (const renderer of ['worker', 'main']) {
                 check(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`,
                     failed.length === 1 && failed[0].includes('[map-jr-gl] The worker could not load') && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
             } finally { await other.close(); }
+            // 3D terrain whose part comes late (#1849): the tiles of the flat layers are requested while the part loads,
+            // and do not wait for it (they did, behind the elevation tiles, by more than 3 s).
+            if (renderer === 'worker') {
+                const late = await browser.newPage({viewport: {width: 900, height: 600}});
+                try {
+                    let partAt = 0, rasterAt = 0;
+                    await late.context().route(/map-jr-gl-worker-dem\.js/, async route => { const res = await route.fetch(); await new Promise(r => setTimeout(r, 1500)); partAt = Date.now(); await route.fulfill({response: res}); });
+                    await late.context().route(/\/late-raster\//, route => { rasterAt ||= Date.now(); return route.fulfill({status: 404}); });
+                    late.context().on('request', r => { if (/\/late-raster\//.test(r.url())) rasterAt ||= Date.now(); });
+                    await late.goto(origin + '/bench');
+                    const errors = await late.evaluate(async () => {
+                        const lib = await import('/dist/map-jr-gl.js'), errors = [];
+                        const dc = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), cg = dc.getContext('2d');
+                        cg.fillStyle = 'rgb(131,232,0)'; cg.fillRect(0, 0, 256, 256);
+                        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                        const host = lib.createMap(el, {style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: [dc.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10},
+                            r: {type: 'raster', tiles: [location.origin + '/late-raster/{z}/{x}/{y}.png'], tileSize: 256}}, terrain: {source: 'dem'},
+                            layers: [{id: 'r', type: 'raster', source: 'r'}]}, initialView: {center: [7.7, 46], zoom: 10, pitch: 50}, renderer: 'worker', attribution: false, onError: e => errors.push(e.message)});
+                        await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(r, 10000); });
+                        host.destroy(); el.remove();
+                        return errors.filter(m => !/late-raster|404/.test(m));
+                    });
+                    check(`[${renderer}] 3D terrain whose part comes 1.5 s late: the tiles of the flat layers are requested before the part arrives (#1849)`,
+                        rasterAt > 0 && partAt > 0 && rasterAt < partAt && !errors.length, JSON.stringify({early: partAt - rasterAt, errors}));
+                } finally { await late.close(); }
+            }
         } else skip(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`, `${browserName} does not show the requests of a worker to Playwright`);
     } catch (e) { check(`[${renderer}] the test of the parts of the worker was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
