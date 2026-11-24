@@ -270,13 +270,13 @@ export class Transform {
 
     /**
      * Above a pitch of 90, when the camera is below the plane `z` pixels above the map center: the pixels from the map
-     * center down to the screen line above which the camera sees that plane from below (a little above the line where the
-     * view rays turn upward). Otherwise null: the camera is above the plane and sees it below `horizon`.
+     * center down to the screen line above which the camera sees that plane from below. It mirrors `horizon` at 180 less
+     * the pitch, so that the ground ends a little before the line where the view rays turn upward. Otherwise null: the
+     * camera is above the plane and sees it below `horizon`.
      */
     underside(z = this.flatZ): number | null {
-        z = this.apart(z);
-        const p = this.pitch * Math.PI / 180, cp = Math.cos(p), d = this.cameraDistance;
-        return cp < 0 && d * cp < z ? (-d * Math.min(0.02, -0.1 * cp) - d * cp) / Math.sin(p) : null;
+        const p = this.pitch, R = Math.PI / 180, d = this.cameraDistance;
+        return p > 90 && d * Math.cos(p * R) < this.apart(z) ? d * Math.min(0.85 * Math.tan((p - 90) * R), Math.tan((p - 90.75) * R)) : null;
     }
 
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */

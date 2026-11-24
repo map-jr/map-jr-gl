@@ -1131,3 +1131,20 @@ test('transform: above a pitch of 90 the camera looks up, and screen positions i
     t.set(undefined, undefined, undefined, 180); t.elevation = 10000;
     roundTrip(cx, cy, 0);
 });
+
+test('transform: a drag through a pitch of 90 has no frame in which the ground is one point (#897)', () => {
+    const t = new Transform(); t.width = 512; t.height = 512; t.maxPitch = 180; t.set([35.38, 31.55], 10, 0, 89);
+    // At exactly 90 the camera on the ground is in the plane of the ground. Every pixel mapped to one point, and the tile
+    // cover went 8 -> 2 -> 28 between 89, 90 and 91.
+    const spread = () => { const pts = [[0, 300], [512, 300], [0, 512], [512, 512]].map(([x, y]) => t.screenToMerc(x, y)); return Math.max(...pts.map(p => Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1]))); };
+    const counts: number[] = [];
+    for (const pitch of [89, 89.9, 90, 90.1, 91]) {
+        t.set(undefined, undefined, undefined, pitch);
+        assert.ok(spread() > 1e-5, `pitch ${pitch}: the corners of the screen are apart on the ground`);
+        counts.push(t.tileCover(0, 14).length);
+    }
+    assert.ok(Math.min(...counts) > 0 && Math.max(...counts) <= 3 * Math.min(...counts), `tiles at 89, 89.9, 90, 90.1, 91: ${counts}`);
+    // The same with the center 10 km above the ground (setCenterElevation): the camera is in the plane of the center.
+    t.elevation = 10000; t.set(undefined, undefined, undefined, 90);
+    assert.ok(spread() > 1e-5, 'pitch 90 with a center above the ground');
+});
