@@ -4259,6 +4259,34 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: listens, getStyleUrl and fitScreenCoordinates (with a bearing, padding and maxZoom) agree with MapLibre (#564)',
             m564.ml.length === m564.compat.length && m564.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m564.compat[i]) < 1e-3 : v === m564.compat[i]), JSON.stringify(m564));
+        // #1319: cameraForBounds and fitBounds with the options bearing and offset (and padding, also of the map) give the
+        // results of MapLibre GL JS (served at /ml/): the box is fitted turned by the bearing, and fitBounds applies the offset twice.
+        const m1319 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 4, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const out = [], box = [[5, 40], [15, 48]], cam = c => out.push(c.center.lng, c.center.lat, c.zoom, c.bearing);
+                const camera = () => out.push(m.getCenter().lng, m.getCenter().lat, m.getZoom(), m.getBearing());
+                cam(m.cameraForBounds(box, {bearing: 30}));
+                cam(m.cameraForBounds(box, {offset: [40, -20]}));
+                cam(m.cameraForBounds(box, {bearing: -120, offset: {x: -15, y: 25}, padding: {top: 10, bottom: 25, left: 40, right: 5}}));
+                m.fitBounds(box, {bearing: 30, offset: [40, -20], duration: 0}); camera();
+                m.fitBounds(box, {bearing: 75, offset: [-30, 10], padding: 12, linear: true, duration: 0}); camera();
+                m.setPadding({top: 20, right: 0, bottom: 0, left: 50});
+                cam(m.cameraForBounds(box, {bearing: 45, offset: [10, 10], padding: 5}));
+                m.fitBounds(box, {bearing: 45, offset: [10, 10], padding: 5, duration: 0}); camera();
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: cameraForBounds and fitBounds with bearing and offset agree with MapLibre (#1319)',
+            m1319.ml.length === m1319.compat.length && m1319.ml.every((v, i) => Math.abs(v - m1319.compat[i]) < 1e-4), JSON.stringify(m1319));
         // #1018: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and
         // calculateAnchoredCameraOptions give the results of MapLibre GL JS (served at /ml/) for the same inputs.
         const m1018 = await page.evaluate(async () => {

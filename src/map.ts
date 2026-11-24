@@ -1142,11 +1142,14 @@ export class Map {
     /** Stops the animation of the camera, where it is. */
     stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
 
-    /** The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
-    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number} = {}) {
+    /**
+     * The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view at
+     * `bearing` (degrees, default 0), as in MapLibre GL JS. `offset` ([x, y] or {x, y}, CSS pixels) moves the box by that much from the middle of the view.
+     */
+    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number; bearing?: number; offset?: PointLike} = {}) {
         // The map's own padding already moves the center; padding given here is on top of it.
-        const pad = sides(o.padding), own = this.tr.padding;
-        return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom), bearing: 0};
+        const pad = sides(o.padding), own = this.tr.padding, bearing = o.bearing || 0, off = o.offset;
+        return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom, bearing, off && (Array.isArray(off) ? off : [off.x, off.y])), bearing};
     }
     fitBounds(bounds: Parameters<Map['cameraForBounds']>[0], o: Parameters<Map['cameraForBounds']>[1] & {duration?: number} = {}) {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
