@@ -14,6 +14,7 @@ import {unset, type Given} from './unset.ts';
 import {compileFor, pickImage} from './expr.ts';
 import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
+import {httpError} from './requests.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
 
@@ -228,7 +229,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     const adds = !!(o.sources || o.layers || o.terrain !== undefined || o.sprite?.length);
     if (typeof given === 'string') {
         const res = await fetchFn(base = given);
-        if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
+        if (!res.ok) throw httpError('style', given, res.status);
         given = await res.json();
     }
     const full: any = withData(adds ? extended(given, o) : given, o.data, true, (id, type) => { throw dataTypeError(id, type); });
@@ -257,7 +258,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     const items = new Map<string, RenderItem<TileIR | TileImage>[]>(), all: RenderItem<TileIR>[] = [], urls: string[] = [];
     const dataURI = async (url: string) => {
         const res = await fetchFn(url);
-        if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
+        if (!res.ok) throw httpError('image', url, res.status);
         const bytes = new Uint8Array(await res.arrayBuffer());
         let bin = '';
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
