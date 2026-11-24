@@ -33,7 +33,7 @@ export interface EngineOptions extends CameraOptions {
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
-    | ({type: 'jump'} & CameraOptions)
+    | ({type: 'jump'; /** The vertical field of view in radians. */ fov?: number} & CameraOptions)
     | ({type: 'ease'; duration: number; around?: [number, number]; easing?: number[]; fly?: number[]} & CameraOptions)
     /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
     | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
@@ -943,7 +943,7 @@ export class Engine {
                 try { this.frame(performance.now()); } finally { this.inResize = false; }
                 this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr, buffer: [this.renderer.gl.drawingBufferWidth, this.renderer.gl.drawingBufferHeight]});
                 return;
-            case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true;
+            case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; if (c.fov) tr.fov = c.fov; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true;
                 if (c.elevation !== undefined && (this.heldElevation = c.elevation) === null) this.centreGiven = true;
                 break;
             case 'ease': {

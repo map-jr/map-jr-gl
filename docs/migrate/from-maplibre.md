@@ -117,7 +117,7 @@ that this page lists. The page is written for an application that uses MapLibre 
 | `map.getCanvas().toDataURL()` with `preserveDrawingBuffer` | `await map.toBlob()` | See [Read the canvas with `toBlob`](#read-the-canvas-with-toblob). |
 | `map.addImage(name, image)` | `map.addImage(name, image)` | It also accepts an SVG document or a URL as the image, and returns a promise that resolves when the image is loaded. |
 | `maxPitch` up to 180 | `maxPitch` up to 180 | A higher value is limited to 180 and warns, where MapLibre GL JS throws. Above 90, `setCenterElevation` keeps the camera above the ground. |
-| `setRoll`, `setVerticalFieldOfView` | None | Accepted with no effect. |
+| `setRoll` | None | Accepted with no effect. |
 | The `pmtiles` protocol of the PMTiles library | None | A source URL that starts with `pmtiles://` works with no plugin. |
 | `setRTLTextPlugin(...)` | None | Accepted with no effect. The browser shapes right-to-left text. |
 | `maplibregl-*` class names | `maplibregl-*` and `map-jr-*` | Every element has both names, so the CSS of an application still matches. |
@@ -275,7 +275,7 @@ The library does not have these parts of MapLibre GL JS, among others:
 - MapLibre Tiles (MLT). A vector source with `encoding: 'mlt'` draws nothing and writes a `[map-jr-gl]` warning.
 - The expressions `within` and `distance`.
 - `text-writing-mode`.
-- Roll, a field of view other than the default, and a pitch above 90 degrees.
+- Roll.
 - Custom layers with the worker renderer.
 
 See [MapLibre differences](../reference/maplibre-differences.md) for the full list of differences and of everything that

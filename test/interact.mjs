@@ -5625,6 +5625,25 @@ for (const mode of renderers) {
     });
     check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
         JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
+    // setVerticalFieldOfView changes the camera as in MapLibre GL JS: clamped to 0.1 to 150, with the move events, and
+    // a wider view reaches further at the top of the screen (#1709).
+    const fov = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [0, 0], zoom: 10, pitch: 45, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const top = () => +m.unproject([200, 0]).lat.toFixed(4), events = [];
+        for (const t of ['movestart', 'move', 'moveend']) m.on(t, e => events.push(t + (e.tag ?? '')));
+        const out = {start: Math.round(m.getVerticalFieldOfView() * 100) / 100, top: [top()]};
+        m.setVerticalFieldOfView(90, {tag: '!'});
+        await new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+        out.set = m.getVerticalFieldOfView(); out.top.push(top()); out.events = [...new Set(events)];
+        const p = m.project(m.unproject([123, 87])); out.back = [p.x, p.y].map(Math.round);
+        m.setVerticalFieldOfView(200); out.clamped = m.getVerticalFieldOfView();
+        m.remove(); el.remove();
+        return out;
+    });
+    check('compat: setVerticalFieldOfView changes the camera, clamps to 150 and fires the move events',
+        fov.start === 36.87 && fov.set === 90 && fov.top[1] > fov.top[0] + 0.01 && fov.events.join() === 'movestart!,move!,moveend!' && fov.back.join() === '123,87' && Math.abs(fov.clamped - 150) < 1e-9, JSON.stringify(fov));
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));

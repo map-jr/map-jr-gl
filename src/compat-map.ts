@@ -10,7 +10,7 @@ import {zoomCurveErrors} from './mistakes.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
-import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, type LngLatLike} from './geo.ts';
+import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, FOV, type LngLatLike} from './geo.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
 
@@ -168,10 +168,6 @@ export class Map extends CoreMap {
     setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
     /** Has no effect: the camera has no roll. */
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
-    /** Has no effect: the vertical field of view stays at 36.87 degrees. */
-    setVerticalFieldOfView(fov?: number) { return this.unsupported('setVerticalFieldOfView', fov === undefined || Math.abs(fov - 36.87) < 0.01); }
-    /** Returns 36.87, the vertical field of view of the camera in degrees, which is the default of MapLibre GL JS. */
-    getVerticalFieldOfView() { return 36.87; }
     /**
      * Returns the tiles that cover the view as plain objects `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`; MapLibre GL JS
      * returns `OverscaledTileID` objects. `minzoom` is 0 and `maxzoom` 30 when they are left out.
@@ -228,6 +224,18 @@ export class Map extends CoreMap {
     }
     /** Returns whether the map center follows the ground, `true` unless `setCenterClampedToGround(false)` was called. */
     getCenterClampedToGround() { return !this.unclamped; }
+    /**
+     * Sets the vertical field of view of the camera in degrees, as in MapLibre GL JS: the value is clamped to 0.1 to 150,
+     * the zoom stays, and the map fires `movestart`, `move` and `moveend`. The default is 36.87.
+     */
+    setVerticalFieldOfView(fov: number, eventData?: EventData) {
+        if (!Number.isFinite(fov)) { console.warn(`[map-jr-gl] setVerticalFieldOfView(${fov}): the field of view is not a number. Pass degrees from 0.1 to 150.`); return this; }
+        const r = Math.min(150, Math.max(0.1, fov)) * Math.PI / 180;
+        if (r !== this.tr.fov) { this.post({type: 'jump', fov: this.tr.fov = r}); for (const t of ['movestart', 'move', 'moveend']) this.fire(t, {...eventData}); }
+        return this;
+    }
+    /** Returns the vertical field of view of the camera in degrees (36.87 by default). */
+    getVerticalFieldOfView() { return this.tr.fov * 180 / Math.PI; }
     /**
      * Sets the height of the map center in meters, as in MapLibre GL JS. It lasts only after `setCenterClampedToGround(false)`:
      * while the center is clamped to the ground, the ground height replaces it in the next frame, and the call warns once.
@@ -314,6 +322,7 @@ export class Map extends CoreMap {
     /** A new engine (after a lost context or a fall back) gets what the calls of this entry set: the constraint and the parameters of the tile cover; #1050. */
     protected override resend() {
         super.resend();
+        if (this.tr.fov !== FOV) this.post({type: 'jump', fov: this.tr.fov});
         const fn = this.tr.customConstrain;
         if (fn) void this.ask(id => ({type: 'bound', id, fn}));
         for (const [id, lod] of Object.entries(this.lods)) this.post({type: 'lod', sources: [id], lod});
