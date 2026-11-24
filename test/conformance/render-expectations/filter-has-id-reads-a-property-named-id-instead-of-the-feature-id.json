@@ -1,0 +1,7 @@
+{
+  "label": "filter [\"has\", \"$id\"] reads a property named $id instead of the feature id",
+  "decision": "later",
+  "issue": 1812,
+  "reason": "Filter [\"has\", \"$id\"] reads a property named $id instead of the feature id.",
+  "pattern": "^(regressions/mapbox-gl-js#4235)$"
+}

@@ -1,0 +1,7 @@
+{
+  "label": "terrainSkirtLength is not read, and the terrain surface of terrain/skirts-* has spikes that MapLibre does not draw",
+  "decision": "later",
+  "issue": 1788,
+  "reason": "terrainSkirtLength is not read, and the terrain surface of terrain/skirts-* has spikes that MapLibre does not draw.",
+  "pattern": "^(terrain/skirts-auto|terrain/skirts-none)$"
+}

@@ -1,0 +1,7 @@
+{
+  "label": "fill-extrusion edges are a pixel above and to the right of MapLibre's at pitch 0",
+  "decision": "later",
+  "issue": 1803,
+  "reason": "fill-extrusion edges are a pixel above and to the right of MapLibre's at pitch 0.",
+  "pattern": "^(combinations/fill-opaque--fill-extrusion-translucent|combinations/fill-translucent--fill-extrusion-translucent|combinations/hillshade-translucent--fill-extrusion-translucent)$"
+}

@@ -1,0 +1,7 @@
+{
+  "label": "fill-extrusion-pattern on walls",
+  "decision": "later",
+  "issue": 1444,
+  "reason": "The image of each feature is drawn, but on the walls it does not continue across the edge of a tile as in MapLibre GL JS.",
+  "pattern": "^fill-extrusion-pattern/(2x-on-1x-add-image-dds|global-state)$"
+}

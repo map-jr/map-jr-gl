@@ -1,0 +1,7 @@
+{
+  "label": "pitch above 90 with 3D terrain",
+  "decision": "later",
+  "issue": 1851,
+  "reason": "At pitch 95 with the center 1500 m high, the camera is below the plane of the center, and the level of detail of the tiles (the camZ term of coveringTiles in src/geo.ts) picks z14 to z16 tiles on the near face of the mountain, where MapLibre GL JS draws z12 and z13. The shape of the mountain and the skyline match.",
+  "pattern": "^high-pitch/terrain-pitch95$"
+}

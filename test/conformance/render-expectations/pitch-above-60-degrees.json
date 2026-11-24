@@ -1,0 +1,7 @@
+{
+  "label": "pitch above 60 degrees",
+  "decision": "later",
+  "issue": 1045,
+  "reason": "The tests have a pitch of 70 to 80 degrees, and the cause of the difference is not known. The tile cover above pitch 60, which differs from MapLibre GL JS (#1045), is one candidate.",
+  "pattern": "^fill-extrusion-height/steep-pitch-near-horizon$|^raster-npot-mipmap/pitch-60$|^terrain/rtt-mipmap-minification/pitch-70$"
+}

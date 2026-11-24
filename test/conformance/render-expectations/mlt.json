@@ -1,0 +1,7 @@
+{
+  "label": "MLT",
+  "decision": "later",
+  "issue": 1436,
+  "reason": "MapLibre Tiles (MLT) are not available.",
+  "pattern": "^mlt/"
+}
