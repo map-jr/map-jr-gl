@@ -53,7 +53,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
     minZoom?: number;
     maxZoom?: number;
-    /** Largest camera tilt allowed, in degrees (at most 60). */
+    /** Largest camera tilt allowed, in degrees. The default is 60, and the limit is 90. */
     maxPitch?: number;
     /** Data credits are shown by default; pass false to add your own, or options for the built-in control. */
     attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
