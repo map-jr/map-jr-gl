@@ -236,6 +236,30 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] initialView.bounds is fitted into the part that the padding of the description leaves free (#1162)`,
             Math.abs(firstFit.first - firstFit.later) < 1e-6, JSON.stringify(firstFit));
+        // 2c. After a lost WebGL context, the new engine has the padding of the description (#1050). The camera that the
+        // engine reports after a move carries its padding.
+        if (renderer === 'main') {
+            const restarted = await page.evaluate(async () => {
+                const t = window.t, until = (m, type) => new Promise(r => { m.once(type, r); setTimeout(r, 15000); });
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const h = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, padding: {left: 50}, initialView: {center: [10, 45], zoom: 2}, renderer: 'main', attribution: false});
+                const m = h._map;
+                await until(m, 'idle');
+                const before = m.tr.padding.join();
+                const restored = until(m, 'webglcontextrestored');
+                m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+                await restored;
+                await until(m, 'idle');
+                const moved = until(m, 'moveend');
+                m.easeTo({zoom: 4, duration: 50});
+                await moved;
+                const after = m.tr.padding.join();
+                h.destroy(); el.remove();
+                return {before, after};
+            });
+            check('[main] after a lost WebGL context, the padding of the description stays (#1050)',
+                restarted.before === '0,0,0,50' && restarted.after === '0,0,0,50', JSON.stringify(restarted));
+        }
         // 2c. A view in the URL overrides initialView.bounds as it overrides center and zoom (#1157).
         const urlView = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
