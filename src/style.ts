@@ -89,7 +89,7 @@ export const SPEC: Record<string, Record<string, [string, PropKind, any, string[
         resampling: ['resampling', 'string', null],
         rasterResampling: ['raster-resampling', 'string', 'linear'],
         layerBlend: ['raster-layer-blend', 'string', 'normal'],
-        fadeDuration: ['raster-fade-duration', 'number', 300],
+        fadeDuration: ['raster-fade-duration', 'number', 0],
     },
     hillshade: {
         shadow: ['hillshade-shadow-color', 'colorArray', '#000'],

@@ -1314,6 +1314,8 @@ export class Map {
     protected styleChanged() {}
     /** The buffer of a GeoJSON source that gives none, in pixels; `undefined` keeps the default of the tiles (16). */
     protected geojsonBuffer(): number | undefined { return undefined; }
+    /** The `raster-fade-duration` of a raster layer that gives none, in ms: 0 here, so that a tile shows at once. */
+    protected rasterFade() { return 0; }
     private reloadPending = false;
     /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
     private reuse = false;
@@ -1385,7 +1387,7 @@ export class Map {
             this.restyled = turn;
             this.checkProjection();
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
-            this.post({type: 'style', style: {...style, sources}, reload, versions, data, instant: this.newStyle && this.instant});
+            this.post({type: 'style', style: {...style, sources, rasterFade: this.rasterFade()}, reload, versions, data, instant: this.newStyle && this.instant});
             this.sendGeo();
             this.styleEvents(this.newStyle);
             this.newStyle = false;

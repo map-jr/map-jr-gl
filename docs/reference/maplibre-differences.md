@@ -141,7 +141,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### The fade of raster tiles
 
 - **MapLibre GL JS:** `raster-fade-duration` (default 300 ms) fades a new raster tile in: over its loaded parent or children, or over nothing at the edge of the view. It mixes the two images in one draw.
-- **This library:** The fade is the same, and `idle` waits for it as in MapLibre GL JS. The tile below is drawn at full opacity and the new tile over it with the fading opacity, so a translucent image looks slightly different during the fade. With 3D terrain a tile shows at once, as in MapLibre GL JS. The server renderer draws no fade.
+- **This library:** In the compat entry (`@map-jr/map-jr-gl/maplibre-compat`) the default is 300 ms, as in MapLibre GL JS. In the main entry (`@map-jr/map-jr-gl`) the default is 0, so a raster tile shows at once when it has loaded, unless the style sets `raster-fade-duration` on the layer. The fade is the same as in MapLibre GL JS, and `idle` waits for it. The tile below is drawn at full opacity and the new tile over it with the fading opacity, so a translucent image looks slightly different during the fade. With 3D terrain a tile shows at once, as in MapLibre GL JS. The server renderer draws no fade.
 
 ### Label placement
 

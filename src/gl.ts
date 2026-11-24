@@ -1274,8 +1274,8 @@ export class GLRenderer {
                 // `raster-resampling` (or `resampling`): the filter of the texture, set before each tile is drawn.
                 const filter = (p.resampling.eval(zoom) ?? p.rasterResampling?.eval(zoom)) === 'nearest' ? gl.NEAREST : gl.LINEAR;
                 // `raster-fade-duration`: a tile that has just arrived fades in over the tiles that stand in below it (see `fadeIn` in engine.ts).
-                const fadeMs = L.type === 'raster' ? p.fadeDuration.eval(zoom) : 0, now = performance.now();
-                let adjust: (o: number) => void = () => {}, last = 1;
+                const fadeMs = L.type === 'raster' ? p.fadeDuration.eval(zoom) : 0, now = fadeMs > 0 ? performance.now() : 0;
+                let adjust: ((o: number) => void) | undefined, last = 1;
                 if (L.type === 'raster') {
                     const sat = p.saturation.eval(zoom), con = p.contrast.eval(zoom), op = p.opacity.eval(zoom);
                     adjust = o => gl.uniform3f(u.u_adjust, op * o, sat > 0 ? 1 - 1 / (1.001 - sat) : -sat, con > 0 ? 1 / (1 - con) : 1 + con);
@@ -1305,7 +1305,7 @@ export class GLRenderer {
                     if (!it.tile.tex || it.under && !(fadeMs > 0)) continue;
                     const o = it.born !== undefined && fadeMs > 0 ? Math.min(1, Math.max(0, (now - it.born) / fadeMs)) : 1;
                     if (o < 1) this.fading = true;
-                    if (o !== last) { adjust(o); last = o; }
+                    if (o !== last) { adjust!(o); last = o; }
                     let m = it.matrix4;
                     if (pass === 'all' && L.type === 'raster' && !s.moving && !tr.pitch && !this.globe) {
                         const a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a), xs = tr.width % 2 / 2, ys = tr.height % 2 / 2;

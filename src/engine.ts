@@ -638,6 +638,7 @@ export class Engine {
                 keys.push(key); // a stand-in tile of another level: it is in use too
                 return t.gl;
             });
+            items.set(source, list);
             // The picture depends on exactly these tiles (and which build of each), so that is what identifies it.
             for (const it of list) signature += `,${it.id.key}:${it.tile.uid}`;
         }
@@ -789,7 +790,8 @@ export class Engine {
         this.states.g = style.state ?? {};
         compileFor(this.states);
         const olds = new Map(this.layers.map(l => [l.id, l])), at = performance.now();
-        this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
+        // (`rasterFade`: the `raster-fade-duration` of a raster layer that gives none, 300 ms in the compat entry and 0 in the main entry.)
+        this.layers = style.layers.map(l => compileLayer(style.rasterFade && l.type === 'raster' && l.paint?.['raster-fade-duration'] === undefined ? {...l, paint: {...l.paint, 'raster-fade-duration': style.rasterFade}} : l)).filter((l): l is CompiledLayer => !!l);
         // (The page names in the attribution only the sources that a visible layer uses, #1032.)
         this.emit({type: 'hidden', layers: this.layers.filter(l => !l.visible).map(l => l.id)});
         // (A changed paint value of a layer that stays moves to the new value over its transition, #960.)
@@ -1808,7 +1810,8 @@ export class Engine {
                 return t.gl;
             };
             let list = renderItems(tr, ideal, get);
-            const fade = Math.max(0, ...this.layers.map(l => l.type === 'raster' && l.source === source && l.visible ? l.p.fadeDuration.eval(tr.zoom) : 0));
+            let fade = 0;
+            for (const l of this.layers) if (l.type === 'raster' && l.source === source && l.visible) fade = Math.max(fade, l.p.fadeDuration.eval(tr.zoom));
             if (fade > 0) list = this.fadeIn(tr, source, ideal, list, get, fade);
             items.set(source, list);
             all.push(...list);
