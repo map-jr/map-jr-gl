@@ -408,7 +408,7 @@ beyond the repository's own. Each prints its use with no arguments (`suite.mjs -
 | `node scripts/agents/prs.mjs [--watch]` | Prints the state of the checks of each open pull request and of the last CI run on `main`. With `--watch` it prints one line each time the checks of a head finish, for a `Monitor`. Needs `gh`. |
 | `node scripts/agents/clean-worktrees.mjs [--apply]` | Lists the worktrees under `.claude/worktrees/` that it would remove, and keeps a worktree that is locked, has changed or untracked files, or has a commit that is neither in `origin/main` nor in a merged pull request. With `--apply` it removes the others and deletes their local branches. |
 
-The MapLibre tests are pinned to one commit (in `test/conformance/render.mjs` and `expressions.mjs`), so the counts
+The MapLibre tests are pinned to one commit (in `test/conformance/maplibre-checkout.mjs` and `expressions.mjs`), so the counts
 change only when this library changes. To take newer tests, change the commit, delete the folder in `.cache`, and
 set the floors again.
 
