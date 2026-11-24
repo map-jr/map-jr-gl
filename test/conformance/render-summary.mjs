@@ -1,5 +1,6 @@
 // The counts and the labels of a run of the render tests (render.mjs). This file has no browser in it, so that
 // test/unit/render-summary.test.ts can test it.
+import {readFileSync} from 'node:fs';
 
 /** The statuses of a test, in the order in which they are printed. */
 export const statuses = ['match', 'near', 'differ', 'error', 'skipped'];
@@ -77,6 +78,21 @@ export function summarize(results, expectations = [], allIds = results.map(r => 
         tests, labels, stale,
         unused: expectations.filter(e => !allIds.some(id => e.matches(id))).map(e => e.label),
     };
+}
+
+/** The totals that do not depend on the labels, which render.mjs writes to render-result.json (#1861). */
+export const committedTotals = ({differWontfix, differLater, ...rest}) => rest;
+
+/**
+ * The summary of the tracked files: the status of each test (render-tests.json) with the labels of the expectations.
+ * `pnpm status` and the unit tests compute the totals per decision this way, so that they are not committed and a
+ * pull request that only adds a label changes no total (#1861).
+ * @param dir the folder test/conformance/, as a URL or a path that ends with "/".
+ */
+export function trackedSummary(dir) {
+    const tests = JSON.parse(readFileSync(new URL('render-tests.json', dir), 'utf8'));
+    const expectations = readExpectations(JSON.parse(readFileSync(new URL('render-expectations.json', dir), 'utf8')));
+    return summarize(Object.keys(tests).map(id => ({id, status: tests[id]})), expectations);
 }
 
 /**

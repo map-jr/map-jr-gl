@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 // @ts-expect-error (a plain module of the conformance tools, without types)
-import {summarize, readExpectations, report, changes, percent, skipReason, operationsNotDone} from '../../test/conformance/render-summary.mjs';
+import {summarize, readExpectations, report, changes, percent, skipReason, operationsNotDone, committedTotals, trackedSummary} from '../../test/conformance/render-summary.mjs';
 
 const dir = new URL('../conformance/', import.meta.url);
 const results = [
@@ -82,6 +82,12 @@ test('render summary: an entry with a mistake is refused with a message that nam
     assert.throws(() => readExpectations({}), /no "expectations" array/);
 });
 
+test('render summary: the totals that are committed do not depend on the labels (#1861)', () => {
+    const t = committedTotals(summarize(results, expectations).totals);
+    assert.deepEqual(t, committedTotals(summarize(results, []).totals));
+    assert.ok(!('differWontfix' in t) && !('differLater' in t));
+});
+
 test('render summary: the tests whose status is not the one in the tracked file are listed', () => {
     assert.deepEqual(changes({'a/a': 'match', 'a/b': 'differ', 'a/gone': 'match'}, {'a/a': 'near', 'a/b': 'differ', 'a/c': 'match'}),
         ['CHANGED: a/a was match and is near', 'NEW: a/c is match']);
@@ -89,11 +95,12 @@ test('render summary: the tests whose status is not the one in the tracked file 
 
 test('render summary: the tracked files agree with each other', () => {
     const read = (name: string) => JSON.parse(readFileSync(new URL(name, dir), 'utf8'));
-    const tests: Record<string, string> = read('render-tests.json'), totals = read('render-result.json'), expectations = readExpectations(read('render-expectations.json'));
+    const tests: Record<string, string> = read('render-tests.json'), totals = read('render-result.json');
     const ids = Object.keys(tests);
     assert.deepEqual(ids, [...ids].sort(), 'render-tests.json is sorted by id');
-    const s = summarize(ids.map(id => ({id, status: tests[id]})), expectations);
-    assert.deepEqual(s.totals, totals, 'render-result.json has the totals of render-tests.json and render-expectations.json');
+    const s = trackedSummary(dir);
+    // The totals per decision are computed and not committed, so that a pull request that adds a label changes no total (#1861).
+    assert.deepEqual(totals, committedTotals(s.totals), 'render-result.json has the totals of render-tests.json, and no totals per decision');
     assert.deepEqual(s.unused, [], 'each entry of render-expectations.json fits a test');
     // Only the owner decides that a difference is kept (#558), and a wontfix label on a test that matches is stale.
     assert.deepEqual(s.stale, []);

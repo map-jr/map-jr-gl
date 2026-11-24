@@ -147,7 +147,7 @@ that affects how the map is drawn.
 
 | File | Content |
 |---|---|
-| `render-result.json` | The totals. `near` includes `match`. `differWontfix` and `differLater` are the parts of `differ` that have a label with that decision. `pnpm status` reads this file: the row "the same" of the table in the README is `match`, the row "the same or near" is `near`, and the total is `run`. `docs/status.json` has the other counts (`renderTests`), with the count of the differences that the library keeps (`differWontfix`). |
+| `render-result.json` | The totals that do not depend on labels. `near` includes `match`. `pnpm status` reads this file: the row "the same" of the table in the README is `match`, the row "the same or near" is `near`, and the total is `run`. `docs/status.json` has the other counts (`renderTests`). `pnpm status` and the unit tests compute `differWontfix` and `differLater`, the parts of `differ` that have a label with that decision, from `render-tests.json` and the labels, so that a pull request that only adds a label changes no committed total (#1861). |
 | `render-tests.json` | The status of each test, sorted by id and without percentages. Its diff shows the tests that changed. |
 
 Each run also prints a line that starts with `CHANGED:` for a test whose status is not the status in

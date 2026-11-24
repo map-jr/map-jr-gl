@@ -1,5 +1,5 @@
 // Runs MapLibre GL JS's render tests (a style and an expected image each) against this renderer and reports how many match.
-// A full run writes the totals to render-result.json and the status of each test to render-tests.json. The labels for
+// A full run writes the totals that do not depend on labels to render-result.json and the status of each test to render-tests.json. The labels for
 // tests that differ by a decision are in render-expectations.json (see "Render tests" in docs/development.md).
 //   node test/conformance/render.mjs [--filter=<regex>] [--limit=<n>] [--list] [--min=<pass count>] [--save=<dir>]
 // --list prints each test of the run that is not a match, with its percentage of differing pixels; it needs --filter.
@@ -12,7 +12,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {chromiumOptions} from '../launch.mjs';
 import {ensureCheckout} from './maplibre-checkout.mjs';
-import {summarize, readExpectations, report, changes, skipReason} from './render-summary.mjs';
+import {summarize, readExpectations, report, changes, skipReason, committedTotals} from './render-summary.mjs';
 import {ensureFixtures} from './mvt-fixtures.mjs';
 
 // An option that this script does not know, or --list without --filter, stops here instead of starting the full run of
@@ -278,7 +278,7 @@ if (existsSync(perTest)) for (const line of changes(committed, summary.tests)) c
 const pinned = !chromiumOptions(chromium).executablePath;
 if (!filter && limit === Infinity && !pinned) console.warn(`Not writing render-result.json and render-tests.json: this run used ${chromiumOptions(chromium).executablePath}, not the Chromium of Playwright that CI runs. Install it with \`pnpm exec playwright install chromium\` and run again.`);
 if (!filter && limit === Infinity && pinned) {
-    writeFileSync(path.join(dir, 'render-result.json'), JSON.stringify(summary.totals, null, 2) + '\n');
+    writeFileSync(path.join(dir, 'render-result.json'), JSON.stringify(committedTotals(summary.totals), null, 2) + '\n');
     writeFileSync(perTest, '{\n' + Object.entries(summary.tests).map(([id, status]) => `${JSON.stringify(id)}: ${JSON.stringify(status)}`).join(',\n') + '\n}\n');
 }
 if (process.argv.includes('--list')) for (const r of results.filter(r => r.status !== 'match' && r.status !== 'skipped')) console.log(`${r.status.padEnd(6)} ${r.id} ${r.diff !== undefined ? (r.diff * 100).toFixed(1) + '%' : r.why}${r.errors?.length ? ' [' + r.errors[0].slice(0, 80) + ']' : ''}`);
