@@ -53,6 +53,14 @@ const fontFaces = {};
 if (existsSync(path.join(fontDir, 'open-sans.woff2'))) for (const n of ['Open Sans Semibold', 'Open Sans Bold', 'Open Sans Regular']) fontFaces[n] = `${origin}/fonts/open-sans.woff2`;
 if (existsSync(path.join(fontDir, 'noto-sans.woff2'))) for (const n of ['Noto Sans Regular', 'Noto Sans Latin']) fontFaces[n] = `${origin}/fonts/noto-sans.woff2`;
 
+// The custom layers of the operation addCustomLayer are classes of MapLibre's harness (customLayerImplementations in
+// render.test.ts). They are read from the checkout and made JavaScript here, so that this repository has no copy (#666).
+const harness = readFileSync(path.join(repo, 'test/integration/render/render.test.ts'), 'utf8');
+const layerStart = harness.indexOf('class NullIsland'), layerEnd = harness.indexOf('};', harness.indexOf('const customLayerImplementations')) + 2;
+if (layerStart < 0 || layerEnd < 2) throw new Error('[map-jr-gl] render.mjs: render.test.ts of MapLibre GL JS has no customLayerImplementations. Update the code that reads it.');
+const {transformSync} = createRequire(import.meta.url)('esbuild');
+const customLayers = transformSync(harness.slice(layerStart, layerEnd) + '\nwindow.customLayerImplementations = customLayerImplementations;', {loader: 'ts'}).code;
+
 const tests = [];
 const walk = dir => {
     for (const name of readdirSync(dir).sort()) {
@@ -84,6 +92,7 @@ async function worker(queue) {
     await page.goto(origin + '/');
     await page.addScriptTag({type: 'module', content: `import * as t from '/dist/map-jr-gl-maplibre-compat.js'; window.mapjr = t;`});
     await page.waitForFunction(() => window.mapjr);
+    await page.addScriptTag({content: `{${customLayers}}`});
     };
     for (let id; (id = queue.shift());) {
         const style = JSON.parse(readFileSync(path.join(testsDir, id, 'style.json'), 'utf8').replaceAll('local://', origin + '/')), meta = style.metadata?.test ?? {};
@@ -176,6 +185,7 @@ async function worker(queue) {
                         } else {
                             idle = false;
                             if (op[0] === 'addImage') map.addImage(op[1], await image(`${origin}/${op[2]}`), op[3] || {});
+                            else if (op[0] === 'addCustomLayer') map.addLayer(new window.customLayerImplementations[op[1]](), op[2]);
                             else if (op[0] === 'setStyle') {
                                 // A style by URL is fetched here, so that it gets the font-faces of the run as a style object does (#664).
                                 const next = typeof op[1] === 'string' ? await (await fetch(op[1].replace('local://', origin + '/'))).json() : op[1];
