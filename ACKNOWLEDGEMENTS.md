@@ -11,9 +11,10 @@ BSD-3-Clause.
 - Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the CSS named below.
 - `update()` of the main API changes the layers of a new style object in place where only their `paint`, `layout` and
   `filter` differ, and moves the layers of `layers` to a new order without a new style. This follows the method of `diff` in the MapLibre style specification (BSD-3-Clause). The code is new.
-- The development build of the compat entry checks the required fields of a style as the validation of the MapLibre
+- The development build of the compat entry checks the required fields of a style and the types of its values as the validation of the MapLibre
   style specification (BSD-3-Clause) does, and its `error` events repeat the short texts of that validation, such as
-  `missing required property "source"`. The code is new.
+  `missing required property "source"`. The code is new; `scripts/style-spec-values.mjs` writes the types, enum values and
+  limits of the paint and layout properties from the specification file of that project.
 - Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
   (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
   and which values move. The code is new.
