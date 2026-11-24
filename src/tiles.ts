@@ -246,7 +246,7 @@ export class PortBackend implements TileBackend {
             const p = this.pending.get(e.data.id);
             if (!p) return;
             this.pending.delete(e.data.id);
-            if (e.data.error) p.reject(new Error(e.data.error));
+            if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final}));
             else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z});
             else p.resolve(e.data.result);
         };
@@ -309,13 +309,13 @@ export function serveTiles(port: Port) {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));
         } else if (m.type === 'dem') {
             builder.loadElevation(m.req).then(result => port.postMessage({id: m.req.id, result}, result ? [result.pixels.buffer, result.grid.buffer] : []),
-                err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message)}));
+                err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final}));
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = toGL(await builder.loadIR(m.req), m.req.globe);
                 port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z}}, transfer);
             } catch (err) {
-                port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message)});
+                port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final});
             }
         }
     };

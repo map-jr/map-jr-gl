@@ -173,6 +173,6 @@ export async function fetchTile(url: string, fetchFn: Fetch = (...a) => fetch(..
     const res: Response & {image?: ImageBitmap} = await fetchFn(url, image ? {signal, image} as RequestInit : {signal});
     // 404: the server does not have the tile (`state.missing`). 204: the server has the tile, and the tile is empty.
     if (res.status === 404 || res.status === 204) { if (state) state.missing = res.status > 204; return null; }
-    if (!res.ok) throw new Error(`Tile ${url}: HTTP ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(`Tile ${url}: HTTP ${res.status}`), {final: res.status < 500});
     return res.image ?? new Uint8Array(await res.arrayBuffer());
 }

@@ -1,0 +1,21 @@
+// The plugin minify-shaders of build.mjs: comments and whitespace go from the GLSL templates of src/gl.ts, and nothing else changes (#902).
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+// @ts-expect-error a script without type declarations
+import {minifyShaders} from '../../scripts/minify-shaders.mjs';
+
+const apply = (code: string) => {
+    let out = code;
+    for (const [start, end, text] of [...minifyShaders(code)].reverse()) out = out.slice(0, start) + text + out.slice(end);
+    return out;
+};
+
+test('an escaped backtick in a comment of a shader does not end the template, and the next template stays whole (#902)', () => {
+    const code = 'const vs = `uniform float u_a; // the \\` of a comment\nvoid main() {\n    gl_Position = vec4(u_a);\n}`;\nconst label = `a // b`;\n';
+    assert.equal(apply(code), 'const vs = `uniform float u_a;void main(){gl_Position=vec4(u_a);}`;\nconst label = `a // b`;\n');
+});
+
+test('a preprocessor line keeps a line of its own, and a template without GLSL is not changed', () => {
+    const code = 'const s = `#ifdef GLOBE\nuniform float u_r;\n#endif\nvoid main() {}`; const t = `x  // y`;';
+    assert.equal(apply(code), 'const s = `#ifdef GLOBE\nuniform float u_r;\n#endif\nvoid main(){}`; const t = `x  // y`;');
+});

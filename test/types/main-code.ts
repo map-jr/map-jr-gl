@@ -114,7 +114,11 @@ createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json', attr
 const badScale: ScaleOptions = {unit: 'miles'};
 // @ts-expect-error `source` is required.
 const badTerrain: TerrainOptions = {exaggeration: 2};
-console.log(badScale, badTerrain);
+// @ts-expect-error `terrain()` needs its options with `source` (#1238).
+const noSource = terrain();
+// @ts-expect-error `source` is required in the argument of `terrain()` too.
+const emptyTerrain = terrain({exaggeration: 2});
+console.log(badScale, badTerrain, noSource, emptyTerrain);
 
 // Every optional field of the description accepts null as "not set", as a description from JSON has it (#1146).
 const fromJSON: MapDescription = {
