@@ -158,9 +158,11 @@ Creates a button that turns 3D terrain on and off.
 terrain(options: TerrainOptions): ControlSpec
 ```
 
-A click turns on the terrain of `source` with `exaggeration`, or turns the terrain off. The description keeps its
-[`terrain`](description.md#terrain), and no callback reports the click. A later description whose `terrain` differs
-from that of the description before it overrides the click.
+A click sets [`terrain`](description.md#terrain) of the description with [`patch`](map.md#patch): to
+`{source, exaggeration}` when the map shows no terrain, and to `null` when it shows terrain. The control then calls
+`onTerrainChange` with the new value. An application that passes `terrain` in its description itself keeps the value
+in `onTerrainChange`, or its next description sets the old terrain again. Each click [loads the style
+again](description.md#style), as every change of `terrain` of the description does.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -180,6 +182,7 @@ const map = createMap('map', {
 |---|---|---|---|
 | `source` **required** | `string` | | The id of the `raster-dem` source of the style that provides the heights. |
 | `exaggeration` | `number` | `1` | The factor by which the heights of the terrain are multiplied. |
+| `onTerrainChange` | `(terrain: {source: string; exaggeration?: number} \| null) => void` | | Called with the new value of `terrain` of the description after a click has set it: `{source, exaggeration}` or `null`. |
 <!-- ref:TerrainOptions:end -->
 
 ## `globe()`

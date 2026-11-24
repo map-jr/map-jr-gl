@@ -72,7 +72,7 @@ export const geolocate = spec('geolocate', (m, o: GeolocateOptions) => new m.Geo
  * @param options The options of `TerrainOptions`, and `position`.
  * @returns A control for `controls` of the description.
  */
-export const terrain: (options: TerrainOptions & {position?: ControlPosition}) => ControlSpec = spec('terrain', (m, o: TerrainOptions) => new m.TerrainControl(o));
+export const terrain: (options: TerrainOptions & {position?: ControlPosition}) => ControlSpec = spec('terrain', (m, o: TerrainOptions, instance) => new m.TerrainControl(o, instance));
 /**
  * Creates a button that switches the projection between the globe and Mercator. The control is placed at `'top-right'` unless `position` sets it.
  * @returns A control for `controls` of the description.
@@ -167,6 +167,12 @@ export interface TerrainOptions {
      * @default 1
      */
     exaggeration?: number;
+    /**
+     * Called with the new value of `terrain` of the description after a click has set it: `{source, exaggeration}` or
+     * `null`. An application that passes `terrain` itself keeps the value here, or its next description sets the old
+     * terrain again.
+     */
+    onTerrainChange?: (terrain: {source: string; exaggeration?: number} | null) => void;
 }
 /** An entry of `styles()`. */
 export interface StyleEntry {

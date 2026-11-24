@@ -151,9 +151,9 @@ map.addControl(new TerrainControl({source: 'terrarium', exaggeration: 1.5}));
 To turn the terrain on and off from your own code, pass a new `terrain` to
 [`patch`](../reference/map.md#patch) with the main API, or call `map.setTerrain(null)` with the MapLibre compat entry.
 With the main API, a change of `terrain` [loads the style again](../reference/description.md#style). A click on the
-control changes the terrain without loading the style. A `patch` of another field keeps the terrain that the last
-click on the control set. A new
-`terrain` or a new `style` replaces it.
+control sets `terrain` of the description with `patch`, so it loads the style again too. An application that passes
+`terrain` in its description itself keeps the value in the option `onTerrainChange` of the control, or its next
+description sets the old terrain again.
 
 **Map Jr**
 

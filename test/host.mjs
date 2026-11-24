@@ -574,6 +574,30 @@ for (const renderer of renderers) {
         const flatWant = ['null', '{"source":"dem","exaggeration":2}', 'null', '{"source":"dem","exaggeration":1.5}', '{"source":"dem","exaggeration":2}', '{"source":"dem","exaggeration":2}'];
         check(`[${renderer}] terrain: null gives a flat map with a style that has terrain, and no field or undefined gives the terrain of the style (#1104)`, JSON.stringify(flat) === JSON.stringify(flatWant), JSON.stringify(flat));
 
+        // The control terrain() sets `terrain` of the description (#1106): after each click the description, the terrain
+        // of the map and the label agree, onTerrainChange gets the value, and an update with the description keeps it.
+        const button = await page.evaluate(async renderer => {
+            const t = window.t, {terrain} = await import('/dist/controls.js'), out = [], calls = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
+            const host = t.lib.createMap(el, {style, terrain: {source: 'dem'}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false,
+                controls: [terrain({source: 'dem', exaggeration: 2, onTerrainChange: v => calls.push(JSON.stringify(v))})]});
+            for (let i = 0; i < 300 && !el.querySelector('.map-jr-ctrl-terrain'); i++) await new Promise(r => setTimeout(r, 30));
+            const b = el.querySelector('.map-jr-ctrl-terrain');
+            const read = async () => { await new Promise(r => setTimeout(r, 50)); await idle(host); return `${JSON.stringify(host.description.terrain)}/${JSON.stringify(host.getResolvedDescription().style.terrain ?? null)}/${b.getAttribute('aria-label')}`; };
+            out.push(await read());
+            b.click(); out.push(await read());
+            host.update({...host.description, globalState: {x: 1}}); out.push(await read());
+            b.click(); out.push(await read());
+            host.patch({globalState: {x: 2}}); out.push(await read());
+            host.destroy(); el.remove();
+            return `${out.join(' > ')} calls ${calls.join(',')}`;
+        }, renderer);
+        const on1 = '{"source":"dem"}/{"source":"dem"}/Disable terrain', off = 'null/null/Enable terrain', on2 = '{"source":"dem","exaggeration":2}/{"source":"dem","exaggeration":2}/Disable terrain';
+        check(`[${renderer}] the control terrain() sets terrain of the description, calls onTerrainChange, and an update with the description keeps the terrain (#1106)`,
+            button === `${on1} > ${off} > ${off} > ${on2} > ${on2} calls null,{"source":"dem","exaggeration":2}`, button);
+
         // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
         const noDem = await page.evaluate(async renderer => {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));

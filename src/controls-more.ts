@@ -1,6 +1,7 @@
 // The controls that an application adds itself (the control for the credits is in controls.ts, because the map adds it).
 // They are a file of their own, so that a page that does not use them does not load them.
 import type {Map} from './map.ts';
+import type {MapInstance} from './host.ts';
 import {Evented} from './evented.ts';
 import {cls, ui, toggleClass, type Control, type ControlPosition} from './controls.ts';
 
@@ -211,18 +212,34 @@ export class FullscreenControl implements Control {
     onRemove() { this.el?.remove(); document.removeEventListener('fullscreenchange', this.change); this.cleanup(); }
 }
 
-/** A button that turns 3D terrain on and off. The options are those of `setTerrain`, as in MapLibre. */
+/**
+ * A button that turns 3D terrain on and off. The options are those of `setTerrain`, as in MapLibre. In the controls of
+ * a map of the main API (`instance`), a click sets `terrain` of the description with `patch` and calls
+ * `onTerrainChange`, so that the description says what the map shows (#1106).
+ */
 export class TerrainControl implements Control {
     private el?: HTMLElement;
-    constructor(public options: {source: string; exaggeration?: number}) {}
+    private map?: Map;
+    constructor(public options: {source: string; exaggeration?: number; onTerrainChange?: (terrain: {source: string; exaggeration?: number} | null) => void}, private instance?: () => MapInstance) {}
     onAdd(map: Map) {
-        const el = this.el = group();
-        const b = button(el, 'terrain', '', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => { map.setTerrain(map.getTerrain() ? null : this.options); name(); });
-        const name = () => { const on = !!map.getTerrain(); b.title = ui(map, on ? 'TerrainControl.Disable' : 'TerrainControl.Enable', on ? 'Disable terrain' : 'Enable terrain'); b.setAttribute('aria-label', b.title); };
-        name();
+        const el = this.el = group(), instance = this.instance?.();
+        this.map = map;
+        // (The description can have changed before the map has its new style: it is read first.)
+        const on = () => instance?.description.terrain !== undefined ? !!instance?.description.terrain : !!map.getTerrain();
+        const b = button(el, 'terrain', '', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => {
+            const {source, exaggeration, onTerrainChange} = this.options, to = on() ? null : {source, ...exaggeration !== undefined && {exaggeration}};
+            if (!instance) map.setTerrain(to);
+            else { instance.patch({terrain: to}); onTerrainChange?.(to); }
+            this.name();
+        });
+        this.name = () => { const o = on(); b.title = ui(map, o ? 'TerrainControl.Disable' : 'TerrainControl.Enable', o ? 'Disable terrain' : 'Enable terrain'); b.setAttribute('aria-label', b.title); };
+        this.name();
+        map.on('terrain', this.name);
+        map.on('styledata', this.name);
         return el;
     }
-    onRemove() { this.el?.remove(); }
+    private name = () => {};
+    onRemove() { this.map?.off('terrain', this.name); this.map?.off('styledata', this.name); this.map = undefined; this.el?.remove(); }
 }
 
 /**
