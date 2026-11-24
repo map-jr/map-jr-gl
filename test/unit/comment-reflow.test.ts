@@ -2,12 +2,17 @@
 // is re-flowed as one paragraph of words, with one comment marker on each output line.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+
+// The formatter needs the packages of website/ (prettier). Without them the tests are skipped, as docs-lint does (#1296).
 // @ts-ignore: a JavaScript module of the site without types.
-import {reflowComments, formatCode, isVerbatim, desktopWidth, phoneWidth} from '../../website/build/format.mjs';
+const format = await import('../../website/build/format.mjs').catch(() => undefined);
+if (!format) console.log('comment-reflow: skipped, because website/ has no packages. Run pnpm install --dir website.');
+const skip = format ? false : 'website/ has no packages: run pnpm install --dir website';
+const {reflowComments, formatCode, isVerbatim, desktopWidth, phoneWidth} = format ?? {};
 
 const words = (text: string) => text.replace(/\/\/|\/\*\*?|\*\/|<!--|-->|^\s*\*/gm, ' ').split(/\s+/).filter(Boolean);
 
-test('a "//" comment of three lines is one paragraph at both widths', () => {
+test('a "//" comment of three lines is one paragraph at both widths', {skip}, () => {
     const code = [
         '// The terrain adds relief and shading: contour lines and a stronger hillshade make the slopes easier to read',
         '// at every zoom, and the sky fades to the',
@@ -26,7 +31,7 @@ test('a "//" comment of three lines is one paragraph at both widths', () => {
     }
 });
 
-test('a "/* */" block keeps one " * " per line and its paragraphs and lists apart', () => {
+test('a "/* */" block keeps one " * " per line and its paragraphs and lists apart', {skip}, () => {
     const code = [
         '/**',
         ' * The terrain adds relief and shading: contour lines and a stronger hillshade make the slopes easier',
@@ -52,7 +57,7 @@ test('a "/* */" block keeps one " * " per line and its paragraphs and lists apar
     assert.ok(reflowComments(code, 'ts', desktopWidth).split('\n').every(line => line.length <= desktopWidth));
 });
 
-test('an HTML comment of several lines is one paragraph between "<!--" and "-->"', () => {
+test('an HTML comment of several lines is one paragraph between "<!--" and "-->"', {skip}, () => {
     const code = [
         '<template>',
         '  <!-- The map shows the terrain with a hillshade',
@@ -72,12 +77,12 @@ test('an HTML comment of several lines is one paragraph between "<!--" and "-->"
     ].join('\n'));
 });
 
-test('a comment of several lines that fits keeps its lines', () => {
+test('a comment of several lines that fits keeps its lines', {skip}, () => {
     const code = '// One line.\n// Another line.\nx();';
     assert.equal(reflowComments(code, 'js', phoneWidth), code);
 });
 
-test('the comments of a <script> in an html fence re-flow as JavaScript comments (#1271)', () => {
+test('the comments of a <script> in an html fence re-flow as JavaScript comments (#1271)', {skip}, () => {
     const code = [
         '<script src="https://unpkg.com/@map-jr/map-jr-gl/dist/map-jr-gl.js"></script>',
         '<script type="module">',
@@ -105,7 +110,7 @@ test('the comments of a <script> in an html fence re-flow as JavaScript comments
     assert.ok(desktop.slice(1).every(line => line.length <= desktopWidth), desktop.join('\n'));
 });
 
-test('an html fence re-flows "<!-- -->" with paragraphs kept apart (#1271)', () => {
+test('an html fence re-flows "<!-- -->" with paragraphs kept apart (#1271)', {skip}, () => {
     const code = [
         '<!-- The map shows the terrain with a hillshade and contour lines at every zoom.',
         '',
@@ -126,7 +131,7 @@ test('an html fence re-flows "<!-- -->" with paragraphs kept apart (#1271)', () 
     ].join('\n'));
 });
 
-test('a text fence keeps its lines at both widths (#1271)', async () => {
+test('a text fence keeps its lines at both widths (#1271)', {skip}, async () => {
     const code = '[map-jr-gl] <map-jr>: the attribute hover-state="false" switches the option on all\nthe same.';
     for (const language of ['text', 'txt', 'console', 'output']) {
         assert.ok(isVerbatim(language), language);
