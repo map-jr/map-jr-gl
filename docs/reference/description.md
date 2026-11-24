@@ -544,6 +544,10 @@ The map can set the state only on a feature that has an id. For a GeoJSON source
 The map calls `onClick` with one object (`MapPointer`) for each click on the map. It does not call `onClick` for a
 click on a control or on an element that [`map.overlay`](map.md#overlay) placed on the map.
 
+`onClick` works without [`interactiveLayers`](#interactivelayers), for example to read only the position of a click.
+The map then does not query features, `features` is always empty, and the map gives no warning. To receive the
+features under a click, list their layers in `interactiveLayers`.
+
 | Name | Type | Description |
 |---|---|---|
 | `point` | `{x: number; y: number}` | The place of the click in CSS pixels from the top left corner of the map. |
