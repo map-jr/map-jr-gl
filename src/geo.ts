@@ -601,15 +601,25 @@ export function addTurnSample(samples: {t: number; x: number; y: number; w?: num
 }
 
 /**
+ * The samples that the inertia of a drag is measured between, as `HandlerInertia` of MapLibre GL JS takes them: the
+ * first sample of the last 60 ms before the release (or the last but one) and the last sample. Samples older than
+ * 160 ms do not count. Returns nothing when fewer than two samples are left.
+ */
+export function inertiaSpan<S extends {t: number}>(samples: S[], now: number): [S, S] | [] {
+    samples = samples.filter(s => s.t >= now - 160);
+    const last = samples[samples.length - 1], from = samples.find(s => now - s.t <= 60 && s !== last) ?? samples[samples.length - 2];
+    return from ? [from, last] : [];
+}
+
+/**
  * The inertia after a rotate drag, as `HandlerInertia` of MapLibre GL JS computes it: the change of the bearing (`x`)
  * and the pitch (`y`) from the first sample of the last 60 ms (or the last but one) to the last sample, over the time
  * up to the release, gives a speed (at most 360 degrees per second for the bearing, 90 for the pitch) that decelerates
  * by 1000 degrees per second. Samples older than 160 ms count as in MapLibre GL JS: not at all. Returns the turn and the tilt still to come and the duration in ms, or nothing.
  */
 export function turnInertia(samples: {t: number; x: number; y: number}[], now: number) {
-    samples = samples.filter(s => s.t >= now - 160);
-    const last = samples[samples.length - 1], from = samples.find(s => now - s.t <= 60 && s !== last) ?? samples[samples.length - 2];
-    if (!from) return;
+    const [from, last] = inertiaSpan(samples, now);
+    if (!from || !last) return;
     const speed = (d: number, max: number) => clamp(d * 300 / (now - from.t), -max, max), b = speed(last.x - from.x, 360), p = speed(last.y - from.y, 90);
     if (b || p) return {bearing: clamp(b * Math.abs(b) / 600, -179, 179), pitch: p * Math.abs(p) / 600, duration: Math.max(Math.abs(b), Math.abs(p)) * 10 / 3};
 }

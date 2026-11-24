@@ -4660,6 +4660,38 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
+        // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
+        const m479 = {};
+        for (let run = 0; run < 3; run++) for (const lib of ['ml', 'compat']) for (const [gap, step] of [[16, 30], [80, 40]]) {
+            await page.evaluate(async lib => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m479 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => setTimeout(r, 300));
+                m.once('dragend', () => { window.at479 = m.project([10, 45]).x; });
+            }, lib);
+            await page.mouse.move(20, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { if (i > 1) await page.waitForTimeout(gap); await page.mouse.move(20 + i * step, 150); }
+            await page.mouse.up();
+            const d = await page.evaluate(async () => {
+                const m = window.m479;
+                await new Promise(r => setTimeout(r, 2000));
+                const d = Math.round(m.project([10, 45]).x - window.at479);
+                const el = m.getContainer(); m.remove(); el.remove();
+                return d;
+            });
+            m479[lib + gap] = Math.max(m479[lib + gap] ?? -Infinity, d);
+        }
+        // (A loaded machine delays frames and shortens the inertia of a drag: each drag runs three times, and the longest
+        // inertia counts. After the fast drag the distances agree within a fifth or 3 px. After the slow drag the inertia
+        // is a few pixels and depends on where the frames fall, so it only has to be within a factor of 2. Before #479 the
+        // fast one went about 1.7 times as far here, and the slow one had none.)
+        const near479 = g => g === 16 ? Math.abs(m479['compat' + g] - m479['ml' + g]) <= Math.max(3, m479['ml' + g] / 5) : m479['compat' + g] >= m479['ml' + g] / 2 && m479['compat' + g] <= m479['ml' + g] * 2;
+        check('[main] maplibre-compat: the inertia of a fast and of a slow pan goes as far as in MapLibre GL JS (#479)',
+            [16, 80].every(g => m479['ml' + g] > 3 && near479(g)), JSON.stringify(m479));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
