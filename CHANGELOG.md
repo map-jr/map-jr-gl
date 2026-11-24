@@ -40,6 +40,13 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   glyphs and font files ([#1691]), as in MapLibre GL JS. Before, the types were `arrayBuffer` and `json`. A protocol
   that branches on `request.type` must handle the new values. A protocol may now answer an image request with an
   `ImageBitmap`, and an answer with bytes still works.
+- Both entries: the title and the `aria-label` of the button of the terrain control are "Enable terrain" and "Disable
+  terrain" instead of "Toggle terrain". Code or tests that find the button by its old label must use the new ones
+  ([#1581]).
+- Documentation: the package ships the four folders of `docs/` (`guide`, `reference`, `recipes`, `migrate`), and the
+  flat files such as `docs/api.md` are removed. A link or a prompt that names a flat file names the page of
+  `docs/reference/` or `docs/guide/` instead, for example `docs/reference/map.md` and
+  `docs/reference/description.md` for `docs/api.md` ([#1510]).
 
 ### New
 
@@ -89,8 +96,7 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
 - `@map-jr/map-jr-gl`: the controls of the description keep their place and identity. The order of the options does
   not change the key ([#1590]), a new `position` with the same key moves the control ([#1589]), a kept control takes
   the callbacks of the latest description ([#1627]), and two `custom()` controls with one key no longer make the map
-  add the control again on each change ([#1666]). The terrain control is labeled "Enable terrain" and "Disable
-  terrain" ([#1581]).
+  add the control again on each change ([#1666]).
 - `@map-jr/map-jr-gl/server`: a style image hides the sprite image of its name ([#1614]), `renderElement` labels the
   first view with `Map.Title` of the locale ([#1624]), and the SVG writes `line-cap`, `line-join` and
   `line-miter-limit` of a style only as valid values ([#1670]). `renderElement` gives the element the `center` and
@@ -112,8 +118,6 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
 - Messages: the HTTP errors of the server renderer and of marker images ([#1572]) and the error of `queryElevation`
   without a `raster-dem` source ([#1597]) start with `[map-jr-gl]`. Messages and the labels of the `colorScheme()`
   control use US spelling ([#1563]). Code that matches the old texts must change.
-- Documentation: the package ships the four folders of `docs/` (`guide`, `reference`, `recipes`, `migrate`), and the
-  flat files such as `docs/api.md` are removed ([#1510]).
 
 [#1510]: https://github.com/map-jr/map-jr-gl/pull/1510
 [#1519]: https://github.com/map-jr/map-jr-gl/pull/1519
