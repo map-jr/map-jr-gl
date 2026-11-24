@@ -17,6 +17,7 @@ export interface ElevationRequest { id: number; url: string; encoding: DemEncodi
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
+    /** The zoom and row of the tile, for lengths in meters (fill-extrusion-rounded-corner-distance). */ at?: [number, number];
     /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). No map sends it yet (#463). */ globe?: GlobeBuild }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
@@ -132,8 +133,8 @@ export class TileBuilder {
     }
 
     async loadIR(req: TileRequest): Promise<TileIR> {
-        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(await this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
-        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
+        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(await this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct, req.at);
+        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct, req.at);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
@@ -146,7 +147,7 @@ export class TileBuilder {
             }
             if (!bytes) return {layers: {}, labels: {}};
             if (n === this.forgotten) this.remember(key, bytes);
-            return bytes.length ? buildTile(decodeVectorTile(bytes, this.ids[req.source]), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}};
+            return bytes.length ? buildTile(decodeVectorTile(bytes, this.ids[req.source]), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct, req.at) : {layers: {}, labels: {}};
         } finally {
             this.aborts.delete(req.id);
         }

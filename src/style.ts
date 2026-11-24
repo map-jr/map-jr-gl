@@ -55,6 +55,7 @@ export const SPEC: Record<string, Record<string, [string, PropKind, any, string[
         pattern: ['fill-extrusion-pattern', 'string', ''],
         translate: ['fill-extrusion-translate', 'string', [0, 0]],
         translateAnchor: ['fill-extrusion-translate-anchor', 'string', 'map'],
+        round: ['fill-extrusion-rounded-corner-distance', 'number', 0],
     },
     circle: {
         color: ['circle-color', 'color', '#000'],

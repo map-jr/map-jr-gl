@@ -46,6 +46,8 @@ export interface Batch {
     base?: Float32Array;
     /** Building extrusions with fill-extrusion-pattern: the walls carry the distance along their ring, for the image. */
     ed?: boolean;
+    /** Building extrusions with rounded corners: the light blends across the walls of a corner. */
+    smooth?: boolean;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
     pat?: string;
 }
@@ -133,7 +135,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 export type TileLayers = Record<string, {features: TileFeature[]}>;
 export interface TileFeature extends Feature { /** See `SlicedFeature`. */ index?: number; geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
-export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean): TileIR {
+export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean, /** The zoom and row of the tile. */ at?: [number, number]): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
     const geometry = (f: TileFeature) => {
@@ -310,6 +312,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const ddColor = p.color.dd || p.opacity.dd;
             const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [];
             let grows = false;
+            // fill-extrusion-rounded-corner-distance, in units of the tile at the center of the tile, as in MapLibre GL JS.
+            const round = extrude && at ? p.round.eval(z) * EXTENT * 2 ** at[0] / (40030174 * Math.cos(Math.atan(Math.sinh(Math.PI * (1 - (2 * at[1] + 1) / 2 ** at[0]))))) : 0;
             const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
             const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
             for (const f of fs) {
@@ -328,7 +332,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                         start = end;
                         continue;
                     }
-                    for (let i = start * 2; i < end * 2; i++) coords.push(g.coords[i]);
+                    if (round) roundRing(g.coords, start, end, round, coords);
+                    else for (let i = start * 2; i < end * 2; i++) coords.push(g.coords[i]);
                     // Polygon rings drawn as lines need an explicit closing point.
                     if (L.type === 'line' && f.type === 3) coords.push(g.coords[start * 2], g.coords[start * 2 + 1]);
                     ringEnds.push(coords.length / 2);
@@ -356,7 +361,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
             if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (offset.length) batch.offset = Float32Array.from(offset);
-            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
+            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (round > 0) batch.smooth = true; if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
             if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
             if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
             if (pat) batch.pat = pat;
@@ -637,14 +642,25 @@ function tessellateExtrusion(b: Batch, globe?: GlobeBuild): GLBatch | null {
                     if (len && d + len > EXTENT * 4) d = 0; // (32768 units of MapLibre GL JS)
                     dist.push(d); d += len;
                 }
+                // The outward normal of the wall that ends at corner i, as long as the wall.
+                const nx = (i: number) => { const j = s + (i - s + n - 1) % n; return -(coords[i * 2 + 1] - coords[j * 2 + 1]) * out; };
+                const ny = (i: number) => { const j = s + (i - s + n - 1) % n; return (coords[i * 2] - coords[j * 2]) * out; };
+                // With rounded corners, the light of a wall at a corner blends with the next wall, as in MapLibre GL JS
+                // (`roundedWallNormals`): at a turn of less than 35 degrees the walls share a normal, which is the normal
+                // of a wall twice as long as the other, or else the sum of the two.
+                const facing = (i: number, k: number) => {
+                    let x = nx(i), y = ny(i);
+                    const u = nx(k), w = ny(k), l = Math.hypot(x, y), m = Math.hypot(u, w);
+                    if (b.smooth && m && !(x * u + y * w < 0.8192 * l * m || l >= 2 * m)) { if (m >= 2 * l) x = u, y = w; else x += u, y += w; }
+                    return Math.atan2(-y, -x) + Math.PI;
+                };
                 for (let i = s, j = e - 1; i < e; j = i++) {
                     const ax = coords[j * 2], ay = coords[j * 2 + 1], bx = coords[i * 2], by = coords[i * 2 + 1], len = Math.hypot(bx - ax, by - ay);
                     if (!len) continue;
-                    const facing = Math.atan2(-(bx - ax) * out, (by - ay) * out) + Math.PI, other = (h: number) => WALL_OTHER * Math.floor(Math.min(60000, Math.max(0, h)));
-                    const low = facing + other(top), high = facing + WALL_TOP + other(bottom);
+                    const fa = facing(i, j), fb = facing(i, i + 1 < e ? i + 1 : s), other = (h: number) => WALL_OTHER * Math.floor(Math.min(60000, Math.max(0, h)));
                     const d = dist[(i - s + n - 1) % n] ?? 0;
-                    const q = vert(ax, ay, bottom, low, d + len);
-                    vert(bx, by, bottom, low, d); vert(bx, by, top, high, d); vert(ax, ay, top, high, d + len);
+                    const q = vert(ax, ay, bottom, fa + other(top), d + len);
+                    vert(bx, by, bottom, fb + other(top), d); vert(bx, by, top, fb + WALL_TOP + other(bottom), d); vert(ax, ay, top, fa + WALL_TOP + other(bottom), d + len);
                     idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
                 }
             }
@@ -655,6 +671,42 @@ function tessellateExtrusion(b: Batch, globe?: GlobeBuild): GLBatch | null {
     if (b.color) out.color = Uint8Array.from(color);
     if (b.ed) out.ed = Float32Array.from(ed);
     return out;
+}
+
+/**
+ * fill-extrusion-rounded-corner-distance: pushes the ring of `c` from point `start` to `end` to `out` with each corner
+ * cut by an arc of radius `r` (units of the tile), as MapLibre GL JS 6.17 does (`roundPolygonCornersIfNeeded`). The
+ * radius is at most a fifth of each side of the corner. A corner of less than 5 degrees, a corner on the edge of the
+ * tile (where the tile cut the polygon) and a side of length 0 stay as they are. The arc has a point at each 30 degrees
+ * or less. The points are whole units, and a point equal to the one before it is left out.
+ */
+function roundRing(c: ArrayLike<number>, start: number, end: number, r: number, out: number[]) {
+    let n = end - start;
+    if (n > 1 && c[start * 2] === c[end * 2 - 2] && c[start * 2 + 1] === c[end * 2 - 1]) n--;
+    const x = (i: number) => c[(start + (i + n) % n) * 2], y = (i: number) => c[(start + (i + n) % n) * 2 + 1];
+    // (As isBoundaryEdge of MapLibre GL JS.)
+    const edge = (i: number) => x(i) === x(i + 1) && (x(i) < 0 || x(i) > EXTENT) || y(i) === y(i + 1) && (y(i) < 0 || y(i) > EXTENT);
+    const ring: number[] = [], push = (px: number, py: number) => {
+        px = Math.round(px); py = Math.round(py);
+        if (ring.length && ring[ring.length - 2] === px && ring[ring.length - 1] === py) return;
+        ring.push(px, py);
+    };
+    for (let i = 0; n > 2 && i < n; i++) {
+        const cx = x(i), cy = y(i);
+        let ax = x(i - 1) - cx, ay = y(i - 1) - cy, bx = x(i + 1) - cx, by = y(i + 1) - cy;
+        const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+        ax /= la; ay /= la; bx /= lb; by /= lb;
+        const dot = ax * bx + ay * by;
+        if (edge(i - 1) || edge(i) || la < 1e-6 || lb < 1e-6 || Math.abs(dot) > 0.9962) { push(cx, cy); continue; }
+        const q = Math.min(r, la / 5, lb / 5), sx = ax + bx, sy = ay + by, sl = Math.hypot(sx, sy) * Math.sqrt((1 + dot) / 2);
+        // The center of the arc, and its two ends where it meets the sides.
+        const ox = cx + sx * q / sl, oy = cy + sy * q / sl, tx = cx + ax * q - ox, ty = cy + ay * q - oy, ux = cx + bx * q - ox, uy = cy + by * q - oy;
+        const sweep = Math.atan2(tx * uy - ty * ux, tx * ux + ty * uy), steps = Math.max(2, Math.ceil(Math.abs(sweep) / (Math.PI / 6) - 1e-6));
+        for (let k = 0; k <= steps; k++) { const a = sweep * k / steps, cs = Math.cos(a), sn = Math.sin(a); push(ox + cs * tx - sn * ty, oy + sn * tx + cs * ty); }
+    }
+    while (ring.length > 2 && ring[0] === ring[ring.length - 2] && ring[1] === ring[ring.length - 1]) ring.length -= 2;
+    if (ring.length < 6) for (let i = start * 2; i < end * 2; i++) out.push(c[i]);
+    else { out.push(...ring); if (n < end - start) out.push(ring[0], ring[1]); }
 }
 
 const ARC_STEP = Math.PI / 5;
