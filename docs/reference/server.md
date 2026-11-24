@@ -382,6 +382,7 @@ the first view, writes the error to the console of the server, and emits it as `
 | `maxBytes` | `number` | `0` | The largest body of one response in bytes, after decompression, as `maxBytes` of `renderToSVG`. |
 | `allowHosts` | `string[]` | | The host names that the render can request, as `allowHosts` of `renderToSVG`. |
 | `tileZoomOffset` | `number` | `0` | The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. |
+| `label` | `string` | the text `Map.Title` of the prop `locale`, as the canvas of the map has it, else `'Map'` | The `aria-label` of the SVG, as `label` of `renderToSVG`. |
 <!-- ref:MapJrSSROptions:end -->
 
 The prop `:attribution="false"` overrides `attribution` and shows none.
