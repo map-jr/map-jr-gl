@@ -576,7 +576,7 @@ for (const renderer of renderers) {
 
         // The control terrain() sets `terrain` of the description (#1106): after each click the description, the terrain
         // of the map and the label agree, onTerrainChange gets the value, and an update with the description keeps it.
-        const button = await page.evaluate(async renderer => {
+        const terrainButton = await page.evaluate(async renderer => {
             const t = window.t, {terrain} = await import('/dist/controls.js'), out = [], calls = [];
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
             const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
@@ -594,9 +594,9 @@ for (const renderer of renderers) {
             host.destroy(); el.remove();
             return `${out.join(' > ')} calls ${calls.join(',')}`;
         }, renderer);
-        const on1 = '{"source":"dem"}/{"source":"dem"}/Disable terrain', off = 'null/null/Enable terrain', on2 = '{"source":"dem","exaggeration":2}/{"source":"dem","exaggeration":2}/Disable terrain';
+        const tOn1 = '{"source":"dem"}/{"source":"dem"}/Disable terrain', tOff = 'null/null/Enable terrain', tOn2 = '{"source":"dem","exaggeration":2}/{"source":"dem","exaggeration":2}/Disable terrain';
         check(`[${renderer}] the control terrain() sets terrain of the description, calls onTerrainChange, and an update with the description keeps the terrain (#1106)`,
-            button === `${on1} > ${off} > ${off} > ${on2} > ${on2} calls null,{"source":"dem","exaggeration":2}`, button);
+            terrainButton === `${tOn1} > ${tOff} > ${tOff} > ${tOn2} > ${tOn2} calls null,{"source":"dem","exaggeration":2}`, terrainButton);
 
         // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
         const noDem = await page.evaluate(async renderer => {
