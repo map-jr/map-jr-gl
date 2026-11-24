@@ -9,7 +9,7 @@ import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 import {SPEC} from './style.ts';
 import {parseColor} from './expr.ts';
-import {layerTypes, layoutValues, paintValues} from './style-spec-values.ts';
+import {layerTypes, layoutValues, operators, paintValues} from './style-spec-values.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; /** The name that made the map, such as `createMap()` or `<MapJr>`. */ name: string; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -194,8 +194,9 @@ const typeOf = (v: unknown) => v === null ? 'null' : Array.isArray(v) ? 'array' 
 function checkValue(where: string, v: any, c: string, found: (where: string, why: string) => void) {
     const expression = c[0] !== '!', t = typeOf(v), kind = expression ? c[0] : c[1], arg = c.slice(expression ? 1 : 2), list = arg.split(',');
     if (expression && t === 'object') return;
-    // (An array is an expression when its first element can be the name of an operator and is not a valid element.)
-    if (expression && t === 'array' && /^([a-z][a-z0-9-]*|[!=<>]=?|==|[-+*/%^])$/.test(v[0] ?? '') && !(kind === 'E' ? list.includes(v[0]) : kind === 'C' && parseColor(v[0]))) return;
+    // (An array is an expression when its first element is the name of an operator of the style specification, as in
+    // MapLibre GL JS; any other array is a literal, so `["abc", 1]` is checked as a value.)
+    if (expression && t === 'array' && typeof v[0] === 'string' && operators.split(' ').includes(v[0])) return;
     const each = (code: string) => v.forEach((e: unknown, i: number) => checkValue(`${where}[${i}]`, e, '!' + code, found));
     const wrong = (what: string) => found(where, `${what} expected, ${t} found`);
     if (kind === 'n') {

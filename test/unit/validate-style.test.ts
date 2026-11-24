@@ -32,6 +32,9 @@ const styles = [
         {id: 'f', type: 'polygon', source: 'g'},
         {id: 'g', type: 'background', paint: {'background-color': 'transparent', 'background-opacity': 0.5}},
         {id: 'h', type: 'fill', source: 'g', paint: {'fill-antialias': 1, 'fill-layer-blend': ['get', 'x'], 'fill-color': '#12345'}},
+        // An array whose first element is not an operator is a literal (#1748).
+        {id: 'i', type: 'line', source: 'g', paint: {'line-translate': ['abc', 1], 'line-color': ['red']}},
+        {id: 'j', type: 'symbol', source: 'g', layout: {'text-variable-anchor': ['bogus'], 'text-font': ['noto']}},
     ]},
     {sources: {v: {type: 'vector', url: 'https://example.com/v.json'}, r: {type: 'raster', url: 'https://example.com/r.json'}, d: {type: 'raster-dem', url: 'https://example.com/d.json'}}, layers: [
         {id: 'a', type: 'raster', source: 'v'}, {id: 'b', type: 'fill', source: 'r'}, {id: 'c', type: 'line', source: 'd'},
@@ -50,6 +53,12 @@ test('the texts are those of MapLibre GL JS for each missing required field and 
         validateStyle(s, (where, why) => ours.push(`${where}: ${why}`));
         assert.deepEqual(ours.sort(), validateStyleMin({version: 8, ...s}).map(e => e.message).sort(), JSON.stringify(s));
     }
+});
+
+test('an array whose first element is an operator, such as ["round"], is an expression and is not checked (#1748)', () => {
+    const ours: string[] = [];
+    validateStyle({sources: {g: {type: 'geojson', data: fc}}, layers: [{id: 'a', type: 'line', source: 'g', layout: {'line-cap': ['round']}, paint: {'line-width': ['get', 'w']}}]}, (where, why) => ours.push(`${where}: ${why}`));
+    assert.deepEqual(ours, []);
 });
 
 test('the compat entry fires each error once, with the place and the text, and validate: false skips it', () => {

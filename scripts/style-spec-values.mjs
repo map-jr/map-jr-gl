@@ -26,6 +26,7 @@ export function source() {
     return `// Written by scripts/style-spec-values.mjs from the style specification ${spec.$version} of @maplibre/maplibre-gl-style-spec. Do not edit.
 // Each entry is "<layer type> <property> <code>"; the script says what the codes mean. (Development build only, #1748.)
 export const layerTypes = ${JSON.stringify(types.join(' '))};
+export const operators = ${JSON.stringify(Object.keys(spec.expression_name.values).join(' '))};
 export const paintValues = ${JSON.stringify(group('paint'))};
 export const layoutValues = ${JSON.stringify(group('layout'))};
 `;
