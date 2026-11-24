@@ -35,6 +35,8 @@ const maplibreMembers = (() => {
 }
 const privates = shortenPrivateNames();
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+// (COMPILE_HINTS: see where the built files get the hint, after the builds.)
+if (process.env.COMPILE_HINTS && process.env.COMPILE_HINTS !== 'page') throw new Error(`[map-jr-gl] build.mjs: COMPILE_HINTS="${process.env.COMPILE_HINTS}" is not known. Write COMPILE_HINTS=page, or leave it unset.`);
 /** The result of a plugin that changed `code` through `edited`, with the source map of the change. */
 const withMap = (edited, id) => ({code: edited.toString(), map: edited.generateMap({source: id, hires: true})});
 
@@ -198,7 +200,18 @@ const withStaticImports = (name, read, seen = new Set()) => {
     return seen;
 };
 const fromDist = name => readFileSync('dist/' + name, 'utf8');
-const upfront = [...withStaticImports('map-jr-gl.js', fromDist)];
+// COMPILE_HINTS=page writes the explicit compile hint of V8 (https://v8.dev/blog/explicit-compile-hints) as the first
+// line of each file that the page loads up front, for both entries, so that Chromium compiles their functions on a
+// background thread instead of lazily on the main thread. It is off by default, so the published files do not have
+// it, until a comparison on devices shows a gain (#1688). The worker file does not get it: a worker compiles its script
+// on its own thread, and the hint made that compile slower there.
+if (process.env.COMPILE_HINTS === 'page') {
+    for (const file of new Set(['map-jr-gl.js', 'map-jr-gl-maplibre-compat.js'].flatMap(entry => [...withStaticImports(entry, fromDist)]))) {
+        writeFileSync('dist/' + file, '//# allFunctionsCalledOnLoad\n' + fromDist(file));
+        try { const map = JSON.parse(fromDist(file + '.map')); writeFileSync('dist/' + file + '.map', JSON.stringify({...map, mappings: ';' + map.mappings})); } catch { /* a file without a map */ }
+    }
+}
+const upfront =[...withStaticImports('map-jr-gl.js', fromDist)];
 report('page script, up front (' + upfront.join(' + ') + ')', Buffer.concat(upfront.map(f => readFileSync('dist/' + f))));
 const upfrontDev = [...withStaticImports('map-jr-gl.dev.js', fromDist)];
 report('the same in the development build (' + upfrontDev.join(' + ') + ')', Buffer.concat(upfrontDev.map(f => readFileSync('dist/' + f))));
