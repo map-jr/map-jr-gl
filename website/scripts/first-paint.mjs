@@ -6,8 +6,8 @@
 // - public/home-first-paint-wide.svg: an SVG of 2560 by 1600, for wider or higher windows. The page loads it only there
 //   (a preload and a background image, both with the media query of HomeMap.vue).
 // - public/home-first-paint-dark.svg and public/home-first-paint-wide-dark.svg: the same two pictures in the dark colors. The live map
-//   follows the color mode of the site, and its style reads the global state `color-scheme`. The server renderer does not set that state,
-//   so the script gives the style as an object with the default `dark`. Only a page with the class `dark` on <html> (the color mode of the
+//   follows the color mode of the site, and its style reads the global state `color-scheme`, which `colorScheme: 'dark'` sets on the
+//   server as in the map (#1426). Only a page with the class `dark` on <html> (the color mode of the
 //   site sets it in the head, before the first paint) shows and fetches them (HomeMap.vue).
 // Both have the center and the zoom of the live map's first view, and the page sets them at 1:1 CSS pixels, centered on the
 // stage, which crops them, so the first paint has the scale and the center of the live map at every size (#1393).
@@ -22,12 +22,9 @@ const wide = {file: new URL('../public/home-first-paint-wide.svg', import.meta.u
 const smallDark = {file: new URL('../public/home-first-paint-dark.svg', import.meta.url), width: 1000, height: 1000};
 const wideDark = {file: new URL('../public/home-first-paint-wide-dark.svg', import.meta.url), width: 2560, height: 1600};
 const styleUrl = 'https://styles.map-jr.org/1/elevation-zero.json';
-const darkStyle = await (await fetch(styleUrl)).json();
-if (darkStyle.state?.['color-scheme']?.default !== 'light') throw new Error('[map-jr-gl site] first-paint: the style has no state "color-scheme" with the default "light".');
-darkStyle.state['color-scheme'].default = 'dark';
 const render = ({width, height}, controls, colorScheme = 'light') => renderFirstView({
     // The first view (`firstCamera` of app/utils/home-scenes.ts, with the first style of the demo "styles").
-    style: colorScheme === 'dark' ? darkStyle : styleUrl, center: [8.33, 47.03], zoom: 10.6, width, height,
+    style: styleUrl, center: [8.33, 47.03], zoom: 10.6, width, height,
     colorScheme, timeout: 120000, requestTimeout: 30000, ...(controls && {controls: [navigation(), scale()]}),
 });
 // The SVG and the credits that come after it.

@@ -255,8 +255,14 @@ try {
         await page.waitForURL('**' + variantsPage);
         await page.locator('aside').getByRole('link', {name: 'Getting started', exact: true}).click();
         await page.waitForURL('**' + installPage);
-        await group.waitFor();
-        check('package managers: the choice stays after a navigation', await shownPm() === 'pnpm', await shownPm());
+        // waitForURL can return before the page of the new URL is rendered, so the check waits for the value it reads
+        // (#1373), for up to 5 s.
+        let afterNavigation = '';
+        for (const start = Date.now(); Date.now() - start < 5000; await page.waitForTimeout(50)) {
+            afterNavigation = await shownPm().catch(() => '');
+            if (afterNavigation === 'pnpm') break;
+        }
+        check('package managers: the choice stays after a navigation', afterNavigation === 'pnpm', afterNavigation);
         await page.reload({waitUntil: 'networkidle'});
         check('package managers: the choice stays after a reload', await shownPm() === 'pnpm' && await variantAttribute() === 'react', `${await shownPm()} / ${await variantAttribute()}`);
         const shift = await page.evaluate(() => new Promise(done => {
