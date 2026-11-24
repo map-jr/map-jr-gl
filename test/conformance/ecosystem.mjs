@@ -12,7 +12,7 @@ const root = path.resolve(import.meta.dirname, '../..'), cache = path.join(root,
 const PACKAGES = {
     'Drawing and editing': ['@mapbox/mapbox-gl-draw', 'terra-draw-maplibre-gl-adapter', '@watergis/maplibre-gl-terradraw', 'maplibre-gl-measures'],
     'Search and directions': ['@maplibre/maplibre-gl-geocoder', '@maplibre/maplibre-gl-directions'],
-    'Controls and tools': ['@maplibre/maplibre-gl-compare', '@maplibre/maplibre-gl-inspect', '@watergis/maplibre-gl-export', 'maplibre-gl-opacity', '@mapbox/mapbox-gl-sync-move', 'maplibre-gl-basemaps', '@maplibre/maplibre-gl-style-flipper'],
+    'Controls and tools': ['@maplibre/maplibre-gl-compare', '@maplibre/maplibre-gl-inspect', '@watergis/maplibre-gl-export', 'maplibre-gl-opacity', '@mapbox/mapbox-gl-sync-move', 'maplibre-gl-basemaps', 'maplibre-gl-style-flipper'],
     'Data and layers': ['pmtiles', 'maplibre-contour', '@deck.gl/mapbox', '@maplibre/maplibre-gl-leaflet', 'maplibre-gl-vector-text-protocol', '@americana/maplibre-shield-generator'],
     'Frameworks': ['react-map-gl', '@vis.gl/react-maplibre', 'vue-maplibre-gl', '@indoorequal/vue-maplibre-gl', 'svelte-maplibre-gl', 'svelte-maplibre', '@maplibre/ngx-maplibre-gl', '@maptiler/sdk'],
 };
