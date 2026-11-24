@@ -164,8 +164,6 @@ export class Map extends CoreMap {
         this.warned.add(name);
         console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.`);
     }
-    /** Has no effect: the map always draws copies of the world side by side. */
-    setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
     /** Has no effect: the camera has no roll. */
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
     /**
@@ -358,7 +356,12 @@ export class Map extends CoreMap {
     }
     cameraForBounds(...args: Parameters<CoreMap['cameraForBounds']>) { return this.snapped(super.cameraForBounds(...args), true); }
     /** @internal (A turn of a mouse wheel ends at a multiple of zoomSnap, as in MapLibre GL JS.) */
-    protected override post(c: Command, transfer?: Transferable[]) { if (c.type === 'wheel' && this.zoomSnap > 0) c.snap = this.zoomSnap; super.post(c, transfer); }
+    protected override post(c: Command, transfer?: Transferable[]) {
+        if (c.type === 'wheel' && this.zoomSnap > 0) c.snap = this.zoomSnap;
+        // As in MapLibre GL JS, the inertia of a pan that ends closer to north than bearingSnap ends at bearing 0 (#1834).
+        if (c.type === 'fling' && this.tr.bearing !== 0 && Math.abs(this.tr.bearing) < this.bearingSnap) c.bearing = 0;
+        super.post(c, transfer);
+    }
     /**
      * As in MapLibre GL JS: each event of the map also goes to `parent.fire`, as one object with the fields of `data`
      * (or of what the function `data` returns), while `parent.listens(type)` is true.
@@ -423,7 +426,6 @@ export class Map extends CoreMap {
             if (this.strict) throw new Error(message);
             console.warn(message);
         }
-        this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
         if (context?.preserveDrawingBuffer) {
             const message = '[map-jr-gl] new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.';
@@ -455,8 +457,8 @@ export class Map extends CoreMap {
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
         // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
-        // closer to north than bearingSnap turns the map north. (MapLibre GL JS turns the inertia north; here the snap
-        // follows the inertia.)
+        // closer to north than bearingSnap turns the map north. The inertia of a pan turns north as it glides (see `post`);
+        // after a gesture without it, the snap follows the gesture.
         let byHand = false;
         const handlers = [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch];
         const held = () => handlers.some(h => h.isActive());
@@ -668,8 +670,6 @@ export class Map extends CoreMap {
      * north, as in MapLibre GL JS.
      */
     snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < this.bearingSnap ? this.resetNorth(o, eventData) : this; }
-    /** Returns `true`: the map always draws copies of the world. */
-    getRenderWorldCopies() { return true; }
     /** Returns 0: the camera has no roll. */
     getRoll() { return 0; }
     /** Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. */

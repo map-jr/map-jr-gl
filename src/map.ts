@@ -64,6 +64,8 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     maxZoom?: number;
     /** Largest camera tilt allowed, in degrees. The default is 60, and the limit is 180. Above 90 the camera looks up, and it sees the sky only when the map center has a height (`setCenterElevation`) that puts the camera above the ground. */
     maxPitch?: number;
+    /** Whether copies of the world are drawn beside it, as in MapLibre GL JS (see `setRenderWorldCopies`). The default is `true`. */
+    renderWorldCopies?: boolean;
     /** Data credits are shown by default; pass false to add your own, or options for the built-in control. */
     attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
     /** Multisample antialiasing for the whole canvas. Smoother polygon edges, at a real cost in fill rate. */
@@ -316,6 +318,7 @@ export class Map {
         c.insertBefore(this.canvas, c.firstChild);
         this.tr.minZoom = options.minZoom ?? -2;
         this.tr.maxZoom = options.maxZoom ?? 22;
+        this.tr.worldCopies = !!(options.renderWorldCopies ?? true);
         const ratio = options.pixelRatio;
         if (ratio! > 0 && ratio! < Infinity) this.pixelRatio = ratio;
         else if (ratio !== undefined) console.warn(`[map-jr-gl] The option pixelRatio is ${ratio}. Give a number above 0, or leave it out to follow devicePixelRatio.`);
@@ -452,7 +455,7 @@ export class Map {
         const engineOptions = {
             style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
-            minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
+            minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, worldCopies: tr.worldCopies, antialias: o.antialias,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
             // would be fetched before `resend` sends them, without `transformRequest`; #355.)
             requests: this.rulesSent ? this.requestRules() : undefined, early,
@@ -1163,7 +1166,19 @@ export class Map {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
     }
 
-    private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
+    private limits(keep?: boolean) { this.post({type: 'limits', keep, minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds, worldCopies: this.tr.worldCopies}); return this; }
+    /**
+     * Sets whether copies of the world are drawn beside it, as in MapLibre GL JS. With `false`, the view stays inside
+     * -180 to 180 degrees of longitude, no tiles of other copies are loaded or drawn, and markers and popups stay at the
+     * longitude that they were given. As in MapLibre GL JS, the view does not move now: the next camera change keeps it inside.
+     * @param copies `undefined` is `true` and `null` is `false`, as in MapLibre GL JS.
+     */
+    setRenderWorldCopies(copies?: boolean | null) {
+        this.tr.worldCopies = copies ?? copies === undefined;
+        return this.limits(true);
+    }
+    /** Returns whether copies of the world are drawn beside it. */
+    getRenderWorldCopies() { return this.tr.worldCopies; }
     /**
      * Sets the smallest zoom level that the user can reach.
      * @param z The zoom level. `undefined` or `null` restores the default, -2.

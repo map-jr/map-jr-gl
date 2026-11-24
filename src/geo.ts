@@ -141,6 +141,11 @@ export class Transform {
     get cy() { return this.height / 2 + (this.padding[0] - this.padding[2]) / 2; }
     /** If set, the view is kept inside this box: west, south, east, north. */
     maxBounds: [number, number, number, number] | null = null;
+    /**
+     * Whether copies of the world are drawn beside it (`renderWorldCopies`). Without them, as in MapLibre GL JS, the view
+     * stays inside -180..180 as if that were `maxBounds`, tiles of other copies are left out, and `project` does not wrap.
+     */
+    worldCopies = true;
 
     /**
      * With 3D terrain: the height of the ground at the map center, in (exaggerated) meters. The camera looks at that
@@ -218,7 +223,7 @@ export class Transform {
         }
         const half = Math.min(0.5, this.height / 2 / this.worldSize), y = mercY(this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT)), inside = clamp(y, half, 1 - half);
         if (inside !== y) this.lat = latFromMerc(inside);
-        const b = this.maxBounds;
+        const b = this.maxBounds ?? (this.worldCopies ? null : [-180 + 1e-10, -MAX_LAT, 180 - 1e-10, MAX_LAT]);
         if (!b) return;
         // As MapLibre's Mercator transform does, the view stays inside the bounds: the canvas less the padding, as if
         // there were no bearing and no pitch. When the bounds are smaller than that, the zoom rises until they fill it,
@@ -231,7 +236,7 @@ export class Transform {
         let x1 = wrap(mercX(b[2]) * ws, 0);
         if (x1 <= x0) x1 += ws;
         const sx = x1 - x0 < vw ? vw / (x1 - x0) : 0, sy = y1 - y0 < vh ? vh / (y1 - y0) : 0;
-        const xw = wrap(mercX(this.lng) * ws, (x0 + x1 - ws) / 2);
+        const xw = this.worldCopies ? wrap(mercX(this.lng) * ws, (x0 + x1 - ws) / 2) : mercX(this.lng) * ws;
         let x = xw, y2 = mercY(this.lat) * ws;
         if (sx || sy) {
             if (sx) x = (x0 + x1) / 2;
@@ -418,7 +423,7 @@ export class Transform {
         // Pick the world copy nearest the center so markers stay put across the antimeridian.
         let mx = mercX(lng);
         const cx = mercX(this.lng);
-        mx += Math.round(cx - mx);
+        if (this.worldCopies) mx += Math.round(cx - mx);
         return this.mercToScreen(mx, mercY(lat));
     }
 
@@ -506,6 +511,10 @@ export class Transform {
 
     /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */
     tileCover(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false, lod?: number[]): TileID[] {
+        const all = this.cover(minzoom, maxzoom, tileSize, round, lod);
+        return this.worldCopies ? all : all.filter(t => !t.w);
+    }
+    private cover(minzoom: number, maxzoom: number, tileSize: number, round: boolean, lod?: number[]): TileID[] {
         // Image tiles switch level at the half-way point (as MapLibre does) so they are never stretched more than about 1.4x.
         // (Below zoom 0 the tiles of zoom 0 are drawn smaller.)
         const want = Math.max(0, (round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize)));

@@ -59,6 +59,7 @@ The fields with an object, a list or a function as value have no attribute: set 
 | `projection` | `projection` | `globe` or `mercator`. |
 | `hover-state`, `cooperative-gestures`, `antialias` | `hoverState`, `cooperativeGestures`, `antialias` | A boolean attribute: present is `true`. |
 | `no-interactive` | `interactive` | A boolean attribute: present is `false`. |
+| `no-render-world-copies` | `renderWorldCopies` | A boolean attribute: present is `false`. |
 | `no-attribution` | `attribution` | A boolean attribute: present is `false`, which hides the attribution. |
 | `attribution-compact` | `attribution.compact` | A boolean attribute: present is `attribution: {compact: true}`. `no-attribution` wins over it, and the property `attribution` wins over both. |
 | `hash` | `hash` | Present with no value for `true`, or the name of the parameter of the URL: `hash="map"`. Each value is a name, so `hash="false"` uses the parameter `false`. |

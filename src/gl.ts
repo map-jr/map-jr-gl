@@ -248,7 +248,7 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in v
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1;
+layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
 uniform float u_cam;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw;
@@ -261,7 +261,7 @@ void main() {
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
-  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * u_offset) / u_scale * lineScale(a_v.xy);
+  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * (u_offset + a_offset / 8.0)) / u_scale * lineScale(a_v.xy);
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;
@@ -881,6 +881,7 @@ export class GLRenderer {
                 attr(0, b.v, 4, gl.SHORT, false, LINE_VERTEX, 0);
                 attr(2, b.v, 1, gl.SHORT, false, LINE_VERTEX, 8, false, true);
                 attr(4, b.v, 1, gl.FLOAT, false, LINE_VERTEX, 12, false, true);
+                attr(6, b.v, 1, gl.SHORT, false, LINE_VERTEX, 10, false, true);
                 vertices = b.v.length / LINE_VERTEX;
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; if (b.width1) attr(5, b.width1, 1, gl.FLOAT); else attr(5, b.width, 1, gl.FLOAT, false, 0, 0, false, true); }

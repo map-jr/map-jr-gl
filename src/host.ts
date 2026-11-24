@@ -269,6 +269,13 @@ export interface MapDescription extends MapSetup {
      * the ground (3D terrain, or sea level) and follows it. While it is set, the center does not follow 3D terrain.
      */
     centerElevation?: number | null;
+    /**
+     * Whether copies of the world are drawn beside it, as in MapLibre GL JS. With `false`, the view stays inside -180 to
+     * 180 degrees of longitude, no tiles of other copies load, and markers and popups stay at the longitude that they were given.
+     * A change to `false` in `update` moves the view inside at once.
+     * @default true
+     */
+    renderWorldCopies?: boolean | null;
     /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. Without this field, the view has no limit. */
     maxBounds?: Bounds | null;
     /**
@@ -796,7 +803,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
         startPadding: spec.padding as PaddingInput | undefined, bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
-        attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
+        attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch, renderWorldCopies: spec.renderWorldCopies,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
     // (The style is given after the map is made, with a function that adds the `sources`, `layers` and `terrain` of the description when it has loaded.)
@@ -1147,6 +1154,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             for (const name in next.fonts) if (differ(next.fonts[name], before?.fonts?.[name])) changed[name] = next.fonts[name];
             map.addFonts(fontFaces(absolute(changed)));
         }
+        // (Before the view: a view past the antimeridian is constrained by the new setting.)
+        if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) { map.setRenderWorldCopies(next.renderWorldCopies ?? true); map.jumpTo({}); }
         if (next.view && !same(next.view, before?.view) && before) {
             if (!reported.some(v => same(next.view, v))) map.jumpTo(next.view);
             // (A view that the map reported is not applied. A view of the latest movement can be a late echo of a slow application, so only a view of an earlier movement is a stored view: #1190.)
