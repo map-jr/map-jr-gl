@@ -5285,6 +5285,29 @@ for (const mode of renderers) {
 // (The checks below run with RENDERER=main.)
 if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
 
+// A change of style that has a layer type the map does not support warns, one time for each new set of types (#1594).
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const warnings = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        const told = [], warn = console.warn;
+        console.warn = (...a) => { if (String(a[0]).includes('unsupported layer types')) told.push(String(a[0])); return warn.apply(console, a); };
+        const style = types => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}, ...types.map((type, i) => ({id: 'x' + i, type}))]});
+        const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: style([])});
+        await new Promise(r => { m.once('load', r); setTimeout(r, 10000); });
+        const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+        for (const types of [['foo'], ['foo'], ['foo', 'bar']]) { m.setStyle(style(types)); await idle(); }
+        console.warn = warn;
+        m.remove(); el.remove();
+        return told;
+    });
+    check('[main] setStyle with an unsupported layer type warns, one time for each new set of types',
+        JSON.stringify(warnings) === JSON.stringify(['[map-jr-gl] Skipping unsupported layer types: foo', '[map-jr-gl] Skipping unsupported layer types: foo, bar']), JSON.stringify(warnings));
+    await page.close();
+}
 // remove() on a map whose WebGL context is lost does not lose it a second time: WebKit reports that as an error (#776).
 {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});

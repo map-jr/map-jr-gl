@@ -430,7 +430,7 @@ export class Map {
         if (this.removed) { giveBack(); return; }
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
-        if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
+        this.warnUnsupported(this.resolved.unsupported);
         this.checkProjection();
         const tr = this.tr;
         const engineOptions = {
@@ -1262,6 +1262,13 @@ export class Map {
      * `reuse`: the style has not changed, and the engine needs it again (a new engine after a fall back). It is used only
      * when no other change waits or is being resolved.
      */
+    /** The layer types of the style that were last reported as unsupported, joined, so that each new set warns one time (#1594). */
+    private unsupportedTold = '';
+    private warnUnsupported(types: string[]) {
+        const list = types.join(', ');
+        if (list && list !== this.unsupportedTold) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + list);
+        this.unsupportedTold = list;
+    }
     private restyle(reload: boolean, reuse = false) {
         this.reuse = reuse && this.restyled === this.restyles && (this.reuse || !this.restyleQueued);
         // As in MapLibre, the loading events come before the data events.
@@ -1296,6 +1303,7 @@ export class Map {
         this.reuse = false;
         Promise.all([reuse || resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed, this.geojsonBuffer()), this.globeReady()]).then(([style]) => {
             if (turn !== this.restyles) return;
+            this.warnUnsupported(style.unsupported);
             const reload = this.reloadPending;
             this.reloadPending = false;
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
