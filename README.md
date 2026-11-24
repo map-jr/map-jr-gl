@@ -238,7 +238,7 @@ The documentation is on [map-jr.org](https://map-jr.org/) and in four folders of
   [the compat entry](docs/reference/maplibre-compat.md) and its
   [differences from MapLibre GL JS](docs/reference/maplibre-differences.md).
 - [Migrate](docs/migrate/from-maplibre.md): the steps from MapLibre GL JS, from a wrapper, and from the compat entry to
-  the main API.
+  the main API. [Upgrade to a new version](docs/migrate/upgrade.md) has the steps for each version that breaks code.
 
 These files are in the repository and not in the package:
 

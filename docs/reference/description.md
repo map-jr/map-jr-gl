@@ -649,8 +649,10 @@ createMap('map', {
 });
 ```
 
-The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. The map
-does not treat a new function as a change, so a framework can pass a new function in each render.
+The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. The second
+parameter has the type `ResourceType`, which `@map-jr/map-jr-gl/maplibre-compat` exports. In TypeScript, type it as
+`ResourceType` or `string`: a function that accepts only some of the kinds does not compile. The map does not treat a
+new function as a change, so a framework can pass a new function in each render.
 
 ## `renderer`
 
