@@ -32,6 +32,7 @@ sections:
       - pmtiles.md
       - terrain.md
       - stores.md
+      - styles.md
   - title: Reference
     folder: reference
     pages:
