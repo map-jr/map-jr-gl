@@ -149,6 +149,12 @@ Each run also prints a line that starts with `CHANGED:` for a test whose status 
 `render-tests.json`. A test that is close to a limit can have another status on another machine, because the fonts
 and the software renderer are not the same on each system. The tracked file is from a run on macOS.
 
+The six `real-world/*` tests draw the tiles of the package `@mapbox/mvt-fixtures`, which MapLibre's harness serves on
+port 2901. The run downloads version 4.0.0 of the package once from the npm registry into
+`.cache/mvt-fixtures-4.0.0` (32 MB, `test/conformance/mvt-fixtures.mjs`) and checks its integrity. The package is not
+a dependency, and its tiles, which hold OpenStreetMap data under the ODbL 1.0, are not committed. When the download
+fails, the six tests are skipped with the reason `@mapbox/mvt-fixtures`.
+
 `test/conformance/render-expectations.json` gives labels to tests that differ by a decision. An entry has these
 fields:
 

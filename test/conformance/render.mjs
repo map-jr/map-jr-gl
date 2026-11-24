@@ -13,6 +13,7 @@ import path from 'node:path';
 import {chromiumOptions} from '../launch.mjs';
 import {ensureCheckout} from './maplibre-checkout.mjs';
 import {summarize, readExpectations, report, changes, skipReason} from './render-summary.mjs';
+import {ensureFixtures} from './mvt-fixtures.mjs';
 
 // An option that this script does not know, or --list without --filter, stops here instead of starting the full run of
 // about ten minutes (#1048). --help prints the comment above.
@@ -28,15 +29,18 @@ const root = path.resolve(import.meta.dirname, '../..'), repo = ensureCheckout()
 const arg = name => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const filter = arg('filter') ? new RegExp(arg('filter')) : null, limit = +(arg('limit') ?? Infinity), saveDir = arg('save');
 const testsDir = path.join(repo, 'test/integration/render/tests'), assets = path.join(repo, 'test/integration/assets');
+// The tiles of the real-world tests, which MapLibre's harness serves on port 2901 (#665); null when they could not be fetched.
+const fixtures = ensureFixtures();
 
 // Serves this library's build, the tests' assets (what their styles call local://) and the expected images.
 const types = {'.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.pbf': 'application/x-protobuf', '.mvt': 'application/x-protobuf', '.geojson': 'application/json', '.html': 'text/html'};
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), p = decodeURIComponent(url.pathname);
-    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p === '/' ? null : path.join(assets, p);
+    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p.startsWith('/mvt-fixtures/') && fixtures ? path.join(fixtures, p.slice(14)) : p === '/' ? null : path.join(assets, p);
     if (!file) { res.writeHead(200, {'content-type': 'text/html'}); return res.end('<body style="margin:0;background:#fff"><div id="map"></div>'); }
-    // A style or a TileJSON file of the assets names MapLibre's test server (local:// or port 2900): it gets this server.
-    try { let body = readFileSync(file); if (file.startsWith(assets) && file.endsWith('.json')) body = body.toString().replaceAll('local://', origin + '/').replaceAll('http://localhost:2900', origin); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(p.includes('/sparse204/') ? 204 : 404, {'access-control-allow-origin': '*'}); res.end(); } // (204 for those tiles, as the test server of MapLibre answers)
+    // A style or a TileJSON file of the assets names MapLibre's test servers (local://, port 2900, and port 2901 for the
+    // tiles of @mapbox/mvt-fixtures): they get this server.
+    try { let body = readFileSync(file); if (file.startsWith(assets) && file.endsWith('.json')) body = body.toString().replaceAll('local://', origin + '/').replaceAll('http://localhost:2900', origin).replaceAll('http://localhost:2901', origin + '/mvt-fixtures'); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(p.includes('/sparse204/') ? 204 : 404, {'access-control-allow-origin': '*'}); res.end(); } // (204 for those tiles, as the test server of MapLibre answers)
 }).listen(0);
 const origin = `http://localhost:${server.address().port}`;
 
@@ -90,7 +94,7 @@ async function worker(queue) {
         style['font-faces'] = {...fontFaces, ...style['font-faces']};
         const width = meta.width ?? 512, height = meta.height ?? 512;
         // A test stays skipped when it has an operation that this run cannot do. The reason is the name of the operation.
-        const why = skipReason(meta, name => { try { return readFileSync(path.join(assets, name), 'utf8'); } catch { return ''; } });
+        const why = skipReason(meta, name => { try { return readFileSync(path.join(assets, name), 'utf8'); } catch { return ''; } }, !!fixtures);
         if (why) { results.push({id, status: 'skipped', why}); continue; }
         // The time that the test waits by its own operations is added to the limit.
         const timeout = 8000 + (meta.operations ?? []).reduce((sum, o) => sum + ((o[0] === 'wait' || o[0] === 'sleep') && typeof o[1] === 'number' ? o[1] : 0), 0);
