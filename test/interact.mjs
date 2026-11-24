@@ -3934,29 +3934,33 @@ for (const mode of renderers) {
             const control = new mod.TerrainControl({source: 'dem'});
             m.addControl(control);
             const b = el.querySelector('.maplibregl-ctrl-terrain');
-            const off = b.title;
+            const cl = () => b.classList.contains('maplibregl-ctrl-terrain-enabled') + '/' + b.classList.contains('map-jr-ctrl-terrain-enabled');
+            const off = b.title, offClass = cl();
             b.click();
-            const on = b.title, aria = b.getAttribute('aria-label');
+            const on = b.title, aria = b.getAttribute('aria-label'), onClass = cl();
             // The label follows setTerrain and setStyle calls of the app (#1689).
             m.setTerrain(null);
-            const appOff = b.title;
+            const appOff = b.title, appOffClass = cl();
             m.setTerrain({source: 'dem'});
-            const appOn = b.title;
+            const appOn = b.title, appOnClass = cl();
             const restyled = new Promise(r => m.once('styledata', r));
             m.setStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]});
             await restyled;
-            const styleOff = b.title;
+            const styleOff = b.title, styleOffClass = cl();
             // A removed control no longer listens.
             m.removeControl(control);
             m.setTerrain({source: 'dem'});
             const removed = b.title;
             m.remove(); el.remove();
-            return {off, on, aria, appOff, appOn, styleOff, removed};
+            return {off, on, aria, appOff, appOn, styleOff, removed, offClass, onClass, appOffClass, appOnClass, styleOffClass};
         });
         check('[main] maplibre-compat: TerrainControl is labeled "Enable terrain" and, with terrain on, "Disable terrain"',
             labels.off === 'Enable terrain' && labels.on === 'Disable terrain' && labels.aria === 'Disable terrain', JSON.stringify(labels));
         check('[main] maplibre-compat: TerrainControl follows setTerrain(null), setTerrain({source}) and setStyle of the app (#1689)',
             labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain' && labels.removed === 'Enable terrain', JSON.stringify(labels));
+        // As in MapLibre GL JS, the button has the class `maplibregl-ctrl-terrain-enabled` while terrain is on (#1716).
+        check('[main] maplibre-compat: the TerrainControl button has the class ctrl-terrain-enabled exactly while terrain is on (#1716)',
+            labels.offClass === 'false/false' && labels.onClass === 'true/true' && labels.appOffClass === 'false/false' && labels.appOnClass === 'true/true' && labels.styleOffClass === 'false/false', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
@@ -4232,7 +4236,8 @@ for (const mode of renderers) {
             await new Promise(res => m.once('load', res));
             await wait(100);
             const q = s => el.querySelector(s), fb = q('.maplibregl-ctrl-fullscreen');
-            const out = {zoomIn: q('.maplibregl-ctrl-zoom-in').title, zoomOut: q('.maplibregl-ctrl-zoom-out').title, compass: q('.maplibregl-ctrl-compass').title,
+            const shrink = () => fb.classList.contains('maplibregl-ctrl-shrink') + '/' + fb.classList.contains('map-jr-ctrl-shrink');
+            const out = {shrinkBefore: shrink(), zoomIn: q('.maplibregl-ctrl-zoom-in').title, zoomOut: q('.maplibregl-ctrl-zoom-out').title, compass: q('.maplibregl-ctrl-compass').title,
                 scale: q('.maplibregl-ctrl-scale').textContent, attrib: q('.maplibregl-ctrl-attrib-button')?.getAttribute('aria-label'), enter: fb.title, uiString: m._getUIString('Popup.Missing')};
             // The close button of Popup and the name of Marker take the locale when they are added to the map.
             const marker = new mod.Marker().setLngLat([0, 0]).addTo(m), popup = new mod.Popup().setLngLat([0, 0]).setText('x').addTo(m);
@@ -4243,12 +4248,12 @@ for (const mode of renderers) {
             fb.click();
             out.pseudo = el.classList.contains('maplibregl-pseudo-fullscreen') && el.classList.contains('map-jr-pseudo-fullscreen');
             out.position = getComputedStyle(el).position;
-            out.exit = fb.title; out.pressed = fb.getAttribute('aria-pressed');
+            out.exit = fb.title; out.pressed = fb.getAttribute('aria-pressed'); out.shrinkFull = shrink();
             // As in MapLibre GL JS, cooperativeGestures is off while the map fills the screen, and on again after.
             out.gesturesFull = m.cooperativeGestures.isEnabled();
             fb.click();
             out.gesturesAfter = m.cooperativeGestures.isEnabled();
-            out.after = el.className.includes('pseudo-fullscreen'); out.enterAgain = fb.title; out.events = events.join();
+            out.shrinkAfter = shrink(); out.after = el.className.includes('pseudo-fullscreen'); out.enterAgain = fb.title; out.events = events.join();
             out.warnings = warnings.filter(w => /locale/.test(w));
             console.warn = warn;
             out.canvasLabel = m.getCanvas().getAttribute('aria-label');
@@ -4270,6 +4275,9 @@ for (const mode of renderers) {
             && r.pseudo && r.position === 'fixed' && r.exit === 'Quitter le plein écran' && r.pressed === 'true' && !r.after && r.enterAgain === 'Plein écran' && r.events === 'start,end'
             && r.canvasLabel === 'Carte' && r.coreCanvasLabel === 'Map'
             && r.warnings.length === 0 && r.coreCompass === 'Reset bearing to north', JSON.stringify(r));
+        // As in MapLibre GL JS, the button has the class `maplibregl-ctrl-shrink` while the map fills the screen (#1716).
+        check('[main] maplibre-compat: the FullscreenControl button has the class ctrl-shrink exactly while the map fills the screen (#1716)',
+            r.shrinkBefore === 'false/false' && r.shrinkFull === 'true/true' && r.shrinkAfter === 'false/false', JSON.stringify(r));
     }
     if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
