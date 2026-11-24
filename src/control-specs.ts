@@ -89,7 +89,7 @@ export const styles = spec('styles', (m, o: StylesOptions, instance) => new m.St
 /**
  * Creates a control from your own element, or from `onAdd` and `onRemove` as a MapLibre GL JS control has them.
  * @param options `key` identifies the control: a new description with the same `key` keeps the control on the map,
- * and a new `position` with the same `key` moves it.
+ * and a new `position` with the same `key` moves it: the map calls `onRemove`, then `onAdd` again.
  * `element` is the element to place in the corner; `onAdd` receives the map and returns the element instead.
  * @returns A control for `controls` of the description.
  */

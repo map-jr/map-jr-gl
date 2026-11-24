@@ -1149,7 +1149,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.controls !== before?.controls || relabel) {
             // (A control whose `position` changed is added again in its new corner; #1237.)
             const wanted = new globalThis.Map(relabel ? [] : (next.controls ?? []).map(c => [c.key, c.position]));
-            for (const [key, c] of controls) if (!wanted.has(key) || wanted.get(key) !== placed.get(key)) { map.removeControl(c as any); controls.delete(key); }
+            for (const [key, c] of controls) if (!wanted.has(key) || wanted.get(key) !== placed.get(key)) { map.removeControl(c as any); controls.delete(key); placed.delete(key); }
             for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(() => host); controls.set(c.key, made); placed.set(c.key, c.position); map.addControl(made, c.position); }
         }
         transformLast = next.transformRequest;
