@@ -170,7 +170,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### Camera
 
-- **MapLibre GL JS:** Tilt to 85 degrees. Roll. Field of view.
+- **MapLibre GL JS:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60). Roll. Field of view.
 - **This library:** Tilt to 90 degrees with `maxPitch: 90` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 90 and writes one warning. No roll. A fixed field of view. Padding is available.
 
 ### Miter joins longer than about 2
