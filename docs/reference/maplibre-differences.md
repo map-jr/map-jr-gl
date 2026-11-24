@@ -540,7 +540,7 @@ The methods `calculateCameraOptionsFromTo`, `calculateCameraOptionsFromCameraLng
 
 `setTransformConstrain(fn)` and the option `transformConstrain` replace the constraint of the camera, as in MapLibre GL JS: `fn(lngLat, zoom)` returns `{center, zoom}`, and `null` restores the default, which keeps the view inside the world and inside `maxBounds`. `minZoom` and `maxZoom` still apply. The function runs in the engine on each change of the camera, so it needs `renderer: 'main'`. With the option and no `renderer`, the map draws on the main thread. On a map that draws in a worker, `setTransformConstrain(fn)` has no effect and warns once.
 
-`coveringTiles({tileSize, minzoom, maxzoom, roundZoom})` returns the tiles that the library loads for the view, synchronously, as objects with the fields `canonical` (`z`, `x`, `y`, `key`), `wrap`, `overscaledZ` and `key`. The objects are plain and do not have the methods of MapLibre's `OverscaledTileID`, and `key` is a string, not MapLibre's number. This is a decision and will stay.
+`coveringTiles({tileSize, minzoom, maxzoom, roundZoom})` returns the tiles that the library loads for the view, synchronously, as objects with the fields `canonical` (`z`, `x`, `y`, `key`), `wrap`, `overscaledZ` and `key`. The objects are plain and do not have the methods of MapLibre's `OverscaledTileID`, and that is a decision and will stay. `key` is a string, not MapLibre's number.
 
 `overscaledZ` equals `canonical.z`, as in MapLibre GL JS for this method. The default of `maxzoom` is 30. A pitched view and a globe use the tile cover of this library, which can choose other tiles at the edges than MapLibre GL JS.
 
@@ -573,27 +573,27 @@ The table counts the 138 public methods of the MapLibre `Map` class in the entry
 ### `vector`, `raster`, `raster-dem`
 
 - **Available:** `setTiles(tiles)`, `setUrl(url)`. Each one replaces the tiles of the source (the other of `tiles` and `url` is removed) and loads them again. A TileJSON that fails to load gives an `error` event, and the layers of the source are not drawn. An argument of the wrong type throws an error. `reload()` loads the tiles of the source again, as `map.refreshTiles(id)` does, and returns nothing. MapLibre GL JS 6.17 has no `reload`: the method is here for code that was written for Mapbox GL JS. `loaded()` gives what `map.isSourceLoaded(id)` gives, and `serialize()` gives a copy of the specification. `minzoom`, `maxzoom` and `tiles` have the values of the specification. A source with a TileJSON `url` has the values of its TileJSON after that has loaded, and `undefined` before.
-- **Not available:** `load`, `hasTile`, `setSourceProperty`, `setPremultiplyAlpha`, `loadTile`, `abortTile`, `unloadTile`, `hasTransition`, `bounds`, `tileBounds`, `scheme`, `map` and the event methods (`on`, `once`, `off`, `fire`). This is a decision and will stay. The members that the specification does not give (`scheme`, `tileSize`, `encoding`) have no default value.
+- **Not available:** `load`, `hasTile`, `setSourceProperty`, `setPremultiplyAlpha`, `loadTile`, `abortTile`, `unloadTile`, `hasTransition`, `bounds`, `tileBounds`, `scheme`, `map` and the event methods (`on`, `once`, `off`, `fire`). For `load`, `hasTile`, `loadTile`, `abortTile`, `unloadTile`, `hasTransition` and `map`, this is a decision and will stay. The members that the specification does not give (`scheme`, `tileSize`, `encoding`) have no default value.
 
 ### `geojson`
 
 - **Available:** `setData`, `getData`, `updateData`, `getClusterExpansionZoom`, `getClusterChildren`, `getClusterLeaves`. `setClusterOptions({cluster, clusterMaxZoom, clusterRadius})` changes the options that it is given, builds the clusters again and gives a promise. An argument that is not an object rejects the promise with a message. `getClusterOptions()` gives the three options, with the defaults `false`, `maxzoom - 1` (17 without `maxzoom`) and 50. `getBounds()` gives a promise of the `LngLatBounds` of all positions of the data, and empty bounds for data without positions. It loads a URL as `getData` does. `loaded()` and `serialize()` work as on a tile source.
-- **Not available:** `load`, `loadTile`, `abortTile`, `unloadTile`, `shouldReloadTile`, `hasTransition`, `workerOptions`, `map` and the event methods. This is a decision and will stay. `minzoom`, `maxzoom`, `tileSize` and `promoteId` have no default value.
+- **Not available:** `load`, `loadTile`, `abortTile`, `unloadTile`, `shouldReloadTile`, `hasTransition`, `workerOptions`, `map` and the event methods. For all of these except `shouldReloadTile` and the event methods, this is a decision and will stay. `minzoom`, `maxzoom`, `tileSize` and `promoteId` have no default value.
 
 ### `image`
 
 - **Available:** `updateImage`, `setCoordinates`
-- **Not available:** `getImage` and the other members of MapLibre's `ImageSource`. This is a decision and will stay.
+- **Not available:** `getImage` and the other members of MapLibre's `ImageSource`
 
 ### `video`
 
 - **Available:** `getVideo()` returns the `<video>` element. `play()`, `pause()` and `seek(seconds)` act on that element. The code of video sources (a file shared with canvas sources) loads with the first style that has a video source, and until it has loaded, `getSource(id)` returns the specification without these methods. That is one request after the style with the source has loaded; MapLibre GL JS has the methods at once. `setCoordinates` moves the corners. As in MapLibre GL JS, the video is muted, plays in a loop and starts when the source is added. A video of another origin needs CORS headers. When none of `urls` loads, the map fires `error`. The URLs do not go through `transformRequest`. A frame reaches the map only when the video shows a new one, so a paused video costs nothing. As in MapLibre GL JS, while a video plays `loaded()` is `false`, `idle` does not fire and `isMoving()` is unchanged; after `pause()` the map fires `idle`. `areTilesLoaded()` is `false` for a moment after each frame, where MapLibre GL JS gives `true`. `seek` outside the range that the video can seek does not fire `error`.
-- **Not available:** `hasTransition`, `prepare`, `serialize` and the event methods. This is a decision and will stay.
+- **Not available:** `hasTransition`, `prepare`, `serialize` and the event methods. For `hasTransition`, `prepare` and `serialize`, this is a decision and will stay.
 
 ### `canvas`
 
 - **Available:** `canvas` is the id of a `<canvas>` of the page or the element. As in MapLibre GL JS, the map copies the canvas when the source is added, and in each frame of the page while the source plays. With `animate: true` (the default) it plays from the start; with `animate: false` it is copied once, until `play()`. `pause()` copies it one more time and stops. While it plays, `loaded()` is `false` and `idle` does not fire; after `pause()` the map fires `idle`. `getCanvas()` returns the element. A canvas that the page does not have, or a canvas of width or height 0, fires `error`. The code is the file of video sources, loaded with the first style that has one of them; until it has loaded, `getSource(id)` returns the specification without these methods.
-- **Not available:** A change of the size of the canvas while it is paused is not copied. `hasTransition`, `prepare`, `serialize` and the event methods. This is a decision and will stay.
+- **Not available:** A change of the size of the canvas while it is paused is not copied. `hasTransition`, `prepare`, `serialize` and the event methods. For `hasTransition`, `prepare` and `serialize`, this is a decision and will stay.
 
 ## Types
 
