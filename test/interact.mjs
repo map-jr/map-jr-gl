@@ -3254,17 +3254,19 @@ for (const mode of renderers) {
             m.stop();
             await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
             m.cooperativeGestures.enable();
+            const mac = navigator.userAgent.includes('Mac'), cg = m.cooperativeGestures;
+            const bypass = [cg.isBypassed(new WheelEvent('wheel', {[mac ? 'metaKey' : 'ctrlKey']: true})), cg.isBypassed(new WheelEvent('wheel', {[mac ? 'ctrlKey' : 'metaKey']: true}))];
             await wait(500);
             const z = m.getZoom(), r = m.getCanvas().getBoundingClientRect();
             m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -300, clientX: r.left + 300, clientY: r.top + 200, bubbles: true, cancelable: true}));
             await wait(800);
-            const out = {renderer: m.renderer, errors: errors.sort(), ...easing, touch: m.getCanvas().style.touchAction, wheel: Math.abs(m.getZoom() - z) > 0.01, canvases: el.querySelectorAll('canvas').length};
+            const out = {renderer: m.renderer, errors: errors.sort(), ...easing, touch: m.getCanvas().style.touchAction, wheel: Math.abs(m.getZoom() - z) > 0.01, bypass, canvases: el.querySelectorAll('canvas').length};
             m.remove(); el.remove();
             return out;
         }, kind);
         const {renderer, ...main} = same.main, {renderer: fellTo, ...fell} = same.fallback;
-        check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777)',
-            renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel,
+        check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777) and isBypassed() is true with Ctrl (⌘ on a Mac) only (#1725)',
+            renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel && main.bypass.join() === 'true,false',
             JSON.stringify(same));
         // Two maps that fall back and share one style object, with a GeoJSON source that fails: each fires its own one error.
         const pair = await page.evaluate(async () => {
@@ -3931,16 +3933,32 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
             const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
-            m.addControl(new mod.TerrainControl({source: 'dem'}));
+            const control = new mod.TerrainControl({source: 'dem'});
+            m.addControl(control);
             const b = el.querySelector('.maplibregl-ctrl-terrain');
             const off = b.title;
             b.click();
             const on = b.title, aria = b.getAttribute('aria-label');
+            // The label follows setTerrain and setStyle calls of the app (#1689).
+            m.setTerrain(null);
+            const appOff = b.title;
+            m.setTerrain({source: 'dem'});
+            const appOn = b.title;
+            const restyled = new Promise(r => m.once('styledata', r));
+            m.setStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]});
+            await restyled;
+            const styleOff = b.title;
+            // A removed control no longer listens.
+            m.removeControl(control);
+            m.setTerrain({source: 'dem'});
+            const removed = b.title;
             m.remove(); el.remove();
-            return {off, on, aria};
+            return {off, on, aria, appOff, appOn, styleOff, removed};
         });
         check('[main] maplibre-compat: TerrainControl is labeled "Enable terrain" and, with terrain on, "Disable terrain"',
             labels.off === 'Enable terrain' && labels.on === 'Disable terrain' && labels.aria === 'Disable terrain', JSON.stringify(labels));
+        check('[main] maplibre-compat: TerrainControl follows setTerrain(null), setTerrain({source}) and setStyle of the app (#1689)',
+            labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain' && labels.removed === 'Enable terrain', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
