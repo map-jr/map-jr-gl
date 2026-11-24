@@ -170,8 +170,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### Camera
 
-- **MapLibre GL JS:** Tilt to 85 degrees. Roll. Field of view.
-- **This library:** Tilt to 60 degrees. No roll. A fixed field of view. Padding is available.
+- **MapLibre GL JS:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60). Roll. Field of view.
+- **This library:** Tilt to 90 degrees with `maxPitch: 90` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 90 and writes one warning. No roll. A fixed field of view. Padding is available.
 
 ### Miter joins longer than about 2
 
@@ -360,7 +360,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Touch gestures
 
 - **MapLibre GL JS:** You can configure each gesture.
-- This library does the same gestures. They are always on.
+- This library does the same gestures. `touchZoomRotate` and `touchPitch` have `enable()`, `disable()` and `isEnabled()`, and the constructor options of the same names turn them off. `touchZoomRotate.disableRotation()` keeps the pinch zoom and stops the rotation.
 
 ### Expressions
 
@@ -592,8 +592,8 @@ The table counts the 138 public methods of the MapLibre `Map` class in the entry
 
 ### `video`
 
-- **Available:** `getVideo()` returns the `<video>` element. `play()`, `pause()` and `seek(seconds)` act on that element. The code of video sources (a file shared with canvas sources) loads with the first style that has a video source, and until it has loaded, `getSource(id)` returns the specification without these methods. That is one request after the style with the source has loaded; MapLibre GL JS has the methods at once. `setCoordinates` moves the corners. As in MapLibre GL JS, the video is muted, plays in a loop and starts when the source is added. A video of another origin needs CORS headers. When none of `urls` loads, the map fires `error`. The URLs do not go through `transformRequest`. A frame reaches the map only when the video shows a new one, so a paused video costs nothing. As in MapLibre GL JS, while a video plays `loaded()` is `false`, `idle` does not fire and `isMoving()` is unchanged; after `pause()` the map fires `idle`. `areTilesLoaded()` is `false` for a moment after each frame, where MapLibre GL JS gives `true`. `seek` outside the range that the video can seek does not fire `error`. `hasTransition`, `prepare`, `serialize` and the event methods.
-- **Not available:** undefined
+- **Available:** `getVideo()` returns the `<video>` element. `play()`, `pause()` and `seek(seconds)` act on that element. The code of video sources (a file shared with canvas sources) loads with the first style that has a video source, and until it has loaded, `getSource(id)` returns the specification without these methods. That is one request after the style with the source has loaded; MapLibre GL JS has the methods at once. `setCoordinates` moves the corners. As in MapLibre GL JS, the video is muted, plays in a loop and starts when the source is added. A video of another origin needs CORS headers. When none of `urls` loads, the map fires `error`. The URLs do not go through `transformRequest`. A frame reaches the map only when the video shows a new one, so a paused video costs nothing. As in MapLibre GL JS, while a video plays `loaded()` is `false`, `idle` does not fire and `isMoving()` is unchanged; after `pause()` the map fires `idle`. `areTilesLoaded()` is `false` for a moment after each frame, where MapLibre GL JS gives `true`. `seek` outside the range that the video can seek does not fire `error`.
+- **Not available:** `hasTransition`, `prepare`, `serialize` and the event methods.
 
 ### `canvas`
 
@@ -618,7 +618,7 @@ These types differ from MapLibre GL JS:
 | `FullscreenControlEventType`, `GeolocateControlEventType`, `PopupEventType`, `EventTypeMap` | An event is a plain object with `type` and `target`, and not an instance of the class `Event`. The event of `geolocate` has `coords` and `timestamp`, and the event of `error` has `code` and `message`. |
 | `DragPanOptions`, `DragRotateOptions`, `AroundCenterOptions` | They have no effect: `enable()` of a handler does not read its argument, and the options `dragPan` and `dragRotate` of `new Map()` are booleans. |
 | `UpdateImageOptions` | It has `url` and `coordinates`, and no `image`. |
-| `CanvasSourceSpecification` | The type exists, and the library does not draw canvas sources. |
+| `CanvasSourceSpecification` | The type exists. The library draws canvas sources (see `canvas` in "Source methods"). |
 | `StyleImageInterface` | `data` is RGBA pixels. `render`, `onAdd` and `onRemove` have no effect: the map reads the pixels once. |
 | `StyleImageData` | It has only `data`, which is what `map.addImage` accepts. |
 | `StyleOptions` | `validate`, `localIdeographFontFamily` and `globalState` have no effect in `map.setStyle`. |
