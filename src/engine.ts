@@ -571,10 +571,14 @@ export class Engine {
     private terrainCode?: typeof import('./terrain.ts');
     private terrainLoad?: Promise<void>;
     private terrainFailed = false;
-    /** 3D terrain while its code loads: the elevation tiles of the view are requested now, in parallel with the code. */
-    private demFirst(source: string, wanted: Set<string>) {
+    /**
+     * 3D terrain while its code loads: the elevation tiles of the view are requested now, in parallel with the code. The
+     * frame asks for the nearest one (it places the camera) before the tiles of the flat layers, and for the others after
+     * them, so that neither waits behind the other for a connection (#1849).
+     */
+    private demFirst(source: string, wanted: Set<string>, count = Infinity) {
         this.demLoading = !this.terrainFailed;
-        for (const t of this.viewCover(source)) {
+        for (const t of this.viewCover(source).slice(0, count)) {
             const key = source + '|' + t.key, have = this.tiles.get(key);
             wanted.add(key);
             if (have) have.used = this.frameNo; else this.request(source, t, key);
@@ -1557,7 +1561,7 @@ export class Engine {
         }
         this.viewCovers.clear();
         const ground = terrain && this.terrainCode ? this.terrainCode.terrainTiles.call(this, wanted) : undefined;
-        if (terrain && !this.terrainCode) this.demFirst(terrain.source, wanted);
+        if (terrain && !this.terrainCode) this.demFirst(terrain.source, wanted, 1);
         // (The raster tiles that only the pictures of the ground draw are not in the loop below.)
         if (ground && this.groundWaits) complete = false;
         if (this.globeWait && !this.holdGlobe(wanted, frameNo)) complete = false;
@@ -1566,8 +1570,9 @@ export class Engine {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
             // only labels and buildings are drawn from the tiles of the view. (Without this, the elevation tiles for relief
-            // shading were loaded two times, at two sets of zoom levels.)
-            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion' || l.type === 'circle'))) {
+            // shading were loaded two times, at two sets of zoom levels.) While the code of 3D terrain loads, the flat layers ask for
+            // the tiles of the view, so that they do not wait behind the elevation tiles of `demFirst` (#1849).
+            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || !this.terrainCode || l.type === 'symbol' || l.type === 'fill-extrusion' || l.type === 'circle'))) {
                 // (Tiles on their way stay on their way: a page that hides a layer for a moment and shows it again, to
                 // load one layer after another, does not start again each time.)
                 // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
@@ -1665,6 +1670,8 @@ export class Engine {
             items.set(source, list);
             all.push(...list);
         }
+        // (The other elevation tiles, after the flat layers: see demFirst.)
+        if (terrain && !this.terrainCode) this.demFirst(terrain.source, wanted);
         this.tapTile(view, 'frame');
         for (const key of this.early) if (this.tiles.get(key)?.state !== 'loading') this.early.delete(key);
         for (const [key, t] of this.tiles) {
