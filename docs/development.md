@@ -111,6 +111,8 @@ test one status:
 | `skipped` | The run cannot do the test, and does not draw it. The test has the operation `pauseTiles`, or it compares a part of the canvas only (`reportWidth` or `reportHeight`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures` and the run could not download that package. |
 
 [Triage of the symbol render tests](render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
+[Triage of the other render-test groups](render-triage-other.md) does the same for `combinations`, `debug`,
+`hillshade-*`, `line-dasharray`, `line-gradient`, `line-pattern`, `regressions`, `sky` and `terrain`.
 [Triage of the globe render tests](render-triage-globe.md) does the same for the tests of `projection/globe/`.
 
 A test can script the map: `metadata.test.operations` of its style is a list of operations, and each operation is
