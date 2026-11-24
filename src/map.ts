@@ -1258,10 +1258,6 @@ export class Map {
     private reloadPending = false;
     /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
     private reuse = false;
-    /**
-     * `reuse`: the style has not changed, and the engine needs it again (a new engine after a fall back). It is used only
-     * when no other change waits or is being resolved.
-     */
     /** The layer types of the style that were last reported as unsupported, joined, so that each new set warns one time (#1594). */
     private unsupportedTold = '';
     private warnUnsupported(types: string[]) {
@@ -1269,6 +1265,10 @@ export class Map {
         if (list && list !== this.unsupportedTold) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + list);
         this.unsupportedTold = list;
     }
+    /**
+     * `reuse`: the style has not changed, and the engine needs it again (a new engine after a fall back). It is used only
+     * when no other change waits or is being resolved.
+     */
     private restyle(reload: boolean, reuse = false) {
         this.reuse = reuse && this.restyled === this.restyles && (this.reuse || !this.restyleQueued);
         // As in MapLibre, the loading events come before the data events.
