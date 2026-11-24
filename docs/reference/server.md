@@ -57,7 +57,7 @@ and the sprite.
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family of labels. |
 | `label` | `string` | `'Map'` | The `aria-label` of the SVG, which has `role="img"`. |
 | `layerFilter` | `(layerId: string) => boolean` | | A function that returns `false` for the ids of style layers to leave out of the render, for example dense building footprints. |
-| `inlineImages` | `boolean` | false in `renderToSVG`, true in `renderToImage` | Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. |
+| `inlineImages` | `boolean` | `false` | Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. |
 | `highDensity` | `boolean` | false in `renderToSVG`; in `renderToImage`, true when `pixelRatio` is above 1 | Whether the render uses the high-density (@2x) icon sheet and requests raster tiles at @2x. |
 | `resolveImage` | `(name: string) => {svg: string; width: number; height: number} \| undefined` | | A function that returns an SVG icon for an image name that the sprite does not have, or `undefined` for a name that it does not handle. |
 | [`overrides`](#overrides) | `false \| Record<string, `[`SSROverrides`](#overrides)`>` | | Changes for the server render, for each id of a style layer: the same values as `map-jr:ssr` in the metadata of a layer, for example `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. |
@@ -306,8 +306,9 @@ the first view, and the console of the server has the error.
 renderToImage(options: ImageOptions): Promise<ImageResult>
 ```
 
-Draws the view as a JPEG, WebP or PNG image with `rasteriser`. The default of `inlineImages` is `true` here, and the
-default of `highDensity` is `true` when `pixelRatio` is more than 1. A value that you pass overrides each default.
+Draws the view as a JPEG, WebP or PNG image with `rasteriser`. It always embeds raster tiles and the icon sheet,
+because the rasterizer cannot load linked images, so `ImageOptions` has no `inlineImages`. The default of
+`highDensity` is `true` when `pixelRatio` is more than 1, and a value that you pass overrides it.
 
 | Name | Type | Default | Description |
 |---|---|---|---|
