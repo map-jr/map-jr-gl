@@ -242,7 +242,7 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 | maplibre-gl-opacity | 1.8.0 | 2 | 0 | 0 | none | none | none | none |
 | @mapbox/mapbox-gl-sync-move | 0.4.0 | 7 | 0 | 1 | none | none | none | none |
 | maplibre-gl-basemaps | 0.1.3 | 5 | 0 | 1 | none | none | none | none |
-| @maplibre/maplibre-gl-style-flipper | not found on npm |  |  |  |  |  |  |  |
+| maplibre-gl-style-flipper | 1.0.9 | 9 | 0 | 1 | none | none | none | none |
 
 ### Data and layers
 

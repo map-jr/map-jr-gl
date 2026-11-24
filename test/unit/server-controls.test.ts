@@ -15,7 +15,9 @@ test('each built-in control has its markup in its corner, with the classes of th
     for (const c of ['zoom-in', 'zoom-out', 'compass', 'fullscreen', 'globe', 'terrain', 'geolocate', 'color-scheme']) assert.match(html, new RegExp(`<button class="map-jr-ctrl-${c} maplibregl-ctrl-${c}" type="button"`), c);
     assert.match(html, /<div class="map-jr-ctrl-top-left maplibregl-ctrl-top-left"><div class="map-jr-ctrl maplibregl-ctrl map-jr-ctrl-group maplibregl-ctrl-group"><button class="map-jr-ctrl-geolocate/);
     assert.match(html, /<div class="map-jr-ctrl-bottom-left maplibregl-ctrl-bottom-left"><div class="map-jr-ctrl maplibregl-ctrl map-jr-ctrl-scale maplibregl-ctrl-scale map-jr-ssr-s/);
-    assert.match(html, /title="Toggle terrain"/);
+    // The label says what a click does, with the texts of MapLibre GL JS (#1234).
+    assert.match(html, /title="Disable terrain"/);
+    assert.match(controlsMarkup(base({controls: [terrain({source: 'dem'})]})), /title="Enable terrain"/);
     assert.match(html, /^<style data-map-jr-ssr="">.*<\/style><div data-map-jr-ssr="" class="map-jr-map map-jr-glass map-jr-ssr-layer">/s);
 });
 

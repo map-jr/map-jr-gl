@@ -869,11 +869,15 @@ export class Engine {
             try {
                 // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
                 // URL inside a worker, and the labels then used a fallback font.
-                const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
+                const res = await withTimeout(this.fetchAs('Font'))(f.src);
+                if (!res.ok) throw httpError('font', f.src, res.status);
+                const bytes = await res.arrayBuffer();
                 const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
                 set.add(await face.load());
             } catch (err) {
-                this.emit({type: 'error', message: `[map-jr-gl] fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${(err as Error).message}). The labels use the next font of their "text-font".`});
+                // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
+                const m = (err as Error).message, rest = `The labels use the next font of their "text-font" instead of "${f.name ?? f.family}".`;
+                this.emit({type: 'error', message: m.startsWith('[map-jr-gl]') ? `${m}. ${rest}` : `[map-jr-gl] fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
             }
         })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
     }
@@ -1220,7 +1224,9 @@ export class Engine {
 
     private async queryElevation(c: Extract<Command, {type: 'elevation'}>): Promise<number | null> {
         const entry = Object.entries(this.style.sources).find(([name, src]) => src.type === 'raster-dem' && (!c.source || c.source === name));
-        if (!entry) throw new Error('No elevation (raster-dem) source in the style');
+        if (!entry) throw new Error(c.source
+            ? `[map-jr-gl] queryElevation(): the style has no "raster-dem" source "${c.source}". Name a source of type "raster-dem".`
+            : '[map-jr-gl] queryElevation(): the style has no "raster-dem" source. Add a source of type "raster-dem" to the style.');
         const src = entry[1], z = clamp(Math.floor(c.zoom ?? src.maxzoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
         const url = tileURL(src, z, t.x, t.y, this.dpr);
         let pixels = this.dem.get(url);

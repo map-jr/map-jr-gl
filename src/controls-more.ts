@@ -218,7 +218,7 @@ export class TerrainControl implements Control {
     onAdd(map: Map) {
         const el = this.el = group();
         const b = button(el, 'terrain', '', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => { map.setTerrain(map.getTerrain() ? null : this.options); name(); });
-        const name = () => { b.title = ui(map, map.getTerrain() ? 'TerrainControl.Disable' : 'TerrainControl.Enable', 'Toggle terrain'); b.setAttribute('aria-label', b.title); };
+        const name = () => { const on = !!map.getTerrain(); b.title = ui(map, on ? 'TerrainControl.Disable' : 'TerrainControl.Enable', on ? 'Disable terrain' : 'Enable terrain'); b.setAttribute('aria-label', b.title); };
         name();
         return el;
     }
@@ -264,9 +264,15 @@ export class GlobeControl implements Control {
     };
 }
 
-/** MapLibre shows its logo with this control. This library has no logo, so the control adds an empty element. */
+/**
+ * MapLibre shows its logo with this control. This library has no logo, so the control adds an empty element. The option
+ * `compact` has no effect and writes one warning.
+ */
 export class LogoControl implements Control {
     private el?: HTMLElement;
+    constructor(public options: {compact?: boolean} = {}) {
+        if (options.compact !== undefined) noEffect('LogoControl', 'compact', ' This library has no logo. Remove the option.');
+    }
     onAdd() { return this.el = document.createElement('div'); }
     onRemove() { this.el?.remove(); }
     getDefaultPosition(): ControlPosition { return 'bottom-left'; }

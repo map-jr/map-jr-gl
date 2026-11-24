@@ -3,20 +3,26 @@
 //   node test/conformance/examples.mjs [out-dir] [--filter=<regex of the page name without .html>] [--write]      (--write puts the results in docs/ecosystem.md)
 //   --again uses the images and errors of the last run (to write the results again without a browser).
 //   --renderer=main gives each map of this library `renderer: 'main'` (custom layers need it); --write is then ignored.
-// The pages come from the checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (the render tests clone it).
-// Needs python3 with Pillow for the comparison.
+// The pages come from the checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js, which the tool clones when it is
+// missing. The comparison needs python3 with Pillow; the tool checks for it before it takes any page.
 import {execFileSync} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import {launch} from '../launch.mjs';
 import {examplesBlock} from './report.mjs';
+import {ensureCheckout} from './maplibre-checkout.mjs';
 
-const root = path.resolve(import.meta.dirname, '../..'), pages = path.join(root, '.cache/maplibre-gl-js/test/examples');
+const root = path.resolve(import.meta.dirname, '../..'), pages = path.join(ensureCheckout(), 'test/examples');
 const out = process.argv.slice(2).find(a => !a.startsWith('--')) ?? path.join(root, '.cache/examples');
 const filter = new RegExp(process.argv.find(a => a.startsWith('--filter='))?.slice(9) ?? '');
 const renderer = process.argv.find(a => a.startsWith('--renderer='))?.slice(11);
-if (!existsSync(pages)) { console.error('Run the render tests one time first: they clone maplibre-gl-js into .cache/.'); process.exit(1); }
+if (!process.argv.includes('--again')) {
+    try { execFileSync('python3', ['-c', 'import PIL'], {stdio: 'ignore'}); } catch {
+        console.error('[map-jr-gl] examples.mjs compares the images with python3 and Pillow, and python3 cannot import PIL. Install Pillow (python3 -m venv <dir> && <dir>/bin/pip install Pillow, then put <dir>/bin first on PATH) and run again.');
+        process.exit(1);
+    }
+}
 mkdirSync(out, {recursive: true});
 
 // One server for the two variants of each page. A page imports `../../dist/maplibre-gl-dev.mjs`; that import goes to
@@ -55,6 +61,9 @@ async function shoot(context, name, variant) {
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR|favicon/.test(m.text())) errors.push(m.text().split('\n')[0]); });
     const file = path.join(out, `${name}-${variant}.png`);
     try {
+        // A page that asks random.org for numbers (add-live-realtime-data) gets the same numbers in both runs, so that
+        // both images show the same place (#669).
+        await page.route(/^https:\/\/(www\.)?random\.org\//, r => r.fulfill({status: 200, contentType: 'text/plain', headers: {'access-control-allow-origin': '*'}, body: '0.3141592654\n0.2718281828'}));
         await page.goto(`${origin}/${variant}/test/examples/${name}.html`, {waitUntil: 'load', timeout: 30000});
         await page.waitForLoadState('networkidle', {timeout: 15000}).catch(() => {});
         // The map has loaded, all its tiles are there and it does not move. (A page that animates the map never gets

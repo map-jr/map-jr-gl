@@ -53,8 +53,10 @@ to protect those qualities.
 
 - **Every change goes through a pull request.** Branch from `main` (`fix/…`, `feat/…`, `docs/…`), push, open a pull
   request that says what changed and why, and names the issue (`Fixes #12`).
-- **The `CI` workflow must pass** (three jobs: `checks`, `browser`, `render`). Do not merge on red, and do not
-  lower a floor or skip a test to get green: fix the cause, or say in the pull request why the floor moves.
+- **The `CI` workflow must pass:** `checks`, the four `browser-*` jobs (or their skip, which the job `changes`
+  decides) and `render`. The summary job `browser` only checks that these passed, and it often waits ten minutes for a
+  runner, so a merge does not wait for it. Do not merge on red, and do not lower a floor or skip a test to get green:
+  fix the cause, or say in the pull request why the floor moves.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
@@ -75,7 +77,8 @@ to protect those qualities.
   any other change increases the third. The workflow `Release` does the rest
   when the pull request is merged. A release never goes out while `CI` is red on `main`.
 - **A pull request has one concern.** A fix and its test belong together. An unrelated cleanup goes into its own
-  pull request.
+  pull request. One exception: up to four small fixes of tests or of the agent tools (no change of `src/`, one commit
+  each) can share a pull request, whose body says `Fixes #N` for each, because each pull request runs all of CI.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
   its results (`git fetch origin bench-results && git show origin/bench-results:README.md`) before you ask the
   owner to test on a device.
@@ -92,8 +95,9 @@ One session can act as the coordinator and give issues to workers (subagents). T
 worker, so it has only the rules. The brief that every worker reads is `docs/agents/worker-brief.md`, and the notes
 for the coordinator are `docs/agents/coordinating.md`. Read the notes before you start a batch.
 
-- **A worker gets one issue and one branch.** Its prompt is the path of the brief and four lines: the issue, the
-  branch, the scope, and the files and lines where the work starts.
+- **A worker gets one issue and one branch,** or a bundle of small fixes of tests or tools (see above). Its prompt
+  is the path of the brief and four lines: the issue, the branch, the scope, and the files and lines where the work
+  starts.
 - **A worker opens the pull request and stops.** The coordinator watches CI, merges, and sends a failure back to the
   same worker, which still has its context.
 - **A worker reports in at most 12 lines** in the format of the brief. It files nothing and merges nothing. The

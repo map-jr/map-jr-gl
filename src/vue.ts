@@ -262,9 +262,9 @@ const MapJrComponent = defineComponent({
         /** The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. */
         mapStyle: {type: [String, Object] as PropType<MapDescription['style']>, required: true},
         /** The view that the application controls, for `v-model:view`. Without it, the map starts at `initialView` and the user moves it. */
-        view: Object as PropType<ViewInput>,
+        view: Object as PropType<ViewInput | null>,
         /** The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. */
-        initialView: Object as PropType<InitialView>,
+        initialView: Object as PropType<InitialView | null>,
         /** Sources to add to the style, by id. A source here overrides the source of the style that has the same id. */
         sources: Object as PropType<MapDescription['sources']>,
         /** Layers to add to the style. A layer with `before` is inserted below the style layer with that id, and a layer without it is drawn on top. */
@@ -278,36 +278,36 @@ const MapJrComponent = defineComponent({
         /** GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. To change the data of a source, pass a new object. */
         data: Object as PropType<MapDescription['data']>,
         /** The ids of the style layers that respond to the pointer: their features are in the events `click` and `hover`. */
-        interactiveLayers: Array as PropType<string[]>,
+        interactiveLayers: Array as PropType<string[] | null>,
         /**
          * Whether the top feature of `interactive-layers` under the pointer has the feature state `hover: true`.
          * @default false
          */
-        hoverState: {type: Boolean, default: undefined},
+        hoverState: {type: Boolean as PropType<boolean | null>, default: undefined},
         /**
          * The smallest zoom level of the map.
          * @default -2
          */
-        minZoom: Number,
+        minZoom: Number as PropType<number | null>,
         /**
          * The largest zoom level of the map.
          * @default 22
          */
-        maxZoom: Number,
+        maxZoom: Number as PropType<number | null>,
         /**
          * The largest pitch of the map in degrees, at most 90.
          * @default 60
          */
-        maxPitch: Number,
+        maxPitch: Number as PropType<number | null>,
         /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. */
         maxBounds: [Array, Object] as unknown as PropType<MapDescription['maxBounds']>,
         /** The CSS cursor over the map. Without it, the cursor is `pointer` over a feature of `interactive-layers`. */
-        cursor: String,
+        cursor: String as PropType<string | null>,
         /**
          * Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls.
          * @default false
          */
-        cooperativeGestures: {type: Boolean, default: undefined},
+        cooperativeGestures: {type: Boolean as PropType<boolean | null>, default: undefined},
         /**
          * The color scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. `'auto'` follows the browser.
          * @default 'light'
@@ -321,7 +321,7 @@ const MapJrComponent = defineComponent({
          */
         padding: [Number, Object] as PropType<MapDescription['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. */
-        controls: Array as PropType<ControlSpec[]>,
+        controls: Array as PropType<ControlSpec[] | null>,
         /** The projection, `{type: 'globe'}` or `{type: 'mercator'}`. It overrides the `projection` of the style. */
         projection: Object as PropType<MapDescription['projection']>,
         /** Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. */
@@ -332,33 +332,33 @@ const MapJrComponent = defineComponent({
          * The thread that renders the map. Read only when the map is created.
          * @default 'auto'
          */
-        renderer: String as PropType<'auto' | 'worker' | 'main'>,
+        renderer: String as PropType<'auto' | 'worker' | 'main' | null>,
         /** Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. */
         fonts: Object as PropType<MapDescription['fonts']>,
         /**
          * The CSS font family for labels whose `text-font` names no loaded font. Read only when the map is created.
          * @default the `@default` of {@link MapSetup.fontFamily} in the main API
          */
-        fontFamily: String,
+        fontFamily: String as PropType<string | null>,
         /**
          * Whether the user can move the map. Read only when the map is created.
          * @default true
          */
-        interactive: {type: Boolean, default: undefined},
+        interactive: {type: Boolean as PropType<boolean | null>, default: undefined},
         /**
          * Whether the canvas uses multisample antialiasing. Read only when the map is created.
          * @default false
          */
-        antialias: {type: Boolean, default: undefined},
+        antialias: {type: Boolean as PropType<boolean | null>, default: undefined},
         /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
-        nonce: String,
+        nonce: String as PropType<string | null>,
         /** The options of the built-in attribution, or `false` to hide it. Read only when the map is created. */
-        attribution: {type: [Boolean, Object] as PropType<false | {compact?: boolean; customAttribution?: string | string[]}>, default: undefined},
+        attribution: {type: [Boolean, Object] as PropType<false | {compact?: boolean; customAttribution?: string | string[]} | null>, default: undefined},
         /**
          * Whether the view is kept in the hash of the URL; a string is the name of the parameter. Read only when the map is created.
          * @default false
          */
-        hash: {type: [Boolean, String] as PropType<boolean | string>, default: undefined},
+        hash: {type: [Boolean, String] as PropType<boolean | string | null>, default: undefined},
         /**
          * Whether a server renders the first view as SVG into the page: `true`, or options. `width` and `height` are the
          * size in CSS pixels on most screens (default 800 by 500). `attribution` sets the credits. The other options are
