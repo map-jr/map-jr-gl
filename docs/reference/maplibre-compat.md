@@ -109,7 +109,7 @@ library" names a member that MapLibre GL JS does not have.
 | `calculateAnchoredCameraOptions` | `(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) => {center: LngLat; zoom: number}` | The center and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. |
 | `setCenterClampedToGround` | `(clamped: boolean) => void` | With `false`, the map center keeps its height (`setCenterElevation`) instead of following the ground, as in MapLibre GL JS. |
 | `getCenterClampedToGround` | `() => boolean` | Returns whether the map center follows the ground, `true` unless `setCenterClampedToGround(false)` was called. |
-| `setCenterElevation` | `(elevation: number) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. |
+| `setCenterElevation` | `(elevation: number, eventData?: EventData \| undefined) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. |
 | `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
 | `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect: the map does not draw the camera that the function returns. |
@@ -217,7 +217,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setMinZoom` | `(z?: number \| null \| undefined) => Map` | Sets the smallest zoom level that the user can reach. |
 | `setMaxZoom` | `(z?: number \| null \| undefined) => Map` | Sets the largest zoom level that the user can reach. |
 | `setMaxPitch` | `(p?: number \| null \| undefined) => Map` | Sets the largest pitch that the user can reach, in degrees. |
-| `getCenterElevation` | `() => number` | Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there (0 without 3D terrain). |
+| `getCenterElevation` | `() => number` | Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there, multiplied by the exaggeration of 3D terrain (0 without 3D terrain). |
 | `getMaxPitch` | `() => number` | Returns the largest pitch that the user can reach, in degrees. |
 | `getMinPitch` | `() => number` | Returns the smallest pitch that the user can reach, in degrees. |
 | `setMinPitch` | `(p?: number \| null \| undefined) => Map` | Sets the smallest pitch that the user can reach, in degrees, from 0 to the largest pitch. |

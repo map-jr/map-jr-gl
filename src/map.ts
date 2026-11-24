@@ -1186,17 +1186,17 @@ export class Map {
      * Gives the map center a height of its own, in meters above sea level, or puts it back on the ground with `null` (the
      * default). The camera keeps its distance and its pitch from the center, so with a center high above the ground a
      * pitch above 90 looks up at the sky from above the ground. While the center has a height, it does not follow 3D terrain.
-     * @param metres The height in meters, or `null` for the ground (3D terrain, or sea level without it).
+     * @param meters The height in meters, or `null` for the ground (3D terrain, or sea level without it).
      */
-    setCenterElevation(metres: number | null) {
-        if (metres !== null && !Number.isFinite(metres)) { console.warn(`[map-jr-gl] setCenterElevation(${metres}): the height is not a number. Pass a number of meters, or null to put the center on the ground.`); return this; }
-        this.centreHeld = metres !== null;
-        if (metres !== null || !this.tr.heightAt) this.tr.elevation = metres ?? 0;
-        this.post({type: 'jump', elevation: metres});
+    setCenterElevation(meters: number | null) {
+        if (meters !== null && !Number.isFinite(meters)) { console.warn(`[map-jr-gl] setCenterElevation(${meters}): the height is not a number. Pass a number of meters, or null to put the center on the ground.`); return this; }
+        this.centreHeld = meters !== null;
+        if (meters !== null || !this.tr.heightAt) this.tr.elevation = meters ?? 0;
+        this.post({type: 'jump', elevation: meters});
         this.jumped = this.seq;
         return this;
     }
-    /** Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there (0 without 3D terrain). */
+    /** Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there, multiplied by the exaggeration of 3D terrain (0 without 3D terrain). */
     getCenterElevation() { return this.tr.elevation; }
     /** Returns the largest pitch that the user can reach, in degrees. */
     getMaxPitch() { return this.tr.maxPitch; }

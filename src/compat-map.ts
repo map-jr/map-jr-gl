@@ -232,8 +232,8 @@ export class Map extends CoreMap {
      * Sets the height of the map center in meters, as in MapLibre GL JS. It lasts only after `setCenterClampedToGround(false)`:
      * while the center is clamped to the ground, the ground height replaces it in the next frame, and the call warns once.
      */
-    setCenterElevation(elevation: number) {
-        if (this.unclamped) return super.setCenterElevation(+elevation);
+    setCenterElevation(elevation: number, eventData?: EventData) {
+        if (this.unclamped) return this.camera(eventData, () => super.setCenterElevation(+elevation));
         if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
         return this;
     }
