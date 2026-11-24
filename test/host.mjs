@@ -2200,12 +2200,15 @@ for (const renderer of renderers) {
         const overlayClicks = await page.evaluate(() => { const t = window.t, n = t.clicks.length; t.ov.remove(); return n; });
         check(`[${renderer}] a click on an overlay does not call onClick`, overlayClicks === 0, JSON.stringify({overlayClicks}));
         // overlay().patch changes only the options that it has (#1153): a marker keeps its anchor and offset, and a popup
-        // stays the same element with its close button.
+        // stays the same element with its close button. `lngLat: undefined` keeps the position, also through a later patch
+        // that makes the element again.
         const overlayPatch = await page.evaluate(() => { const t = window.t, hostBox = document.querySelector('#host').getBoundingClientRect();
             const el = Object.assign(document.createElement('div'), {style: 'width:20px;height:20px'});
             const ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 100, y: 100}), anchor: 'bottom', offset: [0, -10]});
             ov.patch({lngLat: t.host.unproject({x: 150, y: 120})});
             const r = el.getBoundingClientRect(), marker = {x: r.x + r.width / 2 - hostBox.x, y: r.bottom - hostBox.y};
+            let kept;
+            try { ov.patch({lngLat: undefined}); ov.patch({anchor: 'top'}); const k = el.getBoundingClientRect(); kept = {x: k.x + k.width / 2 - hostBox.x, y: k.top - hostBox.y}; } catch (e) { kept = String(e); }
             ov.remove();
             const content = Object.assign(document.createElement('p'), {textContent: 'Patched'});
             const pop = t.host.overlay(content, {lngLat: t.host.unproject({x: 200, y: 200}), popup: true, onClose() {}});
@@ -2213,9 +2216,11 @@ for (const renderer of renderers) {
             pop.patch({lngLat: t.host.unproject({x: 220, y: 200})});
             const after = content.closest('.map-jr-popup'), sameBox = !!box && after === box, closeButton = !!after?.querySelector('.map-jr-popup-close-button');
             pop.remove();
-            return {marker, sameBox, closeButton}; });
+            return {marker, kept, sameBox, closeButton}; });
         check(`[${renderer}] overlay().patch({lngLat}) moves a marker and keeps its anchor and offset, and moves a popup and keeps it and its close button`,
             Math.abs(overlayPatch.marker.x - 150) < 1 && Math.abs(overlayPatch.marker.y - 110) < 1 && overlayPatch.sameBox && overlayPatch.closeButton, JSON.stringify(overlayPatch));
+        check(`[${renderer}] overlay().patch({lngLat: undefined}) keeps the position, and a later patch of the anchor places the marker there`,
+            Math.abs(overlayPatch.kept?.x - 150) < 1 && Math.abs(overlayPatch.kept?.y - 110) < 1, JSON.stringify(overlayPatch.kept));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
         // the callbacks get [lng, lat]. A render with the same lngLat leaves it where it was dropped.
         await page.evaluate(() => { const t = window.t, el = t.dragPin = t.lib.defaultPin({color: 'rgb(200, 0, 0)'}); t.dragged = []; el.addEventListener('click', () => t.dragged.push('click'));

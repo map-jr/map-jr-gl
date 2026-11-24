@@ -865,6 +865,8 @@ the focus returns to the element of the map that had it before.
 
 `overlay` returns a `MapOverlay`. Its `update` replaces all options of the overlay with its argument, so pass the
 complete options each time. Its `patch` changes only the options that its argument has, and keeps the others.
+An option set to `undefined` in `patch` returns to its default, or is removed when it has none, but `lngLat: undefined`
+keeps the position. After `remove`, `update` and `patch` have no effect.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -889,7 +891,7 @@ popup.patch({lngLat: [-74.0134, 40.7128]});
 | Name | Type | Description |
 |---|---|---|
 | `update` | `(options: `[`OverlayOptions`](#overlayoptions)`) => void` | Replaces all options of the overlay with `options`. |
-| `patch` | `(options: Partial<`[`OverlayOptions`](#overlayoptions)`>) => void` | Changes only the options that `options` has, for example `patch({lngLat: [2.35, 48.86]})` to move a popup and keep its other options. |
+| `patch` | `(options: Partial<Omit<`[`OverlayOptions`](#overlayoptions)`, 'lngLat'>> & {lngLat?: Position}) => void` | Changes only the options that `options` has, for example `patch({lngLat: [2.35, 48.86]})` to move a popup and keep its other options. |
 | `remove` | `() => void` | Removes the element from the map. |
 <!-- ref:MapOverlay:end -->
 

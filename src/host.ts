@@ -404,9 +404,10 @@ export interface MapOverlay {
     update(options: OverlayOptions): void;
     /**
      * Changes only the options that `options` has, for example `patch({lngLat: [2.35, 48.86]})` to move a popup and keep its
-     * other options. An option that is set to `undefined` returns to its default.
+     * other options. `anchor`, `popup` or `draggable` set to `undefined` returns to its default. Another option set to
+     * `undefined` is removed, except `lngLat`, which keeps the position. After `remove`, `patch` has no effect.
      */
-    patch(options: Partial<OverlayOptions>): void;
+    patch(options: Partial<Omit<OverlayOptions, 'lngLat'>> & {lngLat?: Position}): void;
     /** Removes the element from the map. */
     remove(): void;
 }
@@ -1307,7 +1308,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
                     if (made instanceof Marker) made.setDraggable(!!next.draggable);
                     if (moved) made.setLngLat(next.lngLat);
                 },
-                patch(part) { overlay.update({...now, ...part}); },
+                // (An explicit `lngLat: undefined` keeps the position: the element cannot be placed without one.)
+                patch(part) { overlay.update({...now, ...part, lngLat: part?.lngLat ?? now.lngLat}); },
                 remove() { const old = made; made = null; old?.remove(); },
             };
             return overlay;
