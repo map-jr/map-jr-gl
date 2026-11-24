@@ -148,9 +148,9 @@ that affects how the map is drawn.
 | `render-tests.json` | The status of each test, sorted by id and without percentages. Its diff shows the tests that changed. |
 
 Each run also prints a line that starts with `CHANGED:` for a test whose status is not the status in
-`render-tests.json`. Before it counts, the run runs each such test again alone (at most 50 of them), because four
+`render-tests.json`. Before it counts, the run runs each such test again alone when at most 50 tests changed, because four
 tests at once load the machine and a test near a limit can move under that load only. The second result counts, and
-the run prints a line that starts with `AGAIN:` when it differs from the first. A test that is close to a limit can
+the run prints a line that starts with `AGAIN:` when it differs from the first. When more than 50 tests changed, none runs again, so that a change of many tests is not hidden. A test that is close to a limit can
 also have another status on another machine, because the fonts and the software renderer are not the same on each
 system (#1036). Commit the two files from the render job of CI, or from a full run where each test of a `CHANGED:`
 line that the change cannot reach was run alone at `main` and gave the same status.
