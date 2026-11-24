@@ -19,7 +19,7 @@ const {svg, tiles, attribution} = await renderToSVG({
 ## `renderToSVG`
 
 ```ts
-renderToSVG(options: RenderOptions & RenderView): Promise<RenderResult>
+renderToSVG(options: RenderOptions): Promise<RenderResult>
 ```
 
 Draws the view that `options` describes. The renderer loads the style, its TileJSON files, the tiles of the view
@@ -41,9 +41,10 @@ and the sprite.
 
 ## `RenderOptions`
 
-The options need a view (the type `RenderView`). Give either `center` and `zoom`, or `bounds`. With `bounds`, the
-renderer fits the box into the view, and `center` and `zoom` can be left out because they have no effect. Options
-with neither `bounds` nor both `center` and `zoom` do not compile.
+`RenderOptions` has the members in the table and a view, the type `RenderView`: either `center` and `zoom`, or
+`bounds`. `bounds` overrides `center` and `zoom`, so options with `bounds` can leave them out. In TypeScript, options
+without `bounds` and without both `center` and `zoom` do not compile. The type `RenderOptionsBase` has the same
+members without the required view, for options that get their view later.
 
 <!-- ref:RenderOptions:start -->
 | Name | Type | Default | Description |
@@ -92,16 +93,14 @@ The server cannot read the color scheme of the browser, so `colorScheme: 'auto'`
 
 ### `bounds` and `padding`
 
-With `bounds`, the renderer fits the box into the view and uses neither `center` nor `zoom`. Both are required by
-the type, so pass any value for them. `padding` is the space in CSS pixels that the box keeps from each side.
+With `bounds`, the renderer fits the box into the view and uses neither `center` nor `zoom`, so the options can leave
+them out. `padding` is the space in CSS pixels that the box keeps from each side.
 
 ```js
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  center: [0, 0],
-  zoom: 0,
   bounds: [-74.02, 40.7, -73.97, 40.72],
   padding: 20,
   width: 800,
@@ -224,7 +223,7 @@ height: 100%`. A map of `@map-jr/map-jr-gl` or of `@map-jr/map-jr-gl/maplibre-co
 ## `renderFirstView`
 
 ```ts
-renderFirstView(options: FirstViewOptions & RenderView): Promise<string>
+renderFirstView(options: FirstViewOptions): Promise<string>
 ```
 
 Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
@@ -316,7 +315,7 @@ the first view, and the console of the server has the error.
 ## `renderToImage`
 
 ```ts
-renderToImage(options: ImageOptions & RenderView): Promise<ImageResult>
+renderToImage(options: ImageOptions): Promise<ImageResult>
 ```
 
 Draws the view as a JPEG, WebP or PNG image with `rasteriser`. It always embeds raster tiles and the icon sheet,

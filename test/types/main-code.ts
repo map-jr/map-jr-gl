@@ -2,7 +2,7 @@
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
 import {createMap, points, type AttributionOptions, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
 import {navigation, scale, geolocate, terrain, type NavigationOptions, type ScaleOptions, type GeolocateOptions, type TerrainOptions} from '@map-jr/map-jr-gl/controls';
-import {renderToImage, renderToSVG} from '@map-jr/map-jr-gl/server';
+import {renderFirstView, renderToImage, renderToSVG, type FirstViewOptions, type ImageOptions, type RenderOptions, type RenderOptionsBase} from '@map-jr/map-jr-gl/server';
 
 // A position that is declared apart from the call has the type number[].
 const NYC = [-74.0065, 40.7085];
@@ -139,3 +139,18 @@ void renderToSVG({style: 'https://example.com/style.json', center: [8, 46.5], zo
 void renderToSVG({style: 'https://example.com/style.json', width: 600, height: 400});
 // @ts-expect-error center without zoom is not a view (#1204).
 void renderToSVG({style: 'https://example.com/style.json', center: [8, 46.5], width: 600, height: 400});
+// A variable typed with an exported options type can be passed (#1204).
+const renderOptions: RenderOptions = {style: 'https://example.com/style.json', center: [8, 46.5], zoom: 6, width: 600, height: 400};
+void renderToSVG(renderOptions);
+const firstViewOptions: FirstViewOptions = {style: 'https://example.com/style.json', bounds: [5, 45, 11, 48], width: 600, height: 400, attribution: false};
+void renderFirstView(firstViewOptions);
+const imageOptions: ImageOptions = {style: 'https://example.com/style.json', bounds: [5, 45, 11, 48], width: 600, height: 400, rasteriser: {render: async () => new Uint8Array()}};
+void renderToImage(imageOptions);
+// @ts-expect-error a variable typed RenderOptions needs a view as well (#1204).
+const noView: RenderOptions = {style: 'https://example.com/style.json', width: 600, height: 400};
+void noView;
+// RenderOptionsBase has no required view; it gets one before the call (#1204).
+const base: RenderOptionsBase = {style: 'https://example.com/style.json', width: 600, height: 400};
+void renderToSVG({...base, center: [8, 46.5], zoom: 6});
+// @ts-expect-error RenderOptionsBase alone is not a view (#1204).
+void renderToSVG(base);

@@ -24,8 +24,14 @@ export {decodePNG, decodeWebPLossless, type ImageDecoder};
  */
 export type RenderView = {center: LngLatLike; zoom: number} | {bounds: LngLatBoundsInput};
 
-/** The options of `renderToSVG` and `renderFirstView`. Each call also needs a view (`RenderView`): `center` and `zoom`, or `bounds`. */
-export interface RenderOptions {
+/**
+ * The options of `renderToSVG`: the members of `RenderOptionsBase` and a view (`RenderView`), which is `center` and
+ * `zoom`, or `bounds`.
+ */
+export type RenderOptions = RenderOptionsBase & RenderView;
+
+/** The members of `RenderOptions`, with `center` and `zoom` optional. `RenderOptions` adds that a view is required. */
+export interface RenderOptionsBase {
     /**
      * The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as
      * `style` of `MapDescription`. Of `{light, dark}`, the server renders `dark` when `colorScheme` is `'dark'`, and `light` otherwise.
@@ -166,7 +172,7 @@ export interface RenderResult {
  * and the allowed hosts. (The style, its sources and its tiles can come from another party.) It reads each body
  * itself, so that a body that does not end, or that is too large, stops the request.
  */
-function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
+function limitedFetch(o: RenderOptionsBase, fetchFn: typeof fetch): typeof fetch {
     const total = o.timeout ?? 30000, each = o.requestTimeout ?? 10000, max = o.maxBytes ?? 0;
     for (const [name, v] of [['timeout', total], ['requestTimeout', each], ['maxBytes', max]] as const)
         if (!(v >= 0)) throw new Error(`[map-jr-gl] server render: "${name}" is ${v}. Pass a number that is 0 (no limit) or more.`);
@@ -227,13 +233,13 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
  * Renders the first frame of a map as SVG without a browser, for server-side rendering, a static export or a social image.
  * @returns A promise of the SVG, the URLs of the tiles and the credits. It rejects when the style or a limit of the options fails.
  */
-export async function renderToSVG(o: RenderOptions & RenderView): Promise<RenderResult> {
+export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const {view: _view, ...result} = await renderView(o);
     return result;
 }
 
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
-async function renderView(o: RenderOptions & RenderView): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
+async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const dz = o.tileZoomOffset ?? 0;
     if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
@@ -377,7 +383,10 @@ async function renderView(o: RenderOptions & RenderView): Promise<RenderResult &
 }
 
 /** The options of `renderFirstView`: those of `renderToSVG`, and the credits and the controls of the first view. */
-export interface FirstViewOptions extends RenderOptions {
+export type FirstViewOptions = FirstViewOptionsBase & RenderView;
+
+/** The members of `FirstViewOptions`, with `center` and `zoom` optional. `FirstViewOptions` adds that a view is required. */
+export interface FirstViewOptionsBase extends RenderOptionsBase {
     /** The credits to show instead of those of the sources, as HTML. `false` shows none, and leaves out the attribution of the controls as well. */
     attribution?: string | string[] | false;
     /**
@@ -408,7 +417,7 @@ export interface FirstViewOptions extends RenderOptions {
  * `colorScheme` sets the colors of the credits and the controls; `'auto'` follows the browser.
  * @returns A promise of the HTML. It rejects as `renderToSVG` does.
  */
-export async function renderFirstView(o: FirstViewOptions & RenderView): Promise<string> {
+export async function renderFirstView(o: FirstViewOptions): Promise<string> {
     const made = await renderView(o);
     const raw = o.attribution === false ? false : [o.attribution ?? made.attribution].flat();
     if (o.controls) {
@@ -422,7 +431,7 @@ export async function renderFirstView(o: FirstViewOptions & RenderView): Promise
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800
@@ -469,7 +478,7 @@ export async function renderElement(description: MapDescription, options: Elemen
     try {
         const fit = !d.view && d.initialView?.bounds;
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
-            width, height, images: d.images as RenderOptions['images'], sources: d.sources, layers: d.layers as RenderOptions['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
+            width, height, images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
             attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
             controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
             attributionOptions: d.attribution === false ? undefined : d.attribution as {compact?: boolean; customAttribution?: string | string[]} | undefined});
@@ -491,7 +500,10 @@ export interface Rasteriser {
  * The options of `renderToImage`: those of `renderToSVG` except `inlineImages`, and the options of the image.
  * `renderToImage` always embeds images, because the rasterizer cannot load linked ones.
  */
-export interface ImageOptions extends Omit<RenderOptions, 'inlineImages'> {
+export type ImageOptions = ImageOptionsBase & RenderView;
+
+/** The members of `ImageOptions`, with `center` and `zoom` optional. `ImageOptions` adds that a view is required. */
+export interface ImageOptionsBase extends Omit<RenderOptionsBase, 'inlineImages'> {
     /** The renderer that converts the SVG to an image. */
     rasteriser: Rasteriser;
     /**
@@ -526,7 +538,7 @@ let warnedInline = false;
  * Renders the first frame of a map as a raster image, whose size does not depend on how dense the data is.
  * @returns A promise of the image. It rejects as `renderToSVG` does.
  */
-export async function renderToImage(o: ImageOptions & RenderView): Promise<ImageResult> {
+export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
     if ('inlineImages' in o && !warnedInline) {
         warnedInline = true;
         console.warn('[map-jr-gl] renderToImage(): "inlineImages" has no effect, because the image always embeds raster tiles and icons. Remove "inlineImages".');
