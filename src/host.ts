@@ -1156,8 +1156,9 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         const relabel = differ(next.locale, before?.locale);
         if (relabel && before) { map.fire('_locale'); nameCanvas(next.locale); }
         if (next.controls !== before?.controls || relabel) {
-            // (A control whose `position` changed is added again in its new corner; #1237.)
-            const wanted = new globalThis.Map(relabel ? [] : (next.controls ?? []).map(c => [c.key, c.position]));
+            // (A control whose `position` changed is added again in its new corner; #1237. Of two items with one key, the
+            // first wins, as below: the list is reversed so that the first sets the position; #1662.)
+            const wanted = new globalThis.Map(relabel ? [] : (next.controls ?? []).map(c => [c.key, c.position] as const).reverse());
             for (const [key, c] of controls) if (!wanted.has(key) || wanted.get(key) !== placed.get(key)) { map.removeControl(c as any); controls.delete(key); placed.delete(key); }
             for (const c of next.controls ?? []) if (controls.has(c.key)) (controls.get(c.key) as any).update?.(c.options); else { const made = c.create(() => host); controls.set(c.key, made); placed.set(c.key, c.position); map.addControl(made, c.position); }
         }
