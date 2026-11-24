@@ -1664,7 +1664,7 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
             let m;
             try {
-                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, fadeDuration: 0, pitchWithRotate: false, style: {version: 8, sources: {}, layers: []}});
+                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, fadeDuration: 0, pitchWithRotate: false, crossSourceCollisions: false, style: {version: 8, sources: {}, layers: []}});
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
@@ -1672,15 +1672,15 @@ for (const mode of renderers) {
                     new mod.Marker({opacityWhenCovered: '0.2'});
                 }
                 // (The default values write no warning.)
-                new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, style: {version: 8, sources: {}, layers: []}}).remove();
+                new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, crossSourceCollisions: true, style: {version: 8, sources: {}, layers: []}}).remove();
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'locationOccludedOpacity', 'opacityWhenCovered'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'crossSourceCollisions', 'locationOccludedOpacity', 'opacityWhenCovered'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
         // visualizePitch of NavigationControl (#42) and opacityWhenCovered of Marker (the globe, #463) have an effect in
         // this entry, so they write no warning.
-        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and visualizePitch and opacityWhenCovered do not warn',
+        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and visualizePitch and opacityWhenCovered do not warn',
             Object.entries(r).every(([k, n]) => n === (k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
@@ -3626,6 +3626,27 @@ for (const mode of renderers) {
         });
         const want = {NavigationControl: 'top-right', GeolocateControl: 'top-right', FullscreenControl: 'top-right', TerrainControl: 'top-right', GlobeControl: 'top-right', ScaleControl: 'bottom-left', AttributionControl: 'bottom-right', LogoControl: 'bottom-left'};
         check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
+    }
+    // addLayer with a layer type that the library does not draw warns once for each type, as a loaded style does (#1140).
+    // (The first layer is refused for its id, and the type still warns for the next one.)
+    if (mode === 'main') {
+        const unknown = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const warnings = [], warn = console.warn;
+            let afterRefused;
+            m.on('error', () => {}); // (the refusal of the duplicate id is an error event; handled, it is no page error)
+            console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+            try {
+                m.addLayer({id: 'bg', type: 'no-such-type'}); afterRefused = warnings.length; m.addLayer({id: 'a', type: 'no-such-type'}); m.addLayer({id: 'b', type: 'no-such-type'}); m.addLayer({id: 'c', type: 'background'});
+            } finally { console.warn = warn; }
+            m.remove(); el.remove();
+            return {afterRefused, warnings: warnings.filter(w => w.includes('layer type'))};
+        });
+        check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
+            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
     }
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {

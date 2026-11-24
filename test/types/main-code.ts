@@ -36,6 +36,9 @@ map.state.subscribe(state => {
 map.moveTo({center: NYC, zoom: 12, duration: 300});
 map.project(NYC).x.toFixed(0);
 map.queryElevation(NYC).then(metres => metres?.toFixed(0));
+map.queryElevation(NYC, {source: 'dem', zoom: 12}).then(metres => metres?.toFixed(0));
+// @ts-expect-error zoom is a number
+map.queryElevation(NYC, {zoom: '12'});
 // The method gives the type of the features: `querySource` the tile data, `queryFeatures` what the style layers draw.
 map.querySource('rain', NYC).then(found => console.log(found[0]?.type === 'Polygon', found[0]?.sourceLayer.length));
 map.queryFeatures([{x: 0, y: 0}, {x: 400, y: 300}], {layers: ['places']}).then(found => console.log(found[0]?.layer.id, found[0]?.state));
