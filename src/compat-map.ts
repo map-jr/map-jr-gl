@@ -54,13 +54,14 @@ export interface Map {
     getStyle(): StyleSpecification;
 }
 /**
- * `map.cooperativeGestures`, as in MapLibre GL JS, with `enable()`, `disable()`, `isEnabled()` and `isActive()` (always
- * false). Its code loads on demand at the first `enable()` (cooperative-gestures.ts), so that a map without it pays little.
+ * `map.cooperativeGestures`, as in MapLibre GL JS, with `enable()`, `disable()`, `isEnabled()`, `isActive()` (always
+ * false) and `isBypassed(event)` (whether Ctrl, or ⌘ on a Mac, is down in the event). Its code loads on demand at the first `enable()` (cooperative-gestures.ts), so that a map without it pays little.
  */
 const cooperativeGestures = (map: CoreMap) => {
     let on = false, stop: (() => void) | undefined, touchAction = '';
     // (The canvas is read each time: a fall back from the worker to the main thread replaces it; #777.)
     const style = () => map.getCanvas().style;
+    const isBypassed = (event: MouseEvent | WheelEvent | PointerEvent) => event[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
     const disable = () => { if (on) { on = false; stop?.(); stop = map.gate = undefined; style().touchAction = touchAction; } };
     map.on('remove', disable);
     return {enable() {
@@ -70,10 +71,10 @@ const cooperativeGestures = (map: CoreMap) => {
         // Mac), and one finger scrolls the page.
         touchAction = style().touchAction;
         style().touchAction = 'pan-x pan-y';
-        map.gate = (type, e) => type === 'touch_pan' || !(e as WheelEvent)[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
+        map.gate = (type, e) => type === 'touch_pan' || !isBypassed(e as WheelEvent);
         // (After the import, the handler may be off again or the map removed: `disable()` has then set `on` to false.)
         import('./cooperative-gestures.ts').then(m => { if (on && !stop) stop = m.cooperate(map); });
-    }, disable, isEnabled: () => on, isActive: () => false};
+    }, disable, isEnabled: () => on, isActive: () => false, isBypassed};
 };
 declare const __VERSION__: string; // the version of package.json, set by the build
 declare const __DEV__: boolean;
@@ -215,12 +216,27 @@ export class Map extends CoreMap {
         tr.setLocationAt(lng, lat, px, py);
         return {center: new LngLat(tr.lng, tr.lat), zoom: tr.zoom};
     }
-    /** Has no effect: the map center is always on the ground. */
-    setCenterClampedToGround(clamped?: boolean) { return this.unsupported('setCenterClampedToGround(false)', clamped !== false); }
-    /** Returns `true`: the map center is always on the ground. */
-    getCenterClampedToGround() { return true; }
-    /** Has no effect: the map center is always on the ground. */
-    setCenterElevation(elevation?: number) { return this.unsupported('setCenterElevation', !elevation); }
+    declare private unclamped?: boolean;
+    /**
+     * With `false`, the map center keeps its height (`setCenterElevation`) instead of following the ground, as in MapLibre
+     * GL JS. With `true` (the default), the center goes back onto the ground.
+     */
+    setCenterClampedToGround(clamped: boolean) {
+        if (!clamped === !!this.unclamped) return;
+        this.unclamped = !clamped;
+        super.setCenterElevation(clamped ? null : this.tr.elevation);
+    }
+    /** Returns whether the map center follows the ground, `true` unless `setCenterClampedToGround(false)` was called. */
+    getCenterClampedToGround() { return !this.unclamped; }
+    /**
+     * Sets the height of the map center in meters, as in MapLibre GL JS. It lasts only after `setCenterClampedToGround(false)`:
+     * while the center is clamped to the ground, the ground height replaces it in the next frame, and the call warns once.
+     */
+    setCenterElevation(elevation: number, eventData?: EventData) {
+        if (this.unclamped) return this.camera(eventData, () => super.setCenterElevation(+elevation));
+        if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
+        return this;
+    }
     /** Has no effect. */
     setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
     /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
@@ -384,6 +400,8 @@ export class Map extends CoreMap {
         if (typeof o.style === 'string') this.styleUrl = o.style;
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         if (o.cooperativeGestures) this.cooperativeGestures.enable();
+        if (o.centerClampedToGround === false) this.setCenterClampedToGround(false);
+        if (o.elevation != null) this.setCenterElevation(o.elevation);
         if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
         if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
         else this.uiLocale = o.locale;
@@ -410,6 +428,21 @@ export class Map extends CoreMap {
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
+        // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
+        const dragOptions = (name: string, used: boolean, todo: string) => {
+            if (!used || this.warned.has(name)) return;
+            const message = `[map-jr-gl] ${name} has no effect: the drag handlers here have no options. ${todo}.`;
+            if (this.strict) throw new Error(message);
+            this.warned.add(name); console.warn(message);
+        };
+        for (const k of ['dragPan', 'dragRotate'] as const) {
+            dragOptions(`new Map(): an object as the option ${k}`, typeof o[k] == 'object' && o[k] !== null, 'Remove it, or pass true');
+            const handler = this[k], on = handler.enable.bind(handler);
+            handler.enable = (options?: unknown) => { dragOptions(`map.${k}.enable(options)`, typeof options == 'object' && options !== null, 'Call enable() with no argument'); on(); };
+        }
+        dragOptions('new Map(): the option rotateSpeed', o.rotateSpeed !== undefined && o.rotateSpeed !== 0.8, 'Remove it; the speed is fixed at 0.8');
+        dragOptions('new Map(): the option pitchSpeed', o.pitchSpeed !== undefined && o.pitchSpeed !== -0.5, 'Remove it; the speed is fixed at -0.5');
+        dragOptions('new Map(): the option aroundCenter: false', o.aroundCenter === false, 'Remove it; the map always rotates around the center');
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
         // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
@@ -630,8 +663,6 @@ export class Map extends CoreMap {
     getRenderWorldCopies() { return true; }
     /** Returns 0: the camera has no roll. */
     getRoll() { return 0; }
-    /** Returns the elevation of the ground at the map center in meters, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. */
-    getCenterElevation() { return this.tr.elevation; }
     /** Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. */
     getCameraTargetElevation() { return this.tr.elevation; }
     /** Whether the zoom level changes now, by the user or by a camera method. */

@@ -9,7 +9,8 @@ import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 import {SPEC} from './style.ts';
 import {parseColor} from './expr.ts';
-import {layerTypes, layoutValues, operators, paintValues} from './style-spec-values.ts';
+import {layerTypes, layoutExpressions, layoutValues, operators, paintExpressions, paintValues} from './style-spec-values.ts';
+import {expressionErrors} from './expr-check.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; /** The name that made the map, such as `createMap()` or `<MapJr>`. */ name: string; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -96,7 +97,7 @@ export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) {
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
 const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
 /** The fields of `MapDescription` (and of `MapSetup`). `pnpm test:consistency` compares the list with src/host.ts. Other fields warn (#524). */
-const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'style', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale']);
+const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'style', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale']);
 /** The options of `overlay()` (`OverlayOptions`). `pnpm test:consistency` compares the list with src/host.ts. Other options warn (#1647). */
 const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
@@ -153,13 +154,13 @@ export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: 
  * `coordinates` of an image or video source (#1748). It also checks the types of the values: a layer `type` that the
  * specification does not have, `minzoom` and `maxzoom`, the type of the source of a layer (`layer "a" requires a
  * raster-dem source`), and each paint and layout value that is not an expression or a function (an enum, a color, a
- * number and its minimum and maximum, a boolean, an array and its length; see scripts/style-spec-values.mjs). The
- * types of expressions are not checked here.
+ * number and its minimum and maximum, a boolean, an array and its length; see scripts/style-spec-values.mjs), and
+ * the types of each expression of a paint or layout property (`expressionErrors` of src/expr-check.ts).
  */
 export function validateStyle(style: {sources?: Record<string, any>; layers?: any[]} | undefined, found: (where: string, why: string) => void) {
     const need = (where: string, o: any, k: string) => { if (o[k] === undefined) found(where, `missing required property "${k}"`); };
     const values: Record<string, string> = {};
-    for (const [g, t] of [['paint', paintValues], ['layout', layoutValues]]) for (const e of t.split('|')) { const [type, k, c] = e.split(' '); values[`${g} ${type} ${k}`] = c; }
+    for (const [g, t] of [['paint', paintValues], ['layout', layoutValues], ['paint=', paintExpressions], ['layout=', layoutExpressions]]) for (const e of t.split('|')) { const [type, k, ...c] = e.split(' '); values[`${g} ${type} ${k}`] = c.join(' '); }
     const types = layerTypes.split(' ');
     for (const [id, s] of Object.entries(style?.sources ?? {})) {
         if (!s || typeof s !== 'object') continue;
@@ -184,7 +185,13 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
         }
         need(where, l, 'id');
         for (const k of ['minzoom', 'maxzoom']) if (l[k] !== undefined) checkValue(`${where}.${k}`, l[k], '!n0,24', found);
-        for (const g of ['paint', 'layout']) for (const k in l[g]) { const c = values[`${g} ${l.type} ${k}`]; if (c) checkValue(`${where}.${g}.${k}`, l[g][k], c, found); }
+        for (const g of ['paint', 'layout']) for (const k in l[g]) {
+            const v = l[g][k], c = values[`${g} ${l.type} ${k}`], e = values[`${g}= ${l.type} ${k}`], at = `${where}.${g}.${k}`;
+            // (An expression of a property that takes one gets the type check of src/expr-check.ts, step 3 of #1748.)
+            // (An expression too deep for the stack is left to the map, which reports what it cannot draw.)
+            if (e && Array.isArray(v) && typeof v[0] === 'string' && operators.split(' ').includes(v[0])) { try { for (const r of expressionErrors(v, e, g === 'layout')) found(at + r.key, r.error); } catch { /* see above */ } }
+            else if (c) checkValue(at, v, c, found);
+        }
     });
 }
 /** The type of `v` as the style specification names it. */

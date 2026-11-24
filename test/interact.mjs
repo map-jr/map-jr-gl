@@ -3143,6 +3143,8 @@ for (const mode of renderers) {
             ptr('pointerdown', 260); ptr('pointermove', 250);
             await new Promise(res => setTimeout(res, 250));
             for (let i = 1; i <= 8; i++) { ptr('pointermove', 250 - i * 10); await frame(); await frame(); moved.push(start - x() - 10); }
+            // A pause before the release, so that the drag ends without inertia, as in MapLibre GL JS (#479).
+            await new Promise(res => setTimeout(res, 250));
             ptr('pointerup', 170);
             // (The last camera of the engine comes 150 ms late.)
             await new Promise(res => setTimeout(res, 400));
@@ -3254,17 +3256,19 @@ for (const mode of renderers) {
             m.stop();
             await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
             m.cooperativeGestures.enable();
+            const mac = navigator.userAgent.includes('Mac'), cg = m.cooperativeGestures;
+            const bypass = [cg.isBypassed(new WheelEvent('wheel', {[mac ? 'metaKey' : 'ctrlKey']: true})), cg.isBypassed(new WheelEvent('wheel', {[mac ? 'ctrlKey' : 'metaKey']: true}))];
             await wait(500);
             const z = m.getZoom(), r = m.getCanvas().getBoundingClientRect();
             m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -300, clientX: r.left + 300, clientY: r.top + 200, bubbles: true, cancelable: true}));
             await wait(800);
-            const out = {renderer: m.renderer, errors: errors.sort(), ...easing, touch: m.getCanvas().style.touchAction, wheel: Math.abs(m.getZoom() - z) > 0.01, canvases: el.querySelectorAll('canvas').length};
+            const out = {renderer: m.renderer, errors: errors.sort(), ...easing, touch: m.getCanvas().style.touchAction, wheel: Math.abs(m.getZoom() - z) > 0.01, bypass, canvases: el.querySelectorAll('canvas').length};
             m.remove(); el.remove();
             return out;
         }, kind);
         const {renderer, ...main} = same.main, {renderer: fellTo, ...fell} = same.fallback;
-        check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777)',
-            renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel,
+        check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777) and isBypassed() is true with Ctrl (⌘ on a Mac) only (#1725)',
+            renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel && main.bypass.join() === 'true,false',
             JSON.stringify(same));
         // Two maps that fall back and share one style object, with a GeoJSON source that fails: each fires its own one error.
         const pair = await page.evaluate(async () => {
@@ -3414,6 +3418,14 @@ for (const mode of renderers) {
             projected.showTileBoundaries = false;
             projected.showCollisionBoxes = true; projected.showCollisionBoxes = true;
             out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] showCollisionBoxes has no effect')).length, warnings.length];
+            // The options of the drag handlers have no effect (#673): one warning each, and the handlers are on.
+            const dragged = make({dragPan: {linearity: 0.5}, dragRotate: {around: 'center'}, rotateSpeed: 2, pitchSpeed: 1, aroundCenter: false});
+            dragged.dragPan.disable(); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragRotate.enable({movement: 'linear'}); dragged.dragRotate.enable();
+            out.drag = [dragged.dragPan.isEnabled(), dragged.dragRotate.isEnabled(), warnings.splice(0).filter(w => /^\[map-jr-gl\] .*(dragPan|dragRotate|rotateSpeed|pitchSpeed|aroundCenter).* has no effect/.test(w)).length, warnings.length];
+            const draggedPlain = make({dragPan: true, rotateSpeed: 0.8, pitchSpeed: -0.5, aroundCenter: true});
+            draggedPlain.dragPan.enable(); draggedPlain.dragRotate.enable(true);
+            out.drag.push(warnings.splice(0).length);
+            for (const x of [dragged, draggedPlain]) { x.getContainer().remove(); x.remove(); }
             projected.getContainer().remove(); projected.remove();
             // The defaults give no warning.
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
@@ -3430,6 +3442,8 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: showCollisionBoxes = true gives one warning, and showTileBoundaries = false none (#752)',
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
+        check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
+            JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
             quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
@@ -3934,29 +3948,33 @@ for (const mode of renderers) {
             const control = new mod.TerrainControl({source: 'dem'});
             m.addControl(control);
             const b = el.querySelector('.maplibregl-ctrl-terrain');
-            const off = b.title;
+            const cl = () => b.classList.contains('maplibregl-ctrl-terrain-enabled') + '/' + b.classList.contains('map-jr-ctrl-terrain-enabled') + '/' + b.classList.contains('maplibregl-ctrl-terrain');
+            const off = b.title, offClass = cl();
             b.click();
-            const on = b.title, aria = b.getAttribute('aria-label');
+            const on = b.title, aria = b.getAttribute('aria-label'), onClass = cl();
             // The label follows setTerrain and setStyle calls of the app (#1689).
             m.setTerrain(null);
-            const appOff = b.title;
+            const appOff = b.title, appOffClass = cl();
             m.setTerrain({source: 'dem'});
-            const appOn = b.title;
+            const appOn = b.title, appOnClass = cl();
             const restyled = new Promise(r => m.once('styledata', r));
             m.setStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]});
             await restyled;
-            const styleOff = b.title;
+            const styleOff = b.title, styleOffClass = cl();
             // A removed control no longer listens.
             m.removeControl(control);
             m.setTerrain({source: 'dem'});
             const removed = b.title;
             m.remove(); el.remove();
-            return {off, on, aria, appOff, appOn, styleOff, removed};
+            return {off, on, aria, appOff, appOn, styleOff, removed, offClass, onClass, appOffClass, appOnClass, styleOffClass};
         });
         check('[main] maplibre-compat: TerrainControl is labeled "Enable terrain" and, with terrain on, "Disable terrain"',
             labels.off === 'Enable terrain' && labels.on === 'Disable terrain' && labels.aria === 'Disable terrain', JSON.stringify(labels));
         check('[main] maplibre-compat: TerrainControl follows setTerrain(null), setTerrain({source}) and setStyle of the app (#1689)',
             labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain' && labels.removed === 'Enable terrain', JSON.stringify(labels));
+        // As in MapLibre GL JS, the button has the class `maplibregl-ctrl-terrain-enabled` while terrain is on (#1716).
+        check('[main] maplibre-compat: the TerrainControl button has the class ctrl-terrain-enabled exactly while terrain is on (#1716)',
+            labels.offClass === 'false/false/true' && labels.onClass === 'true/true/false' && labels.appOffClass === 'false/false/true' && labels.appOnClass === 'true/true/false' && labels.styleOffClass === 'false/false/true', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
@@ -4232,7 +4250,8 @@ for (const mode of renderers) {
             await new Promise(res => m.once('load', res));
             await wait(100);
             const q = s => el.querySelector(s), fb = q('.maplibregl-ctrl-fullscreen');
-            const out = {zoomIn: q('.maplibregl-ctrl-zoom-in').title, zoomOut: q('.maplibregl-ctrl-zoom-out').title, compass: q('.maplibregl-ctrl-compass').title,
+            const shrink = () => fb.classList.contains('maplibregl-ctrl-shrink') + '/' + fb.classList.contains('map-jr-ctrl-shrink') + '/' + fb.classList.contains('maplibregl-ctrl-fullscreen');
+            const out = {shrinkBefore: shrink(), zoomIn: q('.maplibregl-ctrl-zoom-in').title, zoomOut: q('.maplibregl-ctrl-zoom-out').title, compass: q('.maplibregl-ctrl-compass').title,
                 scale: q('.maplibregl-ctrl-scale').textContent, attrib: q('.maplibregl-ctrl-attrib-button')?.getAttribute('aria-label'), enter: fb.title, uiString: m._getUIString('Popup.Missing')};
             // The close button of Popup and the name of Marker take the locale when they are added to the map.
             const marker = new mod.Marker().setLngLat([0, 0]).addTo(m), popup = new mod.Popup().setLngLat([0, 0]).setText('x').addTo(m);
@@ -4243,12 +4262,12 @@ for (const mode of renderers) {
             fb.click();
             out.pseudo = el.classList.contains('maplibregl-pseudo-fullscreen') && el.classList.contains('map-jr-pseudo-fullscreen');
             out.position = getComputedStyle(el).position;
-            out.exit = fb.title; out.pressed = fb.getAttribute('aria-pressed');
+            out.exit = fb.title; out.pressed = fb.getAttribute('aria-pressed'); out.shrinkFull = shrink();
             // As in MapLibre GL JS, cooperativeGestures is off while the map fills the screen, and on again after.
             out.gesturesFull = m.cooperativeGestures.isEnabled();
             fb.click();
             out.gesturesAfter = m.cooperativeGestures.isEnabled();
-            out.after = el.className.includes('pseudo-fullscreen'); out.enterAgain = fb.title; out.events = events.join();
+            out.shrinkAfter = shrink(); out.after = el.className.includes('pseudo-fullscreen'); out.enterAgain = fb.title; out.events = events.join();
             out.warnings = warnings.filter(w => /locale/.test(w));
             console.warn = warn;
             out.canvasLabel = m.getCanvas().getAttribute('aria-label');
@@ -4270,6 +4289,9 @@ for (const mode of renderers) {
             && r.pseudo && r.position === 'fixed' && r.exit === 'Quitter le plein écran' && r.pressed === 'true' && !r.after && r.enterAgain === 'Plein écran' && r.events === 'start,end'
             && r.canvasLabel === 'Carte' && r.coreCanvasLabel === 'Map'
             && r.warnings.length === 0 && r.coreCompass === 'Reset bearing to north', JSON.stringify(r));
+        // As in MapLibre GL JS, the button has the class `maplibregl-ctrl-shrink` while the map fills the screen (#1716).
+        check('[main] maplibre-compat: the FullscreenControl button has the class ctrl-shrink exactly while the map fills the screen (#1716)',
+            r.shrinkBefore === 'false/false/true' && r.shrinkFull === 'true/true/false' && r.shrinkAfter === 'false/false/true', JSON.stringify(r));
     }
     if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
@@ -4676,6 +4698,38 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
+        // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
+        const m479 = {};
+        for (let run = 0; run < 3; run++) for (const lib of ['ml', 'compat']) for (const [gap, step] of [[16, 30], [80, 40]]) {
+            await page.evaluate(async lib => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m479 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => setTimeout(r, 300));
+                m.once('dragend', () => { window.at479 = m.project([10, 45]).x; });
+            }, lib);
+            await page.mouse.move(20, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { if (i > 1) await page.waitForTimeout(gap); await page.mouse.move(20 + i * step, 150); }
+            await page.mouse.up();
+            const d = await page.evaluate(async () => {
+                const m = window.m479;
+                await new Promise(r => setTimeout(r, 2000));
+                const d = Math.round(m.project([10, 45]).x - window.at479);
+                const el = m.getContainer(); m.remove(); el.remove();
+                return d;
+            });
+            m479[lib + gap] = Math.max(m479[lib + gap] ?? -Infinity, d);
+        }
+        // (A loaded machine delays frames and shortens the inertia of a drag: each drag runs three times, and the longest
+        // inertia counts. After the fast drag the distances agree within a fifth or 3 px. After the slow drag the inertia
+        // is a few pixels and depends on where the frames fall, so it only has to be within a factor of 2. Before #479 the
+        // fast one went about 1.7 times as far here, and the slow one had none.)
+        const near479 = g => g === 16 ? Math.abs(m479['compat' + g] - m479['ml' + g]) <= Math.max(3, m479['ml' + g] / 5) : m479['compat' + g] >= m479['ml' + g] / 2 && m479['compat' + g] <= m479['ml' + g] * 2;
+        check('[main] maplibre-compat: the inertia of a fast and of a slow pan goes as far as in MapLibre GL JS (#479)',
+            [16, 80].every(g => m479['ml' + g] > 3 && near479(g)), JSON.stringify(m479));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -5601,6 +5655,28 @@ for (const mode of renderers) {
         check(`[${mode}] 3D terrain off and on again asks for no elevation tile again, and the ground has its height at once`,
             first > 0 && asked.length === first && toggled.off && toggled.on && toggled.elevation > 1000, JSON.stringify({first, later: asked.length - first, ...toggled}));
     }
+    // setCenterElevation lasts after setCenterClampedToGround(false), as in MapLibre GL JS, and the engine keeps it (#897).
+    // While the center is clamped, the call warns once and the center stays on the ground.
+    const elevated = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, maxPitch: 180, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const idle = () => new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+        const warn = console.warn; let warned = 0; console.warn = (...a) => { if (String(a[0]).includes('setCenterElevation')) warned++; else warn(...a); };
+        m.setCenterElevation(5000); m.setCenterElevation(6000);
+        await idle();
+        const out = {clamped: [m.getCenterClampedToGround(), m.getCenterElevation(), warned]};
+        m.setCenterClampedToGround(false); m.setCenterElevation(10000); m.setPitch(95);
+        await idle();
+        out.held = [m.getCenterClampedToGround(), m.getCenterElevation(), m.getPitch()];
+        m.setCenterClampedToGround(true);
+        await idle();
+        out.back = [m.getCenterClampedToGround(), m.getCenterElevation()];
+        console.warn = warn; m.remove(); el.remove();
+        return out;
+    });
+    check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
+        JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));

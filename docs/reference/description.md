@@ -44,7 +44,8 @@ const map = createMap('map', {
 | `onError` | `((error: Error) => void) \| null` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
 | `minZoom` | `number \| null` | `-2` | The smallest zoom level of the map. |
 | `maxZoom` | `number \| null` | `22` | The largest zoom level of the map. |
-| `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 90 (a larger value is limited to 90). |
+| `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 180, where a pitch above 90 looks up and, unless `centerElevation` lifts the map center above the ground, sees the map from below the ground. |
+| `centerElevation` | `number \| null` | | The height of the map center in meters above sea level, which keeps the camera above the ground at a pitch above 90 when it is high enough. |
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |

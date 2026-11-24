@@ -1,8 +1,8 @@
 export const EXTENT = 4096;
 export const TILE_SIZE = 512;
 const MAX_LAT = 85.051129;
-/** The highest pitch that the camera takes (degrees). Above 90 the camera would look up from below the ground: that needs the elevation of the camera, which the library does not have yet. */
-export const MAX_PITCH = 90;
+/** The highest pitch that the camera takes (degrees), as in MapLibre GL JS. Above 90 the camera looks up. */
+export const MAX_PITCH = 180;
 /**
  * The change of zoom that keeps the size of the globe on the screen when the center moves from one latitude to
  * another (MapLibre's `getZoomAdjustment`). Past 85.05° the size of the globe stays that of 85.05°.
@@ -139,6 +139,19 @@ export class Transform {
      * point rather than at sea level, so it rides over mountains instead of ending up inside them.
      */
     elevation = 0;
+    /**
+     * The height of the ground above the map center in pixels without 3D terrain: 0, or below the center when the
+     * center has a height of its own (`setCenterElevation`), since the ground is then at sea level.
+     */
+    get flatZ() { return this.heightAt ? 0 : -this.elevation * this.pixelsPerMetre; }
+    /**
+     * A plane `z` pixels above the map center, kept at least 1% of the camera distance above or below the camera. A camera
+     * in the plane (at a pitch of 90 on the ground) sees it as a line, and every pixel would map to one point.
+     */
+    private apart(z: number) {
+        const d = this.cameraDistance, c = d * Math.cos(this.pitch * Math.PI / 180);
+        return Math.abs(c - z) < 0.01 * d ? c + (z > c ? 0.01 : -0.01) * d : z;
+    }
     /** With 3D terrain: (exaggerated) ground height in meters at a mercator position, used to lift labels onto the surface. */
     heightAt?: (mx: number, my: number) => number;
     /** With 3D terrain: the lowest and highest ground in view, in the same meters. Tile selection covers both extremes. */
@@ -255,22 +268,36 @@ export class Transform {
         return this.cameraDistance * Math.min(0.85 * Math.tan(Math.PI / 2 - p), Math.tan((89.25 * Math.PI / 180) - p));
     }
 
+    /**
+     * Above a pitch of 90, when the camera is below the plane `z` pixels above the map center: the pixels from the map
+     * center down to the screen line above which the camera sees that plane from below. It mirrors `horizon` at 180 less
+     * the pitch, so that the ground ends a little before the line where the view rays turn upward. Otherwise null: the
+     * camera is above the plane and sees it below `horizon`.
+     */
+    underside(z = this.flatZ): number | null {
+        const p = this.pitch, R = Math.PI / 180, d = this.cameraDistance;
+        return p > 90 && d * Math.cos(p * R) < this.apart(z) ? d * Math.min(0.85 * Math.tan((p - 90) * R), Math.tan((p - 90.75) * R)) : null;
+    }
+
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
     mercToScreen(mx: number, my: number): [number, number] {
-        const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : 0;
+        const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : this.flatZ;
         const ws = this.worldSize, flat = this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws, z);
         if (this.globeness) { const [x, y] = this.globe!.toScreen(this, mx, my, this.heightAt ? this.heightAt(mx, my) : this.elevation, flat); return [x, y]; }
         return [flat[0], flat[1]];
     }
 
     /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map center). */
-    screenToMerc(px: number, py: number, z = 0): [number, number] {
+    screenToMerc(px: number, py: number, z = this.flatZ): [number, number] {
         if (this.globeness) return this.globe!.toMerc(this, px, py, this.elevation + z / this.pixelsPerMetre);
+        z = this.apart(z);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
-        const sx = px - this.cx, sy = Math.max(py - this.cy, -this.horizon());
+        const sx = px - this.cx, cp = Math.cos(p), sp = Math.sin(p), floor = d * Math.min(0.02, 0.1 * Math.abs(cp)), under = this.underside(z);
         // Invert the perspective for a point on that plane. Above the horizon there is no ground: a point there is taken
         // on the horizon, and the floor keeps planes above the map center (with 3D terrain) below their own horizon.
-        const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * Math.min(0.02, 0.1 * Math.cos(p)));
+        // A camera below the plane sees it above the line of `underside`, and a point below that line is taken on it.
+        const sy = under !== null ? Math.min(py - this.cy, under) : Math.max(py - this.cy, -this.horizon());
+        const denom = under !== null ? Math.min(cp * d + sy * sp, -floor) : Math.max(cp * d + sy * sp, floor);
         const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
     }
@@ -307,9 +334,11 @@ export class Transform {
 
     /** The screen's corners on the ground: one quad on flat ground, two (lowest and highest ground in view) with 3D terrain. */
     private footprints(): [number, number][][] {
-        // Ground level with the camera or above it has no sensible footprint, so heights are capped well below the camera.
-        const ppm = this.pixelsPerMetre, top = this.cameraDistance * Math.cos(this.pitch * Math.PI / 180) * 0.6;
-        const planes = this.groundRange ? this.groundRange.map(h => Math.min(top, (h - this.elevation) * ppm)) : [0];
+        // Ground level with the camera has no sensible footprint, so a height is kept well below the camera, or well above
+        // it when the camera is below the lowest ground (above a pitch of 90).
+        const ppm = this.pixelsPerMetre, d = this.cameraDistance, cam = d * Math.cos(this.pitch * Math.PI / 180), gap = 0.4 * Math.max(Math.abs(cam), 0.01 * d);
+        const zs = this.groundRange ? this.groundRange.map(h => (h - this.elevation) * ppm) : [this.flatZ], below = zs[0] < cam;
+        const planes = zs.map(z => below ? Math.min(cam - gap, z) : Math.max(cam + gap, z));
         return planes.map(z => [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map(([x, y]) => this.screenToMerc(x, y, z)));
     }
 
@@ -320,7 +349,7 @@ export class Transform {
      */
     projectTile(id: TileID, x: number, y: number, metres?: number, out?: [number, number, number]): [number, number, number] {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
-        metres ??= this.heightAt ? this.heightAt((id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n) : this.elevation;
+        metres ??= this.heightAt ? this.heightAt((id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n) : this.globeness ? this.elevation : 0;
         if (this.globeness) {
             const flat = this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
             return this.globe!.toScreen(this, (id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n, metres, flat);
@@ -332,7 +361,7 @@ export class Transform {
     depthRange(): [number, number] {
         const p = this.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), d = this.cameraDistance;
         // With 3D terrain, ground far below the map center is seen from higher up and so reaches further away.
-        const drop = this.groundRange ? Math.max(0, this.elevation - this.groundRange[0]) * this.pixelsPerMetre : 0;
+        const drop = this.groundRange ? Math.max(0, this.elevation - this.groundRange[0]) * this.pixelsPerMetre : Math.max(0, -this.flatZ);
         // The far plane reaches the ground at the top of the screen or at the horizon, whichever is nearer (and at least 4
         // times the camera distance, for buildings beyond that ground at a low pitch).
         const top = Math.min(this.cy, Math.max(0, this.horizon())), reach = cp * d - top * sp > 1e-6 ? d + top * d * sp / (cp * d - top * sp) : 100 * d;
@@ -443,8 +472,7 @@ export class Transform {
     /** Move the camera so that `lngLat` sits under screen point (px, py). Used for zoom-around-cursor. */
     setLocationAt(lng: number, lat: number, px: number, py: number, height?: number) {
         if (this.globeness) { this.globe!.turnTo(this, lng, lat, px, py); this.constrain(); return; }
-        height ??= this.heightAt ? this.heightAt(mercX(lng), mercY(lat)) : this.elevation;
-        const z = (height - this.elevation) * this.pixelsPerMetre;
+        const z = height !== undefined ? (height - this.elevation) * this.pixelsPerMetre : this.heightAt ? (this.heightAt(mercX(lng), mercY(lat)) - this.elevation) * this.pixelsPerMetre : this.flatZ;
         const [mx, my] = this.screenToMerc(px, py, z);
         const cx = mercX(this.lng) + mercX(lng) - mx;
         const cy = mercY(this.lat) + mercY(lat) - my;
@@ -506,8 +534,10 @@ export class Transform {
         const quad = pts.length > 4 ? [...half(pts), ...half([...pts].reverse())] : this.footprints()[0];
         const mid = [quad.reduce((t, q) => t + q[0], 0) / quad.length, quad.reduce((t, q) => t + q[1], 0) / quad.length];
         const d = this.cameraDistance, ws = this.worldSize, cx = mercX(this.lng), cy = mercY(this.lat);
-        const depthAt = (mx: number, my: number) => this.view((mx - cx) * ws, (my - cy) * ws)[2];
-        const cam = this.cameraPosition(), camZ = d * Math.cos(this.pitch * Math.PI / 180) / ws;
+        const gz = this.flatZ, depthAt = (mx: number, my: number) => this.view((mx - cx) * ws, (my - cy) * ws, gz)[2];
+        // (The rule takes the distance of the camera from the plane of the center, or from the ground without 3D terrain:
+        // above a pitch of 90 the camera can be below that plane.)
+        const cam = this.cameraPosition(), camZ = Math.max(1e-3 * d, Math.abs(Math.cos(this.pitch * Math.PI / 180) * d - gz)) / ws;
         // Separating-axis test between that convex area and a tile's square.
         const overlaps = (x0: number, y0: number, x1: number, y1: number) => {
             if (Math.max(...quad.map(q => q[0])) < x0 || Math.min(...quad.map(q => q[0])) > x1 || Math.max(...quad.map(q => q[1])) < y0 || Math.min(...quad.map(q => q[1])) > y1) return false;
@@ -601,15 +631,25 @@ export function addTurnSample(samples: {t: number; x: number; y: number; w?: num
 }
 
 /**
+ * The samples that the inertia of a drag is measured between, as `HandlerInertia` of MapLibre GL JS takes them: the
+ * first sample of the last 60 ms before the release (or the last but one) and the last sample. Samples older than
+ * 160 ms do not count. Returns nothing when fewer than two samples are left.
+ */
+export function inertiaSpan<S extends {t: number}>(samples: S[], now: number): [S, S] | [] {
+    samples = samples.filter(s => s.t >= now - 160);
+    const last = samples[samples.length - 1], from = samples.find(s => now - s.t <= 60 && s !== last) ?? samples[samples.length - 2];
+    return from ? [from, last] : [];
+}
+
+/**
  * The inertia after a rotate drag, as `HandlerInertia` of MapLibre GL JS computes it: the change of the bearing (`x`)
  * and the pitch (`y`) from the first sample of the last 60 ms (or the last but one) to the last sample, over the time
  * up to the release, gives a speed (at most 360 degrees per second for the bearing, 90 for the pitch) that decelerates
  * by 1000 degrees per second. Samples older than 160 ms count as in MapLibre GL JS: not at all. Returns the turn and the tilt still to come and the duration in ms, or nothing.
  */
 export function turnInertia(samples: {t: number; x: number; y: number}[], now: number) {
-    samples = samples.filter(s => s.t >= now - 160);
-    const last = samples[samples.length - 1], from = samples.find(s => now - s.t <= 60 && s !== last) ?? samples[samples.length - 2];
-    if (!from) return;
+    const [from, last] = inertiaSpan(samples, now);
+    if (!from || !last) return;
     const speed = (d: number, max: number) => clamp(d * 300 / (now - from.t), -max, max), b = speed(last.x - from.x, 360), p = speed(last.y - from.y, 90);
     if (b || p) return {bearing: clamp(b * Math.abs(b) / 600, -179, 179), pitch: p * Math.abs(p) / 600, duration: Math.max(Math.abs(b), Math.abs(p)) * 10 / 3};
 }
