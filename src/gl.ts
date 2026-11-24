@@ -248,14 +248,14 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in v
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset;
+layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
 uniform float u_cam;
-out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw;
+out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur;
 void main() {
   vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
-  v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
+  v_blur = a_blur; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle.
   v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
@@ -267,6 +267,7 @@ void main() {
   v_persp = gl_Position.w / u_cam;
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
+in float v_blur;
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
 uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
@@ -276,7 +277,7 @@ void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
   if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
-  float a = c.a * clamp((v_hw - abs(v_d)) / (v_persp * (1.0 + u_blur)), 0.0, 1.0); // line-blur widens the soft edge
+  float a = c.a * clamp((v_hw - abs(v_d)) / (v_persp * (1.0 + u_blur + v_blur)), 0.0, 1.0); // line-blur widens the soft edge
   if (u_gap > 0.0) a *= clamp((abs(v_d) - u_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
@@ -885,6 +886,8 @@ export class GLRenderer {
                 vertices = b.v.length / LINE_VERTEX;
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; if (b.width1) attr(5, b.width1, 1, gl.FLOAT); else attr(5, b.width, 1, gl.FLOAT, false, 0, 0, false, true); }
+                // line-blur for each feature; without it the attribute is off and reads 0, and the uniform u_blur has the blur.
+                if (b.blur) attr(7, b.blur, 1, gl.FLOAT);
                 index(b.idx);
                 count = b.idx.length;
             } else {
