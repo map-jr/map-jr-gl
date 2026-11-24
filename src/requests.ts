@@ -16,7 +16,7 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
     // A request that fails (no network, a blocked origin) says which resource and URL it was for. The URL is cut, because it comes from a style.
     return (input, init) => run(input, init).catch(e => {
         if (e?.name === 'AbortError' || String(e?.message).startsWith('[map-jr-gl]')) throw e;
-        throw requestError(KINDS[kind] ?? kind, String(input), e?.message ?? e, e);
+        throw Object.assign(requestError(KINDS[kind] ?? kind, String(input), e?.message ?? e, e), {final: e?.final});
     });
 }
 /** The error of a request that failed: it names the resource, the URL (cut, because it comes from a style) and the reason. */
@@ -25,10 +25,10 @@ export const requestError = (what: string, url: string, reason: unknown, cause?:
 export const httpError = (what: string, url: string, status: number) => requestError(what, url, 'HTTP ' + status);
 /**
  * Whether a failed request would fail again: an HTTP status 4xx, or a rejection by a custom protocol or by
- * `transformRequest`. A network error and an HTTP status 5xx are worth another request (#652). It reads the message,
- * because an error from a tile worker reaches the page as its message only.
+ * `transformRequest`. A network error and an HTTP status 5xx are worth another request (#652). Such an error has
+ * `final: true`, also after it crossed from a tile worker. The message is read for an error that comes from elsewhere.
  */
-export const finalFailure = (message: string) => /HTTP 4\d\d\b|: the protocol rejected it: |: transformRequest threw: /.test(message);
+export const finalFailure = (err: {final?: boolean; message?: unknown}) => !!err.final || /HTTP 4\d\d\b|: the protocol rejected it: |: transformRequest threw: /.test(String(err.message));
 const KINDS: Record<string, string> = {Tile: 'tile', RasterTile: 'tile', SpriteJSON: 'sprite', SpriteImage: 'sprite image', Glyphs: 'glyphs', Font: 'font', Image: 'image'};
 function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: string): typeof fetch {
     return async (input, init) => {
@@ -37,7 +37,9 @@ function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: strin
         // (The kind `RasterTile` is `Tile` for `transformRequest`, and a protocol gets the request type `image` for it.)
         const a = await ask(url, (init as ImageInit | undefined)?.image ? 'RasterTile' : kind, init?.signal);
         // (The engine does not request again after a rejection: see `finalFailure`.)
-        if (a.error) throw new Error(r.protocols.includes(url.slice(0, url.indexOf(':'))) ? `the protocol rejected it: ${a.error}` : `transformRequest threw: ${a.error}`);
+        // (A request that is no longer wanted stays an abort, which is not an error of the map.)
+        if (a.error && init?.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+        if (a.error) throw Object.assign(new Error(r.protocols.includes(url.slice(0, url.indexOf(':'))) ? `the protocol rejected it: ${a.error}` : `transformRequest threw: ${a.error}`), {final: true});
         // (A response cannot hold an image that a protocol returned: `fetchTile` reads it from the member `image`.)
         if (a.data) return a.data instanceof ArrayBuffer ? new Response(a.data) : Object.assign(new Response(), {image: a.data});
         return fetch(a.url ?? url, {...init, headers: {...a.headers, ...(init?.headers as Record<string, string> | undefined)}, credentials: a.credentials});
