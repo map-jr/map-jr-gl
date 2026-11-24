@@ -64,7 +64,7 @@ Gives the elevation at a position from a `raster-dem` source.
 
 ### PMTiles
 
-A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin.
+A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin. The zoom range and the bounds in the header of the archive limit the tile requests; `minzoom`, `maxzoom` and `bounds` in the style take precedence over them.
 
 ### Changes for the server in the style
 
@@ -219,6 +219,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - **MapLibre GL JS:** The nearest tile above it is drawn in its place.
 - This library does the same, for raster and elevation tiles.
+
+### An empty tile (204) and the source property `emptyResponse`
+
+- **MapLibre GL JS:** A response of HTTP 204 is an empty tile, and nothing is drawn there. Version 6.17 does not read the source property `emptyResponse`, so `"missing"` has the same result as the default `"blank"`.
+- This library does the same. The value `"missing"` writes a warning one time for each source.
 
 ### A tile whose request fails
 

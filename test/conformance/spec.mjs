@@ -47,7 +47,7 @@ const OTHER = [
     // (Only an `interpolate` expression gives stops; see `relief` in src/style.ts.)
     ['color-relief', 'color-relief-color', ['elevation'], 'style.ts', /l\.paint\?\.\['color-relief-color'\]/],
     ...['sky-color', 'horizon-color', 'fog-color', 'sky-horizon-blend', 'horizon-fog-blend', 'fog-ground-blend', 'atmosphere-blend'].map(n => ['sky', n, ['zoom', 'global-state'], 'gl.ts', new RegExp(`at\\('${n}'`)]),
-    ['light', 'anchor', [], 'gl.ts', /light\.anchor === 'map'/],
+    ['light', 'anchor', ['zoom', 'global-state'], 'gl.ts', /lightOnMap\(light/],
     ['light', 'position', ['zoom', 'global-state'], 'gl.ts', /at\(light\.position/],
     ['light', 'color', ['zoom', 'global-state'], 'gl.ts', /at\(light\.color/],
     ['light', 'intensity', ['zoom', 'global-state'], 'gl.ts', /at\(light\.intensity/],
