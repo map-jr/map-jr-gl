@@ -1129,7 +1129,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
         const restyled = !!before && (differ(next.style, before.style) && !(styled && editStyle(next.style, before.style, differ)) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
-        else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
+        else {
+            // (Layers that went to the map as edits are checked now, as a new style is, and not only when the map is next idle; #1684.)
+            if (__DEV__ && before && next.layers && differ(next.layers, before.layers)) check(4, {layers: next.layers});
+            for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
+        }
         // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font
         // that is removed stays with the browser, and the labels keep it until the page is loaded again.)
         if (styled && !restyled && differ(next.fonts, before?.fonts)) {
