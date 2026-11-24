@@ -40,7 +40,7 @@ export type Command =
     | {type: 'zoom'; delta: number; x: number; y: number}
     | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'; snap?: number}
     | {type: 'rotate'; delta: number; pitch?: number}
-    | {type: 'fling'; dx: number; dy: number; ms: number}
+    | {type: 'fling'; dx: number; dy: number; ms: number; bearing?: number}
     | {type: 'stop'}
     | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
@@ -290,7 +290,7 @@ export class Engine {
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
     } | null = null;
     private prevWheelEase: {start: number; easing: (t: number) => number} | null = null;
-    private fling: {dx: number; dy: number; start: number; duration: number; done: number} | null = null;
+    private fling: {dx: number; dy: number; start: number; duration: number; done: number; turn: number} | null = null;
     private lastTime = 0;
 
     private labels = new Map<string, LabelState>();
@@ -1010,10 +1010,12 @@ export class Engine {
                 // (Two pointer events can have the same time where the clock of the browser is coarse.)
                 const speed = Math.min(1400, dist * linearity / (Math.max(c.ms, 1) / 1000)), seconds = speed / (2500 * linearity), amount = speed * seconds / 2;
                 this.grab = null;
-                this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0};
+                // `bearing` (the compat entry's bearingSnap) turns the map to that bearing during the glide, as MapLibre GL JS does.
+                const turn = c.bearing === undefined ? 0 : c.bearing - tr.bearing;
+                this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0, turn};
                 const end = new Transform();
                 Object.assign(end, tr);
-                end.set(tr.panned(-this.fling.dx, -this.fling.dy));
+                end.set(tr.panned(-this.fling.dx, -this.fling.dy), undefined, tr.bearing + turn);
                 this.aim(end);
                 break;
             }
@@ -1338,7 +1340,7 @@ export class Engine {
         const glide = this.fling;
         if (glide) {
             const f = glide, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
-            tr.set(tr.panned(-f.dx * (k - f.done), -f.dy * (k - f.done)));
+            tr.set(tr.panned(-f.dx * (k - f.done), -f.dy * (k - f.done)), undefined, f.turn ? tr.bearing + f.turn * (k - f.done) : undefined);
             f.done = k;
             if (t >= 1) this.fling = null, this.target = null;
         }

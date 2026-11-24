@@ -337,11 +337,6 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - MapLibre GL JS returns the decoded RGBA pixels.
 - This library returns `{width, height, data: Uint8Array}` RGBA pixels for an image added as pixels, a canvas, an image element or a bitmap. For an image added as a URL or as SVG text, `data` is the string that `addImage` was given, because decoding it again is asynchronous.
 
-### The option `bearingSnap` after a gesture with inertia
-
-- MapLibre GL JS sets the bearing of the inertia to 0 when a gesture ends closer to north than `bearingSnap`, so the map turns north while it glides.
-- The entry `@map-jr/map-jr-gl/maplibre-compat` lets the inertia end first and then turns the map north with `resetNorth`. A gesture without inertia turns north as in MapLibre GL JS.
-
 ### `setStyle`
 
 - MapLibre GL JS returns the map.
