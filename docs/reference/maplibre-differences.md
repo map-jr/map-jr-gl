@@ -151,7 +151,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Queries on labels
 
 - **MapLibre GL JS:** A label is found on the collision boxes of its text and of its icon.
-- This library does the same for text at a point and for icons. Text that follows a line is found within 10 pixels of the point of its label, and so is a label whose text is not shown at the moment.
+- This library does the same for text at a point, for text that follows a line (a box for each glyph) and for icons. A label at a point whose text is not shown at the moment is found within 10 pixels of its point. A label on a line whose text is not shown is not found, and a line with an icon is found within 10 pixels of the line.
 
 ### Feature state
 

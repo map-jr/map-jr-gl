@@ -1663,6 +1663,26 @@ for (const mode of renderers) {
         check('[main] idle comes after changed data is drawn (setData, setFeatureState, setFilter, refreshTiles), and the source is not loaded before that',
             late.setData === '255,255,255' && late.back === '255,0,0' && late.featureState === '0,0,255' && late.setFilter === '255,255,255' && late.refreshTiles === '0,0,255' && !late.loadedAfterSetData && !late.loadedAfterRefresh, JSON.stringify(late));
 
+        // A query finds text on a line on the boxes of its glyphs, as MapLibre GL JS does: along the whole text, and not
+        // on the rest of the line. A label whose text does not fit its line is not shown, and a query does not find it (#1735).
+        const onLine = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:200px'}));
+            const line = (y, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: [[-40, y], [40, y]]}});
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line(0, 'A long label along the line'), line(-10, 'This label is far too long to fit on its short line at all, ever')]}}},
+                layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const ask = async (x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).map(f => f.properties.name[0]).join();
+            // The points of the line every 10 pixels, from one end to the other: the text covers a run of about 175 pixels.
+            const a = m.project([-40, 0]), b = m.project([40, 0]), hidden = m.project([0, -10]), found = [];
+            for (let x = a.x + 5; x < b.x; x += 10) if (await ask(x, a.y) === 'A') found.push(x);
+            const out = {found: found.length, run: found.length && found.at(-1) - found[0], points: Math.floor((b.x - a.x) / 10), hidden: await ask(hidden.x, hidden.y) + await ask(hidden.x + 60, hidden.y)};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
+            onLine.found >= 15 && onLine.run === (onLine.found - 1) * 10 && onLine.found < onLine.points - 10 && onLine.hidden === '', JSON.stringify(onLine));
         // A layer that comes after a symbol layer in the style draws over that layer's labels, as in MapLibre GL JS. The
         // label is a wide black halo in the middle; a red square after it covers it, and a square before it does not.
         const order = await page.evaluate(async () => {
