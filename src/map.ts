@@ -2029,6 +2029,17 @@ export class Map {
         // double-tap-then-drag to zoom with one hand.
         let gesture: {mode: 'undecided' | 'pinch' | 'pitch'; dist: number; angle: number; startAngle: number; rotating: boolean; mid: {x: number; y: number}; start: {x: number; y: number}[]; t0: number; travel: number} | null = null;
         let lastTap = {t: 0, x: 0, y: 0}, tapDrag: {x: number; y: number; zoomed: boolean} | null = null, suppressClick = false, lastPointerType = 'mouse';
+        // With `cooperativeGestures`, a touch that stays one finger is blocked and reported (the hint). The report waits
+        // 150 ms from the first finger, because a hand puts its two fingers down one after the other (iOS, #1687), and a
+        // touch that has had two fingers is not reported again when one of them lifts first, as in MapLibre GL JS.
+        let touches = {two: false, t: 0}, report: ReturnType<typeof setTimeout> | undefined;
+        this.inputCleanup.push(() => clearTimeout(report));
+        const solo = (e: PointerEvent) => {
+            const seq = touches, wait = seq.t + 150 - performance.now();
+            if (seq.two) return;
+            if (wait <= 0) { this.gate?.('touch_pan', e); return; }
+            report ??= setTimeout(() => { report = undefined; if (!seq.two) this.gate?.('touch_pan', e); }, wait);
+        };
         const twoFingers = () => { const [a, b] = [...pointers.values()]; return {a, b, dist: Math.hypot(a.x - b.x, a.y - b.y), angle: Math.atan2(b.y - a.y, b.x - a.x), mid: {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2}}; };
 
         // A rotate drag (the right mouse button, or Ctrl with the left one) turns the map as the default of MapLibre GL JS
@@ -2045,6 +2056,8 @@ export class Map {
             const p = pos(e), now = performance.now();
             lastPointerType = e.pointerType;
             pointers.set(e.pointerId, p);
+            if (pointers.size === 1) touches = {two: false, t: now};
+            else touches.two = true;
             rotating = e.button === 2 || e.ctrlKey;
             moved = 0; samples = []; aim = {b: this.tr.bearing, p: this.tr.pitch}; pinch = null; this.held = null;
             if (pointerEvent('start', e)) inert = true;
@@ -2097,7 +2110,8 @@ export class Map {
                     // Tilt: both fingers travel vertically in the same direction while staying side by side.
                     const da = f.a.y - g.start[0].y, db = f.b.y - g.start[1].y, sideways = Math.abs(f.a.x - g.start[0].x) + Math.abs(f.b.x - g.start[1].x);
                     const together = Math.sign(da) === Math.sign(db) && Math.abs(da) > 4 && Math.abs(db) > 4 && sideways < Math.abs(da) + Math.abs(db);
-                    g.mode = together && Math.abs(f.a.y - f.b.y) < 120 && Math.abs(f.dist - g.dist) < 12 ? 'pitch' : 'pinch';
+                    // (With `cooperativeGestures`, two fingers move the map and do not tilt it: MapLibre GL JS tilts with three there; #1687.)
+                    g.mode = together && !this.gated && Math.abs(f.a.y - f.b.y) < 120 && Math.abs(f.dist - g.dist) < 12 ? 'pitch' : 'pinch';
                     if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                     this.dragging = true;
                 }
@@ -2122,7 +2136,7 @@ export class Map {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
             } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; const b = turn(prev, p), t = performance.now(); aim = {b: aim.b + b, p: Math.max(this.tr.minPitch, Math.min(this.tr.maxPitch, aim.p - dy * 0.5))}; addTurnSample(samples, {t, x: aim.b, y: aim.p}); this.post({type: 'rotate', delta: b, pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
-            else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gate?.('touch_pan', e))) {
+            else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gated && (solo(e), true))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = this.dragPan.active = true;
                 this.fire('drag', {originalEvent: e});

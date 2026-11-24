@@ -3642,6 +3642,47 @@ for (const mode of renderers) {
         }
     }
     if (mode === 'main' && browserName !== 'chromium') skip('[main] cooperativeGestures: a two-finger drag over a control and out of the container (#1286)', noCDP);
+    // #1687: with cooperativeGestures, two fingers that move up in parallel move the map and do not tilt it (MapLibre GL JS
+    // tilts with three fingers there), and a hand that puts one finger down a moment before the other, and lifts one
+    // before the other, sees no hint and fires no cooperativegestureprevented.
+    const coopTouch = '[main] maplibre-compat: cooperativeGestures: two fingers that move in parallel pan the map and do not tilt it, and a touch that puts its fingers down or lifts them one after the other shows no hint (#1687)';
+    if (mode === 'main' && browserName !== 'chromium') skip(coopTouch, noCDP);
+    if (mode === 'main' && browserName === 'chromium') {
+        const at = await page.evaluate(async () => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:100px;top:100px;width:600px;height:400px;z-index:1000'}));
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [0, 0], zoom: 3, pitch: 30, cooperativeGestures: true});
+            await new Promise(r => m.once('load', r));
+            // (The hint comes with the code of cooperativeGestures, which loads on demand.)
+            while (!el.querySelector('.map-jr-cooperative-gesture-screen')) await new Promise(r => setTimeout(r, 20));
+            const hint = el.querySelector('.map-jr-cooperative-gesture-screen'), c = window.coopTouch = {shown: 0, prevented: 0, view: () => ({lat: m.getCenter().lat, pitch: m.getPitch()}), remove: () => { m.remove(); el.remove(); }};
+            m.on('cooperativegestureprevented', () => c.prevented++);
+            new MutationObserver(() => { if (hint.style.opacity === '1') c.shown++; }).observe(hint, {attributes: true});
+            const r = el.getBoundingClientRect();
+            return {x: r.x, y: r.y};
+        });
+        const cdp = await page.context().newCDPSession(page);
+        const touch = (type, touchPoints = []) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints});
+        const two = i => [{id: 0, x: at.x + 250, y: at.y + 300 - i * 6}, {id: 1, x: at.x + 350, y: at.y + 310 - i * 6}];
+        // Both fingers at once, up in parallel.
+        await touch('touchStart', two(0));
+        for (let i = 1; i <= 15; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+        await touch('touchEnd');
+        await page.waitForTimeout(500);
+        const parallel = await page.evaluate(() => window.coopTouch.view());
+        // One finger first, which moves 5 pixels before the second comes; the second lifts first, and the first moves on.
+        await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 300}]);
+        await touch('touchMove', [{id: 0, x: at.x + 250, y: at.y + 295}]);
+        await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 295}, two(0)[1]]);
+        for (let i = 1; i <= 10; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+        await touch('touchMove', [two(10)[0]]);
+        for (let i = 1; i <= 3; i++) { await touch('touchMove', [{...two(10)[0], y: two(10)[0].y - i * 5}]); await page.waitForTimeout(16); }
+        await touch('touchEnd');
+        await page.waitForTimeout(500);
+        await cdp.detach();
+        const after = await page.evaluate(() => { const c = window.coopTouch, v = c.view(); c.remove(); window.coopTouch = undefined; return {...v, shown: c.shown, prevented: c.prevented}; });
+        check(coopTouch, parallel.lat < -1 && Math.abs(parallel.pitch - 30) < 0.5 && after.lat < parallel.lat - 1 && Math.abs(after.pitch - 30) < 0.5 && after.shown === 0 && after.prevented === 0, JSON.stringify({parallel, after}));
+    }
     // Class names of MapLibre GL JS: stylesheets and end-to-end tests written for that library select by them.
     if (mode === 'main') {
         const names = await page.evaluate(async () => {
