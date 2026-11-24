@@ -1214,6 +1214,26 @@ for (const mode of renderers) {
             r.asked.load === image && r.asked.add === image && r.asked['sheet.png'] === image && r.asked.pic === image && r.asked['sheet.json']?.startsWith('json')
             && r.seen.load === '3x2' && r.seen.add === '255,0,0' && r.seen.sheet === '0,255,0' && r.seen.pic === '0,0,255' && !r.errors.length, JSON.stringify(r));
     }
+    // #1675: a range of glyphs and a font file of font-faces reach a protocol with the type `arrayBuffer`, as in MapLibre GL JS.
+    {
+        const r = await page.evaluate(async () => {
+            const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = {};
+            mod.addProtocol('gly1675', async request => { asked[request.url.endsWith('.woff2') ? 'font' : 'glyphs'] ??= request.type; return {data: new ArrayBuffer(0)}; });
+            const glyphs = m.getStyle().glyphs, faces = m.getFontFaces(), c = m.getCenter(), quiet = () => {};
+            m.on('error', quiet);
+            try {
+                m.setGlyphs('gly1675://{fontstack}/{range}.pbf');
+                m.setFontFaces({F1675: 'gly1675://f.woff2'});
+                m.addSource('g1675', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}});
+                m.addLayer({id: 'g1675', type: 'symbol', source: 'g1675', layout: {'text-field': 'Ab', 'text-font': ['F1675', 'Noto Sans Regular']}});
+                for (let i = 0; i < 80 && !(asked.font && asked.glyphs); i++) await new Promise(r => setTimeout(r, 100));
+                m.removeLayer('g1675'); m.removeSource('g1675');
+            } finally { m.setGlyphs(glyphs ?? null); m.setFontFaces(faces); m.off('error', quiet); mod.removeProtocol('gly1675'); }
+            return asked;
+        });
+        check(`[${mode}] addProtocol: a range of glyphs and a font file have the request type arrayBuffer, as in MapLibre GL JS (#1675)`,
+            r.glyphs === 'arrayBuffer' && r.font === 'arrayBuffer', JSON.stringify(r));
+    }
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
