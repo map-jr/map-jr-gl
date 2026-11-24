@@ -3591,6 +3591,69 @@ for (const renderer of renderers) {
     } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A block of the page thread while the worker renderer makes new glyphs does not stop the worker (#1841). In Firefox a
+// readback of pixels in a worker waits for the page thread, so there the page draws the glyphs. Each classic worker
+// records the times of its animation frames, of its readbacks and of its requests for glyphs; the page then adds labels
+// of characters that the map has not drawn, starts a turn and blocks itself for 1.5 s.
+{
+    const name = '[worker] new glyphs during a block of the page thread: the worker keeps drawing (no gap of 750 ms between its frames) (#1841)';
+    const context = await browser.newContext({viewport: {width: 900, height: 600}});
+    try {
+        await context.addInitScript(() => {
+            const W = self.Worker, wrap = `const bc = new BroadcastChannel('glyph-block'), times = [], made = [], now = () => performance.timeOrigin + performance.now();
+                const raf = self.requestAnimationFrame?.bind(self); if (raf) self.requestAnimationFrame = cb => raf(t => { times.push(now()); cb(t); });
+                const get = self.OffscreenCanvasRenderingContext2D?.prototype.getImageData; if (get) OffscreenCanvasRenderingContext2D.prototype.getImageData = function (...a) { made.push(now()); return get.apply(this, a); };
+                const post = self.postMessage.bind(self); self.postMessage = (m, t) => { if (m && m.type === 'glyphs') made.push(now()); return post(m, t); };
+                setInterval(() => { if (times.length || made.length) bc.postMessage({times: times.splice(0), made: made.splice(0)}); }, 100);`;
+            self.Worker = class extends W {
+                constructor(url, options) {
+                    if (options?.type === 'module') super(url, options);
+                    else super(URL.createObjectURL(new Blob([`${wrap} importScripts(${JSON.stringify(new URL(url, location.href).href)});`], {type: 'text/javascript'})), options);
+                }
+            };
+        });
+        const page = await context.newPage();
+        await page.goto(`${origin}/bench`);
+        if (!await workerRenders(page)) skip(name, noWorkerRender);
+        else {
+            const r = await page.evaluate(async () => {
+                const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+                const frames = [], made = [], now = () => performance.timeOrigin + performance.now(), wait = ms => new Promise(r => setTimeout(r, ms));
+                new BroadcastChannel('glyph-block').onmessage = e => { frames.push(...e.data.times); made.push(...e.data.made); };
+                const spec = {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer: 'worker', attribution: false};
+                const map = lib.createMap(el, spec);
+                await new Promise(r => map.state.subscribe(s => s.idle, i => i && r()));
+                const runs = [];
+                // (The worker must make glyphs during the block for the check to mean something: up to three tries.)
+                for (let i = 0; i < 3 && !runs.some(r => r.made); i++) {
+                    // 30 labels of 4 ideographs each, from a place of the range that differs in each try.
+                    const base = 0x4E00 + 4000 * i + Math.floor(Math.random() * 3000), text = n => String.fromCodePoint(...[0, 1, 2, 3].map(k => base + n * 4 + k));
+                    const features = Array.from({length: 30}, (_, n) => ({type: 'Feature', properties: {name: text(n)}, geometry: {type: 'Point', coordinates: [-74.03 + (n % 6) * 0.01, 40.695 + Math.floor(n / 6) * 0.006]}}));
+                    map.update({...spec, style: {...style, sources: {...style.sources, block: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                        layers: [...style.layers, {id: 'block', type: 'symbol', source: 'block', layout: {'text-field': ['get', 'name'], 'text-size': 18, 'text-allow-overlap': true}}]}});
+                    map.moveTo({bearing: 40 * (i + 1), duration: 3000});
+                    await wait(100);
+                    const from = now(), end = performance.now() + 1500;
+                    while (performance.now() < end) { /* a busy page */ }
+                    const to = now();
+                    await wait(600);
+                    const seen = frames.filter(t => t >= from - 100 && t <= to + 100).sort((a, b) => a - b);
+                    let gap = 0;
+                    for (let k = 1; k < seen.length; k++) gap = Math.max(gap, seen[k] - seen[k - 1]);
+                    runs.push({frames: seen.length, gap: Math.round(gap), made: made.filter(t => t >= from && t <= to).length});
+                    await wait(2500);
+                }
+                const renderer = map.state.get().renderer;
+                map.destroy(); el.remove();
+                return {renderer, runs};
+            });
+            const last = r.runs.at(-1);
+            check(name, last.made > 0 && last.frames > 1 && last.gap < 750, JSON.stringify(r));
+        }
+    } catch (e) { check(`${name}: the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await context.close();
+}
 // Web fonts of the description (#494): `fonts` in the shape of `font-faces` follows update(). A font that is added draws
 // the labels again with it, and a font file that does not load is an error that names the font.
 {

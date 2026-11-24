@@ -49,6 +49,11 @@ The map also changes to the main thread after it started, when the worker loses 
 frame, loses it twice in 10 seconds, or draws nothing in the 5 seconds after its start. With `renderer: 'worker'`, it
 then writes a warning, as at the start: see [When a worker cannot start](loading.md#when-a-worker-cannot-start).
 
+In Firefox, the worker renderer draws the glyphs that come from the fonts of the device on the page: these are the
+glyphs of a style without `glyphs`, and the characters that its glyph files do not have. A worker in Firefox waits for
+the page thread whenever it reads pixels, and drawing the glyphs on the page avoids that wait. The map keeps drawing
+while the page is busy, and a label that needs a new glyph appears when the page thread is free.
+
 To read the renderer that the map uses, read `map.state.get().renderer` in `@map-jr/map-jr-gl`, or `map.renderer` in
 `@map-jr/map-jr-gl/maplibre-compat`. Read it after the map has loaded: before that, `state.renderer` is `undefined`
 and `map.renderer` is `'main'`.

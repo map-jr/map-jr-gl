@@ -8,7 +8,7 @@ import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite,
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
-import {EM, GlyphAtlas} from './text.ts';
+import {EM, GlyphAtlas, type PageGlyph} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
@@ -25,6 +25,8 @@ export interface EngineOptions extends CameraOptions {
     requests?: RequestRules;
     /** Answers that the page requested before the engine started, by URL (only for an engine on the page's thread). */
     early?: Map<string, Promise<Response>>;
+    /** Firefox, with the engine in a worker: the glyphs that need the canvas are drawn on the page (see `GlyphAtlas.drawOnPage`). */
+    pageGlyphs?: boolean;
 }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
@@ -70,6 +72,8 @@ export type Command =
     /** Which requests the page wants to change (see requests.ts), and the page's answer to one question. */
     | {type: 'requests'; rules: RequestRules}
     | ({type: 'resourceResult'; id: number} & RequestAnswer)
+    /** The page's answer to a `glyphs` event. */
+    | {type: 'glyphResult'; id: number; glyphs: PageGlyph[]}
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
     | {type: 'frames'; on: boolean}
     /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
@@ -108,6 +112,10 @@ export type EngineEvent =
     | {type: 'contextlost'}
     /** A question to the page about one request. */
     | {type: 'resource'; id: number; url: string; kind: string}
+    /** Firefox, with the engine in a worker: glyphs for the page to draw with the canvas (key, text, CSS font), with `pad` pixels about each. */
+    | {type: 'glyphs'; id: number; glyphs: [string, string, string][]; pad: number}
+    /** Firefox, with the engine in a worker: a web font that the engine loaded, for the page that draws the glyphs. */
+    | {type: 'face'; family: string; bytes: ArrayBuffer; descriptors: FontFaceDescriptors}
     /** A frame at a new canvas size has been drawn. */
     | {type: 'resized'; width: number; height: number; dpr: number; /** The size of the drawing buffer, which the browser can clamp (#950). */ buffer: [number, number]}
     | {type: 'result'; id: number; value?: unknown; error?: string}
@@ -354,6 +362,7 @@ export class Engine {
         this.atlas.onReset = () => this.labels.clear();
         this.atlas.fetchGlyphs = withTimeout(this.fetchAs('Glyphs'));
         this.atlas.onGlyphs = () => this.glyphsArrived();
+        if (o.pageGlyphs) this.atlas.drawOnPage = (id, glyphs, pad) => this.emit({type: 'glyphs', id, glyphs, pad});
         this.tr.width = o.width;
         this.tr.height = o.height;
         this.dpr = o.dpr;
@@ -876,7 +885,10 @@ export class Engine {
                 const res = await withTimeout(this.fetchAs('Font'))(f.src);
                 if (!res.ok) throw httpError('font', f.src, res.status);
                 const bytes = await res.arrayBuffer();
-                const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
+                const descriptors = {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})};
+                // (The page draws the glyphs in Firefox, so it needs the font too. The event comes before the glyphs that use it.)
+                if (this.atlas.drawOnPage) this.emit({type: 'face', family: f.family, bytes: bytes.slice(0), descriptors});
+                const face = new FontFace(f.family, bytes, descriptors);
                 set.add(await face.load());
             } catch (err) {
                 // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
@@ -1092,6 +1104,7 @@ export class Engine {
             case 'snapshot': this.shots.push(c); break;
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
+            case 'glyphResult': this.atlas.fromPage(c.id, c.glyphs); break;
             case 'tileReport': this.tap = c.on; return;
             case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;

@@ -25,6 +25,8 @@ export interface Glyph {
     /** Rich text: the size of this glyph relative to the text size, and its own color. */
     scale?: number; color?: number[];
 }
+/** A glyph that the page drew (see `GlyphAtlas.drawOnPage`): its key, its measures and its alpha, `w` by `h` bytes (none for a glyph with no pixels). */
+export interface PageGlyph { key: string; w: number; h: number; left: number; top: number; advance: number; alpha?: Uint8Array }
 /** Images that can appear inside text: their size in pixels, or undefined while one is not available yet. */
 export type ImageSizes = (name: string) => {width: number; height: number; pixelRatio: number} | undefined;
 // Inside the shaper each image in the text is one private-use character, so line breaking treats it as a single unit.
@@ -291,7 +293,7 @@ export class GlyphAtlas extends BaseShaper {
         // A canvas context remembers which font it resolved for a given font string, so after new fonts load it
         // would keep drawing with the old fallback. A fresh context resolves them again.
         if (fontsChanged) { this.ctx = this.newContext(); this.warmed.clear(); this.fontsRev++; }
-        this.data.fill(0); this.glyphs.clear(); this.reset();
+        this.data.fill(0); this.glyphs.clear(); this.reset(); this.asks.clear(); this.asked.clear();
         this.penX = this.penY = 1; this.shelf = 0;
         this.version++; this.resets++; this.dirty = null;
     }
@@ -368,6 +370,46 @@ export class GlyphAtlas extends BaseShaper {
         this.version++;
     }
 
+    /**
+     * Firefox, with the engine in a worker (#1841): there, each readback of pixels in a worker (`getImageData`) waits
+     * until the page thread is free, and the map stops while the page is busy. A glyph that needs the canvas is then
+     * drawn on the page instead. The glyphs of a task go in one request, with its number, and the text waits for them as
+     * it waits for a glyph file. The page answers with `fromPage`.
+     */
+    drawOnPage?: (id: number, glyphs: [key: string, text: string, css: string][], pad: number) => void;
+    /** The glyphs to ask for at the end of this task, by key, and the keys that were asked for since the last `clear`. */
+    private asks = new Map<string, [string, string]>();
+    private asked = new Set<string>();
+    /** The requests to the page that wait for their answer, by number, with the count of resets when each was sent and its keys. */
+    private sent = new Map<number, [number, string[]]>();
+    private askId = 0;
+    private sendAsks() {
+        if (!this.asks.size) return;
+        this.sent.set(++this.askId, [this.resets, [...this.asks.keys()]]);
+        this.loading++;
+        this.drawOnPage!(this.askId, [...this.asks].map(([key, [text, css]]) => [key, text, css]), SDF_BUFFER);
+        this.asks.clear();
+    }
+    /** The answer of the page to a request of `drawOnPage`. Glyphs drawn before the atlas was emptied are not used. */
+    fromPage(id: number, glyphs: PageGlyph[]) {
+        const sent = this.sent.get(id);
+        if (!sent) return;
+        this.sent.delete(id);
+        this.loading--;
+        if (sent[0] === this.resets) {
+            // (A glyph that the page could not draw is empty, so that its text does not wait for ever.)
+            for (const key of sent[1]) this.glyphs.set(key, {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: 0});
+            for (const p of glyphs) {
+                const g: Glyph = {x: 0, y: 0, w: 0, h: 0, left: p.left, top: p.top, advance: p.advance};
+                // (The size is checked again: a glyph must not write outside its place in the atlas.)
+                if (p.alpha && p.w > 0 && p.w < this.width && p.h > 0 && p.h < 2048 && p.alpha.length === p.w * p.h) this.pack(g, toSDF(p.alpha, p.w, p.h, 1), p.w, p.h);
+                this.glyphs.set(p.key, g);
+            }
+        }
+        this.generation++;
+        this.onGlyphs?.();
+    }
+
     private glyph(text: string, font: string): Glyph {
         const key = font + '|' + text;
         let g = this.glyphs.get(key);
@@ -381,6 +423,14 @@ export class GlyphAtlas extends BaseShaper {
         }
         const ctx = this.ctx, B = SDF_BUFFER;
         const css = this.css(font);
+        if (this.drawOnPage) {
+            if (!this.asked.has(key)) {
+                if (!this.asks.size) setTimeout(() => this.sendAsks());
+                this.asks.set(key, [text, css]); this.asked.add(key);
+            }
+            this.waiting = true;
+            return {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: EM / 2};
+        }
         ctx.font = css;
         const m = ctx.measureText(text);
         const left = Math.ceil(m.actualBoundingBoxLeft), top = Math.ceil(m.actualBoundingBoxAscent);
@@ -429,11 +479,11 @@ export function readGlyphs(bytes: Uint8Array) {
 
 const INF = 1e20;
 
-/** Alpha coverage -> signed distance field (Felzenszwalb & Huttenlocher squared distance transform, run on both sides of the edge). */
-function toSDF(rgba: Uint8ClampedArray, w: number, h: number): Uint8Array {
+/** Alpha coverage (RGBA, or alpha alone with `stride` 1) -> signed distance field (Felzenszwalb & Huttenlocher squared distance transform, run on both sides of the edge). */
+function toSDF(px: Uint8ClampedArray | Uint8Array, w: number, h: number, stride = 4): Uint8Array {
     const n = w * h, outer = new Float64Array(n), inner = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-        const a = rgba[i * 4 + 3] / 255;
+        const a = px[i * stride + stride - 1] / 255;
         outer[i] = a === 1 ? 0 : a === 0 ? INF : Math.max(0, 0.5 - a) ** 2;
         inner[i] = a === 1 ? INF : a === 0 ? 0 : Math.max(0, a - 0.5) ** 2;
     }

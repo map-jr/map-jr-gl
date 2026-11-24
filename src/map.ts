@@ -8,6 +8,7 @@ import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} fr
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
+import type {PageGlyph} from './text.ts';
 import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
 import type {GeoJSONGeometry} from './host.ts';
@@ -504,8 +505,11 @@ export class Map {
                 w.onmessageerror = () => this.note('engine worker: a message could not be read');
             }
             // (A style with a Vue reactive proxy in it cannot be cloned: the engine then gets a JSON copy, #242.)
-            try { w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports}, [off, ...ports]); }
-            catch { w.postMessage({role: 'engine', canvas: off, options: plain(engineOptions), ports}, [off, ...ports]); }
+            // In Firefox, a readback of pixels in a worker waits for this thread, so the glyphs are drawn here (#1841). (No
+            // feature test sees the wait without blocking this thread; WebKit and Chromium do not wait.)
+            const pageGlyphs = /Firefox\//.test(navigator.userAgent);
+            try { w.postMessage({role: 'engine', canvas: off, options: {...engineOptions, pageGlyphs}, ports}, [off, ...ports]); }
+            catch { w.postMessage({role: 'engine', canvas: off, options: {...plain(engineOptions), pageGlyphs}, ports}, [off, ...ports]); }
             this.send = (c, transfer) => w.postMessage(c, transfer ?? []);
             this.renderer = 'worker';
         } else {
@@ -719,6 +723,42 @@ export class Map {
         return new Error(`[map-jr-gl] The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), {cause});
     }
 
+    /** Firefox, with the engine in a worker (#1841): the canvas that draws glyphs, and the web fonts that it waits for. */
+    private glyphCtx?: OffscreenCanvasRenderingContext2D;
+    private glyphFonts: Promise<void>[] = [];
+    /** Draws the glyphs that the engine asks for, measured as `GlyphAtlas` measures them, and sends their alpha back. */
+    private async drawGlyphs(e: Extract<EngineEvent, {type: 'glyphs'}>) {
+        const send = this.send;
+        await Promise.all(this.glyphFonts);
+        // (The answer goes to the engine that asked: after a restart, the numbers of the requests start again.)
+        if (this.removed || send !== this.send) return;
+        const B = e.pad, glyphs: PageGlyph[] = [], buffers: ArrayBuffer[] = [];
+        // (The engine waits for each answer, or the map is never idle. A glyph that is not in the answer has no pixels.)
+        try {
+            const ctx = this.glyphCtx ??= new OffscreenCanvas(256, 256).getContext('2d', {willReadFrequently: true})!;
+            for (const [key, text, css] of e.glyphs) {
+                ctx.font = css;
+                const m = ctx.measureText(text), left = Math.ceil(m.actualBoundingBoxLeft), top = Math.ceil(m.actualBoundingBoxAscent);
+                const gw = Math.max(0, left + Math.ceil(m.actualBoundingBoxRight)), gh = Math.max(0, top + Math.ceil(m.actualBoundingBoxDescent));
+                const w = gw + 2 * B, h = gh + 2 * B, g: PageGlyph = {key, w, h, left: -left, top, advance: m.width};
+                if (gw && gh && w < 2048 && h < 2048) {
+                    if (ctx.canvas.width < w || ctx.canvas.height < h) {
+                        ctx.canvas.width = Math.max(ctx.canvas.width, w);
+                        ctx.canvas.height = Math.max(ctx.canvas.height, h);
+                        ctx.font = css;
+                    }
+                    ctx.clearRect(0, 0, w, h);
+                    ctx.fillText(text, B + left, B + top);
+                    const rgba = ctx.getImageData(0, 0, w, h).data, alpha = g.alpha = new Uint8Array(w * h);
+                    for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3];
+                    buffers.push(alpha.buffer);
+                }
+                glyphs.push(g);
+            }
+        } catch {}
+        send({type: 'glyphResult', id: e.id, glyphs}, buffers);
+    }
+
     /** @internal Sends a command to the engine. */
 
     protected post(c: Command, transfer?: Transferable[]) {
@@ -802,6 +842,11 @@ export class Map {
             }
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
+        } else if (e.type === 'glyphs') {
+            this.drawGlyphs(e);
+        } else if (e.type === 'face') {
+            // (A font that does not load here is reported by the engine, which loads it too.)
+            this.glyphFonts.push(new FontFace(e.family, e.bytes, e.descriptors).load().then(f => { document.fonts.add(f); }, () => {}));
         } else if (e.type === 'contextlost') {
             this.contextLost();
         } else if (e.type === 'hidden') {
