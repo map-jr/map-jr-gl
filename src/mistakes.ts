@@ -62,7 +62,7 @@ texts[1258] = (attribute, kind) => kind === 'o'
     : `<map-jr>: the attribute ${attribute}="false" switches the option on all the same, because an attribute that is there takes effect, whatever its value. To switch it off, remove ${attribute}.`;
 texts[10826] = () => '<map-jr>: the element has no style, so it shows no map. Write the URL of a style in the attribute "map-style", or set the property "mapStyle".';
 texts[20826] = () => '<map-jr>: the attribute "map-style" was removed and the element has no "mapStyle", so the map keeps the style that it has. To change the style, give another URL in "map-style" or set "mapStyle".';
-texts[1057] = (layerId, property) => `the layer "${layerId}" has in "${property}" a zoom-based "step" or "interpolate" that is inside another expression, or a second one. The map draws it, but MapLibre GL JS rejects the style. Write one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`;
+texts[1057] = (where, reason) => `${where}: ${reason} The map draws it, but MapLibre GL JS rejects the style. Write ["zoom"] only as the input of one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`;
 texts[1195] = (control, custom) => custom
     ? `controls: two custom() controls have the key "${control}", so the map adds only the first. Give each custom() control its own "key".`
     : `controls: ${control}() is in the list twice with the same options, so the map adds it once. Remove the second ${control}().`;
@@ -95,24 +95,47 @@ const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'ant
 const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
 const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
-/** True when the expression `e` has a zoom-based `step` or `interpolate` where MapLibre GL JS does not accept one: nested in
- * another expression, or twice. A curve may stand at the top, as the result of a top-level `let` and as one argument of
- * a top-level `coalesce` (#1057). */
-const badZoomCurve = (e: unknown): boolean => {
-    let bad = false;
-    /** The number of curves in `e`, where `top` says that a curve may stand at `e`. */
-    const count = (e: unknown, top: boolean): number => {
-        if (!Array.isArray(e) || e[0] === 'literal') return 0;
-        const op = e[0], curve = (op === 'step' || op === 'interpolate' || op === 'interpolate-hcl' || op === 'interpolate-lab') && JSON.stringify(e[op === 'step' ? 1 : 2]) === '["zoom"]';
-        let n = 0;
-        e.forEach((x, i) => { n += count(x, top && ((op === 'let' && i === e.length - 1) || op === 'coalesce')); });
-        if (curve) { if (n || !top) bad = true; return 1; }
-        if (n > 1 || (n && !top)) bad = true;
-        return n;
+/** MapLibre GL JS's error for the expression `e` of a property when `e` uses ["zoom"] where MapLibre does not accept it,
+ * or ''. ["zoom"] may only be the input of one zoom-based `step` or `interpolate`, which stands at the top, as the
+ * result of a top-level `let` or as an argument of a top-level `coalesce`. This follows `findZoomCurve` of MapLibre's
+ * style specification on the JSON of the expression, with the same texts (#1057, #1087). */
+export const zoomCurveError = (e: unknown): string => {
+    const nested = '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.';
+    const seen = new globalThis.Map<unknown[], unknown>();
+    const expr = (e: unknown): e is unknown[] => Array.isArray(e) && typeof e[0] === 'string' && e[0] !== 'literal';
+    /** The curve of `e` (an array), an error (a string) or null. */
+    const find = (e: unknown[]): unknown => {
+        if (seen.has(e)) return seen.get(e);
+        const op = e[0];
+        let r: unknown = null;
+        if (op === 'let') r = expr(e[e.length - 1]) ? find(e[e.length - 1] as unknown[]) : null;
+        else if (op === 'coalesce') { for (const a of e.slice(1)) if (expr(a) && (r = find(a))) break; }
+        else if ((op === 'step' || op === 'interpolate' || op === 'interpolate-hcl' || op === 'interpolate-lab') && JSON.stringify(e[op === 'step' ? 1 : 2]) === '["zoom"]') r = e;
+        if (typeof r !== 'string') for (const c of e.slice(1)) {
+            const cr = expr(c) ? find(c) : null;
+            if (typeof cr === 'string') r = cr;
+            else if (!r && cr) r = nested;
+            else if (r && cr && r !== cr) r = 'Only one zoom-based "step" or "interpolate" subexpression may be used in an expression.';
+        }
+        seen.set(e, r);
+        return r;
     };
-    count(e, true);
-    return bad;
+    const usesZoom = (e: unknown): boolean => expr(e) && (e[0] === 'zoom' || e.some(usesZoom));
+    if (!expr(e)) return '';
+    // (A copy, so that each place in the expression is its own array, as each is its own object in MapLibre's parsed
+    // expression: the same array given twice is two curves.)
+    const r = find(JSON.parse(JSON.stringify(e)));
+    return typeof r === 'string' ? r : !r && usesZoom(e) ? nested : '';
 };
+/** For the compat entry (src/compat-map.ts): calls `report` with an `error` for each property of `style` whose
+ * expression MapLibre GL JS rejects for its ["zoom"] (see `zoomCurveError`), once for each layer, property and value on
+ * the map (`reported`). The property is named as in MapLibre's error of `setPaintProperty` (#1087). */
+export function zoomCurveErrors(style: {layers?: any[]} | undefined, reported: Set<string>, report: (error: Error) => void) {
+    for (const l of style?.layers ?? []) for (const g of ['paint', 'layout']) for (const k in l?.[g]) {
+        const why = zoomCurveError(l[g][k]), key = `${l.id} ${g} ${k} ${JSON.stringify(l[g][k])}`;
+        if (why && !reported.has(key)) { reported.add(key); report(new Error(mistake(1057, `layers.${l.id}.${g}.${k}`, why))); }
+    }
+}
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 
 /**
@@ -194,7 +217,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     else if (kind === 1147) { for (const k of ['padding', 'maxZoom']) if (k in b) warn(1147, a, k); }
     else {
         slots(a.layers, b?.layers);
-        for (const l of [...a.layers, ...b?.layers ?? []]) for (const group of [l.paint, l.layout]) for (const k in group) if (badZoomCurve(group[k])) warn(1057, l.id, k);
+        for (const l of [...a.layers, ...b?.layers ?? []]) for (const g of ['paint', 'layout'] as const) for (const k in l[g]) { const why = zoomCurveError(l[g][k]); if (why) warn(1057, `the layer "${l.id}", ${g} property "${k}"`, why); }
         if (!b) return;
         const extend = b as Pick<MapDescription, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {

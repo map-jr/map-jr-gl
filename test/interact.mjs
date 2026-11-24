@@ -3691,6 +3691,35 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
             unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
     }
+    // An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text in the development build, once
+    // for each layer, property and value, and the map still draws it (#1087). The production build fires none.
+    if (mode === 'main') {
+        const zoom = await page.evaluate(async () => {
+            const out = {};
+            for (const file of ['map-jr-gl-maplibre-compat.dev.js', 'map-jr-gl-maplibre-compat.js']) {
+                const mod = await import('/dist/' + file);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const curve = ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 5];
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {s: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'c', type: 'circle', source: 's', paint: {'circle-radius': ['*', 2, curve]}}]}});
+                const errors = [];
+                m.on('error', e => errors.push(e.error.message));
+                await new Promise(r => m.once('load', r));
+                m.setPaintProperty('c', 'circle-opacity', ['/', ['zoom'], 10]);
+                m.setPaintProperty('c', 'circle-blur', ['case', ['has', 'a'], curve, curve]);
+                m.setPaintProperty('c', 'circle-stroke-width', curve);
+                m.setPaintProperty('c', 'circle-color', 'red');
+                await new Promise(r => m.once('idle', r));
+                out[file] = {errors, radius: m.getPaintProperty('c', 'circle-radius')?.[0]};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        const dev = zoom['map-jr-gl-maplibre-compat.dev.js'], prod = zoom['map-jr-gl-maplibre-compat.js'];
+        const nested = '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.', one = 'Only one zoom-based "step" or "interpolate" subexpression may be used in an expression.';
+        check('[main] maplibre-compat: the development build fires error with the text of MapLibre GL JS for a nested, repeated or bare ["zoom"], once each, and keeps the value; the production build fires none',
+            dev.errors.length === 3 && dev.errors[0].startsWith(`[map-jr-gl] layers.c.paint.circle-radius: ${nested}`) && dev.errors[1].startsWith(`[map-jr-gl] layers.c.paint.circle-opacity: ${nested}`) && dev.errors[2].startsWith(`[map-jr-gl] layers.c.paint.circle-blur: ${one}`)
+            && dev.radius === '*' && prod.errors.length === 0, JSON.stringify(zoom));
+    }
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {
         const logo = await page.evaluate(async () => {

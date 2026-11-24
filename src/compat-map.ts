@@ -5,6 +5,7 @@
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
+import {zoomCurveErrors} from './mistakes.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
@@ -918,6 +919,7 @@ export class Map extends CoreMap {
      * before these events, and where a pointer rests. An event fires at once when the answer is there, and else waits
      * for it for at most 300 ms. Listeners for a layer get their features from the core map.)
      */
+    private zoomErrors?: Set<string>;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
@@ -927,6 +929,9 @@ export class Map extends CoreMap {
         // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
+        // (Development build) An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text, once for
+        // each layer, property and value. The map still draws it (#1087).
+        if (__DEV__ && type === 'styledataloading') zoomCurveErrors(this.rawStyle, this.zoomErrors ??= new Set(), error => this.fire('error', {error}));
         // The `eventData` of the camera call that made this move (see `jumpTo`). The move's own fields win.
         // User input starts a move of the user's: kept eventData (of a call that did not move the camera) is not on it.
         if (/^(mousedown|touchstart|wheel|dragstart|dblclick)$/.test(type)) this.moveData = undefined;
