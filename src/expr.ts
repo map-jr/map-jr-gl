@@ -556,7 +556,20 @@ export interface Prop {
     eval(zoom: number, f?: Feature | null): any;
 }
 /** 'discrete' values (e.g. dash arrays) step between stops instead of interpolating. */
-export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw' | 'padding';
+export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw' | 'padding' | 'colorArray' | 'numberArray';
+
+/**
+ * A value of the type colorArray or numberArray as a list (a single value is a list of one; a color is [r, g, b, a]),
+ * or null when it is not one.
+ */
+export function toList(x: any, kind: PropKind): any[] | null {
+    const one: (v: any) => any = kind === 'numberArray' ? (n: any) => typeof n === 'number' && !isNaN(n) ? n : null
+        : (c: any) => Array.isArray(c) && c.length === 4 && typeof c[0] === 'number' ? c : typeof c === 'string' && parseColor(c) || null;
+    const v = one(x);
+    if (v !== null) return [v];
+    const list = Array.isArray(x) ? x.map(one) : null;
+    return list && !list.includes(null) ? list : null;
+}
 
 /** A value of the padding type (one to four numbers, as in CSS) as [top, right, bottom, left], or null when it is not one. */
 export function toPadding(x: any): [number, number, number, number] | null {
@@ -588,7 +601,7 @@ function legacyFunction(v: any, flags: Flags, kind: PropKind, values?: readonly 
     // kind does not say the type (a text, a boolean, an array), the type is the one of the `default`.
     if (v.type === 'identity') return c => {
         const x = c.f?.properties[key];
-        return (kind === 'number' ? typeof x === 'number' : kind === 'padding' ? !!toPadding(x) : kind === 'color' ? Array.isArray(colorize(x)) : values ? values.includes(x)
+        return (kind === 'number' ? typeof x === 'number' : kind === 'padding' ? !!toPadding(x) : kind.endsWith('Array') ? !!toList(x, kind) : kind === 'color' ? Array.isArray(colorize(x)) : values ? values.includes(x)
             : def === null ? x != null : typeof x === typeof def && Array.isArray(x) === Array.isArray(def)) ? x : def;
     };
     if (v.type === 'categorical' || typeof stops[0]?.[0] !== 'number') {
@@ -616,6 +629,7 @@ export function compileProp(v: any, kind: PropKind, def: any, values?: readonly 
         ? (x: any) => Array.isArray(x) ? x : (typeof x === 'string' && parseColor(x)) || defColor
         : kind === 'number' ? (x: any) => typeof x === 'number' && !isNaN(x) ? x : def
         : kind === 'padding' ? (x: any) => toPadding(x) ?? toPadding(def)
+        : kind.endsWith('Array') ? (x: any) => toList(x, kind) ?? toList(def, kind)
         : values ? (x: any) => x == null || values.includes(x) ? x ?? def : def
         : (x: any) => x ?? def;
     if (!flags.dd && !flags.zoom) {

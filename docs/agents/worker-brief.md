@@ -22,6 +22,8 @@ writing); this brief has the steps.
    `node scripts/agents/suite.mjs test/host.mjs` (or `test/interact.mjs`, `test/vue.mjs`, `test/react.mjs`,
    `test/loading.mjs`). It builds what is stale, starts its own demo server on a free port, prints the counts and
    the `FAIL` lines, and stops the server. When Playwright is missing, it prints the command that installs it.
+   At most two suites run at once on one machine, over all worktrees. A suite that must wait prints
+   `suite.mjs: waiting for a free slot` and starts when a slot is free.
    A change of placement, of the engine or of `src/gl.ts` runs both `test/host.mjs` and `test/interact.mjs`, because
    CI runs both: on 2026-11-19 a change of the order of symbols broke two checks of `test/host.mjs`, one of them the
    frame time with 100,000 icons, that its worker had not run (#1074).

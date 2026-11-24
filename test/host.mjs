@@ -2489,13 +2489,34 @@ for (const renderer of renderers) {
             outsideButton.focus();
             out.tabOut = list.hidden;
             outsideButton.remove();
+            // A new callback in a later description reaches the control that the map keeps (#1520).
+            const later = [];
+            host.update({...host.description, controls: [styles({entries, onStyleChange: e => later.push(e.label)})]});
+            const kept = el.querySelector('.map-jr-ctrl-styles') === trigger;
+            trigger.click();
+            list.querySelectorAll('button')[0].click();
+            await new Promise(r => setTimeout(r, 300));
+            out.newCallback = `${kept}/${later.join(',')}/${calls.length}`;
+            // One spec on two maps: an update of one map does not change the callback of the other (#1520).
+            const sharedA = [], sharedB = [], one = styles({entries, onStyleChange: e => sharedA.push(e.label)});
+            const el2 = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:400px;top:0;width:400px;height:300px;z-index:100'}));
+            const other = t.lib.createMap(el2, {style: t.style, renderer, attribution: false, controls: [one]});
+            host.update({...host.description, controls: []});
+            host.update({...host.description, controls: [one]});
+            host.update({...host.description, controls: [styles({entries, onStyleChange: e => sharedB.push(e.label)})]});
+            await until(() => el2.querySelector('.map-jr-ctrl-styles'));
+            el2.querySelector('.map-jr-ctrl-styles').click();
+            el2.querySelectorAll('.map-jr-styles-list button')[1].click();
+            await new Promise(r => setTimeout(r, 300));
+            out.twoMaps = `${sharedA.join(',')}/${sharedB.join(',')}`;
+            other.destroy(); el2.remove();
             host.destroy();
             el.remove();
             return out;
         }, renderer);
         check(`[${renderer}] the control styles() lists its entries at once, draws a picture of each style that loads after the first idle, and a choice sets the style, keeps the camera, calls onStyleChange once and returns the focus; a style that fails ends its picture at once, and focus that leaves closes the list`,
             picked.open === 'true/true/Streets,Red,Missing,Offline,Page/true,false,false,false,false/true' && picked.early === 0 && picked.escape === 'true/true' && picked.pictures === 'img,img,-,-,-' && picked.placeholder === 'p,p,p,p,p' && picked.labelOn && picked.glass === true && picked.fade === 'map-jr-styles-in' && picked.pageRule === '-/0px/1' && picked.again === 0 && picked.drawn < 15000 && picked.red === true
-            && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut, JSON.stringify(picked));
+            && picked.chosen === 'true/Red/true/true/true' && picked.pressed === 'false,true,false,false,false' && picked.calls === 1 && picked.extraMaps === 0 && picked.tabOut && picked.newCallback === 'true/Streets/1' && picked.twoMaps === 'Red/', JSON.stringify(picked));
         // With prefers-reduced-motion a new picture does not fade in (#1528); the sheet of the control stays on the page.
         await page.emulateMedia({reducedMotion: 'reduce'});
         const stillFade = await page.evaluate(() => {
@@ -4154,6 +4175,33 @@ for (const renderer of ['worker', 'main']) {
         await page.evaluate(() => window.shadowMap.host.destroy());
     } catch (e) { check('a map in a shadow root was checked for focus and fullscreen (#828)', false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
+}
+// #1252: configure({tileWorkers}) after the tile workers exist has no effect, and it warns once.
+{
+    const page = await browser.newPage();
+    try {
+        await page.route(`${origin}/blank-page`, r => r.fulfill({contentType: 'text/html', body: '<!doctype html><title>blank</title><body></body>'}));
+        await page.goto(`${origin}/blank-page`);
+        const r = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            lib.configure({tileWorkers: 1});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const host = lib.createMap(el, {style: await (await fetch('/style.json')).json(), renderer: 'main', attribution: false});
+            for (let i = 0; i < 200 && !host.state.get().loaded; i++) await wait(50);
+            // (Another workerUrl makes a new pool for the next map, so its count is not ignored.)
+            lib.configure({workerUrl: '/dist/map-jr-gl-worker.js?other', tileWorkers: 4});
+            const other = warns.length;
+            lib.configure({workerUrl: undefined, tileWorkers: 1});
+            lib.configure({tileWorkers: 2});
+            lib.configure({tileWorkers: 3});
+            console.warn = warn;
+            host.destroy();
+            return {other, warns: warns.filter(w => w.startsWith('[map-jr-gl] configure(): tileWorkers'))};
+        });
+        check('configure({tileWorkers}) with another count while tile workers exist warns once, the same count does not warn, and a call with another workerUrl does not warn (#1252)', r.warns.length === 1 && r.other === 0, JSON.stringify(r));
+    } finally { await page.close(); }
 }
 // A touch screen gets buttons of 44px, as docs/reference/css.md says for `--map-control-size`, in both entries (#639). (A blank
 // page: /bench loads the CSS of MapLibre GL JS, which sets the size of the buttons itself.)

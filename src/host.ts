@@ -38,6 +38,8 @@ export interface ControlSpec {
      * @param instance A function that returns the map.
      */
     create(instance?: () => MapInstance): Control;
+    /** @internal The options, which a kept control takes from the latest description, so that a new callback reaches it. */
+    options?: object;
 }
 
 /**
@@ -1151,7 +1153,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             // (A control whose `position` changed is added again in its new corner; #1237.)
             const wanted = new globalThis.Map(relabel ? [] : (next.controls ?? []).map(c => [c.key, c.position]));
             for (const [key, c] of controls) if (!wanted.has(key) || wanted.get(key) !== placed.get(key)) { map.removeControl(c as any); controls.delete(key); placed.delete(key); }
-            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(() => host); controls.set(c.key, made); placed.set(c.key, c.position); map.addControl(made, c.position); }
+            for (const c of next.controls ?? []) if (controls.has(c.key)) (controls.get(c.key) as any).update?.(c.options); else { const made = c.create(() => host); controls.set(c.key, made); placed.set(c.key, c.position); map.addControl(made, c.position); }
         }
         transformLast = next.transformRequest;
         if (before && !next.transformRequest !== !before.transformRequest) map.setTransformRequest(next.transformRequest ? transform : null);

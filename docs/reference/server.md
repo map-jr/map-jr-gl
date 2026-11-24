@@ -307,7 +307,8 @@ the first view, and the console of the server has the error.
 `ElementRenderOptions` also accepts `overrides`, `layerFilter`, `tileZoomOffset`, `inlineImages`, `highDensity`,
 `label`, `resolveImage`, `fetch`, `decodeImage` and the [limits for requests](#limits-for-requests) of
 `RenderOptions`. The element always has the style `display:block;position:relative;overflow:hidden`, and the text of
-`attributes.style` follows it.
+`attributes.style` follows it. Without `label`, the `aria-label` of the first view is `Map.Title` of the `locale` of
+the description, and `'Map'` when the locale has none, as in the map in the browser.
 
 ## `renderToImage`
 

@@ -93,3 +93,9 @@ test('renderFirstView and renderElement put the controls into the first view; wi
     const none = await renderElement({style, initialView: {zoom: 4}, attribution: false}, {width: 600, height: 400});
     assert.doesNotMatch(layer(none), /ctrl-attrib/);
 });
+
+test('renderElement labels the first view with Map.Title of the locale of the description, and the option label wins (#1620)', async () => {
+    const d = {style, initialView: {center: [0, 0] as [number, number], zoom: 4}, locale: {'Map.Title': 'Karte'}};
+    assert.match(await renderElement(d, {width: 300, height: 200}), /aria-label="Karte"/);
+    assert.match(await renderElement(d, {width: 300, height: 200, label: 'Hotels'}), /aria-label="Hotels"/);
+});
