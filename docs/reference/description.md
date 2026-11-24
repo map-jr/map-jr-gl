@@ -231,7 +231,8 @@ createMap('map', {
 Two other fields can override `initialView` when the map is created:
 
 - When the description also has [`view`](#view-and-onviewchange), each member of `view` overrides the same member of
-  `initialView`, and the map ignores `bounds`.
+  `initialView`, and the map ignores `bounds`. The development build warns once when the first description has both
+  `view` and `initialView.bounds`.
 - With [`hash`](#hash), a view in the URL of the page overrides `center`, `zoom`, `bearing`, `pitch` and
   `bounds`. The map then does not fit `bounds`.
 

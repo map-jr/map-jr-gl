@@ -1183,6 +1183,25 @@ for (const renderer of renderers) {
                 F.initialOld > 4 && F.movedOld > 5 && Math.abs(F.padded) <= 2 && said('initialView', 'maxZoom') && said('initialView', 'padding') && said('moveTo()', 'maxZoom') && said('fitBounds()', 'padding'), JSON.stringify(F));
         }
 
+        // 2d. "view" together with "initialView.bounds": the map starts at "view", and the development build says so once (#1148).
+        const viewWins = await page.evaluate(async renderer => {
+            const t = window.t, warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = {version: 8, sources: {}, layers: []}, bounds = [[-74.0101, 40.7101], [-74.01, 40.71]];
+            const both = t.lib.createMap(el, {style, view: {center: [10, 20], zoom: 3}, initialView: {bounds}, renderer, attribution: false});
+            const zoom = both.state.get().view.zoom;
+            both.update({style, view: {center: [11, 20], zoom: 3}, initialView: {bounds}, renderer, attribution: false});
+            const only = t.lib.createMap(el, {style, initialView: {bounds}, renderer, attribution: false});
+            // (The checks of the development build load on demand and run after the call.)
+            await new Promise(r => setTimeout(r, 500));
+            both.destroy(); only.destroy(); el.remove();
+            console.warn = warn;
+            return {zoom, warned: warned.filter(w => w.includes('"initialView.bounds"'))};
+        }, renderer);
+        check(`[${renderer}] view with initialView.bounds does not fit the bounds and warns once that view wins (#1148)`,
+            viewWins.zoom === 3 && viewWins.warned.length === 1 && viewWins.warned[0].startsWith('[map-jr-gl] createMap(): ') && viewWins.warned[0].includes('"view" wins, so the map does not fit'), JSON.stringify(viewWins));
+
         check(`[${renderer}] a pending toBlob leaves loaded() true for the idle listeners after its own (#1454)`, blob.loadedAtIdle === true, JSON.stringify(blob));
         check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
             blob.type === 'image/png' && blob.w >= 200 && blob.centre[2] > 200 && blob.centre[0] < 50 && blob.corner[0] > 200 && blob.corner[2] < 50 && blob.jpeg === 'image/jpeg' && /toBlob\(\): the map was removed/.test(blob.rejected), JSON.stringify(blob));
