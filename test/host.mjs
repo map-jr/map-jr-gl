@@ -109,8 +109,7 @@ for (const renderer of renderers) {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
                 const layer = {id: 'r', type: 'raster', source: 'r', ...(fade !== undefined && {paint: {'raster-fade-duration': fade}})};
                 const h = t.lib.createMap(el, {style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 256}}, layers: [layer]}, initialView: {center: [10, 10], zoom: 0}, renderer, attribution: false});
-                await h.once('load');
-                await new Promise(r => setTimeout(r, 300));
+                await new Promise(r => setTimeout(r, 500)); // (`load` waits for the held tile)
                 const idle = Promise.race([h.once('idle'), new Promise(r => setTimeout(r, 8000))]), t0 = performance.now();
                 release();
                 await idle;
