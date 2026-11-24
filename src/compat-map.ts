@@ -411,6 +411,21 @@ export class Map extends CoreMap {
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
+        // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
+        const dragOptions = (name: string, used: boolean) => {
+            if (!used || this.warned.has(name)) return;
+            const message = `[map-jr-gl] ${name} has no effect: the drag handlers here have no options. Remove it, or pass true.`;
+            if (this.strict) throw new Error(message);
+            this.warned.add(name); console.warn(message);
+        };
+        for (const k of ['dragPan', 'dragRotate'] as const) {
+            dragOptions(`new Map(): an object as the option ${k}`, typeof o[k] == 'object' && o[k] !== null);
+            const handler = this[k], on = handler.enable.bind(handler);
+            handler.enable = (options?: unknown) => { dragOptions(`map.${k}.enable(options)`, typeof options == 'object' && options !== null); on(); };
+        }
+        dragOptions('new Map(): the option rotateSpeed', o.rotateSpeed !== undefined && o.rotateSpeed !== 0.8);
+        dragOptions('new Map(): the option pitchSpeed', o.pitchSpeed !== undefined && o.pitchSpeed !== -0.5);
+        dragOptions('new Map(): the option aroundCenter: false', o.aroundCenter === false);
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
         // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map

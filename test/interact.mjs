@@ -3416,6 +3416,14 @@ for (const mode of renderers) {
             projected.showTileBoundaries = false;
             projected.showCollisionBoxes = true; projected.showCollisionBoxes = true;
             out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] showCollisionBoxes has no effect')).length, warnings.length];
+            // The options of the drag handlers have no effect (#673): one warning each, and the handlers are on.
+            const dragged = make({dragPan: {linearity: 0.5}, dragRotate: {around: 'center'}, rotateSpeed: 2, pitchSpeed: 1, aroundCenter: false});
+            dragged.dragPan.disable(); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragRotate.enable({movement: 'linear'}); dragged.dragRotate.enable();
+            out.drag = [dragged.dragPan.isEnabled(), dragged.dragRotate.isEnabled(), warnings.splice(0).filter(w => /^\[map-jr-gl\] .*(dragPan|dragRotate|rotateSpeed|pitchSpeed|aroundCenter).* has no effect/.test(w)).length, warnings.length];
+            const draggedPlain = make({dragPan: true, rotateSpeed: 0.8, pitchSpeed: -0.5, aroundCenter: true});
+            draggedPlain.dragPan.enable(); draggedPlain.dragRotate.enable(true);
+            out.drag.push(warnings.splice(0).length);
+            for (const x of [dragged, draggedPlain]) { x.getContainer().remove(); x.remove(); }
             projected.getContainer().remove(); projected.remove();
             // The defaults give no warning.
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
@@ -3432,6 +3440,8 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: showCollisionBoxes = true gives one warning, and showTileBoundaries = false none (#752)',
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
+        check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
+            JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
             quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));

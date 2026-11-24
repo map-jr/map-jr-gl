@@ -66,7 +66,17 @@ export type MapLayerEventType = Each<'click' | 'mousemove' | 'mouseenter' | 'mou
  * The options of `new Map(options)`. The options of MapLibre GL JS that are listed here and not in the main API are
  * accepted with no effect (see docs/reference/maplibre-differences.md).
  */
-export type MapOptions = CoreMapOptions & {
+export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
+    /** Whether a drag pans the map. An object is accepted as `true` and warns once: its options have no effect. */
+    dragPan?: boolean | DragPanOptions;
+    /** Whether a drag with the right mouse button turns and tilts the map. An object is accepted as `true` and warns once: its options have no effect. */
+    dragRotate?: boolean | DragRotateOptions;
+    /** No effect: a value other than the default 0.8 warns once. */
+    rotateSpeed?: number;
+    /** No effect: a value other than the default -0.5 warns once. */
+    pitchSpeed?: number;
+    /** No effect: `false` warns once. */
+    aroundCenter?: boolean;
     /** The angle in degrees from north within which `snapToNorth` and the end of a gesture turn the map north. The default is 7, and 0 turns the snap off. */
     bearingSnap?: number;
     /** No effect: labels show and hide without a fade. */
@@ -288,15 +298,15 @@ export type GeolocateControlEventType =
 /** The value of `cooperativeGestures`. */
 export type GestureOptions = boolean;
 /**
- * The options of `map.dragPan.enable(options)` in MapLibre GL JS. They have no effect: `enable()` turns the handler on
- * and does not read its argument. The option `dragPan` of `new Map()` is a boolean.
+ * The options of `map.dragPan.enable(options)` in MapLibre GL JS. They have no effect: `enable(options)` turns the
+ * handler on and warns once. An object as the option `dragPan` of `new Map()` turns it on and warns once.
  */
 export type DragPanOptions = {linearity?: number; easing?: (t: number) => number; deceleration?: number; maxSpeed?: number};
 /** The options of the handlers of MapLibre GL JS that zoom around the center. They have no effect, as `DragPanOptions`. */
 export type AroundCenterOptions = {around: 'center'};
 /**
- * The options of `map.dragRotate.enable(options)` in MapLibre GL JS. They have no effect: `enable()` turns the handler
- * on and does not read its argument. The option `dragRotate` of `new Map()` is a boolean.
+ * The options of `map.dragRotate.enable(options)` in MapLibre GL JS. They have no effect: `enable(options)` turns the
+ * handler on and warns once. An object as the option `dragRotate` of `new Map()` turns it on and warns once.
  */
 export type DragRotateOptions = {around?: 'center'; movement?: 'circular' | 'linear'} | {around: 'pointer'};
 
