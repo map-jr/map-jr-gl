@@ -1,0 +1,7 @@
+{
+  "label": "labels along lines on the globe",
+  "decision": "later",
+  "issue": 1823,
+  "reason": "Labels with symbol-placement line are not drawn on the globe.",
+  "pattern": "^projection/globe/(terrain/)?collision-text-line-(equator|pole-to-pole)$"
+}

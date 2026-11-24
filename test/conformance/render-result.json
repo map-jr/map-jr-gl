@@ -2,8 +2,6 @@
   "match": 1261,
   "near": 1597,
   "differ": 161,
-  "differWontfix": 21,
-  "differLater": 78,
   "errored": 0,
   "skipped": 2,
   "run": 1758

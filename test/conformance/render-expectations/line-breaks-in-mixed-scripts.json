@@ -1,0 +1,10 @@
+{
+  "label": "line breaks in mixed scripts",
+  "decision": "later",
+  "issue": 1794,
+  "reason": "Mixed-script text does not break after a hyphen as in MapLibre GL JS. Mixed-script labels wrap into more lines than in MapLibre GL JS, and right-to-left text is not reordered per line after wrapping (#1795).",
+  "tests": [
+    "text-arabic/line-break-mixed",
+    "text-arabic/wrapped-mixed-and-numbers"
+  ]
+}

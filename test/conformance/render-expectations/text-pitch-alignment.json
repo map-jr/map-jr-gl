@@ -1,0 +1,7 @@
+{
+  "label": "text-pitch-alignment",
+  "decision": "later",
+  "issue": 1736,
+  "reason": "text-pitch-alignment map is drawn with the slant at the anchor of the label, which is an approximation of MapLibre GL JS.",
+  "pattern": "^text-pitch-alignment/(map|viewport)-|^text-variable-anchor(-offset)?/pitched-with-map$"
+}

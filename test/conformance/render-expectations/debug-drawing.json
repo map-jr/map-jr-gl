@@ -1,0 +1,7 @@
+{
+  "label": "debug drawing",
+  "decision": "wontfix",
+  "issue": 570,
+  "reason": "The library does not draw collision boxes, padding lines, tile borders or the overdraw view (showCollisionBoxes, showPadding, showTileBoundaries, showOverdrawInspector). The owner decided on 2026-11-17 that it will not.",
+  "pattern": "^debug/(collision|collision-lines|collision-lines-large-font|collision-lines-pitched|collision-overscaled|collision-pitched-wrapped|overdraw|tile|padding/ease-to-.*|collision-horizon-cutoff|collision-lines-overscaled|collision-lines-pitched-2|collision-lines-simple-words|collision-pitched|collision-variable-anchor/(base|pitched|pitched-and-rotated)|padding/set-padding|raster)$|^regressions/mapbox-gl-js#4647$|^fill-layer-blend/overdraw-inspector$|^symbol-placement/line-overscaled-debug$|^icon-padding/default$|^text-variable-anchor(-offset)?/icon-text-fit-collision-box$|^text-variable-anchor/pitched-rotated-debug$"
+}

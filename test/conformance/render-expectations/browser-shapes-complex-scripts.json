@@ -1,0 +1,7 @@
+{
+  "label": "browser shapes complex scripts",
+  "decision": "wontfix",
+  "issue": 1733,
+  "reason": "The browser shapes Arabic, Persian and Urdu text with its own fonts instead of the glyph files, so the glyphs differ from MapLibre GL JS while the lines and their order agree (see \"Text\" in docs/reference/maplibre-differences.md, on glyphs). The owner decided on 2026-11-24 to keep this.",
+  "pattern": "^text-arabic/(mixed-numeric|line-break|persian-and-urdu)$"
+}

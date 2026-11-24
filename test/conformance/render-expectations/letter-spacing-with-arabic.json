@@ -1,0 +1,9 @@
+{
+  "label": "letter-spacing with Arabic",
+  "decision": "later",
+  "issue": 1791,
+  "reason": "text-letter-spacing is applied to a label that contains Arabic, which MapLibre GL JS leaves unspaced.",
+  "tests": [
+    "text-arabic/letter-spacing"
+  ]
+}
