@@ -3143,6 +3143,8 @@ for (const mode of renderers) {
             ptr('pointerdown', 260); ptr('pointermove', 250);
             await new Promise(res => setTimeout(res, 250));
             for (let i = 1; i <= 8; i++) { ptr('pointermove', 250 - i * 10); await frame(); await frame(); moved.push(start - x() - 10); }
+            // A pause before the release, so that the drag ends without inertia, as in MapLibre GL JS (#479).
+            await new Promise(res => setTimeout(res, 250));
             ptr('pointerup', 170);
             // (The last camera of the engine comes 150 ms late.)
             await new Promise(res => setTimeout(res, 400));
