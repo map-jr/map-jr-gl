@@ -29,9 +29,8 @@ export interface RenderOptions {
     colorScheme?: 'auto' | 'light' | 'dark';
     /**
      * Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. A value here
-     * overrides the default in `state` of the style; a name that is left out or set to `null` uses the default. When
-     * `colorScheme` is given and `globalState` has no `color-scheme`, the global state `color-scheme` is the scheme
-     * (`'auto'` is `'light'`), as in the map.
+     * overrides the default in `state` of the style; a name that is left out or set to `null` uses the default. Unless
+     * `globalState` sets it, the global state `color-scheme` is the scheme (`'auto'` and no value are `'light'`), as in the map.
      */
     globalState?: Record<string, unknown> | null;
     /** The center of the view, `[lng, lat]`. `bounds` overrides it. */
@@ -249,7 +248,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
     // The description's global state over the style's defaults, and the color scheme as `color-scheme`, as the map sets them (#1426).
     const state: Record<string, unknown> = {...style.state};
-    if (o.colorScheme) state['color-scheme'] = o.colorScheme === 'dark' ? 'dark' : 'light';
+    state['color-scheme'] = o.colorScheme === 'dark' ? 'dark' : 'light';
     for (const [k, v] of Object.entries(o.globalState ?? {})) if (v != null) state[k] = v;
     compileFor({g: state, f: {}});
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);

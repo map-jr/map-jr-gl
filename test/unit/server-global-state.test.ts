@@ -17,5 +17,7 @@ test('renderFirstView and renderElement draw with globalState over the default o
 test('the color scheme is the global state "color-scheme", unless globalState sets it', async () => {
     assert.match(await renderFirstView({...view, style: style('color-scheme', 'light'), colorScheme: 'dark'}), /fill="#000000"/);
     assert.match(await renderFirstView({...view, style: style('color-scheme', 'light'), colorScheme: 'dark', globalState: {'color-scheme': 'light'}}), /fill="#ffffff"/);
+    // Without `colorScheme` the map sets `color-scheme` to 'light', whatever the default of the style is.
+    assert.match(await renderFirstView({...view, style: style('color-scheme', 'dark')}), /fill="#ffffff"/);
     assert.match(await renderElement({style: style('color-scheme', 'light'), colorScheme: 'dark', attribution: false}, {width: 100, height: 100}), /fill="#000000"/);
 });
