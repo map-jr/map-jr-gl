@@ -14,6 +14,13 @@ import type {GeoJSONGeometry} from './host.ts';
 import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
+// The warnings of the engine workers, each once on the page, as each thread warns once (expr.ts, #1141).
+const pageWarned = new Set<string>();
+const pageWarn = (msg: string) => {
+    if (pageWarned.size > 200 || pageWarned.has(msg)) return;
+    pageWarned.add(msg);
+    console.warn('[map-jr-gl] ' + (pageWarned.size > 200 ? 'The workers sent 200 different warnings. Later ones are not shown.' : msg));
+};
 
 /** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
 declare const __DEV__: boolean;
@@ -458,6 +465,7 @@ export class Map {
             const off = this.canvas.transferControlToOffscreen(), w = engineWorker;
             this.workers.push(w);
             w.onmessage = e => {
+                if (e.data.type === 'warn') return pageWarn(e.data.msg);
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
                 this.fellBack(e.data.message);
