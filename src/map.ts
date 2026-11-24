@@ -658,7 +658,7 @@ export class Map {
     }
 
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
-    private resend() {
+    protected resend() {
         this.geoSent = undefined;
         // (The answers for data sent to the old engine do not come: the data that waits goes to the new one.)
         this.geoBusy.clear();
@@ -669,6 +669,10 @@ export class Map {
         if (this.wantsTiles) this.post({type: 'tileLoads', on: true});
         if (this.videos) this.videos.frame();
         for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
+        // (The padding of the camera, the fonts of `addFonts` and the report of the benchmark page are set by calls; #1050.)
+        if (this.tr.padding.some(Boolean)) { this.post({type: 'jump', padding: this.tr.padding}); this.jumped = this.seq; }
+        if (this.fontsAdded.length) this.post({type: 'fonts', fonts: this.fontsAdded});
+        if (this.tapped) this.post({type: 'tileReport', on: true});
     }
 
     /** Requests the JSON and the image of each sheet of a sprite, by URL, as the engine asks for them (see `loadIcons`). */
@@ -1727,7 +1731,9 @@ export class Map {
 
     // ---- fonts and images ----
     /** Only in this library: loads more web fonts for labels after the map is created. See the option `fonts`. */
-    addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
+    addFonts(fonts: FontSource[]) { this.fontsAdded.push(...fonts); this.post({type: 'fonts', fonts}); return this; }
+    /** What `addFonts` was given: a new engine gets it again. */
+    private fontsAdded: FontSource[] = [];
 
     /**
      * Makes an image available to `icon-image` under `name`, and returns a promise of the map; MapLibre GL JS returns the map. `source` may be an SVG document (rasterized at the
@@ -1854,7 +1860,8 @@ export class Map {
         return result;
     }
     /** @internal For the benchmark page (#360): the engine fires a `tile` event for each step of a tile and for each frame. */
-    _tileReport(on: boolean) { this.post({type: 'tileReport', on}); }
+    _tileReport(on: boolean) { this.tapped = on; this.post({type: 'tileReport', on}); }
+    private tapped = false;
     /** Rejects the queries that have no answer yet. The engine that had them is gone, so no answer can come. */
     private drop(why: string) {
         // (After `remove()`, a query that nobody awaits is not an unhandled rejection of the page: a caller that awaits

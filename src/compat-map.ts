@@ -287,8 +287,19 @@ export class Map extends CoreMap {
      */
     setSourceTileLodParams(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string) {
         if (sourceId && !this.getSource(sourceId)) throw new Error(`[map-jr-gl] setSourceTileLodParams: there is no source "${sourceId}". Add the source first, or leave out the ID for all sources.`);
-        this.post({type: 'lod', sources: sourceId ? [sourceId] : Object.keys(this.resolved?.sources ?? {}), lod: [Math.max(1, maxZoomLevelsOnScreen), Math.max(1, tileCountMaxMinRatio)]});
+        const sources = sourceId ? [sourceId] : Object.keys(this.resolved?.sources ?? {}), lod = [Math.max(1, maxZoomLevelsOnScreen), Math.max(1, tileCountMaxMinRatio)];
+        for (const id of sources) this.lods[id] = lod;
+        this.post({type: 'lod', sources, lod});
         return this;
+    }
+    /** The parameters of `setSourceTileLodParams` by source: a new engine gets them again (#1050). */
+    private lods: Record<string, number[]> = {};
+    /** A new engine (after a lost context or a fall back) gets what the calls of this entry set: the constraint and the parameters of the tile cover; #1050. */
+    protected override resend() {
+        super.resend();
+        const fn = this.tr.customConstrain;
+        if (fn) void this.ask(id => ({type: 'bound', id, fn}));
+        for (const [id, lod] of Object.entries(this.lods)) this.post({type: 'lod', sources: [id], lod});
     }
     /** As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. */
     setTransformConstrain(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) | null) {
@@ -509,7 +520,7 @@ export class Map extends CoreMap {
     /** Removes a source from the style, as in MapLibre GL JS. */
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l?.source === id);
-        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
     /**

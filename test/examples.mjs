@@ -1,12 +1,13 @@
 // Checks the example files (examples/*): each must compile, must import only names that the entries of the library
-// have, and must use only names that it defines or imports or that a browser defines (#1564). A Svelte form compiles with no warning, a <map-jr> form (.html) has the element and
-// one module script, and a Nuxt form (.nuxt.vue) uses only the names that the module for Nuxt registers.
+// have, and must use only names that it defines or imports or that a browser defines (#1564). A Svelte form compiles
+// with no warning, a <map-jr> form (.html) has the element and one module script, and a Nuxt form (.nuxt.vue) uses only
+// the names that the module for Nuxt registers.
 //   node test/examples.mjs   (after pnpm build)
 import {readFileSync, readdirSync} from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
-import {parse, compileScript, compileTemplate, babelParse, walkIdentifiers, extractIdentifiers} from 'vue/compiler-sfc';
+import {parse, compileScript, compileTemplate} from 'vue/compiler-sfc';
 import {compile as compileSvelte} from 'svelte/compiler';
 
 const dir = path.resolve(import.meta.dirname, '../examples');
@@ -15,52 +16,7 @@ let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
 
 import {entries, unknownImports} from './entry-exports.mjs';
-
-// The names that the module for Nuxt (src/nuxt.ts) registers: the components, and the controls as <name>Control.
-const nuxtModule = readFileSync(path.resolve(import.meta.dirname, '../src/nuxt.ts'), 'utf8');
-const nuxtList = pattern => [...(nuxtModule.match(pattern)?.[1] ?? '').matchAll(/'(\w+)'/g)].map(m => m[1]);
-const nuxtComponents = new Set(nuxtList(/for \(const name of \[([^\]]*)\]\) addComponent/).flatMap(n => [n, 'Lazy' + n]));
-const nuxtControls = new Set(nuxtList(/addImports\(\[([^\]]*)\]\.map\(name => \(\{name, as: name \+ 'Control'/).map(n => n + 'Control'));
-// What Nuxt imports into a page by itself: the API of Vue, and the composables and the controls of the module.
-const nuxtImports = new Set([...Object.keys(await import('vue')), ...nuxtList(/addImports\(\[([^\]]*)\]\.map\(name => \(\{name, from: vue/), ...nuxtControls]);
-
-// The names that a page has without a declaration, which are those of the browser. Node has most of them. The names
-// that only Node has are left out, and the names that only a browser has are listed.
-const globals = new Set([
-    ...Object.getOwnPropertyNames(globalThis).filter(n => !['process', 'Buffer', 'global', 'setImmediate', 'clearImmediate'].includes(n)),
-    'window', 'document', 'location', 'history', 'localStorage', 'sessionStorage', 'customElements', 'HTMLElement', 'Element', 'Node',
-    'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'getComputedStyle', 'alert', 'innerWidth', 'innerHeight',
-    'devicePixelRatio', 'Image', 'ResizeObserver', 'IntersectionObserver', 'MutationObserver', 'HTMLCanvasElement', 'OffscreenCanvas',
-]);
-/** The names that a module uses and neither declares nor imports, and that are not in `known`. */
-const freeNames = (code, known) => {
-    const ast = babelParse(code, {sourceType: 'module'}), declared = new Set(), names = new Set();
-    // (walkIdentifiers knows the declarations in functions and blocks, but not those at the top of the module.)
-    for (let s of ast.program.body) {
-        if (s.type === 'ImportDeclaration') for (const spec of s.specifiers) declared.add(spec.local.name);
-        if (/^Export(Named|Default)Declaration$/.test(s.type) && s.declaration) s = s.declaration;
-        if (s.type === 'VariableDeclaration') for (const d of s.declarations) for (const id of extractIdentifiers(d.id)) declared.add(id.name);
-        else if (/^(Function|Class)Declaration$/.test(s.type) && s.id) declared.add(s.id.name);
-    }
-    walkIdentifiers(ast.program, id => { if (!declared.has(id.name) && !known.has(id.name)) names.add(id.name); });
-    return [...names];
-};
-/** The names that an example uses and does not define, as messages. Each form is compiled to the module that runs. */
-const undefinedNames = (file, code) => {
-    const nuxt = file.endsWith('.nuxt.vue'), known = nuxt ? new Set([...globals, ...nuxtImports]) : globals, problems = [];
-    let js;
-    if (file.endsWith('.svelte')) js = compileSvelte(code, {filename: file, generate: 'client'}).js.code;
-    else if (file.endsWith('.html')) js = [...code.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
-    else if (file.endsWith('.vue')) {
-        // The template becomes a part of the setup function. A name in the template that the script does not define
-        // becomes `_ctx.<name>`, and a component that the script does not import becomes `resolveComponent("<name>")`.
-        js = compileScript(parse(code, {filename: file}).descriptor, {id: file, inlineTemplate: true}).content;
-        problems.push(...new Set([...js.matchAll(/\b_ctx\.(\w+)/g)].map(m => m[1]).filter(n => !known.has(n)).map(n => `the template uses ${n}, which is not defined`)));
-        // (A Nuxt form leaves the import of a component to Nuxt, and nuxtProblems checks its name.)
-        if (!nuxt) problems.push(...[...js.matchAll(/_resolveComponent\("([^"]+)"/g)].map(m => `<${m[1]}> is not imported`));
-    } else js = transformSync(code, {loader: file.endsWith('.jsx') ? 'jsx' : 'js', jsx: 'automatic'}).code;
-    return [...problems, ...freeNames(js, known).map(n => `${n} is not defined`)];
-};
+import {nuxtComponents, nuxtControls, undefinedNames} from './undefined-names.mjs';
 
 /** What is wrong with a Nuxt form: it imports what the module or Nuxt imports, or uses a name that the module does not register. */
 const nuxtProblems = code => [

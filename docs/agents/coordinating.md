@@ -159,8 +159,8 @@ alone cannot.
 
 ## Render tests and the status
 
-- **`node test/conformance/render.mjs` has no `--help`:** an argument that it does not know starts the whole run of
-  about ten minutes. Its options are in the comment at the top of the file.
+- **`node test/conformance/render.mjs --help`** prints its options. An argument that it does not know, or `--list`
+  without `--filter`, stops it with that text instead of starting the whole run of about ten minutes.
 - **Pull requests that commit the render results merge one at a time.** After each merge, the worker of the next
   one merges `main` and does a full run on the merged tree, and its result files and floor come from that run. On
   2026-11-18 and 2026-11-19, seven such pull requests merged this way with no conflict left in the totals.

@@ -110,7 +110,7 @@ of `dist/` as they are, list the entry and its parts in the `<head>` with `<link
 browser requests them together. The names of the parts have a hash that changes with each version. This script
 prints the lines for an entry from the files of the installed package:
 
-```js
+```js uses=process
 // preload-links.mjs: prints the <link rel="modulepreload"> lines for an entry
 // of the library.
 // Run it with: node preload-links.mjs map-jr-gl.js /assets/
