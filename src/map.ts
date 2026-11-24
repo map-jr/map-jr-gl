@@ -798,6 +798,7 @@ export class Map {
                 if (this.rotating) { this.rotating = false; this.fire('rotateend'); }
                 if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
                 this.fire('moveend');
+                this.wheelDone?.();
             }
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
@@ -1987,6 +1988,8 @@ export class Map {
     private holdTouch?: () => void;
     /** @internal Set by `cooperativeGestures`: returns true when the gesture is blocked (the page scrolls). */
     get gate() { return this.gated; }
+    /** Called when the movement of the map ends: ends the activity of `scrollZoom` 200 ms later. */
+    private wheelDone?: () => void;
     set gate(fn) { this.gated = fn; this.holdTouch?.(); }
     private bindInput() {
         const el = this.canvas, pointers = new globalThis.Map<number, {x: number; y: number}>();
@@ -2024,7 +2027,10 @@ export class Map {
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
         let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined, wheelEnd: ReturnType<typeof setTimeout> | undefined;
-        this.inputCleanup.push(() => { clearTimeout(heldTimer); clearTimeout(wheelEnd); });
+        // `scrollZoom.isActive()` is true from a wheel event until 200 ms after the zoom has ended, as in MapLibre GL JS.
+        const rested = () => { this.scrollZoom.active = false; };
+        this.wheelDone = () => { if (this.scrollZoom.active) { clearTimeout(wheelEnd); wheelEnd = setTimeout(rested, 200); } };
+        this.inputCleanup.push(() => { clearTimeout(heldTimer); clearTimeout(wheelEnd); this.wheelDone = undefined; });
 
         // Touch gestures, matching MapLibre's set: one-finger pan, pinch to zoom and (past a threshold) rotate,
         // two fingers moving vertically together to tilt, double-tap to zoom in, two-finger tap to zoom out, and
@@ -2202,7 +2208,7 @@ export class Map {
             if (tapDrag) {
                 if (!tapDrag.zoomed) {
                     // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
-                                        // (`doubleClickZoom.isActive()` is true until the next task, as in MapLibre GL JS.)
+                    // (`doubleClickZoom.isActive()` is true until the next task, as in MapLibre GL JS.)
                     if (this.doubleClickZoom.isEnabled()) { this.doubleClickZoom.active = true; setTimeout(() => { this.doubleClickZoom.active = false; }); }
                     const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, around: [x, y], duration: 300}); };
                     if (e.type === 'blur') zoom(); else mouseEvent('dblclick', e, {}, zoom);
@@ -2249,11 +2255,11 @@ export class Map {
             const p = pos(e), now = performance.now(), gap = now - lastWheel;
             let value = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
             lastWheel = now;
-            // `scrollZoom.isActive()` is true from the zoom until 200 ms after the last wheel event, as in MapLibre GL JS.
             const send = (v: number) => {
                 this.scrollZoom.active = true;
                 clearTimeout(wheelEnd);
-                wheelEnd = setTimeout(() => { this.scrollZoom.active = false; }, 200);
+                // (If the map does not move, at the limit of the zoom, the handler rests after 1 s.)
+                wheelEnd = setTimeout(rested, 1000);
                 this.post({type: 'wheel', delta: -v, x: p.x, y: p.y, kind: wheelKind!});
             };
             if (value !== 0 && value % 4.000244140625 === 0) wheelKind = 'wheel';
