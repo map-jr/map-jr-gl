@@ -946,8 +946,9 @@ export class Map {
         try {
             // An image tile, an image (`loadImage`, `addImage` by URL, an image source) and a sprite image have the type
             // `image` and the `accept` header of MapLibre GL JS (#603, #651). The protocol can answer with the bytes of the
-            // file or with a decoded image, which is copied as bytes are: the copy can go to another thread.
-            const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
+            // file or with a decoded image, which is copied as bytes are: the copy can go to another thread. A vector tile,
+            // a glyph range and a font file have the type `arrayBuffer`, as in MapLibre GL JS (#1675).
+            const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' || kind === 'Glyphs' || kind === 'Font' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
             const out = image && (data instanceof ImageBitmap || data instanceof HTMLImageElement) ? await createImageBitmap(data) : toBytes(data);
             if (ac.signal.aborted) { (out as Partial<ImageBitmap>).close?.(); throw new Error(`[map-jr-gl] the request to ${to} was aborted.`); }
             return {data: out};

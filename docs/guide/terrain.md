@@ -150,9 +150,12 @@ map.addControl(new TerrainControl({source: 'terrarium', exaggeration: 1.5}));
 
 To turn the terrain on and off from your own code, pass a new `terrain` to
 [`patch`](../reference/map.md#patch) with the main API, or call `map.setTerrain(null)` with the MapLibre compat entry.
-With the main API, a change of `terrain` does not load the style again. A click on the control changes the terrain
-without loading the style either. A `patch` of another field keeps the terrain that the last click on the control
-set. A new `terrain` or a new `style` replaces it.
+With the main API, a change of `terrain` does not load the style again.
+
+A click on the control sets `terrain` of the description with `patch` and calls the option `onTerrainChange` of the
+control with the new value. An application that passes its description again, as a component of Vue, React or Svelte does on each change of a prop, keeps the value in
+`onTerrainChange` and passes it as `terrain`. Otherwise its next description replaces the terrain of the click: a
+description without `terrain` gives the terrain of the style.
 
 **Map Jr**
 

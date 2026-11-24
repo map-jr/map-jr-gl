@@ -634,6 +634,40 @@ for (const renderer of renderers) {
         check(`[${renderer}] a change of terrain alone changes the terrain without a new style: no style.load and no style request (#1143)`,
             terrainEdit === '{"source":"dem","exaggeration":1.5} > null > {"source":"dem","exaggeration":2} loads 0 style requests 0', terrainEdit);
 
+        // The control terrain() sets `terrain` of the description (#1106): after each click the description, the terrain
+        // of the map and the label agree, onTerrainChange gets the value, an update with the description keeps it, and no
+        // click loads the style (#1143). An update with a new description without `terrain`, as a component of Vue gives,
+        // replaces the click with the terrain of the style (none here), and the label follows.
+        const terrainButton = await page.evaluate(async renderer => {
+            const t = window.t, {terrain} = await import('/dist/controls.js'), out = [], calls = [], styleRequests = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const url = URL.createObjectURL(new Blob([JSON.stringify(style)], {type: 'application/json'}));
+            const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
+            const controls = [terrain({source: 'dem', exaggeration: 2, onTerrainChange: v => calls.push(JSON.stringify(v))})];
+            const base = {style: url, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, controls, transformRequest: (u, type) => { if (type === 'Style') styleRequests.push(u); }};
+            const host = t.lib.createMap(el, {...base, terrain: {source: 'dem'}});
+            for (let i = 0; i < 300 && !el.querySelector('.map-jr-ctrl-terrain'); i++) await new Promise(r => setTimeout(r, 30));
+            const b = el.querySelector('.map-jr-ctrl-terrain');
+            const read = async () => { await new Promise(r => setTimeout(r, 50)); await idle(host); return `${JSON.stringify(host.description.terrain)}/${JSON.stringify(host.getResolvedDescription().style.terrain ?? null)}/${b.getAttribute('aria-label')}`; };
+            out.push(await read());
+            let loads = 0;
+            const count = () => loads++, map = host._map, requestsBefore = styleRequests.length;
+            map.on('style.load', count);
+            b.click(); out.push(await read());
+            host.update({...host.description, globalState: {x: 1}}); out.push(await read());
+            b.click(); out.push(await read());
+            host.patch({globalState: {x: 2}}); out.push(await read());
+            const clickLoads = `loads ${loads} style requests ${styleRequests.length - requestsBefore}`;
+            map.off('style.load', count);
+            host.update({...base, globalState: {x: 3}}); out.push(await read());
+            host.destroy(); el.remove(); URL.revokeObjectURL(url);
+            return `${out.join(' > ')} calls ${calls.join(',')} ${clickLoads}`;
+        }, renderer);
+        const tOn1 = '{"source":"dem"}/{"source":"dem"}/Disable terrain', tOff = 'null/null/Enable terrain', tOn2 = '{"source":"dem","exaggeration":2}/{"source":"dem","exaggeration":2}/Disable terrain';
+        check(`[${renderer}] the control terrain() sets terrain of the description without a new style, calls onTerrainChange, and an update with the description keeps the terrain (#1106)`,
+            terrainButton === `${tOn1} > ${tOff} > ${tOff} > ${tOn2} > ${tOn2} > undefined/null/Enable terrain calls null,{"source":"dem","exaggeration":2} loads 0 style requests 0`, terrainButton);
+
         // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
         const noDem = await page.evaluate(async renderer => {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
