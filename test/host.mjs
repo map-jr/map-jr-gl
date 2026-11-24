@@ -2075,6 +2075,27 @@ for (const renderer of renderers) {
             duplicate.said.length === 2 && duplicate.said.some(w => w.includes('navigation() is in the list twice') && w.includes('Remove the second navigation()'))
             && duplicate.said.some(w => w.includes('the key "own"')) && duplicate.compasses === 1, JSON.stringify(duplicate));
 
+        // Two custom() items with one key and different positions: the first wins and stays through later changes of controls (#1662).
+        const pair = await page.evaluate(async () => {
+            const t = window.t, {custom, scale} = await import('/dist/controls.js'), warn = console.warn;
+            console.warn = () => {};
+            try {
+                let added = 0, removed = 0;
+                const own = {onAdd: () => { added++; return Object.assign(document.createElement('div'), {className: 'own-pair'}); }, onRemove: () => { removed++; document.querySelector('#host .own-pair')?.remove(); }};
+                const list = more => [custom({key: 'pair', position: 'top-left', ...own}), custom({key: 'pair', position: 'bottom-right', ...own}), ...more];
+                t.host.update(t.spec = {...t.spec, controls: list([])});
+                const first = document.querySelector('#host .own-pair');
+                t.host.update(t.spec = {...t.spec, controls: list([scale()])});
+                t.host.update(t.spec = {...t.spec, controls: list([])});
+                await new Promise(r => setTimeout(r, 50));
+                const now = document.querySelector('#host .own-pair'), r = {added, removed, same: !!first && first === now, corner: now?.parentElement?.className.match(/ctrl-(top|bottom)-(left|right)/)?.[0]};
+                t.host.update(t.spec = {...t.spec, controls: undefined});
+                return r;
+            } finally { console.warn = warn; }
+        });
+        check(`[${renderer}] of two custom() controls with one key and different positions, the first is placed once and stays when controls change (#1662)`,
+            pair.added === 1 && pair.removed === 0 && pair.same && pair.corner?.endsWith('top-left'), JSON.stringify(pair));
+
         // Without `position`, a control goes to its own default corner: the bottom left for `scale()`, else the top right (#1197).
         const corners = await page.evaluate(async () => {
             const t = window.t, {navigation, scale} = await import('/dist/controls.js');
