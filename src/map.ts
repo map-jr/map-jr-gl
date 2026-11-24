@@ -1,4 +1,4 @@
-import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
+import {fetchWith, httpError, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
@@ -1926,7 +1926,7 @@ export class Map {
             let data = this.embedded.get(url);
             if (!data) {
                 data = fetch(url.replace(/&#38;|&amp;/g, '&')).then(async res => {
-                    if (!res.ok) throw new Error(`Marker image ${url}: HTTP ${res.status}`);
+                    if (!res.ok) throw httpError('marker image', url, res.status);
                     const blob = await res.blob();
                     return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
                 });

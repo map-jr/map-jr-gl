@@ -75,7 +75,8 @@ to protect those qualities.
   any other change increases the third. The workflow `Release` does the rest
   when the pull request is merged. A release never goes out while `CI` is red on `main`.
 - **A pull request has one concern.** A fix and its test belong together. An unrelated cleanup goes into its own
-  pull request.
+  pull request. One exception: up to four small fixes of tests or of the agent tools (no change of `src/`, one commit
+  each) can share a pull request, whose body says `Fixes #N` for each, because each pull request runs all of CI.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
   its results (`git fetch origin bench-results && git show origin/bench-results:README.md`) before you ask the
   owner to test on a device.
@@ -92,8 +93,9 @@ One session can act as the coordinator and give issues to workers (subagents). T
 worker, so it has only the rules. The brief that every worker reads is `docs/agents/worker-brief.md`, and the notes
 for the coordinator are `docs/agents/coordinating.md`. Read the notes before you start a batch.
 
-- **A worker gets one issue and one branch.** Its prompt is the path of the brief and four lines: the issue, the
-  branch, the scope, and the files and lines where the work starts.
+- **A worker gets one issue and one branch,** or a bundle of small fixes of tests or tools (see above). Its prompt
+  is the path of the brief and four lines: the issue, the branch, the scope, and the files and lines where the work
+  starts.
 - **A worker opens the pull request and stops.** The coordinator watches CI, merges, and sends a failure back to the
   same worker, which still has its context.
 - **A worker reports in at most 12 lines** in the format of the brief. It files nothing and merges nothing. The

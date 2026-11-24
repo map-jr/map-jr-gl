@@ -172,6 +172,11 @@ test('expressions: number-format with an option that Intl.NumberFormat rejects g
         assert.equal(run(['number-format', 1234.5, {locale: 'not_a_locale!'}]), '1234.5');
         assert.equal(run(['number-format', 1234.5, {'min-fraction-digits': 500}]), '1234.5');
         assert.equal(run(['number-format', 1234.5, {'min-fraction-digits': 4, 'max-fraction-digits': 1}]), '1234.5');
+        // A locale that is not text is rejected too: Intl.NumberFormat would accept 7 in silence (#682).
+        warnings.length = 0;
+        assert.equal(run(['number-format', 1234.5, {locale: 7}]), '1234.5');
+        assert.equal(warnings.length, 1);
+        assert.match(warnings[0], /"locale":7/);
         // One expression warns once, however many values of a property are wrong, and a good value still formats.
         warnings.length = 0;
         const f = compileExpr(['number-format', 2, {locale: 'en-US', currency: ['get', 'c']}], {dd: false, zoom: false});

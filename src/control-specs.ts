@@ -36,7 +36,9 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
             onRemove(map: Map) { added++; slot.remove(); real?.onRemove(map); real = undefined; },
         };
     };
-    return {key: name + JSON.stringify(options), position, create} as ControlSpec;
+    // (The key sorts the properties of each object, so that the order in which they are written does not matter; #1236.)
+    const key = name + JSON.stringify(options, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a < b ? -1 : 1)) : v);
+    return {key, position, create} as ControlSpec;
 };
 /**
  * Creates buttons to zoom in and out, and a compass that turns the map to the north. The control is placed at `'top-right'` unless `position` sets it.

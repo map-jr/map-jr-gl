@@ -36,6 +36,9 @@ const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{co
 const pins = {data: {pins: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {color: '#d00'}, geometry: {type: 'Point', coordinates: view.center}}]}},
     layers: [{id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
 
+// 0. The files of the entry start with 'use client', so that a server component of Next.js can import MapJr (#1202).
+for (const f of ['react.js', 'react.dev.js']) check(`dist/${f} starts with 'use client'`, readFileSync(path.join(root, 'dist', f), 'utf8').startsWith(`'use client';\n`));
+
 // 1. On the server: the first view from the server entry, given to the component.
 const firstView = await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, ...pins, overrides: {building: {hidden: true}}});
 const frame = child => h('div', {id: 'frame', style: {width: 800, height: 500}}, child);

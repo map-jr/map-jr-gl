@@ -574,6 +574,17 @@ for (const renderer of renderers) {
         const flatWant = ['null', '{"source":"dem","exaggeration":2}', 'null', '{"source":"dem","exaggeration":1.5}', '{"source":"dem","exaggeration":2}', '{"source":"dem","exaggeration":2}'];
         check(`[${renderer}] terrain: null gives a flat map with a style that has terrain, and no field or undefined gives the terrain of the style (#1104)`, JSON.stringify(flat) === JSON.stringify(flatWant), JSON.stringify(flat));
 
+        // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
+        const noDem = await page.evaluate(async renderer => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const host = window.t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
+            const message = await host.queryElevation([0, 0]).then(() => 'resolved', e => String(e?.message ?? e));
+            host.destroy(); el.remove();
+            return message;
+        }, renderer);
+        check(`[${renderer}] queryElevation without a raster-dem source rejects with a [map-jr-gl] message that says to add one (#1214)`,
+            noDem.startsWith('[map-jr-gl] queryElevation()') && noDem.includes('raster-dem'), noDem);
+
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
         const projection = await page.evaluate(async renderer => {
