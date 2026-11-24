@@ -1280,6 +1280,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
         overlay(element, o) {
+            check(1647, 'overlay()', o);
             let now = o;
             const make = () => {
                 if (!now.popup) {
@@ -1298,20 +1299,21 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
                 return p;
             };
             let made: Marker | Popup | null = make();
+            const set = (next: OverlayOptions) => {
+                const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
+                // (Only a new position moves the element: a render during or after a drag that passes the same
+                // `lngLat` again leaves it where the user put it.)
+                const moved = String(next.lngLat) !== String(now.lngLat);
+                now = next;
+                if (!made) return;
+                if (again) { const old = made; made = null; old.remove(); made = make(); return; }
+                if (made instanceof Marker) made.setDraggable(!!next.draggable);
+                if (moved) made.setLngLat(next.lngLat);
+            };
             const overlay: MapOverlay = {
-                update(next) {
-                    const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
-                    // (Only a new position moves the element: a render during or after a drag that passes the same
-                    // `lngLat` again leaves it where the user put it.)
-                    const moved = String(next.lngLat) !== String(now.lngLat);
-                    now = next;
-                    if (!made) return;
-                    if (again) { const old = made; made = null; old.remove(); made = make(); return; }
-                    if (made instanceof Marker) made.setDraggable(!!next.draggable);
-                    if (moved) made.setLngLat(next.lngLat);
-                },
+                update(next) { check(1647, 'update()', next); set(next); },
                 // (An explicit `lngLat: undefined` keeps the position: the element cannot be placed without one.)
-                patch(part) { overlay.update({...now, ...part, lngLat: part?.lngLat ?? now.lngLat}); },
+                patch(part) { check(1647, 'patch()', part); set({...now, ...part, lngLat: part?.lngLat ?? now.lngLat}); },
                 remove() { const old = made; made = null; old?.remove(); },
             };
             return overlay;
