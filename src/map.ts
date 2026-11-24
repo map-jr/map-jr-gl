@@ -2023,7 +2023,8 @@ export class Map {
         let rotating = false, moved = 0, samples: {t: number; x: number; y: number; w?: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
-        let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined;
+        let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined, wheelEnd: ReturnType<typeof setTimeout> | undefined;
+        this.inputCleanup.push(() => { clearTimeout(heldTimer); clearTimeout(wheelEnd); });
 
         // Touch gestures, matching MapLibre's set: one-finger pan, pinch to zoom and (past a threshold) rotate,
         // two fingers moving vertically together to tilt, double-tap to zoom in, two-finger tap to zoom out, and
@@ -2119,7 +2120,8 @@ export class Map {
                 if (g.mode !== 'undecided') this.fire('drag', {originalEvent: e});
                 if (g.mode === 'pitch') { if (this.touchPitch.isEnabled()) { this.touchPitch.active = true; this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5}); } }
                 else if (g.mode === 'pinch' && this.touchZoomRotate.isEnabled()) {
-                    this.touchZoomRotate.active = true;
+                    // (As in MapLibre GL JS, whose touch pan runs together with the pinch.)
+                    this.touchZoomRotate.active = true; this.dragPan.active = this.dragPan.isEnabled();
                     this.post({type: 'pan', dx: f.mid.x - g.mid.x, dy: f.mid.y - g.mid.y, x: f.mid.x, y: f.mid.y});
                     if (f.dist > 0 && g.dist > 0) this.post({type: 'zoom', delta: Math.log2(f.dist / g.dist), x: f.mid.x, y: f.mid.y});
                     let turn = f.angle - g.angle;
@@ -2135,7 +2137,7 @@ export class Map {
                 if (g.mode !== 'undecided') { g.dist = f.dist; g.angle = f.angle; g.mid = f.mid; }
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
-                if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
+                if (moved > 6) { tapDrag.zoomed = this.touchZoomRotate.active = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
             } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; const b = turn(prev, p), t = performance.now(); aim = {b: aim.b + b, p: Math.max(this.tr.minPitch, Math.min(this.tr.maxPitch, aim.p - dy * 0.5))}; addTurnSample(samples, {t, x: aim.b, y: aim.p}); this.post({type: 'rotate', delta: b, pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gated && (solo(e), true))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
@@ -2200,6 +2202,8 @@ export class Map {
             if (tapDrag) {
                 if (!tapDrag.zoomed) {
                     // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
+                                        // (`doubleClickZoom.isActive()` is true until the next task, as in MapLibre GL JS.)
+                    if (this.doubleClickZoom.isEnabled()) { this.doubleClickZoom.active = true; setTimeout(() => { this.doubleClickZoom.active = false; }); }
                     const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, around: [x, y], duration: 300}); };
                     if (e.type === 'blur') zoom(); else mouseEvent('dblclick', e, {}, zoom);
                 }
@@ -2245,7 +2249,13 @@ export class Map {
             const p = pos(e), now = performance.now(), gap = now - lastWheel;
             let value = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
             lastWheel = now;
-            const send = (v: number) => this.post({type: 'wheel', delta: -v, x: p.x, y: p.y, kind: wheelKind!});
+            // `scrollZoom.isActive()` is true from the zoom until 200 ms after the last wheel event, as in MapLibre GL JS.
+            const send = (v: number) => {
+                this.scrollZoom.active = true;
+                clearTimeout(wheelEnd);
+                wheelEnd = setTimeout(() => { this.scrollZoom.active = false; }, 200);
+                this.post({type: 'wheel', delta: -v, x: p.x, y: p.y, kind: wheelKind!});
+            };
             if (value !== 0 && value % 4.000244140625 === 0) wheelKind = 'wheel';
             else if (value !== 0 && Math.abs(value) < 4) wheelKind = 'trackpad';
             else if (gap > 400) {
