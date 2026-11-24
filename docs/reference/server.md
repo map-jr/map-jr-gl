@@ -38,8 +38,16 @@ and the sprite.
 - A [limit for requests](#limits-for-requests) is reached, or the value of a limit is not valid.
 - A key of `data` is the id of a source that is not a GeoJSON source.
 - `tileZoomOffset` is not a whole number.
+- The options have no `bounds` and lack `center`, `zoom` or both. This happens in JavaScript, or when TypeScript does
+  not check the options.
 
 ## `RenderOptions`
+
+`RenderOptions` has the members in the table and a view, the type `RenderView`: either `center` and `zoom`, or
+`bounds`. `bounds` overrides `center` and `zoom`, so options with `bounds` can leave them out. In TypeScript, options
+without `bounds` and without both `center` and `zoom` do not compile, and at run time the render rejects with an
+error that names what is missing. The type `RenderOptionsBase` has the same
+members without the required view, for options that get their view later.
 
 <!-- ref:RenderOptions:start -->
 | Name | Type | Default | Description |
@@ -47,8 +55,8 @@ and the sprite.
 | [`style`](#style) **required** | `unknown` | | The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as `style` of `MapDescription`. |
 | `colorScheme` | `'auto' \| 'light' \| 'dark'` | | The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. |
 | `globalState` | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. |
-| `center` **required** | `LngLatLike` | | The center of the view, `[lng, lat]`. |
-| `zoom` **required** | `number` | | The zoom level of the view. |
+| `center` | `LngLatLike` | | The center of the view, `[lng, lat]`. |
+| `zoom` | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
@@ -88,16 +96,14 @@ The server cannot read the color scheme of the browser, so `colorScheme: 'auto'`
 
 ### `bounds` and `padding`
 
-With `bounds`, the renderer fits the box into the view and uses neither `center` nor `zoom`. Both are required by
-the type, so pass any value for them. `padding` is the space in CSS pixels that the box keeps from each side.
+With `bounds`, the renderer fits the box into the view and uses neither `center` nor `zoom`, so the options can leave
+them out. `padding` is the space in CSS pixels that the box keeps from each side.
 
 ```js
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  center: [0, 0],
-  zoom: 0,
   bounds: [-74.02, 40.7, -73.97, 40.72],
   padding: 20,
   width: 800,

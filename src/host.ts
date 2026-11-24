@@ -404,6 +404,12 @@ export interface OverlayOptions {
 export interface MapOverlay {
     /** Replaces all options of the overlay with `options`. The element moves only when `lngLat` changes, so a dragged element stays where it was dropped. */
     update(options: OverlayOptions): void;
+    /**
+     * Changes only the options that `options` has, for example `patch({lngLat: [2.35, 48.86]})` to move a popup and keep its
+     * other options. `anchor`, `popup` or `draggable` set to `undefined` returns to its default. Another option set to
+     * `undefined` is removed, except `lngLat`, which keeps the position. After `remove`, `patch` has no effect.
+     */
+    patch(options: Partial<Omit<OverlayOptions, 'lngLat'>> & {lngLat?: Position}): void;
     /** Removes the element from the map. */
     remove(): void;
 }
@@ -702,7 +708,7 @@ export interface MapInstance {
      * the map. For many points, a symbol layer in `layers` renders much faster.
      * @param element The element to place.
      * @param options The position of the element, and whether it is a popup or can be dragged.
-     * @returns An overlay with `update` and `remove`.
+     * @returns An overlay with `update`, `patch` and `remove`.
      */
     overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
     /**
@@ -1292,7 +1298,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
                 return p;
             };
             let made: Marker | Popup | null = make();
-            return {
+            const overlay: MapOverlay = {
                 update(next) {
                     const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
                     // (Only a new position moves the element: a render during or after a drag that passes the same
@@ -1304,8 +1310,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
                     if (made instanceof Marker) made.setDraggable(!!next.draggable);
                     if (moved) made.setLngLat(next.lngLat);
                 },
+                // (An explicit `lngLat: undefined` keeps the position: the element cannot be placed without one.)
+                patch(part) { overlay.update({...now, ...part, lngLat: part?.lngLat ?? now.lngLat}); },
                 remove() { const old = made; made = null; old?.remove(); },
             };
+            return overlay;
         },
         listen(type, fn: (event: any) => void) { const w = (e: any) => fn(hostEvent(e)); map.on(type, w); return () => { map.off(type, w); }; },
         once(type) {

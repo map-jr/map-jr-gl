@@ -558,8 +558,8 @@ toBlob(type?: string, quality?: number): Promise<Blob>
 
 `type` defaults to `'image/png'`. Without `quality`, the browser uses its default quality.
 
-The image has the size of the canvas in device pixels: the CSS size times `devicePixelRatio`. Markers, popups,
-controls and the attribution are elements of the page, so the image does not have them. To print the map, put the
+The image has the size of the canvas in device pixels: the CSS size times `devicePixelRatio`, up to 3. Markers,
+popups, controls and the attribution are elements of the page, so the image does not have them. To print the map, put the
 image in an `<img>`, because the canvas itself can print blank.
 
 ```js
@@ -801,7 +801,7 @@ overlay(
 | `element` **required** | `HTMLElement` | | The element to place. |
 | `options` **required** | [`OverlayOptions`](#overlayoptions) | | The position of the element, and whether it is a popup or can be dragged. |
 
-**Returns:** [`MapOverlay`](#mapoverlay). An overlay with `update` and `remove`.
+**Returns:** [`MapOverlay`](#mapoverlay). An overlay with `update`, `patch` and `remove`.
 <!-- ref:MapInstance.overlay:end -->
 
 ```js
@@ -864,12 +864,34 @@ the focus returns to the element of the map that had it before.
 ### `MapOverlay`
 
 `overlay` returns a `MapOverlay`. Its `update` replaces all options of the overlay with its argument, so pass the
-complete options each time.
+complete options each time. Its `patch` changes only the options that its argument has, and keeps the others.
+An option set to `undefined` in `patch` returns to its default, or is removed when it has none, but `lngLat: undefined`
+keeps the position. After `remove`, `update` and `patch` have no effect.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+});
+const content = document.createElement('p');
+content.textContent = 'Battery Park';
+const popup = map.overlay(content, {
+  lngLat: [-74.0165, 40.7033],
+  popup: true,
+  onClose: () => popup.remove(),
+});
+// Moves the popup. It keeps its content, its close button and its other
+// options.
+popup.patch({lngLat: [-74.0134, 40.7128]});
+```
 
 <!-- ref:MapOverlay:start -->
 | Name | Type | Description |
 |---|---|---|
 | `update` | `(options: `[`OverlayOptions`](#overlayoptions)`) => void` | Replaces all options of the overlay with `options`. |
+| `patch` | `(options: Partial<Omit<`[`OverlayOptions`](#overlayoptions)`, 'lngLat'>> & {lngLat?: Position}) => void` | Changes only the options that `options` has, for example `patch({lngLat: [2.35, 48.86]})` to move a popup and keep its other options. |
 | `remove` | `() => void` | Removes the element from the map. |
 <!-- ref:MapOverlay:end -->
 

@@ -14,6 +14,13 @@ import type {GeoJSONGeometry} from './host.ts';
 import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
+// The warnings of the engine workers, each once on the page, as each thread warns once (expr.ts, #1141).
+const pageWarned = new Set<string>();
+const pageWarn = (msg: string) => {
+    if (pageWarned.size > 200 || pageWarned.has(msg)) return;
+    pageWarned.add(msg);
+    console.warn('[map-jr-gl] ' + (pageWarned.size > 200 ? 'The workers sent 200 different warnings. Later ones are not shown.' : msg));
+};
 
 /** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
 declare const __DEV__: boolean;
@@ -33,6 +40,8 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     fitBoundsOptions?: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number};
     /** Keeps the camera in the fragment of the URL (`#zoom/lat/lng`), so that a link shows the same view. A string gives the camera a name in the fragment. */
     hash?: boolean | string;
+    /** The number of canvas pixels for each CSS pixel, as in MapLibre GL JS. By default the map follows `devicePixelRatio`, up to 3. */
+    pixelRatio?: number;
     /**
      * Where the engine (camera, placement, drawing) runs. 'worker' keeps the map smooth while the page is busy;
      * 'main' renders on the page's own thread. 'auto' picks 'worker' when the browser supports it.
@@ -307,6 +316,9 @@ export class Map {
         c.insertBefore(this.canvas, c.firstChild);
         this.tr.minZoom = options.minZoom ?? -2;
         this.tr.maxZoom = options.maxZoom ?? 22;
+        const ratio = options.pixelRatio;
+        if (ratio! > 0 && ratio! < Infinity) this.pixelRatio = ratio;
+        else if (ratio !== undefined) console.warn(`[map-jr-gl] The option pixelRatio is ${ratio}. Give a number above 0, or leave it out to follow devicePixelRatio.`);
         this.measure();
         this.canvas.width = Math.round(this.tr.width * this.dpr);
         this.canvas.height = Math.round(this.tr.height * this.dpr);
@@ -453,6 +465,7 @@ export class Map {
             const off = this.canvas.transferControlToOffscreen(), w = engineWorker;
             this.workers.push(w);
             w.onmessage = e => {
+                if (e.data.type === 'warn') return pageWarn(e.data.msg);
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
                 this.fellBack(e.data.message);
@@ -805,7 +818,8 @@ export class Map {
             }
         } else if (e.type === 'idle') {
             // (A report from before the last command: the engine sends another after that command.)
-            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
+            // (While a style of `setStyle` loads, the map is not idle: its `idle` comes after that style; #1167.)
+            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
             // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
@@ -1476,10 +1490,11 @@ export class Map {
         // (A style that cannot be loaded is an `error` event, as a failure of the first style is. The map keeps its style.)
         let next: any;
         this.styleLoading = true;
-        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); } return; }
+        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); this.post({type: 'repaint'}); } return; }
         // (A style that was asked for later has replaced this one.)
         if (turn !== this.styleTurn) return;
-        this.styleLoading = false;
+        // (An `idle` of the engine was dropped while the style loaded, and a style that changes nothing below sends no command: a repaint brings `idle` again.)
+        this.styleLoading = false; this.post({type: 'repaint'});
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         next = options?.transformStyle?.(this.rawStyle, next) ?? next;
         // (With `diff`, as in MapLibre GL JS 6.17: a style that differs from this one only in the camera changes nothing
@@ -1906,7 +1921,8 @@ export class Map {
         }));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
         // (From the top layer down, and in a layer the feature that is drawn last, which is on top, first.)
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
+        // A layer that was removed while the query was in flight has no features in the answer (#705).
+        const features = (found: QueriedFeature[]): RenderedFeature[] => found.filter(f => this.getLayer(f.layer!)).reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
             type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
         }));
