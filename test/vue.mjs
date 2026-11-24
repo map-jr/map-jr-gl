@@ -54,6 +54,12 @@ const extended = await renderToString(createSSRApp({render: () => h(MapJr, {mapS
     sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}],
     data: {live: square([view.center[0] + 0.004, view.center[1]])}})}));
 check('server: the SVG has the sources and layers of the description and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({layers: extended.includes('#123456'), data: extended.includes('#654321')}));
+// The global state of the description sets the background, and `fitMaxZoom` stops the fit at zoom 5, where the layer
+// with `maxzoom: 6` shows. A fit up to zoom 22 would hide that layer (#1752).
+const stateStyle = {version: 8, state: {tone: {default: '#111111'}}, sources: {wide: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[6.44, 45.95], [8.44, 45.95], [8.44, 47.95], [6.44, 47.95], [6.44, 45.95]]]}}}},
+    layers: [{id: 'bg', type: 'background', paint: {'background-color': ['global-state', 'tone']}}, {id: 'low', type: 'fill', source: 'wide', maxzoom: 6, paint: {'fill-color': '#abcdef'}}]};
+const stated = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: stateStyle, globalState: {tone: '#fedcba'}, initialView: {bounds: [7.43, 46.94, 7.45, 46.96], fitMaxZoom: 5}, ssr: {width: 400, height: 300}, attribution: false})}));
+check('server: the ssr prop passes globalState and initialView.fitMaxZoom to the server renderer', stated.includes('#fedcba') && !stated.includes('#111111') && stated.includes('#abcdef'), JSON.stringify({globalState: stated.includes('#fedcba'), fitMaxZoom: stated.includes('#abcdef')}));
 // A render that fails: the page has no first view, the console has one message, and a listener of `error` gets the error.
 const failing = async (props) => {
     const logged = [], emitted = [], thrown = [], error = console.error;

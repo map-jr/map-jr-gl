@@ -100,6 +100,10 @@ The control `colorScheme()` of `@map-jr/map-jr-gl/controls` calls
 [`onColorSchemeChange`](description.md#colorscheme-and-oncolorschemechange) of the description. Keep the value in
 state and pass it back as `colorScheme`, or the next description sets the old value again.
 
+The control [`terrain()`](controls.md#terrain) calls its option `onTerrainChange` with the new `terrain` after a click.
+Keep that value in state and pass it back as `terrain` of the description, or the next description overrides the
+click.
+
 ## `mapState`
 
 ```ts

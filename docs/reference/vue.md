@@ -44,7 +44,7 @@ new `key`.
 | `initialView` | [`InitialView`](types.md#initialview)` \| null` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | `sources` | `Record<string, SourceInput> \| null` | | Sources to add to the style, by id. |
 | `layers` | `LayerInput[] \| null` | | Layers to add to the style. |
-| `terrain` | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
+| [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
 | `images` | `Record<string, ImageInput> \| null` | | Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
 | `sprite` | `{id: string; url: string}[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. |
 | [`data`](#data) | `Record<string, string \| GeoJSON> \| null` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
@@ -179,6 +179,43 @@ function addPlace(event) {
 
 A reactive object (from `ref()` or `reactive()`) in `data` works, and the map sends a JSON copy of it to its
 workers. For large GeoJSON, that copy costs time: use `shallowRef` or `toRaw()`.
+
+### `terrain`
+
+A click on the control [`terrain()`](controls.md#terrain) sets the terrain of the map and calls its option
+`onTerrainChange` with the new value. The component passes the prop `terrain` to the map again at the next change of
+any prop, and the prop then overrides the click. Keep the value of `onTerrainChange` in a ref and bind it to
+`terrain`:
+
+```vue
+<script setup>
+import {ref} from 'vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+import {navigation, terrain} from '@map-jr/map-jr-gl/controls';
+
+// null: flat until the user clicks the button.
+const relief = ref(null);
+const controls = [
+  navigation(),
+  terrain({
+    source: 'terrarium',
+    exaggeration: 1.5,
+    onTerrainChange: value => (relief.value = value),
+  }),
+];
+</script>
+
+<template>
+  <div style="height: 500px">
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation.json"
+      :initial-view="{center: [7.6586, 45.9763], zoom: 12.4, pitch: 60}"
+      :terrain="relief"
+      :controls="controls"
+    />
+  </div>
+</template>
+```
 
 ### `ssr`
 

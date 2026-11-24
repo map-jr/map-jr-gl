@@ -511,3 +511,5 @@ For two styles, call `map.setStyle` with the other style when the media query ch
 - [Change the look of the controls](controls.md#change-the-look-of-the-controls) for the colors of the controls in
   each scheme.
 - [Server rendering](server-rendering.md) for the scheme of an image that a server renders.
+- [Let the user choose the style](controls.md#let-the-user-choose-the-style) for the control `styles()`, whose entries
+  can have a light and a dark style.
