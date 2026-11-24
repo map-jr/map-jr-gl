@@ -33,6 +33,8 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     fitBoundsOptions?: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number};
     /** Keeps the camera in the fragment of the URL (`#zoom/lat/lng`), so that a link shows the same view. A string gives the camera a name in the fragment. */
     hash?: boolean | string;
+    /** The number of canvas pixels for each CSS pixel, as in MapLibre GL JS. By default the map follows `devicePixelRatio`, up to 3. */
+    pixelRatio?: number;
     /**
      * Where the engine (camera, placement, drawing) runs. 'worker' keeps the map smooth while the page is busy;
      * 'main' renders on the page's own thread. 'auto' picks 'worker' when the browser supports it.
@@ -307,6 +309,9 @@ export class Map {
         c.insertBefore(this.canvas, c.firstChild);
         this.tr.minZoom = options.minZoom ?? -2;
         this.tr.maxZoom = options.maxZoom ?? 22;
+        const ratio = options.pixelRatio;
+        if (ratio! > 0 && ratio! < Infinity) this.pixelRatio = ratio;
+        else if (ratio !== undefined) console.warn(`[map-jr-gl] The option pixelRatio is ${ratio}. Give a number above 0, or leave it out to follow devicePixelRatio.`);
         this.measure();
         this.canvas.width = Math.round(this.tr.width * this.dpr);
         this.canvas.height = Math.round(this.tr.height * this.dpr);

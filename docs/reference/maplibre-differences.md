@@ -178,6 +178,13 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A miter join whose length is more than 127/63 (about 2.02) times the line width breaks into a notch, because the extrusion of the vertex overflows its byte (the render test `line-miter-limit/global-state` shows it).
 - This library draws the full miter up to `line-miter-limit`.
 
+### The pixel ratio
+
+- **MapLibre GL JS:** Without the option `pixelRatio`, the canvas follows `devicePixelRatio` with no limit. A
+  `pixelRatio` of 0, a negative number or `NaN` is used as it is, with no message.
+- **This library (`@map-jr/map-jr-gl/maplibre-compat`):** Without the option, the canvas follows `devicePixelRatio` up
+  to 3. A `pixelRatio` that is not a number above 0 writes a warning, and the map follows `devicePixelRatio`.
+
 ### The lowest zoom
 
 - **MapLibre GL JS:** `minZoom` is -2 by default. The world is never less tall than the map.
