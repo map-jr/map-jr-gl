@@ -405,11 +405,16 @@ for (const renderer of renderers) {
             host.update({...spec, style: {...style, layers: moved}});
             await wait(300); await idle();
             const order = map.getStyle().layers.map(l => l.id).indexOf(layers[fill].id) === last;
+            // (A positive control: a zoom out after the reorder loads new tiles, so the map must report `req`. Without it
+            // the check passes on an empty report, as it did on the shared map of the suite; #976.)
+            const after = {...steps};
+            host.moveTo({zoom: 12.3, duration: 0}); await idle();
+            const control = (steps.req ?? 0) - (after.req ?? 0);
             host.destroy(); el.remove();
-            return {fill: fill >= 0 && fill < last, order, steps};
+            return {fill: fill >= 0 && fill < last, order, steps: after, control};
         }, renderer);
         check(`[${renderer}] update with a new order of the layers of the style object builds no tile again (#961)`,
-            reorder.fill && reorder.order && !reorder.steps.rebuild && !reorder.steps.req && !reorder.steps.drop, JSON.stringify(reorder));
+            reorder.fill && reorder.order && !reorder.steps.rebuild && !reorder.steps.req && !reorder.steps.drop && reorder.control > 0, JSON.stringify(reorder));
         // A changed minzoom of a layer of `layers` and of a layer of the style object: the map changes the zoom range in
         // place, loads no style, and draws the layer only at the new zooms (#871).
         const range = await page.evaluate(async () => {
