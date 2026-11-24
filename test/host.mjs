@@ -1429,6 +1429,30 @@ for (const renderer of renderers) {
             madeData.first === 1 && madeData.added === 1 && madeData.restyled + '' === '1,1' && madeData.removed && madeData.errors.length === 1 && madeData.errors[0].startsWith('[map-jr-gl] data: the source ')
             && madeData.said.length === 1 && madeData.said[0].startsWith('[map-jr-gl] the layer "b-fill" uses the source "b"'), JSON.stringify(madeData));
 
+        // 3d. A paint or layout property that the style specification does not have for the type of the layer warns once
+        // for each layer and property in the development build, with the nearest name: in the first description and in a
+        // layer that an update() adds as an edit (#1139).
+        const unknownProps = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const point = {type: 'Point', coordinates: [-74.0065, 40.7085]};
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false, data: {p: point},
+                layers: [{id: 'p-circle', type: 'circle', source: 'p', paint: {'circle-colour': 'red', 'circle-radius': 4}}]};
+            const host = t.lib.createMap(el, spec);
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            const s2 = {...spec, layers: [...spec.layers, {id: 'p-line', type: 'line', source: 'p', layout: {'line-capp': 'round'}}]};
+            host.update(s2); await new Promise(r => setTimeout(r, 300));
+            host.update({...s2, layers: s2.layers.map(l => ({...l}))});
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 3000); });
+            await new Promise(r => setTimeout(r, 300));
+            console.warn = warn; host.destroy(); el.remove();
+            return said.filter(w => / property "/.test(w));
+        }, renderer);
+        check(`[${renderer}] an unknown paint or layout property warns once for each layer and property with the nearest name in the development build (#1139)`,
+            unknownProps.length === 2 && unknownProps[0].startsWith('[map-jr-gl] the circle layer "p-circle", paint property "circle-colour":') && unknownProps[0].endsWith('Write "circle-color".')
+            && unknownProps[1].startsWith('[map-jr-gl] the line layer "p-line", layout property "line-capp":') && unknownProps[1].endsWith('Write "line-cap".'), JSON.stringify(unknownProps));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));

@@ -3720,6 +3720,32 @@ for (const mode of renderers) {
             dev.errors.length === 3 && dev.errors[0].startsWith(`[map-jr-gl] layers.c.paint.circle-radius: ${nested}`) && dev.errors[1].startsWith(`[map-jr-gl] layers.c.paint.circle-opacity: ${nested}`) && dev.errors[2].startsWith(`[map-jr-gl] layers.c.paint.circle-blur: ${one}`)
             && dev.radius === '*' && prod.errors.length === 0, JSON.stringify(zoom));
     }
+    // A paint or layout property that the style specification does not have for the type of the layer fires `error` with
+    // MapLibre's text ("unknown property") in the development build, once for each layer and property, also when
+    // setPaintProperty sets it. The production build fires none (#1139).
+    if (mode === 'main') {
+        const unknown = await page.evaluate(async () => {
+            const out = {};
+            for (const file of ['map-jr-gl-maplibre-compat.dev.js', 'map-jr-gl-maplibre-compat.js']) {
+                const mod = await import('/dist/' + file);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {s: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'c', type: 'circle', source: 's', paint: {'circle-colour': 'red'}}]}});
+                const errors = [];
+                m.on('error', e => errors.push(e.error.message));
+                await new Promise(r => m.once('load', r));
+                m.setPaintProperty('c', 'circle-opacityy', 0.5);
+                m.setPaintProperty('c', 'circle-radius', 3);
+                await new Promise(r => m.once('idle', r));
+                out[file] = errors;
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        const dev = unknown['map-jr-gl-maplibre-compat.dev.js'], prod = unknown['map-jr-gl-maplibre-compat.js'];
+        check('[main] maplibre-compat: the development build fires error with "unknown property" and the nearest name for a property that the layer type does not have, once each; the production build fires none',
+            dev.length === 2 && dev[0].startsWith('[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
+            && dev[1].startsWith('[map-jr-gl] layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
+    }
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {
         const logo = await page.evaluate(async () => {
