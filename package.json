@@ -15,7 +15,7 @@
     "status": "node scripts/status.mjs",
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
-    "test:expressions": "node test/conformance/expressions.mjs --min=358",
+    "test:expressions": "node test/conformance/expressions.mjs --min=360",
     "test:api": "node test/conformance/api.mjs --min=122",
     "test:spec": "node test/conformance/spec.mjs --min=223",
     "test:browser": "node test/interact.mjs .cache/shots && node test/host.mjs",

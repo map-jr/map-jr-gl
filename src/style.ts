@@ -44,9 +44,9 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
         // (`resampling` is the newer name; MapLibre GL JS reads it before `raster-resampling`.)
         resampling: ['resampling', 'string', null], rasterResampling: ['raster-resampling', 'string', 'linear'], layerBlend: ['raster-layer-blend', 'string', 'normal']},
     hillshade: {
-        shadow: ['hillshade-shadow-color', 'color', '#000'], highlight: ['hillshade-highlight-color', 'color', '#fff'], accent: ['hillshade-accent-color', 'color', '#000'],
-        exaggeration: ['hillshade-exaggeration', 'number', 0.5], direction: ['hillshade-illumination-direction', 'number', 335],
-        anchor: ['hillshade-illumination-anchor', 'string', 'viewport'], method: ['hillshade-method', 'string', 'standard'], altitude: ['hillshade-illumination-altitude', 'number', 45],
+        shadow: ['hillshade-shadow-color', 'colorArray', '#000'], highlight: ['hillshade-highlight-color', 'colorArray', '#fff'], accent: ['hillshade-accent-color', 'color', '#000'],
+        exaggeration: ['hillshade-exaggeration', 'number', 0.5], direction: ['hillshade-illumination-direction', 'numberArray', 335],
+        anchor: ['hillshade-illumination-anchor', 'string', 'viewport'], method: ['hillshade-method', 'string', 'standard'], altitude: ['hillshade-illumination-altitude', 'numberArray', 45],
         resampling: ['resampling', 'string', 'linear'],
     },
     'color-relief': {opacity: ['color-relief-opacity', 'number', 1], resampling: ['resampling', 'string', 'linear']},
@@ -230,6 +230,8 @@ const numbers = (a: any) => Array.isArray(a) && a.every(x => typeof x == 'number
 /** The value at `t` between `a` and `b`: numbers, and lists of numbers of one length (a color premultiplied), else `b`. */
 function blend(a: any, b: any, t: number, color: boolean): any {
     if (typeof a == 'number' && typeof b == 'number') return a + (b - a) * t;
+    // (A colorArray: each color of two lists of the same length.)
+    if (Array.isArray(a?.[0]) && Array.isArray(b?.[0]) && a.length === b.length) return a.map((x: any, i: number) => blend(x, b[i], t, true));
     if (!numbers(a) || !numbers(b) || a.length !== b.length) return b;
     if (!color) return a.map((x: number, i: number) => x + (b[i] - x) * t);
     const alpha = a[3] + (b[3] - a[3]) * t;
@@ -257,7 +259,7 @@ export function transition(l: CompiledLayer, json: LayerJSON, was: CompiledLayer
             const t = performance.now();
             if (t >= end) return to.eval(zoom, f);
             const a = from.eval(zoom, f);
-            return t < begin ? a : blend(a, to.eval(zoom, f), ease((t - begin) / span), kind === 'color');
+            return t < begin ? a : blend(a, to.eval(zoom, f), ease((t - begin) / span), kind === 'color' || kind === 'colorArray');
         }} as Prop;
     }
     return last;
