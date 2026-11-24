@@ -928,7 +928,8 @@ export class Map extends CoreMap {
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         // (Development build) An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text, once for
-        // each layer, property and value. The map still draws it (#1087).
+        // each layer, property and value. The map still draws it (#1087). So does a property that the style specification
+        // does not have for the type of the layer, once for each layer and property (#1139).
         if (__DEV__ && type === 'styledataloading') zoomCurveErrors(this.rawStyle, this.zoomErrors ??= new Set(), error => this.fire('error', {error}));
         // The `eventData` of the camera call that made this move (see `jumpTo`). The move's own fields win.
         // User input starts a move of the user's: kept eventData (of a call that did not move the camera) is not on it.

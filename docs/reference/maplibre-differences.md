@@ -366,6 +366,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - MapLibre GL JS reports errors in the style.
 - This library does not validate the style. It writes a warning for each layer or property that it cannot draw. Five calls fire `error` and change nothing, as in MapLibre GL JS: `addLayer` with an id that exists, `addLayer` with a source that the style does not have, `addLayer` with a source object when the style has a source with the id of the layer, `addSource` with an id that exists, and `removeSource` of a source that a layer uses. (MapLibre GL JS throws in the third case.) That the production build does not validate the style is a decision and will stay. Validation in the development build is possible later.
+- A paint or layout property that the style specification does not have for the type of the layer (for example `circle-radious`) has no effect in both entries, where MapLibre GL JS rejects the style, or the call of `addLayer`, `setPaintProperty` or `setLayoutProperty`. The development build of `@map-jr/map-jr-gl` writes one warning for each layer and property, and the development build of `@map-jr/map-jr-gl/maplibre-compat` fires `error` with the text of MapLibre GL JS (`layers.<id>.paint.circle-radious: unknown property "circle-radious"`). Both name the nearest property of that layer type when one is near, such as `circle-radius`. The production build checks nothing. A property in the wrong group (a layout property in `paint`) is not reported, and the map reads it from either group.
 
 ### Reading the canvas
 

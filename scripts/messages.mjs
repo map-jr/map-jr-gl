@@ -52,6 +52,8 @@ const placeholderNames = [
     ['mistakes.ts', 'name', /MapLibre GL JS|not available in/, 'member'],
     ['mistakes.ts', 'privateState[key]', null, 'advice'],
     ['mistakes.ts', 'overlayOptions.join(", ")', null, 'overlay options'],
+    // (The last part of layers.<id>.<group>.<property>, #1139.)
+    ['mistakes.ts', 'where.slice(where.lastIndexOf(".") + 1)', null, 'property'],
     ['pmtiles.ts', 'Math.round(n / 1048576)', null, 'file size'],
     ['react.ts', 'name', /MapImage "/, 'image name'],
     ['vue.ts', 'props.name', /MapImage "/, 'image name'],
