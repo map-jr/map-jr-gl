@@ -220,6 +220,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** The nearest tile above it is drawn in its place.
 - This library does the same, for raster and elevation tiles.
 
+### An empty tile (204) and the source property `emptyResponse`
+
+- **MapLibre GL JS:** A response of HTTP 204 is an empty tile, and nothing is drawn there. Version 6.17 does not read the source property `emptyResponse`, so `"missing"` has the same result as the default `"blank"`.
+- This library does the same. The value `"missing"` writes a warning one time for each source.
+
 ### A tile whose request fails
 
 - **MapLibre GL JS:** The failure fires `error` once. The tile is not requested again while it stays in the view. It
