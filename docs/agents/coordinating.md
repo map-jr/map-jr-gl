@@ -160,10 +160,9 @@ alone cannot.
   run to the next, also before the suspected merge (#820).
 
 - **The example pages** (`node test/conformance/examples.mjs --write`, about 30 minutes) need
-  `.cache/maplibre-gl-js` and `python3` with Pillow. In a new worktree, link the clone of another worktree
-  (`ln -s <worktree>/.cache/maplibre-gl-js .cache/`), and make a virtual environment with Pillow in the scratchpad
-  and put its `bin` first on `PATH`. The run takes the pages first and compares them at the end, so a missing Pillow
-  fails only after about ten minutes.
+  `.cache/maplibre-gl-js` and `python3` with Pillow. The tool clones the checkout when it is missing. It checks for
+  Pillow before it takes any page and stops with a message when python3 cannot import it. Make a virtual environment
+  with Pillow in the scratchpad and put its `bin` first on `PATH`.
 
 ## A release
 
