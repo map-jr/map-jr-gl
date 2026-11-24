@@ -159,6 +159,14 @@ function once(raw: object, url: string, load: () => Promise<any>, partial?: Part
  */
 export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail, geojsonBuffer?: number): Promise<ResolvedStyle> {
     const bad = (error: unknown): typeof SKIP => { if (!fail) throw error; fail(error); return SKIP; };
+    // A source that cannot be used: each map (its `fail`) hears of it one time for the source object.
+    const badOnce = (raw: object, error: () => Error) => {
+        if (!fail) throw error();
+        let m = fetched.get(raw);
+        if (m?.url !== '') fetched.set(raw, m = {url: '', p: Promise.resolve(), err: 1});
+        const t = m.told ??= new WeakSet();
+        if (!t.has(fail)) { t.add(fail); fail(error()); }
+    };
     // (With `partial` or `fail`, `once` reports a failure itself, one time for each map.)
     const get = (raw: object, url: string, load: () => Promise<any>) => partial || fail ? once(raw, url, load, partial, fail) : once(raw, url, load);
     if (typeof style === 'string') {
@@ -200,13 +208,13 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         }
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') return;
         if (!raw.tiles && !raw.url) {
-            // (Reported one time for the source object, not again for each change of the style.)
-            if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`)); }
+            // (Reported one time for the source object to each map, not again for each change of the style; #855.)
+            badOnce(raw, () => new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`));
             return;
         }
         if (raw.type === 'vector' && raw.encoding === 'mlt') {
             // MapLibre Tiles are not decoded (#1436): the source is left out, and reported one time for the source object (#1438).
-            if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`)); }
+            badOnce(raw, () => new Error(`[map-jr-gl] The source "${name}" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`));
             return;
         }
         let src = raw;

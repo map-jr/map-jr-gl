@@ -237,6 +237,10 @@ const touches = (a: TileID, b: TileID) => {
 
 /** How many times a tile whose request failed is requested again. */
 const TILE_RETRIES = 3;
+/** After the last of those, the milliseconds until the next request, for as long as the view needs the tile (#686). */
+const TILE_RETRY_LATER = 15000;
+/** A request after the last retry runs in the background: `idle` and the loaded state of the source do not wait for it, and its failure fires no `error` (#686). */
+const background = (t: TileState) => t.state === 'loading' && t.tries! > TILE_RETRIES;
 /** Encodes GeoJSON data as JSON bytes on the first call, so that several tile workers cost one encoding and a copy of bytes each, not one structured clone each (#878). Data that is not an object is sent as it is. */
 function packGeoJSON(data: unknown): () => Uint8Array | null {
     let bytes: Uint8Array | null | undefined;
@@ -1437,11 +1441,14 @@ export class Engine {
             t.state = 'error';
             t.rev = ++this.tilesVersion;
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
-            this.emit({type: 'error', message: err.message});
+            // (The tile reported its failure with its first four requests, as MapLibre GL JS fires one `error`.)
+            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
-            if (t.tries! < TILE_RETRIES && !finalFailure(err)) { const wait = 500 * 2 ** t.tries!; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
+            // After those, it is requested every 15 s while the view needs it, in the background (see `background`): an
+            // overview tile that failed four times stood in for nothing until the source changed (#686).
+            if (!finalFailure(err)) { const wait = t.tries! < TILE_RETRIES ? 500 * 2 ** t.tries! : TILE_RETRY_LATER; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
             this.repaint();
         });
     }
@@ -1682,8 +1689,8 @@ export class Engine {
                 if (t && t.used < 0) t.used = frameNo;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
-                if (!t || t.state === 'loading' || t.retryAt || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
-                if (!t || t.state === 'loading' || t.stale || t.rebuilding) loading.add(source);
+                if (!t || t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
+                if (!t || t.state === 'loading' && !background(t) || t.stale || t.rebuilding) loading.add(source);
                 // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
                 // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
                 for (let m = t, z = id.z, x = id.x, y = id.y; m?.missing && z > src.minzoom && z > id.z - 10;) {
@@ -1713,7 +1720,7 @@ export class Engine {
                     // (A tile of the view whose request failed needs its overview now: it stands in for that tile, so it is
                     // requested at once, its arrival changes the image, and `idle` waits for it (#379).)
                     const v = this.tiles.get(source + '|' + id.key), failed = v?.state === 'error' && !v.missing;
-                    if (failed && t?.state === 'loading') { complete = false; if (t.used < 0) t.used = frameNo; }
+                    if (failed && t?.state === 'loading' && !background(t)) { complete = false; if (t.used < 0) t.used = frameNo; }
                     if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1; if (failed) complete = false; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.

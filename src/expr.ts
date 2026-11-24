@@ -63,13 +63,16 @@ function parseColorUncached(s: string): RGBA | null {
 const GEOM = ['Unknown', 'Point', 'LineString', 'Polygon'];
 // The set only removes repeated console messages and changes no result, so the maps of a thread share it. Its
 // messages hold style text, so it keeps at most 100 of them and then stops warning (#588).
+// A worker sends its warnings to the thread of the map instead (`relayWarnings`), so that the console has each one once
+// and not once per thread (#1141).
 const warned = new Set<string>();
+let relay: ((msg: string) => void) | undefined;
+export const relayWarnings = (to: (msg: string) => void) => { relay = to; };
 export function warnOnce(msg: string) {
     if (warned.has(msg) || warned.size > 100) return;
     warned.add(msg);
-    console.warn('[map-jr-gl] ' + (warned.size > 100
-        ? 'The styles on this page caused 100 different warnings about expressions and filters. Later ones are not shown.'
-        : msg));
+    msg = warned.size > 100 ? 'The styles on this page caused 100 different warnings about expressions and filters. Later ones are not shown.' : msg;
+    if (relay) relay(msg); else console.warn('[map-jr-gl] ' + msg);
 }
 
 function lerp(a: any, b: any, t: number): any {

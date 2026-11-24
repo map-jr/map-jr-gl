@@ -67,10 +67,12 @@ export type ReactMapImageProps = react.MapImageProps<string>;
 /** The options of the Svelte action `mapJr` of `@map-jr/map-jr-gl/svelte`. */
 export type SvelteMapAction = svelte.MapAction;
 export type MapJrElement = element.MapJrElement;
-export type RenderOptions = server.RenderOptions;
+/** The members of `RenderOptions` of `@map-jr/map-jr-gl/server`; the type adds that a view is required (`RenderView`). */
+export type RenderOptions = server.RenderOptionsBase;
 export type RenderResult = server.RenderResult;
 export type ElementRenderOptions = server.ElementRenderOptions;
-export type ImageOptions = server.ImageOptions;
+/** The members of `ImageOptions` of `@map-jr/map-jr-gl/server`; the type adds that a view is required (`RenderView`). */
+export type ImageOptions = server.ImageOptionsBase;
 export type ImageResult = server.ImageResult;
 export type SSROverrides = style.SSROverrides;
 /** The class `Map` of `@map-jr/map-jr-gl/maplibre-compat`. */

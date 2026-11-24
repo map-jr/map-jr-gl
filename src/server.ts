@@ -18,8 +18,20 @@ import {httpError} from './requests.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
 
-/** The options of `renderToSVG` and `renderFirstView`. */
-export interface RenderOptions {
+/**
+ * The view of `renderToSVG`, `renderFirstView` and `renderToImage`: `center` and `zoom`, or `bounds` to fit. With
+ * `bounds`, `center` and `zoom` can be left out, and they have no effect.
+ */
+export type RenderView = {center: LngLatLike; zoom: number} | {bounds: LngLatBoundsInput};
+
+/**
+ * The options of `renderToSVG`: the members of `RenderOptionsBase` and a view (`RenderView`), which is `center` and
+ * `zoom`, or `bounds`.
+ */
+export type RenderOptions = RenderOptionsBase & RenderView;
+
+/** The members of `RenderOptions`, with `center` and `zoom` optional. `RenderOptions` adds that a view is required. */
+export interface RenderOptionsBase {
     /**
      * The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as
      * `style` of `MapDescription`. Of `{light, dark}`, the server renders `dark` when `colorScheme` is `'dark'`, and `light` otherwise.
@@ -34,10 +46,10 @@ export interface RenderOptions {
      * `'auto'` and no value are `'light'` here, while the map follows `prefers-color-scheme` for `'auto'`.
      */
     globalState?: Record<string, unknown> | null;
-    /** The center of the view, `[lng, lat]`. `bounds` overrides it. */
-    center: LngLatLike;
-    /** The zoom level of the view. `bounds` overrides it. */
-    zoom: number;
+    /** The center of the view, `[lng, lat]`. Required without `bounds`; `bounds` overrides it. */
+    center?: LngLatLike;
+    /** The zoom level of the view. Required without `bounds`; `bounds` overrides it. */
+    zoom?: number;
     /**
      * The bearing of the view in degrees.
      * @default 0
@@ -160,7 +172,7 @@ export interface RenderResult {
  * and the allowed hosts. (The style, its sources and its tiles can come from another party.) It reads each body
  * itself, so that a body that does not end, or that is too large, stops the request.
  */
-function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
+function limitedFetch(o: RenderOptionsBase, fetchFn: typeof fetch): typeof fetch {
     const total = o.timeout ?? 30000, each = o.requestTimeout ?? 10000, max = o.maxBytes ?? 0;
     for (const [name, v] of [['timeout', total], ['requestTimeout', each], ['maxBytes', max]] as const)
         if (!(v >= 0)) throw new Error(`[map-jr-gl] server render: "${name}" is ${v}. Pass a number that is 0 (no limit) or more.`);
@@ -229,6 +241,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
 async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
+    // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
+    if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] server render: the options have ${o.center == null && o.zoom == null ? 'no "center" and no "zoom"' : o.center == null ? '"zoom" but no "center"' : '"center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
     const dz = o.tileZoomOffset ?? 0;
     if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
@@ -256,7 +270,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
     if (o.bounds) { const p = sides(o.padding), b = (o.bounds as {toArray?(): unknown[]}).toArray?.() ?? o.bounds as unknown[], fit = fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], o.width, o.height, p, p, 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
-    else tr.set(o.center, o.zoom, o.bearing ?? 0);
+    else tr.set(o.center!, o.zoom!, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers, state);
@@ -371,7 +385,10 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
 }
 
 /** The options of `renderFirstView`: those of `renderToSVG`, and the credits and the controls of the first view. */
-export interface FirstViewOptions extends RenderOptions {
+export type FirstViewOptions = FirstViewOptionsBase & RenderView;
+
+/** The members of `FirstViewOptions`, with `center` and `zoom` optional. `FirstViewOptions` adds that a view is required. */
+export interface FirstViewOptionsBase extends RenderOptionsBase {
     /** The credits to show instead of those of the sources, as HTML. `false` shows none, and leaves out the attribution of the controls as well. */
     attribution?: string | string[] | false;
     /**
@@ -416,7 +433,7 @@ export async function renderFirstView(o: FirstViewOptions): Promise<string> {
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800
@@ -463,7 +480,7 @@ export async function renderElement(description: MapDescription, options: Elemen
     try {
         const fit = !d.view && d.initialView?.bounds;
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
-            width, height, images: d.images as RenderOptions['images'], sources: d.sources, layers: d.layers as RenderOptions['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
+            width, height, images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
             attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
             controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, label: rest.label ?? d.locale?.['Map.Title'], nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
             attributionOptions: d.attribution === false ? undefined : d.attribution as {compact?: boolean; customAttribution?: string | string[]} | undefined});
@@ -485,7 +502,10 @@ export interface Rasteriser {
  * The options of `renderToImage`: those of `renderToSVG` except `inlineImages`, and the options of the image.
  * `renderToImage` always embeds images, because the rasterizer cannot load linked ones.
  */
-export interface ImageOptions extends Omit<RenderOptions, 'inlineImages'> {
+export type ImageOptions = ImageOptionsBase & RenderView;
+
+/** The members of `ImageOptions`, with `center` and `zoom` optional. `ImageOptions` adds that a view is required. */
+export interface ImageOptionsBase extends Omit<RenderOptionsBase, 'inlineImages'> {
     /** The renderer that converts the SVG to an image. */
     rasteriser: Rasteriser;
     /**

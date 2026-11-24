@@ -245,11 +245,17 @@ try {
     // Elements of the page on the map: a marker with own content and a popup, as child components.
     const overlays = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value;
+        // Waits until `ok()` is true, for at most 5 s (a fixed wait failed on a loaded machine, #711).
+        const until = async ok => { for (const end = performance.now() + 5000; !ok() && performance.now() < end;) await wait(50); };
+        const near = (el, lngLat, frame) => { const r = el?.getBoundingClientRect(), q = host.project(lngLat); return !!r?.width && Math.abs(r.x + r.width / 2 - frame.x - q.x) < 3 && Math.abs(r.bottom - frame.y - q.y) < 3; };
         const where = id => { const r = document.getElementById(id)?.getBoundingClientRect(); return r && r.width ? [Math.round(r.x + r.width / 2), Math.round(r.bottom)] : null; };
-        host.moveTo({center: [-74.0065, 40.7085], zoom: 14}); await wait(600);
-        const frame = document.getElementById('frame').getBoundingClientRect(), at = host.project([-74.0065, 40.7085]);
+        const frame = document.getElementById('frame').getBoundingClientRect();
+        host.moveTo({center: [-74.0065, 40.7085], zoom: 14});
+        await until(() => !host.state.get().moving && Math.abs(host.state.get().view.zoom - 14) < 1e-6 && near(document.getElementById('own-pin'), [-74.0065, 40.7085], frame) && !!document.querySelector('.map-jr-popup #own-tip'));
+        const at = host.project([-74.0065, 40.7085]);
         const pin = where('own-pin'), tip = !!document.querySelector('.map-jr-popup #own-tip');
-        t.pin.value = [-74.0, 40.71]; await wait(400);
+        t.pin.value = [-74.0, 40.71];
+        await until(() => near(document.getElementById('own-pin'), [-74.0, 40.71], frame));
         // Attributes that are not props fall through to the element, and the content stays visible after a re-render (#161).
         const box = document.getElementById('own-pin')?.parentElement, tipShown = !!document.getElementById('own-tip')?.getClientRects().length;
         const attrsOk = !!box && box.hasAttribute('data-own') && box.classList.contains('own-class') && getComputedStyle(box).color === 'rgb(255, 0, 0)' && box.style.display !== 'none';
@@ -257,7 +263,8 @@ try {
         // The overlay keeps position absolute and its place after re-renders, with and without fallthrough attributes (#243).
         const kept = [];
         for (const p of [[-74.003, 40.709], [-74.001, 40.711], [-74.0, 40.71]]) {
-            t.pin.value = p; await wait(300);
+            t.pin.value = p;
+            await until(() => { const b = document.getElementById('bare-pin')?.parentElement?.getBoundingClientRect(), q = host.project(p); return !!b?.width && Math.abs(b.x + b.width / 2 - frame.x - q.x) < 3 && Math.abs(b.y + b.height / 2 - frame.y - q.y) < 3; });
             const bare = document.getElementById('bare-pin')?.parentElement, own = document.getElementById('own-pin')?.parentElement, r = bare?.getBoundingClientRect(), q = host.project(p);
             kept.push(!!bare && !!own && getComputedStyle(bare).position === 'absolute' && getComputedStyle(own).position === 'absolute' && own.classList.contains('own-class')
                 && Math.abs(r.x + r.width / 2 - frame.x - q.x) < 3 && Math.abs(r.y + r.height / 2 - frame.y - q.y) < 3);
@@ -265,7 +272,8 @@ try {
         const keptOk = kept.every(Boolean);
         // (The callback runs at the click, not after the fade: a busy page plays the fade late. See #172.)
         document.querySelector('.map-jr-popup-close-button')?.click();
-        const atOnce = t.closed; await wait(300);
+        const atOnce = t.closed;
+        await until(() => !document.getElementById('own-tip'));
         return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, atOnce, closed: t.closed, tipGone: !document.getElementById('own-tip'), tipShown, attrsOk, keptOk, kept};
     });
     check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes at the click', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.atOnce === 1 && overlays.closed === 1 && overlays.tipGone && overlays.tipShown && overlays.attrsOk && overlays.keptOk, JSON.stringify(overlays));

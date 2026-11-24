@@ -77,10 +77,14 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
 - `load` fires once, before the first `idle`.
 - `style.load` fires each time that a new style has loaded.
 - `remove` fires during [`destroy()`](map.md#destroy), before the pending queries reject.
-- `idle` waits for the tiles of the view. A tile whose request fails with a network error or an HTTP status 5xx is
-  requested again after 0.5 s, 1 s and 2 s. After the fourth failure, the map is idle without the tile. A status 4xx
-  other than 404, a rejection by a custom protocol and an error of `transformRequest` are final: the tile is not
-  requested again. A 404 is a tile that the server does not have, and it is not an error. Each failure fires `error`.
+- `idle` waits for the tiles of the view. A tile whose request fails with a network error or an HTTP status 5xx
+  is handled as follows:
+  - It is requested again after 0.5 s, 1 s and 2 s, and each of these four failures fires `error`.
+  - After the fourth failure, the map is idle without the tile. The tile is requested again every 15 s while the view
+    needs it. These later requests run in the background: the map stays idle while they load, a failure fires no
+    `error`, and a tile that arrives is drawn.
+  - A status 4xx other than 404, a rejection by a custom protocol and an error of `transformRequest` are final: the
+    tile is not requested again. A 404 is a tile that the server does not have, and it is not an error.
 - `data` fires with each `styledata` and `sourcedata`, and `dataloading` with each `styledataloading` and
   `sourcedataloading`. `styledata` has `dataType: 'style'`.
 - `projectiontransition` fires for each new style, and when `projection` of the description or the control `globe`
@@ -94,8 +98,22 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
 ## A lost WebGL context
 
 When the browser takes the WebGL context away, the map fires `webglcontextlost`, starts again on a new canvas with
-the same view and data, and fires `webglcontextrestored`. A map with the worker renderer starts again on the main
-thread in these cases, and with `renderer: 'worker'` it writes a warning:
+the same view and data, and fires `webglcontextrestored`. This list is the state set by the description or by calls
+that the new canvas keeps:
+
+- the style with the changes of calls: sources, layers, paint and layout properties, filters, terrain, sky, light,
+  projection and the global state;
+- the data of the GeoJSON sources, the images and the feature state;
+- the camera padding, the limits of the camera (`minZoom`, `maxZoom`, `minPitch`, `maxPitch` and `maxBounds`) and
+  `transformRequest`;
+- the fonts: in `@map-jr/map-jr-gl` the `fonts` of the description, and in `@map-jr/map-jr-gl/maplibre-compat` the
+  option `fonts` and the fonts of `addFonts`, which only that entry has;
+- in `@map-jr/map-jr-gl/maplibre-compat`, the function of the option `transformConstrain` or of
+  `setTransformConstrain`, the values of `setSourceTileLodParams` and the custom layers, whose `onAdd` runs again
+  with the new context.
+
+A map with the worker renderer starts again on the main thread in these cases, and with `renderer: 'worker'` it writes
+a warning:
 
 - the worker loses the context before its first frame;
 - the worker loses the context twice within 10 seconds;
