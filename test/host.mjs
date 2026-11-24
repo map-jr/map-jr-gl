@@ -2017,6 +2017,28 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
 
+        // A control that the list has twice is shown once, and the development build warns once for it (#1195).
+        const duplicate = await page.evaluate(async () => {
+            const t = window.t, {navigation, scale, custom} = await import('/dist/controls.js');
+            const warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(String(a[0]));
+            try {
+                const spec = () => [navigation(), scale(), navigation(), custom({key: 'own', element: document.createElement('div')}), custom({key: 'own', element: document.createElement('div')})];
+                t.host.update(t.spec = {...t.spec, controls: spec()});
+                t.host.update(t.spec = {...t.spec, controls: spec()}); // the same list again: no second warning
+                const said = () => warned.filter(w => w.startsWith('[map-jr-gl] controls:'));
+                const count = () => document.querySelectorAll('#host .map-jr-ctrl-compass').length;
+                for (let i = 0; i < 40 && (said().length < 2 || !count()); i++) await new Promise(r => setTimeout(r, 50));
+                await new Promise(r => setTimeout(r, 100));
+                const compasses = count();
+                t.host.update(t.spec = {...t.spec, controls: undefined});
+                return {said: said(), compasses};
+            } finally { console.warn = warn; }
+        });
+        check(`[${renderer}] a duplicate control is shown once and warns once in the development build, naming the control (#1195)`,
+            duplicate.said.length === 2 && duplicate.said.some(w => w.includes('navigation() is in the list twice') && w.includes('Remove the second navigation()'))
+            && duplicate.said.some(w => w.includes('the key "own"')) && duplicate.compasses === 1, JSON.stringify(duplicate));
+
         // Without `position`, a control goes to its own default corner: the bottom left for `scale()`, else the top right (#1197).
         const corners = await page.evaluate(async () => {
             const t = window.t, {navigation, scale} = await import('/dist/controls.js');
