@@ -307,7 +307,7 @@ renderToImage(options: ImageOptions): Promise<ImageResult>
 ```
 
 Draws the view as a JPEG, WebP or PNG image with `rasteriser`. It always embeds raster tiles and the icon sheet,
-because the rasterizer cannot load linked images, so `ImageOptions` has no `inlineImages`. The default of
+because the rasterizer cannot load linked images, so `ImageOptions` has no `inlineImages`. A JavaScript caller that passes it gets a warning once. The default of
 `highDensity` is `true` when `pixelRatio` is more than 1, and a value that you pass overrides it.
 
 | Name | Type | Default | Description |

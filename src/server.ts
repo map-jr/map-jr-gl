@@ -480,11 +480,17 @@ export interface ImageResult {
     tiles: string[];
 }
 
+// The warning about `inlineImages` in `renderToImage` is shown once per process; it holds no state of a map.
+let warnedInline = false;
 /**
  * Renders the first frame of a map as a raster image, whose size does not depend on how dense the data is.
  * @returns A promise of the image. It rejects as `renderToSVG` does.
  */
 export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
+    if ('inlineImages' in o && !warnedInline) {
+        warnedInline = true;
+        console.warn('[map-jr-gl] renderToImage(): "inlineImages" has no effect, because the image always embeds raster tiles and icons. Remove "inlineImages".');
+    }
     const {svg, tiles} = await renderToSVG({highDensity: (o.pixelRatio ?? 1) > 1, ...o, inlineImages: true});
     const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;
     const plain = svg.replace(/ data-map-jr-ssr="" style="[^"]*"/, '');
