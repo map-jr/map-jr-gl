@@ -2656,6 +2656,25 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a GeoJSON source that fails is requested and fires error as in MapLibre GL JS after a paint change and setStyle (#809)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
     }
+    // A source with no "tiles" and no "url" gives an `error` to each map that uses the same style object, one time (#855).
+    {
+        const errors = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const style = {version: 8, sources: {none: {type: 'vector'}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, counts = [0, 0], maps = [];
+            for (const i of [0, 1]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
+                m.on('error', e => { if (/no "tiles" and no "url"/.test(e.error?.message)) counts[i]++; });
+                maps.push(m);
+                await new Promise(r => m.once('load', r));
+            }
+            maps[0].setPaintProperty('bg', 'background-color', '#eee');
+            await wait(500);
+            for (const m of maps) { m.getContainer().remove(); m.remove(); }
+            return counts;
+        }, mode);
+        check(`[${mode}] compat: a source with no tiles and no url gives one error to each map that shares the style object (#855)`, JSON.stringify(errors) === '[1,1]', JSON.stringify(errors));
+    }
     // A filter with ["zoom"] on a tile that is over-zoomed past the source's maxzoom sees the over-zoomed zoom, as in
     // MapLibre GL JS 6.17 (`overscaledZ`): at zoom 16 on a source that stops at 14, [">=", ["zoom"], 15] passes (#991).
     {
