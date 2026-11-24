@@ -168,17 +168,24 @@ Two things go wrong most often:
 - The element of the map has no `position`. The first view is positioned at `inset: 0`, so the element needs
   `position: relative` or another position that is not `static`. The Vue and React components and `<map-jr>` set it.
 
-The first view of `renderFirstView` and `renderElement` keeps the center and the zoom of the render at any size of
-the element, as the map does:
+The first view of `renderFirstView` and `renderElement` is placed in the element as the map places its view. With
+`center` and `zoom`, the map keeps the center and the zoom at any size of the element, and so does the first view:
 
 - In an element that is as large as the render or smaller, the SVG has its own size (1:1) and is centered, and the
-  element crops it.
+  element crops it. The live map shows the same area.
 - In an element that is wider or higher than the render, the SVG is scaled up as much as it needs to cover the
-  element, and it stays centered. Its labels and lines are then larger than those of the live map, and its edges are
-  cropped.
+  element, and it stays centered. The live map shows the render's zoom, so at the hand-off the view zooms out: the
+  map shows a larger area than the first view, and its labels and lines are smaller.
 
-Set `width` and `height` to the size that the element has on most screens, so that the first view has the scale of
-the live map. A render that is larger than the element costs bytes for the parts that the element crops.
+With `bounds`, the map fits the bounds to the element, so its zoom depends on the size of the element. The SVG is
+scaled to the size of the element and covers it, and it stays centered:
+
+- In an element of the shape of the render, the first view shows the same area as the live map.
+- In an element of another shape, the SVG is cropped on one axis, while the live map fits the bounds and shows more
+  on that axis. With `padding`, the scale of the first view can also differ a little from that of the fit.
+
+Set `width` and `height` to the size that the element has on most screens, so that the first view shows what the
+live map shows. A render that is larger than the element costs bytes for the parts that the element crops.
 
 ## Controls in the first view
 

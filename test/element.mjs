@@ -170,12 +170,15 @@ try {
 
     // The first view of 200 by 200 in elements of another shape and size: drawn at 1:1 and centered, cropped by a smaller
     // element, and scaled up as little as covers a larger one, with no band of the page and no overflow (#1427).
-    const shapeView = await renderFirstView({style: {version: 8, sources: {c: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
-        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#00aa00'}}, {id: 'c', type: 'circle', source: 'c', paint: {'circle-radius': 20, 'circle-color': '#0000ff'}}]},
-    center: [0, 0], zoom: 2, width: 200, height: 200, attribution: false});
-    const boxes = [{w: 400, h: 200, scale: 2}, {w: 200, h: 400, scale: 2}, {w: 120, h: 160, scale: 1}];
-    page = await browser.newPage({viewport: {width: 600, height: 900}});
-    await page.setContent(`<body style="margin:0;background:#ff00ff">${boxes.map(b => `<div style="position:relative;width:${b.w}px;height:${b.h}px;margin-bottom:20px">${shapeView}</div>`).join('')}</body>`);
+    // With `bounds` the map fits them to the element, so the first view is scaled as the fit is: the bounds of 40 by 20 degrees
+    // fill the width of the render, half of it in an element of 100 x 100 and twice of it in one of 400 x 200.
+    const shapeStyle = {version: 8, sources: {c: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
+        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#00aa00'}}, {id: 'c', type: 'circle', source: 'c', paint: {'circle-radius': 20, 'circle-color': '#0000ff'}}]};
+    const shapeView = await renderFirstView({style: shapeStyle, center: [0, 0], zoom: 2, width: 200, height: 200, attribution: false});
+    const fitView = await renderFirstView({style: shapeStyle, bounds: [[-20, -10], [20, 10]], width: 200, height: 200, attribution: false});
+    const boxes = [{w: 400, h: 200, scale: 2}, {w: 200, h: 400, scale: 2}, {w: 120, h: 160, scale: 1}, {w: 100, h: 100, scale: 0.5, fit: true}, {w: 400, h: 200, scale: 2, fit: true}];
+    page = await browser.newPage({viewport: {width: 600, height: 1300}});
+    await page.setContent(`<body style="margin:0;background:#ff00ff">${boxes.map(b => `<div style="position:relative;width:${b.w}px;height:${b.h}px;margin-bottom:20px">${b.fit ? fitView : shapeView}</div>`).join('')}</body>`);
     const shot = (await page.screenshot()).toString('base64');
     const shape = await page.evaluate(async ({shot, boxes}) => {
         const img = new Image();
@@ -195,13 +198,13 @@ try {
                 if (page_(p)) band++;
                 if (blue(p)) { n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
             }
-            return {box: `${boxes[i].w}x${boxes[i].h}`, scale: +m.a.toFixed(3), offset: [Math.round(m.e + 100 * m.a - (r.left + r.width / 2)), Math.round(m.f + 100 * m.d - (r.top + r.height / 2))], band,
+            return {box: `${boxes[i].w}x${boxes[i].h}${boxes[i].fit ? ' bounds' : ''}`, scale: +m.a.toFixed(3), offset: [Math.round(m.e + 100 * m.a - (r.left + r.width / 2)), Math.round(m.f + 100 * m.d - (r.top + r.height / 2))], band,
                 dot: n ? {size: x1 - x0 + 1, offset: [Math.round((x0 + x1 + 1) / 2 - (r.left + r.width / 2)), Math.round((y0 + y1 + 1) / 2 - (r.top + r.height / 2))]} : null,
                 outside: page_(at(Math.round(r.right) + 5, Math.round(r.top + r.height / 2)))};
         }).concat([{scrollWidth: document.documentElement.scrollWidth, innerWidth}]);
     }, {shot, boxes});
     const pageSize = shape.pop();
-    check('browser: the first view of 200 x 200 in elements of 400 x 200, 200 x 400 and 120 x 160 is centered, at 1:1 or scaled up as little as covers the element, with no band of the page', shape.every((s, i) => s.scale === boxes[i].scale && s.offset.every(d => Math.abs(d) <= 1) && s.band === 0
+    check('browser: the first view of 200 x 200 in elements of 400 x 200, 200 x 400 and 120 x 160 is centered, at 1:1 or scaled up as little as covers the element, and with bounds scaled as the fit to the element, with no band of the page', shape.every((s, i) => s.scale === boxes[i].scale && s.offset.every(d => Math.abs(d) <= 1) && s.band === 0
         && s.dot && Math.abs(s.dot.size - 40 * boxes[i].scale) <= 3 && s.dot.offset.every(d => Math.abs(d) <= 2) && s.outside) && pageSize.scrollWidth === pageSize.innerWidth, JSON.stringify(shape) + ' ' + JSON.stringify(pageSize));
     await page.close();
 

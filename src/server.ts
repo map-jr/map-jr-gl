@@ -422,8 +422,9 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
 export async function renderFirstView(o: FirstViewOptions): Promise<string> {
     // The map keeps the center and the zoom at any size of the element, so the picture is drawn at 1:1, centered and cropped
     // by a box of the element's size. An element that is wider or higher than the render is covered: the picture is scaled
-    // up as little as covers it, and is not letterboxed (#1427).
-    const made = await renderView(o, `data-map-jr-ssr="" preserveAspectRatio="xMidYMid slice" style="position:absolute;left:50%;top:50%;width:max(100%,${o.width}px);height:max(100%,${o.height}px);max-width:none;max-height:none;transform:translate(-50%,-50%)"`);
+    // up as little as covers it, and is not letterboxed (#1427). With `bounds` the map fits them to the element, so the
+    // picture is scaled to the element as the fit is, and covers it.
+    const made = await renderView(o, `data-map-jr-ssr="" preserveAspectRatio="xMidYMid slice" style="position:absolute;${o.bounds ? 'inset:0;width:100%;height:100%' : `left:50%;top:50%;width:max(100%,${o.width}px);height:max(100%,${o.height}px);transform:translate(-50%,-50%)`};max-width:none;max-height:none"`);
     made.svg = `<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden">${made.svg}</div>`;
     const raw = o.attribution === false ? false : [o.attribution ?? made.attribution].flat();
     if (o.controls) {

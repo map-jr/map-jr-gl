@@ -34,7 +34,9 @@ const box = '<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:h
 const split = html => {
     const end = html.indexOf('</svg></div>') + '</svg>'.length;
     if (!html.startsWith(box) || !/^<svg[^>]*data-map-jr-ssr/.test(html.slice(box.length)) || end < 6) throw new Error('[map-jr-gl site] first-paint: the render has no SVG.');
-    const svg = html.slice(box.length, end).replace(/^(<svg[^>]*?) preserveAspectRatio="xMidYMid slice" style="[^"]*"/, (_, open) => `${open} style="${place}"`);
+    const own = /^(<svg[^>]*?) preserveAspectRatio="xMidYMid slice" style="[^"]*"/, inner = html.slice(box.length, end);
+    if (!own.test(inner)) throw new Error('[map-jr-gl site] first-paint: the SVG of the render does not have the placement that this script replaces. Update the pattern `own` to the root of the SVG.');
+    const svg = inner.replace(own, (_, open) => `${open} style="${place}"`);
     return {svg, credits: html.slice(end + '</div>'.length)};
 };
 
