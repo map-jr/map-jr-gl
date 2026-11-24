@@ -34,7 +34,7 @@ export type Command =
     /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
     | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
     | {type: 'zoom'; delta: number; x: number; y: number}
-    | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'}
+    | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'; snap?: number}
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
@@ -237,6 +237,10 @@ const touches = (a: TileID, b: TileID) => {
 
 /** How many times a tile whose request failed is requested again. */
 const TILE_RETRIES = 3;
+/** After the last of those, the milliseconds until the next request, for as long as the view needs the tile (#686). */
+const TILE_RETRY_LATER = 15000;
+/** A request after the last retry runs in the background: `idle` and the loaded state of the source do not wait for it, and its failure fires no `error` (#686). */
+const background = (t: TileState) => t.state === 'loading' && t.tries! > TILE_RETRIES;
 /** Encodes GeoJSON data as JSON bytes on the first call, so that several tile workers cost one encoding and a copy of bytes each, not one structured clone each (#878). Data that is not an object is sent as it is. */
 function packGeoJSON(data: unknown): () => Uint8Array | null {
     let bytes: Uint8Array | null | undefined;
@@ -278,7 +282,7 @@ export class Engine {
 
     private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]; fly?: number[]; globe?: boolean; way?: number[]} | null = null;
     private wheel: {
-        delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number;
+        delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number; snap?: number;
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
     } | null = null;
     private prevWheelEase: {start: number; easing: (t: number) => number} | null = null;
@@ -531,7 +535,7 @@ export class Engine {
             state.loading = true;
             withTimeout(this.fetchAs('Image'))(src.url!).then(async res => {
                 if (!res.ok) throw httpError('image', src.url!, res.status);
-                const image = await createImageBitmap(await res.blob());
+                const image = (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
                 image.close();
             }).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { state.loading = false; this.invalidate(); });
@@ -839,7 +843,7 @@ export class Engine {
             const early = this.answered, got = (f: typeof fetch): typeof fetch => u => early?.get(String(u)) ?? f(u);
             const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, got(withTimeout(this.fetchAs('SpriteJSON')))), got(withTimeout(this.fetchAs('SpriteImage')))(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw httpError('sprite image', url + (dense ? '@2x.png' : '.png'), res.status);
-            return {id, sprite, image: await createImageBitmap(await res.blob())};
+            return {id, sprite, image: (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob())};
         }).map(p => p.catch(err => { if (spec === this.spriteUrl) this.emit({type: 'error', message: String(err.message)}); })))).filter(l => !!l);
         if (spec !== this.spriteUrl || !loaded.length) return;
         const icons: Sprite['icons'] = {}, width = Math.max(...loaded.map(l => l.image.width)), height = loaded.reduce((sum, l) => sum + l.image.height, 0);
@@ -987,7 +991,7 @@ export class Engine {
                 const now = performance.now(), w = this.wheel;
                 // A pause ends the gesture: later scrolling starts from the zoom actually on screen.
                 const fresh = !w || (w.doneAt !== undefined && now - w.doneAt > 200);
-                this.wheel = {...(fresh ? {} : w), delta: (fresh ? 0 : w!.delta) + c.delta, kind: c.kind, x: c.x, y: c.y, lastEvent: now, doneAt: undefined};
+                this.wheel = {...(fresh ? {} : w), delta: (fresh ? 0 : w!.delta) + c.delta, kind: c.kind, x: c.x, y: c.y, snap: c.snap, lastEvent: now, doneAt: undefined};
                 break;
             }
             case 'rotate': tr.set(undefined, undefined, tr.bearing + c.delta, tr.pitch + (c.pitch ?? 0)); break;
@@ -1286,7 +1290,14 @@ export class Engine {
                 const rate = w.kind === 'wheel' && Math.abs(w.delta) > WHEEL_STEP ? WHEEL_RATE : TRACKPAD_RATE;
                 let scale = 2 / (1 + Math.exp(-Math.abs(w.delta * rate)));
                 if (w.delta < 0) scale = 1 / scale;
-                w.target = clamp((w.target ?? tr.zoom) + Math.log2(scale), tr.zoomFloor, tr.maxZoom);
+                let target = clamp((w.target ?? tr.zoom) + Math.log2(scale), tr.zoomFloor, tr.maxZoom);
+                // The option zoomSnap of the compat entry: as in MapLibre GL JS, a mouse wheel goes to the next multiple in
+                // the direction of the turn, measured from the zoom on screen rounded to a multiple.
+                if (w.kind === 'wheel' && w.snap) {
+                    const inv = 1 / w.snap, d = target - Math.round(tr.zoom * inv) / inv;
+                    if (Math.abs(d) >= 1e-10) target = clamp((d > 0 ? Math.ceil(target * inv - 1e-9) : Math.floor(target * inv + 1e-10)) / inv, tr.zoomFloor, tr.maxZoom);
+                }
+                w.target = target;
                 if (w.kind === 'wheel') {
                     // Mouse wheels arrive in coarse steps: ease to the target, starting at the speed already under way.
                     w.start = tr.zoom;
@@ -1437,11 +1448,14 @@ export class Engine {
             t.state = 'error';
             t.rev = ++this.tilesVersion;
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
-            this.emit({type: 'error', message: err.message});
+            // (The tile reported its failure with its first four requests, as MapLibre GL JS fires one `error`.)
+            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
-            if (t.tries! < TILE_RETRIES && !finalFailure(err)) { const wait = 500 * 2 ** t.tries!; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
+            // After those, it is requested every 15 s while the view needs it, in the background (see `background`): an
+            // overview tile that failed four times stood in for nothing until the source changed (#686).
+            if (!finalFailure(err)) { const wait = t.tries! < TILE_RETRIES ? 500 * 2 ** t.tries! : TILE_RETRY_LATER; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
             this.repaint();
         });
     }
@@ -1682,8 +1696,8 @@ export class Engine {
                 if (t && t.used < 0) t.used = frameNo;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
-                if (!t || t.state === 'loading' || t.retryAt || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
-                if (!t || t.state === 'loading' || t.stale || t.rebuilding) loading.add(source);
+                if (!t || t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
+                if (!t || t.state === 'loading' && !background(t) || t.stale || t.rebuilding) loading.add(source);
                 // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
                 // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
                 for (let m = t, z = id.z, x = id.x, y = id.y; m?.missing && z > src.minzoom && z > id.z - 10;) {
@@ -1713,7 +1727,7 @@ export class Engine {
                     // (A tile of the view whose request failed needs its overview now: it stands in for that tile, so it is
                     // requested at once, its arrival changes the image, and `idle` waits for it (#379).)
                     const v = this.tiles.get(source + '|' + id.key), failed = v?.state === 'error' && !v.missing;
-                    if (failed && t?.state === 'loading') { complete = false; if (t.used < 0) t.used = frameNo; }
+                    if (failed && t?.state === 'loading' && !background(t)) { complete = false; if (t.used < 0) t.used = frameNo; }
                     if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1; if (failed) complete = false; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.

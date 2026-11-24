@@ -236,6 +236,30 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] initialView.bounds is fitted into the part that the padding of the description leaves free (#1162)`,
             Math.abs(firstFit.first - firstFit.later) < 1e-6, JSON.stringify(firstFit));
+        // 2c. After a lost WebGL context, the new engine has the padding of the description (#1050). The camera that the
+        // engine reports after a move carries its padding.
+        if (renderer === 'main') {
+            const restarted = await page.evaluate(async () => {
+                const t = window.t, until = (m, type) => new Promise(r => { m.once(type, r); setTimeout(r, 15000); });
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const h = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, padding: {left: 50}, initialView: {center: [10, 45], zoom: 2}, renderer: 'main', attribution: false});
+                const m = h._map;
+                await until(m, 'idle');
+                const before = m.tr.padding.join();
+                const restored = until(m, 'webglcontextrestored');
+                m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+                await restored;
+                await until(m, 'idle');
+                const moved = until(m, 'moveend');
+                m.easeTo({zoom: 4, duration: 50});
+                await moved;
+                const after = m.tr.padding.join();
+                h.destroy(); el.remove();
+                return {before, after};
+            });
+            check('[main] after a lost WebGL context, the padding of the description stays (#1050)',
+                restarted.before === '0,0,0,50' && restarted.after === '0,0,0,50', JSON.stringify(restarted));
+        }
         // 2c. A view in the URL overrides initialView.bounds as it overrides center and zoom (#1157).
         const urlView = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
@@ -284,10 +308,16 @@ for (const renderer of renderers) {
             t.host.update({...t.spec, padding: 0});
             t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
             t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]], {duration: 800});
+            const began = performance.now();
             for (let i = 0; i < 250 && !t.host.state.get().moving; i++) await wait(20);
+            const first = Math.round(performance.now() - began), atFirst = t.host._map.getZoom();
             t.host.update({...t.spec});
             for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
-            return {end: t.host._map.getZoom()};
+            const end = t.host._map.getZoom();
+            // (When this check fails, the map is put at the view that the fitBounds should have reached, so that the checks
+            // after it do not run at zoom 3 and fail too: four checks of the worker renderer failed with this one, #1418.)
+            if (end <= 12) t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]]);
+            return {end, first, atFirst, moving: t.host.state.get().moving};
         });
         check(`[${renderer}] update() with padding from 0 to unset does not cancel a running fitBounds (#1351)`, padKept.end > 12, JSON.stringify(padKept));
 
@@ -574,29 +604,64 @@ for (const renderer of renderers) {
         const flatWant = ['null', '{"source":"dem","exaggeration":2}', 'null', '{"source":"dem","exaggeration":1.5}', '{"source":"dem","exaggeration":2}', '{"source":"dem","exaggeration":2}'];
         check(`[${renderer}] terrain: null gives a flat map with a style that has terrain, and no field or undefined gives the terrain of the style (#1104)`, JSON.stringify(flat) === JSON.stringify(flatWant), JSON.stringify(flat));
 
+        // A change of `terrain` alone goes to the map as an edit (#1143): no `style.load` and no new request for the style,
+        // and the map shows the terrain of each step (no field gives that of the style back).
+        const terrainEdit = await page.evaluate(async renderer => {
+            const t = window.t, out = [], styleRequests = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, terrain: {source: 'dem', exaggeration: 2}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const url = URL.createObjectURL(new Blob([JSON.stringify(style)], {type: 'application/json'}));
+            const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
+            const read = async host => { await new Promise(r => setTimeout(r, 50)); await idle(host); return JSON.stringify(host.getResolvedDescription().style.terrain ?? null); };
+            const spec = {style: url, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, transformRequest: (u, type) => { if (type === 'Style') styleRequests.push(u); }};
+            const host = t.lib.createMap(el, spec);
+            await read(host);
+            let loads = 0;
+            const count = () => loads++, map = host._map, requestsBefore = styleRequests.length;
+            map.on('style.load', count);
+            host.patch({terrain: {source: 'dem', exaggeration: 1.5}}); out.push(await read(host));
+            host.patch({terrain: null}); out.push(await read(host));
+            host.update(spec); out.push(await read(host));
+            map.off('style.load', count);
+            host.destroy(); el.remove(); URL.revokeObjectURL(url);
+            return `${out.join(' > ')} loads ${loads} style requests ${styleRequests.length - requestsBefore}`;
+        }, renderer);
+        check(`[${renderer}] a change of terrain alone changes the terrain without a new style: no style.load and no style request (#1143)`,
+            terrainEdit === '{"source":"dem","exaggeration":1.5} > null > {"source":"dem","exaggeration":2} loads 0 style requests 0', terrainEdit);
+
         // The control terrain() sets `terrain` of the description (#1106): after each click the description, the terrain
-        // of the map and the label agree, onTerrainChange gets the value, and an update with the description keeps it.
+        // of the map and the label agree, onTerrainChange gets the value, an update with the description keeps it, and no
+        // click loads the style (#1143). An update with a new description without `terrain`, as a component of Vue gives,
+        // replaces the click with the terrain of the style (none here), and the label follows.
         const terrainButton = await page.evaluate(async renderer => {
-            const t = window.t, {terrain} = await import('/dist/controls.js'), out = [], calls = [];
+            const t = window.t, {terrain} = await import('/dist/controls.js'), out = [], calls = [], styleRequests = [];
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
             const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const url = URL.createObjectURL(new Blob([JSON.stringify(style)], {type: 'application/json'}));
             const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
-            const host = t.lib.createMap(el, {style, terrain: {source: 'dem'}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false,
-                controls: [terrain({source: 'dem', exaggeration: 2, onTerrainChange: v => calls.push(JSON.stringify(v))})]});
+            const controls = [terrain({source: 'dem', exaggeration: 2, onTerrainChange: v => calls.push(JSON.stringify(v))})];
+            const base = {style: url, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, controls, transformRequest: (u, type) => { if (type === 'Style') styleRequests.push(u); }};
+            const host = t.lib.createMap(el, {...base, terrain: {source: 'dem'}});
             for (let i = 0; i < 300 && !el.querySelector('.map-jr-ctrl-terrain'); i++) await new Promise(r => setTimeout(r, 30));
             const b = el.querySelector('.map-jr-ctrl-terrain');
             const read = async () => { await new Promise(r => setTimeout(r, 50)); await idle(host); return `${JSON.stringify(host.description.terrain)}/${JSON.stringify(host.getResolvedDescription().style.terrain ?? null)}/${b.getAttribute('aria-label')}`; };
             out.push(await read());
+            let loads = 0;
+            const count = () => loads++, map = host._map, requestsBefore = styleRequests.length;
+            map.on('style.load', count);
             b.click(); out.push(await read());
             host.update({...host.description, globalState: {x: 1}}); out.push(await read());
             b.click(); out.push(await read());
             host.patch({globalState: {x: 2}}); out.push(await read());
-            host.destroy(); el.remove();
-            return `${out.join(' > ')} calls ${calls.join(',')}`;
+            const clickLoads = `loads ${loads} style requests ${styleRequests.length - requestsBefore}`;
+            map.off('style.load', count);
+            host.update({...base, globalState: {x: 3}}); out.push(await read());
+            host.destroy(); el.remove(); URL.revokeObjectURL(url);
+            return `${out.join(' > ')} calls ${calls.join(',')} ${clickLoads}`;
         }, renderer);
         const tOn1 = '{"source":"dem"}/{"source":"dem"}/Disable terrain', tOff = 'null/null/Enable terrain', tOn2 = '{"source":"dem","exaggeration":2}/{"source":"dem","exaggeration":2}/Disable terrain';
-        check(`[${renderer}] the control terrain() sets terrain of the description, calls onTerrainChange, and an update with the description keeps the terrain (#1106)`,
-            terrainButton === `${tOn1} > ${tOff} > ${tOff} > ${tOn2} > ${tOn2} calls null,{"source":"dem","exaggeration":2}`, terrainButton);
+        check(`[${renderer}] the control terrain() sets terrain of the description without a new style, calls onTerrainChange, and an update with the description keeps the terrain (#1106)`,
+            terrainButton === `${tOn1} > ${tOff} > ${tOff} > ${tOn2} > ${tOn2} > undefined/null/Enable terrain calls null,{"source":"dem","exaggeration":2} loads 0 style requests 0`, terrainButton);
 
         // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
         const noDem = await page.evaluate(async renderer => {
@@ -1361,6 +1426,36 @@ for (const renderer of renderers) {
             featureState.set.state?.on === true && featureState.set.colour === 'red' && featureState.restyled.state?.on === true && featureState.restyled.colour === 'red'
             && featureState.removed.state?.on === undefined && featureState.removed.state?.n === 1 && featureState.removed.colour === 'blue' && featureState.after === 'none', JSON.stringify(featureState));
 
+        // 3d. toBlob right after a new style URL waits for that style, also while its answer is late (#1167).
+        await page.route(/\/test-style-1167\//, async route => {
+            const blue = route.request().url().includes('blue');
+            if (blue || route.request().url().includes('slow')) await new Promise(r => setTimeout(r, 600));
+            await route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': blue ? '#00f' : '#f00'}}]})});
+        });
+        const lateStyle = await page.evaluate(async renderer => {
+            const t = window.t, out = [];
+            const colour = async b => { const c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1); const [r, , bl] = c.getImageData(0, 0, 1, 1).data; return r > 200 && bl < 50 ? 'red' : bl > 200 && r < 50 ? 'blue' : `${r},${bl}`; };
+            for (let i = 0; i < 3; i++) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const spec = {style: `/test-style-1167/red.json?${i}`, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+                const host = t.lib.createMap(el, spec);
+                await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
+                host.update({...spec, style: `/test-style-1167/blue.json?${i}`});
+                out.push(await colour(await host.toBlob()));
+                host.destroy(); el.remove();
+            }
+            // A camera move while `setStyle` with `diff` loads a style that equals the one in use: the map is idle again after it.
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const host = t.lib.createMap(el, {style: '/test-style-1167/red.json?same', initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false});
+            await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
+            const idle = new Promise(r => { host._map.once('idle', () => r('idle')); setTimeout(() => r('no idle in 4 s'), 4000); });
+            host._map.setStyle('/test-style-1167/slow-red.json', {diff: true}); host._map.jumpTo({zoom: 3});
+            out.push(await idle);
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] toBlob right after a new style URL shows the new style, also when the style comes 600 ms later, and a camera move during an equal style keeps idle (#1167)`, JSON.stringify(lateStyle) === '["blue","blue","blue","idle"]', JSON.stringify(lateStyle));
+
         // 3d. A key of `data` with no source of that id makes a GeoJSON source: in the first description, as a new key, after
         // a new style, and a removed key removes it with a warning for the layer that still names it. A key that is the id of
         // a source of another type gives an error of the map (#487).
@@ -2041,6 +2136,49 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
 
+        // A control that the list has twice is shown once, and the development build warns once for it (#1195).
+        const duplicate = await page.evaluate(async () => {
+            const t = window.t, {navigation, scale, custom} = await import('/dist/controls.js');
+            const warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(String(a[0]));
+            try {
+                const spec = () => [navigation(), scale(), navigation(), custom({key: 'own', element: document.createElement('div')}), custom({key: 'own', element: document.createElement('div')})];
+                t.host.update(t.spec = {...t.spec, controls: spec()});
+                t.host.update(t.spec = {...t.spec, controls: spec()}); // the same list again: no second warning
+                const said = () => warned.filter(w => w.startsWith('[map-jr-gl] controls:'));
+                const count = () => document.querySelectorAll('#host .map-jr-ctrl-compass').length;
+                for (let i = 0; i < 40 && (said().length < 2 || !count()); i++) await new Promise(r => setTimeout(r, 50));
+                await new Promise(r => setTimeout(r, 100));
+                const compasses = count();
+                t.host.update(t.spec = {...t.spec, controls: undefined});
+                return {said: said(), compasses};
+            } finally { console.warn = warn; }
+        });
+        check(`[${renderer}] a duplicate control is shown once and warns once in the development build, naming the control (#1195)`,
+            duplicate.said.length === 2 && duplicate.said.some(w => w.includes('navigation() is in the list twice') && w.includes('Remove the second navigation()'))
+            && duplicate.said.some(w => w.includes('the key "own"')) && duplicate.compasses === 1, JSON.stringify(duplicate));
+
+        // Two custom() items with one key and different positions: the first wins and stays through later changes of controls (#1662).
+        const samePair = await page.evaluate(async () => {
+            const t = window.t, {custom, scale} = await import('/dist/controls.js'), warn = console.warn;
+            console.warn = () => {};
+            try {
+                let added = 0, removed = 0;
+                const own = {onAdd: () => { added++; return Object.assign(document.createElement('div'), {className: 'own-pair'}); }, onRemove: () => { removed++; document.querySelector('#host .own-pair')?.remove(); }};
+                const list = more => [custom({key: 'pair', position: 'top-left', ...own}), custom({key: 'pair', position: 'bottom-right', ...own}), ...more];
+                t.host.update(t.spec = {...t.spec, controls: list([])});
+                const first = document.querySelector('#host .own-pair');
+                t.host.update(t.spec = {...t.spec, controls: list([scale()])});
+                t.host.update(t.spec = {...t.spec, controls: list([])});
+                await new Promise(r => setTimeout(r, 50));
+                const now = document.querySelector('#host .own-pair'), r = {added, removed, same: !!first && first === now, corner: now?.parentElement?.className.match(/ctrl-(top|bottom)-(left|right)/)?.[0]};
+                t.host.update(t.spec = {...t.spec, controls: undefined});
+                return r;
+            } finally { console.warn = warn; }
+        });
+        check(`[${renderer}] of two custom() controls with one key and different positions, the first is placed once and stays when controls change (#1662)`,
+            samePair.added === 1 && samePair.removed === 0 && samePair.same && samePair.corner?.endsWith('top-left'), JSON.stringify(samePair));
+
         // Without `position`, a control goes to its own default corner: the bottom left for `scale()`, else the top right (#1197).
         const corners = await page.evaluate(async () => {
             const t = window.t, {navigation, scale} = await import('/dist/controls.js');
@@ -2223,6 +2361,45 @@ for (const renderer of renderers) {
         await page.mouse.click(ovBox.x, ovBox.y); await page.waitForTimeout(500);
         const overlayClicks = await page.evaluate(() => { const t = window.t, n = t.clicks.length; t.ov.remove(); return n; });
         check(`[${renderer}] a click on an overlay does not call onClick`, overlayClicks === 0, JSON.stringify({overlayClicks}));
+        // overlay().patch changes only the options that it has (#1153): a marker keeps its anchor and offset, and a popup
+        // stays the same element with its close button. `lngLat: undefined` keeps the position, also through a later patch
+        // that makes the element again.
+        const overlayPatch = await page.evaluate(() => { const t = window.t, hostBox = document.querySelector('#host').getBoundingClientRect();
+            const el = Object.assign(document.createElement('div'), {style: 'width:20px;height:20px'});
+            const ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 100, y: 100}), anchor: 'bottom', offset: [0, -10]});
+            ov.patch({lngLat: t.host.unproject({x: 150, y: 120})});
+            const r = el.getBoundingClientRect(), marker = {x: r.x + r.width / 2 - hostBox.x, y: r.bottom - hostBox.y};
+            let kept;
+            try { ov.patch({lngLat: undefined}); ov.patch({anchor: 'top'}); const k = el.getBoundingClientRect(); kept = {x: k.x + k.width / 2 - hostBox.x, y: k.top - hostBox.y}; } catch (e) { kept = String(e); }
+            ov.remove();
+            const content = Object.assign(document.createElement('p'), {textContent: 'Patched'});
+            const pop = t.host.overlay(content, {lngLat: t.host.unproject({x: 200, y: 200}), popup: true, onClose() {}});
+            const box = content.closest('.map-jr-popup');
+            pop.patch({lngLat: t.host.unproject({x: 220, y: 200})});
+            const after = content.closest('.map-jr-popup'), sameBox = !!box && after === box, closeButton = !!after?.querySelector('.map-jr-popup-close-button');
+            pop.remove();
+            return {marker, kept, sameBox, closeButton}; });
+        check(`[${renderer}] overlay().patch({lngLat}) moves a marker and keeps its anchor and offset, and moves a popup and keeps it and its close button`,
+            Math.abs(overlayPatch.marker.x - 150) < 1 && Math.abs(overlayPatch.marker.y - 110) < 1 && overlayPatch.sameBox && overlayPatch.closeButton, JSON.stringify(overlayPatch));
+        check(`[${renderer}] overlay().patch({lngLat: undefined}) keeps the position, and a later patch of the anchor places the marker there`,
+            Math.abs(overlayPatch.kept?.x - 150) < 1 && Math.abs(overlayPatch.kept?.y - 110) < 1, JSON.stringify(overlayPatch.kept));
+        // An unknown option of overlay(), update() or patch() warns once for each map in the development build (#1647). The
+        // production build gives none (see "The map with no checks" below).
+        const overlayUnknown = await page.evaluate(async () => {
+            const t = window.t, said = [], log = console.warn, lngLat = t.host.unproject({x: 100, y: 100});
+            console.warn = (...a) => { const m = a.join(' '); if (m.includes('an option of an overlay')) said.push(m); };
+            try {
+                const ov = t.host.overlay(document.createElement('div'), {lngLat, lnglat: [3, 3]});
+                ov.update({lngLat, lnglat: [3, 3], colour: 'red'});
+                ov.patch({lnglat: [3, 3], Anchor: 'top', popup: false});
+                ov.remove();
+                await new Promise(r => setTimeout(r, 500));
+            } finally { console.warn = log; }
+            return said; });
+        check(`[${renderer}] an unknown option of overlay(), update() and patch() gives one warning for each option, which names the option and the known options`,
+            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, draggable, onDragStart, onDrag, onDragEnd.'
+            && overlayUnknown[1].startsWith('[map-jr-gl] update(): "colour" is not an option of an overlay, so it has no effect. The options are')
+            && overlayUnknown[2].startsWith('[map-jr-gl] patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
         // the callbacks get [lng, lat]. A render with the same lngLat leaves it where it was dropped.
         await page.evaluate(() => { const t = window.t, el = t.dragPin = t.lib.defaultPin({color: 'rgb(200, 0, 0)'}); t.dragged = []; el.addEventListener('click', () => t.dragged.push('click'));
@@ -3117,6 +3294,92 @@ for (const renderer of ['main', 'worker']) {
     } catch (e) { check(`[${renderer}] the test of a style that is not a style was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A map that is removed while it starts again after a lost WebGL context gives the shared tile workers back once, so
+// that another map on the page still gets tiles (#708, #97).
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        await page.goto(origin + '/bench');
+        const out = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const idle = async m => { await wait(100); for (let i = 0; i < 300 && !m.state.get().idle; i++) await wait(50); return m.state.get().idle; };
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px'}));
+            const view = {center: [-74.0065, 40.7085], zoom: 14};
+            const elB = box(), b = lib.createMap(elB, {style, renderer: 'main', attribution: false, initialView: view});
+            const elA = box(), a = lib.createMap(elA, {style, renderer: 'main', attribution: false, initialView: view});
+            await idle(b); await idle(a);
+            // restart() gives the workers back and then awaits the start of the new engine. The map is removed in a microtask after
+            // the event, so that the removal comes before start() takes the workers again.
+            let removed = false;
+            a._map.on('webglcontextlost', () => queueMicrotask(() => { a.destroy(); elA.remove(); removed = true; }));
+            a._map.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+            for (let i = 0; i < 100 && !removed; i++) await wait(50);
+            await wait(500);
+            // Map b needs new tiles: the place is far from the tiles that it has.
+            b.moveTo({center: [-73.95, 40.78], zoom: 13, duration: 0});
+            const ok = await idle(b);
+            // (Workers that ended give no answer: the check waits 5 s for one.)
+            const features = await Promise.race([b.queryFeatures([{x: 0, y: 0}, {x: 600, y: 400}]).then(f => f.length), wait(5000).then(() => 'no answer')]);
+            b.destroy(); elB.remove();
+            return {removed, idle: ok, features};
+        });
+        check('a map removed while it starts again after a lost WebGL context leaves the tile workers to the other map, which still loads tiles (#708)',
+            out.removed && out.idle && typeof out.features === 'number' && out.features > 0, JSON.stringify(out));
+    } catch (e) { check('the test of a map removed during its restart was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// A warning about an unsupported expression comes once on the page, not once for each thread that compiles the layer (#1141).
+for (const renderer of renderers) {
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    const said = [];
+    page.on('console', m => { if (m.type() === 'warning' && m.text().includes('x1141')) said.push(m.text()); });
+    try {
+        await page.goto(origin + '/bench');
+        await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const line = style.layers.find(l => l.type === 'line' && l['source-layer']);
+            style.layers.push({...line, id: 'w1141', filter: ['x1141f'], paint: {'line-width': ['x1141p']}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0'}));
+            const map = lib.createMap(el, {style, renderer, attribution: false});
+            for (const end = Date.now() + 20000; !map.state.get().idle && Date.now() < end;) await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 1000));
+            map.destroy(); el.remove();
+        }, renderer);
+        const counts = {};
+        for (const t of said) counts[t] = (counts[t] ?? 0) + 1;
+        check(`[${renderer}] a warning about an unsupported expression or filter comes once on the page`, said.length > 0 && Object.values(counts).every(n => n === 1), JSON.stringify(counts));
+    } catch (e) { check(`[${renderer}] the test of warnings once on the page was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The tile workers serve every map of the page. A warning of a live map still comes after another map was removed (#1141).
+for (const renderer of renderers) {
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    const said = [];
+    page.on('console', m => { if (m.type() === 'warning' && m.text().includes('y1141')) said.push(m.text()); });
+    try {
+        await page.goto(origin + '/bench');
+        await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const idle = async map => { for (const end = Date.now() + 20000; !map.state.get().idle && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); };
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0'}));
+            const elB = box(), b = lib.createMap(elB, {style, renderer, attribution: false});
+            await idle(b);
+            const elA = box(), a = lib.createMap(elA, {style, renderer, attribution: false});
+            await idle(a);
+            a.destroy(); elA.remove();
+            await new Promise(r => setTimeout(r, 300));
+            const line = style.layers.find(l => l.type === 'line' && l['source-layer']);
+            b.update({style: {...style, layers: [...style.layers, {id: 'w1141b', type: 'symbol', source: line.source, 'source-layer': line['source-layer'], layout: {'text-field': ['number-format', 1, {locale: 'y1141-!!'}]}}]}, renderer, attribution: false});
+            await new Promise(r => setTimeout(r, 300));
+            await idle(b);
+            await new Promise(r => setTimeout(r, 1000));
+            b.destroy(); elB.remove();
+        }, renderer);
+        check(`[${renderer}] a warning of a map comes after another map on the page was removed`, said.length === 1, JSON.stringify(said));
+    } catch (e) { check(`[${renderer}] the test of warnings after a removed map was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
@@ -3312,6 +3575,9 @@ for (const [build, file] of [['the development build, and the file of the checks
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
             const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, interactiveLayers: ['nope']});
             const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
+            // (An unknown option of an overlay warns only with the checks, #1647.)
+            const ov = host.overlay(document.createElement('div'), {lngLat: [-74.0065, 40.7085], lnglat: [3, 3]});
+            ov.update({lngLat: [-74.0065, 40.7085], colour: 'red'}); ov.patch({Anchor: 'top'}); ov.remove();
             await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
             await new Promise(r => setTimeout(r, 1200));
             const drawn = (await host.queryFeatures(undefined, {radius: 5})).length;
@@ -3942,6 +4208,61 @@ for (const status of [404, 403, 503]) {
         check('a tile whose requests fail is covered by its overview tile before the first idle', overAt > 0 && overAt <= idleAt, JSON.stringify({over, overAt: overAt && overAt - idleAt}));
     } catch (e) { check('the test of the overview of a failed tile was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
+}
+// A tile whose first four requests fail is requested again every 15 s in the background, while the view still needs it
+// (#686). Two pages run at the same time, so that the check waits for 15 s once.
+// - On the first, every request of the tile at the center fails, so its overview stands in for it, and the first four
+//   requests of that overview fail. The fifth request of the overview is answered.
+// - On the second, every tile request fails (a server that is down). A background request does not make the map leave
+//   `idle` and its failure fires no `error`: from the first background request until 1 s after each tile that has one
+//   has failed it, the map fires neither, and the map is idle at the end.
+{
+    const pages = [];
+    try {
+        const z = 13, x = tileOf(from[0], z), y = Math.floor((1 - Math.log(Math.tan(Math.PI / 4 + from[1] * Math.PI / 360)) / Math.PI) / 2 * 2 ** z);
+        const bad = `/${z}/${x}/${y}.pbf`, over = `/${z - 3}/${x >> 3}/${y >> 3}.pbf`;
+        let overTries = 0, answered = 0;
+        const tries = new Map(), failed = new Map();
+        let background = 0;
+        const start = async (route, onPage) => {
+            const page = await browser.newPage({viewport: {width: 900, height: 600}});
+            pages.push(page);
+            await page.goto(`${origin}/bench`);
+            await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route);
+            return page.evaluate(async from => {
+                const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+                window.seen = [];
+                window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false, onError: () => window.seen.push(['error', Date.now()])});
+                window.host.listen('idle', () => window.seen.push(['idle', Date.now()]));
+                return new Promise(r => { window.host.state.subscribe(s => s.idle, idle => idle && r(true)); setTimeout(() => r(false), 30000); });
+            }, from);
+        };
+        const [idleOne, idleDown] = await Promise.all([
+            start(async route => {
+                const k = new URL(route.request().url()).pathname;
+                if (k.endsWith(bad)) return route.abort('connectionreset');
+                if (k.endsWith(over) && ++overTries <= 4) return route.abort('connectionreset');
+                await route.continue().catch(() => {});
+                if (k.endsWith(over)) answered = Date.now();
+            }),
+            start(async route => {
+                const k = new URL(route.request().url()).pathname, n = (tries.get(k) ?? 0) + 1;
+                tries.set(k, n);
+                if (n === 5) background ||= Date.now();
+                await route.abort('connectionreset').catch(() => {});
+                if (n === 5) failed.set(k, Date.now());
+            }),
+        ]);
+        // (A background request comes about 19 s after the first request of its tile. The bound leaves room for a loaded runner.)
+        for (const end = Date.now() + 60000; (!answered || !failed.size || failed.size < [...tries.values()].filter(n => n >= 5).length) && Date.now() < end;) await pages[0].waitForTimeout(250);
+        await pages[1].waitForTimeout(1000);
+        check('an overview tile that failed four times is requested again later and answered', idleOne && overTries === 5 && answered > 0, JSON.stringify({idleOne, overTries, answered: answered > 0}));
+        const {seen, idle} = await pages[1].evaluate(() => ({seen: window.seen, idle: window.host.state.get().idle}));
+        const after = seen.filter(([, t]) => background && t >= background);
+        check('a background request of a tile on a server that is down fires neither `idle` nor `error`, and the map stays idle', idleDown && background > 0 && failed.size > 0 && !after.length && idle, JSON.stringify({idleDown, background: background > 0, failed: failed.size, after, idle}));
+    } catch (e) { check('the test of the background requests of failed tiles was completed', false, String(e.message).split('\n')[0]); }
+    for (const page of pages) await page.close();
 }
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with

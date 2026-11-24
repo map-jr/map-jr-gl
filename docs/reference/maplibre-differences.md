@@ -215,6 +215,18 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** The nearest tile above it is drawn in its place.
 - This library does the same, for raster and elevation tiles.
 
+### A tile whose request fails
+
+- **MapLibre GL JS:** The failure fires `error` once. The tile is not requested again while it stays in the view. It
+  is requested again when it leaves the view and comes back, or when the source loads again (MapLibre GL JS 6.17).
+- **This library:** A tile whose request fails with a network error or an HTTP status 5xx is requested again after
+  0.5 s, 1 s and 2 s. Each of these four failures fires `error`, and `idle` waits for the retries.
+- After the fourth failure, the map is idle without the tile, and the tile is requested again every 15 s while the
+  view or the overview needs it. These later requests run in the background: they do not make the map leave `idle`,
+  they fire no `error` when they fail, and a tile that one of them loads is drawn.
+- A status 4xx other than 404, a rejection by a custom protocol and an error of `transformRequest` are final, as in
+  MapLibre GL JS.
+
 ### GeoJSON sources
 
 - **MapLibre GL JS:** `setData`, `getData`, `updateData`, the cluster methods.
@@ -293,7 +305,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Requests
 
 - **MapLibre GL JS:** The `transformRequest` option and `addProtocol`.
-- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source has the request type `image`, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file. An image of `addImage` and the image of a sprite have the type `arrayBuffer` (MapLibre GL JS gives `image`), and only bytes are read as their answer.
+- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source, an image of `loadImage`, of `addImage` with a URL or of an `image` source, and the image of a sprite have the request type `image`, as in MapLibre GL JS, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file.
 
 ### `Marker`, `Popup`
 
@@ -348,7 +360,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Expressions
 
 - MapLibre GL JS checks the types.
-- This library does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale` that is not text, or with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, or a second one in the same expression, is drawn as it reads, where MapLibre GL JS rejects the style. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property; the entry `@map-jr/map-jr-gl/maplibre-compat` writes none.
+- This library does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale` that is not text, or with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, a second one in the same expression, and a `["zoom"]` that is not the input of one (for example `["/", ["zoom"], 10]`) are drawn as they read, where MapLibre GL JS rejects the style, or the call of `addLayer`, `setPaintProperty` or `setLayoutProperty`. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property. The development build of `@map-jr/map-jr-gl/maplibre-compat` fires `error` with the text of MapLibre GL JS (for example `layers.roads.paint.line-width: "zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.`), once for each layer, property and value, and keeps the style. The production builds of both entries say nothing.
 
 ### Style validation
 
@@ -519,7 +531,7 @@ Other:
 
 The camera methods of the entry `@map-jr/map-jr-gl/maplibre-compat` (`jumpTo`, `easeTo`, `flyTo`, `fitBounds`, `fitScreenCoordinates`, `panTo`, `panBy`, `zoomTo`, `zoomIn`, `zoomOut`, `rotateTo`, `resetNorth`, `resetNorthPitch`, `snapToNorth`, `setCenter`, `setZoom`, `setBearing`, `setPitch` and `setPadding`) take `eventData` as the last argument, as in MapLibre GL JS. Its fields are on the `move`, `zoom`, `rotate` and `pitch` events of that move, from `movestart` to `moveend`. A later camera call replaces it.
 
-The option `zoomSnap` and `setZoomSnap` work as in MapLibre GL JS: with a value above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn`, `zoomOut`, the double-click, the keyboard and the navigation buttons goes to the nearest multiple of the value, and `cameraForBounds` and `fitBounds` go to the multiple below. The scroll wheel and the pinch do not snap here, while MapLibre GL JS snaps the scroll wheel.
+The option `zoomSnap` and `setZoomSnap` work as in MapLibre GL JS: with a value above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn`, `zoomOut`, the double-click, the keyboard and the navigation buttons goes to the nearest multiple of the value, and `cameraForBounds` and `fitBounds` go to the multiple below. A turn of a mouse wheel ends at the next multiple in the direction of the turn, as in MapLibre GL JS. A trackpad and a pinch do not snap, in either library.
 
 `setEventedParent(parent, data)` passes each event of the map to `parent.fire` while `parent.listens(type)` is true, as one object with the fields of the event and of `data` (an object, or a function that returns one). The parent gets a `click` after the listeners of the map.
 

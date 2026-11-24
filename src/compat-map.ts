@@ -4,7 +4,9 @@
 // results that are arrays and promises at the same time.
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
+import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
+import {zoomCurveErrors} from './mistakes.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
@@ -286,8 +288,19 @@ export class Map extends CoreMap {
      */
     setSourceTileLodParams(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string) {
         if (sourceId && !this.getSource(sourceId)) throw new Error(`[map-jr-gl] setSourceTileLodParams: there is no source "${sourceId}". Add the source first, or leave out the ID for all sources.`);
-        this.post({type: 'lod', sources: sourceId ? [sourceId] : Object.keys(this.resolved?.sources ?? {}), lod: [Math.max(1, maxZoomLevelsOnScreen), Math.max(1, tileCountMaxMinRatio)]});
+        const sources = sourceId ? [sourceId] : Object.keys(this.resolved?.sources ?? {}), lod = [Math.max(1, maxZoomLevelsOnScreen), Math.max(1, tileCountMaxMinRatio)];
+        for (const id of sources) this.lods[id] = lod;
+        this.post({type: 'lod', sources, lod});
         return this;
+    }
+    /** The parameters of `setSourceTileLodParams` by source: a new engine gets them again (#1050). */
+    private lods: Record<string, number[]> = {};
+    /** A new engine (after a lost context or a fall back) gets what the calls of this entry set: the constraint and the parameters of the tile cover; #1050. */
+    protected override resend() {
+        super.resend();
+        const fn = this.tr.customConstrain;
+        if (fn) void this.ask(id => ({type: 'bound', id, fn}));
+        for (const [id, lod] of Object.entries(this.lods)) this.post({type: 'lod', sources: [id], lod});
     }
     /** As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. */
     setTransformConstrain(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) | null) {
@@ -319,6 +332,8 @@ export class Map extends CoreMap {
         return o.zoom === undefined || !(s > 0) ? o : {...o, zoom: (down ? Math.floor(o.zoom / s + 1e-10) : Math.round(o.zoom / s)) * s};
     }
     cameraForBounds(...args: Parameters<CoreMap['cameraForBounds']>) { return this.snapped(super.cameraForBounds(...args), true); }
+    /** @internal (A turn of a mouse wheel ends at a multiple of zoomSnap, as in MapLibre GL JS.) */
+    protected override post(c: Command, transfer?: Transferable[]) { if (c.type === 'wheel' && this.zoomSnap > 0) c.snap = this.zoomSnap; super.post(c, transfer); }
     /**
      * As in MapLibre GL JS: each event of the map also goes to `parent.fire`, as one object with the fields of `data`
      * (or of what the function `data` returns), while `parent.listens(type)` is true.
@@ -508,7 +523,7 @@ export class Map extends CoreMap {
     /** Removes a source from the style, as in MapLibre GL JS. */
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l?.source === id);
-        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
     /**
@@ -522,7 +537,7 @@ export class Map extends CoreMap {
     }
     /**
      * Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`.
-     * The zoom fits the box as seen from above. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.
+     * The zoom fits the box as seen from above, turned by `bearing`. As in MapLibre GL JS, `offset` moves the fitted view and then the move, so it counts twice. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.
      * @param eventData Fields that the events of this move carry.
      */
     fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o: FitBoundsOptions = {}, eventData?: EventData) {
@@ -533,14 +548,9 @@ export class Map extends CoreMap {
      * is that of MapLibre GL JS 6.17, and the options are those of `fitBounds`.
      */
     fitScreenCoordinates(p0: PointLike, p1: PointLike, bearing: number, o: FitBoundsOptions = {}, eventData?: EventData) {
-        const a = this.unproject(p0), b = this.unproject(p1), r = bearing * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
-        const x0 = mercX(a.lng), x1 = mercX(b.lng), y0 = mercY(a.lat), y1 = mercY(b.lat), dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
-        // The box of the two places, with edges along the meridians and parallels, is turned by the bearing: its extent on the screen is this.
-        const pad = sides(o.padding), own = this.tr.padding, fit = (size: number, i: number, extent: number) => Math.max(1, size - pad[i] - pad[i + 2] - own[i] - own[i + 2]) / Math.max(extent, 1e-12);
-        const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(fit(this.tr.width, 1, dx * Math.abs(c) + dy * Math.abs(s)), fit(this.tr.height, 0, dx * Math.abs(s) + dy * Math.abs(c))) / 512));
-        // As in fitBounds, the padding of the call moves the center (the padding of the map does that by itself): here along the turned axes.
-        const world = 512 * 2 ** zoom, sx = (pad[3] - pad[1]) / 2 / world, sy = (pad[0] - pad[2]) / 2 / world;
-        return this.fit({center: [lngFromMerc((x0 + x1) / 2 - c * sx + s * sy), latFromMerc((y0 + y1) / 2 - s * sx - c * sy)], zoom, bearing}, o, eventData);
+        // The box of the two places, with edges along the meridians and parallels, is fitted turned by the bearing.
+        const a = this.unproject(p0), b = this.unproject(p1);
+        return this.fit(this.cameraForBounds([Math.min(a.lng, b.lng), Math.min(a.lat, b.lat), Math.max(a.lng, b.lng), Math.max(a.lat, b.lat)], {...o, bearing}), o, eventData);
     }
     /** As `_fitInternal` of MapLibre GL JS 6.17: the options of the call go onto the move, and the fit flies unless `linear` is set. */
     private fit(camera: EaseToOptions, {padding, linear, ...o}: FitBoundsOptions, eventData?: EventData) {
@@ -752,7 +762,7 @@ export class Map extends CoreMap {
     async loadImage(url: string) {
         const res = await this.fetchAs('Image')(url);
         if (!res.ok) throw httpError('image', url, res.status);
-        return {data: await createImageBitmap(await res.blob())};
+        return {data: (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob())};
     }
     /** The code for queries on the page, loaded when the style has a GeoJSON source with its data in the style. */
     private syncQuery?: typeof import('./sync-query.ts');
@@ -907,6 +917,7 @@ export class Map extends CoreMap {
      * before these events, and where a pointer rests. An event fires at once when the answer is there, and else waits
      * for it for at most 300 ms. Listeners for a layer get their features from the core map.)
      */
+    private zoomErrors?: Set<string>;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
@@ -916,6 +927,9 @@ export class Map extends CoreMap {
         // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
+        // (Development build) An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text, once for
+        // each layer, property and value. The map still draws it (#1087).
+        if (__DEV__ && type === 'styledataloading') zoomCurveErrors(this.rawStyle, this.zoomErrors ??= new Set(), error => this.fire('error', {error}));
         // The `eventData` of the camera call that made this move (see `jumpTo`). The move's own fields win.
         // User input starts a move of the user's: kept eventData (of a call that did not move the camera) is not on it.
         if (/^(mousedown|touchstart|wheel|dragstart|dblclick)$/.test(type)) this.moveData = undefined;

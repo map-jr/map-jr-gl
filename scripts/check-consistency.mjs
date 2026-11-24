@@ -110,6 +110,9 @@ for (const doc of [...docs, 'CLAUDE.md', 'CONTRIBUTING.md'].filter(f => existsSy
     const list = new Set(JSON.parse('[' + (m.match(/const descriptionFields = new Set\(\[([^\]]*)\]/)?.[1] ?? '').replaceAll("'", '"') + ']'));
     for (const f of spec) if (!list.has(f)) fail('src/mistakes.ts', `the field \`${f}\` of the description is not in descriptionFields, so it would warn as unknown`);
     for (const f of list) if (!spec.includes(f)) fail('src/mistakes.ts', `descriptionFields has \`${f}\`, which is not a field of the description in src/host.ts`);
+    // The list of the options of overlay(), which warns for any other option (#1647), agrees with src/host.ts.
+    const overlay = JSON.parse('[' + (m.match(/const overlayOptions = \[([^\]]*)\]/)?.[1] ?? '').replaceAll("'", '"') + ']'), given = fields(host, 'OverlayOptions');
+    if (overlay.join() !== given.join()) fail('src/mistakes.ts', `overlayOptions is [${overlay.join(', ')}], but OverlayOptions in src/host.ts has ${given.join(', ')}`);
     once('check kind', [...m.matchAll(/kind === (\d+)\)/g)].map(x => x[1]));
 }
 

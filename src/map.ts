@@ -14,6 +14,13 @@ import type {GeoJSONGeometry} from './host.ts';
 import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
+// The warnings of the engine workers, each once on the page, as each thread warns once (expr.ts, #1141).
+const pageWarned = new Set<string>();
+const pageWarn = (msg: string) => {
+    if (pageWarned.size > 200 || pageWarned.has(msg)) return;
+    pageWarned.add(msg);
+    console.warn('[map-jr-gl] ' + (pageWarned.size > 200 ? 'The workers sent 200 different warnings. Later ones are not shown.' : msg));
+};
 
 /** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
 declare const __DEV__: boolean;
@@ -458,6 +465,7 @@ export class Map {
             const off = this.canvas.transferControlToOffscreen(), w = engineWorker;
             this.workers.push(w);
             w.onmessage = e => {
+                if (e.data.type === 'warn') return pageWarn(e.data.msg);
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
                 this.fellBack(e.data.message);
@@ -650,7 +658,7 @@ export class Map {
     }
 
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
-    private resend() {
+    protected resend() {
         this.geoSent = undefined;
         // (The answers for data sent to the old engine do not come: the data that waits goes to the new one.)
         this.geoBusy.clear();
@@ -661,6 +669,10 @@ export class Map {
         if (this.wantsTiles) this.post({type: 'tileLoads', on: true});
         if (this.videos) this.videos.frame();
         for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
+        // (The padding of the camera, the fonts of `addFonts` and the report of the benchmark page are set by calls; #1050.)
+        if (this.tr.padding.some(Boolean)) { this.post({type: 'jump', padding: this.tr.padding}); this.jumped = this.seq; }
+        if (this.fontsAdded.length) this.post({type: 'fonts', fonts: this.fontsAdded});
+        if (this.tapped) this.post({type: 'tileReport', on: true});
     }
 
     /** Requests the JSON and the image of each sheet of a sprite, by URL, as the engine asks for them (see `loadIcons`). */
@@ -810,7 +822,8 @@ export class Map {
             }
         } else if (e.type === 'idle') {
             // (A report from before the last command: the engine sends another after that command.)
-            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
+            // (While a style of `setStyle` loads, the map is not idle: its `idle` comes after that style; #1167.)
+            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
             // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
@@ -921,8 +934,8 @@ export class Map {
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
     private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
         // (`RasterTile` is the kind of a `raster` or `raster-dem` tile on the way to this function only.)
-        const image = kind === 'RasterTile';
-        if (image) kind = 'Tile';
+        const image = kind === 'RasterTile' || kind === 'Image' || kind === 'SpriteImage';
+        if (kind === 'RasterTile') kind = 'Tile';
         const t = this.transformRequest?.(url, kind as ResourceType), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
         if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
         // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
@@ -931,9 +944,10 @@ export class Map {
         signal?.addEventListener('abort', stop);
         this.protocolAborts.add(ac);
         try {
-            // An image tile has the type `image` and the `accept` header of MapLibre GL JS. The protocol can answer it with
-            // the bytes of the file or with a decoded image, which is copied as bytes are: the copy goes to another thread.
-            const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
+            // An image tile, an image (`loadImage`, `addImage` by URL, an image source) and a sprite image have the type
+            // `image` and the `accept` header of MapLibre GL JS (#603, #651). The protocol can answer with the bytes of the
+            // file or with a decoded image, which is copied as bytes are: the copy can go to another thread.
+            const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
             const out = image && (data instanceof ImageBitmap || data instanceof HTMLImageElement) ? await createImageBitmap(data) : toBytes(data);
             if (ac.signal.aborted) { (out as Partial<ImageBitmap>).close?.(); throw new Error(`[map-jr-gl] the request to ${to} was aborted.`); }
             return {data: out};
@@ -1128,11 +1142,14 @@ export class Map {
     /** Stops the animation of the camera, where it is. */
     stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
 
-    /** The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
-    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number} = {}) {
+    /**
+     * The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view at
+     * `bearing` (degrees, default 0), as in MapLibre GL JS. `offset` ([x, y] or {x, y}, CSS pixels) moves the box by that much from the middle of the view.
+     */
+    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number; bearing?: number; offset?: PointLike} = {}) {
         // The map's own padding already moves the center; padding given here is on top of it.
-        const pad = sides(o.padding), own = this.tr.padding;
-        return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom), bearing: 0};
+        const pad = sides(o.padding), own = this.tr.padding, bearing = o.bearing || 0, off = o.offset;
+        return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom, bearing, off && (Array.isArray(off) ? off : [off.x, off.y])), bearing};
     }
     fitBounds(bounds: Parameters<Map['cameraForBounds']>[0], o: Parameters<Map['cameraForBounds']>[1] & {duration?: number} = {}) {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
@@ -1481,10 +1498,11 @@ export class Map {
         // (A style that cannot be loaded is an `error` event, as a failure of the first style is. The map keeps its style.)
         let next: any;
         this.styleLoading = true;
-        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); } return; }
+        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); this.post({type: 'repaint'}); } return; }
         // (A style that was asked for later has replaced this one.)
         if (turn !== this.styleTurn) return;
-        this.styleLoading = false;
+        // (An `idle` of the engine was dropped while the style loaded, and a style that changes nothing below sends no command: a repaint brings `idle` again.)
+        this.styleLoading = false; this.post({type: 'repaint'});
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         next = options?.transformStyle?.(this.rawStyle, next) ?? next;
         // (With `diff`, as in MapLibre GL JS 6.17: a style that differs from this one only in the camera changes nothing
@@ -1717,7 +1735,9 @@ export class Map {
 
     // ---- fonts and images ----
     /** Only in this library: loads more web fonts for labels after the map is created. See the option `fonts`. */
-    addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
+    addFonts(fonts: FontSource[]) { this.fontsAdded.push(...fonts); this.post({type: 'fonts', fonts}); return this; }
+    /** What `addFonts` was given: a new engine gets it again. */
+    private fontsAdded: FontSource[] = [];
 
     /**
      * Makes an image available to `icon-image` under `name`, and returns a promise of the map; MapLibre GL JS returns the map. `source` may be an SVG document (rasterized at the
@@ -1746,22 +1766,27 @@ export class Map {
         }
         if (typeof source === 'string') {
             const img = new Image();
+            let pic: HTMLImageElement | ImageBitmap = img;
             if (source.trimStart().startsWith('<')) {
                 const [w, h] = svgSize(source);
                 width ??= w; height ??= h;
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
             } else {
-                // (The request goes through `transformRequest` and the protocols with the kind `Image`, as in MapLibre GL JS.)
+                // (The request goes through `transformRequest` and the protocols with the kind `Image`, as in MapLibre GL JS.
+                // A protocol can answer with a decoded image, #651.)
                 const a = await this.answer(source, 'Image');
-                img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
-                img.src = a.data ? URL.createObjectURL(new Blob([a.data as BlobPart])) : a.url!;
+                if (a.data instanceof ImageBitmap) pic = a.data;
+                else {
+                    img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
+                    img.src = a.data ? URL.createObjectURL(new Blob([a.data])) : a.url!;
+                }
             }
-            try { await img.decode(); } finally { if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); }
+            if (pic === img) try { await img.decode(); } finally { if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); }
             // (While the image loaded, the map was removed, or the name got another image or was removed.)
             if (this.removed || this.imageTurns.get(name) !== turn) return this;
-            width ??= img.naturalWidth / (options.pixelRatio ?? 1); height ??= img.naturalHeight / (options.pixelRatio ?? 1);
-            sourceWidth = img.naturalWidth;
-            drawable = img;
+            sourceWidth = pic === img ? img.naturalWidth : pic.width;
+            width ??= sourceWidth / (options.pixelRatio ?? 1); height ??= (pic === img ? img.naturalHeight : pic.height) / (options.pixelRatio ?? 1);
+            drawable = pic;
         } else if ('data' in source) {
             if (typeof (source.data as {length?: unknown})?.length !== 'number') throw new Error(`[map-jr-gl] addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
             // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). They are stored at their own size, as in
@@ -1844,7 +1869,8 @@ export class Map {
         return result;
     }
     /** @internal For the benchmark page (#360): the engine fires a `tile` event for each step of a tile and for each frame. */
-    _tileReport(on: boolean) { this.post({type: 'tileReport', on}); }
+    _tileReport(on: boolean) { this.tapped = on; this.post({type: 'tileReport', on}); }
+    private tapped = false;
     /** Rejects the queries that have no answer yet. The engine that had them is gone, so no answer can come. */
     private drop(why: string) {
         // (After `remove()`, a query that nobody awaits is not an unhandled rejection of the page: a caller that awaits
@@ -1911,7 +1937,8 @@ export class Map {
         }));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
         // (From the top layer down, and in a layer the feature that is drawn last, which is on top, first.)
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
+        // A layer that was removed while the query was in flight has no features in the answer (#705).
+        const features = (found: QueriedFeature[]): RenderedFeature[] => found.filter(f => this.getLayer(f.layer!)).reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
             type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
         }));

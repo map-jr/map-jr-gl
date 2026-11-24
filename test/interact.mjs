@@ -1170,6 +1170,50 @@ for (const mode of renderers) {
         check(`[${mode}] loadImage uses addProtocol and transformRequest (#650)`,
             r.direct === '3x2' && r.rewritten === '3x2' && r.asked.join() === 'pic650://direct,pic650://from-transform' && r.kinds.join() === 'Image,Image', JSON.stringify(r));
     }
+    // #651: an image of loadImage, of addImage by URL and of an image source, and a sprite image, reach a protocol with the
+    // type `image` and the `accept` header, as in MapLibre GL JS, and an ImageBitmap that the protocol returns is drawn.
+    {
+        const r = await page.evaluate(async () => {
+            const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = {}, errors = [];
+            const fills = {add: '#ff0000', sheet: '#00ff00', pic: '#0000ff', load: '#ffffff'};
+            mod.addProtocol('pic651', async request => {
+                const what = request.url.slice(9).split(/[@.]/)[0];
+                asked[request.url.slice(9).replace('@2x', '')] = request.type + ' ' + request.headers?.accept;
+                if (request.url.endsWith('.json')) return {data: {s651: {x: 0, y: 0, width: 64, height: 64, pixelRatio: 1}}};
+                const c = new OffscreenCanvas(what === 'load' ? 3 : 64, what === 'load' ? 2 : 64), g = c.getContext('2d');
+                g.fillStyle = fills[what]; g.fillRect(0, 0, c.width, c.height);
+                return {data: c.transferToImageBitmap()};
+            });
+            const middle = async () => { const bmp = await createImageBitmap(await m.toBlob()), g = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+            const settle = async done => { for (let i = 0; i < 80 && !done(); i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => { m.once('idle', r); m.triggerRepaint(); setTimeout(r, 5000); }); };
+            const onError = e => errors.push(String(e.error?.message ?? e.error));
+            const c = m.getCenter(), b = m.getBounds(), seen = {}, sprite = m.getStyle().sprite;
+            m.on('error', onError);
+            try {
+                seen.load = await m.loadImage('pic651://load').then(i => `${i.data.width}x${i.data.height}`, e => String(e));
+                m.addSource('p651', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}});
+                m.addImage('a651', 'pic651://add');
+                m.addLayer({id: 'p651', type: 'symbol', source: 'p651', layout: {'icon-image': 'a651', 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
+                await settle(() => asked.add && m.hasImage('a651'));
+                seen.add = await middle();
+                m.setSprite('pic651://sheet');
+                m.setLayoutProperty('p651', 'icon-image', 's651');
+                await settle(() => asked['sheet.png']);
+                seen.sheet = await middle();
+                m.removeLayer('p651'); m.removeSource('p651');
+                m.addSource('i651', {type: 'image', url: 'pic651://pic', coordinates: [[b.getWest(), b.getNorth()], [b.getEast(), b.getNorth()], [b.getEast(), b.getSouth()], [b.getWest(), b.getSouth()]]});
+                m.addLayer({id: 'i651', type: 'raster', source: 'i651', paint: {'raster-fade-duration': 0}});
+                await settle(() => asked.pic && m.areTilesLoaded());
+                seen.pic = await middle();
+                m.removeLayer('i651'); m.removeSource('i651');
+            } finally { m.off('error', onError); m.removeImage('a651'); m.setSprite(sprite ?? null); mod.removeProtocol('pic651'); }
+            return {asked, seen, errors};
+        });
+        const image = 'image image/webp,*/*';
+        check(`[${mode}] addProtocol: loadImage, addImage by URL, an image source and a sprite image have the request type image, and an ImageBitmap of the protocol is used (#651)`,
+            r.asked.load === image && r.asked.add === image && r.asked['sheet.png'] === image && r.asked.pic === image && r.asked['sheet.json']?.startsWith('json')
+            && r.seen.load === '3x2' && r.seen.add === '255,0,0' && r.seen.sheet === '0,255,0' && r.seen.pic === '0,0,255' && !r.errors.length, JSON.stringify(r));
+    }
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
@@ -1369,11 +1413,16 @@ for (const mode of renderers) {
         const all = await m.queryRenderedFeatures(), filtered = await m.queryRenderedFeatures({layers: ['asked'], filter: ['==', ['get', 'kind'], 'far']});
         const source = await m.querySourceFeatures('asked');
         const out = {point: at.map(f => f.id), layer: at[0]?.layer?.id, geometry: at[0]?.geometry?.type, box: box.map(f => f.id).sort(), all: all.length, top: all[0]?.layer?.id, filtered: filtered.map(f => f.id), source: source.length};
-        m.removeLayer('asked'); m.removeSource('asked');
+        // A layer removed while a query is in flight: its features are left out, so every feature has a `layer` (#705).
+        const pending = m.queryRenderedFeatures(p, {layers: ['asked']});
+        m.removeLayer('asked');
+        const gone = await pending;
+        out.removed = gone.length; out.noLayer = gone.filter(f => !f.layer).length;
+        m.removeSource('asked');
         return out;
     });
-    check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures`,
-        rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
+    check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures; a layer removed during a query`,
+        rendered.removed === 0 && rendered.noLayer === 0 && rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
 
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
@@ -2651,6 +2700,25 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a GeoJSON source that fails is requested and fires error as in MapLibre GL JS after a paint change and setStyle (#809)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
     }
+    // A source with no "tiles" and no "url" gives an `error` to each map that uses the same style object, one time (#855).
+    {
+        const errors = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const style = {version: 8, sources: {none: {type: 'vector'}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, counts = [0, 0], maps = [];
+            for (const i of [0, 1]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
+                m.on('error', e => { if (/no "tiles" and no "url"/.test(e.error?.message)) counts[i]++; });
+                maps.push(m);
+                await new Promise(r => m.once('load', r));
+            }
+            maps[0].setPaintProperty('bg', 'background-color', '#eee');
+            await wait(500);
+            for (const m of maps) { m.getContainer().remove(); m.remove(); }
+            return counts;
+        }, mode);
+        check(`[${mode}] compat: a source with no tiles and no url gives one error to each map that shares the style object (#855)`, JSON.stringify(errors) === '[1,1]', JSON.stringify(errors));
+    }
     // A filter with ["zoom"] on a tile that is over-zoomed past the source's maxzoom sees the over-zoomed zoom, as in
     // MapLibre GL JS 6.17 (`overscaledZ`): at zoom 16 on a source that stops at 14, [">=", ["zoom"], 15] passes (#991).
     {
@@ -3667,6 +3735,35 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
             unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
     }
+    // An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text in the development build, once
+    // for each layer, property and value, and the map still draws it (#1087). The production build fires none.
+    if (mode === 'main') {
+        const zoom = await page.evaluate(async () => {
+            const out = {};
+            for (const file of ['map-jr-gl-maplibre-compat.dev.js', 'map-jr-gl-maplibre-compat.js']) {
+                const mod = await import('/dist/' + file);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const curve = ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 5];
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {s: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'c', type: 'circle', source: 's', paint: {'circle-radius': ['*', 2, curve]}}]}});
+                const errors = [];
+                m.on('error', e => errors.push(e.error.message));
+                await new Promise(r => m.once('load', r));
+                m.setPaintProperty('c', 'circle-opacity', ['/', ['zoom'], 10]);
+                m.setPaintProperty('c', 'circle-blur', ['case', ['has', 'a'], curve, curve]);
+                m.setPaintProperty('c', 'circle-stroke-width', curve);
+                m.setPaintProperty('c', 'circle-color', 'red');
+                await new Promise(r => m.once('idle', r));
+                out[file] = {errors, radius: m.getPaintProperty('c', 'circle-radius')?.[0]};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        const dev = zoom['map-jr-gl-maplibre-compat.dev.js'], prod = zoom['map-jr-gl-maplibre-compat.js'];
+        const nested = '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.', one = 'Only one zoom-based "step" or "interpolate" subexpression may be used in an expression.';
+        check('[main] maplibre-compat: the development build fires error with the text of MapLibre GL JS for a nested, repeated or bare ["zoom"], once each, and keeps the value; the production build fires none',
+            dev.errors.length === 3 && dev.errors[0].startsWith(`[map-jr-gl] layers.c.paint.circle-radius: ${nested}`) && dev.errors[1].startsWith(`[map-jr-gl] layers.c.paint.circle-opacity: ${nested}`) && dev.errors[2].startsWith(`[map-jr-gl] layers.c.paint.circle-blur: ${one}`)
+            && dev.radius === '*' && prod.errors.length === 0, JSON.stringify(zoom));
+    }
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {
         const logo = await page.evaluate(async () => {
@@ -4162,6 +4259,34 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: listens, getStyleUrl and fitScreenCoordinates (with a bearing, padding and maxZoom) agree with MapLibre (#564)',
             m564.ml.length === m564.compat.length && m564.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m564.compat[i]) < 1e-3 : v === m564.compat[i]), JSON.stringify(m564));
+        // #1319: cameraForBounds and fitBounds with the options bearing and offset (and padding, also of the map) give the
+        // results of MapLibre GL JS (served at /ml/): the box is fitted turned by the bearing, and fitBounds applies the offset twice.
+        const m1319 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 4, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const out = [], box = [[5, 40], [15, 48]], cam = c => out.push(c.center.lng, c.center.lat, c.zoom, c.bearing);
+                const camera = () => out.push(m.getCenter().lng, m.getCenter().lat, m.getZoom(), m.getBearing());
+                cam(m.cameraForBounds(box, {bearing: 30}));
+                cam(m.cameraForBounds(box, {offset: [40, -20]}));
+                cam(m.cameraForBounds(box, {bearing: -120, offset: {x: -15, y: 25}, padding: {top: 10, bottom: 25, left: 40, right: 5}}));
+                m.fitBounds(box, {bearing: 30, offset: [40, -20], duration: 0}); camera();
+                m.fitBounds(box, {bearing: 75, offset: [-30, 10], padding: 12, linear: true, duration: 0}); camera();
+                m.setPadding({top: 20, right: 0, bottom: 0, left: 50});
+                cam(m.cameraForBounds(box, {bearing: 45, offset: [10, 10], padding: 5}));
+                m.fitBounds(box, {bearing: 45, offset: [10, 10], padding: 5, duration: 0}); camera();
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: cameraForBounds and fitBounds with bearing and offset agree with MapLibre (#1319)',
+            m1319.ml.length === m1319.compat.length && m1319.ml.every((v, i) => Math.abs(v - m1319.compat[i]) < 1e-4), JSON.stringify(m1319));
         // #1018: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and
         // calculateAnchoredCameraOptions give the results of MapLibre GL JS (served at /ml/) for the same inputs.
         const m1018 = await page.evaluate(async () => {
@@ -4243,6 +4368,29 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: setTransformConstrain on a map that draws in a worker warns once and fires no error (#1020)',
             w1020.warnings.length === 1 && w1020.warnings[0].includes("renderer: 'main'") && !w1020.errors.length && w1020.zoom === 2, JSON.stringify(w1020));
+        // #1050: after a lost WebGL context, the new engine keeps the constrain function and the padding that calls set.
+        const l1050 = await page.evaluate(async () => {
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new compat.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 2, fadeDuration: 0});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            m.setTransformConstrain((lngLat, zoom) => ({center: lngLat, zoom: Math.min(zoom, 3)}));
+            m.setPadding({top: 0, right: 0, bottom: 0, left: 40});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const restored = new Promise(r => { m.once('webglcontextrestored', r); setTimeout(r, 15000); });
+            m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+            await restored;
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const padding = m.getPadding().left;
+            // (The engine reports the camera that it has: a zoom past 3 shows that it has lost the function.)
+            await new Promise(r => { m.once('moveend', r); m.easeTo({zoom: 6, duration: 100}); setTimeout(r, 5000); });
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const zoom = m.getZoom();
+            m.remove(); el.remove();
+            return {zoom, padding};
+        });
+        check('[main] maplibre-compat: after a lost WebGL context the camera keeps the constrain function and the padding (#1050)',
+            Math.abs(l1050.zoom - 3) < 1e-9 && l1050.padding === 40, JSON.stringify(l1050));
         // #1022: coveringTiles gives the tiles of MapLibre GL JS (served at /ml/) for the same view and options.
         const m1022 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -4408,6 +4556,36 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: zoomSnap snaps the zoom of camera calls and fitBounds, and setEventedParent passes events to the parent, as in MapLibre (#1019)',
             m1019.ml.length === m1019.compat.length && m1019.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1019.compat[i]) < 1e-9 : v === m1019.compat[i]), JSON.stringify(m1019));
+        // #1040: with zoomSnap, a turn of a mouse wheel ends at the next multiple in its direction, and a trackpad does not
+        // snap, as in MapLibre GL JS (served at /ml/).
+        const m1040 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4.3, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.setZoomSnap(0.5);
+                // (A deltaY that is a multiple of 4.000244140625 is a mouse wheel in both libraries, and one below 4 a trackpad.)
+                const turn = async deltaY => {
+                    const end = new Promise(r => m.once('moveend', r));
+                    m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY, clientX: 150, clientY: 100, bubbles: true, cancelable: true}));
+                    await Promise.race([end, new Promise(r => setTimeout(r, 2000))]);
+                    await new Promise(r => setTimeout(r, 500));
+                    return m.getZoom();
+                };
+                const out = [m.getZoom()];
+                out.push(await turn(-4.000244140625 * 10), await turn(4.000244140625 * 25), await turn(-4.000244140625 * 100));
+                m.setZoomSnap(0); out.push(await turn(-4.000244140625 * 10));
+                m.setZoomSnap(0.5); out.push(await turn(-3));
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: with zoomSnap, the mouse wheel ends at a multiple of it and a trackpad does not snap, as in MapLibre (#1040)',
+            m1040.ml.length === m1040.compat.length && m1040.ml.every((v, i) => Math.abs(v - m1040.compat[i]) < 1e-6) && m1040.compat.slice(1, 4).every(z => Math.abs(z * 2 - Math.round(z * 2)) < 1e-9), JSON.stringify(m1040));
         // #1198: fitBounds and fitScreenCoordinates with `pitch` end at that pitch and fit the box as seen from above, and
         // without `pitch` keep the pitch of the map, as in MapLibre GL JS (served at /ml/).
         const m1198 = await page.evaluate(async () => {

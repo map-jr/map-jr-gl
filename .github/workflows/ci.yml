@@ -197,7 +197,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: .cache/maplibre-gl-js
-          key: maplibre-tests-${{ hashFiles('test/conformance/render.mjs') }}
+          key: maplibre-tests-${{ hashFiles('test/conformance/render.mjs', 'test/conformance/maplibre-checkout.mjs') }}
       - run: node build.mjs
       # (`shell: bash` sets pipefail, so a result below the floor fails the step and not only `tee`; #1481.)
       - run: pnpm test:render | tee render.txt
