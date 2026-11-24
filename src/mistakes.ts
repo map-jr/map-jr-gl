@@ -54,6 +54,7 @@ texts[1190] = () => 'update(): "view" is a view that the map reported earlier, s
 texts[1147] = (target, option) => `${target}: "${option}" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit${option[0].toUpperCase() + option.slice(1)}". "${option}" of the description applies to the map for good.`;
 texts[1189] = sourceId => `sources: the GeoJSON source "${sourceId}" has no "data", and "data" of the description has no key "${sourceId}", so the source has no features. Give the source its own "data", or write the features as "data: {${sourceId}: geojson}".`;
 texts[30] = (layerId, sourceType) => `hoverState: a feature of the layer "${layerId}" has no id, so it gets no feature state "hover". ${sourceType === 'geojson' ? 'Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.' : 'Write a numeric id for each feature into the tiles when you build them, or set "promoteId" of the source to a property that has one.'}`;
+texts[1692] = layer => `${layer}: "symbol-avoid-edges" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`;
 texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
 texts[40] = scheme => `colorScheme: ${scheme} is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
@@ -289,7 +290,11 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const l of [...layers, ...more]) { params(l.layout?.['icon-image']); params(l.layout?.['text-field']); }
     };
     /** Warns for each property of the layers that the style specification does not have for the type of the layer (#1139). */
-    const properties = (layers: unknown) => unknownProperties(layers, (l, g, k, near) => warn(1139, `the ${l.type} layer "${l.id}", ${g} property "${k}"`, near));
+    const properties = (layers: unknown) => {
+        unknownProperties(layers, (l, g, k, near) => warn(1139, `the ${l.type} layer "${l.id}", ${g} property "${k}"`, near));
+        // (Accepted, and read neither here nor by MapLibre GL JS 6.17: #1692.)
+        for (const l of Array.isArray(layers) ? layers : []) if (l?.type === 'symbol' && l.layout?.['symbol-avoid-edges'] != null) warn(1692, `the symbol layer "${l.id}"`);
+    };
     if (kind === 0) {
         // (An element that is hidden or not in the page has no rectangle: that is not this mistake.)
         const el = map.getContainer();
