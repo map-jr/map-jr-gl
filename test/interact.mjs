@@ -5603,7 +5603,7 @@ for (const mode of renderers) {
     }
     // setCenterElevation lasts after setCenterClampedToGround(false), as in MapLibre GL JS, and the engine keeps it (#897).
     // While the center is clamped, the call warns once and the center stays on the ground.
-    const centre = await page.evaluate(async () => {
+    const elevated = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
         const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, maxPitch: 180, attributionControl: false});
         await new Promise(r => m.once('load', r));
@@ -5622,7 +5622,7 @@ for (const mode of renderers) {
         return out;
     });
     check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
-        JSON.stringify(centre) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(centre));
+        JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
