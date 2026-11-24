@@ -80,10 +80,37 @@ const allInOne = {
     name: 'all-in-one',
     enforce: 'pre',
     transform(code, id) {
+        // (The parts of the worker, src/parts.ts, are imported in the same way.)
+        if (id.endsWith('/src/parts.ts')) {
+            const edited = new MagicString(code);
+            for (const m of code.matchAll(partImport)) edited.overwrite(m.index, m.index + m[0].length, `Promise.resolve(part_${m[1]})`).append(`\nimport * as part_${m[1]} from './${m[1]}.ts';\n`);
+            return withMap(edited, id);
+        }
         const lazy = "await import('./pmtiles-info.ts')";
         if (!id.endsWith('/src/resolve.ts') || !code.includes(lazy)) return null;
         const edited = new MagicString(code), at = code.indexOf(lazy);
         edited.overwrite(at, at + lazy.length, 'pmtilesInfo').append("\nimport * as pmtilesInfo from './pmtiles-info.ts';\n");
+        return withMap(edited, id);
+    },
+};
+
+/**
+ * The parts of the worker that load on demand (#79): each line `name: () => import('./file.ts')` of src/parts.ts is a
+ * file `map-jr-gl-worker-<name>.js` of its own. The worker file does not contain them: the worker loads one from the
+ * URL that the page sends (`fromUrl` in src/worker.ts). A part file is a classic script that sets the global
+ * `MapJrPart`, and the modules that the part imports are read from `MapJrWorker`, the global of the worker file, so
+ * that their code is not in two files (the exports of src/worker.ts).
+ */
+const partImport = /(?<=\(\) => )import\('\.\/([\w-]+)\.ts'\)/g;
+const workerParts = [...readFileSync('src/parts.ts', 'utf8').matchAll(/^ {4}(\w+): \(\) => import\('\.\/([\w-]+)\.ts'\),$/gm)].map(m => ({name: m[1], file: m[2]}));
+if (!workerParts.length) throw new Error('build.mjs: src/parts.ts has no parts.');
+const splitParts = {
+    name: 'worker-parts',
+    enforce: 'pre',
+    transform(code, id) {
+        if (!id.endsWith('/src/parts.ts')) return null;
+        const edited = new MagicString(code);
+        for (const m of code.matchAll(partImport)) edited.overwrite(m.index, m.index + m[0].length, `Promise.reject(Error('[map-jr-gl] The page sent no URL for the part ${m[1]} of the worker.'))`);
         return withMap(edited, id);
     },
 };
@@ -154,9 +181,16 @@ const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
 
 // The worker: tile parsing, and the whole rendering engine when a map renders off the main thread. A classic script,
 // so it can be started from a blob or another origin.
-await run({lib: {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'}}, undefined, [allInOne]);
-// (The copy of the worker inside a standalone file starts from a blob, which has no file beside it: the line that names the source map goes.)
-const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8').replace(/\n\/\/# sourceMappingURL=\S+\s*$/, '\n');
+// The copy of the worker inside a standalone file contains its parts. It starts from a blob, which has no file beside
+// it: the line that names the source map goes. (It is built into a folder of its own, and only its text is used.)
+const workerLib = {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'};
+await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne]);
+const workerSrc = readFileSync('.cache/worker-all-in-one/map-jr-gl-worker.js', 'utf8');
+await run({lib: workerLib}, undefined, [splitParts, allInOne]);
+for (const {name, file} of workerParts) {
+    await run({lib: {entry: `src/${file}.ts`, formats: ['iife'], name: 'MapJrPart', fileName: () => `map-jr-gl-worker-${name}.js`},
+        rollupOptions: {external: (id, importer) => !!importer, output: {globals: () => 'MapJrWorker'}}});
+}
 
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
 // engine for main-thread rendering is a separate chunk that is only fetched if that path is taken.
@@ -230,6 +264,7 @@ report('page script, up front (' + upfront.join(' + ') + ')', Buffer.concat(upfr
 const upfrontDev = [...withStaticImports('map-jr-gl.dev.js', fromDist)];
 report('the same in the development build (' + upfrontDev.join(' + ') + ')', Buffer.concat(upfrontDev.map(f => readFileSync('dist/' + f))));
 report('map-jr-gl-worker.js (loaded in a worker)', readFileSync('dist/map-jr-gl-worker.js'));
+for (const {name} of workerParts) report(`map-jr-gl-worker-${name}.js (worker, on demand)`, readFileSync(`dist/map-jr-gl-worker-${name}.js`));
 for (const f of readdirSync('dist').filter(f => /^map-jr-gl-.*-[\w-]{8}\.js$/.test(f))) if (!upfront.includes(f) && !upfrontDev.includes(f)) report(`${f} (${f.startsWith('map-jr-gl-engine-entry') ? 'main-thread engine, ' : ''}on demand)`, readFileSync('dist/' + f));
 report('map-jr-gl-standalone.js (everything in one file)', readFileSync('dist/map-jr-gl-standalone.js'));
 report('server.js', readFileSync('dist/server.js'));

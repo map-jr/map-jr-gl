@@ -3,14 +3,46 @@ import {Engine} from './engine.ts';
 declare const __VERSION__: string; // the version of package.json, set by the build
 import {PortBackend, serveTiles} from './tiles.ts';
 import {relayWarnings} from './expr.ts';
+import {setPartLoader, type PartName} from './parts.ts';
+
+// What the parts that load on demand (parts.ts) take from this file. A part file is built with these modules left
+// out, and reads them from `MapJrWorker`, the global of this file (see build.mjs).
+export {EXTENT, mercX, mercY} from './geo.ts';
+export {compileExpr, compileFilter} from './expr.ts';
+export {decodeElevation} from './query.ts';
+export {decodePixels} from './exact-pixels.ts';
+export {heads} from './tile-fetch.ts';
 
 /** One worker script, two roles: a tile parser, or the host of the whole rendering engine. */
-const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null; postMessage(m: unknown): void};
-// Engines hosted here, by the id the page gave each; one worker can serve tiles for many maps and host an engine too.
+const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null; postMessage(m: unknown): void; importScripts(url: string): void; MapJrPart?: unknown};
+
+/**
+ * Loads a part from the URL that the page gave (`partUrls` in loader.ts). The file is fetched and run from a blob,
+ * so that the worker goes on with other tiles while it downloads. Where that is not allowed (no CORS on another origin,
+ * a policy without `blob:`), `importScripts` loads it from its URL.
+ */
+let partUrls: Partial<Record<PartName, string>> = {};
+const fromUrl = async (partName: PartName) => {
+    const url = partUrls[partName]!;
+    let blob = '';
+    try {
+        const res = await fetch(url);
+        if (res.ok) blob = URL.createObjectURL(new Blob([await res.text(), `\n//# sourceMappingURL=${url.replace(/[?#].*/, '')}.map`], {type: 'text/javascript'}));
+    } catch { /* importScripts below */ }
+    try {
+        try { scope.importScripts(blob || url); } catch (err) { if (!blob) throw err; scope.importScripts(url); }
+    } catch {
+        throw new Error(`[map-jr-gl] The worker could not load ${url}, the part of the worker for ${partName}. Serve map-jr-gl-worker-${partName}.js from the same folder and version as map-jr-gl-worker.js.`);
+    } finally { if (blob) URL.revokeObjectURL(blob); }
+    return scope.MapJrPart;
+};
+
 /** The ports of the maps that this worker serves tiles for, by the id that the page gave each. */
 const tilePorts = new Map<number, MessagePort>();
 scope.onmessage = e => {
     const m = e.data;
+    // (The page sends the URLs of the parts with each role. The standalone build sends none: its worker has them inside.)
+    if (m.parts) { partUrls = m.parts; setPartLoader(fromUrl); }
     // A warning goes through the port of any map that is still open: the page prints each once, whichever map it came from.
     if (m.role === 'tiles') { tilePorts.set(m.id, m.port); serveTiles(m.port); relayWarnings(msg => tilePorts.values().next().value?.postMessage({type: 'warn', msg})); }
     // The page drops the port of a map that it no longer uses (its engine worker ended, or the map was removed; #838).

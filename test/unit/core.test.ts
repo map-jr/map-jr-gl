@@ -482,7 +482,7 @@ test('style: font-faces become web fonts keyed by family, weight and style', asy
 });
 
 test('pmtiles: tiles are read from an archive by range request, through directories', async () => {
-    const {PMTiles, tileId, fetchTile} = await import('../../src/pmtiles.ts');
+    const {PMTiles, tileId} = await import('../../src/pmtiles.ts'), {fetchTile} = await import('../../src/tile-fetch.ts');
     assert.deepEqual([tileId(0, 0, 0), tileId(1, 0, 0), tileId(1, 0, 1), tileId(1, 1, 1), tileId(1, 1, 0), tileId(2, 0, 0)], [0, 1, 2, 3, 4, 5]);
     // Build a minimal archive: header, an uncompressed root directory with two tiles, then the tile data.
     const varint = (n: number) => { const o = []; do { let b = n % 128; n = Math.floor(n / 128); if (n) b |= 0x80; o.push(b); } while (n); return o; };

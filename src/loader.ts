@@ -27,7 +27,8 @@ export function supported(): boolean {
 /** How the library loads its workers, for `configure`. */
 export interface LoadOptions {
     /**
-     * The URL of the worker file, `map-jr-gl-worker.js`.
+     * The URL of the worker file, `map-jr-gl-worker.js`. The parts of the worker (`map-jr-gl-worker-*.js`) must be in
+     * the same folder.
      * @default the file next to the module of the library
      */
     workerUrl?: string | URL;
@@ -72,6 +73,25 @@ function workerHref(o: LoadOptions): string | undefined {
     if (o.createWorker ?? defaults.createWorker ?? (!url && __WORKER_SRC__)) return;
     // (The marker comment stops this library's own build from rewriting the line; it is not in the published file.)
     return new URL(url ?? new URL(/* @vite-ignore */ './map-jr-gl-worker.js', import.meta.url), location.href).href;
+}
+
+/**
+ * The URLs of the parts of the worker that load on demand (src/parts.ts), for the worker to load when a map needs one.
+ * They are next to `workerUrl` when it is given, and otherwise next to this module, where a bundler that copies the
+ * worker file copies them too. The standalone build has them inside its worker.
+ */
+export function partUrls(o: LoadOptions): Record<string, string> | undefined {
+    const url = o.workerUrl ?? defaults.workerUrl;
+    if (!url && !(o.createWorker ?? defaults.createWorker) && __WORKER_SRC__) return;
+    const page = globalThis.location?.href ?? import.meta.url;
+    const at = (name: string, own: URL) => new URL(url ? `map-jr-gl-worker-${name}.js` : own, url ? new URL(url, page) : page).href;
+    // (Each URL is written out, so that a bundler finds it. The marker comment stops this library's own build from rewriting the line.
+    // `?no-inline` keeps Vite from putting a file under 4 KB into the page script as a `data:` URL; a server ignores it.)
+    return {
+        geojson: at('geojson', new URL(/* @vite-ignore */ './map-jr-gl-worker-geojson.js?no-inline', import.meta.url)),
+        contour: at('contour', new URL(/* @vite-ignore */ './map-jr-gl-worker-contour.js?no-inline', import.meta.url)),
+        pmtiles: at('pmtiles', new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
+    };
 }
 
 /**
@@ -177,6 +197,7 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
     const mine = pool, workers = await mine.workers;
     mine.users++;
     let ports: MessagePort[] = [], ids: number[] = [];
+    const parts = partUrls(o);
     // The tile-worker end of a port that went to an engine worker can only be closed by the tile worker (#838).
     const drop = () => { for (const id of ids) for (const w of workers) w.postMessage({role: 'drop', id}); };
     return {
@@ -184,7 +205,7 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
             drop();
             // Each map talks to each worker over its own channel, so their styles and requests stay separate.
             ids = workers.map(() => ++channels);
-            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i]}, [ch.port1]); return ch.port2; });
+            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts}, [ch.port1]); return ch.port2; });
             return ports;
         },
         // WebKit can hold a message on the port of a worker that has been idle for a few seconds for about a second

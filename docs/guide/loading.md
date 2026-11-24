@@ -8,12 +8,14 @@ Content Security Policy and TypeScript for the library.
 A production build needs no setting of the bundler. In development, Vite needs one setting: see
 [Vite in development](#vite-in-development). The page script finds the worker file next to itself with
 `new URL('./map-jr-gl-worker.js', import.meta.url)`, and Vite, webpack 5, Rollup and Parcel copy the worker file
-into the build when they read that line.
+into the build when they read that line. The page script names the parts of the worker in the same way, so the
+bundler copies them too.
 
 | File | When the map loads it |
 |---|---|
 | The page script: the file of the entry and the files that it imports, called its parts | When the page imports the entry |
 | `map-jr-gl-worker.js` | When the map is created, together with the style. The same file starts the worker of the renderer and the tile workers. |
+| `map-jr-gl-worker-geojson.js`, `map-jr-gl-worker-contour.js`, `map-jr-gl-worker-pmtiles.js` | The parts of the worker. Each worker loads one once, when the style has a `geojson` source, a `contour` source or a `pmtiles://` URL. A map without such a source loads none of them. |
 | `map-jr-gl-engine-entry-<hash>.js` | Only when the map draws on the main thread: with `renderer: 'main'`, or when a worker cannot draw |
 | `map-jr-gl-custom-layers-<hash>.js` | Only in `@map-jr/map-jr-gl/maplibre-compat`, when `addLayer` adds the first custom layer |
 | `map-jr-gl-standalone.js` | Only when the page imports the one-file build instead of the entry |
@@ -30,7 +32,7 @@ export it. In `@map-jr/map-jr-gl/maplibre-compat`, each option is also an option
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `workerUrl` | `string \| URL` | The worker file next to the page script | The URL of `map-jr-gl-worker.js`. |
+| `workerUrl` | `string \| URL` | The worker file next to the page script | The URL of `map-jr-gl-worker.js`. The parts of the worker (`map-jr-gl-worker-*.js`) must be in the same folder. |
 | `createWorker` | `() => Worker` | | A function that starts the worker, for the worker syntax of a bundler. It overrides `workerUrl`. |
 | `tileWorkers` | `number` | Two fewer than the processor cores, from 1 to 4 | The number of tile workers. While a map with the same worker file exists, a new value is ignored. |
 | `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that draws the map. See [What each renderer needs](browser-support.md#what-each-renderer-needs). |
@@ -194,7 +196,7 @@ The map needs no `'unsafe-eval'` and no `'unsafe-inline'`. Both entries need the
 
 | Directive | What the map needs |
 |---|---|
-| `script-src` | The origin of the library files. |
+| `script-src` | The origin of the library files. With `blob:`, a worker loads a part of the worker without waiting: without it, the worker loads the part from its URL and writes one console error. |
 | `worker-src` | The origin of the worker file, and `blob:`. |
 | `connect-src` | The origin of the worker file, and the hosts of the style, the TileJSON, the tiles, the glyphs, the sprite and the `fonts` of the description. |
 | `img-src` | The URL of each image that `images` of the description or `addImage` loads, and `data:` for an image passed as SVG text. |
