@@ -4791,6 +4791,37 @@ if ((only ?? 'main') === 'main') {
     } catch (e) { check('circle-pitch-alignment and circle-pitch-scale were checked', false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
+// circle-pitch-alignment: map on the globe (#1825). As in MapLibre GL JS, the circle lies in the plane that touches the
+// sphere at its center, and its radius is an angle (60 px at zoom 1 is 21 degrees). A circle at latitude 45 is then
+// 98 x 59 px in this view (measured). Offset in Mercator units, as before the fix, it was 110 x 69 px: it reached
+// farther toward the pole and along the parallel, toward the edge of the globe.
+if ((only ?? 'main') === 'main') {
+    const page = await browser.newPage({viewport: {width: 400, height: 400}});
+    try {
+        await page.goto(`${origin}/bench`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const host = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]},
+                data: {pts: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 45]}}]}},
+                layers: [{id: 'dot', type: 'circle', source: 'pts', paint: {'circle-radius': 60, 'circle-color': '#f00', 'circle-pitch-alignment': 'map'}}],
+                projection: {type: 'globe'}, initialView: {center: [0, 0], zoom: 1}, renderer: 'main', attribution: false});
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 15000); });
+        });
+        const b64 = (await page.screenshot({clip: {x: 0, y: 0, width: 400, height: 400}})).toString('base64');
+        const size = await page.evaluate(async b64 => {
+            const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+            const c = Object.assign(document.createElement('canvas'), {width: 400, height: 400}).getContext('2d'); c.drawImage(img, 0, 0);
+            const d = c.getImageData(0, 0, 400, 400).data;
+            let x0 = 400, x1 = -1, y0 = 400, y1 = -1;
+            for (let y = 0; y < 400; y++) for (let x = 0; x < 400; x++) if (d[(y * 400 + x) * 4] > 192 && d[(y * 400 + x) * 4 + 1] < 64) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+            return [x1 - x0 + 1, y1 - y0 + 1];
+        }, b64);
+        check('circle-pitch-alignment: map on the globe lies flat on the sphere and is foreshortened toward the edge (#1825)',
+            Math.abs(size[0] - 98) <= 4 && Math.abs(size[1] - 59) <= 4, JSON.stringify(size));
+    } catch (e) { check('circle-pitch-alignment: map on the globe was checked', false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
+}
 // A text-font stack without glyphs is a CSS family list (#927): each name is tried in order before fontFamily, and a
 // generic family keyword stays unquoted. A label of narrow letters is about twice as wide in monospace as in a
 // proportional font, so the width of the dark pixels says which font drew it. With the stack, the two missing names
