@@ -3637,6 +3637,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             const warnings = [], warn = console.warn;
             let afterRefused;
+            m.on('error', () => {}); // (the refusal of the duplicate id is an error event; handled, it is no page error)
             console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
             try {
                 m.addLayer({id: 'bg', type: 'no-such-type'}); afterRefused = warnings.length; m.addLayer({id: 'a', type: 'no-such-type'}); m.addLayer({id: 'b', type: 'no-such-type'}); m.addLayer({id: 'c', type: 'background'});
