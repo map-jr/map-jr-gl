@@ -432,7 +432,7 @@ export class Map {
         // the camera: with a zoom in the options and no center, the center is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, [first] = await Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed, this.geojsonDefaults()), this.globeReady()]);
+        const restyled = this.restyled, [first] = await Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed, this.geojsonBuffer()), this.globeReady()]);
         // (Values set before the style was there.)
         if (Object.keys(this.globalState).length) first.state = {...first.state, ...this.globalState};
         // A globe is not kept inside the height of the world as Mercator is: the camera of the options is set again now
@@ -1298,7 +1298,7 @@ export class Map {
     /** Called when the style has changed, before it is resolved (for a class that extends this one). */
     protected styleChanged() {}
     /** The buffer of a GeoJSON source that gives none, in pixels; `undefined` keeps the default of the tiles (16). */
-    protected geojsonDefaults(): {buffer?: number; tolerance?: number} { return {}; }
+    protected geojsonBuffer(): number | undefined { return undefined; }
     private reloadPending = false;
     /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
     private reuse = false;
@@ -1345,7 +1345,7 @@ export class Map {
         const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
         const reuse = this.reuse && this.resolved;
         this.reuse = false;
-        Promise.all([reuse || resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed, this.geojsonDefaults()), this.globeReady()]).then(([style]) => {
+        Promise.all([reuse || resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed, this.geojsonBuffer()), this.globeReady()]).then(([style]) => {
             if (turn !== this.restyles) return;
             this.warnUnsupported(style.unsupported);
             const reload = this.reloadPending;

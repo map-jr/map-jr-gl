@@ -235,7 +235,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### GeoJSON sources
 
 - **MapLibre GL JS:** `setData`, `getData`, `updateData`, the cluster methods.
-- This library does the same. `updateData` makes the new data from the old data and the changes, and then replaces the data of the source in one step. The `buffer` option sets how far past its edges a tile keeps the features, in pixels of a tile 512 pixels wide, as in MapLibre GL JS (at most 512). Without `buffer`, a tile keeps 128 pixels, as in MapLibre GL JS (the main entry `@map-jr/map-jr-gl` keeps 16). The `tolerance` option simplifies lines and polygons for each zoom level as geojson-vt does. Without `tolerance`, the compat entry uses 0.375, as in MapLibre GL JS, and the main entry does not simplify.
+- This library does the same. `updateData` makes the new data from the old data and the changes, and then replaces the data of the source in one step. The `buffer` option sets how far past its edges a tile keeps the features, in pixels of a tile 512 pixels wide, as in MapLibre GL JS (at most 512). Without `buffer`, a tile keeps 128 pixels, as in MapLibre GL JS (the main entry `@map-jr/map-jr-gl` keeps 16). The `tolerance` option simplifies lines and polygons for each zoom level as geojson-vt does. The default is 0.375 in both entries, as in MapLibre GL JS. Unlike geojson-vt, a line or polygon smaller than the tolerance is not dropped.
 
 ### `Marker` and `Popup`
 

@@ -17,16 +17,14 @@ const vertices = (tolerance: number | undefined, z: number) => {
     return count;
 };
 
-test('GeoJSON tolerance: a tile keeps fewer vertices at low zoom, and all of them without tolerance', () => {
-    const plain = vertices(undefined, 2), simple = vertices(0.375, 2);
-    assert.ok(plain > 500, `without tolerance: ${plain}`);
-    assert.ok(simple < 20, `with tolerance 0.375: ${simple}`);
-    assert.equal(vertices(0, 2), plain, 'tolerance 0 does not simplify');
+test('GeoJSON tolerance: a tile keeps fewer vertices at low zoom, 0.375 is the default, and 0 does not simplify', () => {
+    const plain = vertices(0, 2), simple = vertices(0.375, 2);
+    assert.ok(plain > 500, `tolerance 0: ${plain}`);
+    assert.ok(simple < 20, `tolerance 0.375: ${simple}`);
+    assert.equal(vertices(undefined, 2), simple, 'the default is 0.375');
 });
 
-test('GeoJSON tolerance: the style option reaches the source, and the compat default is 0.375', async () => {
+test('GeoJSON tolerance: the style option reaches the source', async () => {
     const style = await resolveStyle({version: 8, sources: {g: {type: 'geojson', data: line, tolerance: 1}}, layers: []} as any);
     assert.equal((style.sources.g as any).options?.tolerance, 1);
-    const compat = await resolveStyle({version: 8, sources: {g: {type: 'geojson', data: line}}, layers: []} as any, undefined, undefined, undefined, undefined, {tolerance: 0.375});
-    assert.equal((compat.sources.g as any).options?.tolerance, 0.375);
 });

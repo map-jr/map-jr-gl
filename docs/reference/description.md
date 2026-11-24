@@ -315,6 +315,9 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
 - To set options of the source (`cluster`, `promoteId`, `attribution`), declare the source in `sources` or in the
   style. A GeoJSON source in `sources` whose id is a key of `data` needs no `data` of its own: `data` sets its
   features.
+- A GeoJSON source simplifies its lines and polygons at low zoom levels with `tolerance` (default `0.375`, in pixels
+  of a tile 512 pixels wide; `0` turns it off), as in MapLibre GL JS. See
+  [Data](../guide/data.md).
 - When a key is removed from `data`, the map removes the source that it created for that key. A layer that still
   uses the source draws nothing, so remove such a layer in the same description.
 

@@ -552,8 +552,8 @@ export class Map extends CoreMap {
         }
         return super.addLayer(one, beforeId);
     }
-    /** As in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels around each tile (the main entry keeps 16), and one without `tolerance` simplifies with 0.375 (the main entry does not simplify). */
-    protected geojsonDefaults() { return {buffer: 128, tolerance: 0.375}; }
+    /** As in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels around each tile (the main entry keeps 16). */
+    protected geojsonBuffer() { return 128; }
     /** Removes a style layer, as in MapLibre GL JS. */
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;

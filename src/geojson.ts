@@ -143,8 +143,8 @@ export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZo
     if (keep) all = all.filter(f => keep({zoom: 0, f: f as any}));
     // (Without `buffer`, tiles keep 16 pixels. The compat entry passes 128, the default of MapLibre GL JS.)
     const buffer = typeof o.buffer === 'number' && o.buffer >= 0 ? Math.min(o.buffer, 512) * EXTENT / 512 : undefined;
-    // (Without `tolerance`, the main entry does not simplify. The compat entry passes 0.375, the default of MapLibre GL JS.)
-    const tolerance = typeof o.tolerance === 'number' && o.tolerance > 0 ? o.tolerance : undefined;
+    // (Without `tolerance`, 0.375 as in MapLibre GL JS; 0 does not simplify.)
+    const tolerance = typeof o.tolerance === 'number' && o.tolerance >= 0 ? o.tolerance : 0.375;
     if (tolerance) for (const f of all) if (f.type !== 1) f.keep = f.rings.map(importance);
     if (!o.cluster) return {features: all, buffer, tolerance};
     // Clusters are made of single points. Other features stay as they are.

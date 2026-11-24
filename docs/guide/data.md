@@ -188,9 +188,8 @@ The unit is the pixel of a tile 512 pixels wide. The default applies to every Ge
 `buffer`: a source that `data` creates, and a source of `sources` or of the style.
 
 `tolerance` sets how far a simplified line or polygon edge may stray from the data, in the same unit. A tile keeps
-fewer vertices at low zoom levels, as in MapLibre GL JS (the Douglas-Peucker method of geojson-vt). The main entry
-does not simplify unless the source sets `tolerance`. The compat entry uses `0.375`, the default of MapLibre GL JS.
-`0` turns simplification off.
+fewer vertices at low zoom levels, as in MapLibre GL JS (the Douglas-Peucker method of geojson-vt). The default is
+`0.375` in both entries, as in MapLibre GL JS. `0` turns simplification off.
 
 ## Set the options of a source
 
