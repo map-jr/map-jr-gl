@@ -23,6 +23,12 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
 export const requestError = (what: string, url: string, reason: unknown, cause?: unknown) => new Error(`[map-jr-gl] the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause});
 /** The error of a response with an HTTP error status. */
 export const httpError = (what: string, url: string, status: number) => requestError(what, url, 'HTTP ' + status);
+/**
+ * Whether a failed request would fail again: an HTTP status 4xx, or a rejection by a custom protocol or by
+ * `transformRequest`. A network error and an HTTP status 5xx are worth another request (#652). It reads the message,
+ * because an error from a tile worker reaches the page as its message only.
+ */
+export const finalFailure = (message: string) => /HTTP 4\d\d\b|: the protocol rejected it: |: transformRequest threw: /.test(message);
 const KINDS: Record<string, string> = {Tile: 'tile', RasterTile: 'tile', SpriteJSON: 'sprite', SpriteImage: 'sprite image', Glyphs: 'glyphs', Font: 'font', Image: 'image'};
 function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: string): typeof fetch {
     return async (input, init) => {
@@ -30,7 +36,8 @@ function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: strin
         if (!r || !(r.transform || r.protocols.includes(url.slice(0, url.indexOf(':'))))) return fetch(input, init);
         // (The kind `RasterTile` is `Tile` for `transformRequest`, and a protocol gets the request type `image` for it.)
         const a = await ask(url, (init as ImageInit | undefined)?.image ? 'RasterTile' : kind, init?.signal);
-        if (a.error) throw new Error(a.error);
+        // (The engine does not request again after a rejection: see `finalFailure`.)
+        if (a.error) throw new Error(r.protocols.includes(url.slice(0, url.indexOf(':'))) ? `the protocol rejected it: ${a.error}` : `transformRequest threw: ${a.error}`);
         // (A response cannot hold an image that a protocol returned: `fetchTile` reads it from the member `image`.)
         if (a.data) return a.data instanceof ArrayBuffer ? new Response(a.data) : Object.assign(new Response(), {image: a.data});
         return fetch(a.url ?? url, {...init, headers: {...a.headers, ...(init?.headers as Record<string, string> | undefined)}, credentials: a.credentials});

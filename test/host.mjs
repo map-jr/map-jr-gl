@@ -3811,6 +3811,32 @@ for (const method of ['easeTo', 'flyTo']) {
     } catch (e) { check('the test of failed tile requests was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// Only a network error and an HTTP status 5xx are worth another request (#652): the tile at the center answers with
+// each status for 6 s, which is longer than the three retries take (3.5 s). A 404 and a 403 are requested once, a 503
+// four times.
+for (const status of [404, 403, 503]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const z = 13, x = tileOf(from[0], z), y = Math.floor((1 - Math.log(Math.tan(Math.PI / 4 + from[1] * Math.PI / 360)) / Math.PI) / 2 * 2 ** z);
+        const bad = `/${z}/${x}/${y}.pbf`;
+        let count = 0;
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route => {
+            if (!new URL(route.request().url()).pathname.endsWith(bad)) return route.continue().catch(() => {});
+            count++;
+            return route.fulfill({status, body: 'no'});
+        });
+        await page.evaluate(async from => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false, onError: () => {}});
+            await new Promise(r => setTimeout(r, 6000));
+        }, from);
+        const expected = status >= 500 ? 4 : 1;
+        check(`a tile that answers HTTP ${status} is requested ${expected === 1 ? 'once' : `${expected} times`}`, count === expected, `${count} requests`);
+    } catch (e) { check(`the test of a tile that answers HTTP ${status} was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A tile of the view whose requests all fail is covered by its overview tile three levels up before the first `idle`
 // (#379). Every request of the tile at the centre fails; the overview tile of that area must be requested and answered
 // before the map becomes idle.

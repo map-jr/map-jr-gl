@@ -9,7 +9,7 @@ import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {EM, GlyphAtlas} from './text.ts';
-import {fetchWith, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
+import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
@@ -1438,9 +1438,10 @@ export class Engine {
             t.rev = ++this.tilesVersion;
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
             this.emit({type: 'error', message: err.message});
-            // A failed request (a lost connection, an error of the server) is made again while the view needs the tile:
+            // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
-            if (t.tries! < TILE_RETRIES) { const wait = 500 * 2 ** t.tries!; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
+            // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
+            if (t.tries! < TILE_RETRIES && !finalFailure(String(err.message))) { const wait = 500 * 2 ** t.tries!; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
             this.repaint();
         });
     }
