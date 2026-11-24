@@ -502,13 +502,20 @@ test('pmtiles: tiles are read from an archive by range request, through director
         return new Response(file.subarray(+a, Math.min(file.length, +b + 1)), {status: 206});
     }) as any;
     const pm = new PMTiles('https://tiles.test/a.pmtiles', fetch);
-    assert.deepEqual(await pm.info().then(i => [i.type, i.minzoom, i.maxzoom]), ['mvt', 14, 14]);
+    assert.deepEqual(await pm.info().then(i => [i.type, i.minzoom, i.maxzoom, i.bounds]), ['mvt', 14, 14, undefined], 'bounds of zero are none');
     const want = (id: number) => tiles.find(t => t.id === id)!.data;
     assert.deepEqual(await pm.tile(14, 4823, 6160), want(tileId(14, 4823, 6160)));
     assert.deepEqual(await pm.tile(14, 4824, 6160), want(tileId(14, 4824, 6160)));
     assert.equal(await pm.tile(14, 1, 1), null);
     assert.equal(ranges.filter(r => r === 'bytes=0-16383').length, 1, 'the header and root directory are fetched once');
     assert.equal(await fetchTile('pmtiles://https://tiles.test/a.pmtiles/3/1/1', fetch), null);
+    // The bounds of the header (#1745): int32 degrees × 10^7 at bytes 102-117.
+    [-12.5, -45.25, 30, 60.1234567].forEach((d, i) => v.setInt32(102 + 4 * i, Math.round(d * 1e7), true));
+    assert.deepEqual((await new PMTiles('https://tiles.test/b.pmtiles', fetch).info()).bounds, [-12.5, -45.25, 30, 60.1234567]);
+    const {resolveStyle} = await import('../../src/resolve.ts');
+    const style = (src: object) => resolveStyle({version: 8, sources: {s: {type: 'vector', url: 'pmtiles://https://tiles.test/c.pmtiles', ...src}}, layers: []}, fetch);
+    assert.deepEqual((await style({})).sources.s.bounds, [-12.5, -45.25, 30, 60.1234567], 'the header bounds reach the source');
+    assert.deepEqual((await style({bounds: [0, 0, 10, 10]})).sources.s.bounds, [0, 0, 10, 10], 'bounds in the style win');
 });
 
 test('pmtiles: a server that ignores Range is read once, and a file above 64 MB fails with a message', async () => {
