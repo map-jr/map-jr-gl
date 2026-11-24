@@ -98,8 +98,22 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
 ## A lost WebGL context
 
 When the browser takes the WebGL context away, the map fires `webglcontextlost`, starts again on a new canvas with
-the same view and data, and fires `webglcontextrestored`. A map with the worker renderer starts again on the main
-thread in these cases, and with `renderer: 'worker'` it writes a warning:
+the same view and data, and fires `webglcontextrestored`. This list is the state set by the description or by calls
+that the new canvas keeps:
+
+- the style with the changes of calls: sources, layers, paint and layout properties, filters, terrain, sky, light,
+  projection and the global state;
+- the data of the GeoJSON sources, the images and the feature state;
+- the camera padding, the limits of the camera (`minZoom`, `maxZoom`, `minPitch`, `maxPitch` and `maxBounds`) and
+  `transformRequest`;
+- the fonts: in `@map-jr/map-jr-gl` the `fonts` of the description, and in `@map-jr/map-jr-gl/maplibre-compat` the
+  option `fonts` and the fonts of `addFonts`, which only that entry has;
+- in `@map-jr/map-jr-gl/maplibre-compat`, the function of the option `transformConstrain` or of
+  `setTransformConstrain`, the values of `setSourceTileLodParams` and the custom layers, whose `onAdd` runs again
+  with the new context.
+
+A map with the worker renderer starts again on the main thread in these cases, and with `renderer: 'worker'` it writes
+a warning:
 
 - the worker loses the context before its first frame;
 - the worker loses the context twice within 10 seconds;
