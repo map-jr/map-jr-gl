@@ -168,6 +168,15 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         base = url;
         style = await res.json();
     }
+    // A source or a layer that is not an object is left out with a message, and the rest of the style is used (#653).
+    const isObject = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x);
+    const badSources = Object.keys(style.sources ?? {}).filter(sourceId => !isObject(style.sources[sourceId]));
+    const badLayers = Array.isArray(style.layers) ? style.layers.flatMap((l: unknown, index: number) => isObject(l) ? [] : [index]) : [];
+    if (badSources.length || badLayers.length) {
+        for (const sourceId of badSources) bad(new Error(`[map-jr-gl] The source "${sourceId}" is not an object. Give it an object with "type", or remove it from "sources".`));
+        for (const index of badLayers) bad(new Error(`[map-jr-gl] The layer at index ${index} of "layers" is not an object. Give it an object with "id" and "type", or remove it.`));
+        style = {...style, sources: Object.fromEntries(Object.entries(style.sources ?? {}).filter(([, s]) => isObject(s))), layers: style.layers.filter(isObject)};
+    }
     // The sources are asked for at the same time: each TileJSON, GeoJSON file or archive header is a request of its own.
     const sources: Record<string, SourceInfo> = {}, raws = Object.entries<any>(style.sources ?? {});
     const made = await Promise.all(raws.map(async ([name, raw]): Promise<SourceInfo | undefined> => {
