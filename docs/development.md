@@ -298,6 +298,10 @@ The same step gives short names to the uniforms, attributes and varyings in the 
 It also gives short names to the local names in the shaders. Do not give a uniform a name without `u_`, and do not
 use the name of a local variable of a shader in JavaScript.
 
+The plugin `gl-constants` of `build.mjs` replaces each read of a WebGL constant such as `gl.TEXTURE_2D` with its
+number (`scripts/gl-constants.mjs`). It changes only reads from a variable named `gl`. When `src/` reads a constant
+that the table does not have, the build stops and names it: add its value from the WebGL specification.
+
 ## Other browsers and operating systems
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
