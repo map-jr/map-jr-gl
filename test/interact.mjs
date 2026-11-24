@@ -3627,6 +3627,21 @@ for (const mode of renderers) {
         const want = {NavigationControl: 'top-right', GeolocateControl: 'top-right', FullscreenControl: 'top-right', TerrainControl: 'top-right', GlobeControl: 'top-right', ScaleControl: 'bottom-left', AttributionControl: 'bottom-right', LogoControl: 'bottom-left'};
         check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
     }
+    // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
+    if (mode === 'main') {
+        const logo = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+            try {
+                const a = new mod.LogoControl({compact: true});
+                new mod.LogoControl({compact: false}); new mod.LogoControl();
+                return {compact: a.options.compact, warnings: warnings.filter(w => w.includes('LogoControl'))};
+            } finally { console.warn = warn; }
+        });
+        check('[main] maplibre-compat: new LogoControl({compact}) keeps the options and warns once that compact has no effect',
+            logo.compact === true && logo.warnings.length === 1 && logo.warnings[0].startsWith('[map-jr-gl] LogoControl: the option compact has no effect.'), JSON.stringify(logo));
+    }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
     // warning (#463).

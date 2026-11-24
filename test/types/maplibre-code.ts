@@ -1,6 +1,6 @@
 // Common TypeScript code for MapLibre GL JS, with the import changed to `@map-jr/map-jr-gl/maplibre-compat`.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {Map, Popup, type MapMouseEvent, type MapLayerMouseEvent, type GeoJSONSource, type LayerSpecification, type MapGeoJSONFeature} from '@map-jr/map-jr-gl/maplibre-compat';
+import {Map, Popup, LogoControl, type MapMouseEvent, type MapLayerMouseEvent, type GeoJSONSource, type LayerSpecification, type MapGeoJSONFeature} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({container: 'map', style: 'https://demotiles.maplibre.org/style.json', center: [0, 0], zoom: 2});
 
@@ -51,3 +51,4 @@ map.on('click', e => e.sourceId.length);
 map.on('moveend', e => e.lngLat.lng);
 // @ts-expect-error a layer needs an `id`
 map.addLayer({type: 'line', source: 'places'});
+map.addControl(new LogoControl({compact: true}));
