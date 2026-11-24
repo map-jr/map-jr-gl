@@ -165,11 +165,20 @@ Two things go wrong most often:
   another. Pass the server the same `style`, `sources`, `layers`, `data`, `images`, `colorScheme` and `globalState` as the map. Pass
   `center`, `zoom` and `bearing` of `initialView` as options of the same names, and its `bounds` and `fitPadding` as `bounds` and `padding`. The
   Vue component and `renderElement` pass all of them themselves.
-- The element of the map has no `position`. The SVG is positioned at `inset: 0`, so the element needs
+- The element of the map has no `position`. The first view is positioned at `inset: 0`, so the element needs
   `position: relative` or another position that is not `static`. The Vue and React components and `<map-jr>` set it.
 
-The SVG is scaled to the size of the element. Set `width` and `height` to the size that the element has on most
-screens, so that the labels have the size of those of the live map.
+The first view of `renderFirstView` and `renderElement` keeps the center and the zoom of the render at any size of
+the element, as the map does:
+
+- In an element that is as large as the render or smaller, the SVG has its own size (1:1) and is centered, and the
+  element crops it.
+- In an element that is wider or higher than the render, the SVG is scaled up as much as it needs to cover the
+  element, and it stays centered. Its labels and lines are then larger than those of the live map, and its edges are
+  cropped.
+
+Set `width` and `height` to the size that the element has on most screens, so that the first view has the scale of
+the live map. A render that is larger than the element costs bytes for the parts that the element crops.
 
 ## Controls in the first view
 

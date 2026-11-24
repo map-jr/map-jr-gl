@@ -83,7 +83,7 @@ test('renderFirstView and renderElement put the controls into the first view; wi
     assert.doesNotMatch(plain, /<style|ctrl-/);
     assert.match(plain, /<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0/);
     const withControls = await renderFirstView({...view, controls: [navigation(), scale()]});
-    assert.match(withControls, /^<svg[^>]*data-map-jr-ssr/);
+    assert.match(withControls, /^<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden"><svg[^>]*data-map-jr-ssr/);
     assert.match(withControls, /map-jr-ctrl-zoom-in/);
     assert.match(withControls, /<a href="https:\/\/example.com" target="_blank" rel="noopener noreferrer">credits<\/a>/);
     const element = await renderElement({style, initialView: {center: [0, 0], zoom: 4}, controls: [navigation()], nonce: 'n1', locale: {'NavigationControl.ZoomOut': 'Dezoomer'}}, {width: 600, height: 400, attribution: 'Credits'});
