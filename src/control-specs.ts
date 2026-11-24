@@ -68,7 +68,7 @@ export const geolocate = spec('geolocate', (m, o: GeolocateOptions) => new m.Geo
  * @param options The options of `TerrainOptions`, and `position`.
  * @returns A control for `controls` of the description.
  */
-export const terrain = spec('terrain', (m, o: TerrainOptions) => new m.TerrainControl(o));
+export const terrain: (options: TerrainOptions & {position?: ControlPosition}) => ControlSpec = spec('terrain', (m, o: TerrainOptions) => new m.TerrainControl(o));
 /**
  * Creates a button that switches the projection between the globe and Mercator. The control is placed at `'top-right'` unless `position` sets it.
  * @returns A control for `controls` of the description.

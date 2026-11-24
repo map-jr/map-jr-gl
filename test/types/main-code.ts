@@ -36,6 +36,9 @@ map.state.subscribe(state => {
 map.moveTo({center: NYC, zoom: 12, duration: 300});
 map.project(NYC).x.toFixed(0);
 map.queryElevation(NYC).then(metres => metres?.toFixed(0));
+map.queryElevation(NYC, {source: 'dem', zoom: 12}).then(metres => metres?.toFixed(0));
+// @ts-expect-error zoom is a number
+map.queryElevation(NYC, {zoom: '12'});
 // The method gives the type of the features: `querySource` the tile data, `queryFeatures` what the style layers draw.
 map.querySource('rain', NYC).then(found => console.log(found[0]?.type === 'Polygon', found[0]?.sourceLayer.length));
 map.queryFeatures([{x: 0, y: 0}, {x: 400, y: 300}], {layers: ['places']}).then(found => console.log(found[0]?.layer.id, found[0]?.state));
@@ -111,7 +114,11 @@ createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json', attr
 const badScale: ScaleOptions = {unit: 'miles'};
 // @ts-expect-error `source` is required.
 const badTerrain: TerrainOptions = {exaggeration: 2};
-console.log(badScale, badTerrain);
+// @ts-expect-error `terrain()` needs its options with `source` (#1238).
+const noSource = terrain();
+// @ts-expect-error `source` is required in the argument of `terrain()` too.
+const emptyTerrain = terrain({exaggeration: 2});
+console.log(badScale, badTerrain, noSource, emptyTerrain);
 
 // Every optional field of the description accepts null as "not set", as a description from JSON has it (#1146).
 const fromJSON: MapDescription = {

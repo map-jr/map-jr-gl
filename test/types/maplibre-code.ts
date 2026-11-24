@@ -58,3 +58,6 @@ map.addControl(new LogoControl({compact: true}));
 const transformRequest = (url: string, resourceType?: ResourceType) => resourceType === 'Tile' ? {url, headers: {Authorization: 'Bearer token'}} : undefined;
 new Map({container: 'map', style: 'https://demotiles.maplibre.org/style.json', transformRequest});
 map.setTransformRequest(transformRequest);
+
+// #649: crossSourceCollisions is an option of new Map() (true is the default; false warns once).
+new Map({container: 'map', style: 'https://demotiles.maplibre.org/style.json', crossSourceCollisions: true});
