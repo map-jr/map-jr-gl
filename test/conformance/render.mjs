@@ -2,6 +2,8 @@
 // A full run writes the totals to render-result.json and the status of each test to render-tests.json. The labels for
 // tests that differ by a decision are in render-expectations.json (see "Render tests" in docs/development.md).
 //   node test/conformance/render.mjs [--filter=<regex>] [--limit=<n>] [--list] [--min=<pass count>] [--save=<dir>]
+// --list prints each test of the run that is not a match, with its percentage of differing pixels; it needs --filter.
+// An option that the script does not know stops it with this text, and --help prints it.
 // The tests come from a checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (cloned on first use, not vendored).
 import {createRequire} from 'node:module';
 import {execSync} from 'node:child_process';
@@ -12,6 +14,16 @@ import {chromiumOptions} from '../launch.mjs';
 import {ensureCheckout} from './maplibre-checkout.mjs';
 import {summarize, readExpectations, report, changes, skipReason} from './render-summary.mjs';
 
+// An option that this script does not know, or --list without --filter, stops here instead of starting the full run of
+// about ten minutes (#1048). --help prints the comment above.
+const known = /^--(filter|limit|min|save)=.|^--list$/;
+const unknown = process.argv.slice(2).filter(a => !known.test(a));
+if (unknown.length || (process.argv.includes('--list') && !process.argv.some(a => a.startsWith('--filter=')))) {
+    const usage = readFileSync(import.meta.filename, 'utf8').split('\nimport ')[0].replace(/^\/\/ ?/gm, '');
+    if (!process.argv.includes('--help')) console.error(unknown.length ? `[render] Unknown option ${unknown.join(' ')}. The options are:` : '[render] --list needs --filter=<regex>: without it the run is the full run, which rewrites render-result.json and render-tests.json. The options are:');
+    console.error(usage);
+    process.exit(process.argv.includes('--help') && unknown.length === 1 ? 0 : 2);
+}
 const root = path.resolve(import.meta.dirname, '../..'), repo = ensureCheckout();
 const arg = name => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const filter = arg('filter') ? new RegExp(arg('filter')) : null, limit = +(arg('limit') ?? Infinity), saveDir = arg('save');

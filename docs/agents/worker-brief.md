@@ -74,8 +74,8 @@ writing); this brief has the steps.
 - Two switches help to reproduce faults in Chromium: `CPU_THROTTLE=<rate>` (in `test/host.mjs` and
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
   takes WebGL away from workers, as in WebKit on Linux and Windows.
-- `node test/conformance/render.mjs` has no `--help`, and any argument that it does not know starts the whole run. A
-  run with `--filter` rewrites `test/conformance/render-result.json` and `render-tests.json`: restore them with
+- `node test/conformance/render.mjs --help` prints its options. An argument that it does not know, or `--list`
+  without `--filter`, stops it with that text. A run with `--filter` rewrites `test/conformance/render-result.json` and `render-tests.json`: restore them with
   `git checkout --` before you commit.
 - `gh pr edit` fails on this repository; change the body of your pull request with
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`. In cloud sessions GraphQL is blocked, so
