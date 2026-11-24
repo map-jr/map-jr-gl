@@ -14,6 +14,8 @@ interface Prepared {
     /** Rings or lines as flat mercator coordinates in 0..1. */
     rings: Float64Array[];
     bbox: [number, number, number, number];
+    /** With `tolerance`: for each vertex of each ring, the squared distance that simplification needs to remove it. */
+    keep?: Float64Array[];
 }
 export interface SlicedFeature {
     type: number; id?: number | string; properties: Record<string, any>;
@@ -35,6 +37,8 @@ export interface GeoJSONOptions {
     filter?: unknown;
     /** How far past its edges a tile keeps the features, in pixels of a tile 512 pixels wide (MapLibre's `buffer`). */
     buffer?: number;
+    /** How far a simplified line may stray from the data, in pixels of a tile 512 pixels wide (MapLibre's `tolerance`). */
+    tolerance?: number;
 }
 
 interface ClusterNode { x: number; y: number; count: number; id: number; props: Record<string, unknown>; children?: ClusterNode[]; taken: number; leaf?: Prepared }
@@ -132,17 +136,51 @@ export class ClusterIndex {
 }
 
 /** Features and, with `cluster`, the cluster index of a GeoJSON source. */
-export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[]; /** In tile units. */ buffer?: number }
+export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[]; /** In tile units. */ buffer?: number; /** In pixels of a tile 512 pixels wide. */ tolerance?: number }
 export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZoom = 18): PreparedSource {
     let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : o.promoteId?._geojsonTileLayer, o.generateId);
     const keep = o.filter ? compileFilter(o.filter) : null;
     if (keep) all = all.filter(f => keep({zoom: 0, f: f as any}));
     // (Without `buffer`, tiles keep 16 pixels. The compat entry passes 128, the default of MapLibre GL JS.)
     const buffer = typeof o.buffer === 'number' && o.buffer >= 0 ? Math.min(o.buffer, 512) * EXTENT / 512 : undefined;
-    if (!o.cluster) return {features: all, buffer};
+    // (Without `tolerance`, the main entry does not simplify. The compat entry passes 0.375, the default of MapLibre GL JS.)
+    const tolerance = typeof o.tolerance === 'number' && o.tolerance > 0 ? o.tolerance : undefined;
+    if (tolerance) for (const f of all) if (f.type !== 1) f.keep = f.rings.map(importance);
+    if (!o.cluster) return {features: all, buffer, tolerance};
     // Clusters are made of single points. Other features stay as they are.
     const points = all.filter(f => f.type === 1 && f.rings.length === 1), rest = all.filter(f => !(f.type === 1 && f.rings.length === 1));
-    return {features: rest, points, clusters: new ClusterIndex(points, o, sourceMaxZoom), buffer};
+    return {features: rest, points, clusters: new ClusterIndex(points, o, sourceMaxZoom), buffer, tolerance};
+}
+
+/**
+ * The method of geojson-vt (Douglas-Peucker, done once): for each vertex, the squared distance from the line between
+ * the vertices that it lies between when it is removed. A tile of zoom z keeps the vertices whose value is larger than
+ * its own squared tolerance. The ends of a ring are always kept.
+ */
+function importance(r: Float64Array): Float64Array {
+    const n = r.length / 2, out = new Float64Array(n);
+    out[0] = out[n - 1] = Infinity;
+    const stack = [0, n - 1];
+    while (stack.length) {
+        const last = stack.pop()!, first = stack.pop()!;
+        let max = -1, index = 0;
+        const ax = r[first * 2], ay = r[first * 2 + 1], bx = r[last * 2], by = r[last * 2 + 1];
+        for (let i = first + 1; i < last; i++) {
+            const d = segDist(r[i * 2], r[i * 2 + 1], ax, ay, bx, by);
+            if (d > max) { max = d; index = i; }
+        }
+        if (index) { out[index] = max; stack.push(first, index, index, last); }
+    }
+    return out;
+}
+function segDist(px: number, py: number, x: number, y: number, bx: number, by: number) {
+    let dx = bx - x, dy = by - y;
+    if (dx || dy) {
+        const t = ((px - x) * dx + (py - y) * dy) / (dx * dx + dy * dy);
+        if (t > 1) { x = bx; y = by; } else if (t > 0) { x += dx * t; y += dy * t; }
+    }
+    dx = px - x; dy = py - y;
+    return dx * dx + dy * dy;
 }
 
 export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boolean): Prepared[] {
@@ -234,6 +272,7 @@ function clipLine(pts: number[], lo: number, hi: number, ranges?: number[]): num
 /** The features of one tile, clipped and in tile units. */
 export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: number, y: number, metrics = false): Record<string, {features: SlicedFeature[]}> {
     const src: PreparedSource = Array.isArray(source) ? {features: source} : source, BUFFER = src.buffer ?? DEFAULT_BUFFER;
+    const sqTol = ((src.tolerance ?? 0) / 512 / 2 ** z) ** 2;
     const features = src.clusters ? [...src.features, ...(src.clusters.at(z) ?? src.points!)] : src.features;
     const n = 2 ** z, pad = BUFFER / EXTENT / n, x0 = x / n - pad, y0 = y / n - pad, x1 = (x + 1) / n + pad, y1 = (y + 1) / n + pad;
     const out: SlicedFeature[] = [];
@@ -250,9 +289,11 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
                 return rings.length;
             },
         });
-        for (const r of f.rings) {
+        for (let ri = 0; ri < f.rings.length; ri++) {
+            const r = f.rings[ri], keep = f.keep?.[ri];
             let pts: number[] = [];
             for (let i = 0; i < r.length; i += 2) {
+                if (keep && keep[i / 2] <= sqTol) continue;
                 const tx = Math.round(((r[i] + w) * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
                 if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
             }

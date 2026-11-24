@@ -187,6 +187,11 @@ tile. It is an option of the source, so declare the source in [`sources`](#set-t
 The unit is the pixel of a tile 512 pixels wide. The default applies to every GeoJSON source that does not set
 `buffer`: a source that `data` creates, and a source of `sources` or of the style.
 
+`tolerance` sets how far a simplified line or polygon edge may stray from the data, in the same unit. A tile keeps
+fewer vertices at low zoom levels, as in MapLibre GL JS (the Douglas-Peucker method of geojson-vt). The main entry
+does not simplify unless the source sets `tolerance`. The compat entry uses `0.375`, the default of MapLibre GL JS.
+`0` turns simplification off.
+
 ## Set the options of a source
 
 To set options of a GeoJSON source, such as `cluster`, `promoteId` or `attribution`, declare the source in

@@ -25,7 +25,7 @@ test('GeoJSON buffer: the style option reaches the source', async () => {
 });
 
 test('GeoJSON buffer: the default of the entry applies only to a source without buffer (#1085)', async () => {
-    const buffer = async (raw: object, entry?: number) => ((await resolveStyle({version: 8, sources: {g: {type: 'geojson', data: square, ...raw}}, layers: []} as any, undefined, undefined, undefined, undefined, entry)).sources.g as any).options?.buffer;
+    const buffer = async (raw: object, entry?: number) => ((await resolveStyle({version: 8, sources: {g: {type: 'geojson', data: square, ...raw}}, layers: []} as any, undefined, undefined, undefined, undefined, {buffer: entry})).sources.g as any).options?.buffer;
     assert.equal(await buffer({}), undefined, 'the main entry keeps the default of the tiles (16)');
     assert.equal(await buffer({}, 128), 128, 'the compat entry passes 128');
     assert.equal(await buffer({buffer: 0}, 128), 0, 'a buffer that is given is kept');
