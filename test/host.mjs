@@ -2076,7 +2076,7 @@ for (const renderer of renderers) {
             && duplicate.said.some(w => w.includes('the key "own"')) && duplicate.compasses === 1, JSON.stringify(duplicate));
 
         // Two custom() items with one key and different positions: the first wins and stays through later changes of controls (#1662).
-        const pair = await page.evaluate(async () => {
+        const samePair = await page.evaluate(async () => {
             const t = window.t, {custom, scale} = await import('/dist/controls.js'), warn = console.warn;
             console.warn = () => {};
             try {
@@ -2094,7 +2094,7 @@ for (const renderer of renderers) {
             } finally { console.warn = warn; }
         });
         check(`[${renderer}] of two custom() controls with one key and different positions, the first is placed once and stays when controls change (#1662)`,
-            pair.added === 1 && pair.removed === 0 && pair.same && pair.corner?.endsWith('top-left'), JSON.stringify(pair));
+            samePair.added === 1 && samePair.removed === 0 && samePair.same && samePair.corner?.endsWith('top-left'), JSON.stringify(samePair));
 
         // Without `position`, a control goes to its own default corner: the bottom left for `scale()`, else the top right (#1197).
         const corners = await page.evaluate(async () => {
