@@ -8,7 +8,7 @@ import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} fr
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
-import type {ProjectionSpecification} from './compat-types.ts';
+import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
 import type {GeoJSONGeometry} from './host.ts';
 import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
@@ -94,8 +94,8 @@ export class TouchZoomRotateHandler extends InteractionHandler {
     enableRotation() { this.rotation = true; }
 }
 
-/** The `transformRequest` function of MapLibre. `resourceType` is `Tile`, `Style`, `Source`, `SpriteJSON`, `SpriteImage` or `Image`. */
-export type RequestTransform = (url: string, resourceType?: string) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials} | undefined;
+/** The `transformRequest` function of MapLibre. `resourceType` is `Tile`, `Style`, `Source`, `SpriteJSON`, `SpriteImage`, `Image`, `Glyphs` or `Font`. */
+export type RequestTransform = (url: string, resourceType?: ResourceType) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials} | undefined;
 
 /** The changes that `updateData` of a GeoJSON source takes, as in MapLibre. */
 export interface GeoJSONDiff {
@@ -918,7 +918,7 @@ export class Map {
         // (`RasterTile` is the kind of a `raster` or `raster-dem` tile on the way to this function only.)
         const image = kind === 'RasterTile';
         if (image) kind = 'Tile';
-        const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
+        const t = this.transformRequest?.(url, kind as ResourceType), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
         if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
         // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
         const ac = new AbortController(), stop = () => ac.abort();
