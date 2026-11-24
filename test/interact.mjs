@@ -5603,6 +5603,28 @@ for (const mode of renderers) {
         check(`[${mode}] 3D terrain off and on again asks for no elevation tile again, and the ground has its height at once`,
             first > 0 && asked.length === first && toggled.off && toggled.on && toggled.elevation > 1000, JSON.stringify({first, later: asked.length - first, ...toggled}));
     }
+    // setCenterElevation lasts after setCenterClampedToGround(false), as in MapLibre GL JS, and the engine keeps it (#897).
+    // While the center is clamped, the call warns once and the center stays on the ground.
+    const elevated = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, maxPitch: 180, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const idle = () => new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+        const warn = console.warn; let warned = 0; console.warn = (...a) => { if (String(a[0]).includes('setCenterElevation')) warned++; else warn(...a); };
+        m.setCenterElevation(5000); m.setCenterElevation(6000);
+        await idle();
+        const out = {clamped: [m.getCenterClampedToGround(), m.getCenterElevation(), warned]};
+        m.setCenterClampedToGround(false); m.setCenterElevation(10000); m.setPitch(95);
+        await idle();
+        out.held = [m.getCenterClampedToGround(), m.getCenterElevation(), m.getPitch()];
+        m.setCenterClampedToGround(true);
+        await idle();
+        out.back = [m.getCenterClampedToGround(), m.getCenterElevation()];
+        console.warn = warn; m.remove(); el.remove();
+        return out;
+    });
+    check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
+        JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
