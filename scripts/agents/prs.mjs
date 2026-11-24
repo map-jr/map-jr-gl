@@ -2,6 +2,7 @@
 //   node scripts/agents/prs.mjs           one line for each open pull request and one for main, then exits
 //   node scripts/agents/prs.mjs --watch   the same lines once, and then one line each time the checks of a head (or
 //                                          the CI run of a push to main) finish; it runs until it is stopped
+// A head is green once every check except the summary job `browser` of CI has passed or was skipped (#1602).
 // A line reads "#525 ci/519-browser-jobs 1a2b3c4d green", "... failed: browser-host, browser", "... running (3 of 8
 // done)" or "... no checks". In --watch, a head that still has no checks after 5 minutes gets one line: GitHub can
 // skip the event of a pull request, and closing and opening the pull request again starts CI.
@@ -13,10 +14,12 @@ const argv = process.argv.slice(2), opt = (n, d) => { const i = argv.indexOf(n);
 const repo = opt('--repo', 'map-jr/map-jr-gl'), every = +opt('--every', 60) * 1000, watch = argv.includes('--watch');
 // Only REST (`gh api`): GraphQL, which `gh pr list` and `gh run list` use, is blocked in cloud sessions (#1404).
 const api = path => JSON.parse(execFileSync('gh', ['api', `repos/${repo}/${path}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20}));
-const ok = new Set(['success', 'skipped', 'neutral']);
+const ok = new Set(['success', 'skipped', 'neutral']), summary = 'browser';
 
 /** The state of a list of checks (REST check runs and commit statuses): running, green, failed (with the names) or none. */
 function state(checks) {
+    // The summary job `browser` waits minutes for a runner after its parts; the owner merges on the parts (#1602).
+    checks = checks.filter(c => c.name !== summary);
     if (!checks.length) return {done: false, text: 'no checks'};
     const runs = checks.map(c => c.context !== undefined
         ? {name: c.context, done: c.state !== 'pending', good: c.state === 'success'}
