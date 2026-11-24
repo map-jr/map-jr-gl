@@ -305,7 +305,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Requests
 
 - **MapLibre GL JS:** The `transformRequest` option and `addProtocol`.
-- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source has the request type `image`, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file. An image of `addImage` and the image of a sprite have the type `arrayBuffer` (MapLibre GL JS gives `image`), and only bytes are read as their answer.
+- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source, an image of `loadImage`, of `addImage` with a URL or of an `image` source, and the image of a sprite have the request type `image`, as in MapLibre GL JS, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file.
 
 ### `Marker`, `Popup`
 

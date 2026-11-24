@@ -535,7 +535,7 @@ export class Engine {
             state.loading = true;
             withTimeout(this.fetchAs('Image'))(src.url!).then(async res => {
                 if (!res.ok) throw httpError('image', src.url!, res.status);
-                const image = await createImageBitmap(await res.blob());
+                const image = (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
                 image.close();
             }).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { state.loading = false; this.invalidate(); });
@@ -843,7 +843,7 @@ export class Engine {
             const early = this.answered, got = (f: typeof fetch): typeof fetch => u => early?.get(String(u)) ?? f(u);
             const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, got(withTimeout(this.fetchAs('SpriteJSON')))), got(withTimeout(this.fetchAs('SpriteImage')))(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw httpError('sprite image', url + (dense ? '@2x.png' : '.png'), res.status);
-            return {id, sprite, image: await createImageBitmap(await res.blob())};
+            return {id, sprite, image: (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob())};
         }).map(p => p.catch(err => { if (spec === this.spriteUrl) this.emit({type: 'error', message: String(err.message)}); })))).filter(l => !!l);
         if (spec !== this.spriteUrl || !loaded.length) return;
         const icons: Sprite['icons'] = {}, width = Math.max(...loaded.map(l => l.image.width)), height = loaded.reduce((sum, l) => sum + l.image.height, 0);

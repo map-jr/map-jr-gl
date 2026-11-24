@@ -1170,6 +1170,50 @@ for (const mode of renderers) {
         check(`[${mode}] loadImage uses addProtocol and transformRequest (#650)`,
             r.direct === '3x2' && r.rewritten === '3x2' && r.asked.join() === 'pic650://direct,pic650://from-transform' && r.kinds.join() === 'Image,Image', JSON.stringify(r));
     }
+    // #651: an image of loadImage, of addImage by URL and of an image source, and a sprite image, reach a protocol with the
+    // type `image` and the `accept` header, as in MapLibre GL JS, and an ImageBitmap that the protocol returns is drawn.
+    {
+        const r = await page.evaluate(async () => {
+            const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = {}, errors = [];
+            const fills = {add: '#ff0000', sheet: '#00ff00', pic: '#0000ff', load: '#ffffff'};
+            mod.addProtocol('pic651', async request => {
+                const what = request.url.slice(9).split(/[@.]/)[0];
+                asked[request.url.slice(9).replace('@2x', '')] = request.type + ' ' + request.headers?.accept;
+                if (request.url.endsWith('.json')) return {data: {s651: {x: 0, y: 0, width: 64, height: 64, pixelRatio: 1}}};
+                const c = new OffscreenCanvas(what === 'load' ? 3 : 64, what === 'load' ? 2 : 64), g = c.getContext('2d');
+                g.fillStyle = fills[what]; g.fillRect(0, 0, c.width, c.height);
+                return {data: c.transferToImageBitmap()};
+            });
+            const middle = async () => { const bmp = await createImageBitmap(await m.toBlob()), g = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+            const settle = async done => { for (let i = 0; i < 80 && !done(); i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => { m.once('idle', r); m.triggerRepaint(); setTimeout(r, 5000); }); };
+            const onError = e => errors.push(String(e.error?.message ?? e.error));
+            const c = m.getCenter(), b = m.getBounds(), seen = {}, sprite = m.getStyle().sprite;
+            m.on('error', onError);
+            try {
+                seen.load = await m.loadImage('pic651://load').then(i => `${i.data.width}x${i.data.height}`, e => String(e));
+                m.addSource('p651', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}});
+                m.addImage('a651', 'pic651://add');
+                m.addLayer({id: 'p651', type: 'symbol', source: 'p651', layout: {'icon-image': 'a651', 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
+                await settle(() => asked.add && m.hasImage('a651'));
+                seen.add = await middle();
+                m.setSprite('pic651://sheet');
+                m.setLayoutProperty('p651', 'icon-image', 's651');
+                await settle(() => asked['sheet.png']);
+                seen.sheet = await middle();
+                m.removeLayer('p651'); m.removeSource('p651');
+                m.addSource('i651', {type: 'image', url: 'pic651://pic', coordinates: [[b.getWest(), b.getNorth()], [b.getEast(), b.getNorth()], [b.getEast(), b.getSouth()], [b.getWest(), b.getSouth()]]});
+                m.addLayer({id: 'i651', type: 'raster', source: 'i651', paint: {'raster-fade-duration': 0}});
+                await settle(() => asked.pic && m.areTilesLoaded());
+                seen.pic = await middle();
+                m.removeLayer('i651'); m.removeSource('i651');
+            } finally { m.off('error', onError); m.removeImage('a651'); m.setSprite(sprite ?? null); mod.removeProtocol('pic651'); }
+            return {asked, seen, errors};
+        });
+        const image = 'image image/webp,*/*';
+        check(`[${mode}] addProtocol: loadImage, addImage by URL, an image source and a sprite image have the request type image, and an ImageBitmap of the protocol is used (#651)`,
+            r.asked.load === image && r.asked.add === image && r.asked['sheet.png'] === image && r.asked.pic === image && r.asked['sheet.json']?.startsWith('json')
+            && r.seen.load === '3x2' && r.seen.add === '255,0,0' && r.seen.sheet === '0,255,0' && r.seen.pic === '0,0,255' && !r.errors.length, JSON.stringify(r));
+    }
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
