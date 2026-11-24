@@ -95,7 +95,7 @@ export function controlsMarkup(o: FirstViewControls): string {
         } else if (m[1] === 'fullscreen') {
             html = group(button('fullscreen', ui('FullscreenControl.Enter', 'Enter fullscreen'), ICONS.fullscreen, ' aria-pressed="false"'));
         } else if (m[1] === 'terrain') {
-            html = group(button('terrain', ui(o.terrain ? 'TerrainControl.Disable' : 'TerrainControl.Enable', 'Toggle terrain'), ICONS.terrain));
+            html = group(button('terrain', ui(o.terrain ? 'TerrainControl.Disable' : 'TerrainControl.Enable', o.terrain ? 'Disable terrain' : 'Enable terrain'), ICONS.terrain));
         } else if (m[1] === 'globe') {
             const on = o.projection?.type === 'globe';
             html = group(button('globe', ui(on ? 'GlobeControl.Disable' : 'GlobeControl.Enable', on ? 'Disable globe' : 'Enable globe'), ICONS.globe, ` aria-pressed="${on}"`, cls(on ? 'ctrl-globe-enabled' : 'ctrl-globe')));
