@@ -8,8 +8,6 @@ import type {CustomLayerInterface, CustomRenderMethodInput, ProjectionData} from
 
 /** The circumference of the earth at the equator in meters, from the radius that MapLibre GL JS uses (as `MercatorCoordinate`). */
 const EARTH = 2 * Math.PI * 6371008.8;
-/** The vertical field of view of the camera in radians (36.87°, as in geo.ts). */
-const FOV = 0.6435011087932844;
 /** The units of a tile in MapLibre GL JS (`getProjectionData`) for each unit of a tile here (`tileMatrix4`). */
 const UNIT = 4096 / 8192;
 // The prelude of MapLibre GL JS for the Mercator projection has these functions under these names; the code is new.
@@ -85,7 +83,7 @@ function inputs(tr: Transform, globeness: number): CustomRenderMethodInput {
     const main = multiply(tile, [k, 0, 0, 0, 0, k, 0, 0, 0, 0, metres, 0, -x * 4096, -y * 4096, 0, 1]);
     // The depth runs from -1 to 1 between the near and the far plane: Z = A·W + B. (Read from the tile matrix, whose
     // translation is small: in `main` it is large, and the rounding of its 32-bit values would show.)
-    const A = tile[10] / tile[11], B = tile[14] - A * tile[15], near = -B / (1 + A), far = B / (1 - A), f = 1 / Math.tan(FOV / 2);
+    const A = tile[10] / tile[11], B = tile[14] - A * tile[15], near = -B / (1 + A), far = B / (1 - A), f = 1 / Math.tan(tr.fov / 2);
     // (With no far plane, far = Infinity, the depth row is z = -z_view - 2·near.)
     const perspective = (near: number, far: number) => Float64Array.from([f * tr.height / tr.width, 0, 0, 0, 0, f, 0, 0, (tr.width - 2 * tr.cx) / tr.width, (2 * tr.cy - tr.height) / tr.height, far === Infinity ? -1 : (far + near) / (near - far), -1, 0, 0, far === Infinity ? -2 * near : 2 * far * near / (near - far), 0]);
     const tileMatrix = (c: {z: number; x: number; y: number}, wrap?: number) => Float32Array.from(multiply(tr.tileMatrix4({z: c.z, x: c.x, y: c.y, w: wrap ?? 0, key: ''}), scale(UNIT, UNIT, 1)));
@@ -102,14 +100,14 @@ function inputs(tr: Transform, globeness: number): CustomRenderMethodInput {
         const data = (fallbackMatrix: Float32Array | Float64Array, tileMercatorCoords: ProjectionData['tileMercatorCoords'], projectionTransition: number, clipAntimeridian: boolean): ProjectionData =>
             ({mainMatrix: m32, fallbackMatrix, tileMercatorCoords, clippingPlane: plane, projectionTransition, clipAntimeridian});
         return {
-            nearZ: gNear, farZ: gFar, fov: FOV, modelViewProjectionMatrix: m, projectionMatrix: perspective(gNear, gFar),
+            nearZ: gNear, farZ: gFar, fov: tr.fov, modelViewProjectionMatrix: m, projectionMatrix: perspective(gNear, gFar),
             shaderData: {variantName: 'globe', vertexShaderPrelude: GLOBE, define: '#define GLOBE'},
             defaultProjectionData: data(main, [0, 0, 1, 1], globeness, true),
             getProjectionData: ({tileID: {canonical: c, wrap}, applyGlobeMatrix}) => data(tileMatrix(c, wrap), mercatorCoords(c), applyGlobeMatrix ? globeness : 0, c.z === 0),
         };
     }
     return {
-        nearZ: near, farZ: far, fov: FOV,
+        nearZ: near, farZ: far, fov: tr.fov,
         modelViewProjectionMatrix: multiply(main, scale(1 / ws, 1 / ws, 1 / metres)),
         // (The padding moves the center of the perspective, as `m[8]` and `m[9]` do in MapLibre GL JS.)
         projectionMatrix: perspective(near, far),

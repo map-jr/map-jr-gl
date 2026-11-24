@@ -33,7 +33,7 @@ These differences change the code of most applications:
   higher value is limited to 180 and writes one warning, where MapLibre GL JS throws an error. Above a pitch of 90 the
   camera is below the ground unless the map center has a height: call `setCenterClampedToGround(false)` and then
   `setCenterElevation`, as in MapLibre GL JS.
-- The camera has no roll, and its field of view is fixed. `setRoll` and `setVerticalFieldOfView` have no effect.
+- The camera has no roll. `setRoll` has no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
 - The production build does not validate the style. The development build checks the required fields of the layers
   and sources, the types of the values and the types of expressions, and fires `error` with the text of MapLibre GL JS;
@@ -101,14 +101,14 @@ library" names a member that MapLibre GL JS does not have.
 | `version` (read only) | `string` | The version of this library, as the member `version` of a map of MapLibre GL JS. |
 | `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Has no effect: the map always draws copies of the world side by side. |
 | `setRoll` | `(roll?: number \| undefined) => Map` | Has no effect: the camera has no roll. |
-| `setVerticalFieldOfView` | `(fov?: number \| undefined) => Map` | Has no effect: the vertical field of view stays at 36.87 degrees. |
-| `getVerticalFieldOfView` | `() => number` | Returns 36.87, the vertical field of view of the camera in degrees, which is the default of MapLibre GL JS. |
 | `coveringTiles` | `(o: {tileSize: number; minzoom?: number; maxzoom?: number; roundZoom?: boolean}) => {canonical: {z: number; x: number; y: number; key: string}; wrap: number; overscaledZ: number; key: string}[]` | Returns the tiles that cover the view as plain objects `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`; MapLibre GL JS returns `OverscaledTileID` objects. |
 | `calculateCameraOptionsFromTo` | `(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; pitch: number; bearing: number}` | The camera options that look from `from` at `altitudeFrom` meters to `to` at `altitudeTo` meters, as in MapLibre GL JS. |
 | `calculateCameraOptionsFromCameraLngLatAltRotation` | `(cameraLngLat: LngLatLike, cameraAlt: number, bearing: number, pitch: number, roll?: number \| undefined) => object` | The camera options that put the camera at `cameraLngLat` and `cameraAlt` meters with this rotation, as in MapLibre GL JS. |
 | `calculateAnchoredCameraOptions` | `(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) => {center: LngLat; zoom: number}` | The center and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. |
 | `setCenterClampedToGround` | `(clamped: boolean) => void` | With `false`, the map center keeps its height (`setCenterElevation`) instead of following the ground, as in MapLibre GL JS. |
 | `getCenterClampedToGround` | `() => boolean` | Returns whether the map center follows the ground, `true` unless `setCenterClampedToGround(false)` was called. |
+| `setVerticalFieldOfView` | `(fov: number, eventData?: EventData \| undefined) => Map` | Sets the vertical field of view of the camera in degrees, as in MapLibre GL JS: the value is clamped to 0.1 to 150, the zoom stays, and the map fires `movestart`, `move` and `moveend`. |
+| `getVerticalFieldOfView` | `() => number` | Returns the vertical field of view of the camera in degrees (36.87 by default). |
 | `setCenterElevation` | `(elevation: number, eventData?: EventData \| undefined) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. |
 | `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
