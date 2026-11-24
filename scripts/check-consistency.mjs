@@ -32,7 +32,10 @@ for (const f of spec) if (!descriptionDoc.includes('`' + f + '`')) fail('docs/re
 //    A field that Vue gives in another way is named here with the reason.
 const vueOther = {style: 'the prop mapStyle', onViewChange: 'v-model:view', onColorSchemeChange: 'v-model:color-scheme', onClick: 'the event click', onError: 'the event error'};
 const vue = read('src/vue.ts'), vueDoc = read('docs/reference/vue.md');
-const props = vue.slice(vue.indexOf('    props: {'), vue.indexOf('    emits: {'));
+// The props of MapJr: other components of the file have props too, so the slice starts at the name (#716).
+const mapJr = vue.indexOf("name: 'MapJr'");
+if (mapJr < 0) throw new Error("src/vue.ts: the component name: 'MapJr' is not found");
+const props = vue.slice(vue.indexOf('    props: {', mapJr), vue.indexOf('    emits: {', mapJr));
 for (const f of spec) {
     if (vueOther[f]) continue;
     if (!new RegExp(`(^|[\\s,{])${f}:`, 'm').test(props)) fail('src/vue.ts', `the component MapJr has no prop for the field \`${f}\` of the description`);
