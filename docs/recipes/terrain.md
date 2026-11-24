@@ -770,8 +770,9 @@ export default function Terrain() {
   of the peaks change with the button too.
 - [`queryElevation`](../reference/map.md#queryelevation) resolves to the height of the ground in meters. It resolves to
   `null` when the elevation tile has no data, and it rejects when the style has no `raster-dem` source.
-- Each button calls [`update`](../reference/map.md#update) with a new description from `describe`. A change of `terrain`
-  or of a source in `sources` [loads the style again](../reference/description.md#style).
+- Each button calls [`update`](../reference/map.md#update) with a new description from `describe`. A change of a
+  source in `sources` [loads the style again](../reference/description.md#style), and a change of `terrain` alone does
+  not.
 
 The compat example sets the terrain with `setTerrain` and adds the contour source and its two layers on `load`. Its
 unit button sets the state with `setGlobalStateProperty`, and it removes the source and its layers and adds them again,

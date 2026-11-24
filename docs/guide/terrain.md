@@ -557,9 +557,11 @@ map.on('click', async e => {
 });
 ```
 
-With the main API, `queryElevation` reads the first `raster-dem` source of the style, where the sources of
-[`sources`](../reference/description.md#sources) count as sources of the style. The main API cannot select another
-source. With the MapLibre compat entry, `map.queryElevation(lngLat, {source: 'dem'})` selects the source.
+`queryElevation` reads the first `raster-dem` source of the style, where the sources of
+[`sources`](../reference/description.md#sources) count as sources of the style. To read another source, pass its id
+as the second argument in both entries: `map.queryElevation(lngLat, {source: 'dem'})`. The option `zoom` sets the
+zoom level of the elevation tile that the query reads, and a lower `zoom` reads a tile with less detail. See
+[`queryElevation`](../reference/map.md#queryelevation) for the defaults.
 
 The MapLibre compat entry also has the methods of MapLibre GL JS that read 3D terrain. They return a number at once, and
 the number is the height multiplied by the exaggeration of the terrain:
