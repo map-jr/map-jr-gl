@@ -428,8 +428,8 @@ the first view, writes the error to the console of the server, and emits it as `
 The prop `:attribution="false"` overrides `attribution` and shows none.
 
 The render uses the props `map-style`, `initial-view`, `view`, `sources`, `layers`, `terrain`, `sprite`, `data`,
-`images`, `font-family`, `color-scheme`, `controls`, `locale`, `nonce`, `min-zoom`, `max-zoom`, `projection` and
-`attribution`. It does not use `global-state`, or `fitMaxZoom` of `initial-view`.
+`images`, `font-family`, `color-scheme`, `global-state`, `controls`, `locale`, `nonce`, `min-zoom`, `max-zoom`,
+`projection` and `attribution`, including `fitPadding` and `fitMaxZoom` of `initial-view`.
 
 The React component of `@map-jr/map-jr-gl/react` has the prop `firstView`: the HTML of `renderFirstView`. The
 component reads it in its first render only.
