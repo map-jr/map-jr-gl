@@ -6,6 +6,7 @@ import {mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:
 import {createRequire} from 'node:module';
 import MagicString from 'magic-string';
 import {shortenPrivateNames} from './scripts/private-names.mjs';
+import {minifyShaders} from './scripts/minify-shaders.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -42,20 +43,14 @@ mkdirSync('dist', {recursive: true});
 
 /**
  * Makes the shader programs smaller: the GLSL in src/gl.ts keeps its comments and layout in the source, but the built
- * files do not need them. Only whitespace and comments change, so the programs stay the same. A preprocessor line
- * (`#ifdef GLOBE`, `#define`) keeps a line of its own, as GLSL requires.
+ * files do not need them. Only whitespace and comments change, so the programs stay the same (scripts/minify-shaders.mjs).
  */
 const shaders = {
     name: 'minify-shaders',
     transform(code, id) {
         if (!id.endsWith('/src/gl.ts')) return null;
         const edited = new MagicString(code);
-        for (const m of code.matchAll(/`((?:[^`\\]|\\.)*)`/gs)) if (/void main|uniform |\bfloat /.test(m[1]))
-            // (Spaces also go from around the operators, but not from around + and -: `a - -b` must not become `a--b`.)
-            edited.overwrite(m.index, m.index + m[0].length, '`' + m[1].replace(/\/\/[^\n]*/g, '').split(/\n(?=[ \t]*#)|(?<=^[ \t]*#[^\n]*)\n/m)
-                .map(part => part.replace(/\s+/g, ' ').replace(/ ?([{};,()=*\/<>?:!&|]) ?/g, '$1').trim()).filter(Boolean).join('\n')
-                // (Text that ends with a preprocessor line keeps the end of that line: the shader that includes it goes on after it.)
-                .replace(/(^|\n)(#[^\n]*)$/, '$1$2\n') + '`');
+        for (const [start, end, text] of minifyShaders(code)) edited.overwrite(start, end, text);
         return withMap(edited, id);
     },
 };

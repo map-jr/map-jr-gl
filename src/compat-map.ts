@@ -7,7 +7,7 @@ import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
-import {absolute} from './resolve.ts';
+import {absolute, LAYER_TYPES} from './resolve.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, type LngLatLike} from './geo.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
@@ -393,6 +393,7 @@ export class Map extends CoreMap {
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
+        this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         super.setMissingStyleImageResolver(name => this.styleImage(name));
         this.once('remove', () => { this.imagesTurn++; });
@@ -439,9 +440,11 @@ export class Map extends CoreMap {
         // (The core adds the attribution in its constructor, before the fields of this class exist: hence `??=`.)
         return (control as {onAdd?: unknown} | undefined)?.onAdd ? ((this.added ??= []).push(control), super.addControl(control, position)) : this.refused('addControl(): the argument is not a control. Pass an object with onAdd and onRemove methods.');
     }
+    private warnedTypes?: Set<string>;
     /**
      * Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS.
      * A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise the map does not add it. The map draws a custom layer only while the projection is Mercator.
+     * A layer type that the library does not draw writes the warning of a loaded style, once for each type added with `addLayer`, for each map.
      */
     addLayer(layer: AddLayerObject, beforeId?: string) {
         let one: {id: string; source?: unknown} = layer;
@@ -457,6 +460,9 @@ export class Map extends CoreMap {
         const {id, source} = one;
         if (this.rawStyle && this.getLayer(id)) return this.refused(`addLayer: the style has a layer with the id "${id}" already. Remove that layer first, or use another id.`);
         if (this.rawStyle && typeof source === 'string' && !this.rawStyle.sources[source]) return this.refused(`addLayer: the layer "${id}" names the source "${source}", which the style does not have. Add the source first.`);
+        // (As a loaded style does, once for each type added with addLayer on this map, after the refusals above; #1140.)
+        const type = (one as {type?: string}).type;
+        if (one === layer && type && !LAYER_TYPES.has(type) && !(this.warnedTypes ??= new Set()).has(type)) { this.warnedTypes.add(type); console.warn('[map-jr-gl] Skipping unsupported layer types: ' + type); }
         if (one !== layer) (this.customs ??= new globalThis.Map()).set(id, layer as CustomLayerInterface);
         // As in MapLibre GL JS, a source object in the layer becomes a source with the id of the layer.
         if (source && typeof source === 'object') {

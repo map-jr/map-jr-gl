@@ -5,14 +5,14 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
+import {dataTypeError, escapeXML, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG, cleanCredits} from './svg.ts';
 import {controlsMarkup} from './server-controls.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
 import type {ControlSpec, MapDescription} from './host.ts';
 import {unset, type Given} from './unset.ts';
 import {compileFor, pickImage} from './expr.ts';
-import {styleImages} from './style-images.ts';
+import {styleImages, STYLE_IMAGES} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
 import {httpError} from './requests.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -27,6 +27,13 @@ export interface RenderOptions {
     style: unknown;
     /** The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. */
     colorScheme?: 'auto' | 'light' | 'dark';
+    /**
+     * Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. A value here
+     * overrides the default in `state` of the style; a name that is left out or set to `null` uses the default. Unless
+     * `globalState` sets it, the global state `color-scheme` is the scheme, as in the map. The server has no browser, so
+     * `'auto'` and no value are `'light'` here, while the map follows `prefers-color-scheme` for `'auto'`.
+     */
+    globalState?: Record<string, unknown> | null;
     /** The center of the view, `[lng, lat]`. `bounds` overrides it. */
     center: LngLatLike;
     /** The zoom level of the view. `bounds` overrides it. */
@@ -240,7 +247,11 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     style.layers = over === false ? style.layers.map(l => l.metadata?.[SSR_KEY] ? {...l, metadata: {...l.metadata, [SSR_KEY]: undefined}} : l)
         : applySSROverrides(over ? style.layers.map(l => over[l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...over[l.id]}}} : l) : style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
-    compileFor({g: style.state ?? {}, f: {}});
+    // The description's global state over the style's defaults, and the color scheme as `color-scheme`, as the map sets them (#1426).
+    const state: Record<string, unknown> = {...style.state};
+    state['color-scheme'] = o.colorScheme === 'dark' ? 'dark' : 'light';
+    for (const [k, v] of Object.entries(o.globalState ?? {})) if (v != null) state[k] = v;
+    compileFor({g: state, f: {}});
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
@@ -248,10 +259,15 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     else tr.set(o.center, o.zoom, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
-    builder.setStyle(style.layers, style.state);
+    builder.setStyle(style.layers, state);
     // The images of `images` that are SVG documents: the SVG and the size, and for a template its slots.
     // (The images of the style come first, and an image of `images` with the same name takes the place of one (#495).)
-    const documents = new Map(Object.entries({...styleImages(given, message => console.warn(message)), ...o.images}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const).filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
+    const defined = Object.entries({...styleImages(given, message => console.warn(message)), ...o.images}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const);
+    const documents = new Map(defined.filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
+    // Every name that the style or `images` defines hides the sprite image of that name, also an image that is a URL or that is left
+    // out, as in the map (#1300). An image that is a URL is drawn when a symbol layer names it and its size is known or it decodes.
+    const owned = new Set([...defined.map(([name]) => name), ...(typeof (given as any)?.metadata?.[STYLE_IMAGES] === 'object' ? Object.keys((given as any).metadata[STYLE_IMAGES] ?? {}) : [])]);
+    const linked = defined.filter(([name, v]) => typeof v.image === 'string' && !documents.has(name));
     builder.setTemplates(Object.fromEntries([...documents].map(([name, v]) => [name, templateSlots(v.image)] as const).filter(([, slots]) => slots.length)));
     builder.decodeImage = o.decodeImage ?? decodeImage;
     builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), promoteIds(style));
@@ -297,13 +313,30 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
             sprite = {...loaded[0].one, icons, sheets: loaded.map(({one}) => one)};
         })());
     }
+    const grid = new CollisionGrid(), images = new Map<string, {svg: string; width: number; height: number}>();
+    const named = JSON.stringify(style.layers.filter(l => l.type === 'symbol').map(l => l.layout));
+    for (const [imageName, v] of linked) if (named.includes(JSON.stringify(imageName))) jobs.push((async () => {
+        try {
+            let href = v.image, width = Number(v.width) || undefined, height = Number(v.height) || undefined;
+            if (!width || !height || o.inlineImages) {
+                href = await dataURI(v.image);
+                if (!width || !height) {
+                    const px = await builder.decodeImage!(Uint8Array.from(atob(href.slice(href.indexOf(',') + 1)), c => c.charCodeAt(0)));
+                    width ??= px.width; height ??= px.height;
+                }
+                if (!o.inlineImages) href = v.image;
+            }
+            images.set(imageName, {svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image href="${escapeXML(href)}" width="${width}" height="${height}" preserveAspectRatio="none"/></svg>`, width: width!, height: height!});
+        } catch (cause) {
+            console.warn(`[map-jr-gl] the server render draws no image "${imageName}", because ${(cause as Error)?.message ?? cause}. The map loads it in the browser.`);
+        }
+    })());
     await Promise.all(jobs);
 
-    const grid = new CollisionGrid(), images = new Map<string, {svg: string; width: number; height: number}>();
     const find = (name: string) => {
         // (An image of `images` or of the style takes the place of an image of the sprite with the same name.)
         const fromSprite = (sprite as Sprite | null)?.icons[name];
-        if (fromSprite && !documents.has(name)) return fromSprite;
+        if (fromSprite && !owned.has(name)) return fromSprite;
         if (!images.has(name)) {
             // An image of `images`: for a template, the name has the value of each slot (see `buildTile`).
             const [image, ...values] = name.split(VARIANT), own = documents.get(image);
@@ -383,7 +416,7 @@ export async function renderFirstView(o: FirstViewOptions): Promise<string> {
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800
@@ -431,7 +464,7 @@ export async function renderElement(description: MapDescription, options: Elemen
         const fit = !d.view && d.initialView?.bounds;
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
             width, height, images: d.images as RenderOptions['images'], sources: d.sources, layers: d.layers as RenderOptions['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
-            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light',
+            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
             controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
             attributionOptions: d.attribution === false ? undefined : d.attribution as {compact?: boolean; customAttribution?: string | string[]} | undefined});
     } catch (cause) {
