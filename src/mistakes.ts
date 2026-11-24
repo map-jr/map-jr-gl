@@ -9,7 +9,7 @@ import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
-export interface Checked { map: Map; warned: Set<string>; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
+export interface Checked { map: Map; warned: Set<string>; /** The name that made the map, such as `createMap()` or `<MapJr>`. */ name: string; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
 
 const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 0 */ call => call + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
@@ -45,7 +45,7 @@ texts[1151] = method => `<MapJr>: the template ref has no method "${method}" unt
 type Method = {[K in keyof MapInstance]: MapInstance[K] extends Function ? K : never}[keyof MapInstance];
 const methods = {update: 1, patch: 1, getResolvedDescription: 1, destroy: 1, queryFeatures: 1, querySource: 1, watchFeatures: 1, watchSource: 1, setFeatureState: 1, removeFeatureState: 1, queryElevation: 1, toBlob: 1, clusterExpansionZoom: 1, clusterChildren: 1, clusterLeaves: 1, moveTo: 1, fitBounds: 1, project: 1, unproject: 1, overlay: 1, listen: 1, once: 1} satisfies Record<Method, 1>;
 export const earlyMethod = (k: PropertyKey) => Object.hasOwn(methods, k);
-texts[1148] = () => 'createMap(): the description has both "view" and "initialView.bounds". "view" wins, so the map starts at "view" and does not fit the bounds. Remove "view" to fit the bounds, or remove "bounds" from "initialView".';
+texts[1148] = call => `${call}: the description has both "view" and "initialView.bounds". "view" wins, so the map does not fit "initialView.bounds". Remove "view" to fit the bounds, or remove "bounds" from "initialView".`;
 texts[1190] = () => 'update(): "view" is a view that the map reported earlier, so the map does not move. The map ignores such a view so that a slow application does not pull it back while the user moves it. To return to a stored view, call moveTo(view).';
 texts[1147] = (target, option) => `${target}: "${option}" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit${option[0].toUpperCase() + option.slice(1)}". "${option}" of the description applies to the map for good.`;
 texts[1189] = sourceId => `sources: the GeoJSON source "${sourceId}" has no "data", and "data" of the description has no key "${sourceId}", so the source has no features. Give the source its own "data", or write the features as "data: {${sourceId}: geojson}".`;
@@ -148,7 +148,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
-        if (!before && next.view && (next.initialView as {bounds?: unknown} | undefined)?.bounds) warn(1148);
+        if (!before && next.view && (next.initialView as {bounds?: unknown} | undefined)?.bounds) warn(1148, c.name);
         for (const id in next.sources) { const x = next.sources[id] as {type?: string; data?: unknown} | null; if (x?.type === 'geojson' && x.data == null && !(next.data && id in next.data)) warn(1189, id); }
         for (const k in next) if (k !== 'glyphs' && !descriptionFields.has(k)) k === 'extend' ? warn(10524) : warn(524, k);
         if (next.sprite !== before?.sprite && next.sprite != null && !(Array.isArray(next.sprite) && next.sprite.every(s => typeof s?.id === 'string' && typeof s.url === 'string'))) warn(55, JSON.stringify(next.sprite));

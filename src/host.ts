@@ -810,7 +810,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     let styled = false;
     // Only the development build loads the file (see `__DEV__`): the production build has no request for it and no check.
     const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
-    const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
+    const checked: Checked = {map, name, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
     if (spec.initialView) check(1147, 'initialView', spec.initialView);
     // The data that each source has from the description: the GeoJSON of `data`.

@@ -1188,8 +1188,8 @@ for (const renderer of renderers) {
             console.warn = warn;
             return {zoom, warned: warned.filter(w => w.includes('"initialView.bounds"'))};
         }, renderer);
-        check(`[${renderer}] view with initialView.bounds starts at view and warns once that view wins (#1148)`,
-            viewWins.zoom === 3 && viewWins.warned.length === 1 && viewWins.warned[0].startsWith('[map-jr-gl] createMap(): ') && viewWins.warned[0].includes('"view" wins'), JSON.stringify(viewWins));
+        check(`[${renderer}] view with initialView.bounds does not fit the bounds and warns once that view wins (#1148)`,
+            viewWins.zoom === 3 && viewWins.warned.length === 1 && viewWins.warned[0].startsWith('[map-jr-gl] createMap(): ') && viewWins.warned[0].includes('"view" wins, so the map does not fit'), JSON.stringify(viewWins));
 
         check(`[${renderer}] a pending toBlob leaves loaded() true for the idle listeners after its own (#1454)`, blob.loadedAtIdle === true, JSON.stringify(blob));
         check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
