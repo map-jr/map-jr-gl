@@ -305,9 +305,9 @@ export class LogoControl implements Control {
  * position (`watchPosition`) and keeps the map on it until the map moves for another reason, which fires
  * `trackuserlocationend` and `userlocationlostfocus`. A click then returns to the position and fires
  * `trackuserlocationstart` and `userlocationfocus`. `showUserLocation` (default true) shows a dot at the position while
- * tracking is on. With `zoom`, the map zooms in to it. Without it, the map fits the circle of the accuracy with `fitBounds` and all of `fitBoundsOptions` (`maxZoom` default 14). The accuracy circle
- * (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts)
- * loads on demand at the first click, so the first step of tracking happens once that file has loaded.
+ * tracking is on. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds`
+ * and `fitBoundsOptions` (default `{maxZoom: 15}`, replaced as a whole when given), as MapLibre GL JS does. The
+ * accuracy circle (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts) loads on demand at the first click, so the first step of tracking happens once that file has loaded.
  */
 export class GeolocateControl extends Evented implements Control {
     private el?: HTMLElement;
@@ -365,9 +365,9 @@ export class GeolocateControl extends Evented implements Control {
     private follow(map: Map, p: GeolocationPosition) {
         const {longitude: x, latitude: y, accuracy} = p.coords, o = this.options;
         if (o.zoom !== undefined) { map.easeTo({duration: 1200, center: [x, y], zoom: Math.max(map.getZoom(), o.zoom)}); return; }
-        // As in MapLibre GL JS: fit the circle of the accuracy (meters), with all of fitBoundsOptions.
+        // As in MapLibre GL JS: fit the accuracy circle (meters); a given fitBoundsOptions replaces the default as a whole.
         const r = (accuracy || 0) / 111320, rx = r / Math.max(Math.cos(y * Math.PI / 180), 1e-6);
-        map.fitBounds([x - rx, y - r, x + rx, y + r], {maxZoom: 14, bearing: map.getBearing(), ...o.fitBoundsOptions});
+        map.fitBounds([x - rx, y - r, x + rx, y + r], {bearing: map.getBearing(), ...(o.fitBoundsOptions ?? {maxZoom: 15})});
     }
     onRemove() {
         this.t?.then(t => t.remove(), () => {});

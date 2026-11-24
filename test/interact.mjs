@@ -4177,6 +4177,27 @@ for (const mode of renderers) {
         // padding.left 100 puts the position 50 px right of the middle, so the center is 50 px (at zoom 9) west of it.
         check('[main] maplibre-compat: GeolocateControl fits the position with fitBoundsOptions (maxZoom and padding), and warns for none of them',
             Math.abs(fit.zoom - 9) < 1e-6 && Math.abs(fit.lng - (3 - 50 * 360 / (512 * 512))) < 1e-3 && fit.warnings.length === 0, JSON.stringify(fit));
+        // An accuracy of 5000 m and no fitBoundsOptions: the fitted box gives the zoom of MapLibre GL JS 6.17 (#1722).
+        const acc = {};
+        for (const lib of ['ml', 'jr']) acc[lib] = await page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition: ok => setTimeout(() => ok({coords: {longitude: 3, latitude: 50, accuracy: 5000}, timestamp: 1}), 0)}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, ...(lib === 'jr' ? {renderer: 'main'} : {}), center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const gc = new mod.GeolocateControl({});
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            gc.trigger();
+            await new Promise(r => m.once('moveend', r));
+            const zoom = m.getZoom(), c = m.getCenter();
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return {zoom, lng: c.lng, lat: c.lat};
+        }, lib);
+        check('[main] maplibre-compat: GeolocateControl fits an accuracy of 5000 m to the zoom of MapLibre GL JS',
+            acc.ml.zoom < 15 && Math.abs(acc.jr.zoom - acc.ml.zoom) < 0.01 && Math.abs(acc.jr.lng - acc.ml.lng) < 1e-4 && Math.abs(acc.jr.lat - acc.ml.lat) < 1e-4, JSON.stringify(acc));
         // trackUserLocation (#42): the states and events of MapLibre GL JS 6.17, the dot, and clearWatch, with a mocked watchPosition.
         const track = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -4204,7 +4225,8 @@ for (const mode of renderers) {
             ok({coords: {longitude: 11, latitude: 20, accuracy: 5}, timestamp: 2}); await idle();
             const stayed = Math.round(m.getCenter().lng) === 0;
             await press(); states.push(cls());
-            for (let i = 0; i < 60 && Math.round(m.getCenter().lng) !== 11; i++) await new Promise(r => setTimeout(r, 50));
+            // The flight back from zoom 15 (the default maxZoom of fitBoundsOptions) can take more than 3 s.
+            for (let i = 0; i < 200 && Math.round(m.getCenter().lng) !== 11; i++) await new Promise(r => setTimeout(r, 50));
             const back = Math.round(m.getCenter().lng) === 11;
             await press(); states.push(cls());
             const dotGone = !el.querySelector('.maplibregl-user-location-dot');
