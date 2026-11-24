@@ -1,0 +1,7 @@
+{
+  "label": "line-blur for each feature",
+  "decision": "later",
+  "issue": 1702,
+  "reason": "line-blur that is different for each feature is not applied.",
+  "pattern": "^line-blur/property-function$"
+}

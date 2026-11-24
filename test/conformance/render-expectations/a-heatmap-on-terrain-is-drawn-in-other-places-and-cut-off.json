@@ -1,0 +1,7 @@
+{
+  "label": "a heatmap on terrain is drawn in other places and cut off",
+  "decision": "later",
+  "issue": 1819,
+  "reason": "A heatmap on terrain is drawn in other places and cut off.",
+  "pattern": "^(terrain/heatmap)$"
+}

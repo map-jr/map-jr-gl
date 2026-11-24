@@ -147,7 +147,7 @@ that affects how the map is drawn.
 
 | File | Content |
 |---|---|
-| `render-result.json` | The totals. `near` includes `match`. `differWontfix` and `differLater` are the parts of `differ` that have a label with that decision. `pnpm status` reads this file: the row "the same" of the table in the README is `match`, the row "the same or near" is `near`, and the total is `run`. `docs/status.json` has the other counts (`renderTests`), with the count of the differences that the library keeps (`differWontfix`). |
+| `render-result.json` | The totals that do not depend on labels. `near` includes `match`. `pnpm status` reads this file: the row "the same" of the table in the README is `match`, the row "the same or near" is `near`, and the total is `run`. `docs/status.json` has the other counts (`renderTests`). `pnpm status` and the unit tests compute `differWontfix` and `differLater`, the parts of `differ` that have a label with that decision, from `render-tests.json` and the labels, so that a pull request that only adds a label changes no committed total (#1861). |
 | `render-tests.json` | The status of each test, sorted by id and without percentages. Its diff shows the tests that changed. |
 
 Each run also prints a line that starts with `CHANGED:` for a test whose status is not the status in
@@ -164,21 +164,26 @@ port 2901. The run downloads version 4.0.0 of the package once from the npm regi
 a dependency, and its tiles, which hold OpenStreetMap data under the ODbL 1.0, are not committed. When the download
 fails, the six tests are skipped with the reason `@mapbox/mvt-fixtures`.
 
-`test/conformance/render-expectations.json` gives labels to tests that differ by a decision. An entry has these
-fields:
+The folder `test/conformance/render-expectations/` gives labels to tests that differ by a decision. It has one JSON
+file for each label, named after the label (`debug-drawing.json`), so that a pull request that adds a label adds a file
+and does not conflict with another one (#1862). A file has these fields:
 
 | Field | Value |
 |---|---|
-| `test` or `pattern` | The id of one test (`sky/fog-color`), or a regular expression for ids (`^sky/`). Give one of the two. |
-| `label` | A short name. Entries with the same label are counted together. |
-| `decision` | `wontfix` for a difference that the owner decided to keep, or `later` for a feature that is not decided or not done yet. Only the owner decides that an entry is `wontfix`. |
-| `reason` | One sentence that says why. |
+| `tests` or `pattern` | An array of test ids (`["sky/fog-color"]`), or a regular expression for ids (`^sky/`). Give one of the two. |
+| `label` | A short name. Each label has one file. |
+| `decision` | `wontfix` for a difference that the owner decided to keep, or `later` for a feature that is not decided or not done yet. Only the owner decides that a label is `wontfix`. |
+| `reason` | One or two sentences that say why. |
 | `issue` | Optional. The number of the issue that has the work. |
+| `fallback` | Optional. `true` for a wide label (`globe`) that a test gets only when no other label fits it. |
 
-The first entry that fits a test gives the test its label. The run prints, for each label, how many of its tests
+A test gets the label of the file that fits it. When two files that are not fallbacks fit one test, or two fallbacks
+do, the run prints a line that starts with `OVERLAP:`, and the unit tests fail: narrow one of the two, or mark the
+wider one `"fallback": true`. A file with a mistake (a misspelled decision, a label that another file has) stops the run
+with a message that names the file. The run prints, for each label, how many of its tests
 differ, and the first line says how many of the tests that differ are `wontfix` and how many are `later`. The run
-prints a line that starts with `STALE:` for a test that has a `wontfix` label and matches: remove that entry. It
-prints a line that starts with `UNUSED:` for an entry that fits no test. A label does not change the status of a
+prints a line that starts with `STALE:` for a test that has a `wontfix` label and matches: remove that test from its file. It
+prints a line that starts with `UNUSED:` for a label that fits no test. A label does not change the status of a
 test or the minimum.
 
 ## The old GitHub Pages address

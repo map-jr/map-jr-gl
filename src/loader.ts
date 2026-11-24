@@ -27,7 +27,8 @@ export function supported(): boolean {
 /** How the library loads its workers, for `configure`. */
 export interface LoadOptions {
     /**
-     * The URL of the worker file, `map-jr-gl-worker.js`.
+     * The URL of the worker file, `map-jr-gl-worker.js`. The parts of the worker (`map-jr-gl-worker-*.js`) must be in
+     * the same folder.
      * @default the file next to the module of the library
      */
     workerUrl?: string | URL;
@@ -72,6 +73,56 @@ function workerHref(o: LoadOptions): string | undefined {
     if (o.createWorker ?? defaults.createWorker ?? (!url && __WORKER_SRC__)) return;
     // (The marker comment stops this library's own build from rewriting the line; it is not in the published file.)
     return new URL(url ?? new URL(/* @vite-ignore */ './map-jr-gl-worker.js', import.meta.url), location.href).href;
+}
+
+/**
+ * The URLs of the parts of the worker that load on demand (src/parts.ts), for the worker to load when a map needs one.
+ * They are next to `workerUrl` when it is given, and otherwise next to this module, where a bundler that copies the
+ * worker file copies them too. The standalone build has them inside its worker.
+ */
+export function partUrls(o: LoadOptions): Record<string, string> | undefined {
+    const url = o.workerUrl ?? defaults.workerUrl;
+    if (!url && !(o.createWorker ?? defaults.createWorker) && __WORKER_SRC__) return;
+    const page = globalThis.location?.href ?? import.meta.url, folder = (u: URL) => /^(https?|file):$/.test(u.protocol);
+    // A workerUrl that has no folder (a blob: or data: URL) takes the parts next to this module.
+    let base: URL | undefined;
+    try { base = url ? new URL(url, page) : undefined; } catch { /* the default below */ }
+    const at = (name: string, own: () => URL) => {
+        try { const u = base && folder(base) ? new URL(`map-jr-gl-worker-${name}.js`, base) : own(); return folder(u) ? u.href : undefined; } catch { return undefined; }
+    };
+    // (Each URL is written out, so that a bundler finds it. The marker comment stops this library's own build from rewriting the line.
+    // `?no-inline` keeps Vite from putting a file under 4 KB into the page script as a `data:` URL; a server ignores it.)
+    const out = {
+        geojson: at('geojson', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-geojson.js?no-inline', import.meta.url)),
+        contour: at('contour', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-contour.js?no-inline', import.meta.url)),
+        pmtiles: at('pmtiles', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
+    };
+    if (!out.geojson && !warnedParts) {
+        warnedParts = true;
+        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
+    }
+    return out as Record<string, string>;
+}
+let warnedParts = false;
+
+/**
+ * The code of the parts of the worker, fetched once on the page by URL and shared by every map and tile worker of the
+ * page, as a blob URL (null when the fetch failed: each worker then fetches the part itself). The fetch starts as soon
+ * as the style is there, in parallel with the worker file, and not when a tile worker first needs the part (#79).
+ */
+const partCode = new globalThis.Map<string, Promise<string | null>>();
+/** Starts to fetch the parts that the sources of a style (as written) need: see `partsFor` in engine.ts. */
+export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>}) {
+    const urls = partUrls(o);
+    if (!urls) return;
+    for (const s of Object.values(style?.sources ?? {})) {
+        const name = s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'contour'
+            : [s?.url, ...(Array.isArray(s?.tiles) ? s.tiles : [])].some(u => typeof u === 'string' && u.startsWith('pmtiles://')) ? 'pmtiles' : '';
+        const url = urls[name];
+        if (!url || partCode.has(url)) continue;
+        partCode.set(url, fetch(url).then(r => r.ok ? r.text() : null)
+            .then(t => t === null ? null : URL.createObjectURL(new Blob([t, `\n//# sourceMappingURL=${url.replace(/[?#].*/, '')}.map`], {type: 'text/javascript'})), () => null));
+    }
 }
 
 /**
@@ -177,6 +228,7 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
     const mine = pool, workers = await mine.workers;
     mine.users++;
     let ports: MessagePort[] = [], ids: number[] = [];
+    const parts = partUrls(o);
     // The tile-worker end of a port that went to an engine worker can only be closed by the tile worker (#838).
     const drop = () => { for (const id of ids) for (const w of workers) w.postMessage({role: 'drop', id}); };
     return {
@@ -184,7 +236,10 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
             drop();
             // Each map talks to each worker over its own channel, so their styles and requests stay separate.
             ids = workers.map(() => ++channels);
-            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i]}, [ch.port1]); return ch.port2; });
+            // (The parts that the page fetches for this style go to each worker when they arrive; the worker waits for them.)
+            const coming = Object.entries(parts ?? {}).filter(([, url]) => partCode.has(url));
+            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming: coming.map(([n]) => n)}, [ch.port1]); return ch.port2; });
+            for (const [name, url] of coming) partCode.get(url)!.then(code => { for (const w of workers) w.postMessage({role: 'part', name, code}); });
             return ports;
         },
         // WebKit can hold a message on the port of a worker that has been idle for a few seconds for about a second

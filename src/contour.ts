@@ -1,4 +1,4 @@
-import {imagePixels} from './exact-pixels.ts';
+import {decodePixels, type ImageDecoder} from './exact-pixels.ts';
 import {EXTENT} from './geo.ts';
 import {decodeElevation, type DemEncoding} from './query.ts';
 import type {TileLayers} from './tile.ts';
@@ -21,25 +21,6 @@ export interface ContourConfig {
 }
 export interface DEM { width: number; height: number; data: Float32Array }
 export type DEMLoader = (url: string) => Promise<DEM | null>;
-
-/** Decoded image pixels, four bytes (red, green, blue, alpha) each. */
-export interface Pixels { width: number; height: number; data: Uint8Array | Uint8ClampedArray }
-/** Turns an encoded image into pixels. Needed where there is no browser to do it, e.g. for WebP tiles on a server. */
-export type ImageDecoder = (bytes: Uint8Array) => Promise<Pixels> | Pixels;
-
-/** The pixels of an elevation tile image, from `decode` if given and otherwise from the browser. */
-export async function decodePixels(bytes: Uint8Array | ImageBitmap, decode?: ImageDecoder): Promise<Pixels> {
-    // (An `ImageBitmap` is the answer of a custom protocol, which is on a page: a server has none.)
-    const given = !('length' in bytes);
-    if (decode && !given) return decode(bytes);
-    if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Elevation tiles need a browser or decodeImage');
-    const image = given ? bytes : await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
-    const {width, height} = image; // read before close(), which zeroes them
-    // Heights are in the color channels, so pixels must be exact: see `imagePixels`.
-    const data = imagePixels(image, width, height);
-    image.close();
-    return {width, height, data};
-}
 
 /**
  * Decodes an elevation tile image into meters, with `decode` if given (the server renderer passes its own decoders)

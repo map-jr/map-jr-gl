@@ -13,7 +13,7 @@ import type {ControlSpec, MapDescription} from './host.ts';
 import {unset, type Given} from './unset.ts';
 import {compileFor, pickImage} from './expr.ts';
 import {styleImages, STYLE_IMAGES} from './style-images.ts';
-import type {ImageDecoder} from './contour.ts';
+import type {ImageDecoder} from './exact-pixels.ts';
 import {httpError} from './requests.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
