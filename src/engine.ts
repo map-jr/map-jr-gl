@@ -1220,7 +1220,9 @@ export class Engine {
 
     private async queryElevation(c: Extract<Command, {type: 'elevation'}>): Promise<number | null> {
         const entry = Object.entries(this.style.sources).find(([name, src]) => src.type === 'raster-dem' && (!c.source || c.source === name));
-        if (!entry) throw new Error('No elevation (raster-dem) source in the style');
+        if (!entry) throw new Error(c.source
+            ? `[map-jr-gl] queryElevation(): the style has no "raster-dem" source "${c.source}". Name a source of type "raster-dem".`
+            : '[map-jr-gl] queryElevation(): the style has no "raster-dem" source. Add a source of type "raster-dem" to the style.');
         const src = entry[1], z = clamp(Math.floor(c.zoom ?? src.maxzoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
         const url = tileURL(src, z, t.x, t.y, this.dpr);
         let pixels = this.dem.get(url);
