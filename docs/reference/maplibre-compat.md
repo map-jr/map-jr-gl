@@ -34,8 +34,8 @@ These differences change the code of most applications:
 - The camera has no roll, and its field of view is fixed. `setRoll` and `setVerticalFieldOfView` have no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
 - The production build does not validate the style. The development build checks the required fields of the layers
-  and sources and fires `error` with the text of MapLibre GL JS; the option `validate: false` turns that check off.
-  The types of values and of expressions are not checked. The library does not draw a layer type
+  and sources and the types of the values, and fires `error` with the text of MapLibre GL JS; the option
+  `validate: false` turns that check off. The types of expressions are not checked. The library does not draw a layer type
   that it does not support, and an expression that it does not support returns `null`: see
   [The style is not validated](../migrate/from-maplibre.md#the-style-is-not-validated).
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
