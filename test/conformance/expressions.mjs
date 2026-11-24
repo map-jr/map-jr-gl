@@ -14,6 +14,21 @@ const commit = 'f94442fd4c768a40f1896630ccb64dd50067d94b';
 if (!existsSync(repo)) execSync(`git init -q "${repo}" && git -C "${repo}" fetch -q --depth 1 https://github.com/maplibre/maplibre-style-spec.git ${commit} && git -C "${repo}" checkout -q FETCH_HEAD`, {stdio: 'inherit'});
 await build({entryPoints: [path.join(root, 'src/expr.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
 const {compileExpr, compileProp, parseColor, compileFor, pickImage} = await import(path.join(root, '.cache/expr.mjs'));
+// The type check of the development build (#1748): the fixtures that expect a compile error run against it.
+await build({stdin: {contents: "export {expressionErrors} from './src/expr-check.ts'; export {zoomCurveError} from './src/mistakes.ts';", resolveDir: root, loader: 'ts'},
+    bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr-check.mjs'), logLevel: 'error', define: {__DEV__: 'true'}});
+const {expressionErrors, zoomCurveError} = await import(path.join(root, '.cache/expr-check.mjs'));
+const {expressionCode} = await import('../../scripts/style-spec-values.mjs');
+/** The errors of the development build for a fixture, in the form of the fixture. The property is completed as
+ * MapLibre's test does (`getCompletePropertySpec`): data-driven, with zoom and interpolation, when the fixture does not say. */
+const devErrors = t => {
+    const spec = {'property-type': 'data-driven', expression: {interpolated: true, parameters: ['zoom', 'feature']}, ...t.propertySpec};
+    const errors = expressionErrors(t.expression, (expressionCode(spec) || '- ' + expressionCode({...spec, type: 'number'}).split(' ')[1]));
+    const zoom = !errors.length && zoomCurveError(t.expression);
+    return zoom ? [{key: '', error: zoom}] : errors;
+};
+let devSame = 0;
+const devDiffer = [];
 const warn = console.warn; console.warn = () => {};
 
 const TYPES = {Point: 1, MultiPoint: 1, LineString: 2, MultiLineString: 2, Polygon: 3, MultiPolygon: 3};
@@ -48,7 +63,7 @@ const internal = want => {
 // library will not do it). Only the owner adds an entry with 'wontfix'.
 const deliberate = [
     {label: 'compile-error', decision: 'wontfix', match: f => f.compileError,
-        reason: 'The fixture expects a compile error. By a decision of the owner of 2026-11-16, the production build does not check the types of an expression or validate a style. Checks in the development build are possible later.'},
+        reason: 'The fixture expects a compile error. By a decision of the owner of 2026-11-16, the production build does not check the types of an expression or validate a style. The development build checks them (src/expr-check.ts, #1748), and the line "Development build" counts them.'},
     {label: 'within-distance', decision: 'later', match: f => f.op === 'within' || f.op === 'distance',
         reason: 'The operators "within" and "distance" are not implemented.'},
     {label: 'projection-transition', decision: 'later', match: f => f.id.startsWith('interpolate/projection'),
@@ -70,6 +85,13 @@ const walk = dir => {
         const r = results[op] ??= {pass: 0, fail: 0, skipped: 0};
         // Fixtures that expect a compile-time type error test validation, which the library does not have. They do not run.
         const compileError = t.expected?.compiled?.result !== 'success' || !t.inputs, label = deliberate.find(d => d.match({id, op, compileError}))?.label;
+        if (compileError) {
+            const want = t.expected.compiled.result === 'success' ? [] : t.expected.compiled.errors, got = devErrors(t);
+            if (JSON.stringify(got) === JSON.stringify(want)) devSame++; else devDiffer.push(`${id}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`.slice(0, 300));
+        }
+        // (An expression that compiles in MapLibre GL JS gets no error in the development build. A legacy function is
+        // not an expression, and the development build does not check its types.)
+        else if (Array.isArray(t.expression) && devErrors(t).length) devDiffer.push(`${id}: got ${JSON.stringify(devErrors(t))}, want no error`.slice(0, 300));
         if (compileError) { skipped++; r.skipped++; if (label) labelled[label]++; continue; }
         let ok = true, why = '';
         try {
@@ -120,6 +142,9 @@ const parts = decision => deliberate.filter(d => d.decision === decision).map(d 
 console.log(`Do not pass by a decision: later ${total('later')}${parts('later') && ` (${parts('later')})`}, wontfix ${total('wontfix')}${parts('wontfix') && ` (${parts('wontfix')})`}`);
 console.log(`Without the fixtures left out on purpose (wontfix): ${pass} of ${pass + fail + skipped - total('wontfix')} (${pct(pass, pass + fail + skipped - total('wontfix'))}%)`);
 console.log(`Fail with no label: ${fail + skipped - total('later') - total('wontfix')}`);
-if (process.argv.includes('--list')) console.log(failures.join('\n'));
+console.log(`Development build: ${devSame} of ${skipped} compile-error fixtures give MapLibre's errors; ${devDiffer.length} fixtures in all differ from MapLibre in their errors`);
+if (process.argv.includes('--list')) console.log([...failures, ...devDiffer.map(d => '[development build] ' + d)].join('\n'));
 const min = +(process.argv.find(a => a.startsWith('--min='))?.slice(6) ?? 0);
 if (pass < min) { console.error(`FAIL: expected at least ${min} passing`); process.exit(1); }
+const minDev = +(process.argv.find(a => a.startsWith('--min-dev='))?.slice(10) ?? 0);
+if (devSame < minDev || devDiffer.length) { console.error(`FAIL: expected at least ${minDev} compile-error fixtures with MapLibre's errors in the development build, and no other difference in the errors (see --list)`); process.exit(1); }
