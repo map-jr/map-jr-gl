@@ -153,3 +153,46 @@ test setup that needs no change.
 | roll (#1708, parked by the owner) | With `text-keep-upright` on a map with roll, most line labels are missing. |
 
 The pitched tests of `text-variable-anchor` and `text-variable-anchor-offset` belong to #661.
+
+## text-arabic
+
+This section gives the cause of each of the 7 render tests of `text-arabic` (#1733) and says which scripts the
+render tests cover (#721). The run used the pinned Chromium on `main` of 2026-11-24 (merge-base `f8c7f16`):
+
+```sh
+node test/conformance/render.mjs --list --filter='^text-arabic/' --save=<dir>
+```
+
+It gave 0 matches of 7 tests, 5 near and 2 that differ (`line-break` and `multi-paragraph`). Each image was compared by eye with the expected image.
+
+The tests ask for glyph PBFs (`local://glyphs/{fontstack}/{range}.pbf`, font stack `Open Sans Semibold, Arial
+Unicode MS Bold`). The library does not take Arabic from glyph files: the browser shapes it with the fonts of the
+system (see "Glyphs" in `docs/reference/maplibre-differences.md`). The harness gives Open Sans as a web font, which
+has no Arabic, so Arabic falls back to the system fonts. The machine has DejaVu Sans, FreeSerif and Unifont for
+Arabic, and neither Noto Sans Arabic nor Arial Unicode MS. Every test therefore differs a little in the shapes of
+the Arabic glyphs, and the near tests differ by little else.
+
+| Test | Result | Cause | Action |
+|---|---|---|---|
+| `text-arabic/mixed-numeric` | near 2.0% | The label along the line is in the right place and order; the Arabic glyphs come from another font. | none (font) |
+| `text-arabic/line-break` | differ 6.5% | The two lines break at the same word as in MapLibre; the Arabic glyphs come from another font, and the image is 128 px wide, so the glyphs are a large share of its pixels. | none (font) |
+| `text-arabic/persian-and-urdu` | near 2.4% | The lines and their order are as in MapLibre; the Persian and Urdu glyphs come from another font. | none (font) |
+| `text-arabic/line-break-mixed` | near 3.5% | The Latin part breaks before `al-Iskandarīyah`, while MapLibre breaks after the hyphen of `al-`. | Found (line breaks) |
+| `text-arabic/wrapped-mixed-and-numbers` | near 4.9% | Labels wrap into more lines than in MapLibre, `Main` sits at the other end of its line, and the parentheses of `(الملك 123)` are split over two lines in the wrong order. | Found (line breaks), Found (bidi per line) |
+| `text-arabic/letter-spacing` | near 3.7% | `text-letter-spacing` is applied to the Latin text of a label that contains Arabic, which MapLibre leaves unspaced, and the label then wraps into more lines and overlaps the label above it. | Found (letter-spacing) |
+| `text-arabic/multi-paragraph` | differ 6.8% | The control character U+001C is drawn as a box instead of being dropped, and the empty line of `\n\n` is left out. | Found (control character), Found (empty line) |
+
+### Scripts that the render tests cover (#721)
+
+The render tests of MapLibre GL JS were searched for characters of each script:
+
+| Script | Tests | Result in `render-tests.json` |
+|---|---|---|
+| Arabic, Persian, Urdu | the 7 tests of `text-arabic` | see above |
+| Hebrew | `font-faces/complex-scripts` only | differ |
+| Indic (Devanagari and others) | `font-faces/complex-scripts`, `is-supported-script/filter`, `is-supported-script/layout` | differ, near, near |
+| Thai | `font-faces/complex-scripts` only | differ |
+| Vertical CJK | `text-writing-mode/*`, `font-faces/vertical-forms`, `font-faces/vertical-alternates`, and four tests of `icon-text-fit` and `text-field` | labeled `text-writing-mode` (later); the two `font-faces` tests are near |
+
+No test covers right-to-left Hebrew labels with line breaks, Hebrew or Thai along a line, or Thai line breaking
+without spaces. `font-faces/complex-scripts` was not inspected in this triage.
