@@ -108,7 +108,7 @@ test one status:
 | `near` | More than 1% and at most 5% of the pixels are different. |
 | `differ` | More than 5% of the pixels are different. |
 | `error` | The test did not end in 8 seconds plus the time of its own waits, or the test threw an error. A method of an operation that the map does not have is such an error. |
-| `skipped` | The run cannot do the test, and does not draw it. The test has the operation `pauseTiles`, or it compares a part of the canvas only (`reportWidth`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures`, which this repository does not install. |
+| `skipped` | The run cannot do the test, and does not draw it. The test has the operation `pauseTiles`, or it compares a part of the canvas only (`reportWidth` or `reportHeight`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures` and the run could not download that package. |
 
 [Triage of the symbol render tests](render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
 
