@@ -24,7 +24,7 @@ export interface CameraOptions {
 export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
-    minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
+    minZoom?: number; maxZoom?: number; maxPitch?: number; worldCopies?: boolean; antialias?: boolean;
     /** The page's rules for requests at the start, so that the first tiles follow them too (#355). */
     requests?: RequestRules;
     /** Answers that the page requested before the engine started, by URL (only for an engine on the page's thread). */
@@ -42,7 +42,7 @@ export type Command =
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
-    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources; an empty `lod` drops them (removeSource). */
@@ -363,7 +363,7 @@ export class Engine {
         this.tr.height = o.height;
         this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
-        Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
+        Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60, worldCopies: o.worldCopies ?? true});
         // (The projection decides how the camera is kept on the map: a globe is not kept inside the height of the world.)
         this.tr.globeStops = globeStops(o.style.projection?.type);
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
@@ -554,7 +554,7 @@ export class Engine {
         const item = (shift: number): RenderItem<GLTile> => ({id, corners: corners.map((v, i) => i % 2 ? v : v + shift * n * EXTENT), matrix: tr.tileMatrix(id), matrix4: tr.tileMatrix4(id), scale: tr.worldSize / n / EXTENT, clip: [-1e9, -1e9, 1e9, 1e9], tile: st!.gl!});
         // The picture is in each copy of the world: the view can show two copies at the 180 degree meridian.
         const lngs = src.coordinates!.map(c => c[0]), west = Math.min(...lngs), east = Math.max(...lngs), reach = 360 * Math.max(tr.width, tr.height) / tr.worldSize;
-        return [-1, 0, 1].filter(k => east + k * 360 > tr.lng - reach && west + k * 360 < tr.lng + reach).map(item);
+        return (tr.worldCopies ? [-1, 0, 1] : [0]).filter(k => east + k * 360 > tr.lng - reach && west + k * 360 < tr.lng + reach).map(item);
     }
 
     /** The heights under a tile, for the GPU. */
@@ -1019,7 +1019,7 @@ export class Engine {
                 break;
             }
             case 'stop': this.stop(); break;
-            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
             case 'lod': for (const id of c.sources) if (c.lod.length) this.lod[id] = c.lod; else delete this.lod[id]; this.viewCovers.clear(); this.invalidate(); break;
             case 'refresh':
                 for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);

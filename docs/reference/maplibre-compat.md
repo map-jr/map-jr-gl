@@ -58,8 +58,8 @@ available, and of the types that differ.
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font. |
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
-These options of MapLibre GL JS have no effect: `renderWorldCopies: false`, `canvasContextAttributes` other than
-`antialias`, `logoPosition`, `fadeDuration` other than 300, `pitchWithRotate: false`, and
+These options of MapLibre GL JS have no effect: `canvasContextAttributes` other than `antialias`, `logoPosition`,
+`fadeDuration` other than 300, `pitchWithRotate: false`, and
 `projection` other than `'mercator'`.
 
 The option `pixelRatio` sets the number of canvas pixels for each CSS pixel, as in MapLibre GL JS. Without it, the map
@@ -99,7 +99,6 @@ library" names a member that MapLibre GL JS does not have.
 | `cooperativeGestures` (read only) | `{enable(): void; disable: () => void; isEnabled: () => boolean; isActive: () => boolean; isBypassed: (event: MouseEvent \| PointerEvent \| WheelEvent) => boolean}` | As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. |
 | `project` | `(lngLat: LngLatLike) => Point` | As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. |
 | `version` (read only) | `string` | The version of this library, as the member `version` of a map of MapLibre GL JS. |
-| `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Has no effect: the map always draws copies of the world side by side. |
 | `setRoll` | `(roll?: number \| undefined) => Map` | Has no effect: the camera has no roll. |
 | `coveringTiles` | `(o: {tileSize: number; minzoom?: number; maxzoom?: number; roundZoom?: boolean}) => {canonical: {z: number; x: number; y: number; key: string}; wrap: number; overscaledZ: number; key: string}[]` | Returns the tiles that cover the view as plain objects `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`; MapLibre GL JS returns `OverscaledTileID` objects. |
 | `calculateCameraOptionsFromTo` | `(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; pitch: number; bearing: number}` | The camera options that look from `from` at `altitudeFrom` meters to `to` at `altitudeTo` meters, as in MapLibre GL JS. |
@@ -152,7 +151,6 @@ library" names a member that MapLibre GL JS does not have.
 | `zoomOut` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Decreases the zoom level by 1 with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `rotateTo` | `(bearing: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than the option `bearingSnap` (7 degrees by default) from north, as in MapLibre GL JS. |
-| `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
 | `getRoll` | `() => number` | Returns 0: the camera has no roll. |
 | `getCameraTargetElevation` | `() => number` | Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. |
 | `isZooming` | `() => boolean` | Whether the zoom level changes now, by the user or by a camera method. |
@@ -214,6 +212,8 @@ library" names a member that MapLibre GL JS does not have.
 | `isLocationOccluded` | `(lngLat: LngLatLike) => boolean` | Only in this library: whether the far side of the globe hides a position from the camera. |
 | `getBounds` | `() => LngLatBounds` | Returns the smallest box that contains the visible map. |
 | `stop` | `() => Map` | Stops the animation of the camera, where it is. |
+| `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Sets whether copies of the world are drawn beside it, as in MapLibre GL JS. |
+| `getRenderWorldCopies` | `() => boolean` | Returns whether copies of the world are drawn beside it. |
 | `setMinZoom` | `(z?: number \| null \| undefined) => Map` | Sets the smallest zoom level that the user can reach. |
 | `setMaxZoom` | `(z?: number \| null \| undefined) => Map` | Sets the largest zoom level that the user can reach. |
 | `setMaxPitch` | `(p?: number \| null \| undefined) => Map` | Sets the largest pitch that the user can reach, in degrees. |

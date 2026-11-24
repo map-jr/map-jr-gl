@@ -269,6 +269,12 @@ export interface MapDescription extends MapSetup {
      * the ground (3D terrain, or sea level) and follows it. While it is set, the center does not follow 3D terrain.
      */
     centerElevation?: number | null;
+    /**
+     * Whether copies of the world are drawn beside it, as in MapLibre GL JS. With `false`, the view stays inside -180 to
+     * 180 degrees of longitude, no tiles of other copies load, and markers and popups stay at the longitude that they were given.
+     * @default true
+     */
+    renderWorldCopies?: boolean | null;
     /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. Without this field, the view has no limit. */
     maxBounds?: Bounds | null;
     /**
@@ -796,7 +802,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
         startPadding: spec.padding as PaddingInput | undefined, bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
-        attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
+        attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch, renderWorldCopies: spec.renderWorldCopies,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
     // (The style is given after the map is made, with a function that adds the `sources`, `layers` and `terrain` of the description when it has loaded.)
@@ -1155,6 +1161,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
+        if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) map.setRenderWorldCopies(next.renderWorldCopies ?? true);
         if ((next.centerElevation ?? null) !== (before?.centerElevation ?? null)) map.setCenterElevation(next.centerElevation ?? null);
         if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds as LngLatBoundsInput | null | undefined);
         if (differ(next.padding ?? 0, before?.padding ?? 0)) map.jumpTo({padding: next.padding ?? 0});

@@ -21,8 +21,8 @@ test('the scan knows the methods of the compat map, and which of them have no ef
     for (const name of ['queryRenderedFeatures', 'moveLayer', 'loadImage', 'setProjection', 'setPitch', 'on', 'setSky', 'setRenderWorldCopies']) {
         assert.ok(surface.methods.has(name), `${name} is a method of the map`);
     }
-    for (const name of ['setRoll', 'setRenderWorldCopies', 'setVerticalFieldOfView']) assert.ok(surface.inert.has(name), `${name} has no effect`);
-    for (const name of ['setProjection', 'setPitch', 'unsupported', 'incomplete']) assert.ok(!surface.inert.has(name), `${name} is not in the list`);
+    for (const name of ['setRoll', 'setVerticalFieldOfView']) assert.ok(surface.inert.has(name), `${name} has no effect`);
+    for (const name of ['setProjection', 'setPitch', 'setRenderWorldCopies', 'unsupported', 'incomplete']) assert.ok(!surface.inert.has(name), `${name} is not in the list`);
     assert.ok(!surface.methods.has('unsupported'), 'a private method is not in the list');
     assert.ok(surface.events.has('projectiontransition') && surface.events.has('touchstart'));
 });

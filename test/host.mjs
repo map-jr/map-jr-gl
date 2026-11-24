@@ -1065,7 +1065,7 @@ for (const renderer of renderers) {
         const nulls = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
             const idle = async host => { await wait(100); for (let i = 0; i < 200 && !host.state.get().idle; i++) await wait(50); };
-            const fields = ['fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'sources', 'layers', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale'];
+            const fields = ['fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'sources', 'layers', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'renderWorldCopies', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale'];
             const plain = {style: t.style, renderer};
             const withNulls = JSON.parse(JSON.stringify({...plain, ...Object.fromEntries(fields.map(k => [k, null]))}));
             const warned = [], warn = console.warn, error = console.error;

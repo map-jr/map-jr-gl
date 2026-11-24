@@ -3385,7 +3385,7 @@ for (const mode of renderers) {
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
-            const m = make({locale: {x: 'y'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
+            const m = make({locale: {x: 'y'}, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
             // The view is inside maxBounds directly after the constructor, before the engine reports the camera (MapLibre GL JS 6.17 gives [1.2109, 3.4573]).
             const clamped = m.getCenter().toArray();
             const options = warnings.splice(0), errors = [];
@@ -3431,7 +3431,7 @@ for (const mode of renderers) {
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
             let thrown = '';
-            try { make({strict: true, renderWorldCopies: false}); } catch (e) { thrown = e.message; }
+            try { make({strict: true, canvasContextAttributes: {depth: false}}); } catch (e) { thrown = e.message; }
             const strict = make({strict: true});
             await new Promise(r => strict.once('load', r));
             let thrownCall = '';
@@ -3445,7 +3445,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
-            quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
+            quiet.options.length === 1 && ['new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
@@ -3453,7 +3453,7 @@ for (const mode of renderers) {
             quiet.inline.errors.length === 1 && /addLayer: the layer "g" has a source object, and the style has a source with the id "g" already/.test(quiet.inline.errors[0]) && quiet.inline.layers === 'bg,uses-g,inline,inline-2'
             && quiet.inline.source === 'geojson' && quiet.inline.of === 'inline' && quiet.inline.drawn > 0 && quiet.inline.kept, JSON.stringify(quiet.inline));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
-            quiet.thrown.startsWith('[map-jr-gl] The option renderWorldCopies: false has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+            quiet.thrown.startsWith('[map-jr-gl] The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
     }
     // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
     // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
@@ -4387,6 +4387,68 @@ for (const mode of renderers) {
         const same = (a, b) => a.length === b.length && a.every((p, i) => sameLng(p[0], b[i][0]) && Math.abs(p[1] - b[i][1]) < 1e-3);
         check('[main] maplibre-compat and createMap: maxBounds that cross the antimeridian keep the view where MapLibre keeps it, after a jump and a drag (#309)',
             same(anti.compat, anti.ml) && same(anti.main, anti.ml.slice(0, 5)), JSON.stringify(anti));
+        // #1710: renderWorldCopies: false. The same jumps, a drag across the antimeridian and project() in MapLibre GL JS
+        // (served at /ml/) and in the compat entry give the same centers, zooms and points; the tiles are of one world, the
+        // ground past the antimeridian is not drawn, and the main API takes the field of the description.
+        const copies = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js'), lib = await import('/dist/map-jr-gl.js');
+            const world = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]]}};
+            const style = {version: 8, sources: {w: {type: 'geojson', data: world}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'w', type: 'fill', source: 'w', paint: {'fill-color': '#f00', 'fill-antialias': false}}]};
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const loaded = m => new Promise(r => m.loaded?.() ? r(m) : m.once('load', () => r(m)));
+            const round = v => Math.round(v * 1e4) / 1e4;
+            const run = async make => {
+                const el = box(), m = await make(el), out = [];
+                for (const [c, z] of [[[190, 0], 0], [[-175, 10], 2], [[179, -20], 3], [[30, 0], 3]]) { m.jumpTo({center: c, zoom: z}); out.push([round(m.getCenter().lng), round(m.getCenter().lat), round(m.getZoom())]); }
+                m.jumpTo({center: [-170, 0], zoom: 3});
+                out.push(['project', round(m.project([170, 0]).x)]);
+                const c = m.getCanvas(), r = c.getBoundingClientRect();
+                const ptr = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, pointerId: 1, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true}));
+                const mouse = (type, x) => c.dispatchEvent(new MouseEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, button: 0, buttons: type === 'mouseup' ? 0 : 1}));
+                ptr('pointerdown', 20); mouse('mousedown', 20);
+                for (let i = 1; i <= 10; i++) { const x = 20 + 260 * i / 10; ptr('pointermove', x); mouse('mousemove', x); await new Promise(res => setTimeout(res, 40)); }
+                ptr('pointerup', 280); mouse('mouseup', 280);
+                await new Promise(res => setTimeout(res, 200));
+                out.push([round(m.getCenter().lng), round(m.getCenter().lat)]);
+                m.setRenderWorldCopies(null); out.push(m.getRenderWorldCopies());
+                m.setRenderWorldCopies(undefined); out.push(m.getRenderWorldCopies());
+                m.remove(); el.remove();
+                return out;
+            };
+            const opts = el => ({container: el, style, renderWorldCopies: false, center: [0, 0], zoom: 3, fadeDuration: 0, dragPan: {inertia: false}});
+            const mlr = await run(el => loaded(new ml.Map(opts(el))));
+            const cr = await run(el => loaded(new compat.Map({...opts(el), renderer: 'main'})));
+            // The ground past the antimeridian: red with copies of the world, and not red without them.
+            const top = async (copies, make) => {
+                const el = box(), m = await make(el, copies);
+                await new Promise(r => setTimeout(r, 300));
+                const bmp = await createImageBitmap(await m.toBlob()), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                const red = g.getImageData(bmp.width / 2, bmp.height * 0.05, 1, 1).data[0] > 200 && g.getImageData(bmp.width / 2, bmp.height * 0.05, 1, 1).data[1] < 60;
+                const tiles = m.coveringTiles ? m.coveringTiles({tileSize: 512}).map(t => t.wrap) : [];
+                m.remove?.(); m.destroy?.(); el.remove();
+                return [red, [...new Set(tiles)].sort().join()];
+            };
+            const view = {center: [170, 0], zoom: 3, pitch: 60, bearing: 90};
+            const drawn = [
+                await top(true, (el, copies) => loaded(new compat.Map({container: el, style, renderWorldCopies: copies, ...view, renderer: 'main'}))),
+                await top(false, (el, copies) => loaded(new compat.Map({container: el, style, renderWorldCopies: copies, ...view, renderer: 'main'}))),
+            ];
+            // The main API: the field of the description, and update() that turns it on.
+            const el = box(), host = lib.createMap(el, {style, renderWorldCopies: false, view: {center: [190, 0], zoom: 0}, renderer: 'main'});
+            await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
+            const main = [host.state.get().view.center.map(round), round(host.state.get().view.zoom)];
+            host.update({style, view: {center: [190, 0], zoom: 3}, renderer: 'main'});
+            for (let i = 0; i < 40 && host.state.get().view.zoom !== 3; i++) await new Promise(r => setTimeout(r, 50));
+            main.push(round(host.state.get().view.center[0]));
+            host.destroy(); el.remove();
+            return {ml: mlr, compat: cr, drawn, main};
+        });
+        check('[main] maplibre-compat and createMap: renderWorldCopies: false keeps the view and markers in one world as MapLibre does, and draws and covers no other copy (#1710)',
+            JSON.stringify(copies.compat) === JSON.stringify(copies.ml) && copies.drawn[0][0] && copies.drawn[0][1] !== '0' && JSON.stringify(copies.drawn[1]) === '[false,"0"]'
+            && JSON.stringify(copies.main.slice(0, 2)) === JSON.stringify([copies.ml[0].slice(0, 2), copies.ml[0][2]]) && Math.abs(copies.main[2] - 190) % 360 < 1e-3, JSON.stringify(copies));
         // #334: LngLatBounds keeps its corners as given (as MapLibre does), so a bounds object can cross the antimeridian.
         // The same calls in MapLibre GL JS (served at /ml/) and in the compat entry give the same results, and
         // fitBounds with such bounds ends at the same centre and zoom.
