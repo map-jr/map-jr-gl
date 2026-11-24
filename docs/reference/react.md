@@ -114,6 +114,40 @@ export function Stations({stations}) {
 }
 ```
 
+### The `terrain()` control
+
+A click on the control [`terrain()`](controls.md#terrain) sets the terrain of the map and calls its option
+`onTerrainChange` with the new value. The component passes the prop `terrain` to the map again in its next render,
+and the prop then overrides the click. Keep the value of `onTerrainChange` in state and pass it as `terrain`:
+
+```jsx
+import {useState} from 'react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+import {navigation, terrain} from '@map-jr/map-jr-gl/controls';
+
+export function Relief() {
+  // null: flat until the user clicks the button.
+  const [relief, setRelief] = useState(null);
+  return (
+    <div style={{height: 500}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation.json"
+        initialView={{center: [7.6586, 45.9763], zoom: 12.4, pitch: 60}}
+        terrain={relief}
+        controls={[
+          navigation(),
+          terrain({
+            source: 'terrarium',
+            exaggeration: 1.5,
+            onTerrainChange: setRelief,
+          }),
+        ]}
+      />
+    </div>
+  );
+}
+```
+
 ### Events of the map
 
 Each event of the map has a prop: `on` and the name of the event with a capital first letter, such as `onMoveend`,
