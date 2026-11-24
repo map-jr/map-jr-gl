@@ -223,7 +223,7 @@ configure(options: LoadOptions): void
 
 > [!NOTE]
 > A change of `tileWorkers` has no effect while a map of the page uses workers of the same `workerUrl` or
-> `createWorker`.
+> `createWorker`. `configure` then warns once.
 
 To change it, destroy every map of the page, call
 `configure`, and create the maps again. See [Loading](../guide/loading.md) for the worker file.

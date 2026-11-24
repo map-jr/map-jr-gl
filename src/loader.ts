@@ -50,11 +50,20 @@ export interface LoadOptions {
 }
 
 export const defaults: LoadOptions = {};
+/** Whether `configure` has warned that a new `tileWorkers` has no effect (once per page, as the pool is). */
+let warnedCount = false;
 /**
  * Sets how the library loads its workers, for the maps that are created after the call.
  * @param options The options to set. An option that is left out keeps its value.
  */
-export function configure(options: LoadOptions) { Object.assign(defaults, options); }
+export function configure(options: LoadOptions) {
+    const n = options.tileWorkers;
+    if (n !== undefined && pool && pool.count !== n && !warnedCount) {
+        warnedCount = true;
+        console.warn(`[map-jr-gl] configure(): tileWorkers: ${n} has no effect while a map uses the ${pool.count} tile workers that exist. Call configure() before the first map is created, or destroy every map first.`);
+    }
+    Object.assign(defaults, options);
+}
 
 /** The worker file's URL, or nothing when a `createWorker` function or the standalone build makes the worker. */
 function workerHref(o: LoadOptions): string | undefined {
@@ -154,12 +163,12 @@ export function workerReady(w: Worker, timeout = 8000): Promise<Worker> {
 /** Tile workers are shared by every map on the page: a dozen maps should not mean four dozen workers. */
 /** Numbers the channels to the tile workers, so a tile worker can close the end of one; unique on the page. */
 let channels = 0;
-let pool: {key: unknown; workers: Promise<Worker[]>; users: number} | null = null;
+let pool: {key: unknown; count: number; workers: Promise<Worker[]>; users: number} | null = null;
 export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): MessagePort[]; wake(): void; release(): void}> {
     const key = o.createWorker ?? defaults.createWorker ?? String(o.workerUrl ?? defaults.workerUrl ?? '');
     if (!pool || pool.key !== key) {
         const count = o.tileWorkers ?? defaults.tileWorkers ?? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 2));
-        const mine = pool = {key, users: 0, workers: Promise.all(Array.from({length: count}, () => startWorker(o)))};
+        const mine = pool = {key, count, users: 0, workers: Promise.all(Array.from({length: count}, () => startWorker(o)))};
         mine.workers.catch(() => { if (pool === mine) pool = null; });
     }
     const mine = pool, workers = await mine.workers;
