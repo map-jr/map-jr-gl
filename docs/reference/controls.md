@@ -159,9 +159,14 @@ Creates a button that turns 3D terrain on and off.
 terrain(options: TerrainOptions): ControlSpec
 ```
 
-A click turns on the terrain of `source` with `exaggeration`, or turns the terrain off. The description keeps its
-[`terrain`](description.md#terrain), and no callback reports the click. A later description whose `terrain` differs
-from that of the description before it overrides the click.
+A click sets [`terrain`](description.md#terrain) of the description with [`patch`](map.md#patch): to
+`{source, exaggeration}` when the map shows no terrain, and to `null` when it shows terrain. The control then calls
+`onTerrainChange` with the new value. A click does not load the style again.
+
+An application that passes its description again, as a component of Vue, React or Svelte does, keeps the value in
+`onTerrainChange` and passes it as `terrain`. Otherwise its next description replaces the terrain of the click: a
+description without `terrain` gives the terrain of the style. The label of the button follows `terrain` of the
+description.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -181,6 +186,7 @@ const map = createMap('map', {
 |---|---|---|---|
 | `source` **required** | `string` | | The id of the `raster-dem` source of the style that provides the heights. |
 | `exaggeration` | `number` | `1` | The factor by which the heights of the terrain are multiplied. |
+| `onTerrainChange` | `(terrain: TerrainSpecification \| null) => void` | | Called with the new value of `terrain` of the description after a click has set it: `{source, exaggeration}` or `null`. |
 <!-- ref:TerrainOptions:end -->
 
 ## `globe()`
