@@ -1162,17 +1162,16 @@ export class Map {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
     }
 
-    private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds, worldCopies: this.tr.worldCopies}); return this; }
+    private limits(keep?: boolean) { this.post({type: 'limits', keep, minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds, worldCopies: this.tr.worldCopies}); return this; }
     /**
      * Sets whether copies of the world are drawn beside it, as in MapLibre GL JS. With `false`, the view stays inside
      * -180 to 180 degrees of longitude, no tiles of other copies are loaded or drawn, and markers and popups stay at the
-     * longitude that they were given.
+     * longitude that they were given. As in MapLibre GL JS, the view does not move now: the next camera change keeps it inside.
      * @param copies `undefined` is `true` and `null` is `false`, as in MapLibre GL JS.
      */
     setRenderWorldCopies(copies?: boolean | null) {
         this.tr.worldCopies = copies ?? copies === undefined;
-        this.tr.constrain();
-        return this.limits();
+        return this.limits(true);
     }
     /** Returns whether copies of the world are drawn beside it. */
     getRenderWorldCopies() { return this.tr.worldCopies; }

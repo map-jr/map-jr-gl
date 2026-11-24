@@ -43,7 +43,7 @@ export type Command =
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
-    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources; an empty `lod` drops them (removeSource). */
@@ -1042,7 +1042,10 @@ export class Engine {
                 break;
             }
             case 'stop': this.stop(); break;
-            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true});
+                // (`keep`: setRenderWorldCopies does not move the view, as in MapLibre GL JS; the next camera change does.)
+                if (c.keep) { this.viewCovers.clear(); this.invalidate(); } else tr.set(undefined, tr.zoom, undefined, tr.pitch);
+                break;
             case 'lod': for (const id of c.sources) if (c.lod.length) this.lod[id] = c.lod; else delete this.lod[id]; this.viewCovers.clear(); this.invalidate(); break;
             case 'refresh':
                 for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);

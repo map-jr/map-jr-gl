@@ -4425,6 +4425,9 @@ for (const mode of renderers) {
                 out.push([round(m.getCenter().lng), round(m.getCenter().lat)]);
                 m.setRenderWorldCopies(null); out.push(m.getRenderWorldCopies());
                 m.setRenderWorldCopies(undefined); out.push(m.getRenderWorldCopies());
+                // With the view past the antimeridian, setRenderWorldCopies(false) does not move it; the next camera change does (127.2656).
+                m.jumpTo({center: [190, 0], zoom: 1}); m.setRenderWorldCopies(false); out.push(['kept', round(m.getCenter().lng)]);
+                m.jumpTo({center: [185, 1]}); out.push(['moved', round(m.getCenter().lng)]);
                 m.remove(); el.remove();
                 return out;
             };
@@ -4457,7 +4460,7 @@ for (const mode of renderers) {
             host.destroy(); el.remove();
             return {ml: mlr, compat: cr, drawn, main};
         });
-        check('[main] maplibre-compat and createMap: renderWorldCopies: false keeps the view and markers in one world as MapLibre does, and draws and covers no other copy (#1710)',
+        check('[main] maplibre-compat and createMap: renderWorldCopies: false keeps the view and markers in one world as MapLibre does (setRenderWorldCopies moves the view only at the next camera change), and draws and covers no other copy (#1710)',
             JSON.stringify(copies.compat) === JSON.stringify(copies.ml) && copies.drawn[0][0] && copies.drawn[0][1] !== '0' && JSON.stringify(copies.drawn[1]) === '[false,"0"]'
             && JSON.stringify(copies.main.slice(0, 2)) === JSON.stringify([copies.ml[0].slice(0, 2), copies.ml[0][2]]) && Math.abs(copies.main[2] - 190) % 360 < 1e-3, JSON.stringify(copies));
         // #334: LngLatBounds keeps its corners as given (as MapLibre does), so a bounds object can cross the antimeridian.

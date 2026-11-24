@@ -272,6 +272,7 @@ export interface MapDescription extends MapSetup {
     /**
      * Whether copies of the world are drawn beside it, as in MapLibre GL JS. With `false`, the view stays inside -180 to
      * 180 degrees of longitude, no tiles of other copies load, and markers and popups stay at the longitude that they were given.
+     * A change to `false` in `update` moves the view inside at once.
      * @default true
      */
     renderWorldCopies?: boolean | null;
@@ -1154,7 +1155,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             map.addFonts(fontFaces(absolute(changed)));
         }
         // (Before the view: a view past the antimeridian is constrained by the new setting.)
-        if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) map.setRenderWorldCopies(next.renderWorldCopies ?? true);
+        if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) { map.setRenderWorldCopies(next.renderWorldCopies ?? true); map.jumpTo({}); }
         if (next.view && !same(next.view, before?.view) && before) {
             if (!reported.some(v => same(next.view, v))) map.jumpTo(next.view);
             // (A view that the map reported is not applied. A view of the latest movement can be a late echo of a slow application, so only a view of an earlier movement is a stored view: #1190.)
