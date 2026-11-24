@@ -52,6 +52,11 @@ writing); this brief has the steps.
 
 ## Rules
 
+- Put a new check of `test/interact.mjs` or `test/host.mjs` next to the checks of the same feature, not at the end of
+  a section. On 2026-11-24 three pull requests added their checks at the same line after "The checks below run with
+  RENDERER=main" and each one conflicted with the others.
+- Do not write "close", "closes", "fix" or "fixes" before an issue number in the body of a pull request unless that
+  pull request closes it: GitHub reads "does not close #N" as a closing keyword (#1602 was closed this way).
 - A fault that your own change causes is not a "Found" line: fix it in your pull request, with a check. (On
   2026-11-19 a change left the filter NEAREST on a texture that terrain shares, and reported it as found, #1071.)
 - Measure the size before the change on `origin/main` (`pnpm test:size` in the copy of `without-fix.mjs`, or in a
