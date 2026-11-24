@@ -4859,9 +4859,43 @@ for (const mode of renderers) {
                 await page.waitForTimeout(500);
                 return [before, during, after].join('>');
             };
-            m565[name] = [sources, await gesture('left'), await gesture('right'), await gesture('left', 'Shift')].join(' ');
+            // #1726: scrollZoom is active from a wheel event until 200 ms after the zoom ends; keyboard is never active, as in MapLibre GL JS.
+            const handler = h => page.evaluate(h => +window.m565[h].isActive(), h);
+            const wheel = async () => {
+                await page.mouse.move(150, 100);
+                // The page measures when the handler rests, from the wheel event. A mouse wheel eases its zoom over 200 ms, and
+                // MapLibre waits 200 ms more after the ease, so about 400 ms: 200 ms after the event is too short. (Frames are
+                // slow in software here, so the time of MapLibre is reported and not compared.)
+                const watch = page.evaluate(() => new Promise(done => {
+                    const m = window.m565, t0 = performance.now();
+                    let wheel = 0, seen = false;
+                    m.getCanvas().addEventListener('wheel', () => { wheel = performance.now(); }, {capture: true, once: true});
+                    const poll = () => {
+                        const on = m.scrollZoom.isActive(), t = performance.now();
+                        seen ||= on;
+                        if (!on && seen) return done(t - wheel);
+                        if (t - t0 > 3000) return done('never');
+                        setTimeout(poll, 10);
+                    };
+                    poll();
+                }));
+                await page.mouse.wheel(0, -100);
+                const ms = await watch;
+                await page.waitForTimeout(300);
+                (m565.wheelMs ??= {})[name] = typeof ms === 'number' ? Math.round(ms) : ms;
+                return name === 'ml' || (ms >= 300 && ms < 1500) ? 'rest' : 'wrong';
+            };
+            const keys = async () => {
+                await page.evaluate(() => window.m565.getCanvas().focus());
+                await page.keyboard.down('ArrowRight');
+                const during = await handler('keyboard');
+                await page.keyboard.up('ArrowRight');
+                await page.waitForTimeout(500);
+                return `${during}>${await handler('keyboard')}`;
+            };
+            m565[name] = [sources, await gesture('left'), await gesture('right'), await gesture('left', 'Shift'), await wheel(), await keys()].join(' ');
             // (Chromium has no touch input here: the two-finger gestures are checked for the compat entry alone.)
-            if (name === 'compat') m565.touch = await page.evaluate(() => {
+            if (name === 'compat') m565.touch = await page.evaluate(async () => {
                 const m = window.m565, c = m.getCanvas(), out = [];
                 const send = (type, id, x, y) => c.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, cancelable: true}));
                 const read = () => out.push(['touchZoomRotate', 'touchPitch', 'dragPan'].map(h => +m[h].isActive()).join(''));
@@ -4874,14 +4908,28 @@ for (const mode of renderers) {
                 read();
                 m.touchPitch.disable(); read(); m.touchPitch.enable();
                 send('pointerup', 13, 120, 90); send('pointerup', 14, 180, 90); read();
+                // #1726: a double tap makes doubleClickZoom active until the next task; a tap and a drag zooms with touchZoomRotate.
+                const dbl = () => +m.doubleClickZoom.isActive();
+                send('pointerdown', 15, 150, 100); send('pointerup', 15, 150, 100);
+                send('pointerdown', 16, 150, 100); send('pointerup', 16, 150, 100);
+                out.push(dbl());
+                await new Promise(r => setTimeout(r, 50));
+                out.push(dbl());
+                await new Promise(r => setTimeout(r, 400));
+                send('pointerdown', 17, 150, 100); send('pointerup', 17, 150, 100);
+                send('pointerdown', 18, 150, 100);
+                for (let i = 1; i <= 3; i++) send('pointermove', 18, 150, 100 + i * 10);
+                out.push(+m.touchZoomRotate.isActive());
+                send('pointerup', 18, 150, 130); out.push(+m.touchZoomRotate.isActive());
+                await new Promise(r => setTimeout(r, 400));
                 return out.join();
             });
             await page.evaluate(() => { const el = window.m565.getContainer(); window.m565.remove(); el.remove(); delete window.m565; });
         }
-        check('[main] maplibre-compat: isSourceLoaded answers for one source and fires error for an unknown id, and isActive of dragPan, dragRotate and boxZoom is true during the gesture, as in MapLibre (#565)',
-            m565.ml === m565.compat && m565.compat.startsWith('undefined,1,true,true,true,false,true,false,true,true,1 100000>100000>000000 000000>010000>000000 001000>001000>000000'), JSON.stringify(m565));
-        check('[main] maplibre-compat: isActive of touchZoomRotate is true during a pinch and of touchPitch during a tilt, and false after a finger lifts or after disable() (#565)',
-            m565.touch === '100,000,010,000,000', JSON.stringify(m565));
+        check('[main] maplibre-compat: isSourceLoaded answers for one source and fires error for an unknown id, and isActive of dragPan, dragRotate and boxZoom is true during the gesture, scrollZoom while a wheel zooms, and keyboard never, as in MapLibre (#565, #1726)',
+            m565.compat.replace('wrong', 'rest') === m565.ml && m565.compat.startsWith('undefined,1,true,true,true,false,true,false,true,true,1 100000>100000>000000 000000>010000>000000 001000>001000>000000 rest 0>0'), JSON.stringify(m565));
+        check('[main] maplibre-compat: isActive of touchZoomRotate and dragPan is true during a pinch, of touchPitch during a tilt, of doubleClickZoom at a double tap and of touchZoomRotate during a tap and drag, and false after (#565, #1726)',
+            m565.touch === '101,000,010,000,000,1,0,1,0', JSON.stringify(m565));
         // #606: a GeoJSON feature without an id that several tiles hold is given one time. [0, 0] is the corner of four
         // tiles at zoom 2, and each of them has the three points in its buffer. MapLibre GL JS (served at /ml/) gives the
         // points one time too. It gives the square once for each tile, and this library gives it one time.
