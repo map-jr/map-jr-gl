@@ -554,8 +554,8 @@ toBlob(type?: string, quality?: number): Promise<Blob>
 
 `type` defaults to `'image/png'`. Without `quality`, the browser uses its default quality.
 
-The image has the size of the canvas in device pixels: the CSS size times `devicePixelRatio`. Markers, popups,
-controls and the attribution are elements of the page, so the image does not have them. To print the map, put the
+The image has the size of the canvas in device pixels: the CSS size times `devicePixelRatio`, up to 3. Markers,
+popups, controls and the attribution are elements of the page, so the image does not have them. To print the map, put the
 image in an `<img>`, because the canvas itself can print blank.
 
 ```js
