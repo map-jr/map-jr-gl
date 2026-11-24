@@ -4028,6 +4028,61 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of the overview of a failed tile was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A tile whose first four requests fail is requested again every 15 s in the background, while the view still needs it
+// (#686). Two pages run at the same time, so that the check waits for 15 s once.
+// - On the first, every request of the tile at the center fails, so its overview stands in for it, and the first four
+//   requests of that overview fail. The fifth request of the overview is answered.
+// - On the second, every tile request fails (a server that is down). A background request does not make the map leave
+//   `idle` and its failure fires no `error`: from the first background request until 1 s after each tile that has one
+//   has failed it, the map fires neither, and the map is idle at the end.
+{
+    const pages = [];
+    try {
+        const z = 13, x = tileOf(from[0], z), y = Math.floor((1 - Math.log(Math.tan(Math.PI / 4 + from[1] * Math.PI / 360)) / Math.PI) / 2 * 2 ** z);
+        const bad = `/${z}/${x}/${y}.pbf`, over = `/${z - 3}/${x >> 3}/${y >> 3}.pbf`;
+        let overTries = 0, answered = 0;
+        const tries = new Map(), failed = new Map();
+        let background = 0;
+        const start = async (route, onPage) => {
+            const page = await browser.newPage({viewport: {width: 900, height: 600}});
+            pages.push(page);
+            await page.goto(`${origin}/bench`);
+            await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route);
+            return page.evaluate(async from => {
+                const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+                window.seen = [];
+                window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false, onError: () => window.seen.push(['error', Date.now()])});
+                window.host.listen('idle', () => window.seen.push(['idle', Date.now()]));
+                return new Promise(r => { window.host.state.subscribe(s => s.idle, idle => idle && r(true)); setTimeout(() => r(false), 30000); });
+            }, from);
+        };
+        const [idleOne, idleDown] = await Promise.all([
+            start(async route => {
+                const k = new URL(route.request().url()).pathname;
+                if (k.endsWith(bad)) return route.abort('connectionreset');
+                if (k.endsWith(over) && ++overTries <= 4) return route.abort('connectionreset');
+                await route.continue().catch(() => {});
+                if (k.endsWith(over)) answered = Date.now();
+            }),
+            start(async route => {
+                const k = new URL(route.request().url()).pathname, n = (tries.get(k) ?? 0) + 1;
+                tries.set(k, n);
+                if (n === 5) background ||= Date.now();
+                await route.abort('connectionreset').catch(() => {});
+                if (n === 5) failed.set(k, Date.now());
+            }),
+        ]);
+        // (A background request comes about 19 s after the first request of its tile. The bound leaves room for a loaded runner.)
+        for (const end = Date.now() + 60000; (!answered || !failed.size || failed.size < [...tries.values()].filter(n => n >= 5).length) && Date.now() < end;) await pages[0].waitForTimeout(250);
+        await pages[1].waitForTimeout(1000);
+        check('an overview tile that failed four times is requested again later and answered', idleOne && overTries === 5 && answered > 0, JSON.stringify({idleOne, overTries, answered: answered > 0}));
+        const {seen, idle} = await pages[1].evaluate(() => ({seen: window.seen, idle: window.host.state.get().idle}));
+        const after = seen.filter(([, t]) => background && t >= background);
+        check('a background request of a tile on a server that is down fires neither `idle` nor `error`, and the map stays idle', idleDown && background > 0 && failed.size > 0 && !after.length && idle, JSON.stringify({idleDown, background: background > 0, failed: failed.size, after, idle}));
+    } catch (e) { check('the test of the background requests of failed tiles was completed', false, String(e.message).split('\n')[0]); }
+    for (const page of pages) await page.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
