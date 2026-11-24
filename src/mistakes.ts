@@ -71,6 +71,7 @@ texts[1195] = (control, custom) => custom
 const overlayOption = (option: string) => overlayOptions.find(k => k.toLowerCase() === option.toLowerCase());
 texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
+texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Add what the style specification requires.`;
 texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map draws the layer without it, but MapLibre GL JS rejects the style. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
@@ -133,13 +134,39 @@ export const zoomCurveError = (e: unknown): string => {
 /** For the compat entry (src/compat-map.ts): calls `report` with an `error` for each property of `style` whose
  * expression MapLibre GL JS rejects for its ["zoom"] (see `zoomCurveError`), once for each layer, property and value on
  * the map (`reported`). The property is named as in MapLibre's error of `setPaintProperty` (#1087). It does the same,
- * once for each layer and property, for a property that the style specification does not have for the type of the layer (#1139). */
-export function zoomCurveErrors(style: {layers?: any[]} | undefined, reported: Set<string>, report: (error: Error) => void) {
+ * once for each layer and property, for a property that the style specification does not have for the type of the layer (#1139).
+ * Unless `noValidate` (the option `validate: false`), it does the same for a required field that is missing (`validateStyle`, #1748). */
+export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: any[]} | undefined, reported: Set<string>, report: (error: Error) => void, noValidate?: boolean) {
+    if (!noValidate) validateStyle(style, (where, why) => { const key = where + ' ' + why; if (!reported.has(key)) { reported.add(key); report(new Error(mistake(1748, where, why))); } });
     for (const l of style?.layers ?? []) for (const g of ['paint', 'layout']) for (const k in l?.[g]) {
         const why = zoomCurveError(l[g][k]), key = `${l.id} ${g} ${k} ${JSON.stringify(l[g][k])}`;
         if (why && !reported.has(key)) { reported.add(key); report(new Error(mistake(1057, `layers.${l.id}.${g}.${k}`, why))); }
     }
     unknownProperties(style?.layers, (l, g, k, near) => { const key = `${l.id} ${g} ${k}`; if (!reported.has(key)) { reported.add(key); report(new Error(mistake(11139, `layers.${l.id}.${g}.${k}`, near))); } });
+}
+/**
+ * Calls `found` with the place and MapLibre's text (GL JS 6.17, style specification 26) for each required field that a
+ * layer or a source of `style` lacks: the `id`, `type` and `source` of a layer (no source for `background`), the
+ * `source-layer` of a layer of a vector source, the `type` of a source, `data` of a GeoJSON source, and `urls` and
+ * `coordinates` of an image or video source (#1748). The types of values are not checked here.
+ */
+export function validateStyle(style: {sources?: Record<string, any>; layers?: any[]} | undefined, found: (where: string, why: string) => void) {
+    const need = (where: string, o: any, k: string) => { if (o[k] === undefined) found(where, `missing required property "${k}"`); };
+    for (const [id, s] of Object.entries(style?.sources ?? {})) {
+        if (!s || typeof s !== 'object') continue;
+        const where = 'sources.' + id;
+        if (s.type === undefined) found(where, '"type" is required');
+        else if (s.type === 'geojson') need(where, s, 'data');
+        else if (s.type === 'video' || s.type === 'image') { if (s.type === 'video') need(where, s, 'urls'); need(where, s, 'coordinates'); }
+    }
+    (style?.layers ?? []).forEach((l, i) => {
+        if (!l || typeof l !== 'object') return;
+        const where = `layers[${i}]`;
+        if (l.type === undefined && l.ref === undefined) found(where, 'either "type" or "ref" is required');
+        if (l.type !== undefined && l.type !== 'background' && l.type !== 'custom' && l.source === undefined) need(where, l, 'source');
+        if (style?.sources?.[l.source]?.type === 'vector' && l['source-layer'] === undefined) found(where, `layer "${l.id}" must specify a "source-layer"`);
+        need(where, l, 'id');
+    });
 }
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 /** The properties of the style specification that the map does not read (and so are not in `SPEC` of src/style.ts), by layer type. */

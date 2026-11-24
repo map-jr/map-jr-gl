@@ -404,7 +404,8 @@ export class Map extends CoreMap {
             console.warn(message);
         }
         this.unsupported('The option logoPosition', !o.logoPosition);
-        this.unsupported('The option validate', o.validate === undefined);
+        // (Development build) `validate: false` skips the check of the required fields of the style (#1748).
+        if (__DEV__) this.noValidate = o.validate === false;
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
@@ -918,6 +919,7 @@ export class Map extends CoreMap {
      * for it for at most 300 ms. Listeners for a layer get their features from the core map.)
      */
     private zoomErrors?: Set<string>;
+    private noValidate = false;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
@@ -930,7 +932,7 @@ export class Map extends CoreMap {
         // (Development build) An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text, once for
         // each layer, property and value. The map still draws it (#1087). So does a property that the style specification
         // does not have for the type of the layer, once for each layer and property (#1139).
-        if (__DEV__ && type === 'styledataloading') zoomCurveErrors(this.rawStyle, this.zoomErrors ??= new Set(), error => this.fire('error', {error}));
+        if (__DEV__ && type === 'styledataloading') zoomCurveErrors(this.rawStyle, this.zoomErrors ??= new Set(), error => this.fire('error', {error}), this.noValidate);
         // The `eventData` of the camera call that made this move (see `jumpTo`). The move's own fields win.
         // User input starts a move of the user's: kept eventData (of a call that did not move the camera) is not on it.
         if (/^(mousedown|touchstart|wheel|dragstart|dblclick)$/.test(type)) this.moveData = undefined;
