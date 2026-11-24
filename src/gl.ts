@@ -57,7 +57,7 @@ vec2 unpole(vec2 t) { return vec2(t.x, t.y < -32767.5 ? 0.0 : t.y > 32766.5 ? ${
 bool shown(vec4 c) { return c.z <= c.w; }
 `;
 /** Shared by the map-space programs: u_matrix takes tile units (and meters of height) to clip space. */
-const VS_COMMON = `uniform mat4 u_matrix; uniform vec2 u_view;
+export const VS_COMMON = `uniform mat4 u_matrix; uniform vec2 u_view;
 #ifdef GLOBE
 ${GLOBE_GLSL}
 #else
@@ -110,7 +110,7 @@ function cornerWeights(c: number[]): number[] {
 const PATTERN_GLSL = `uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex;
 vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex); }`;
 
-const SHADERS = {
+const BUILTIN = {
     // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
     heat: [`${VS_COMMON}
 layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight;
@@ -157,27 +157,6 @@ void main() {
   vec3 sc = s.a > 0.0 ? s.rgb / s.a : vec3(0.0), bc = b.a > 0.0 ? b.rgb / b.a : vec3(0.0);
   vec3 mixed = u_mode == 1 ? overlay(bc, sc) : u_mode == 2 ? setLum(sc, lum(bc)) : setLum(bc, lum(sc));
   o = vec4((1.0 - s.a) * b.rgb + (1.0 - b.a) * s.rgb + s.a * b.a * mixed, s.a + b.a - s.a * b.a);
-}`],
-    // 3D terrain: a grid over the tile, raised to the ground height and textured with the tile's flat layers.
-    // `u_part` picks the part of the picture to show: all of it, or the tile's share of an ancestor's while its own is drawn.
-    // On the globe the mesh is put on the sphere as buildings are (toClip3D), and the far side is hidden by horizonSide.
-    terrain: [`${VS_COMMON} uniform float u_skirt; uniform float u_exag;
-layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog; out float v_side;
-void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z, t = a_pos.xy * ${EXTENT}.0; v_uv = vec2(p.x, 1.0 - p.y); v_side = horizonSide(t); gl_Position = toClip3D(t, a_height * u_exag - a_pos.z * u_skirt);
-  float w = gl_Position.w; v_fog = clamp(u_fogRange.y * (w - u_fogRange.x) / ((u_fogRange.y - u_fogRange.x) * w), 0.0, 1.0); }`, `
-uniform sampler2D u_drape; in vec2 v_uv; in float v_side; out vec4 o;
-// Fog (the sky of the style, as in MapLibre GL JS): v_fog is the depth of MapLibre's fog matrix, 0 at its near and 1 at its far plane. u_fog has
-// fog-ground-blend, horizon-fog-blend and the opacity of the fog (from the pitch); u_fogColor and u_horizonColor are opaque.
-uniform vec3 u_fog; uniform vec4 u_fogColor; uniform vec4 u_horizonColor; in float v_fog;
-void main() {
-  if (v_side < 0.0) discard;
-  o = texture(u_drape, v_uv);
-  float f = max(v_fog - u_fog.x, 0.0) / (1.0 - u_fog.x), k = f * f * u_fog.z;
-  if (k <= 0.0) return;
-  vec3 c = mix(u_fogColor.rgb, u_horizonColor.rgb, smoothstep(0.0, 1.0, (v_fog - u_fog.y) / (1.0 - u_fog.y)));
-  // The mix is in linear space (gamma 2.2), on all four channels of the premultiplied color, as in MapLibre GL JS:
-  // fog covers ground whose picture is transparent too.
-  o = pow(mix(pow(o, vec4(2.2)), pow(vec4(c, 1.0), vec4(2.2)), k), vec4(1.0 / 2.2));
 }`],
     // The sky (the `sky` of the style): a quad over the screen. u_sky has the horizon line in device pixels from the
     // bottom and the height of the band in which sky-color turns into horizon-color; below the line nothing is drawn.
@@ -269,7 +248,7 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in v
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1;
+layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
 uniform float u_cam;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw;
@@ -282,7 +261,7 @@ void main() {
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
-  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * u_offset) / u_scale * lineScale(a_v.xy);
+  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * (u_offset + a_offset / 8.0)) / u_scale * lineScale(a_v.xy);
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;
@@ -601,6 +580,11 @@ void main() {
 }`],
 };
 
+/** The name of a program: a built-in one, or `terrain`, which the part for elevation data adds (see terrain.ts). */
+type ProgramName = keyof typeof BUILTIN | 'terrain';
+/** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849). */
+export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = BUILTIN;
+
 /** `u` is empty until the program is first used: see `link`. */
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
@@ -668,7 +652,7 @@ export interface Scene {
     labels: Placed[];
     atlas: GlyphAtlas;
     /** 3D terrain: the ground tiles to draw, and a lookup of the heights under any tile (for buildings). */
-    terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null};
+    terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null; /** The code of 3D terrain, which loads on demand (terrain.ts). */ code: typeof import('./terrain.ts')};
     /** The light on buildings. */
     light?: Light;
     /** The sky above the horizon, and the fog on 3D terrain. */
@@ -689,6 +673,9 @@ export interface Scene {
  * The values of the `sky` of a style at a zoom, with the defaults of the specification: the colors (premultiplied
  * RGBA) and the blends. Fog has an opacity of 0 below a pitch of 60 that rises to 1 at 70, as in MapLibre GL JS.
  */
+/** Whether the light of the style turns with the map (`anchor` is `map`) at a zoom. `anchor` can be a zoom expression (#1699). */
+export const lightOnMap = (light: {anchor?: unknown}, zoom: number) => compileProp(light.anchor, 'string', 'viewport').eval(zoom) === 'map';
+
 export function skyValues(sky: Sky, zoom: number, pitch: number) {
     const at = (k: keyof Sky, kind: 'number' | 'color', def: unknown) => compileProp(sky[k], kind, def).eval(zoom) as any;
     return {sky: at('sky-color', 'color', '#88c6fc') as number[], horizon: at('horizon-color', 'color', '#ffffff') as number[], fog: at('fog-color', 'color', '#ffffff') as number[],
@@ -697,7 +684,7 @@ export function skyValues(sky: Sky, zoom: number, pitch: number) {
 }
 
 /** A color without its alpha. */
-const opaque = (c: number[]) => { const a = c[3] || 1; return [c[0] / a, c[1] / a, c[2] / a, 1]; };
+export const opaque = (c: number[]) => { const a = c[3] || 1; return [c[0] / a, c[1] / a, c[2] / a, 1]; };
 
 export const SPRITE_ATLAS = 2048;
 // How the light's direction maps to tile coordinates (y points south) and turns with the bearing.
@@ -708,9 +695,9 @@ type IconOf = (name: string) => {x: number; y: number; width: number; height: nu
 export class GLRenderer {
     gl: WebGL2RenderingContext;
     /** Empty until the first program is used: see `ready`. */
-    private programs = {} as Record<keyof typeof SHADERS, Program>;
+    private programs: Partial<Record<ProgramName, Program>> = {};
     /** The globe variants of the programs, linked at their first use (a Mercator map never links them). */
-    private globePrograms: Partial<Record<keyof typeof SHADERS, Program>> = {};
+    private globePrograms: Partial<Record<ProgramName, Program>> = {};
     /** The globe of the frame that is being drawn, if any (see `Scene.globe`). */
     private globe?: Scene['globe'];
     /** The grid that raster, hillshade and background tiles are drawn on with the globe, in tile units: see `globeGrid`. */
@@ -808,17 +795,17 @@ export class GLRenderer {
     }
 
     /** The program `name`, linked, with the locations of its uniforms. */
-    private ready(name: keyof typeof SHADERS): Program {
+    private ready(name: ProgramName): Program {
         const gl = this.gl;
         // The shaders compile at the first use of any program, in the first frame, after that frame has requested its
         // tiles (#390): in some browsers (Safari) `compileShader` itself takes time on this thread. All of them start
         // at once, so that the driver can compile them in parallel (KHR_parallel_shader_compile, where it exists).
         if (!this.programs.fill) {
             gl.getExtension('KHR_parallel_shader_compile');
-            for (const n in SHADERS) this.programs[n as keyof typeof SHADERS] = this.link(SHADERS[n as keyof typeof SHADERS][0], SHADERS[n as keyof typeof SHADERS][1]);
+            for (const n in SHADERS) this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
         }
-        let p = this.programs[name];
-        if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name][0], SHADERS[name][1], true);
+        let p = this.programs[name] ??= this.link(...SHADERS[name]! as [string, string]);
+        if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name]![0], SHADERS[name]![1], true);
         const {prog, shaders} = p;
         if (shaders) {
             p.shaders = undefined;
@@ -894,6 +881,7 @@ export class GLRenderer {
                 attr(0, b.v, 4, gl.SHORT, false, LINE_VERTEX, 0);
                 attr(2, b.v, 1, gl.SHORT, false, LINE_VERTEX, 8, false, true);
                 attr(4, b.v, 1, gl.FLOAT, false, LINE_VERTEX, 12, false, true);
+                attr(6, b.v, 1, gl.SHORT, false, LINE_VERTEX, 10, false, true);
                 vertices = b.v.length / LINE_VERTEX;
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; if (b.width1) attr(5, b.width1, 1, gl.FLOAT); else attr(5, b.width, 1, gl.FLOAT, false, 0, 0, false, true); }
@@ -1150,7 +1138,7 @@ export class GLRenderer {
     private drawLayers(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings', only?: CompiledLayer, from = 0, to = s.layers.length) {
         const gl = this.gl, zoom = tr.zoom;
         this.current = null;
-        const use = (name: keyof typeof SHADERS) => this.use(name, tr);
+        const use = (name: ProgramName) => this.use(name, tr);
         const color = (L: CompiledLayer) => {
             const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom), op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
             return [c[0], c[1], c[2], c[3] * op];
@@ -1369,7 +1357,7 @@ export class GLRenderer {
                         // (The values of the light can be functions of zoom.)
                         const light = s.light ?? {}, at = (v: unknown, kind: 'number' | 'color' | 'string', def: unknown) => compileProp(v, kind, def).eval(zoom);
                         const [r, az, polar] = at(light.position, 'string', [1.15, 210, 30]) as number[], lc = at(light.color, 'color', '#fff') as number[];
-                        const a = (az + 90) * Math.PI / 180 + (light.anchor === 'map' ? 0 : LIGHT_TURN * tr.bearing * Math.PI / 180), p = polar * Math.PI / 180;
+                        const a = (az + 90) * Math.PI / 180 + (lightOnMap(light, zoom) ? 0 : LIGHT_TURN * tr.bearing * Math.PI / 180), p = polar * Math.PI / 180;
                         gl.uniform3f(u.u_lightPos, LIGHT_X * r * Math.cos(a) * Math.sin(p), LIGHT_Y * r * Math.sin(a) * Math.sin(p), r * Math.cos(p));
                         gl.uniform3f(u.u_lightColor, lc[0], lc[1], lc[2]);
                         gl.uniform1f(u.u_lightIntensity, at(light.intensity, 'number', 0.5) as number);
@@ -1500,7 +1488,7 @@ export class GLRenderer {
     private uids = 0;
     private current: Program | null = null;
     /** Selects a program, telling it the size of the view being drawn (the screen, or a terrain tile's texture). */
-    private use(name: keyof typeof SHADERS, tr: Transform) {
+    private use(name: ProgramName, tr: Transform) {
         const p = this.ready(name);
         if (p !== this.current) {
             this.gl.useProgram(p.prog);
@@ -1700,197 +1688,18 @@ export class GLRenderer {
     private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
     private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();
 
-    /** A 64 x 64 grid over a tile plus a skirt hanging from its edges, which hides the cracks between neighboring tiles. */
-    private terrainGrid() {
-        if (this.grid) return this.grid;
-        const gl = this.gl, N = 64, pos: number[] = [], idx: number[] = [];
-        for (let y = 0; y <= N; y++) for (let x = 0; x <= N; x++) pos.push(x / N, y / N, 0);
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const i = y * (N + 1) + x; idx.push(i, i + 1, i + N + 1, i + 1, i + N + 2, i + N + 1); }
-        const skirt: number[] = [];
-        const edge = (at: (k: number) => number) => {
-            for (let k = 0; k <= N; k++) {
-                const i = at(k), j = pos.length / 3;
-                skirt.push(i);
-                pos.push(pos[i * 3], pos[i * 3 + 1], 1);
-                if (k < N) idx.push(i, at(k + 1), j, at(k + 1), j + 1, j);
-            }
-        };
-        edge(k => k); edge(k => N * (N + 1) + k); edge(k => k * (N + 1)); edge(k => k * (N + 1) + N);
-        const vao = gl.createVertexArray()!;
-        gl.bindVertexArray(vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
-        return this.grid = {vao, count: idx.length, skirt};
-    }
 
-    /**
-     * 3D terrain, step one: bring each ground tile's picture up to date. The flat layers are drawn straight down into
-     * a texture per tile, which is kept until what it shows changes; panning and tilting then cost almost nothing.
-     */
     /** Ground textures that are not in use, by size, to be used again. */
     private sparePictures = new Map<number, WebGLTexture[]>();
-    private freeDrape(d: {tex: WebGLTexture; size: number}) {
-        const list = this.sparePictures.get(d.size) ?? [];
-        this.sparePictures.set(d.size, list);
-        if (list.length < 8) list.push(d.tex); else this.gl.deleteTexture(d.tex);
-    }
     /** Gives the memory of the GPU back at once. Without this, a map that was removed keeps it until the browser collects the context. */
     destroy() { if (!this.gl.isContextLost()) this.gl.getExtension(LOSE_CONTEXT)?.loseContext(); }
 
     private drapeWaits = new Map<string, number>();
     private gap = 33;
     private drapedAt = 0;
-    /** How many levels up the nearest coarser tile with a picture is (0: there is none). */
-    private coarserDrape(id: TileID) {
-        for (let up = 1; up <= 5 && up <= id.z; up++) if (this.drapes.has(`${id.z - up}/${id.x >> up}/${id.y >> up}|${id.w}`)) return up;
-        return 0;
-    }
-    private updateDrapes(s: Scene) {
-        const gl = this.gl;
-        // Per frame: a couple of out-of-date pictures are redrawn and a few missing ones drawn (all of them when starting
-        // from nothing). A missing one shows its ancestor's picture meanwhile, so spreading the work costs no holes.
-        // While the camera moves, less of this work is done in one frame: a smooth movement is more important than
-        // pictures that are complete a moment sooner.
-        // One picture is a pass over all the layers of the style: as many WebGL calls as the frame itself. So while the
-        // camera moves, a picture is made only in each third frame. The picture of a coarser tile shows meanwhile.
-        const now = performance.now();
-        // (A device that keeps up with the display while the camera moves does all the work in each frame, at the full
-        // size: the map then stays sharp during a zoom. `gap`: the usual time between frames of a movement.)
-        if (s.moving && now - this.drapedAt < 100) this.gap += (now - this.drapedAt - this.gap) * 0.2;
-        this.drapedAt = now;
-        const quick = this.gap < 20;
-        const turn = !s.moving || quick || this.frame % 3 === 0;
-        for (const [key, since] of this.drapeWaits) if (now - since > 2000) this.drapeWaits.delete(key);
-        let budget = !turn ? 0 : s.moving && !quick ? 1 : 2, fresh = !this.drapes.size ? Infinity : !turn ? 0 : s.moving && !quick ? 1 : 3, behind = false;
-        for (const t of s.terrain!.tiles) {
-            let d = this.drapes.get(t.key);
-            // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.
-            const full = Math.min(1024, Math.max(64, Math.round(t.view.width * this.dpr)));
-            // A picture that is first made while the camera moves is made at half the size: a quarter of the work for the
-            // GPU, which is what limits a zoom on a phone. It is made again at the full size when the camera is still.
-            // A picture is also made again when the light in it is out of date. That waits until the camera is still: while
-            // the map turns, each step of the light would make every picture again, which phones cannot keep up with.
-            const sharpen = !!d && !s.moving && (!!d.rough || d.light !== t.light);
-            if (d && (d.rough || d.light !== t.light) && s.moving) behind = true; // more frames must come, to make this picture sharp after the movement
-            if (d && d.signature === t.signature && !sharpen) { d.used = this.frame; continue; }
-            // A picture whose data is not complete is made again as more of its data arrives, but at most two times in a
-            // second: the ground fills in step by step (the map, then the relief, then the contour lines), and a tile
-            // does not wait for its slowest part. (On a slow device the contour lines can take seconds.)
-            if (d && !t.complete && now - d.at! < 500 && !sharpen) { d.used = this.frame; behind = true; continue; }
-            const rough = !!s.moving && !quick && (!d || !!d.rough) && full > 256, size = rough ? full >> 1 : full;
-            if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
-            if (!d && !t.complete && fresh < Infinity) {
-                // A new tile whose data is still on its way: for a short time, the picture of a coarser tile shows in its
-                // place. Most tiles are complete in that time, and their picture is then made once, not twice.
-                const since = this.drapeWaits.get(t.key) ?? now;
-                this.drapeWaits.set(t.key, since);
-                if (now - since < 300 && this.coarserDrape(t.id)) { behind = true; continue; }
-            }
-            // (Ground with no picture of its own and none of a coarser tile is a hole in the map: it does not wait its turn.)
-            if (!d && this.coarserDrape(t.id) && fresh-- <= 0) { behind = true; continue; }
-            if (!d || d.size !== size) {
-                if (d) this.freeDrape(d);
-                // A texture of this size that is not in use is taken again: to make and delete large textures in each
-                // frame of a movement is slow, and on a phone it uses up the memory of the GPU.
-                let tex = this.sparePictures.get(size)?.pop();
-                if (!tex) {
-                    tex = this.newTexture();
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-                }
-                d = {tex, size, signature: '', used: this.frame};
-                this.drapes.set(t.key, d);
-            }
-            d.rough = rough;
-            d.signature = t.signature; d.light = t.light; d.used = this.frame; d.at = now;
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, d.tex, 0);
-            gl.viewport(0, 0, size, size);
-            gl.clearColor(0, 0, 0, 0);
-            gl.clear(gl.COLOR_BUFFER_BIT);
-            this.drawLayers(s, t.view, t.items, [size, size], 'ground');
-            gl.bindTexture(gl.TEXTURE_2D, d.tex);
-            gl.generateMipmap(gl.TEXTURE_2D);
-        }
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        // Pictures that are out of view are kept for a short time (the view often comes back), but not many of them:
-        // each one is some megabytes on the GPU.
-        const spare = this.drapes.size - s.terrain!.tiles.length, age = spare > 24 ? 10 : 90;
-        for (const [key, d] of this.drapes) if (this.frame - d.used > age) { this.freeDrape(d); this.drapes.delete(key); }
-        return behind;
-    }
 
-    /** 3D terrain, step two: draw the ground tiles as raised meshes, with depth so near slopes hide far ones. */
-    private drawTerrain(s: Scene) {
-        const gl = this.gl, grid = this.terrainGrid(), u = this.use('terrain', s.tr);
-        gl.enable(gl.DEPTH_TEST);
-        gl.depthFunc(gl.LEQUAL);
-        gl.clear(gl.DEPTH_BUFFER_BIT);
-        gl.bindVertexArray(grid.vao);
-        gl.enableVertexAttribArray(1);
-        gl.uniform1i(u.u_drape, 0);
-        gl.uniform1f(u.u_exag, s.terrain!.exaggeration);
-        // Fog only where the style has a sky, and not on the globe.
-        const fog = s.sky && !this.globe ? skyValues(s.sky, s.tr.zoom, s.tr.pitch) : undefined;
-        gl.uniform2f(u.u_fogRange, ...s.tr.fogRange());
-        gl.uniform3f(u.u_fog, Math.min(fog?.ground ?? 0, 0.999), Math.min(fog?.horizonFog ?? 0, 0.999), fog?.opacity ?? 0);
-        if (fog) { gl.uniform4fv(u.u_fogColor, opaque(fog.fog)); gl.uniform4fv(u.u_horizonColor, opaque(fog.horizon)); }
-        for (const t of s.terrain!.tiles) {
-            let d = this.drapes.get(t.key), part = [0, 0, 1];
-            // No picture of its own yet: show its share of the nearest ancestor's rather than a hole.
-            if (!d) {
-                const up = this.coarserDrape(t.id), k = 2 ** up;
-                d = up ? this.drapes.get(`${t.id.z - up}/${t.id.x >> up}/${t.id.y >> up}|${t.id.w}`) : undefined;
-                if (d) { part = [(t.id.x % k) / k, (t.id.y % k) / k, 1 / k]; d.used = this.frame; }
-            }
-            if (!d) continue;
-            gl.uniform3f(u.u_part, part[0], part[1], part[2]);
-            // The tile's heights, uploaded when they change.
-            let mh = this.meshHeights.get(t.key);
-            if (!mh) this.meshHeights.set(t.key, mh = {buffer: gl.createBuffer()!, version: -1, used: 0});
-            mh.used = this.frame;
-            gl.bindBuffer(gl.ARRAY_BUFFER, mh.buffer);
-            if (mh.version !== t.heightsVersion) {
-                const all = new Float32Array(t.heights.length + grid.skirt.length);
-                all.set(t.heights);
-                grid.skirt.forEach((from, k) => { all[t.heights.length + k] = t.heights[from]; });
-                gl.bufferData(gl.ARRAY_BUFFER, all, gl.DYNAMIC_DRAW);
-                mh.version = t.heightsVersion;
-            }
-            gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
-            gl.bindTexture(gl.TEXTURE_2D, d.tex);
-            this.placeTile(u, t.id, t.matrix);
-            gl.uniform1f(u.u_skirt, 40075016.686 / 2 ** t.id.z / 16 * Math.max(1, s.terrain!.exaggeration));
-            gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
-        }
-        for (const [key, mh] of this.meshHeights) if (this.frame - mh.used > 90) { gl.deleteBuffer(mh.buffer); this.meshHeights.delete(key); }
-        gl.disable(gl.DEPTH_TEST);
-    }
 
     private depthTex?: WebGLTexture; private depthFbo?: WebGLFramebuffer; private depthSize = '';
-    /**
-     * 3D terrain with circle layers: the depth of the terrain on the screen, in a texture that the circles read (a pass of
-     * the mesh into a framebuffer with only a depth texture; the depth of the canvas cannot be read).
-     */
-    private terrainDepth(s: Scene) {
-        const gl = this.gl, w = this.canvas.width, h = this.canvas.height, z = s.tr.zoom;
-        if (!s.layers.some(L => L.type === 'circle' && L.visible && z >= L.minzoom && z < L.maxzoom)) return;
-        if (!this.depthTex || this.depthSize !== w + 'x' + h) {
-            if (this.depthTex) gl.deleteTexture(this.depthTex);
-            this.depthTex = this.newTexture(); this.depthSize = w + 'x' + h;
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, w, h, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.depthFbo ??= gl.createFramebuffer()!);
-            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.depthTex, 0);
-        }
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.depthFbo!);
-        this.drawTerrain(s);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
 
     /** The sky of the style above the horizon, in Mercator and, on the globe, blended into the space around it. */
     private drawSky(s: Scene) {
@@ -1922,7 +1731,7 @@ export class GLRenderer {
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         // (The pictures of the ground tiles are flat, also on the globe: only the mesh that shows them is on the sphere.)
         this.globe = undefined;
-        const behind = s.terrain ? this.updateDrapes(s) : false;
+        const behind = s.terrain ? s.terrain.code.updateDrapes.call(this, s) : false;
         this.globe = s.globe;
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         gl.clearColor(0, 0, 0, 0);
@@ -1931,7 +1740,7 @@ export class GLRenderer {
         this.extrusionDepth = false;
         this.drawSky(s);
         const target: [number, number] = [this.canvas.width, this.canvas.height];
-        const use = (name: keyof typeof SHADERS) => this.use(name, tr);
+        const use = (name: ProgramName) => this.use(name, tr);
 
         // Labels are drawn above the last symbol layer that has labels (`above` is the index after it). Without 3D
         // terrain, a visible layer of another type between two symbol layers with labels splits them, as in MapLibre GL
@@ -1943,7 +1752,7 @@ export class GLRenderer {
         let above = 0, first = -1;
         s.layers.forEach((L, i) => { if (L.type === 'symbol' && shown(L) && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) { above = i + 1; if (first < 0) first = i; } });
         if (s.terrain) {
-            this.drawTerrain(s); this.terrainDepth(s); this.drawLayers(s, tr, s.items, target, 'buildings');
+            s.terrain.code.drawTerrain.call(this, s); s.terrain.code.terrainDepth.call(this, s); this.drawLayers(s, tr, s.items, target, 'buildings');
             this.drawIcons(s, tr, 0, above);
             this.drawLabels(s, s.labels);
         } else {
@@ -1991,7 +1800,7 @@ export class GLRenderer {
         // The sun in view space (x right, y up, z toward the camera), as MapLibre's getSunPos.
         let sun = [-Math.cos(a) * Math.sin(p), -Math.sin(a) * Math.sin(p), -Math.cos(p)];
         const turn = (i: number, j: number, t: number) => { const c = Math.cos(t), n = Math.sin(t), u = sun[i], w = sun[j]; sun[i] = c * u - n * w; sun[j] = n * u + c * w; };
-        if (light.anchor === 'map') { turn(2, 0, -tr.lng * R); turn(1, 2, tr.lat * R); turn(0, 1, tr.bearing * R); turn(1, 2, -tr.pitch * R); }
+        if (lightOnMap(light, tr.zoom)) { turn(2, 0, -tr.lng * R); turn(1, 2, tr.lat * R); turn(0, 1, tr.bearing * R); turn(1, 2, -tr.pitch * R); }
         // To the space of the sphere with the rays of the screen: the ray through x, y is A x + B y + C (see `rays`).
         const r = g.rays, d = tr.cameraDistance, ax = [0, 1, 2].map(i => r[i] * d), ay = [0, 1, 2].map(i => -r[3 + i] * d), az2 = [0, 1, 2].map(i => -r[6 + i] - tr.cx * r[i] - tr.cy * r[3 + i]);
         sun = [0, 1, 2].map(i => ax[i] * sun[0] + ay[i] * sun[1] + az2[i] * sun[2]);
@@ -2006,7 +1815,7 @@ export class GLRenderer {
 
     /** Draws placed labels: their icons, then their text in one pass for the halos and one for the fill. */
     private drawLabels(s: Scene, labels: Placed[]) {
-        const gl = this.gl, use = (name: keyof typeof SHADERS) => this.use(name, s.tr);
+        const gl = this.gl, use = (name: ProgramName) => this.use(name, s.tr);
         // Style-sheet icons and images added at runtime live in different textures.
         for (const custom of [false, true]) {
             const icons = this.iconQuads(labels, custom, s.icon);
