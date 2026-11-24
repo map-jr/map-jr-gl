@@ -1122,6 +1122,11 @@ test('transform: above a pitch of 90 the camera looks up, and screen positions i
     assert.deepEqual(t.screenToMerc(256, 512), t.screenToMerc(256, 400));
     const tiles = t.tileCover(0, 14);
     assert.ok(tiles.length > 0 && tiles.length < 200, `${tiles.length} tiles at pitch 95`);
+    // With 3D terrain the camera below the ground takes about as many tiles as the camera above it at the mirrored pitch
+    // (1931 tiles of zoom 15 at pitch 95 without the absolute height of the camera, and the map never became idle).
+    const terrainTiles = (pitch: number) => { t.set(undefined, undefined, undefined, pitch); t.heightAt = () => 0; t.groundRange = [-100, 100]; const n = t.tileCover(0, 15, 256).length; t.heightAt = undefined; t.groundRange = undefined; return n; };
+    const [under, over] = [terrainTiles(95), terrainTiles(85)];
+    assert.ok(under <= 2 * over, `${under} tiles at pitch 95, ${over} at pitch 85`);
     // Looking straight up.
     t.set(undefined, undefined, undefined, 180); t.elevation = 10000;
     roundTrip(cx, cy, 0);

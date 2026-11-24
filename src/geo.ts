@@ -520,7 +520,8 @@ export class Transform {
         const mid = [quad.reduce((t, q) => t + q[0], 0) / quad.length, quad.reduce((t, q) => t + q[1], 0) / quad.length];
         const d = this.cameraDistance, ws = this.worldSize, cx = mercX(this.lng), cy = mercY(this.lat);
         const depthAt = (mx: number, my: number) => this.view((mx - cx) * ws, (my - cy) * ws)[2];
-        const cam = this.cameraPosition(), camZ = d * Math.cos(this.pitch * Math.PI / 180) / ws;
+        // (Above a pitch of 90 the camera is below the plane of the center, and the rule takes its distance from that plane.)
+        const cam = this.cameraPosition(), camZ = Math.max(1e-3, Math.abs(Math.cos(this.pitch * Math.PI / 180))) * d / ws;
         // Separating-axis test between that convex area and a tile's square.
         const overlaps = (x0: number, y0: number, x1: number, y1: number) => {
             if (Math.max(...quad.map(q => q[0])) < x0 || Math.min(...quad.map(q => q[0])) > x1 || Math.max(...quad.map(q => q[1])) < y0 || Math.min(...quad.map(q => q[1])) > y1) return false;
