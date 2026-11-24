@@ -220,6 +220,19 @@ async function worker(queue) {
 }
 const queue = [...selected];
 await Promise.all(Array.from({length: 4}, () => worker(queue)));
+// A test whose status is not the one in render-tests.json runs again alone, and the second result counts. Four tests
+// at once load the machine, and a test near a limit can move under that load only (text-field/formatted-arabic gave
+// differ in full runs and 4.8%, near, in each of five runs alone, #1036). A change that the library causes shows alone
+// too. At most 50 tests run again, so that a change of many tests is not hidden and does not double the time.
+const perTest = path.join(root, 'test/conformance/render-tests.json');
+const committed = existsSync(perTest) ? JSON.parse(readFileSync(perTest, 'utf8')) : {};
+const moved = results.filter(r => r.status !== 'skipped' && committed[r.id.split(path.sep).join('/')] !== undefined && committed[r.id.split(path.sep).join('/')] !== r.status);
+if (moved.length && moved.length <= 50) {
+    const first = new Map(moved.map(r => [r.id, r]));
+    for (const r of moved) results.splice(results.indexOf(r), 1);
+    await worker(moved.map(r => r.id));
+    for (const r of results) if (first.has(r.id) && first.get(r.id).status !== r.status) console.log(`AGAIN: ${r.id.split(path.sep).join('/')} was ${first.get(r.id).status} with other tests at once and is ${r.status} alone; the second result counts.`);
+}
 await browser.close();
 server.close();
 // The ids have "/" between their parts on each system, so that the tracked files are the same everywhere.
@@ -236,8 +249,7 @@ for (const r of results) if (r.status === 'skipped') reasons[r.why] = (reasons[r
 if (summary.totals.skipped) console.log('Skipped, by reason: ' + Object.entries(reasons).map(([why, n]) => `${why} ${n}`).join(', '));
 for (const line of lines.slice(1)) console.log(line);
 // The tests whose status is not the one in the tracked file. A test near a limit can change with the machine.
-const perTest = path.join(dir, 'render-tests.json');
-if (existsSync(perTest)) for (const line of changes(JSON.parse(readFileSync(perTest, 'utf8')), summary.tests)) console.log(line);
+if (existsSync(perTest)) for (const line of changes(committed, summary.tests)) console.log(line);
 // A full run (no filter) records its totals, which the status table of the README is written from, and the status
 // of each test. The second file has no percentages and is sorted by id, so that its diff shows the tests that changed.
 // The files are written only from Playwright's own build of Chromium, which CI runs: another build draws some tests a
