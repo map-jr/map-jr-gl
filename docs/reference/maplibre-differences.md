@@ -290,7 +290,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Interaction handlers
 
 - **MapLibre GL JS:** `map.dragPan`, `map.scrollZoom`, `map.boxZoom` and others, each with `enable()` and `disable()`.
-- This library does the same objects are available: `dragPan`, `scrollZoom`, `doubleClickZoom`, `dragRotate`, `touchZoomRotate`, `touchPitch`, `keyboard`, `boxZoom`. `isActive()` is `true` during the gesture for `dragPan` (from the press of the mouse button, or from the first movement of one finger), `dragRotate` (from the first movement of a rotate drag), `touchZoomRotate` (a pinch), `touchPitch` (a tilt with two fingers) and `boxZoom` (from the press of the mouse button with Shift held). It is `false` again when a pointer of the gesture lifts, and during the movement that follows a drag. `isActive()` of `scrollZoom`, `doubleClickZoom`, `keyboard` and `cooperativeGestures` always returns `false`, and `dragPan.isActive()` stays `false` during a pinch. Box zoom works as in MapLibre GL JS: a drag with Shift held and the left mouse button draws a box, zooms to it, and fires `boxzoomstart`, `boxzoomend` (with `boxZoomBounds`) or `boxzoomcancel`. Box zoom does not work with touch input. With `interactive: false`, every handler is off, and the map still fires `click`, `mousemove` and the events of layers, as in MapLibre. The `interactive` option of `@map-jr/map-jr-gl` behaves the same.
+- This library does the same objects are available: `dragPan`, `scrollZoom`, `doubleClickZoom`, `dragRotate`, `touchZoomRotate`, `touchPitch`, `keyboard`, `boxZoom`. `isActive()` is `true` during the gesture for `dragPan` (from the press of the mouse button, or from the first movement of one finger), `dragRotate` (from the first movement of a rotate drag), `touchZoomRotate` (a pinch, or a double tap held and dragged), `touchPitch` (a tilt with two fingers) and `boxZoom` (from the press of the mouse button with Shift held). `dragPan` is also active during a pinch. It is `false` again when a pointer of the gesture lifts, and during the movement that follows a drag. `scrollZoom.isActive()` is `true` from a wheel event until 200 ms after the zoom has ended (for a mouse wheel, about 400 ms after the last event). `doubleClickZoom.isActive()` is `true` after a double tap only until the next task. As in MapLibre GL JS, `doubleClickZoom.isActive()` is `false` for a double click of the mouse, and `keyboard.isActive()` is always `false`. `isActive()` of `cooperativeGestures` always returns `false`. Box zoom works as in MapLibre GL JS: a drag with Shift held and the left mouse button draws a box, zooms to it, and fires `boxzoomstart`, `boxzoomend` (with `boxZoomBounds`) or `boxzoomcancel`. Box zoom does not work with touch input. With `interactive: false`, every handler is off, and the map still fires `click`, `mousemove` and the events of layers, as in MapLibre. The `interactive` option of `@map-jr/map-jr-gl` behaves the same.
 
 ### Rotate drag (the right mouse button, or Ctrl with the left one)
 
@@ -337,10 +337,10 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - MapLibre GL JS returns the decoded RGBA pixels.
 - This library returns `{width, height, data: Uint8Array}` RGBA pixels for an image added as pixels, a canvas, an image element or a bitmap. For an image added as a URL or as SVG text, `data` is the string that `addImage` was given, because decoding it again is asynchronous.
 
-### `snapToNorth`
+### The option `bearingSnap` after a gesture with inertia
 
-- MapLibre GL JS turns the map north when the bearing is within the option `bearingSnap` (7 degrees by default).
-- This library turns the map north when the bearing is within 7 degrees. The option `bearingSnap` has no effect.
+- MapLibre GL JS sets the bearing of the inertia to 0 when a gesture ends closer to north than `bearingSnap`, so the map turns north while it glides.
+- The entry `@map-jr/map-jr-gl/maplibre-compat` lets the inertia end first and then turns the map north with `resetNorth`. A gesture without inertia turns north as in MapLibre GL JS.
 
 ### `setStyle`
 
