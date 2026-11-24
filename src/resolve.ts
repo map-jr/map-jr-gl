@@ -223,7 +223,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at;
             const info = await get(raw, file, async () => (await import('./pmtiles-info.ts')).archive(file, fetchFn).info());
             if (info === SKIP) return;
-            src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
+            src = {minzoom: info.minzoom, maxzoom: info.maxzoom, ...info.bounds && {bounds: info.bounds}, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
         } else if (!src.tiles && src.url) {
             const url = absolute(src.url, base);
             const json = await get(raw, url, async () => {

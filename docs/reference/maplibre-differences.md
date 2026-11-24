@@ -64,7 +64,7 @@ Gives the elevation at a position from a `raster-dem` source.
 
 ### PMTiles
 
-A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin.
+A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin. The zoom range and the bounds in the header of the archive limit the tile requests, as with the `pmtiles` plugin; `minzoom`, `maxzoom` and `bounds` in the style take precedence over them.
 
 ### Changes for the server in the style
 

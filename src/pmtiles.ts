@@ -118,7 +118,9 @@ export class PMTiles {
         const {h, first} = await this.open(), end = h.metaOffset + h.metaLength, rootEnd = h.rootOffset + h.rootLength;
         // (The metadata is in the first bytes too, for most archives: no second request.)
         const meta = h.metaLength ? JSON.parse(new TextDecoder().decode(await inflate(end <= first.length ? first.subarray(h.metaOffset, end) : await this.range(h.metaOffset, h.metaLength), h.internalCompression))) : {};
-        return {type: TILE_TYPES[h.tileType] ?? '', minzoom: h.minZoom, maxzoom: h.maxZoom, attribution: meta.attribution as string | undefined, metadata: meta,
+        // The bounds of the header (bytes 102-117, int32 degrees × 10^7); all zero, or empty, means none.
+        const v = new DataView(first.buffer, first.byteOffset), b = [0, 4, 8, 12].map(o => v.getInt32(102 + o, true) / 1e7);
+        return {type: TILE_TYPES[h.tileType] ?? '', minzoom: h.minZoom, maxzoom: h.maxZoom, bounds: b[0] < b[2] && b[1] < b[3] ? b : undefined, attribution: meta.attribution as string | undefined, metadata: meta,
             /** The header and the root directory, for the threads that read the tiles (see `heads`). */
             head: rootEnd <= first.length ? first.slice(0, rootEnd) : undefined};
     }
