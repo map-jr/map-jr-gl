@@ -157,8 +157,8 @@ type ProtocolFunction = (
 
 | Request | `type` | `data` |
 |---|---|---|
-| A tile of a `raster` or `raster-dem` source | `'image'`, with `headers.accept` `image/webp,*/*` | The bytes of an image file, an `ImageBitmap` or an `HTMLImageElement`. The map copies the image. |
-| A tile of a `vector` source, an image, the image of a sprite | `'arrayBuffer'` | The bytes of the file. |
+| A tile of a `raster` or `raster-dem` source, an image (`loadImage`, `addImage` with a URL, an `image` source), the image of a sprite | `'image'`, with `headers.accept` `image/webp,*/*` | The bytes of an image file, an `ImageBitmap` or an `HTMLImageElement`. The map copies the image. |
+| A tile of a `vector` source | `'arrayBuffer'` | The bytes of the file. |
 | A style, a TileJSON, GeoJSON, the JSON of a sprite, glyphs | `'json'` | An object, a string or bytes. |
 
 The protocols are the same for every map of the page, and a map that exists already uses a protocol added later. The

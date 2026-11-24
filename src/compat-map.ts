@@ -763,7 +763,7 @@ export class Map extends CoreMap {
     async loadImage(url: string) {
         const res = await this.fetchAs('Image')(url);
         if (!res.ok) throw httpError('image', url, res.status);
-        return {data: await createImageBitmap(await res.blob())};
+        return {data: (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob())};
     }
     /** The code for queries on the page, loaded when the style has a GeoJSON source with its data in the style. */
     private syncQuery?: typeof import('./sync-query.ts');
