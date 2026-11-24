@@ -75,8 +75,8 @@ writing); this brief has the steps.
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
   takes WebGL away from workers, as in WebKit on Linux and Windows.
 - `node test/conformance/render.mjs --help` prints its options. An argument that it does not know, or `--list`
-  without `--filter`, stops it with that text. A run with `--filter` rewrites `test/conformance/render-result.json` and `render-tests.json`: restore them with
-  `git checkout --` before you commit.
+  without `--filter`, stops it with that text. Only a full run (no `--filter` and no `--limit`) on the pinned Chromium
+  rewrites `test/conformance/render-result.json` and `render-tests.json`; a run with `--filter` leaves them as they are.
 - `gh pr edit` fails on this repository; change the body of your pull request with
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`. In cloud sessions GraphQL is blocked, so
   `gh issue view`, `gh pr view` and `gh pr list` fail too: use `gh api` REST for everything.
