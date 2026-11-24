@@ -11,7 +11,8 @@ const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null;
 const tilePorts = new Map<number, MessagePort>();
 scope.onmessage = e => {
     const m = e.data;
-    if (m.role === 'tiles') { tilePorts.set(m.id, m.port); serveTiles(m.port); relayWarnings(msg => m.port.postMessage({type: 'warn', msg})); }
+    // A warning goes through the port of any map that is still open: the page prints each once, whichever map it came from.
+    if (m.role === 'tiles') { tilePorts.set(m.id, m.port); serveTiles(m.port); relayWarnings(msg => tilePorts.values().next().value?.postMessage({type: 'warn', msg})); }
     // The page drops the port of a map that it no longer uses (its engine worker ended, or the map was removed; #838).
     else if (m.role === 'drop') { const p = tilePorts.get(m.id); tilePorts.delete(m.id); if (p) { p.onmessage = null; p.close(); } }
     else if (m.role === 'engine') {

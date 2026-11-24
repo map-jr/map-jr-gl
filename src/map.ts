@@ -16,7 +16,11 @@ import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 // The warnings of the engine workers, each once on the page, as each thread warns once (expr.ts, #1141).
 const pageWarned = new Set<string>();
-const pageWarn = (msg: string) => { if (pageWarned.size < 200 && !pageWarned.has(msg)) { pageWarned.add(msg); console.warn('[map-jr-gl] ' + msg); } };
+const pageWarn = (msg: string) => {
+    if (pageWarned.size > 200 || pageWarned.has(msg)) return;
+    pageWarned.add(msg);
+    console.warn('[map-jr-gl] ' + (pageWarned.size > 200 ? 'The workers sent 200 different warnings. Later ones are not shown.' : msg));
+};
 
 /** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
 declare const __DEV__: boolean;

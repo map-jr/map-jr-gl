@@ -71,10 +71,8 @@ export const relayWarnings = (to: (msg: string) => void) => { relay = to; };
 export function warnOnce(msg: string) {
     if (warned.has(msg) || warned.size > 100) return;
     warned.add(msg);
-    if (relay) return relay(msg);
-    console.warn('[map-jr-gl] ' + (warned.size > 100
-        ? 'The styles on this page caused 100 different warnings about expressions and filters. Later ones are not shown.'
-        : msg));
+    msg = warned.size > 100 ? 'The styles on this page caused 100 different warnings about expressions and filters. Later ones are not shown.' : msg;
+    if (relay) relay(msg); else console.warn('[map-jr-gl] ' + msg);
 }
 
 function lerp(a: any, b: any, t: number): any {

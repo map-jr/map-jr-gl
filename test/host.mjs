@@ -3095,6 +3095,34 @@ for (const renderer of renderers) {
     } catch (e) { check(`[${renderer}] the test of warnings once on the page was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The tile workers serve every map of the page. A warning of a live map still comes after another map was removed (#1141).
+for (const renderer of renderers) {
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    const said = [];
+    page.on('console', m => { if (m.type() === 'warning' && m.text().includes('y1141')) said.push(m.text()); });
+    try {
+        await page.goto(origin + '/bench');
+        await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const idle = async map => { for (const end = Date.now() + 20000; !map.state.get().idle && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); };
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0'}));
+            const elB = box(), b = lib.createMap(elB, {style, renderer, attribution: false});
+            await idle(b);
+            const elA = box(), a = lib.createMap(elA, {style, renderer, attribution: false});
+            await idle(a);
+            a.destroy(); elA.remove();
+            await new Promise(r => setTimeout(r, 300));
+            const line = style.layers.find(l => l.type === 'line' && l['source-layer']);
+            b.update({style: {...style, layers: [...style.layers, {...line, id: 'w1141b', filter: ['y1141f']}]}, renderer, attribution: false});
+            await new Promise(r => setTimeout(r, 300));
+            await idle(b);
+            await new Promise(r => setTimeout(r, 1000));
+            b.destroy(); elB.remove();
+        }, renderer);
+        check(`[${renderer}] a warning of a map comes after another map on the page was removed`, said.length === 1, JSON.stringify(said));
+    } catch (e) { check(`[${renderer}] the test of warnings after a removed map was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
