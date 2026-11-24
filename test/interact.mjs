@@ -1768,8 +1768,8 @@ for (const mode of renderers) {
         });
         // visualizePitch of NavigationControl (#42) and opacityWhenCovered of Marker (the globe, #463) have an effect in
         // this entry, so they write no warning.
-        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and visualizePitch and opacityWhenCovered do not warn',
-            Object.entries(r).every(([k, n]) => n === (k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
+        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
+            Object.entries(r).every(([k, n]) => n === (k === 'validate' || k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
