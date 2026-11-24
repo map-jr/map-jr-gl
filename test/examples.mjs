@@ -1,12 +1,12 @@
-// Checks the example files (examples/*): each must compile, and must import only names that the
-// entries of the library have. A Svelte form compiles with no warning, a <map-jr> form (.html) has the element and
+// Checks the example files (examples/*): each must compile, must import only names that the entries of the library
+// have, and must use only names that it defines or imports or that a browser defines (#1564). A Svelte form compiles with no warning, a <map-jr> form (.html) has the element and
 // one module script, and a Nuxt form (.nuxt.vue) uses only the names that the module for Nuxt registers.
 //   node test/examples.mjs   (after pnpm build)
 import {readFileSync, readdirSync} from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
-import {parse, compileScript, compileTemplate} from 'vue/compiler-sfc';
+import {parse, compileScript, compileTemplate, babelParse, walkIdentifiers, extractIdentifiers} from 'vue/compiler-sfc';
 import {compile as compileSvelte} from 'svelte/compiler';
 
 const dir = path.resolve(import.meta.dirname, '../examples');
@@ -21,6 +21,47 @@ const nuxtModule = readFileSync(path.resolve(import.meta.dirname, '../src/nuxt.t
 const nuxtList = pattern => [...(nuxtModule.match(pattern)?.[1] ?? '').matchAll(/'(\w+)'/g)].map(m => m[1]);
 const nuxtComponents = new Set(nuxtList(/for \(const name of \[([^\]]*)\]\) addComponent/).flatMap(n => [n, 'Lazy' + n]));
 const nuxtControls = new Set(nuxtList(/addImports\(\[([^\]]*)\]\.map\(name => \(\{name, as: name \+ 'Control'/).map(n => n + 'Control'));
+// What Nuxt imports into a page by itself: the API of Vue, and the composables and the controls of the module.
+const nuxtImports = new Set([...Object.keys(await import('vue')), ...nuxtList(/addImports\(\[([^\]]*)\]\.map\(name => \(\{name, from: vue/), ...nuxtControls]);
+
+// The names that a page has without a declaration, which are those of the browser. Node has most of them. The names
+// that only Node has are left out, and the names that only a browser has are listed.
+const globals = new Set([
+    ...Object.getOwnPropertyNames(globalThis).filter(n => !['process', 'Buffer', 'global', 'setImmediate', 'clearImmediate'].includes(n)),
+    'window', 'document', 'location', 'history', 'localStorage', 'sessionStorage', 'customElements', 'HTMLElement', 'Element', 'Node',
+    'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'getComputedStyle', 'alert', 'innerWidth', 'innerHeight',
+    'devicePixelRatio', 'Image', 'ResizeObserver', 'IntersectionObserver', 'MutationObserver', 'HTMLCanvasElement', 'OffscreenCanvas',
+]);
+/** The names that a module uses and neither declares nor imports, and that are not in `known`. */
+const freeNames = (code, known) => {
+    const ast = babelParse(code, {sourceType: 'module'}), declared = new Set(), names = new Set();
+    // (walkIdentifiers knows the declarations in functions and blocks, but not those at the top of the module.)
+    for (let s of ast.program.body) {
+        if (s.type === 'ImportDeclaration') for (const spec of s.specifiers) declared.add(spec.local.name);
+        if (/^Export(Named|Default)Declaration$/.test(s.type) && s.declaration) s = s.declaration;
+        if (s.type === 'VariableDeclaration') for (const d of s.declarations) for (const id of extractIdentifiers(d.id)) declared.add(id.name);
+        else if (/^(Function|Class)Declaration$/.test(s.type) && s.id) declared.add(s.id.name);
+    }
+    walkIdentifiers(ast.program, id => { if (!declared.has(id.name) && !known.has(id.name)) names.add(id.name); });
+    return [...names];
+};
+/** The names that an example uses and does not define, as messages. Each form is compiled to the module that runs. */
+const undefinedNames = (file, code) => {
+    const nuxt = file.endsWith('.nuxt.vue'), known = nuxt ? new Set([...globals, ...nuxtImports]) : globals, problems = [];
+    let js;
+    if (file.endsWith('.svelte')) js = compileSvelte(code, {filename: file, generate: 'client'}).js.code;
+    else if (file.endsWith('.html')) js = [...code.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
+    else if (file.endsWith('.vue')) {
+        // The template becomes a part of the setup function. A name in the template that the script does not define
+        // becomes `_ctx.<name>`, and a component that the script does not import becomes `resolveComponent("<name>")`.
+        js = compileScript(parse(code, {filename: file}).descriptor, {id: file, inlineTemplate: true}).content;
+        problems.push(...new Set([...js.matchAll(/\b_ctx\.(\w+)/g)].map(m => m[1]).filter(n => !known.has(n)).map(n => `the template uses ${n}, which is not defined`)));
+        // (A Nuxt form leaves the import of a component to Nuxt, and nuxtProblems checks its name.)
+        if (!nuxt) problems.push(...[...js.matchAll(/_resolveComponent\("([^"]+)"/g)].map(m => `<${m[1]}> is not imported`));
+    } else js = transformSync(code, {loader: file.endsWith('.jsx') ? 'jsx' : 'js', jsx: 'automatic'}).code;
+    return [...problems, ...freeNames(js, known).map(n => `${n} is not defined`)];
+};
+
 /** What is wrong with a Nuxt form: it imports what the module or Nuxt imports, or uses a name that the module does not register. */
 const nuxtProblems = code => [
     ...[...code.matchAll(/from '(vue|@map-jr\/map-jr-gl\/vue|@map-jr\/map-jr-gl\/controls)'/g)].map(m => `imports from ${m[1]}, which Nuxt and the module import`),
@@ -52,9 +93,38 @@ for (const file of readdirSync(dir).filter(f => /\.(js|vue|jsx|svelte|html)$/.te
             problems.push(...template.errors.map(e => e.message ?? String(e)));
         } else if (file.endsWith('.jsx')) transformSync(code, {loader: 'jsx', jsx: 'automatic'});
         else transformSync(code, {loader: 'js'});
+        problems.push(...undefinedNames(file, code));
     } catch (e) { problems.push(String(e.message).split('\n')[0]); }
     check(file, problems.length === 0, problems.join(' | '));
 }
+// The check of undefined names finds a misspelled name in each form (#1564: `meters` where the variable was `metres`),
+// and accepts the names that each form has.
+for (const [file, code, expected] of [
+    ['bad.js', 'const metres = 1;\nconsole.log(meters);', 'meters is not defined'],
+    ['bad.compat.js', "import maplibregl from '@map-jr/map-jr-gl/maplibre-compat';\nnew maplibregl.Map({container: 'map'}).on('load', () => { if (window) { const metres = 1; } console.log(metres); });", 'metres is not defined'],
+    ['bad.jsx', 'export default function App() { const metres = 1; return <p>{meters}</p>; }', 'meters is not defined'],
+    ['bad.jsx', 'export default function App() { return <MapJr />; }', 'MapJr is not defined'],
+    ['bad.html', "<map-jr></map-jr><script type=\"module\">import '@map-jr/map-jr-gl/element';\nconst metres = 1; console.log(meters);</script>", 'meters is not defined'],
+    ['bad.svelte', '<script>let metres = 1;</script><p>{meters}</p>', 'meters is not defined'],
+    ['bad.svelte', '<script>let metres = $state(1); function f() { return meters; }</script><p>{f()}</p>', 'meters is not defined'],
+    ['bad.vue', '<script setup>const metres = 1; console.log(meters);</script><template><p /></template>', 'meters is not defined'],
+    ['bad.vue', '<script setup>const metres = 1;</script><template><p>{{ meters }}</p></template>', 'the template uses meters, which is not defined'],
+    ['bad.vue', "<script setup>import {ref} from 'vue';</script><template><MapJr /></template>", '<MapJr> is not imported'],
+    ['bad.vue', '<script setup>const unit = ref(1);</script><template><p>{{ unit }}</p></template>', 'ref is not defined'],
+    ['bad.nuxt.vue', '<script setup>const unit = ref(1);</script><template><MapJr :controls="[navigationControl(), scaleControll()]" /></template>', 'the template uses scaleControll, which is not defined'],
+    ['bad.nuxt.vue', '<script setup>useMapJrr();</script><template><MapJr /></template>', 'useMapJrr is not defined'],
+]) {
+    const found = undefinedNames(file, code);
+    check(`the check finds "${expected}" in ${file}`, found.includes(expected), found.join(' | '));
+}
+for (const [file, code] of [
+    ['good.nuxt.vue', "<script setup>const unit = ref(1), map = useTemplateRef('map'); useMapJr();</script><template><MapJr ref=\"map\" :controls=\"[navigationControl()]\" @click=\"e => unit = e.lngLat\" /><p>{{ $attrs }} {{ Math.round(unit) }}</p></template>"],
+    ['good.js', 'function f(a, {b, c: [d]}) { for (const e of a) { try { g(); } catch (err) { console.log(err, b, d, e); } } function g() {} }\nclass K { m(x) { return this.y ?? x; } }\nlabel: for (;;) break label;\nf([], {b: 1, c: [2]}, new K(), document, window.devicePixelRatio, fetch);'],
+]) {
+    const found = undefinedNames(file, code);
+    check(`the check finds no undefined name in ${file}`, found.length === 0, found.join(' | '));
+}
+
 // The component tests of the recipes (examples/tests/*.test.js and .jsx) must compile too. They run with Vitest, which
 // this repository does not install.
 for (const file of readdirSync(path.join(dir, 'tests')).filter(f => /\.test\.jsx?$/.test(f)).sort()) {
