@@ -384,6 +384,41 @@ void main() {
   o = vec4(c.rgb * a, a);
 }`],
 
+    // The distance field of glyphs that the canvas drew (#1841), into the texture of the glyph atlas: the same field as
+    // a distance transform of the coverage on both sides of the edge (Felzenszwalb and Huttenlocher), found here by a
+    // search of the pixels nearby, within the place of the glyph on the canvas (v_box). A pixel 6 or more pixels out,
+    // or 2 or more pixels in, has the value 0 or 255, so the search goes no farther. A pixel that is less than half
+    // covered looks for the nearest ink, ring by ring, and stops at a ring that cannot be nearer; the others look for
+    // the nearest pixel that is not covered.
+    glyphSdf: [`uniform vec2 u_size; layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_box; out vec2 v_src; flat out vec4 v_box;
+void main() { v_src = a_v.zw; v_box = a_box; gl_Position = vec4(a_v.xy / u_size * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform sampler2D u_cov; in vec2 v_src; flat in vec4 v_box; out vec4 o;
+ivec2 lo, hi;
+float cov(ivec2 q) { return any(lessThan(q, lo)) || any(greaterThan(q, hi)) ? -1.0 : texelFetch(u_cov, q, 0).a; }
+void main() {
+  ivec2 p = ivec2(floor(v_src));
+  lo = ivec2(v_box.xy); hi = ivec2(v_box.zw) - 1;
+  float a = cov(p), best = 1e20, dist;
+  if (a <= 0.5) {
+    if (a > 0.0) best = pow(0.5 - a, 2.0);
+    for (int r = 1; r <= 6 && best > float(r * r); r++) for (int i = 0; i < 8 * r; i++) {
+      int t = i % (2 * r) - r, side = i / (2 * r);
+      ivec2 d = side == 0 ? ivec2(t, -r) : side == 1 ? ivec2(r, t) : side == 2 ? ivec2(-t, r) : ivec2(-r, -t);
+      float c = cov(p + d);
+      if (c > 0.0) best = min(best, float(d.x * d.x + d.y * d.y) + (c < 1.0 ? pow(max(0.0, 0.5 - c), 2.0) : 0.0));
+    }
+    dist = sqrt(best);
+  } else {
+    if (a < 1.0) best = pow(a - 0.5, 2.0);
+    for (int y = -2; y <= 2; y++) for (int x = -2; x <= 2; x++) {
+      float c = cov(p + ivec2(x, y));
+      if (c >= 0.0 && c < 1.0) best = min(best, float(x * x + y * y) + (c > 0.0 ? pow(max(0.0, c - 0.5), 2.0) : 0.0));
+    }
+    dist = -sqrt(best);
+  }
+  o = vec4(clamp(floor(255.5 - 255.0 * (dist / ${SDF_RADIUS}.0 + 0.25)), 0.0, 255.0) / 255.0, 0.0, 0.0, 1.0);
+}`],
+
     // Buildings: roofs and walls with a height in meters and a baked light level.
     extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; out vec4 v_color; out vec2 v_tile; out vec2 v_p; out float v_side;
@@ -687,6 +722,14 @@ export class GLRenderer {
     private spriteBuf: WebGLBuffer;
     private sdfTex: WebGLTexture;
     private sdfVersion = -1;
+    /** The resets and the height of the glyph atlas that the texture has (see `glyphs`). */
+    private sdfResets = -1;
+    private sdfHeight = 0;
+    /** The canvas of the glyph atlas as a texture, and the quads that take its glyphs into the atlas. */
+    private coverageTex?: WebGLTexture;
+    private coverageSize = [0, 0];
+    private sdfVao?: WebGLVertexArrayObject;
+    private sdfBuf?: WebGLBuffer;
     private spriteTex: WebGLTexture;
     private spriteSized = false;
     /** The width and height of the texture of the images that are added at runtime. */
@@ -1978,16 +2021,9 @@ export class GLRenderer {
 
         if (labels.length) {
             const quads = this.textQuads(labels); // shaping may add glyphs, so build quads before uploading the atlas
+            if (this.sdfVersion !== s.atlas.version) this.glyphs(s.atlas);
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, this.sdfTex);
-            if (this.sdfVersion !== s.atlas.version) {
-                const a = s.atlas, d = a.dirty;
-                // Usually only a few rows of new glyphs changed; send just those.
-                if (d && d[1] > d[0]) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, d[0], a.width, d[1] - d[0], gl.RED, gl.UNSIGNED_BYTE, a.data.subarray(d[0] * a.width, d[1] * a.width));
-                else if (!d) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, a.width, a.height, 0, gl.RED, gl.UNSIGNED_BYTE, a.data);
-                a.dirty = [a.height, 0];
-                this.sdfVersion = a.version;
-            }
             const u = use('text');
             gl.uniform2f(u.u_tex, s.atlas.width, s.atlas.height);
             gl.uniform1i(u.u_sdf, 0);
@@ -2001,6 +2037,87 @@ export class GLRenderer {
             gl.drawArrays(gl.TRIANGLES, 0, n);
         }
 
+    }
+
+    /**
+     * Brings the texture of the glyph atlas up to date: the glyphs from glyph files from `data`, and those that the
+     * canvas drew as distance fields that the GPU computes from the canvas (#1841). Nothing is read back to the CPU.
+     * It runs during a frame (`drawLabels`) and between frames (`GlyphAtlas.flush`), and leaves the screen as the
+     * framebuffer, with BLEND on.
+     */
+    glyphs(a: GlyphAtlas) {
+        const gl = this.gl;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.sdfTex);
+        if (this.sdfResets !== a.resets) {
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, a.width, a.height, 0, gl.RED, gl.UNSIGNED_BYTE, a.data);
+            this.sdfResets = a.resets; this.sdfHeight = a.height; a.dirty = [];
+        } else if (this.sdfHeight !== a.height) {
+            // The atlas grew: its glyphs keep their places, and those that the GPU computed exist only in the texture.
+            const old = this.sdfTex;
+            this.sdfTex = this.newTexture();
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, a.width, a.height, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, old, 0);
+            gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, a.width, this.sdfHeight);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.deleteTexture(old);
+            this.sdfHeight = a.height;
+        }
+        // (Each part of `data` is sent in place, with the rows of `data` as the rows of the upload.)
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, a.width);
+        for (const [x, y, w, h] of a.dirty) {
+            gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, x); gl.pixelStorei(gl.UNPACK_SKIP_ROWS, y);
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED, gl.UNSIGNED_BYTE, a.data);
+        }
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0); gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0); gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+        a.dirty = [];
+        if (a.drawn.length) {
+            const c = a.canvas;
+            if (!this.coverageTex) {
+                this.coverageTex = this.newTexture();
+                this.sdfVao = gl.createVertexArray()!;
+                gl.bindVertexArray(this.sdfVao);
+                this.sdfBuf = gl.createBuffer()!;
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.sdfBuf);
+                gl.enableVertexAttribArray(0);
+                gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0);
+                gl.enableVertexAttribArray(1);
+                gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16);
+            }
+            gl.bindTexture(gl.TEXTURE_2D, this.coverageTex);
+            if (this.coverageSize[0] !== c.width || this.coverageSize[1] !== c.height) {
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, c.width, c.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                this.coverageSize = [c.width, c.height];
+            }
+            // (Only the rows that glyphs use. In Firefox this upload does not wait for the page thread, as getImageData does.)
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, c.width, a.canvasRows, gl.RGBA, gl.UNSIGNED_BYTE, c);
+            const v = new Float32Array(a.drawn.length * 48);
+            let o = 0;
+            for (const [sx, sy, x, y, w, h] of a.drawn) {
+                for (const [i, j] of [[0, 0], [1, 0], [0, 1], [0, 1], [1, 0], [1, 1]]) {
+                    v.set([x + i * w, y + j * h, sx + i * w, sy + j * h, sx, sy, sx + w, sy + h], o); o += 8;
+                }
+            }
+            const u = this.ready('glyphSdf');
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.sdfTex, 0);
+            gl.viewport(0, 0, a.width, a.height);
+            gl.disable(gl.BLEND);
+            gl.useProgram(u.prog);
+            this.current = null;
+            gl.uniform2f(u.u.u_size, a.width, a.height);
+            gl.uniform1i(u.u.u_cov, 0);
+            gl.bindVertexArray(this.sdfVao!);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.sdfBuf!);
+            gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
+            gl.drawArrays(gl.TRIANGLES, 0, o / 8);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+            gl.enable(gl.BLEND);
+            a.drawnSent();
+        }
+        this.sdfVersion = a.version;
     }
 
     /** Kept between frames and grown when necessary, as `textData` is: icons are built again on each frame. */

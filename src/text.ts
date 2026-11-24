@@ -219,10 +219,23 @@ export class GlyphAtlas extends BaseShaper {
     /** Starts at 128 rows (256 KB) and doubles up to 2048 rows (4 MB) as glyphs arrive (#27). */
     height = 128;
     data = new Uint8Array(this.width * this.height);
-    /** Bumped whenever pixels change, so the renderer knows to re-upload. */
+    /** Bumped whenever glyphs are added, so the renderer knows to bring its texture up to date. */
     version = 0;
-    /** Rows changed since the renderer last uploaded, so it can send just those; null means everything. */
-    dirty: [number, number] | null = null;
+    /**
+     * The places of the glyphs from glyph files that the renderer has not sent yet, as [x, y, w, h] in `data`
+     * (neighbors on one shelf share one). `data` has only these glyphs: the renderer computes the distance fields of
+     * glyphs drawn with the canvas itself, into its texture (see `drawn`). After a reset, it sends all of `data`.
+     */
+    dirty: number[][] = [];
+    /**
+     * Glyphs drawn on the canvas (`canvas`) that wait for the renderer, each [x, y] on the canvas then [x, y, w, h] in
+     * the atlas. Nothing reads the pixels of the canvas back: in Firefox, `getImageData` in a worker waits until the
+     * page thread is free (#1841). The renderer uploads the canvas into a texture and computes the distance field
+     * of each glyph on the GPU, then calls `drawnSent`.
+     */
+    drawn: number[][] = [];
+    /** Called when the canvas is full: the renderer takes the glyphs that wait (`drawn`) so that the canvas can be used again. */
+    flush?: () => void;
     /** How many times the atlas has been emptied. Shaped text from before a reset points at stale positions. */
     resets = 0;
     private glyphs = new Map<string, Glyph>();
@@ -232,16 +245,31 @@ export class GlyphAtlas extends BaseShaper {
     private penX = 1;
     private penY = 1;
     private shelf = 0;
+    /** The shelf packing of the canvas, as of the atlas: the glyphs that wait for the renderer. */
+    private canvasX = 0;
+    private canvasY = 0;
+    private canvasShelf = 0;
+    /** The canvas that glyphs are drawn on, and the number of its rows that glyphs use. */
+    get canvas() { return this.ctx.canvas; }
+    get canvasRows() { return this.canvasY + this.canvasShelf; }
 
     constructor(private family: string) {
         super();
         this.ctx = this.newContext();
     }
 
-    private newContext(): Canvas2D {
-        const size = 256;
-        const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(size, size) : Object.assign(document.createElement('canvas'), {width: size, height: size});
+    /** The canvas is as wide as the atlas, so that any glyph fits, and 128 rows high (1 MB), or as high as the highest glyph. */
+    private newContext(height = 128): Canvas2D {
+        const width = this.width;
+        const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(width, height) : Object.assign(document.createElement('canvas'), {width, height});
+        // (A canvas in memory, not on the GPU: the renderer uploads it into its own context.)
         return canvas.getContext('2d', {willReadFrequently: true}) as Canvas2D;
+    }
+
+    /** The renderer has taken the glyphs that waited: the canvas is free again. */
+    drawnSent() {
+        if (this.canvasRows) this.ctx.clearRect(0, 0, this.width, this.canvasRows);
+        this.drawn = []; this.canvasX = this.canvasY = this.canvasShelf = 0;
     }
 
     protected line(text: string, font: string, spacing: number): ShapedLine {
@@ -291,9 +319,9 @@ export class GlyphAtlas extends BaseShaper {
         // A canvas context remembers which font it resolved for a given font string, so after new fonts load it
         // would keep drawing with the old fallback. A fresh context resolves them again.
         if (fontsChanged) { this.ctx = this.newContext(); this.warmed.clear(); this.fontsRev++; }
-        this.data.fill(0); this.glyphs.clear(); this.reset();
+        this.data.fill(0); this.glyphs.clear(); this.reset(); this.drawnSent();
         this.penX = this.penY = 1; this.shelf = 0;
-        this.version++; this.resets++; this.dirty = null;
+        this.version++; this.resets++; this.dirty = [];
     }
 
     /**
@@ -346,14 +374,13 @@ export class GlyphAtlas extends BaseShaper {
         }
         return g;
     }
-    /** Puts the distance field of a glyph into the atlas. */
-    private pack(g: Glyph, sdf: Uint8Array, w: number, h: number) {
+    /** Finds the place of a glyph in the atlas. With `sdf` (a glyph from a file), its distance field goes into `data`. */
+    private pack(g: Glyph, sdf: Uint8Array | null, w: number, h: number) {
         if (this.penX + w + 1 > this.width) { this.penX = 1; this.penY += this.shelf + 1; this.shelf = 0; }
+        // (Rows keep their offsets when the atlas grows: the renderer copies its texture into a larger one.)
         while (this.penY + h + 1 > this.height && this.height < 2048) {
-            // Rows keep their offsets when the atlas grows, so the old pixels are copied as they are; the renderer
-            // then sends the whole atlas again (dirty = null).
             const data = new Uint8Array(this.width * (this.height *= 2));
-            data.set(this.data); this.data = data; this.dirty = null;
+            data.set(this.data); this.data = data;
         }
         if (this.penY + h + 1 > this.height) {
             // Atlas full: start over. Shaped text holds glyph references, so drop those too.
@@ -361,11 +388,28 @@ export class GlyphAtlas extends BaseShaper {
             this.onReset?.();
         }
         g.x = this.penX; g.y = this.penY; g.w = w; g.h = h;
-        for (let row = 0; row < h; row++) this.data.set(sdf.subarray(row * w, row * w + w), (g.y + row) * this.width + g.x);
+        if (sdf) {
+            for (let row = 0; row < h; row++) this.data.set(sdf.subarray(row * w, row * w + w), (g.y + row) * this.width + g.x);
+            const last = this.dirty[this.dirty.length - 1];
+            if (last && last[1] === g.y && last[0] + last[2] + 1 === g.x) { last[2] += w + 1; last[3] = Math.max(last[3], h); }
+            else this.dirty.push([g.x, g.y, w, h]);
+        }
         this.penX += w + 1;
         this.shelf = Math.max(this.shelf, h);
-        if (this.dirty) { this.dirty[0] = Math.min(this.dirty[0], g.y); this.dirty[1] = Math.max(this.dirty[1], g.y + h); }
         this.version++;
+    }
+
+    /** Finds a place on the canvas for a glyph of w × h pixels; the renderer takes the glyphs on it first when it is full. */
+    private place(w: number, h: number): [number, number] {
+        if (this.canvasX + w > this.width) { this.canvasX = 0; this.canvasY += this.canvasShelf; this.canvasShelf = 0; }
+        if (this.canvasY + h > this.ctx.canvas.height) {
+            if (this.drawn.length) this.flush?.();
+            this.drawnSent();
+            if (h > this.ctx.canvas.height) this.ctx = this.newContext(h);
+        }
+        const at: [number, number] = [this.canvasX, this.canvasY];
+        this.canvasX += w; this.canvasShelf = Math.max(this.canvasShelf, h);
+        return at;
     }
 
     private glyph(text: string, font: string): Glyph {
@@ -388,16 +432,13 @@ export class GlyphAtlas extends BaseShaper {
         const w = gw + 2 * B, h = gh + 2 * B;
         g = {x: 0, y: 0, w, h, left: -left, top, advance: m.width};
         if (gw && gh && w < this.width) {
-            if (ctx.canvas.width < w || ctx.canvas.height < h) {
-                ctx.canvas.width = Math.max(ctx.canvas.width, w);
-                ctx.canvas.height = Math.max(ctx.canvas.height, h);
-                ctx.font = css;
-            }
-            ctx.clearRect(0, 0, w, h);
-            ctx.textBaseline = 'alphabetic';
-            ctx.fillStyle = '#000';
-            ctx.fillText(text, B + left, B + top);
-            this.pack(g, toSDF(ctx.getImageData(0, 0, w, h).data, w, h), w, h);
+            const [x, y] = this.place(w, h), c = this.ctx;
+            c.font = css;
+            c.textBaseline = 'alphabetic';
+            c.fillStyle = '#000';
+            c.fillText(text, x + B + left, y + B + top);
+            this.pack(g, null, w, h);
+            this.drawn.push([x, y, g.x, g.y, w, h]);
         } else { g.w = g.h = 0; }
         this.glyphs.set(key, g);
         return g;
@@ -425,57 +466,4 @@ export function readGlyphs(bytes: Uint8Array) {
         }
     }
     return out;
-}
-
-const INF = 1e20;
-
-/** Alpha coverage -> signed distance field (Felzenszwalb & Huttenlocher squared distance transform, run on both sides of the edge). */
-function toSDF(rgba: Uint8ClampedArray, w: number, h: number): Uint8Array {
-    const n = w * h, outer = new Float64Array(n), inner = new Float64Array(n);
-    for (let i = 0; i < n; i++) {
-        const a = rgba[i * 4 + 3] / 255;
-        outer[i] = a === 1 ? 0 : a === 0 ? INF : Math.max(0, 0.5 - a) ** 2;
-        inner[i] = a === 1 ? INF : a === 0 ? 0 : Math.max(0, a - 0.5) ** 2;
-    }
-    const size = Math.max(w, h), f = new Float64Array(size), d = new Float64Array(size), z = new Float64Array(size + 1), v = new Int32Array(size);
-    edt(outer, w, h, f, d, v, z);
-    edt(inner, w, h, f, d, v, z);
-    const out = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-        const dist = Math.sqrt(outer[i]) - Math.sqrt(inner[i]);
-        out[i] = Math.max(0, Math.min(255, Math.round(255 - 255 * (dist / SDF_RADIUS + 0.25))));
-    }
-    return out;
-}
-
-function edt(grid: Float64Array, w: number, h: number, f: Float64Array, d: Float64Array, v: Int32Array, z: Float64Array) {
-    for (let x = 0; x < w; x++) {
-        for (let y = 0; y < h; y++) f[y] = grid[y * w + x];
-        edt1d(f, d, v, z, h);
-        for (let y = 0; y < h; y++) grid[y * w + x] = d[y];
-    }
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) f[x] = grid[y * w + x];
-        edt1d(f, d, v, z, w);
-        for (let x = 0; x < w; x++) grid[y * w + x] = d[x];
-    }
-}
-
-function edt1d(f: Float64Array, d: Float64Array, v: Int32Array, z: Float64Array, n: number) {
-    let k = 0;
-    v[0] = 0; z[0] = -INF; z[1] = INF;
-    for (let q = 1; q < n; q++) {
-        let s: number;
-        do {
-            const r = v[k];
-            s = (f[q] - f[r] + q * q - r * r) / (2 * (q - r));
-        } while (s <= z[k] && --k > -1);
-        k++;
-        v[k] = q; z[k] = s; z[k + 1] = INF;
-    }
-    for (let q = 0, k = 0; q < n; q++) {
-        while (z[k + 1] < q) k++;
-        const r = v[k];
-        d[q] = (q - r) * (q - r) + f[r];
-    }
 }
