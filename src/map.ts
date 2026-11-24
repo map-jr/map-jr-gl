@@ -1472,7 +1472,8 @@ export class Map {
         try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); this.post({type: 'repaint'}); } return; }
         // (A style that was asked for later has replaced this one.)
         if (turn !== this.styleTurn) return;
-        this.styleLoading = false;
+        // (An `idle` of the engine was dropped while the style loaded, and a style that changes nothing below sends no command: a repaint brings `idle` again.)
+        this.styleLoading = false; this.post({type: 'repaint'});
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         next = options?.transformStyle?.(this.rawStyle, next) ?? next;
         // (With `diff`, as in MapLibre GL JS 6.17: a style that differs from this one only in the camera changes nothing
