@@ -37,7 +37,8 @@ The map shows the controls of the last description, and each item of `controls` 
   `position` with the same `key` moves the control: the map calls its `onRemove`, then its `onAdd` again, and adds it
   last in the new corner. A control that is added again starts in its initial state, so a button that was turned
   on is off again. This is also true of a built-in control whose `position` changes.
-- **A duplicate.** When the list has the same control twice, the map shows it once.
+- **A duplicate.** When the list has the same control twice, the map shows it once. For two items of
+  [`custom`](#custom) with the same `key`, it shows the first. The development build warns once for each duplicate.
 - **Order.** When the map is created, the first control of a corner in the list is nearest to the corner. A control
   that a later description adds goes after the controls that the corner has.
 - **Loading.** Each control except [`custom`](#custom) appears a moment after the map adds it, because the map
