@@ -69,7 +69,8 @@ scope.onmessage = e => {
         relayWarnings(msg => scope.postMessage({type: 'warn', msg}));
         try {
             const engine = new Engine(m.canvas, m.options, m.ports.map((p: MessagePort) => new PortBackend(p)), ev => scope.postMessage(ev));
-            scope.onmessage = ev => engine.command(ev.data);
+            // (The code of a part that the page fetched still comes after the engine has started: #1849.)
+            scope.onmessage = ev => { if (ev.data.role === 'part') given(ev.data.name).done(ev.data.code); else engine.command(ev.data); };
         } catch (err) {
             scope.postMessage({type: 'fatal', message: String((err as Error).message)});
         }
