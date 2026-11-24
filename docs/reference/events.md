@@ -94,7 +94,9 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
 ## A lost WebGL context
 
 When the browser takes the WebGL context away, the map fires `webglcontextlost`, starts again on a new canvas with
-the same view and data, and fires `webglcontextrestored`. A map with the worker renderer starts again on the main
+the same view and data, and fires `webglcontextrestored`. The new canvas also keeps what calls set: the padding, the
+images, the feature state, the fonts of `addFonts`, and in `@map-jr/map-jr-gl/maplibre-compat` the function of
+`setTransformConstrain` and the values of `setSourceTileLodParams`. A map with the worker renderer starts again on the main
 thread in these cases, and with `renderer: 'worker'` it writes a warning:
 
 - the worker loses the context before its first frame;

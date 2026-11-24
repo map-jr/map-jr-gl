@@ -4224,6 +4224,29 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: setTransformConstrain on a map that draws in a worker warns once and fires no error (#1020)',
             w1020.warnings.length === 1 && w1020.warnings[0].includes("renderer: 'main'") && !w1020.errors.length && w1020.zoom === 2, JSON.stringify(w1020));
+        // #1050: after a lost WebGL context, the new engine keeps the constrain function and the padding that calls set.
+        const l1050 = await page.evaluate(async () => {
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new compat.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 2, fadeDuration: 0});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            m.setTransformConstrain((lngLat, zoom) => ({center: lngLat, zoom: Math.min(zoom, 3)}));
+            m.setPadding({top: 0, right: 0, bottom: 0, left: 40});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const restored = new Promise(r => { m.once('webglcontextrestored', r); setTimeout(r, 15000); });
+            m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+            await restored;
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const padding = m.getPadding().left;
+            // (The engine reports the camera that it has: a zoom past 3 shows that it has lost the function.)
+            await new Promise(r => { m.once('moveend', r); m.easeTo({zoom: 6, duration: 100}); setTimeout(r, 5000); });
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const zoom = m.getZoom();
+            m.remove(); el.remove();
+            return {zoom, padding};
+        });
+        check('[main] maplibre-compat: after a lost WebGL context the camera keeps the constrain function and the padding (#1050)',
+            Math.abs(l1050.zoom - 3) < 1e-9 && l1050.padding === 40, JSON.stringify(l1050));
         // #1022: coveringTiles gives the tiles of MapLibre GL JS (served at /ml/) for the same view and options.
         const m1022 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
