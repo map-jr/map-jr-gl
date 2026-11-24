@@ -1,8 +1,9 @@
 # Nuxt
 
 The module `@map-jr/map-jr-gl/nuxt` sets up the [Vue components and composables](vue.md) of `@map-jr/map-jr-gl/vue`
-in Nuxt. With the module, Vite loads the tile workers in development. The module requires `@nuxt/kit` 3 or 4 as a peer dependency. The module has no options: a key `mapJr` in
-`nuxt.config.ts` is accepted and has no effect.
+in Nuxt. With the module, Vite loads the tile workers in development. The module requires `@nuxt/kit` 3 or 4 as a peer dependency. The module has no options. A key `mapJr` in
+`nuxt.config.ts`, or options next to the module in `modules`, have no effect, and the module warns once when Nuxt
+starts.
 
 ```ts
 // nuxt.config.ts

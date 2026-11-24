@@ -42,3 +42,15 @@ test('every control of src/control-specs.ts is auto-imported as <name>Control (#
     assert.deepEqual([...new Set(imported.map((i: any) => i.name))].sort(), exported.sort());
     for (const i of imported) assert.equal(i.as, i.name + 'Control');
 });
+
+test('options of the module, such as the key mapJr of nuxt.config, give one warning (#1241)', () => {
+    const warn = console.warn, seen: string[] = [];
+    console.warn = (...args: unknown[]) => { seen.push(args.join(' ')); };
+    try {
+        mod.setup({}, {options: {}});
+        assert.equal(seen.length, 0);
+        mod.setup({style: 'x'}, {options: {}});
+    } finally { console.warn = warn; }
+    assert.equal(seen.length, 1);
+    assert.match(seen[0], /^\[map-jr-gl\] nuxt\.config: .*has no options, so it ignores "style"\./);
+});
