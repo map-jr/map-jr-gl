@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Switch between styles</title>
+<!-- A button of the map opens a list of three styles. Below the map, a line of text names the chosen style, and a
+     button hides and shows four sights. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="8.32,47.054" zoom="13.5"
+        attribution-compact style="height: 500px"></map-jr>
+<p id="readout">Style: Elevation</p>
+<button id="toggle">Hide sights</button>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {navigation, styles} from '@map-jr/map-jr-gl/controls';
+
+  const base = 'https://styles.map-jr.org/1/';
+  const entries = [
+    {label: 'Elevation', style: base + 'elevation-zero.json'},
+    {label: 'Positron', style: base + 'openfreemap-positron.json'},
+    {label: 'Dark', style: base + 'openfreemap-dark.json'},
+  ];
+  const sights = {
+    type: 'FeatureCollection',
+    features: [
+      ['Chapel Bridge', 8.3077, 47.0516],
+      ['Lion Monument', 8.3103, 47.0584],
+      ['KKL Luzern', 8.3125, 47.0502],
+      ['Swiss Museum of Transport', 8.3357, 47.0527],
+    ].map(([name, lng, lat]) => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [lng, lat]}})),
+  };
+  const sightsLayer = {id: 'sights', type: 'circle', source: 'sights',
+    paint: {'circle-radius': 7, 'circle-color': '#d6453d', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2}};
+
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  const toggle = document.getElementById('toggle');
+  let shown = true;
+  map.data = {sights};
+  map.layers = [sightsLayer];
+  // Store the chosen style on the element. Otherwise the next change of a property passes the attribute map-style
+  // again, and the map shows the first style again.
+  map.controls = [navigation(), styles({entries, onStyleChange: entry => {
+    map.mapStyle = entry.style;
+    readout.textContent = `Style: ${entry.label}`;
+  }})];
+  toggle.addEventListener('click', () => {
+    shown = !shown;
+    toggle.textContent = shown ? 'Hide sights' : 'Show sights';
+    map.layers = shown ? [sightsLayer] : [];
+  });
+</script>

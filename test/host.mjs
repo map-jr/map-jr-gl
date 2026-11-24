@@ -4061,7 +4061,7 @@ for (const form of ['svelte', 'element']) {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     try {
-        for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles']) {
+        for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles', 'styles']) {
             await page.goto(`${origin}/site/examples/run.html?id=${id}&form=${form}`);
             const idle = await page.waitForFunction(id => window.exampleError || window.maps?.[id]?.state.get().idle, id, {timeout: 30000}).then(() => true, () => false);
             const [error, buttons, inStage] = await page.evaluate(() => [window.exampleError, document.querySelectorAll('.actions button').length, !!document.querySelector('.live canvas')]);
@@ -4069,7 +4069,7 @@ for (const form of ['svelte', 'element']) {
         }
     } catch (e) { results.push(String(e.message).split('\n')[0]); }
     check(`examples, harness page: the ${form} form of each example runs in the stage and reaches idle (#1115)`,
-        results.join(' ') === 'basic:ok reactive:ok/2 markers:ok draggable:ok images:ok terrain:ok/2 globe:ok query:ok hover:ok fit:ok/1 back:ok/1 pmtiles:ok' && !errors.length, `${results.join(' ')} ${errors.join(' | ')}`);
+        results.join(' ') === 'basic:ok reactive:ok/2 markers:ok draggable:ok images:ok terrain:ok/2 globe:ok query:ok hover:ok fit:ok/1 back:ok/1 pmtiles:ok styles:ok/1' && !errors.length, `${results.join(' ')} ${errors.join(' | ')}`);
     await page.close();
 }
 // Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested
