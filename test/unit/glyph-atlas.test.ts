@@ -10,13 +10,56 @@ test('the glyph atlas starts small and grows, keeping the pixels it has', () => 
     assert.ok(atlas.data.length <= 2048 * 256, `starts with ${atlas.data.length} bytes`);
     const cell = new Uint8Array(40 * 40).fill(7), first = {} as any;
     atlas.pack(first, cell, 40, 40);
-    atlas.dirty = [atlas.height, 0];
+    atlas.dirty = [];
     for (let i = 0; i < 1000; i++) atlas.pack({}, cell, 40, 40);
     assert.equal(atlas.resets, 0);
     assert.ok(atlas.height > 128 && atlas.height <= 2048);
     assert.equal(atlas.data.length, atlas.width * atlas.height);
-    assert.equal(atlas.dirty, null, 'a grown atlas is sent again as a whole');
     assert.equal(atlas.data[first.y * atlas.width + first.x], 7);
+    // (The renderer copies its texture when the atlas grows, so only the new glyphs are sent: one part for each shelf.)
+    assert.equal(new Set(atlas.dirty.map((r: number[]) => r[1])).size, atlas.dirty.length, 'one part for each shelf');
+    assert.equal(atlas.dirty.reduce((n: number, [, , w]: number[]) => n + (w + 1) / 41, 0), 1000);
+    assert.ok(atlas.dirty.every(([x, , w, h]: number[]) => x >= 1 && x + w <= atlas.width && h === 40));
+});
+
+// In Firefox, getImageData in a worker waits until the page thread is free (#1841): glyphs that the canvas draws wait
+// on the canvas for the renderer, which computes their distance fields on the GPU, and nothing reads the canvas.
+test('glyphs drawn with the canvas wait for the renderer, which takes them when the canvas is full', () => {
+    const atlas = new GlyphAtlas('sans-serif') as any, drawn: number[][] = [], taken: number[] = [];
+    const fake = (height: number) => ({canvas: {width: 2048, height}, font: '', textBaseline: '', fillStyle: '',
+        measureText: () => ({width: 20, actualBoundingBoxLeft: 0, actualBoundingBoxRight: 20, actualBoundingBoxAscent: 20, actualBoundingBoxDescent: 4}),
+        fillText: (_t: string, x: number, y: number) => drawn.push([x, y]), clearRect() {},
+        getImageData() { throw new Error('getImageData'); }});
+    atlas.ctx = fake(128);
+    atlas.newContext = fake;
+    atlas.flush = () => { taken.push(atlas.drawn.length); atlas.drawnSent(); };
+    const first = atlas.glyph('a', '400|x');
+    assert.deepEqual(atlas.drawn, [[0, 0, first.x, first.y, 28, 32]], 'a place on the canvas and one in the atlas');
+    assert.deepEqual(drawn[0], [4, 24], 'drawn with the border of SDF_BUFFER');
+    for (let i = 0; i < 400; i++) atlas.glyph(String.fromCharCode(0x100 + i), '400|x');
+    // 73 cells of 28 pixels fit in a row of 2048, and 4 rows of 32 in 128.
+    assert.deepEqual(taken, [292]);
+    assert.equal(atlas.drawn.length, 401 - 292);
+    assert.deepEqual(atlas.dirty, [], 'no glyph of a file');
+});
+
+// When the atlas is full, it is emptied, and the canvas with it: the glyph that fills it is drawn after that, at its
+// own place on the emptied canvas, and no other glyph is drawn over it.
+test('a glyph that empties the full atlas is drawn on the emptied canvas, at a place of its own', () => {
+    const atlas = new GlyphAtlas('sans-serif') as any, fills: number[][] = [];
+    const fake = (height: number) => ({canvas: {width: 2048, height}, font: '', textBaseline: '', fillStyle: '', clearRect() {},
+        measureText: () => ({width: 100, actualBoundingBoxLeft: 0, actualBoundingBoxRight: 100, actualBoundingBoxAscent: 100, actualBoundingBoxDescent: 20}),
+        fillText: (_t: string, x: number, y: number) => fills.push([x, y])});
+    atlas.ctx = fake(128); atlas.newContext = fake;
+    atlas.flush = () => atlas.drawnSent();
+    let i = 0;
+    while (atlas.resets === 0) atlas.glyph(String.fromCodePoint(0x4e00 + i++), '400|x');
+    assert.equal(atlas.drawn.length, 1, 'the glyph that emptied the atlas waits for the renderer');
+    const [sx, sy, x, y] = atlas.drawn[0];
+    assert.deepEqual([sx, sy, x, y], [0, 0, 1, 1], 'at the start of the canvas and of the atlas');
+    assert.deepEqual(fills[fills.length - 1], [sx + 4, sy + 104], 'drawn after the canvas was emptied');
+    atlas.glyph(String.fromCodePoint(0x4e00 + i), '400|x');
+    assert.notDeepEqual(atlas.drawn[1].slice(0, 2), atlas.drawn[0].slice(0, 2), 'the next glyph has another place on the canvas');
 });
 
 // The first use of a font family can take half a second, so the fonts of the style are looked up before the first

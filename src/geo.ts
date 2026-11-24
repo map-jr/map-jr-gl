@@ -60,6 +60,8 @@ export const mercY = (lat: number) => {
     return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
 };
 export const lngFromMerc = (x: number) => x * 360 - 180;
+/** The default vertical field of view in radians (36.87 degrees, as in MapLibre GL JS). */
+export const FOV = 0.6435011087932844;
 export const latFromMerc = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180 / Math.PI;
 
 /** Padding in CSS pixels: one number for all sides, or some of the sides. */
@@ -240,8 +242,10 @@ export class Transform {
         if (dy) this.lat = latFromMerc(y2 / ws);
     }
 
-    /** Distance from the camera to the map center in pixels; fixes the field of view at MapLibre's 36.87 degrees. */
-    get cameraDistance() { return 0.5 / Math.tan(0.6435011087932844 / 2) * this.height; }
+    /** The vertical field of view in radians: 36.87 degrees by default, as in MapLibre GL JS (`setVerticalFieldOfView` of the compat entry). */
+    fov = FOV;
+    /** Distance from the camera to the map center in pixels, from the vertical field of view. */
+    get cameraDistance() { return 0.5 / Math.tan(this.fov / 2) * this.height; }
     /** Pixels per meter of height at the map center. */
     get pixelsPerMetre() { return this.worldSize / (40075016.686 * Math.cos(this.lat * Math.PI / 180)); }
 
@@ -377,7 +381,7 @@ export class Transform {
         const near = Math.max(d / 2, d + this.elevation * this.pixelsPerMetre / Math.cos(lp)), oy = this.cy - this.height / 2;
         const ground = Math.PI / 2 + p, far = (a: number) => Math.sin(a) * near / Math.sin(clamp(Math.PI - ground - a, 0.01, Math.PI - 0.01));
         const ha = Math.atan(h / d), min = (90 - 89.25) * Math.PI / 180;
-        const top = Math.min(far(0.6435011087932844 * (0.5 + oy / this.height)), far(ha > min ? 2 * ha * (0.5 + oy / (h * 2)) : min));
+        const top = Math.min(far(this.fov * (0.5 + oy / this.height)), far(ha > min ? 2 * ha * (0.5 + oy / (h * 2)) : min));
         return [near, (Math.sin(lp) * top + near) * 1.01];
     }
 
@@ -505,7 +509,7 @@ export class Transform {
         if (want < minzoom) return [];
         const z = Math.min(want, maxzoom), n = 2 ** z;
         // (With 3D terrain, ground that is nearer to the camera than the center can take a deeper level, as in MapLibre.)
-        if (this.pitch > 0.5) return this.coveringPitched(this.heightAt || lod && this.pitch > 60 ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod, minzoom);
+        if (this.pitch > 0.5) return this.coveringPitched(this.mlRule(lod) ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod, minzoom);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [mx, my] of this.footprints().flat()) {
             x0 = Math.min(x0, mx); x1 = Math.max(x1, mx);
@@ -521,6 +525,9 @@ export class Transform {
         const d = (t: TileID) => (t.x + t.w * n + 0.5 - cx) ** 2 + (t.y + 0.5 - cy) ** 2;
         return out.sort((a, b) => d(a) - d(b));
     }
+
+    /** Whether the tile cover of a tilted camera takes the rule of MapLibre GL JS (see `coveringPitched`). */
+    private mlRule(lod?: number[]) { return !!this.heightAt || !!lod && this.pitch > 60 || this.fov !== FOV && this.pitch > clamp(78.5 - this.fov * 90 / Math.PI, 0, 60); }
 
     /**
      * Tile cover for a tilted camera. The view is a trapezoid on the ground whose far edge covers much more area,
@@ -555,11 +562,12 @@ export class Transform {
             if (!overlaps(x0, y0, x1, y1)) return;
             // Depth of the tile's nearest point decides how much detail it needs: half the on-screen scale, one level less.
             let wanted: number;
-            if (this.heightAt || lod && this.pitch > 60) {
-                // With 3D terrain, or with the parameters of `setSourceTileLodParams` above a pitch of 60°, the rule is
-                // that of MapLibre GL JS, so that both show the same tiles.
+            if (this.mlRule(lod)) {
+                // With 3D terrain, with the parameters of `setSourceTileLodParams` above a pitch of 60°, or with a field of
+                // view that is not the default above the pitch where MapLibre GL JS starts to vary the zoom of its tiles
+                // (78.5° less half the field of view, at most 60°), the rule is that of MapLibre GL JS, so that both show the same tiles.
                 wanted = Math.min(maxZ, (round ? Math.round : Math.floor)(lodZoom(lod ?? [9.314, 3], exact,
-                    Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1]), camZ, d / ws)));
+                    Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1]), camZ, d / ws, this.fov)));
             } else {
                 const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
                 wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
@@ -582,11 +590,11 @@ export class Transform {
  * the tiles of an unpitched view. `d2` is the distance on the ground, `dz` the height of the camera and `d3` the
  * distance to the center, all in the same unit.
  */
-function lodZoom([levels, ratio]: number[], zoom: number, d2: number, dz: number, d3: number) {
-    const R = Math.PI / 180, H = 89.25 * R, f = 36.87 * R, b = 2 * ((levels - 1) / Math.log2(Math.cos(H - f) / Math.cos(H)) - 1);
+function lodZoom([levels, ratio]: number[], zoom: number, d2: number, dz: number, d3: number, f: number) {
+    const H = 89.25 * Math.PI / 180, b = 2 * ((levels - 1) / Math.log2(Math.cos(H - f) / Math.cos(H)) - 1);
     const sum = (a: number, c: number) => { let s = 0; for (let i = 0; i < 10; i++) s += Math.cos(a + (i + 0.5) / 10 * (c - a)) ** (b - 1); return s * (c - a) / 10; };
     const pitch = Math.acos(dz / d3), hi = Math.min(H, pitch + f / 2), lo = Math.min(hi, pitch - f / 2), d = Math.hypot(d2, dz);
-    return zoom + Math.log2(d3 / d / Math.cos(f / 2)) + b * Math.log2(dz / d) / 2 - Math.log2(Math.max(1, sum(lo, hi) / sum(-f / 2, f / 2) / ratio)) / 2;
+    return zoom + Math.log2(d3 / d / Math.max(0.5, Math.cos(f / 2))) + b * Math.log2(dz / d) / 2 - Math.log2(Math.max(1, sum(lo, hi) / sum(-f / 2, f / 2) / ratio)) / 2;
 }
 
 /** The globeness at a zoom from stops [zoom, value, ...]: linear between stops, and the nearest stop outside them. */

@@ -3346,6 +3346,62 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The parts of the worker load on demand (#79): a map of vector tiles requests none, a map with a GeoJSON source
+// requests the GeoJSON part once in each tile worker for both of its maps and draws its data, and a part that does not load gives an error
+// that names the file. (The requests of a worker are seen in Chromium only.)
+for (const renderer of ['worker', 'main']) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const parts = [];
+        page.context().on('request', r => { const m = /map-jr-gl-worker-(\w+)\.js/.exec(r.url()); if (m) parts.push(m[1]); });
+        await page.goto(origin + '/bench');
+        const run = (what, missing) => page.evaluate(async ({renderer, what, missing}) => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), errors = [];
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}};
+            const spec = what === 'vector' ? {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}}
+                : {style: {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]}, initialView: {center: [0, 0], zoom: 1}};
+            const made = [0, 1].map(() => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                return {el, host: lib.createMap(el, {...spec, renderer, attribution: false, onError: e => errors.push(e.message)})};
+            });
+            const idle = await Promise.all(made.map(({host}) => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 10000); })));
+            if (missing) for (let i = 0; i < 50 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+            const b = await made[1].host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+            g.drawImage(bmp, 0, 0);
+            const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            for (const {host, el} of made) { host.destroy(); el.remove(); }
+            return {idle, centre, errors: [...new Set(errors)]};
+        }, {renderer, what, missing});
+        const vector = await run('vector'), afterVector = parts.splice(0);
+        const geojson = await run('geojson'), afterGeoJSON = parts.splice(0);
+        const seen = browserName === 'chromium';
+        check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
+            vector.idle.every(Boolean) && !vector.errors.length && geojson.idle.every(Boolean) && !geojson.errors.length && geojson.centre[2] > 200 && geojson.centre[0] < 50 &&
+            (!seen || (afterVector.length === 0 && afterGeoJSON.length >= 1 && afterGeoJSON.length <= 4 && afterGeoJSON.every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
+        if (seen) {
+            // (A new page: its workers have not loaded the part.)
+            const other = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                await other.route(/map-jr-gl-worker-geojson\.js/, route => route.abort());
+                await other.goto(origin + '/bench');
+                const failed = await other.evaluate(async renderer => {
+                    const lib = await import('/dist/map-jr-gl.js'), errors = [];
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                    const host = lib.createMap(el, {style: {version: 8, sources: {sq: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'sq', type: 'circle', source: 'sq'}]}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    for (let i = 0; i < 80 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+                    // (The tiles of the view, their retries and a query fail too: they add no second error.)
+                    await host.queryRenderedFeatures?.().catch?.(() => {});
+                    await new Promise(r => setTimeout(r, 2500));
+                    host.destroy(); el.remove();
+                    return errors;
+                }, renderer);
+                check(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`,
+                    failed.length === 1 && failed[0].includes('[map-jr-gl] The worker could not load') && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
+            } finally { await other.close(); }
+        } else skip(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`, `${browserName} does not show the requests of a worker to Playwright`);
+    } catch (e) { check(`[${renderer}] the test of the parts of the worker was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A style that is not a style (#539): an error of the map (`onError`) that says what is missing, no error
 // of the page, and the map draws the next style. Each style is given as an object and as the answer of a URL.
 for (const renderer of ['main', 'worker']) {
@@ -3592,6 +3648,50 @@ for (const renderer of renderers) {
         check('glyph files of the style: asked for by default, also with fonts, not for a style without glyphs; the removed field glyphs warns and has no effect; a map still loads without them or with bad ones',
             withFiles && without && none && fonts && withFonts && removed && stillAsked && warning && page200 && broken && count > 0 && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, none, fonts, withFonts, removed, stillAsked, warned, page200, broken, count, first: asked[0]}));
     } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// Labels without glyph files are drawn with a canvas, and the engine reads no pixels back to make them (#1841): in
+// Firefox, getImageData (and readPixels, convertToBlob) in a worker waits until the page thread is free, and the map
+// stops while the page is busy. The check counts these calls in the page and in every worker, for each renderer.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.addInitScript(() => {
+            const patch = `(() => { const bc = new BroadcastChannel('readbacks');
+                for (const [P, names] of [[self.OffscreenCanvasRenderingContext2D, ['getImageData', 'fillText']], [self.CanvasRenderingContext2D, ['getImageData', 'fillText']], [self.WebGL2RenderingContext, ['readPixels']], [self.OffscreenCanvas, ['convertToBlob']]]) {
+                    if (P) for (const k of names) { const f = P.prototype[k]; P.prototype[k] = function (...a) { bc.postMessage(k); return f.apply(this, a); }; }
+                } })();`;
+            (0, eval)(patch);
+            const Real = window.Worker;
+            window.Worker = function (url, opts) {
+                const src = opts?.type === 'module' ? `${patch}\nawait import(${JSON.stringify(String(new URL(url, location.href)))});` : `${patch}\nimportScripts(${JSON.stringify(String(new URL(url, location.href)))});`;
+                return new Real(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})), opts);
+            };
+            window.readbacks = {};
+            new BroadcastChannel('readbacks').onmessage = e => { window.readbacks[e.data] = (window.readbacks[e.data] ?? 0) + 1; };
+        });
+        await page.goto(`${origin}/style.json`);
+        const out = {};
+        for (const renderer of ['worker', 'main']) {
+            out[renderer] = await page.evaluate(async renderer => {
+                const lib = await import('/dist/map-jr-gl.js'), words = ['Harbor', 'Market', 'Station', 'Library', 'Garden', 'Bridge', 'Tower', 'Museum', 'Ferry', 'Plaza', 'Theater', 'Hospital'];
+                const features = words.flatMap((w, i) => [0, 1].map(j => ({type: 'Feature', properties: {name: `${w} ${renderer} ${j}`}, geometry: {type: 'Point', coordinates: [-74.02 + (i % 4) * 0.012, 40.70 + Math.floor(i / 4) * 0.008 + j * 0.004]}})));
+                const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'names', type: 'symbol', source: 'p', layout: {'text-field': ['get', 'name'], 'text-size': 14, 'text-allow-overlap': true}}]};
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+                window.readbacks = {};
+                const host = lib.createMap(el, {style, renderer, initialView: {center: [-74.0, 40.71], zoom: 12.5}, attribution: false});
+                const idle = await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 20000))]);
+                const used = host.state.get().renderer;
+                await new Promise(r => setTimeout(r, 300));
+                host.destroy(); el.remove();
+                return {idle, used, ...window.readbacks};
+            }, renderer);
+        }
+        const ok = r => r.idle && r.fillText > 0 && !r.getImageData && !r.readPixels && !r.convertToBlob;
+        check('labels drawn with the canvas: the engine reads no pixels back (no getImageData, readPixels or convertToBlob), with the worker and the main renderer (#1841)',
+            ok(out.worker) && ok(out.main) && out.main.used === 'main', JSON.stringify(out));
+    } catch (e) { check('labels drawn with the canvas, no readback: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // Web fonts of the description (#494): `fonts` in the shape of `font-faces` follows update(). A font that is added draws
