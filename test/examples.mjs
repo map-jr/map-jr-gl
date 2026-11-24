@@ -68,9 +68,9 @@ for (const file of readdirSync(path.join(dir, 'tests')).filter(f => /\.test\.jsx
 {
     const tsc = path.resolve(import.meta.dirname, '../node_modules/.bin/tsc'), run = spawnSync(tsc, ['-p', path.resolve(import.meta.dirname, 'types')], {encoding: 'utf8', shell: process.platform === 'win32'});
     const errors = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ?? ''}`.split('\n').filter(l => /error/i.test(l));
-    for (const [file, entry] of [['maplibre-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['maplibre-projects-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['main-code.ts', '@map-jr/map-jr-gl'], ['style-code.ts', '@map-jr/map-jr-gl'], ['adapters-code.tsx', '@map-jr/map-jr-gl/react'], ['vue-code.ts', '@map-jr/map-jr-gl/vue'], ['layer-types-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['maplibre-typed-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['compat-exported-types-code.ts', '@map-jr/map-jr-gl/maplibre-compat']]) {
+    for (const [file, entry] of [['maplibre-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['maplibre-projects-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['main-code.ts', '@map-jr/map-jr-gl'], ['style-code.ts', '@map-jr/map-jr-gl'], ['adapters-code.tsx', '@map-jr/map-jr-gl/react'], ['vue-code.ts', '@map-jr/map-jr-gl/vue'], ['layer-types-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['maplibre-typed-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['compat-exported-types-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['exported-types-code.ts', '@map-jr/map-jr-gl']]) {
         // (An error that names neither file, such as missing built types, fails both checks.)
-        const mine = errors.filter(l => l.includes(file) || !/(maplibre|maplibre-projects|maplibre-typed|compat-exported-types|main|style|adapters|vue|layer-types)-code\.tsx?/.test(l));
+        const mine = errors.filter(l => l.includes(`/${file}`) || !/(maplibre|maplibre-projects|maplibre-typed|compat-exported-types|exported-types|main|style|adapters|vue|layer-types)-code\.tsx?/.test(l));
         check(`types/${file} (${entry})`, run.status === 0 || mine.length === 0, mine.slice(0, 5).join(' | '));
     }
 }

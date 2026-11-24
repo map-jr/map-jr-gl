@@ -14,6 +14,15 @@ export const loaded = () => map.value?.state.get().loaded;
 // The props stay typed.
 export const style: string | object = null as unknown as Instance['$props']['mapStyle'];
 
+// Each optional prop of `MapJr` accepts `null`, as the field of the description does (#1304).
+export const nulls: Partial<Instance['$props']> = {
+    view: null, initialView: null, sources: null, layers: null, terrain: null, images: null, sprite: null, data: null,
+    interactiveLayers: null, hoverState: null, minZoom: null, maxZoom: null, maxPitch: null, maxBounds: null, cursor: null,
+    cooperativeGestures: null, colorScheme: null, locale: null, padding: null, controls: null, projection: null,
+    globalState: null, transformRequest: null, renderer: null, fonts: null, fontFamily: null, interactive: null,
+    antialias: null, nonce: null, attribution: null, hash: null,
+};
+
 // The composables take refs or getters and return refs of the documented feature types (#710).
 import {ref, type ShallowRef} from 'vue';
 import {useMapFeatures, useMapSource} from '@map-jr/map-jr-gl/vue';

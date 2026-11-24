@@ -180,9 +180,13 @@ await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [al
 // that these files share do not get the line, because each line counts against the size budgets. (The minifier of
 // Vite removes a banner that Rollup adds, so the line is added here. The source map gets an empty first line too, so
 // that it still fits.)
+// The files of the React entry start with 'use client' (a line of its own, before the banner), so that a server
+// component of Next.js can import the component without a client file of its own (#1202). Rollup removes the
+// directive from the source, so it is added here, and the source map gets one more empty line for it.
 for (const file of new Set(JSON.stringify(pkg.exports).match(/dist\/[\w.-]+\.js/g))) {
-    writeFileSync(file, `/*! ${pkg.name} ${pkg.version} | ${pkg.license} */\n` + readFileSync(file, 'utf8'));
-    try { const map = JSON.parse(readFileSync(file + '.map', 'utf8')); writeFileSync(file + '.map', JSON.stringify({...map, mappings: ';' + map.mappings})); } catch { /* a file that only passes exports on has no map */ }
+    const client = /^dist\/react(\.dev)?\.js$/.test(file);
+    writeFileSync(file, (client ? `'use client';\n` : '') + `/*! ${pkg.name} ${pkg.version} | ${pkg.license} */\n` + readFileSync(file, 'utf8'));
+    try { const map = JSON.parse(readFileSync(file + '.map', 'utf8')); writeFileSync(file + '.map', JSON.stringify({...map, mappings: (client ? ';;' : ';') + map.mappings})); } catch { /* a file that only passes exports on has no map */ }
 }
 
 // The type declarations that the `types` entries of package.json name. They are part of each build, so that a package

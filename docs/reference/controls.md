@@ -493,8 +493,8 @@ not set keeps the English text.
 | `FullscreenControl.Exit` | `Exit fullscreen` |
 | `GeolocateControl.FindMyLocation` | `Find my location` |
 | `GeolocateControl.LocationNotAvailable` | `Location not available` |
-| `TerrainControl.Enable` | `Toggle terrain` |
-| `TerrainControl.Disable` | `Toggle terrain` |
+| `TerrainControl.Enable` | `Enable terrain` |
+| `TerrainControl.Disable` | `Disable terrain` |
 | `GlobeControl.Enable` | `Enable globe` |
 | `GlobeControl.Disable` | `Disable globe` |
 | `ColorSchemeControl.Light` | `Use light colors` |
