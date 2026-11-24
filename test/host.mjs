@@ -4081,14 +4081,17 @@ for (const renderer of ['worker', 'main']) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
             const host = lib.createMap(el, {style: await (await fetch('/style.json')).json(), renderer: 'main', attribution: false});
             for (let i = 0; i < 200 && !host.state.get().loaded; i++) await wait(50);
-            lib.configure({tileWorkers: 1});
+            // (Another workerUrl makes a new pool for the next map, so its count is not ignored.)
+            lib.configure({workerUrl: '/dist/map-jr-gl-worker.js?other', tileWorkers: 4});
+            const other = warns.length;
+            lib.configure({workerUrl: undefined, tileWorkers: 1});
             lib.configure({tileWorkers: 2});
             lib.configure({tileWorkers: 3});
             console.warn = warn;
             host.destroy();
-            return warns.filter(w => w.startsWith('[map-jr-gl] configure(): tileWorkers'));
+            return {other, warns: warns.filter(w => w.startsWith('[map-jr-gl] configure(): tileWorkers'))};
         });
-        check('configure({tileWorkers}) with another count while tile workers exist warns once, and the same count does not warn (#1252)', r.length === 1, JSON.stringify(r));
+        check('configure({tileWorkers}) with another count while tile workers exist warns once, the same count does not warn, and a call with another workerUrl does not warn (#1252)', r.warns.length === 1 && r.other === 0, JSON.stringify(r));
     } finally { await page.close(); }
 }
 // A touch screen gets buttons of 44px, as docs/reference/css.md says for `--map-control-size`, in both entries (#639). (A blank
