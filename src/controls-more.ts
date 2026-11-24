@@ -305,20 +305,18 @@ export class LogoControl implements Control {
  * position (`watchPosition`) and keeps the map on it until the map moves for another reason, which fires
  * `trackuserlocationend` and `userlocationlostfocus`. A click then returns to the position and fires
  * `trackuserlocationstart` and `userlocationfocus`. `showUserLocation` (default true) shows a dot at the position while
- * tracking is on. The map zooms in to `zoom`, else to `fitBoundsOptions.maxZoom` (default 14). The accuracy circle
- * (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts)
- * loads on demand at the first click, so the first step of tracking happens once that file has loaded.
+ * tracking is on. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds`
+ * and `fitBoundsOptions` (default `{maxZoom: 15}`, replaced as a whole when given), as MapLibre GL JS does. The
+ * accuracy circle (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts) loads on demand at the first click, so the first step of tracking happens once that file has loaded.
  */
 export class GeolocateControl extends Evented implements Control {
     private el?: HTMLElement;
     private map?: Map;
     private b?: HTMLButtonElement;
     private t?: Promise<{click(): void; remove(): void}>;
-    constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean; showAccuracyCircle?: boolean; fitBoundsOptions?: {maxZoom?: number} & Record<string, unknown>} = {}) {
+    constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean; showAccuracyCircle?: boolean; fitBoundsOptions?: Parameters<Map['fitBounds']>[1] & Record<string, unknown>} = {}) {
         super();
         if (options.showAccuracyCircle) noEffect('GeolocateControl', 'showAccuracyCircle', ' The control shows a dot at the position without the circle.');
-        const other = Object.keys(options.fitBoundsOptions ?? {}).filter(k => k !== 'maxZoom');
-        if (other.length) noEffect('GeolocateControl', 'fitBoundsOptions.' + other[0], ' Only fitBoundsOptions.maxZoom is read.');
     }
     onAdd(map: Map) {
         this.map = map;
@@ -365,7 +363,11 @@ export class GeolocateControl extends Evented implements Control {
         map.fire('error', {error: new Error(err.message)});
     }
     private follow(map: Map, p: GeolocationPosition) {
-        map.easeTo({duration: 1200, center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? this.options.fitBoundsOptions?.maxZoom ?? 14)});
+        const {longitude: x, latitude: y, accuracy} = p.coords, o = this.options;
+        if (o.zoom !== undefined) { map.easeTo({duration: 1200, center: [x, y], zoom: Math.max(map.getZoom(), o.zoom)}); return; }
+        // As in MapLibre GL JS: fit the accuracy circle (meters); a given fitBoundsOptions replaces the default as a whole.
+        const r = (accuracy || 0) / 111320, rx = r / Math.max(Math.cos(y * Math.PI / 180), 1e-6);
+        map.fitBounds([x - rx, y - r, x + rx, y + r], {bearing: map.getBearing(), ...(o.fitBoundsOptions ?? {maxZoom: 15})});
     }
     onRemove() {
         this.t?.then(t => t.remove(), () => {});
