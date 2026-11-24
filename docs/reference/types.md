@@ -214,6 +214,7 @@ const map = createMap('map', {
 | `FontFaces` | The value of [`fonts`](description.md#fonts). |
 | `PaddingInput` | One number, or `{top, right, bottom, left}`, for [`padding`](description.md#padding). |
 | `RequestTransform` | The function of [`transformRequest`](description.md#transformrequest). |
+| `ResourceType` | The kind of resource, the second parameter of [`transformRequest`](description.md#transformrequest): `'Style'`, `'Source'`, `'Tile'`, `'Glyphs'`, `'SpriteJSON'`, `'SpriteImage'`, `'Image'`, `'Font'` or `'Unknown'`. |
 | `ProtocolFunction` | The function of [`addProtocol`](exports.md#addprotocol). |
 | [`LoadOptions`](exports.md#loadoptions) | The options of `configure`. |
 | [`PointsOptions`](exports.md#pointsoptions), `PointFeature`, `PointCollection` | The options and the result of `points`. |
