@@ -3914,11 +3914,21 @@ for (const mode of renderers) {
             const off = b.title;
             b.click();
             const on = b.title, aria = b.getAttribute('aria-label');
+            // The label follows setTerrain and setStyle calls of the app (#1689).
+            m.setTerrain(null);
+            const appOff = b.title;
+            m.setTerrain({source: 'dem'});
+            const appOn = b.title;
+            m.setStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]});
+            await new Promise(r => m.isStyleLoaded() ? r() : m.once('styledata', r));
+            const styleOff = b.title;
             m.remove(); el.remove();
-            return {off, on, aria};
+            return {off, on, aria, appOff, appOn, styleOff};
         });
         check('[main] maplibre-compat: TerrainControl is labeled "Enable terrain" and, with terrain on, "Disable terrain"',
             labels.off === 'Enable terrain' && labels.on === 'Disable terrain' && labels.aria === 'Disable terrain', JSON.stringify(labels));
+        check('[main] maplibre-compat: TerrainControl follows setTerrain(null), setTerrain({source}) and setStyle of the app (#1689)',
+            labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
