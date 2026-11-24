@@ -3909,7 +3909,8 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
             const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
-            m.addControl(new mod.TerrainControl({source: 'dem'}));
+            const control = new mod.TerrainControl({source: 'dem'});
+            m.addControl(control);
             const b = el.querySelector('.maplibregl-ctrl-terrain');
             const off = b.title;
             b.click();
@@ -3919,16 +3920,21 @@ for (const mode of renderers) {
             const appOff = b.title;
             m.setTerrain({source: 'dem'});
             const appOn = b.title;
+            const restyled = new Promise(r => m.once('styledata', r));
             m.setStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]});
-            await new Promise(r => m.isStyleLoaded() ? r() : m.once('styledata', r));
+            await restyled;
             const styleOff = b.title;
+            // A removed control no longer listens.
+            m.removeControl(control);
+            m.setTerrain({source: 'dem'});
+            const removed = b.title;
             m.remove(); el.remove();
-            return {off, on, aria, appOff, appOn, styleOff};
+            return {off, on, aria, appOff, appOn, styleOff, removed};
         });
         check('[main] maplibre-compat: TerrainControl is labeled "Enable terrain" and, with terrain on, "Disable terrain"',
             labels.off === 'Enable terrain' && labels.on === 'Disable terrain' && labels.aria === 'Disable terrain', JSON.stringify(labels));
         check('[main] maplibre-compat: TerrainControl follows setTerrain(null), setTerrain({source}) and setStyle of the app (#1689)',
-            labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain', JSON.stringify(labels));
+            labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain' && labels.removed === 'Enable terrain', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
