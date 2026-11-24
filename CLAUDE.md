@@ -53,10 +53,10 @@ to protect those qualities.
 
 - **Every change goes through a pull request.** Branch from `main` (`fix/…`, `feat/…`, `docs/…`), push, open a pull
   request that says what changed and why, and names the issue (`Fixes #12`).
-- **The `CI` workflow must pass:** `checks`, the four `browser-*` jobs (or their skip, which the job `changes` decides)
-  and `render`. The summary job `browser` only checks that these passed, and it often waits ten minutes for a runner, so a
-  merge does not wait for it. Do not merge on red, and do not lower a floor or skip a test to get green: fix the
-  cause, or say in the pull request why the floor moves.
+- **The `CI` workflow must pass:** `checks`, the four `browser-*` jobs (or their skip, which the job `changes`
+  decides) and `render`. The summary job `browser` only checks that these passed, and it often waits ten minutes for a
+  runner, so a merge does not wait for it. Do not merge on red, and do not lower a floor or skip a test to get green:
+  fix the cause, or say in the pull request why the floor moves.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
