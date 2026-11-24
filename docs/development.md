@@ -111,6 +111,7 @@ test one status:
 | `skipped` | The run cannot do the test, and does not draw it. The test has the operation `pauseTiles`, or it compares a part of the canvas only (`reportWidth`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures`, which this repository does not install. |
 
 [Triage of the symbol render tests](render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
+[Triage of the globe render tests](render-triage-globe.md) does the same for the tests of `projection/globe/`.
 
 A test can script the map: `metadata.test.operations` of its style is a list of operations, and each operation is
 the name of a method of the map with its arguments, or one of the words in the table below. The run applies them
