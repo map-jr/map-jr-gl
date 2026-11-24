@@ -4709,6 +4709,36 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #1834: a fast pan released with inertia at bearing 3 turns north during the inertia, in one movement (one
+        // `moveend`), as in MapLibre GL JS (served at /ml/), and not in a second movement after it.
+        const m1834 = {};
+        // A throw that a loaded machine releases too late for inertia (the map does not move after `dragend`) is thrown
+        // again, up to three times.
+        for (const lib of ['ml', 'compat']) for (let i = 0; i < 3 && !(m1834[lib]?.glide > 0.05); i++) {
+            await page.evaluate(async lib => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m1834 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 3});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                window.m1834ends = [];
+                m.on('dragend', () => { window.m1834drag = m.getCenter().lng; });
+                m.on('moveend', () => window.m1834ends.push(+m.getBearing().toFixed(1)));
+            }, lib);
+            await page.mouse.move(100, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { if (i > 1) await page.waitForTimeout(16); await page.mouse.move(100 + i * 25, 150); }
+            await page.mouse.up();
+            m1834[lib] = await page.evaluate(async () => {
+                const m = window.m1834;
+                await new Promise(r => setTimeout(r, 2500));
+                const out = {ends: window.m1834ends, bearing: +m.getBearing().toFixed(1), glide: +(window.m1834drag - m.getCenter().lng).toFixed(2)};
+                const el = m.getContainer(); m.remove(); el.remove();
+                return out;
+            });
+        }
+        // Both throws glide past the end of the drag and end at bearing 0 with one `moveend`.
+        check('[main] maplibre-compat: the inertia of a pan that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
+            ['ml', 'compat'].every(l => m1834[l].glide > 0.05 && m1834[l].ends.length === 1 && m1834[l].ends[0] === 0 && m1834[l].bearing === 0), JSON.stringify(m1834));
         // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
         // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
         const m479 = {};
