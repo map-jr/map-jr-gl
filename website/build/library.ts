@@ -17,7 +17,7 @@ export function libraryFolder(): string {
     const files = new Set(entries);
     for (const file of files) {
         copyFileSync(resolve(dist, file), resolve(folder, file));
-        for (const [, name] of readFileSync(resolve(dist, file), 'utf8').matchAll(/["'`]\.\/([\w.-]+\.js)["'`]/g)) if (existsSync(resolve(dist, name!))) files.add(name!);
+        for (const [, name] of readFileSync(resolve(dist, file), 'utf8').matchAll(/["'`]\.\/([\w.-]+\.js)(?:\?[\w=-]*)?["'`]/g)) if (existsSync(resolve(dist, name!))) files.add(name!);
     }
     return folder;
 }

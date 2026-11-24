@@ -3346,6 +3346,62 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The parts of the worker load on demand (#79): a map of vector tiles requests none, a map with a GeoJSON source
+// requests the GeoJSON part once in each tile worker for both of its maps and draws its data, and a part that does not load gives an error
+// that names the file. (The requests of a worker are seen in Chromium only.)
+for (const renderer of ['worker', 'main']) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const parts = [];
+        page.context().on('request', r => { const m = /map-jr-gl-worker-(\w+)\.js/.exec(r.url()); if (m) parts.push(m[1]); });
+        await page.goto(origin + '/bench');
+        const run = (what, missing) => page.evaluate(async ({renderer, what, missing}) => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), errors = [];
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}};
+            const spec = what === 'vector' ? {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}}
+                : {style: {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]}, initialView: {center: [0, 0], zoom: 1}};
+            const made = [0, 1].map(() => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                return {el, host: lib.createMap(el, {...spec, renderer, attribution: false, onError: e => errors.push(e.message)})};
+            });
+            const idle = await Promise.all(made.map(({host}) => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 10000); })));
+            if (missing) for (let i = 0; i < 50 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+            const b = await made[1].host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+            g.drawImage(bmp, 0, 0);
+            const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            for (const {host, el} of made) { host.destroy(); el.remove(); }
+            return {idle, centre, errors: [...new Set(errors)]};
+        }, {renderer, what, missing});
+        const vector = await run('vector'), afterVector = parts.splice(0);
+        const geojson = await run('geojson'), afterGeoJSON = parts.splice(0);
+        const seen = browserName === 'chromium';
+        check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
+            vector.idle.every(Boolean) && !vector.errors.length && geojson.idle.every(Boolean) && !geojson.errors.length && geojson.centre[2] > 200 && geojson.centre[0] < 50 &&
+            (!seen || (afterVector.length === 0 && afterGeoJSON.length >= 1 && afterGeoJSON.length <= 4 && afterGeoJSON.every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
+        if (seen) {
+            // (A new page: its workers have not loaded the part.)
+            const other = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                await other.route(/map-jr-gl-worker-geojson\.js/, route => route.abort());
+                await other.goto(origin + '/bench');
+                const failed = await other.evaluate(async renderer => {
+                    const lib = await import('/dist/map-jr-gl.js'), errors = [];
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                    const host = lib.createMap(el, {style: {version: 8, sources: {sq: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'sq', type: 'circle', source: 'sq'}]}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    for (let i = 0; i < 80 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+                    // (The tiles of the view, their retries and a query fail too: they add no second error.)
+                    await host.queryRenderedFeatures?.().catch?.(() => {});
+                    await new Promise(r => setTimeout(r, 2500));
+                    host.destroy(); el.remove();
+                    return errors;
+                }, renderer);
+                check(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`,
+                    failed.length === 1 && failed[0].includes('[map-jr-gl] The worker could not load') && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
+            } finally { await other.close(); }
+        } else skip(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`, `${browserName} does not show the requests of a worker to Playwright`);
+    } catch (e) { check(`[${renderer}] the test of the parts of the worker was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A style that is not a style (#539): an error of the map (`onError`) that says what is missing, no error
 // of the page, and the map draws the next style. Each style is given as an object and as the answer of a URL.
 for (const renderer of ['main', 'worker']) {

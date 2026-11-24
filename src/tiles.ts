@@ -5,10 +5,12 @@ import type {GlobeBuild} from './subdivide.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {fetchTile, heads} from './pmtiles.ts';
-import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
+import {fetchTile, heads} from './tile-fetch.ts';
+import {GEOJSON_PREFIX, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {decodeVectorTile} from './mvt.ts';
-import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
+import type {ContourConfig, DEM} from './contour.ts';
+import {decodePixels, type ImageDecoder} from './exact-pixels.ts';
+import {part, type PartName, type Parts} from './parts.ts';
 
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
 export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
@@ -39,19 +41,21 @@ export class TileBuilder {
     private ids: Record<string, string | Record<string, string>> = {};
 
     /** Elevation tiles are shared between neighboring contour tiles, so decoded ones are kept for a while. */
-    private loadDEM = (url: string, encoding: DemEncoding): Promise<DEM | null> => {
+    private loadDEM = (url: string, encoding: DemEncoding, c: Parts['contour']): Promise<DEM | null> => {
         let dem = this.dems.get(url);
         if (!dem) {
-            dem = fetchTile(url, this.fetchFn, undefined, undefined, true).then(bytes => bytes ? decodeDEM(bytes, encoding, this.decodeImage) : null);
+            dem = fetchTile(url, this.fetchFn, undefined, undefined, true).then(bytes => bytes ? c.decodeDEM(bytes, encoding, this.decodeImage) : null);
             this.dems.set(url, dem);
             dem.catch(() => this.dems.delete(url));
             if (this.dems.size > 40) this.dems.delete(this.dems.keys().next().value!);
         }
         return dem;
     };
-    private contour(url: string) {
+    private async contour(url: string) {
         const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
-        return cfg ? contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding)) : Promise.resolve({});
+        if (!cfg) return {};
+        const c = await part('contour');
+        return c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c));
     }
 
     /**
@@ -88,14 +92,18 @@ export class TileBuilder {
     }
 
     /** Replaces a GeoJSON source's data. Its tiles are cut from this on demand. */
-    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.geojson.set(source, prepareSource(data, options, maxzoom)); }
+    /** (The part of the GeoJSON code loads first: a tile of the source that is asked for later waits for this data, see `part`.) */
+    async setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { const g = await part('geojson'); this.geojson.set(source, g.prepareSource(data, options, maxzoom)); }
+
+    /** Starts to load the parts that the style of the map needs (see `partsFor` in engine.ts), before a tile needs one. */
+    need(names: PartName[]) { for (const n of names) part(n); }
 
     /** GeoJSON tiles are addressed as geojson://source/z/x/y and built from memory, not fetched. */
-    private slice(url: string) {
-        const m = /^geojson:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!;
+    private async slice(url: string) {
+        const m = /^geojson:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, g = await part('geojson');
         // A gradient along a line needs to know how far along the whole line each piece of it is.
         const metrics = this.bySource.get(m[1])?.some(l => l.type === 'line' && l.ramp) ?? false;
-        return sliceGeoJSON(this.geojson.get(m[1]) ?? [], +m[2], +m[3], +m[4], metrics);
+        return g.sliceGeoJSON(this.geojson.get(m[1]) ?? [], +m[2], +m[3], +m[4], metrics);
     }
     private fetchFn: typeof fetch;
     constructor(fetchFn: typeof fetch = fetch) { this.fetchFn = withTimeout((...a) => fetchFn(...a)); }
@@ -124,7 +132,7 @@ export class TileBuilder {
     }
 
     async loadIR(req: TileRequest): Promise<TileIR> {
-        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
+        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(await this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
         if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
@@ -168,7 +176,7 @@ export class TileBuilder {
     /** (The filters of a question are compiled when it is answered: for the states of this map.) */
     private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); return queryTile(data, q); }
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
-        if (url.startsWith(GEOJSON_PREFIX)) return this.find(this.slice(url), q);
+        if (url.startsWith(GEOJSON_PREFIX)) return this.find(await this.slice(url), q);
         if (url.startsWith('contour://')) return this.find(await this.contour(url), q);
         const key = q.source + '|' + url, n = this.forgotten;
         let bytes = this.recent.get(key);
@@ -202,6 +210,8 @@ export interface TileBackend {
     setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>): void;
     /** The first bytes of a PMTiles archive, which the page has read already. */
     setHead(url: string, bytes: Uint8Array): void;
+    /** The parts of the tile code that the style needs (see parts.ts): the builder starts to load them. */
+    need(names: PartName[]): void;
     load(req: TileRequest): Promise<TileGL>;
     cancel(id: number): void;
     /** Drops the tile bytes that the builder keeps for one source, or for every source (see `refreshTiles`). */
@@ -214,11 +224,12 @@ export class LocalBackend implements TileBackend {
     loadElevation(req: ElevationRequest) { return this.builder.loadElevation(req); }
     setRequests(rules: RequestRules, ask: Ask) { this.builder.setFetch(fetchWith(() => rules, ask)); }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
-    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { return this.builder.setGeoJSON(source, data, options, maxzoom); }
     setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.builder.setFeatureState(source, states, replace); }
     setTemplates(templates: Record<string, string[]>) { this.builder.setTemplates(templates); }
     setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>) { this.builder.setContours(sources, ids); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
+    need(names: PartName[]) { this.builder.need(names); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req), req.globe).tile; }
     cancel(id: number) { this.builder.cancel(id); }
     forget(source?: string) { this.builder.forget(source); }
@@ -270,6 +281,7 @@ export class PortBackend implements TileBackend {
     setTemplates(templates: Record<string, string[]>) { this.port.postMessage({type: 'templates', templates}); }
     setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>) { this.port.postMessage({type: 'contours', sources, ids}); }
     setHead(url: string, bytes: Uint8Array) { this.port.postMessage({type: 'head', url, bytes}); }
+    need(names: PartName[]) { this.port.postMessage({type: 'need', names}); }
     load(req: TileRequest) {
         return new Promise<TileGL>((resolve, reject) => {
             this.pending.set(req.id, {resolve, reject});
@@ -298,7 +310,12 @@ export function serveTiles(port: Port) {
         if (m.type === 'requests') rules = m.rules;
         else if (m.type === 'resourceResult') { asked.get(m.id)?.(m); asked.delete(m.id); }
         else if (m.type === 'style') builder.setStyle(m.layers, m.state);
-        else if (m.type === 'geojson') { try { builder.setGeoJSON(m.source, m.bytes ? JSON.parse(new TextDecoder().decode(m.bytes)) : m.data, m.options, m.maxzoom); } finally { port.postMessage({id: m.id, result: null}); } }
+        // (A failure, as of the part of the GeoJSON code, goes back to the engine, which reports it: #79.)
+        else if (m.type === 'geojson') {
+            try { await builder.setGeoJSON(m.source, m.bytes ? JSON.parse(new TextDecoder().decode(m.bytes)) : m.data, m.options, m.maxzoom); port.postMessage({id: m.id, result: null}); }
+            catch (err) { port.postMessage({id: m.id, error: String((err as Error).message)}); }
+        }
+        else if (m.type === 'need') builder.need(m.names);
         else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states, m.replace);
         else if (m.type === 'templates') builder.setTemplates(m.templates);
         else if (m.type === 'contours') builder.setContours(m.sources, m.ids);

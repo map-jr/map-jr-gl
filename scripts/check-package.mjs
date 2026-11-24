@@ -83,7 +83,9 @@ try { run('pnpm', ['exec', 'attw', tarball, '--ignore-rules', 'cjs-resolves-to-e
 const named = new Map();
 const collect = (value, where) => { if (typeof value === 'string') named.set(value.replace(/^\.\//, ''), where); else for (const [k, v] of Object.entries(value ?? {})) collect(v, `${where} > ${k}`); };
 collect(pkg.exports, 'exports'); collect(pkg.module, 'module'); collect(pkg.types, 'types');
-for (const [file, where] of named) if (!packed.has(file)) failures.push(`${where} names ${file}, which is not in the tarball`);
+// (A pattern export, such as `./worker-*` for the parts of the worker, names at least one file of the tarball.)
+const inTarball = file => file.includes('*') ? [...packed].some(f => new RegExp('^' + file.split('*').map(s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+') + '$').test(f)) : packed.has(file);
+for (const [file, where] of named) if (!inTarball(file)) failures.push(`${where} names ${file}, which is not in the tarball`);
 for (const [key, value] of Object.entries(pkg.exports)) if (key !== './package.json' && !value?.types) failures.push(`exports > ${key} has no "types"`);
 
 const images = [...packed].filter(f => f.startsWith('docs/images/') || /\.(jpe?g|png|gif|webp|avif)$/i.test(f));
