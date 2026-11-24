@@ -280,7 +280,8 @@ export class LogoControl implements Control {
  * position (`watchPosition`) and keeps the map on it until the map moves for another reason, which fires
  * `trackuserlocationend` and `userlocationlostfocus`. A click then returns to the position and fires
  * `trackuserlocationstart` and `userlocationfocus`. `showUserLocation` (default true) shows a dot at the position while
- * tracking is on. The accuracy circle (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts)
+ * tracking is on. The map zooms in to `zoom`, else to `fitBoundsOptions.maxZoom` (default 14). The accuracy circle
+ * (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts)
  * loads on demand at the first click, so the first step of tracking happens once that file has loaded.
  */
 export class GeolocateControl extends Evented implements Control {
@@ -288,9 +289,11 @@ export class GeolocateControl extends Evented implements Control {
     private map?: Map;
     private b?: HTMLButtonElement;
     private t?: Promise<{click(): void; remove(): void}>;
-    constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean; showAccuracyCircle?: boolean} = {}) {
+    constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean; showAccuracyCircle?: boolean; fitBoundsOptions?: {maxZoom?: number} & Record<string, unknown>} = {}) {
         super();
         if (options.showAccuracyCircle) noEffect('GeolocateControl', 'showAccuracyCircle', ' The control shows a dot at the position without the circle.');
+        const other = Object.keys(options.fitBoundsOptions ?? {}).filter(k => k !== 'maxZoom');
+        if (other.length) noEffect('GeolocateControl', 'fitBoundsOptions.' + other[0], ' Only fitBoundsOptions.maxZoom is read.');
     }
     onAdd(map: Map) {
         this.map = map;
@@ -337,7 +340,7 @@ export class GeolocateControl extends Evented implements Control {
         map.fire('error', {error: new Error(err.message)});
     }
     private follow(map: Map, p: GeolocationPosition) {
-        map.easeTo({duration: 1200, center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
+        map.easeTo({duration: 1200, center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? this.options.fitBoundsOptions?.maxZoom ?? 14)});
     }
     onRemove() {
         this.t?.then(t => t.remove(), () => {});
