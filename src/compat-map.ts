@@ -410,6 +410,11 @@ export class Map extends CoreMap {
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
+        if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
+        // As in MapLibre GL JS, a rotate gesture (dragRotate or touchZoomRotate) that ends near north turns the map north.
+        let byHand = false;
+        this.on('rotate', () => { byHand ||= this.dragRotate.isActive() || this.touchZoomRotate.isActive(); });
+        this.on('rotateend', () => { if (byHand && this.tr.bearing !== 0) this.snapToNorth(); byHand = false; });
         super.setMissingStyleImageResolver(name => this.styleImage(name));
         this.once('remove', () => { this.imagesTurn++; });
     }
@@ -596,11 +601,13 @@ export class Map extends CoreMap {
     zoomOut(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom - 1, ...o}, eventData); }
     /** Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     rotateTo(bearing: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing, ...o}, eventData); }
+    /** The option `bearingSnap` in degrees: a rotate gesture that ends closer to north than this turns the map north. */
+    private bearingSnap = 7;
     /**
-     * Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of
-     * MapLibre GL JS has no effect.
+     * Turns the map to bearing 0 when the bearing is less than the option `bearingSnap` (7 degrees by default) from
+     * north, as in MapLibre GL JS.
      */
-    snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o, eventData) : this; }
+    snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < this.bearingSnap ? this.resetNorth(o, eventData) : this; }
     /** Returns `true`: the map always draws copies of the world. */
     getRenderWorldCopies() { return true; }
     /** Returns 0: the camera has no roll. */

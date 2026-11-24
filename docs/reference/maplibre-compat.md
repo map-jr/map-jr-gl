@@ -147,7 +147,7 @@ library" names a member that MapLibre GL JS does not have.
 | `zoomIn` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Increases the zoom level by 1 with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `zoomOut` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Decreases the zoom level by 1 with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `rotateTo` | `(bearing: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
-| `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of MapLibre GL JS has no effect. |
+| `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than the option `bearingSnap` (7 degrees by default) from north, as in MapLibre GL JS. |
 | `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
 | `getRoll` | `() => number` | Returns 0: the camera has no roll. |
 | `getCenterElevation` | `() => number` | Returns the elevation of the ground at the map center in meters, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. |

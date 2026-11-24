@@ -337,11 +337,6 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - MapLibre GL JS returns the decoded RGBA pixels.
 - This library returns `{width, height, data: Uint8Array}` RGBA pixels for an image added as pixels, a canvas, an image element or a bitmap. For an image added as a URL or as SVG text, `data` is the string that `addImage` was given, because decoding it again is asynchronous.
 
-### `snapToNorth`
-
-- MapLibre GL JS turns the map north when the bearing is within the option `bearingSnap` (7 degrees by default).
-- This library turns the map north when the bearing is within 7 degrees. The option `bearingSnap` has no effect.
-
 ### `setStyle`
 
 - MapLibre GL JS returns the map.
