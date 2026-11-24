@@ -26,6 +26,14 @@ const server = await serve(0);
 const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch({...chromiumOptions(chromium), args: ['--enable-unsafe-swiftshader']});
 let failures = 0;
+// Waits until a predicate of the page holds, or for at most `timeout` ms; the check after it reads the value again and
+// reports what it finds. A reload waits for `load` and then for this, not for network idle (#1608).
+async function until(predicate, timeout = 10000) {
+    for (const end = Date.now() + timeout; Date.now() < end; await new Promise(done => setTimeout(done, 100))) {
+        if (await predicate().catch(() => false)) return;
+    }
+}
+
 function check(name, ok, detail = '') {
     if (!ok) failures++;
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? ': ' + detail : ''}`);
@@ -119,7 +127,8 @@ try {
         await page.waitForFunction(() => document.documentElement.classList.contains('dark'));
         const dark = await background();
         check('color mode: the light page is #ffffff and the night is #17181a', light === 'rgb(255, 255, 255)' && dark === 'rgb(23, 24, 26)', `${light} / ${dark}`);
-        await page.reload({waitUntil: 'networkidle'});
+        await page.reload({waitUntil: 'load'});
+        await until(() => page.evaluate(() => document.documentElement.classList.contains('dark')));
         check('color mode: the choice stays after a load', await page.evaluate(() => document.documentElement.classList.contains('dark')));
         check('docs page: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
@@ -219,7 +228,8 @@ try {
         await page.waitForURL('**' + variantsPage);
         await page.locator('.code-variants').first().waitFor();
         check('variants: the choice stays after a navigation', await showsEverywhere('react'), (await shownPanels()).join(' '));
-        await page.reload({waitUntil: 'networkidle'});
+        await page.reload({waitUntil: 'load'});
+        await until(async () => await showsEverywhere('react') && await headerLabel() === 'React');
         check('variants: the choice stays after a reload', await showsEverywhere('react') && await headerLabel() === 'React', (await shownPanels()).join(' '));
         const shift = await page.evaluate(() => new Promise(done => {
             new PerformanceObserver(list => done(list.getEntries().reduce((sum, entry) => sum + entry.value, 0))).observe({type: 'layout-shift', buffered: true});
@@ -227,7 +237,8 @@ try {
         }));
         check('variants: a reload with a stored choice has no layout shift', shift < 0.01, `CLS ${shift}`);
         await page.evaluate(key => localStorage.setItem(key, 'nuxt'), 'map-jr-docs-variant');
-        await page.reload({waitUntil: 'networkidle'});
+        await page.reload({waitUntil: 'load'});
+        await until(async () => await showsEverywhere('vue') && await headerLabel() === 'Vue');
         check('variants: a choice of Nuxt shows Vue where a group has no Nuxt', await showsEverywhere('vue') && await headerLabel() === 'Vue', (await shownPanels()).join(' '));
         const hrefs = await page.locator('main a').evaluateAll(links => links.map(link => link.getAttribute('href')));
         check('variants page: no link names a .md file of the site', !hrefs.some(href => href && !href.startsWith('http') && /\.md(#|$)/.test(href)), hrefs.filter(href => href && /\.md(#|$)/.test(href)).join(' '));
@@ -255,6 +266,7 @@ try {
         await page.waitForURL('**' + variantsPage);
         await page.locator('aside').getByRole('link', {name: 'Getting started', exact: true}).click();
         await page.waitForURL('**' + installPage);
+        await group.waitFor();
         // waitForURL can return before the page of the new URL is rendered, so the check waits for the value it reads
         // (#1373), for up to 5 s.
         let afterNavigation = '';
@@ -263,7 +275,8 @@ try {
             if (afterNavigation === 'pnpm') break;
         }
         check('package managers: the choice stays after a navigation', afterNavigation === 'pnpm', afterNavigation);
-        await page.reload({waitUntil: 'networkidle'});
+        await page.reload({waitUntil: 'load'});
+        await until(async () => await shownPm() === 'pnpm' && await variantAttribute() === 'react');
         check('package managers: the choice stays after a reload', await shownPm() === 'pnpm' && await variantAttribute() === 'react', `${await shownPm()} / ${await variantAttribute()}`);
         const shift = await page.evaluate(() => new Promise(done => {
             new PerformanceObserver(list => done(list.getEntries().reduce((sum, entry) => sum + entry.value, 0))).observe({type: 'layout-shift', buffered: true});
