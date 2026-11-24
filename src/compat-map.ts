@@ -54,13 +54,14 @@ export interface Map {
     getStyle(): StyleSpecification;
 }
 /**
- * `map.cooperativeGestures`, as in MapLibre GL JS, with `enable()`, `disable()`, `isEnabled()` and `isActive()` (always
- * false). Its code loads on demand at the first `enable()` (cooperative-gestures.ts), so that a map without it pays little.
+ * `map.cooperativeGestures`, as in MapLibre GL JS, with `enable()`, `disable()`, `isEnabled()`, `isActive()` (always
+ * false) and `isBypassed(event)` (whether Ctrl, or ⌘ on a Mac, is down in the event). Its code loads on demand at the first `enable()` (cooperative-gestures.ts), so that a map without it pays little.
  */
 const cooperativeGestures = (map: CoreMap) => {
     let on = false, stop: (() => void) | undefined, touchAction = '';
     // (The canvas is read each time: a fall back from the worker to the main thread replaces it; #777.)
     const style = () => map.getCanvas().style;
+    const isBypassed = (event: MouseEvent | WheelEvent | PointerEvent) => event[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
     const disable = () => { if (on) { on = false; stop?.(); stop = map.gate = undefined; style().touchAction = touchAction; } };
     map.on('remove', disable);
     return {enable() {
@@ -70,10 +71,10 @@ const cooperativeGestures = (map: CoreMap) => {
         // Mac), and one finger scrolls the page.
         touchAction = style().touchAction;
         style().touchAction = 'pan-x pan-y';
-        map.gate = (type, e) => type === 'touch_pan' || !(e as WheelEvent)[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
+        map.gate = (type, e) => type === 'touch_pan' || !isBypassed(e as WheelEvent);
         // (After the import, the handler may be off again or the map removed: `disable()` has then set `on` to false.)
         import('./cooperative-gestures.ts').then(m => { if (on && !stop) stop = m.cooperate(map); });
-    }, disable, isEnabled: () => on, isActive: () => false};
+    }, disable, isEnabled: () => on, isActive: () => false, isBypassed};
 };
 declare const __VERSION__: string; // the version of package.json, set by the build
 declare const __DEV__: boolean;
@@ -404,12 +405,35 @@ export class Map extends CoreMap {
             console.warn(message);
         }
         this.unsupported('The option logoPosition', !o.logoPosition);
-        this.unsupported('The option validate', o.validate === undefined);
+        // (Development build) `validate: false` skips the check of the required fields of the style (#1748).
+        if (__DEV__) this.noValidate = o.validate === false;
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
+        if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
+        // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
+        // closer to north than bearingSnap turns the map north. (MapLibre GL JS turns the inertia north; here the snap
+        // follows the inertia.)
+        let byHand = false;
+        const handlers = [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch];
+        const held = () => handlers.some(h => h.isActive());
+        this.on('move', () => { byHand ||= held(); });
+        const wheel = () => { byHand ||= this.scrollZoom.isEnabled(); };
+        this.getCanvasContainer().addEventListener('wheel', wheel, {passive: true});
+        // (A pause during a gesture also ends a move: the snap waits until the pointers of the gesture lift.)
+        const end = () => {
+            if (!byHand || held() || this.isMoving()) return;
+            byHand = false;
+            if (this.tr.bearing !== 0) this.snapToNorth();
+        };
+        this.on('moveend', end);
+        for (const type of ['pointerup', 'touchend'] as const) {
+            const lifted = () => setTimeout(end);
+            addEventListener(type, lifted, true);
+            this.once('remove', () => removeEventListener(type, lifted, true));
+        }
         super.setMissingStyleImageResolver(name => this.styleImage(name));
         this.once('remove', () => { this.imagesTurn++; });
     }
@@ -596,11 +620,13 @@ export class Map extends CoreMap {
     zoomOut(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom - 1, ...o}, eventData); }
     /** Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     rotateTo(bearing: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing, ...o}, eventData); }
+    /** The option `bearingSnap` in degrees: a gesture that ends closer to north than this turns the map north. */
+    private bearingSnap = 7;
     /**
-     * Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of
-     * MapLibre GL JS has no effect.
+     * Turns the map to bearing 0 when the bearing is less than the option `bearingSnap` (7 degrees by default) from
+     * north, as in MapLibre GL JS.
      */
-    snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o, eventData) : this; }
+    snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < this.bearingSnap ? this.resetNorth(o, eventData) : this; }
     /** Returns `true`: the map always draws copies of the world. */
     getRenderWorldCopies() { return true; }
     /** Returns 0: the camera has no roll. */
@@ -918,6 +944,7 @@ export class Map extends CoreMap {
      * for it for at most 300 ms. Listeners for a layer get their features from the core map.)
      */
     private zoomErrors?: Set<string>;
+    private noValidate = false;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
@@ -930,7 +957,7 @@ export class Map extends CoreMap {
         // (Development build) An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text, once for
         // each layer, property and value. The map still draws it (#1087). So does a property that the style specification
         // does not have for the type of the layer, once for each layer and property (#1139).
-        if (__DEV__ && type === 'styledataloading') zoomCurveErrors(this.rawStyle, this.zoomErrors ??= new Set(), error => this.fire('error', {error}));
+        if (__DEV__ && type === 'styledataloading') zoomCurveErrors(this.rawStyle, this.zoomErrors ??= new Set(), error => this.fire('error', {error}), this.noValidate);
         // The `eventData` of the camera call that made this move (see `jumpTo`). The move's own fields win.
         // User input starts a move of the user's: kept eventData (of a call that did not move the camera) is not on it.
         if (/^(mousedown|touchstart|wheel|dragstart|dblclick)$/.test(type)) this.moveData = undefined;

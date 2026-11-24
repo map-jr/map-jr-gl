@@ -1498,6 +1498,28 @@ for (const mode of renderers) {
         const atOnce = await page.evaluate(() => { window.map.off('idle', window.atOnceIdle); return window.atOnce; });
         check(`[${mode}] queryRenderedFeatures read at once has the features of tiles: in a click listener, and on idle`, atOnce.click > 0 && atOnce.idle.at(-1) > 0 && atOnce.idle.length <= 3, JSON.stringify(atOnce));
     }
+    // Many different questions on `idle` (30, fewer than the 64 answers that the map keeps) must not make the map fire
+    // `idle` without end: after the first answers, the count of `idle` events stops growing (#717). The check uses a
+    // page of its own, because its answers fill the store of the map that the next checks read.
+    {
+        const own = await browser.newPage({viewport: {width: 1000, height: 700}});
+        await own.goto(page.url());
+        await own.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+        const many = await own.evaluate(async () => {
+            const m = window.map, c = m.getCanvas();
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            let idles = 0;
+            const ask = () => { idles++; for (let i = 0; i < 30; i++) m.queryRenderedFeatures([(i * 7) % c.clientWidth, (i * 13) % c.clientHeight]); };
+            m.on('idle', ask); ask();
+            const counts = [];
+            for (let t = 0; t < 20 && !(counts.length >= 4 && counts.at(-1) === counts.at(-4)); t++) { await new Promise(r => setTimeout(r, 500)); counts.push(idles); }
+            m.off('idle', ask);
+            return counts;
+        });
+        await own.close();
+        // The count must stop growing within 10 seconds: four samples in a row (1.5 seconds) are equal.
+        check(`[${mode}] queryRenderedFeatures: 30 different questions on idle do not make the map fire idle without end`, many.at(-1) === many.at(-4), JSON.stringify(many));
+    }
     // react-map-gl 8 drives `onMouseEnter` and `cursor` with `queryRenderedFeatures(e.point, {layers})`, read at once in
     // its `mousemove` listener (#195). One move of the mouse onto features of tiles must reach the enter state.
     {
@@ -1768,8 +1790,8 @@ for (const mode of renderers) {
         });
         // visualizePitch of NavigationControl (#42) and opacityWhenCovered of Marker (the globe, #463) have an effect in
         // this entry, so they write no warning.
-        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and visualizePitch and opacityWhenCovered do not warn',
-            Object.entries(r).every(([k, n]) => n === (k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
+        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
+            Object.entries(r).every(([k, n]) => n === (k === 'validate' || k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
@@ -3232,17 +3254,19 @@ for (const mode of renderers) {
             m.stop();
             await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
             m.cooperativeGestures.enable();
+            const mac = navigator.userAgent.includes('Mac'), cg = m.cooperativeGestures;
+            const bypass = [cg.isBypassed(new WheelEvent('wheel', {[mac ? 'metaKey' : 'ctrlKey']: true})), cg.isBypassed(new WheelEvent('wheel', {[mac ? 'ctrlKey' : 'metaKey']: true}))];
             await wait(500);
             const z = m.getZoom(), r = m.getCanvas().getBoundingClientRect();
             m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -300, clientX: r.left + 300, clientY: r.top + 200, bubbles: true, cancelable: true}));
             await wait(800);
-            const out = {renderer: m.renderer, errors: errors.sort(), ...easing, touch: m.getCanvas().style.touchAction, wheel: Math.abs(m.getZoom() - z) > 0.01, canvases: el.querySelectorAll('canvas').length};
+            const out = {renderer: m.renderer, errors: errors.sort(), ...easing, touch: m.getCanvas().style.touchAction, wheel: Math.abs(m.getZoom() - z) > 0.01, bypass, canvases: el.querySelectorAll('canvas').length};
             m.remove(); el.remove();
             return out;
         }, kind);
         const {renderer, ...main} = same.main, {renderer: fellTo, ...fell} = same.fallback;
-        check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777)',
-            renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel,
+        check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777) and isBypassed() is true with Ctrl (⌘ on a Mac) only (#1725)',
+            renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel && main.bypass.join() === 'true,false',
             JSON.stringify(same));
         // Two maps that fall back and share one style object, with a GeoJSON source that fails: each fires its own one error.
         const pair = await page.evaluate(async () => {
@@ -3909,16 +3933,32 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
             const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
-            m.addControl(new mod.TerrainControl({source: 'dem'}));
+            const control = new mod.TerrainControl({source: 'dem'});
+            m.addControl(control);
             const b = el.querySelector('.maplibregl-ctrl-terrain');
             const off = b.title;
             b.click();
             const on = b.title, aria = b.getAttribute('aria-label');
+            // The label follows setTerrain and setStyle calls of the app (#1689).
+            m.setTerrain(null);
+            const appOff = b.title;
+            m.setTerrain({source: 'dem'});
+            const appOn = b.title;
+            const restyled = new Promise(r => m.once('styledata', r));
+            m.setStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]});
+            await restyled;
+            const styleOff = b.title;
+            // A removed control no longer listens.
+            m.removeControl(control);
+            m.setTerrain({source: 'dem'});
+            const removed = b.title;
             m.remove(); el.remove();
-            return {off, on, aria};
+            return {off, on, aria, appOff, appOn, styleOff, removed};
         });
         check('[main] maplibre-compat: TerrainControl is labeled "Enable terrain" and, with terrain on, "Disable terrain"',
             labels.off === 'Enable terrain' && labels.on === 'Disable terrain' && labels.aria === 'Disable terrain', JSON.stringify(labels));
+        check('[main] maplibre-compat: TerrainControl follows setTerrain(null), setTerrain({source}) and setStyle of the app (#1689)',
+            labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain' && labels.removed === 'Enable terrain', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
@@ -4604,6 +4644,40 @@ for (const mode of renderers) {
         // The times are at least the duration (the old defaults were 300 and 500 ms) and less than twice it, for a loaded machine.
         check('[main] maplibre-compat: zoomIn and zoomOut take 500 ms and resetNorth and resetNorthPitch 1000 ms by default, as in MapLibre GL JS (#1242)',
             [m1242.ml, m1242.compat].every(t => [500, 500, 1000, 1000].every((d, i) => t[i] >= d - 20 && t[i] < 2 * d)), JSON.stringify(m1242));
+        // #1724: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (served at /ml/).
+        const m1724 = {};
+        for (const lib of ['ml', 'compat']) for (const snapAt of [0, 20]) {
+            await page.evaluate(async ([lib, snapAt]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m1724 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 15, bearingSnap: snapAt});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => { m.once('moveend', r); m.snapToNorth({duration: 0}); setTimeout(r, 300); });
+                window.m1724out = [+m.getBearing().toFixed(1)];
+                m.jumpTo({bearing: 0});
+            }, [lib, snapAt]);
+            // A slow rotate drag of a few degrees, released without inertia.
+            await page.mouse.move(200, 150); await page.mouse.down({button: 'right'});
+            for (let i = 1; i <= 10; i++) { await page.mouse.move(200 + i * 1.5, 150); await page.waitForTimeout(40); }
+            await page.waitForTimeout(300); await page.mouse.up({button: 'right'});
+            await page.evaluate(async () => { await new Promise(r => setTimeout(r, 1500)); window.m1724out.push(+window.m1724.getBearing().toFixed(1)); window.m1724.jumpTo({bearing: 3}); });
+            // A slow pan with the left button at bearing 3, released without inertia.
+            await page.mouse.move(200, 150); await page.mouse.down();
+            for (let i = 1; i <= 10; i++) { await page.mouse.move(200 + i * 5, 150 + i * 3); await page.waitForTimeout(40); }
+            await page.waitForTimeout(300); await page.mouse.up();
+            m1724[lib + snapAt] = await page.evaluate(async () => {
+                const m = window.m1724;
+                await new Promise(r => setTimeout(r, 1500));
+                const out = [...window.m1724out, +m.getBearing().toFixed(1)];
+                const el = m.getContainer(); m.remove(); el.remove();
+                return out;
+            });
+        }
+        // [bearing after snapToNorth from 15, after the rotate drag, after the pan from bearing 3]: 0 keeps all three; 20 turns all north.
+        check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
+            ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
+            && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -4803,9 +4877,43 @@ for (const mode of renderers) {
                 await page.waitForTimeout(500);
                 return [before, during, after].join('>');
             };
-            m565[name] = [sources, await gesture('left'), await gesture('right'), await gesture('left', 'Shift')].join(' ');
+            // #1726: scrollZoom is active from a wheel event until 200 ms after the zoom ends; keyboard is never active, as in MapLibre GL JS.
+            const handler = h => page.evaluate(h => +window.m565[h].isActive(), h);
+            const wheel = async () => {
+                await page.mouse.move(150, 100);
+                // The page measures when the handler rests, from the wheel event. A mouse wheel eases its zoom over 200 ms, and
+                // MapLibre waits 200 ms more after the ease, so about 400 ms: 200 ms after the event is too short. (Frames are
+                // slow in software here, so the time of MapLibre is reported and not compared.)
+                const watch = page.evaluate(() => new Promise(done => {
+                    const m = window.m565, t0 = performance.now();
+                    let wheel = 0, seen = false;
+                    m.getCanvas().addEventListener('wheel', () => { wheel = performance.now(); }, {capture: true, once: true});
+                    const poll = () => {
+                        const on = m.scrollZoom.isActive(), t = performance.now();
+                        seen ||= on;
+                        if (!on && seen) return done(t - wheel);
+                        if (t - t0 > 3000) return done('never');
+                        setTimeout(poll, 10);
+                    };
+                    poll();
+                }));
+                await page.mouse.wheel(0, -100);
+                const ms = await watch;
+                await page.waitForTimeout(300);
+                (m565.wheelMs ??= {})[name] = typeof ms === 'number' ? Math.round(ms) : ms;
+                return name === 'ml' || (ms >= 300 && ms < 1500) ? 'rest' : 'wrong';
+            };
+            const keys = async () => {
+                await page.evaluate(() => window.m565.getCanvas().focus());
+                await page.keyboard.down('ArrowRight');
+                const during = await handler('keyboard');
+                await page.keyboard.up('ArrowRight');
+                await page.waitForTimeout(500);
+                return `${during}>${await handler('keyboard')}`;
+            };
+            m565[name] = [sources, await gesture('left'), await gesture('right'), await gesture('left', 'Shift'), await wheel(), await keys()].join(' ');
             // (Chromium has no touch input here: the two-finger gestures are checked for the compat entry alone.)
-            if (name === 'compat') m565.touch = await page.evaluate(() => {
+            if (name === 'compat') m565.touch = await page.evaluate(async () => {
                 const m = window.m565, c = m.getCanvas(), out = [];
                 const send = (type, id, x, y) => c.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, cancelable: true}));
                 const read = () => out.push(['touchZoomRotate', 'touchPitch', 'dragPan'].map(h => +m[h].isActive()).join(''));
@@ -4818,14 +4926,28 @@ for (const mode of renderers) {
                 read();
                 m.touchPitch.disable(); read(); m.touchPitch.enable();
                 send('pointerup', 13, 120, 90); send('pointerup', 14, 180, 90); read();
+                // #1726: a double tap makes doubleClickZoom active until the next task; a tap and a drag zooms with touchZoomRotate.
+                const dbl = () => +m.doubleClickZoom.isActive();
+                send('pointerdown', 15, 150, 100); send('pointerup', 15, 150, 100);
+                send('pointerdown', 16, 150, 100); send('pointerup', 16, 150, 100);
+                out.push(dbl());
+                await new Promise(r => setTimeout(r, 50));
+                out.push(dbl());
+                await new Promise(r => setTimeout(r, 400));
+                send('pointerdown', 17, 150, 100); send('pointerup', 17, 150, 100);
+                send('pointerdown', 18, 150, 100);
+                for (let i = 1; i <= 3; i++) send('pointermove', 18, 150, 100 + i * 10);
+                out.push(+m.touchZoomRotate.isActive());
+                send('pointerup', 18, 150, 130); out.push(+m.touchZoomRotate.isActive());
+                await new Promise(r => setTimeout(r, 400));
                 return out.join();
             });
             await page.evaluate(() => { const el = window.m565.getContainer(); window.m565.remove(); el.remove(); delete window.m565; });
         }
-        check('[main] maplibre-compat: isSourceLoaded answers for one source and fires error for an unknown id, and isActive of dragPan, dragRotate and boxZoom is true during the gesture, as in MapLibre (#565)',
-            m565.ml === m565.compat && m565.compat.startsWith('undefined,1,true,true,true,false,true,false,true,true,1 100000>100000>000000 000000>010000>000000 001000>001000>000000'), JSON.stringify(m565));
-        check('[main] maplibre-compat: isActive of touchZoomRotate is true during a pinch and of touchPitch during a tilt, and false after a finger lifts or after disable() (#565)',
-            m565.touch === '100,000,010,000,000', JSON.stringify(m565));
+        check('[main] maplibre-compat: isSourceLoaded answers for one source and fires error for an unknown id, and isActive of dragPan, dragRotate and boxZoom is true during the gesture, scrollZoom while a wheel zooms, and keyboard never, as in MapLibre (#565, #1726)',
+            m565.compat.replace('wrong', 'rest') === m565.ml && m565.compat.startsWith('undefined,1,true,true,true,false,true,false,true,true,1 100000>100000>000000 000000>010000>000000 001000>001000>000000 rest 0>0'), JSON.stringify(m565));
+        check('[main] maplibre-compat: isActive of touchZoomRotate and dragPan is true during a pinch, of touchPitch during a tilt, of doubleClickZoom at a double tap and of touchZoomRotate during a tap and drag, and false after (#565, #1726)',
+            m565.touch === '101,000,010,000,000,1,0,1,0', JSON.stringify(m565));
         // #606: a GeoJSON feature without an id that several tiles hold is given one time. [0, 0] is the corner of four
         // tiles at zoom 2, and each of them has the three points in its buffer. MapLibre GL JS (served at /ml/) gives the
         // points one time too. It gives the square once for each tile, and this library gives it one time.

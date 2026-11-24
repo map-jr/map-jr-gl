@@ -33,7 +33,9 @@ These differences change the code of most applications:
   limited to 90. The default is 60 in both.
 - The camera has no roll, and its field of view is fixed. `setRoll` and `setVerticalFieldOfView` have no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
-- The library does not validate the style, and the option `validate` has no effect. It does not draw a layer type
+- The production build does not validate the style. The development build checks the required fields of the layers
+  and sources and the types of the values, and fires `error` with the text of MapLibre GL JS; the option
+  `validate: false` turns that check off. The types of expressions are not checked. The library does not draw a layer type
   that it does not support, and an expression that it does not support returns `null`: see
   [The style is not validated](../migrate/from-maplibre.md#the-style-is-not-validated).
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
@@ -55,7 +57,7 @@ available, and of the types that differ.
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
 These options of MapLibre GL JS have no effect: `renderWorldCopies: false`, `canvasContextAttributes` other than
-`antialias`, `logoPosition`, `validate` with any value, `fadeDuration` other than 300, `pitchWithRotate: false`, and
+`antialias`, `logoPosition`, `fadeDuration` other than 300, `pitchWithRotate: false`, and
 `projection` other than `'mercator'`.
 
 The option `pixelRatio` sets the number of canvas pixels for each CSS pixel, as in MapLibre GL JS. Without it, the map
@@ -92,7 +94,7 @@ library" names a member that MapLibre GL JS does not have.
 | `easeTo` | `(o: EaseToOptions, eventData?: EventData) => this` | Moves the camera to a view with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | [`setStyle`](#setstyle) | `(style: unknown, options?: StyleSwapOptions) => Promise<void>` | Replaces the style with a style URL or a style object, and returns a promise that settles when the new style has loaded. |
 | `getStyle` | `() => StyleSpecification` | The style, as in MapLibre GL JS. |
-| `cooperativeGestures` (read only) | `{enable(): void; disable: () => void; isEnabled: () => boolean; isActive: () => boolean}` | As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. |
+| `cooperativeGestures` (read only) | `{enable(): void; disable: () => void; isEnabled: () => boolean; isActive: () => boolean; isBypassed: (event: MouseEvent \| PointerEvent \| WheelEvent) => boolean}` | As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. |
 | `project` | `(lngLat: LngLatLike) => Point` | As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. |
 | `version` (read only) | `string` | The version of this library, as the member `version` of a map of MapLibre GL JS. |
 | `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Has no effect: the map always draws copies of the world side by side. |
@@ -147,7 +149,7 @@ library" names a member that MapLibre GL JS does not have.
 | `zoomIn` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Increases the zoom level by 1 with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `zoomOut` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Decreases the zoom level by 1 with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | `rotateTo` | `(bearing: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
-| `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than 7 degrees from north, where the option `bearingSnap` of MapLibre GL JS has no effect. |
+| `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than the option `bearingSnap` (7 degrees by default) from north, as in MapLibre GL JS. |
 | `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
 | `getRoll` | `() => number` | Returns 0: the camera has no roll. |
 | `getCenterElevation` | `() => number` | Returns the elevation of the ground at the map center in meters, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. |
