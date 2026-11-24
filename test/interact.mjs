@@ -4455,6 +4455,36 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: zoomSnap snaps the zoom of camera calls and fitBounds, and setEventedParent passes events to the parent, as in MapLibre (#1019)',
             m1019.ml.length === m1019.compat.length && m1019.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1019.compat[i]) < 1e-9 : v === m1019.compat[i]), JSON.stringify(m1019));
+        // #1040: with zoomSnap, a turn of a mouse wheel ends at the next multiple in its direction, and a trackpad does not
+        // snap, as in MapLibre GL JS (served at /ml/).
+        const m1040 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4.3, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.setZoomSnap(0.5);
+                // (A deltaY that is a multiple of 4.000244140625 is a mouse wheel in both libraries, and one below 4 a trackpad.)
+                const turn = async deltaY => {
+                    const end = new Promise(r => m.once('moveend', r));
+                    m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY, clientX: 150, clientY: 100, bubbles: true, cancelable: true}));
+                    await Promise.race([end, new Promise(r => setTimeout(r, 2000))]);
+                    await new Promise(r => setTimeout(r, 500));
+                    return m.getZoom();
+                };
+                const out = [m.getZoom()];
+                out.push(await turn(-4.000244140625 * 10), await turn(4.000244140625 * 25), await turn(-4.000244140625 * 100));
+                m.setZoomSnap(0); out.push(await turn(-4.000244140625 * 10));
+                m.setZoomSnap(0.5); out.push(await turn(-3));
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: with zoomSnap, the mouse wheel ends at a multiple of it and a trackpad does not snap, as in MapLibre (#1040)',
+            m1040.ml.length === m1040.compat.length && m1040.ml.every((v, i) => Math.abs(v - m1040.compat[i]) < 1e-6) && m1040.compat.slice(1, 4).every(z => Math.abs(z * 2 - Math.round(z * 2)) < 1e-9), JSON.stringify(m1040));
         // #1198: fitBounds and fitScreenCoordinates with `pitch` end at that pitch and fit the box as seen from above, and
         // without `pitch` keep the pitch of the map, as in MapLibre GL JS (served at /ml/).
         const m1198 = await page.evaluate(async () => {

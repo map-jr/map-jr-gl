@@ -4,6 +4,7 @@
 // results that are arrays and promises at the same time.
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
+import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
@@ -330,6 +331,8 @@ export class Map extends CoreMap {
         return o.zoom === undefined || !(s > 0) ? o : {...o, zoom: (down ? Math.floor(o.zoom / s + 1e-10) : Math.round(o.zoom / s)) * s};
     }
     cameraForBounds(...args: Parameters<CoreMap['cameraForBounds']>) { return this.snapped(super.cameraForBounds(...args), true); }
+    /** @internal (A turn of a mouse wheel ends at a multiple of zoomSnap, as in MapLibre GL JS.) */
+    protected override post(c: Command, transfer?: Transferable[]) { if (c.type === 'wheel' && this.zoomSnap > 0) c.snap = this.zoomSnap; super.post(c, transfer); }
     /**
      * As in MapLibre GL JS: each event of the map also goes to `parent.fire`, as one object with the fields of `data`
      * (or of what the function `data` returns), while `parent.listens(type)` is true.

@@ -34,7 +34,7 @@ export type Command =
     /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
     | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
     | {type: 'zoom'; delta: number; x: number; y: number}
-    | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'}
+    | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'; snap?: number}
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
@@ -282,7 +282,7 @@ export class Engine {
 
     private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]; fly?: number[]; globe?: boolean; way?: number[]} | null = null;
     private wheel: {
-        delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number;
+        delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number; snap?: number;
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
     } | null = null;
     private prevWheelEase: {start: number; easing: (t: number) => number} | null = null;
@@ -991,7 +991,7 @@ export class Engine {
                 const now = performance.now(), w = this.wheel;
                 // A pause ends the gesture: later scrolling starts from the zoom actually on screen.
                 const fresh = !w || (w.doneAt !== undefined && now - w.doneAt > 200);
-                this.wheel = {...(fresh ? {} : w), delta: (fresh ? 0 : w!.delta) + c.delta, kind: c.kind, x: c.x, y: c.y, lastEvent: now, doneAt: undefined};
+                this.wheel = {...(fresh ? {} : w), delta: (fresh ? 0 : w!.delta) + c.delta, kind: c.kind, x: c.x, y: c.y, snap: c.snap, lastEvent: now, doneAt: undefined};
                 break;
             }
             case 'rotate': tr.set(undefined, undefined, tr.bearing + c.delta, tr.pitch + (c.pitch ?? 0)); break;
@@ -1290,7 +1290,14 @@ export class Engine {
                 const rate = w.kind === 'wheel' && Math.abs(w.delta) > WHEEL_STEP ? WHEEL_RATE : TRACKPAD_RATE;
                 let scale = 2 / (1 + Math.exp(-Math.abs(w.delta * rate)));
                 if (w.delta < 0) scale = 1 / scale;
-                w.target = clamp((w.target ?? tr.zoom) + Math.log2(scale), tr.zoomFloor, tr.maxZoom);
+                let target = clamp((w.target ?? tr.zoom) + Math.log2(scale), tr.zoomFloor, tr.maxZoom);
+                // The option zoomSnap of the compat entry: as in MapLibre GL JS, a mouse wheel goes to the next multiple in
+                // the direction of the turn, measured from the zoom on screen rounded to a multiple.
+                if (w.kind === 'wheel' && w.snap) {
+                    const inv = 1 / w.snap, d = target - Math.round(tr.zoom * inv) / inv;
+                    if (Math.abs(d) >= 1e-10) target = clamp((d > 0 ? Math.ceil(target * inv - 1e-9) : Math.floor(target * inv + 1e-10)) / inv, tr.zoomFloor, tr.maxZoom);
+                }
+                w.target = target;
                 if (w.kind === 'wheel') {
                     // Mouse wheels arrive in coarse steps: ease to the target, starting at the speed already under way.
                     w.start = tr.zoom;
