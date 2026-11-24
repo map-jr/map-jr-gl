@@ -7,6 +7,7 @@ import {createRequire} from 'node:module';
 import MagicString from 'magic-string';
 import {shortenPrivateNames} from './scripts/private-names.mjs';
 import {minifyShaders} from './scripts/minify-shaders.mjs';
+import {inlineGlConstants} from './scripts/gl-constants.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -53,6 +54,19 @@ const shaders = {
         if (!id.endsWith('/src/gl.ts')) return null;
         const edited = new MagicString(code);
         for (const [start, end, text] of minifyShaders(code)) edited.overwrite(start, end, text);
+        return withMap(edited, id);
+    },
+};
+
+/** Puts the number of each WebGL constant in place of its read from the context (`gl.TEXTURE_2D` becomes `3553`). */
+const glConstants = {
+    name: 'gl-constants',
+    transform(code, id) {
+        if (!/\/src\/[^/]+\.ts$/.test(id)) return null;
+        const edits = inlineGlConstants(code);
+        if (!edits.length) return null;
+        const edited = new MagicString(code);
+        for (const [start, end, text] of edits) edited.overwrite(start, end, text);
         return withMap(edited, id);
     },
 };
@@ -134,7 +148,7 @@ const hoistImports = {
  * tools are open.
  */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, privates, noPreload, keepEnv, hoistImports, ...plugins],
+    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, glConstants, privates, noPreload, keepEnv, hoistImports, ...plugins],
     build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
