@@ -5641,15 +5641,18 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
         await new Promise(r => { m.once('load', r); setTimeout(r, 10000); });
         const gl = m.getCanvas().getContext('webgl2'), before = {...window.loseCalls};
+        const restored = new Promise(r => { m.once('webglcontextrestored', () => r(true)); setTimeout(() => r(false), 10000); });
         gl.getExtension('WEBGL_lose_context').loseContext();
         const lost = gl.isContextLost();
-        // (The map starts again on a new canvas after a moment, and remove() then loses that new context.)
-        await new Promise(r => setTimeout(r, 300));
+        // (The map starts again on a new canvas after a moment, and remove() then loses that new context. The check
+        // waits for `webglcontextrestored`, up to 10 s, and not a fixed time: the restart can take longer on a loaded
+        // runner, #1656.)
+        const restart = await restored;
         m.remove(); el.remove();
-        await new Promise(r => setTimeout(r, 300));
-        return {lost, all: window.loseCalls.all - before.all, whileLost: window.loseCalls.whileLost - before.whileLost};
+        await new Promise(r => setTimeout(r, 300)); // (a window for a late second call on the lost context)
+        return {lost, restart, all: window.loseCalls.all - before.all, whileLost: window.loseCalls.whileLost - before.whileLost};
     });
-    check('[main] after a lost WebGL context the map does not call loseContext() on the lost context, and remove() loses the new one', calls.lost && calls.whileLost === 0 && calls.all === 2, JSON.stringify(calls));
+    check('[main] after a lost WebGL context the map does not call loseContext() on the lost context, and remove() loses the new one', calls.lost && calls.restart && calls.whileLost === 0 && calls.all === 2, JSON.stringify(calls));
     await page.close();
 }
 // 3D terrain: the camera is kept above the ground as MapLibre GL JS 6.17 keeps it (#1480, #1486). A pitch drag and a rotate
