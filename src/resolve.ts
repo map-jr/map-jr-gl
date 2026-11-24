@@ -124,6 +124,7 @@ export function fontKey(names: unknown): string {
 const told = new WeakSet<object>();
 // Contour sources that were warned about for a missing `thresholds`, one time for each source object (#1229).
 const noThresholds = new WeakSet<object>();
+const noMissing = new WeakSet<object>();
 const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: WeakSet<object>; late?: () => void}>();
 /** Puts data that the map fetched itself (`setData` with a URL) in the place of the kept result of a source. */
 export function keep(raw: object, url: string, v: unknown) { fetched.set(raw, {url, p: Promise.resolve(v), v}); }
@@ -212,6 +213,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             badOnce(raw, () => new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`));
             return;
         }
+        // An empty tile (HTTP 204, or no tile in a PMTiles archive) is blank, as in MapLibre GL JS 6.17, which does not read
+        // `emptyResponse`. The value "missing" warns one time for each source object (#1695).
+        if (raw.emptyResponse === 'missing' && !noMissing.has(raw)) { noMissing.add(raw); console.warn(`[map-jr-gl] The source "${name}": "emptyResponse": "missing" has no effect, and an empty tile draws nothing, as in MapLibre GL JS. Remove "emptyResponse".`); }
         if (raw.type === 'vector' && raw.encoding === 'mlt') {
             // MapLibre Tiles are not decoded (#1436): the source is left out, and reported one time for the source object (#1438).
             badOnce(raw, () => new Error(`[map-jr-gl] The source "${name}" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`));
