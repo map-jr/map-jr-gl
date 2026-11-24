@@ -199,6 +199,9 @@ export class FullscreenControl implements Control {
             b.title = this.full ? ui(map, 'FullscreenControl.Exit', 'Exit fullscreen') : ui(map, 'FullscreenControl.Enter', 'Enter fullscreen');
             b.setAttribute('aria-label', b.title);
             b.setAttribute('aria-pressed', String(this.full));
+            toggleClass(b, 'ctrl-shrink', this.full);
+            // As in MapLibre GL JS, the state name replaces the base name `maplibregl-ctrl-fullscreen` (the `map-jr-` name stays).
+            b.classList.toggle('maplibregl-ctrl-fullscreen', !this.full);
         };
         name();
         this.change = () => set((c.getRootNode() as Document | ShadowRoot).fullscreenElement === c);
@@ -218,7 +221,7 @@ export class TerrainControl implements Control {
     onAdd(map: Map) {
         const el = this.el = group();
         const b = button(el, 'terrain', '', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => { map.setTerrain(map.getTerrain() ? null : this.options); name(); });
-        const name = () => { const on = !!map.getTerrain(); b.title = ui(map, on ? 'TerrainControl.Disable' : 'TerrainControl.Enable', on ? 'Disable terrain' : 'Enable terrain'); b.setAttribute('aria-label', b.title); };
+        const name = () => { const on = !!map.getTerrain(); b.title = ui(map, on ? 'TerrainControl.Disable' : 'TerrainControl.Enable', on ? 'Disable terrain' : 'Enable terrain'); b.setAttribute('aria-label', b.title); toggleClass(b, 'ctrl-terrain-enabled', on); b.classList.toggle('maplibregl-ctrl-terrain', !on); };
         name();
         // The label follows a setTerrain or setStyle call of the app, as in MapLibre GL JS.
         map.on('terrain', name);
