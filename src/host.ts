@@ -841,6 +841,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
     // The sources of the base style: a source of the description with one of these ids replaces it, and only a new style gives it back.
     let baseSources: object = {};
+    // The terrain of the base style, which a description without `terrain` gives back without a new style (#1143).
+    let styleTerrain: TerrainSpecification | null = null;
     // The projection of the style itself, which applies when the description has none, and that of the last description.
     let styleProjection: ProjectionSpecification | undefined, wantedProjection = spec.projection;
     // The ids of the GeoJSON sources that keys of `data` made, because the style and `sources` have no source of that id (#487).
@@ -862,6 +864,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     const restyle = (next: Given) => { styled = false; styledDark = darkOf(next.colorScheme); map.setStyle(styleFor(next.style, styledDark) as MapOptions['style'], {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
+        styleTerrain = style.terrain ?? null;
         styleProjection = style.projection;
         // (The code for the images of a style is loaded only for a style that has them. After it has loaded, the map must
         // still exist and the style must not have been replaced.)
@@ -1011,14 +1014,13 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
 
     // A change of only `sources`, `layers` and `terrain` goes to the map as edits, so that the style is not loaded again and the layers that the
     // application added through the core map stay. It returns false, with nothing changed, for a change that needs a new
-    // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source` or
+    // style: a changed source, a source id that the style has, a changed `type`, `source` or
     // `source-layer` of a layer. A changed `minzoom` or `maxzoom` goes to `setLayerZoomRange` (#871). A new order of the layers, a new layer before one that stays
     // and another `before` move the layers of `layers` (#859).
     const edit = (next: StyleParts, before: StyleParts, differ: (a: unknown, b: unknown) => boolean) => {
         const was = before.layers ?? [], is = next.layers ?? [], ns = next.sources ?? {}, os = before.sources ?? {};
         const ids = (a: typeof is, b: typeof is) => a.filter(l => b.some(x => x.id === l.id)).map(l => l.id).join('\n');
         const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'minzoom', 'maxzoom', 'id', 'before'];
-        if (differ(next.terrain, before.terrain)) return false;
         // (A new order, a new layer before one that stays, or another `before`: the layers of `layers` are added again
         // in their order, with the rule of `extended()`, as the style would have them (#859).)
         const moved = ids(is, was) !== ids(was, is) || is.some((l, i) => !kept.includes(l) && i < is.indexOf(kept[kept.length - 1])) || kept.some(l => differ(l.before, was.find(x => x.id === l.id)!.before));
@@ -1039,6 +1041,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             if (differ(l.minzoom, w.minzoom) || differ(l.maxzoom, w.maxzoom)) map.setLayerZoomRange(l.id, l.minzoom, l.maxzoom);
         }
         for (const {before: at, ...l} of is) if (moved || !kept.some(k => k.id === l.id)) map.addLayer(copy(l) as {id: string}, at && map.getLayer(at) ? at : undefined);
+        // (A changed `terrain` goes to `setTerrain`, after the sources that it can name. No `terrain` gives back that of the style, #1143.)
+        if (differ(next.terrain, before.terrain)) map.setTerrain(next.terrain === undefined ? styleTerrain : next.terrain && copy(next.terrain));
         giveData();
         return true;
     };

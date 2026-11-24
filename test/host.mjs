@@ -604,6 +604,31 @@ for (const renderer of renderers) {
         const flatWant = ['null', '{"source":"dem","exaggeration":2}', 'null', '{"source":"dem","exaggeration":1.5}', '{"source":"dem","exaggeration":2}', '{"source":"dem","exaggeration":2}'];
         check(`[${renderer}] terrain: null gives a flat map with a style that has terrain, and no field or undefined gives the terrain of the style (#1104)`, JSON.stringify(flat) === JSON.stringify(flatWant), JSON.stringify(flat));
 
+        // A change of `terrain` alone goes to the map as an edit (#1143): no `style.load` and no new request for the style,
+        // and the map shows the terrain of each step (no field gives that of the style back).
+        const terrainEdit = await page.evaluate(async renderer => {
+            const t = window.t, out = [], styleRequests = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, terrain: {source: 'dem', exaggeration: 2}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const url = URL.createObjectURL(new Blob([JSON.stringify(style)], {type: 'application/json'}));
+            const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
+            const read = async host => { await new Promise(r => setTimeout(r, 50)); await idle(host); return JSON.stringify(host.getResolvedDescription().style.terrain ?? null); };
+            const spec = {style: url, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, transformRequest: (u, type) => { if (type === 'Style') styleRequests.push(u); }};
+            const host = t.lib.createMap(el, spec);
+            await read(host);
+            let loads = 0;
+            const count = () => loads++, map = host._map, requestsBefore = styleRequests.length;
+            map.on('style.load', count);
+            host.patch({terrain: {source: 'dem', exaggeration: 1.5}}); out.push(await read(host));
+            host.patch({terrain: null}); out.push(await read(host));
+            host.update(spec); out.push(await read(host));
+            map.off('style.load', count);
+            host.destroy(); el.remove(); URL.revokeObjectURL(url);
+            return `${out.join(' > ')} loads ${loads} style requests ${styleRequests.length - requestsBefore}`;
+        }, renderer);
+        check(`[${renderer}] a change of terrain alone changes the terrain without a new style: no style.load and no style request (#1143)`,
+            terrainEdit === '{"source":"dem","exaggeration":1.5} > null > {"source":"dem","exaggeration":2} loads 0 style requests 0', terrainEdit);
+
         // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
         const noDem = await page.evaluate(async renderer => {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));

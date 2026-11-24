@@ -150,7 +150,8 @@ The map applies a change of `layers` in place. A new paint value transitions fro
 | `null` | No 3D terrain. `null` overrides the `terrain` of the style. |
 | `undefined`, or no field | The terrain of the style. |
 
-A change of `terrain` [loads the style again](#style). See [Terrain and elevation](../guide/terrain.md).
+A change of `terrain` changes the terrain of the map and does not load the style again. See [Terrain and
+elevation](../guide/terrain.md).
 
 ## `fonts`
 
