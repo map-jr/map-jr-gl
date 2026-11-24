@@ -432,12 +432,13 @@ export class GlyphAtlas extends BaseShaper {
         const w = gw + 2 * B, h = gh + 2 * B;
         g = {x: 0, y: 0, w, h, left: -left, top, advance: m.width};
         if (gw && gh && w < this.width) {
+            // (The place in the atlas comes first: when the atlas is full, it is emptied, and the canvas with it.)
+            this.pack(g, null, w, h);
             const [x, y] = this.place(w, h), c = this.ctx;
             c.font = css;
             c.textBaseline = 'alphabetic';
             c.fillStyle = '#000';
             c.fillText(text, x + B + left, y + B + top);
-            this.pack(g, null, w, h);
             this.drawn.push([x, y, g.x, g.y, w, h]);
         } else { g.w = g.h = 0; }
         this.glyphs.set(key, g);

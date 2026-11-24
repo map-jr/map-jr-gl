@@ -43,6 +43,25 @@ test('glyphs drawn with the canvas wait for the renderer, which takes them when 
     assert.deepEqual(atlas.dirty, [], 'no glyph of a file');
 });
 
+// When the atlas is full, it is emptied, and the canvas with it: the glyph that fills it is drawn after that, at its
+// own place on the emptied canvas, and no other glyph is drawn over it.
+test('a glyph that empties the full atlas is drawn on the emptied canvas, at a place of its own', () => {
+    const atlas = new GlyphAtlas('sans-serif') as any, fills: number[][] = [];
+    const fake = (height: number) => ({canvas: {width: 2048, height}, font: '', textBaseline: '', fillStyle: '', clearRect() {},
+        measureText: () => ({width: 100, actualBoundingBoxLeft: 0, actualBoundingBoxRight: 100, actualBoundingBoxAscent: 100, actualBoundingBoxDescent: 20}),
+        fillText: (_t: string, x: number, y: number) => fills.push([x, y])});
+    atlas.ctx = fake(128); atlas.newContext = fake;
+    atlas.flush = () => atlas.drawnSent();
+    let i = 0;
+    while (atlas.resets === 0) atlas.glyph(String.fromCodePoint(0x4e00 + i++), '400|x');
+    assert.equal(atlas.drawn.length, 1, 'the glyph that emptied the atlas waits for the renderer');
+    const [sx, sy, x, y] = atlas.drawn[0];
+    assert.deepEqual([sx, sy, x, y], [0, 0, 1, 1], 'at the start of the canvas and of the atlas');
+    assert.deepEqual(fills[fills.length - 1], [sx + 4, sy + 104], 'drawn after the canvas was emptied');
+    atlas.glyph(String.fromCodePoint(0x4e00 + i), '400|x');
+    assert.notDeepEqual(atlas.drawn[1].slice(0, 2), atlas.drawn[0].slice(0, 2), 'the next glyph has another place on the canvas');
+});
+
 // The first use of a font family can take half a second, so the fonts of the style are looked up before the first
 // label placement needs them, one font in each task (#326).
 test('warm() looks up each font of the style once, in later tasks, and not when the style has glyph files', async () => {
