@@ -38,6 +38,8 @@ and the sprite.
 - A [limit for requests](#limits-for-requests) is reached, or the value of a limit is not valid.
 - A key of `data` is the id of a source that is not a GeoJSON source.
 - `tileZoomOffset` is not a whole number.
+- `width` or `height` is not a finite number greater than 0, for example a string, `NaN`, `0` or a negative number.
+  The message names the option.
 - The options have no `bounds` and lack `center`, `zoom` or both. This happens in JavaScript, or when TypeScript does
   not check the options.
 
