@@ -106,6 +106,26 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
 let warnedParts = false;
 
 /**
+ * The code of the parts of the worker, fetched once on the page by URL and shared by every map and tile worker of the
+ * page, as a blob URL (null when the fetch failed: each worker then fetches the part itself). The fetch starts as soon
+ * as the style is there, in parallel with the worker file, and not when a tile worker first needs the part (#79).
+ */
+const partCode = new globalThis.Map<string, Promise<string | null>>();
+/** Starts to fetch the parts that the sources of a style (as written) need: see `partsFor` in engine.ts. */
+export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>}) {
+    const urls = partUrls(o);
+    if (!urls) return;
+    for (const s of Object.values(style?.sources ?? {})) {
+        const name = s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'contour'
+            : [s?.url, ...(Array.isArray(s?.tiles) ? s.tiles : [])].some(u => typeof u === 'string' && u.startsWith('pmtiles://')) ? 'pmtiles' : '';
+        const url = urls[name];
+        if (!url || partCode.has(url)) continue;
+        partCode.set(url, fetch(url).then(r => r.ok ? r.text() : null)
+            .then(t => t === null ? null : URL.createObjectURL(new Blob([t, `\n//# sourceMappingURL=${url.replace(/[?#].*/, '')}.map`], {type: 'text/javascript'})), () => null));
+    }
+}
+
+/**
  * The worker file, fetched once and kept as a blob URL so that the start-up workers share one request (#325). The URL
  * is revoked 10 s after the last worker that uses it has started or failed, never while a worker still loads it (#782).
  */
@@ -216,7 +236,10 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
             drop();
             // Each map talks to each worker over its own channel, so their styles and requests stay separate.
             ids = workers.map(() => ++channels);
-            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts}, [ch.port1]); return ch.port2; });
+            // (The parts that the page fetches for this style go to each worker when they arrive; the worker waits for them.)
+            const coming = Object.entries(parts ?? {}).filter(([, url]) => partCode.has(url));
+            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming: coming.map(([n]) => n)}, [ch.port1]); return ch.port2; });
+            for (const [name, url] of coming) partCode.get(url)!.then(code => { for (const w of workers) w.postMessage({role: 'part', name, code}); });
             return ports;
         },
         // WebKit can hold a message on the port of a worker that has been idle for a few seconds for about a second

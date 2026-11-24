@@ -22,7 +22,20 @@ const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null;
  * a policy without `blob:`), `importScripts` loads it from its URL.
  */
 let partUrls: Partial<Record<PartName, string>> = {};
+/**
+ * The code of a part that the page fetched once for all of its workers (`prefetchParts` in loader.ts), as a blob URL,
+ * or null when the page could not fetch it. The page names a part that it fetches with the role `tiles`, and sends it
+ * with the role `part`: a part that the page does not fetch is fetched here.
+ */
+const fromPage = new Map<string, {code: Promise<string | null>; done(url: string | null): void}>();
+const given = (name: string) => {
+    let e = fromPage.get(name);
+    if (!e) { let done!: (url: string | null) => void; const code = new Promise<string | null>(r => done = r); fromPage.set(name, e = {code, done}); }
+    return e;
+};
 const fromUrl = async (partName: PartName) => {
+    const code = await fromPage.get(partName)?.code;
+    if (code) try { scope.importScripts(code); return scope.MapJrPart; } catch { /* the fetch below */ }
     const url = partUrls[partName];
     if (!url) throw new Error(`[map-jr-gl] The worker could not load map-jr-gl-worker-${partName}.js, the part of the worker for ${partName}: it has no URL. Set workerUrl to an http(s) URL of map-jr-gl-worker.js.`);
     let blob = '';
@@ -44,6 +57,8 @@ scope.onmessage = e => {
     const m = e.data;
     // (The page sends the URLs of the parts with each role. The standalone build sends none: its worker has them inside.)
     if (m.parts) { partUrls = m.parts; setPartLoader(fromUrl); }
+    for (const name of m.coming ?? []) given(name);
+    if (m.role === 'part') given(m.name).done(m.code);
     // A warning goes through the port of any map that is still open: the page prints each once, whichever map it came from.
     if (m.role === 'tiles') { tilePorts.set(m.id, m.port); serveTiles(m.port); relayWarnings(msg => tilePorts.values().next().value?.postMessage({type: 'warn', msg})); }
     // The page drops the port of a map that it no longer uses (its engine worker ended, or the map was removed; #838).

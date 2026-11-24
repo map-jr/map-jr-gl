@@ -186,6 +186,28 @@ for (const how of ['default URLs', 'plain workerUrl', 'blob: workerUrl', '<map-j
     } catch (e) { check(`parts of the worker (#79), ${how}: the test was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A part of the worker loads once for the page, in parallel with the worker file (#79): two maps on a page with two
+// tile workers request map-jr-gl-worker-geojson.js once, and the request starts before the worker file has arrived (the
+// route holds the worker file for 1.5 s). (The requests of a worker are seen in Chromium.)
+{
+    const page = await browser.newPage({viewport: {width: 800, height: 500}});
+    const parts = [];
+    let workerDone = 0;
+    page.context().on('request', r => { if (/map-jr-gl-worker-geojson\.js/.test(r.url())) parts.push(Date.now()); });
+    await page.route(/map-jr-gl-worker\.js$/, async r => { await new Promise(res => setTimeout(res, 1500)); workerDone ||= Date.now(); r.continue().catch(() => {}); });
+    await page.goto(`http://localhost:${port}/style.json`);
+    const r = await page.evaluate(async () => {
+        const lib = await import('/dist/map-jr-gl.js'), errors = [];
+        lib.configure({tileWorkers: 2});
+        const style = {version: 8, sources: {sq: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'sq', type: 'circle', source: 'sq'}]};
+        const hosts = [0, 1].map(() => lib.createMap(document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'})), {style, attribution: false, onError: e => errors.push(e.message)}));
+        const idle = await Promise.all(hosts.map(h => new Promise(res => { h.state.subscribe(s => s.idle, v => v && res(true)); setTimeout(() => res(false), 15000); })));
+        return {idle, errors};
+    });
+    check('parts of the worker (#79): two maps with two tile workers request the GeoJSON part once, before the worker file has arrived',
+        r.idle.every(Boolean) && !r.errors.length && parts.length === 1 && workerDone > 0 && parts[0] < workerDone, JSON.stringify({...r, requests: parts.length, startedBeforeWorker: workerDone - parts[0]}));
+    await page.close();
+}
 // The .js and .compat.js forms of the examples run as they are written: each is the module script of a bare page with
 // <div id="map"> and an import map, and reaches idle with no page error (#1156). The route appends only
 // `window.map = map` so that the test can read the map.

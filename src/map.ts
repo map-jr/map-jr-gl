@@ -11,7 +11,7 @@ import type {QueriedFeature} from './query.ts';
 import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
 import type {GeoJSONGeometry} from './host.ts';
-import {acquireTileWorkers, defaults as loadDefaults, partUrls, startWorker, type LoadOptions} from './loader.ts';
+import {acquireTileWorkers, defaults as loadDefaults, partUrls, prefetchParts, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 // The warnings of the engine workers, each once on the page, as each thread warns once (expr.ts, #1141).
@@ -418,6 +418,8 @@ export class Map {
         // (The map can be removed during each `await` of this method. What this start acquired is then given back.)
         if (this.removed) { giveBack(); return; }
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
+        // The parts of the worker that the style needs load now, while the worker file loads (#79).
+        prefetchParts(o, this.rawStyle);
         this.styleChanged();
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
