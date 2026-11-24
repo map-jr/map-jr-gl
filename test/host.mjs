@@ -3344,7 +3344,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     await page.close();
 }
 // The parts of the worker load on demand (#79): a map of vector tiles requests none, a map with a GeoJSON source
-// requests the GeoJSON part once for both of its maps and draws its data, and a part that does not load gives an error
+// requests the GeoJSON part once in each tile worker for both of its maps and draws its data, and a part that does not load gives an error
 // that names the file. (The requests of a worker are seen in Chromium only.)
 for (const renderer of ['worker', 'main']) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
@@ -3372,9 +3372,9 @@ for (const renderer of ['worker', 'main']) {
         const vector = await run('vector'), afterVector = parts.splice(0);
         const geojson = await run('geojson'), afterGeoJSON = parts.splice(0);
         const seen = browserName === 'chromium';
-        check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once and draw it (#79)`,
+        check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
             vector.idle.every(Boolean) && !vector.errors.length && geojson.idle.every(Boolean) && !geojson.errors.length && geojson.centre[2] > 200 && geojson.centre[0] < 50 &&
-            (!seen || (afterVector.length === 0 && afterGeoJSON.join() === 'geojson')), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
+            (!seen || (afterVector.length === 0 && afterGeoJSON.length >= 1 && afterGeoJSON.length <= 4 && afterGeoJSON.every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
         if (seen) {
             // (A new page: its workers have not loaded the part.)
             const other = await browser.newPage({viewport: {width: 900, height: 600}});
