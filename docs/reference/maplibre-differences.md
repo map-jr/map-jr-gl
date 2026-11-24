@@ -511,7 +511,7 @@ Layers:
 Properties:
 
 - `line-gradient` together with `line-dasharray`
-- `line-offset` and `line-blur` that are different for each feature
+- `line-blur` that is different for each feature
 - Circle stroke and blur that are different for each feature
 - `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
 - `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
