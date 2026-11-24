@@ -2024,11 +2024,18 @@ for (const renderer of renderers) {
             t.host.update(t.spec = {...t.spec, controls: spec()}); // made again: the same keys keep the controls
             await settle();
             const kept = added === 1 && removed === 0 && el.isConnected;
+            // A new position under the same key moves the control, custom or built in (#1237).
+            t.host.update(t.spec = {...t.spec, controls: [navigation({position: 'bottom-left'}), custom({key: 'el', position: 'bottom-right', element: el}), custom({key: 'obj', ...obj})]});
+            // (The navigation control loads its code on demand, so the check waits up to 2 s for its buttons in the new corner.)
+            const isMoved = () => !!el.parentElement?.matches('#host .map-jr-ctrl-bottom-right') && !!document.querySelector('#host .map-jr-ctrl-bottom-left .map-jr-ctrl-zoom-in')
+                && !document.querySelector('#host .map-jr-ctrl-top-right .map-jr-ctrl-zoom-in') && added === 1;
+            for (let i = 0; i < 40 && !isMoved(); i++) await settle();
+            const moved = isMoved();
             t.host.update(t.spec = {...t.spec, controls: undefined});
             await settle();
-            return {inCorner, objIn, kept, gone: !el.isConnected && removed === 1 && !document.getElementById('own-obj')};
+            return {inCorner, objIn, kept, moved, gone: !el.isConnected && removed === 1 && !document.getElementById('own-obj')};
         });
-        check(`[${renderer}] custom controls go into their corner and follow the description by key`, custom.inCorner && custom.objIn && custom.kept && custom.gone, JSON.stringify(custom));
+        check(`[${renderer}] custom controls go into their corner, follow the description by key, and move to a new position`, custom.inCorner && custom.objIn && custom.kept && custom.moved && custom.gone, JSON.stringify(custom));
 
         // 4b. An SVG image without a viewBox has the size of its width and height attributes (#175): a 9×9 image that
         // replaces a 40×40 one under the same name is drawn at 9×9 centred on its anchor, and the 40×40 one is not cropped.

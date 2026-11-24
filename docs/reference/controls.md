@@ -32,7 +32,7 @@ The map shows the controls of the last description, and each item of `controls` 
   description. It removes a control that the new list does not have. A control whose options changed is a
   different control: the map removes the old one and adds the new one last in its corner.
 - **`custom`.** Two items of [`custom`](#custom) are the same control when they have the same `key`. A new
-  `position` with the same `key` has no effect. To move the control, pass a new `key`.
+  `position` with the same `key` moves the control: the map removes it and adds it last in the new corner.
 - **A duplicate.** When the list has the same control twice, the map shows it once.
 - **Order.** When the map is created, the first control of a corner in the list is nearest to the corner. A control
   that a later description adds goes after the controls that the corner has.
