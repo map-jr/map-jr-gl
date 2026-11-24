@@ -1,15 +1,16 @@
 # Nuxt
 
 The module `@map-jr/map-jr-gl/nuxt` sets up the [Vue components and composables](vue.md) of `@map-jr/map-jr-gl/vue`
-in Nuxt. With the module, Vite loads the tile workers in development. The module requires `@nuxt/kit` 3 or 4 as a peer dependency. The module has no options: a key `mapJr` in
-`nuxt.config.ts` is accepted and has no effect.
+in Nuxt. With the module, Vite loads the tile workers in development. The module requires `@nuxt/kit` 3 or 4 as a peer dependency. The module has no options. A key `mapJr` in
+`nuxt.config.ts`, or options next to the module in `modules`, have no effect, and the module warns once when Nuxt
+starts.
 
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 ```
 
-```vue
+```vue nuxt
 <!-- app/pages/index.vue (pages/index.vue in Nuxt 3) -->
 <template>
   <div style="height: 400px">
@@ -76,7 +77,7 @@ Nuxt puts around `MapJr`. It has none of the members of the map, also after hydr
 - The default slot receives `map` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{map}">`.
 - `useMapInstance()` in a component of your own inside `LazyMapJr` returns a ref with the map.
 
-```vue
+```vue nuxt
 <script setup>
 // A shallowRef keeps the map as it is, with no reactive proxy around it.
 const map = shallowRef(null);

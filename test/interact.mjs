@@ -1369,11 +1369,16 @@ for (const mode of renderers) {
         const all = await m.queryRenderedFeatures(), filtered = await m.queryRenderedFeatures({layers: ['asked'], filter: ['==', ['get', 'kind'], 'far']});
         const source = await m.querySourceFeatures('asked');
         const out = {point: at.map(f => f.id), layer: at[0]?.layer?.id, geometry: at[0]?.geometry?.type, box: box.map(f => f.id).sort(), all: all.length, top: all[0]?.layer?.id, filtered: filtered.map(f => f.id), source: source.length};
-        m.removeLayer('asked'); m.removeSource('asked');
+        // A layer removed while a query is in flight: its features are left out, so every feature has a `layer` (#705).
+        const pending = m.queryRenderedFeatures(p, {layers: ['asked']});
+        m.removeLayer('asked');
+        const gone = await pending;
+        out.removed = gone.length; out.noLayer = gone.filter(f => !f.layer).length;
+        m.removeSource('asked');
         return out;
     });
-    check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures`,
-        rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
+    check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures; a layer removed during a query`,
+        rendered.removed === 0 && rendered.noLayer === 0 && rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
 
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
@@ -2650,6 +2655,25 @@ for (const mode of renderers) {
         await page.unroute(/\/no-such-809\//);
         check(`[${mode}] compat: a GeoJSON source that fails is requested and fires error as in MapLibre GL JS after a paint change and setStyle (#809)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
+    }
+    // A source with no "tiles" and no "url" gives an `error` to each map that uses the same style object, one time (#855).
+    {
+        const errors = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const style = {version: 8, sources: {none: {type: 'vector'}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, counts = [0, 0], maps = [];
+            for (const i of [0, 1]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
+                m.on('error', e => { if (/no "tiles" and no "url"/.test(e.error?.message)) counts[i]++; });
+                maps.push(m);
+                await new Promise(r => m.once('load', r));
+            }
+            maps[0].setPaintProperty('bg', 'background-color', '#eee');
+            await wait(500);
+            for (const m of maps) { m.getContainer().remove(); m.remove(); }
+            return counts;
+        }, mode);
+        check(`[${mode}] compat: a source with no tiles and no url gives one error to each map that shares the style object (#855)`, JSON.stringify(errors) === '[1,1]', JSON.stringify(errors));
     }
     // A filter with ["zoom"] on a tile that is over-zoomed past the source's maxzoom sees the over-zoomed zoom, as in
     // MapLibre GL JS 6.17 (`overscaledZ`): at zoom 16 on a source that stops at 14, [">=", ["zoom"], 15] passes (#991).
@@ -4243,6 +4267,29 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: setTransformConstrain on a map that draws in a worker warns once and fires no error (#1020)',
             w1020.warnings.length === 1 && w1020.warnings[0].includes("renderer: 'main'") && !w1020.errors.length && w1020.zoom === 2, JSON.stringify(w1020));
+        // #1050: after a lost WebGL context, the new engine keeps the constrain function and the padding that calls set.
+        const l1050 = await page.evaluate(async () => {
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new compat.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 2, fadeDuration: 0});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            m.setTransformConstrain((lngLat, zoom) => ({center: lngLat, zoom: Math.min(zoom, 3)}));
+            m.setPadding({top: 0, right: 0, bottom: 0, left: 40});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const restored = new Promise(r => { m.once('webglcontextrestored', r); setTimeout(r, 15000); });
+            m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+            await restored;
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const padding = m.getPadding().left;
+            // (The engine reports the camera that it has: a zoom past 3 shows that it has lost the function.)
+            await new Promise(r => { m.once('moveend', r); m.easeTo({zoom: 6, duration: 100}); setTimeout(r, 5000); });
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const zoom = m.getZoom();
+            m.remove(); el.remove();
+            return {zoom, padding};
+        });
+        check('[main] maplibre-compat: after a lost WebGL context the camera keeps the constrain function and the padding (#1050)',
+            Math.abs(l1050.zoom - 3) < 1e-9 && l1050.padding === 40, JSON.stringify(l1050));
         // #1022: coveringTiles gives the tiles of MapLibre GL JS (served at /ml/) for the same view and options.
         const m1022 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -5347,6 +5394,23 @@ for (const mode of renderers) {
 // (The checks below run with RENDERER=main.)
 if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
 
+// The compat constructor option pixelRatio sets the size of the canvas, as in MapLibre GL JS (#662).
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const r = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, pixelRatio: 2.5, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+        await new Promise(r => { m.once('load', r); setTimeout(r, 10000); });
+        const out = {ratio: m.getPixelRatio(), width: m.getCanvas().width, height: m.getCanvas().height};
+        m.remove(); el.remove();
+        return out;
+    });
+    check('[main] compat option pixelRatio: 2.5 gives a canvas of 500 by 375 for a map of 200 by 150', r.ratio === 2.5 && r.width === 500 && r.height === 375, JSON.stringify(r));
+    await page.close();
+}
 // A change of style that has a layer type the map does not support warns, one time for each new set of types (#1594).
 {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});

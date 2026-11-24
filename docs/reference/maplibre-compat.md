@@ -58,6 +58,10 @@ These options of MapLibre GL JS have no effect: `renderWorldCopies: false`, `can
 `antialias`, `logoPosition`, `validate` with any value, `fadeDuration` other than 300, `pitchWithRotate: false`, and
 `projection` other than `'mercator'`.
 
+The option `pixelRatio` sets the number of canvas pixels for each CSS pixel, as in MapLibre GL JS. Without it, the map
+follows `devicePixelRatio`, up to 3. A value that is not a number above 0 writes a warning, and the map follows
+`devicePixelRatio`.
+
 A custom layer (`type: 'custom'`) needs `renderer: 'main'`. With `'auto'` or `'worker'`, `addLayer` adds nothing.
 
 ### `strict`

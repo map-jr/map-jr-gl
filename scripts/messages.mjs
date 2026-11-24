@@ -22,6 +22,7 @@ const PREFIX = '[map-jr-gl]';
 const helperCalls = {refused: 0, warnOnce: 0, warn: 1, reject: 2};
 /** The places where the source writes the prefix and then a text that comes from a variable, with the reason that each is not a message. */
 const prefixHelpers = new Set([
+    'map.ts pageWarn', // (the texts of warnOnce of expr.ts, which a worker relays; #1141)
     'expr.ts warnOnce', 'compat-map.ts refused', 'map.ts warn', 'host.ts reject', 'map.ts logError', 'mistakes.ts mistake', 'host.ts cluster',
 ]);
 
@@ -50,6 +51,7 @@ const placeholderNames = [
     ['map.ts', 'this.resolved.unsupported.join(", ")', null, 'layer types'],
     ['mistakes.ts', 'name', /MapLibre GL JS|not available in/, 'member'],
     ['mistakes.ts', 'privateState[key]', null, 'advice'],
+    ['mistakes.ts', 'overlayOptions.join(", ")', null, 'overlay options'],
     ['pmtiles.ts', 'Math.round(n / 1048576)', null, 'file size'],
     ['react.ts', 'name', /MapImage "/, 'image name'],
     ['vue.ts', 'props.name', /MapImage "/, 'image name'],

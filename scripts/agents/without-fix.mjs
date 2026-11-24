@@ -14,11 +14,13 @@
 //
 // Before the command, it runs `pnpm build` in the copy, so that dist/ is the build without the fix (for example for
 // `pnpm test:size`). --no-build skips that step. The folders of .cache/ that this checkout or the main checkout has
-// (maplibre-gl-js for the render tests, fonts, styles and the others) are linked into the copy, not copied.
+// (maplibre-gl-js for the render tests, fonts, styles and the others) are linked into the copy, not copied. A folder
+// that neither checkout has and that the command downloads into the copy's .cache/ is moved into this checkout's
+// .cache/ when the command ends, so that the next run links it (#1054).
 // The command and its arguments are passed to the program as they are, without a shell: `-- sh -c '...'` keeps
 // its quoting.
 import {spawn, execFileSync} from 'node:child_process';
-import {copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync} from 'node:fs';
+import {copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -89,6 +91,15 @@ try {
     console.log(`without-fix.mjs: running ${command.map(quote).join(' ')}`);
     code = await run(command[0], command.slice(1));
     console.log(`without-fix.mjs: without the fix, the command exited with ${code}.`);
+    // The folders that the command downloaded into the copy's .cache/ (real folders, not the links above).
+    const kept = [];
+    if (existsSync(path.join(tmp, '.cache'))) for (const e of readdirSync(path.join(tmp, '.cache'), {withFileTypes: true})) {
+        const to = path.join(root, '.cache', e.name);
+        if (!e.isDirectory() || e.name === 'agents' || e.name.endsWith('.partial') || existsSync(to)) continue;
+        renameSync(path.join(tmp, '.cache', e.name), to);
+        kept.push(e.name);
+    }
+    if (kept.length) console.log(`without-fix.mjs: kept the downloads of the copy in .cache/: ${kept.join(', ')}`);
 } catch (e) {
     if (e !== null) throw e;
 } finally {
