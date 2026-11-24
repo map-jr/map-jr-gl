@@ -61,8 +61,8 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   checkout is free, or start a new worker in a worktree.
 - **Retire a worker at about 140,000 tokens** (the usage line of its notice). Past that, a worker on 2026-11-24 lost
   its report to a second hand-back and others slowed down. Give its next issue to a new worker, and its open review
-  findings to the reviewer that found them: the reviewer has read the branch, and on 2026-11-24 it fixed the findings
-  of #1634, #1639, #1636 and #1645 at 20,000 to 60,000 tokens each, where a new worker costs about 100,000.
+  findings to the reviewer that found them: the reviewer has read the branch. On 2026-11-24 the reviewer of #1639
+  fixed its four findings for about 35,000 tokens, where a new worker costs about 100,000.
 - **Turn each "found" line of a report into its own issue** at once, in the form of "Issues" in `CLAUDE.md`. Search
   for an issue of the same fault first (`gh issue list --search`). Do not add a fault to another issue as a comment.
   When an issue already has the same fault, add the new evidence to it instead: a line under "Sightings" for a check
