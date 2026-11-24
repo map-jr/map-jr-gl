@@ -869,7 +869,9 @@ export class Engine {
             try {
                 // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
                 // URL inside a worker, and the labels then used a fallback font.
-                const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
+                const res = await withTimeout(this.fetchAs('Font'))(f.src);
+                if (!res.ok) throw httpError('font', f.src, res.status);
+                const bytes = await res.arrayBuffer();
                 const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
                 set.add(await face.load());
             } catch (err) {
