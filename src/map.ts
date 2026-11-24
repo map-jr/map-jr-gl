@@ -1911,7 +1911,8 @@ export class Map {
         }));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
         // (From the top layer down, and in a layer the feature that is drawn last, which is on top, first.)
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
+        // A layer that was removed while the query was in flight has no features in the answer (#705).
+        const features = (found: QueriedFeature[]): RenderedFeature[] => found.filter(f => this.getLayer(f.layer!)).reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
             type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
         }));
