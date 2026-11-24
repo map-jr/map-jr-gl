@@ -241,6 +241,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
 async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
+    // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
+    if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] server render: the options have ${o.center == null && o.zoom == null ? 'no "center" and no "zoom"' : o.center == null ? '"zoom" but no "center"' : '"center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
     const dz = o.tileZoomOffset ?? 0;
     if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
