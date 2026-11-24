@@ -17,7 +17,9 @@ import type {StyleSpecification} from './compat-types.ts';
 // the file has loaded.
 const spec = <O extends object, M = typeof More>(name: string, make: (m: M, options: O, instance?: () => MapInstance) => Control, load: () => Promise<M> = () => import('./controls-more.ts') as Promise<M>, corner: ControlPosition = 'top-right') => (options: O & {position?: ControlPosition} = {} as O) => {
     const {position, ...rest} = options;
-    const create = (instance?: () => MapInstance): Control => {
+    // The control reads this object, and a later spec with the same key copies its options into it, so that a new
+    // callback reaches a control that the map keeps (#1520).
+    const create = (instance?: () => MapInstance): Control & {update(o: object): void} => {
         let real: Control | undefined, added = 0;
         const slot = document.createElement('div');
         slot.hidden = true;
@@ -34,11 +36,12 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
                 return slot;
             },
             onRemove(map: Map) { added++; slot.remove(); real?.onRemove(map); real = undefined; },
+            update(o) { Object.assign(rest, o); },
         };
     };
     // (The key sorts the properties of each object, so that the order in which they are written does not matter; #1236.)
     const key = name + JSON.stringify(options, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a < b ? -1 : 1)) : v);
-    return {key, position, create} as ControlSpec;
+    return {key, position, create, options: rest} as ControlSpec;
 };
 /**
  * Creates buttons to zoom in and out, and a compass that turns the map to the north. The control is placed at `'top-right'` unless `position` sets it.
