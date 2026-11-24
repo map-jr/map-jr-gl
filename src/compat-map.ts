@@ -164,8 +164,6 @@ export class Map extends CoreMap {
         this.warned.add(name);
         console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.`);
     }
-    /** Has no effect: the map always draws copies of the world side by side. */
-    setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
     /** Has no effect: the camera has no roll. */
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
     /**
@@ -428,7 +426,6 @@ export class Map extends CoreMap {
             if (this.strict) throw new Error(message);
             console.warn(message);
         }
-        this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
         if (context?.preserveDrawingBuffer) {
             const message = '[map-jr-gl] new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.';
@@ -673,8 +670,6 @@ export class Map extends CoreMap {
      * north, as in MapLibre GL JS.
      */
     snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < this.bearingSnap ? this.resetNorth(o, eventData) : this; }
-    /** Returns `true`: the map always draws copies of the world. */
-    getRenderWorldCopies() { return true; }
     /** Returns 0: the camera has no roll. */
     getRoll() { return 0; }
     /** Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. */
