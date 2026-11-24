@@ -1,0 +1,7 @@
+{
+  "label": "crossSourceCollisions",
+  "decision": "later",
+  "issue": 1728,
+  "reason": "The map option crossSourceCollisions: false has no effect: labels of different sources always collide.",
+  "pattern": "^(text|icon)-no-cross-source-collision/"
+}

@@ -66,7 +66,7 @@ writing); this brief has the steps.
   2026-11-19 a change left the filter NEAREST on a texture that terrain shares, and reported it as found, #1071.)
 - Measure the size before the change on `origin/main` (`pnpm test:size` in the copy of `without-fix.mjs`, or in a
   worktree of `origin/main`); do not write "not measured".
-- An entry with the label `wontfix` in `test/conformance/render-expectations.json` needs the owner: write it under
+- A file with the decision `wontfix` in `test/conformance/render-expectations/` needs the owner: write it under
   "Needs owner".
 - A new text or check kind of `src/mistakes.ts` takes the number of its issue (the comment above `texts[30]` says
   how). Do not take the next free number: another branch takes it too.

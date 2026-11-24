@@ -1,0 +1,7 @@
+{
+  "label": "atmosphere",
+  "decision": "later",
+  "issue": 889,
+  "reason": "The globe draws the sky and the atmosphere (#920), but at zoom 13 with pitch 80 the horizon and the fog on 3D terrain differ from MapLibre GL JS (31% of pixels).",
+  "pattern": "^terrain/fog-sky-blend-globe$"
+}

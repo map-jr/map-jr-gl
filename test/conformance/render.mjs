@@ -1,18 +1,19 @@
 // Runs MapLibre GL JS's render tests (a style and an expected image each) against this renderer and reports how many match.
 // A full run writes the totals that do not depend on labels to render-result.json and the status of each test to render-tests.json. The labels for
-// tests that differ by a decision are in render-expectations.json (see "Render tests" in docs/development.md).
+// tests that differ by a decision are in render-expectations/, one file for each label (see "Render tests" in docs/development.md).
 //   node test/conformance/render.mjs [--filter=<regex>] [--limit=<n>] [--list] [--min=<pass count>] [--save=<dir>]
 // --list prints each test of the run that is not a match, with its percentage of differing pixels; it needs --filter.
 // An option that the script does not know stops it with this text, and --help prints it.
 // The tests come from a checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (cloned on first use, not vendored).
 import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
 import {execSync} from 'node:child_process';
 import {existsSync, readFileSync, readdirSync, statSync, mkdirSync, writeFileSync} from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import {chromiumOptions} from '../launch.mjs';
 import {ensureCheckout} from './maplibre-checkout.mjs';
-import {summarize, readExpectations, report, changes, skipReason, committedTotals} from './render-summary.mjs';
+import {summarize, loadExpectations, report, changes, skipReason, committedTotals} from './render-summary.mjs';
 import {ensureFixtures} from './mvt-fixtures.mjs';
 
 // An option that this script does not know, or --list without --filter, stops here instead of starting the full run of
@@ -130,7 +131,7 @@ async function worker(queue) {
                 const clock = window.clock ??= (() => { const real = performance.now.bind(performance), c = {at: null}; performance.now = () => c.at ?? real(); return c; })();
                 clock.at = null;
                 // The map options of the test, as MapLibre's harness gives them (render.test.ts). An option that the library does
-                // not have warns once and has no effect; render-expectations.json gives those tests a label (#663).
+                // not have warns once and has no effect; render-expectations/ gives those tests a label (#663).
                 const given = Object.fromEntries(['maxPitch', 'maxZoom', 'pixelRatio', 'fadeDuration', 'crossSourceCollisions', 'terrainSkirtLength', 'localIdeographFontFamily'].filter(k => meta[k] !== undefined).map(k => [k, meta[k]]));
                 const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...given});
                 if (meta.debug) map.showTileBoundaries = true;
@@ -259,7 +260,7 @@ server.close();
 // The ids have "/" between their parts on each system, so that the tracked files are the same everywhere.
 for (const r of results) r.id = r.id.split(path.sep).join('/');
 const dir = path.join(root, 'test/conformance'), allIds = tests.map(t => t.split(path.sep).join('/'));
-const summary = summarize(results, readExpectations(JSON.parse(readFileSync(path.join(dir, 'render-expectations.json'), 'utf8'))), allIds);
+const summary = summarize(results, loadExpectations(pathToFileURL(dir + '/')), allIds);
 const lines = report(summary);
 console.log(lines[0]);
 const groups = {};

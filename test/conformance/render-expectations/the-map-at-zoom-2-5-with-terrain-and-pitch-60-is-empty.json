@@ -1,0 +1,7 @@
+{
+  "label": "the map at zoom -2.5 with terrain and pitch 60 is empty",
+  "decision": "later",
+  "issue": 1820,
+  "reason": "The map at zoom -2.5 with terrain and pitch 60 is empty.",
+  "pattern": "^(terrain/pitched-world)$"
+}

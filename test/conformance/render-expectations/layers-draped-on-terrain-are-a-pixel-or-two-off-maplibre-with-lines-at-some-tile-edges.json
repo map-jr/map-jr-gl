@@ -1,0 +1,7 @@
+{
+  "label": "layers draped on terrain are a pixel or two off MapLibre, with lines at some tile edges",
+  "decision": "later",
+  "issue": 1818,
+  "reason": "Layers draped on terrain are a pixel or two off MapLibre, with lines at some tile edges.",
+  "pattern": "^(terrain/default|terrain/field-of-view-number|terrain/fill-extrusion|terrain/fill-extrusion-multiple|terrain/image|terrain/image-projective|terrain/low-zoom|terrain/occlusion-debug|terrain/tile-stiching)$"
+}

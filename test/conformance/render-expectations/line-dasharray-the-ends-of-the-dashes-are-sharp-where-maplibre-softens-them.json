@@ -1,0 +1,7 @@
+{
+  "label": "line-dasharray: the ends of the dashes are sharp where MapLibre softens them",
+  "decision": "later",
+  "issue": 1804,
+  "reason": "line-dasharray: the ends of the dashes are sharp where MapLibre softens them.",
+  "pattern": "^(line-dasharray/function/line-width-composite-function|line-dasharray/literal/line-width-composite-function|line-dasharray/literal/line-width-zoom-function|regressions/mapbox-gl-js#3426|regressions/mapbox-gl-shaders#37)$"
+}

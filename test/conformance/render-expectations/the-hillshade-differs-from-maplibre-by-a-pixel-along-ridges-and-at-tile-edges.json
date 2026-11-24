@@ -1,0 +1,7 @@
+{
+  "label": "the hillshade differs from MapLibre by a pixel along ridges and at tile edges",
+  "decision": "later",
+  "issue": 1802,
+  "reason": "The hillshade differs from MapLibre by a pixel along ridges and at tile edges.",
+  "pattern": "^(combinations/background-opaque--hillshade-translucent|combinations/background-translucent--hillshade-translucent|combinations/circle-translucent--hillshade-translucent|combinations/color-relief--hillshade--color-relief--hillshade|combinations/color-relief--hillshade--vector-fill--color-relief--hillshade|combinations/fill-extrusion-translucent--hillshade-translucent|combinations/fill-opaque--hillshade-translucent|combinations/fill-translucent--hillshade-translucent|combinations/heatmap-translucent--hillshade-translucent|combinations/hillshade-translucent--circle-translucent|combinations/hillshade-translucent--fill-opaque|combinations/hillshade-translucent--fill-translucent|combinations/hillshade-translucent--hillshade-translucent|combinations/hillshade-translucent--line-translucent|combinations/line-translucent--hillshade-translucent|combinations/raster-translucent--hillshade-translucent|hillshade-accent-color/default|hillshade-accent-color/literal|hillshade-accent-color/zoom-function|hillshade-highlight-color/default|hillshade-highlight-color/literal|hillshade-highlight-color/zoom-function|hillshade-illumination-altitude/basic-0|hillshade-illumination-altitude/basic-90|hillshade-maxzoom/default|hillshade-method/basic|hillshade-shadow-color/default)$"
+}

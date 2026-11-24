@@ -11,12 +11,11 @@ const results = [
     {id: 'sky/fog', status: 'differ'}, {id: 'line/a', status: 'match'}, {id: 'globe/b', status: 'near'}, {id: 'globe/a', status: 'differ'},
     {id: 'text/kept', status: 'differ'}, {id: 'text/fixed', status: 'match'}, {id: 'line/b', status: 'error'}, {id: 'line/c', status: 'skipped'},
 ];
-const expectations = readExpectations({expectations: [
-    {pattern: '^globe/', label: 'globe', decision: 'later', reason: 'Not done.'},
-    {test: 'text/kept', label: 'text', decision: 'wontfix', reason: 'Decided.'},
-    {test: 'text/fixed', label: 'text', decision: 'wontfix', reason: 'Decided.'},
-    {pattern: '^video/', label: 'video', decision: 'later', reason: 'Not done.'},
-]});
+const expectations = readExpectations([
+    {file: 'globe.json', data: {pattern: '^globe/', label: 'globe', decision: 'later', reason: 'Not done.'}},
+    {file: 'text.json', data: {tests: ['text/kept', 'text/fixed'], label: 'text', decision: 'wontfix', reason: 'Decided.'}},
+    {file: 'video.json', data: {pattern: '^video/', label: 'video', decision: 'later', reason: 'Not done.'}},
+]);
 
 test('render summary: the count for near includes the matches, and the tests that differ are counted by decision', () => {
     const s = summarize(results, expectations);
@@ -69,17 +68,33 @@ test('render summary: a wontfix label on a test that matches is reported, and so
     assert.ok(lines.some((l: string) => l.startsWith('STALE: text/fixed matches')));
     assert.ok(lines.some((l: string) => l.startsWith('UNUSED: the label "video"')));
     // A filter leaves tests out of the run. A label that fits one of those is not unused.
-    assert.deepEqual(summarize(results, expectations, ['video/default']).unused, ['globe', 'text', 'text']);
+    assert.deepEqual(summarize(results, expectations, ['video/default']).unused, ['globe', 'text']);
 });
 
-test('render summary: an entry with a mistake is refused with a message that names it', () => {
-    const one = (e: object) => () => readExpectations({expectations: [e]});
-    assert.throws(one({pattern: '^a/', label: 'a', decision: 'wont-fix', reason: 'r'}), /entry 1 \("a"\): "decision" is "wont-fix"\. Write "wontfix" or "later"\./);
-    assert.throws(one({label: 'a', decision: 'later', reason: 'r'}), /give either "test"/);
-    assert.throws(one({test: 'a/b', pattern: '^a/', label: 'a', decision: 'later', reason: 'r'}), /give either "test"/);
+test('render summary: a file with a mistake is refused with a message that names it', () => {
+    const one = (data: object) => () => readExpectations([{file: 'a.json', data}]);
+    assert.throws(one({pattern: '^a/', label: 'a', decision: 'wont-fix', reason: 'r'}), /render-expectations\/a\.json \("a"\): "decision" is "wont-fix"\. Write "wontfix" or "later"\./);
+    assert.throws(one({label: 'a', decision: 'later', reason: 'r'}), /give either "tests"/);
+    assert.throws(one({tests: ['a/b'], pattern: '^a/', label: 'a', decision: 'later', reason: 'r'}), /give either "tests"/);
+    assert.throws(one({tests: [], label: 'a', decision: 'later', reason: 'r'}), /give either "tests"/);
     assert.throws(one({pattern: '^a/', label: 'a', decision: 'later'}), /"label" and "reason" are required/);
     assert.throws(one({pattern: '(', label: 'a', decision: 'later', reason: 'r'}), /"pattern" is not a regular expression/);
-    assert.throws(() => readExpectations({}), /no "expectations" array/);
+    assert.throws(one({pattern: '^a/', label: 'a', decision: 'later', reason: 'r', fallback: 'yes'}), /"fallback" is true or left out/);
+    assert.throws(() => readExpectations([{file: 'a.json', data: {pattern: '^a/', label: 'a', decision: 'later', reason: 'r'}}, {file: 'b.json', data: {pattern: '^b/', label: 'a', decision: 'later', reason: 'r'}}]), /b\.json: the label "a" is also in a\.json/);
+    assert.throws(() => readExpectations({}), /takes an array/);
+});
+
+test('render summary: a fallback label counts only the tests that no other label fits, and two labels that fit one test are reported (#1862)', () => {
+    const e = (file: string, data: object) => ({file, data: {decision: 'later', reason: 'r', ...data}});
+    // The fallback file sorts first by name, and it still comes last.
+    const list = readExpectations([e('a-all.json', {pattern: '^globe/', label: 'all', fallback: true}), e('b-one.json', {tests: ['globe/a'], label: 'one'})]);
+    const s = summarize(results, list);
+    assert.equal(s.labels.one.tests, 1);
+    assert.equal(s.labels.all.tests, 1);
+    assert.deepEqual(s.overlaps, []);
+    const twice = summarize(results, readExpectations([e('a.json', {pattern: '^globe/', label: 'x'}), e('b.json', {tests: ['globe/a'], label: 'y'})]));
+    assert.deepEqual(twice.overlaps, [{id: 'globe/a', labels: ['x', 'y']}]);
+    assert.ok(report(twice).includes('OVERLAP: globe/a fits the labels "x" and "y". Narrow one, or give the wider one "fallback": true.'));
 });
 
 test('render summary: the totals that are committed do not depend on the labels (#1861)', () => {
@@ -101,7 +116,9 @@ test('render summary: the tracked files agree with each other', () => {
     const s = trackedSummary(dir);
     // The totals per decision are computed and not committed, so that a pull request that adds a label changes no total (#1861).
     assert.deepEqual(totals, committedTotals(s.totals), 'render-result.json has the totals of render-tests.json, and no totals per decision');
-    assert.deepEqual(s.unused, [], 'each entry of render-expectations.json fits a test');
+    assert.deepEqual(s.unused, [], 'each file of render-expectations/ fits a test');
+    assert.deepEqual(s.overlaps, [], 'no test has two labels of the same kind');
     // Only the owner decides that a difference is kept (#558), and a wontfix label on a test that matches is stale.
     assert.deepEqual(s.stale, []);
 });
+

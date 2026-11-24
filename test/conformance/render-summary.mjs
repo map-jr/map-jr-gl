@@ -1,10 +1,10 @@
 // The counts and the labels of a run of the render tests (render.mjs). This file has no browser in it, so that
 // test/unit/render-summary.test.ts can test it.
-import {readFileSync} from 'node:fs';
+import {readFileSync, readdirSync} from 'node:fs';
 
 /** The statuses of a test, in the order in which they are printed. */
 export const statuses = ['match', 'near', 'differ', 'error', 'skipped'];
-/** The decisions that an entry of render-expectations.json can have. */
+/** The decisions that a file of render-expectations/ can have. */
 export const decisions = ['wontfix', 'later'];
 
 /**
@@ -31,41 +31,61 @@ export function skipReason(meta = {}, readAsset = () => '', fixtures = false) {
     return !fixtures && ops.some(o => o[0] === 'setStyle' && typeof o[1] === 'string' && readAsset(asset(o[1])).includes('localhost:2901')) ? '@mapbox/mvt-fixtures' : null;
 }
 
+/** The folder of the expectations: one file for each label (#1862). */
+export const expectationsFolder = 'render-expectations/';
+
 /**
- * Checks the entries of render-expectations.json and returns them. It throws an error that names the entry when
- * one is wrong, because a label that is misspelled would otherwise count nothing.
+ * Checks the files of the folder render-expectations/ and returns one entry for each, in the order in which they give
+ * a label: by file name, and the files with `"fallback": true` after the others. It throws an error that names the
+ * file when one is wrong, because a label that is misspelled would otherwise count nothing.
+ * @param files one `{file, data}` for each file: its name and its parsed JSON.
  */
-export function readExpectations(json) {
-    const list = json?.expectations;
-    if (!Array.isArray(list)) throw new Error('[map-jr-gl] render-expectations.json has no "expectations" array.');
-    return list.map((e, i) => {
-        const where = `[map-jr-gl] render-expectations.json, entry ${i + 1}${typeof e?.label === 'string' ? ` ("${e.label}")` : ''}:`;
+export function readExpectations(files) {
+    if (!Array.isArray(files)) throw new Error(`[map-jr-gl] readExpectations() takes an array of {file, data}, one for each file of ${expectationsFolder}.`);
+    const entries = [...files].sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : 0).map(({file, data: e}) => {
+        const where = `[map-jr-gl] test/conformance/${expectationsFolder}${file}${typeof e?.label === 'string' ? ` ("${e.label}")` : ''}:`;
         const text = key => typeof e?.[key] === 'string' && e[key] !== '';
-        if (text('test') === text('pattern')) throw new Error(`${where} give either "test" (the id of one test) or "pattern" (a regular expression for test ids).`);
+        const tests = Array.isArray(e?.tests) && e.tests.length > 0 && e.tests.every(t => typeof t === 'string' && t !== '');
+        if (tests === text('pattern')) throw new Error(`${where} give either "tests" (an array of test ids) or "pattern" (a regular expression for test ids).`);
         if (!decisions.includes(e.decision)) throw new Error(`${where} "decision" is ${JSON.stringify(e.decision)}. Write "wontfix" or "later".`);
         if (!text('label') || !text('reason')) throw new Error(`${where} "label" and "reason" are required.`);
+        if (e.fallback !== undefined && typeof e.fallback !== 'boolean') throw new Error(`${where} "fallback" is true or left out.`);
         let pattern = null;
         if (text('pattern')) try { pattern = new RegExp(e.pattern); } catch (err) { throw new Error(`${where} "pattern" is not a regular expression (${err.message}).`); }
-        return {...e, matches: id => pattern ? pattern.test(id) : id === e.test};
+        return {...e, file, fallback: e.fallback === true, matches: id => pattern ? pattern.test(id) : e.tests.includes(id)};
     });
+    const labels = new Map();
+    for (const e of entries) {
+        if (labels.has(e.label)) throw new Error(`[map-jr-gl] test/conformance/${expectationsFolder}${e.file}: the label "${e.label}" is also in ${labels.get(e.label)}. Give each label one file.`);
+        labels.set(e.label, e.file);
+    }
+    return [...entries.filter(e => !e.fallback), ...entries.filter(e => e.fallback)];
+}
+
+/** Reads the folder of the expectations in `dir` (test/conformance/, a URL that ends with "/") and checks it. */
+export function loadExpectations(dir) {
+    const folder = new URL(expectationsFolder, dir);
+    return readExpectations(readdirSync(folder).filter(f => f.endsWith('.json')).map(file => ({file, data: JSON.parse(readFileSync(new URL(file, folder), 'utf8'))})));
 }
 
 /**
  * Makes the totals of a run.
  * @param results one `{id, status}` for each test of the run. An id has `/` between its parts.
- * @param expectations the result of `readExpectations`. The first entry that fits a test gives the test its label.
+ * @param expectations the result of `readExpectations`. The first entry that fits a test gives the test its label. A test
+ *   that two entries of the same kind (fallback or not) fit is in `overlaps`, because the order of the files would decide.
  * @param allIds the ids of all the tests, also of those that a filter left out. An entry that fits none of them
  *   is in `unused`.
  */
 export function summarize(results, expectations = [], allIds = results.map(r => r.id)) {
     const zero = () => Object.fromEntries(statuses.map(s => [s, 0]));
-    const by = zero(), labels = {}, stale = [], tests = {};
+    const by = zero(), labels = {}, stale = [], tests = {}, overlaps = [];
     const differ = Object.fromEntries(decisions.map(d => [d, 0]));
     for (const r of [...results].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
         by[r.status]++;
         tests[r.id] = r.status;
-        const e = expectations.find(e => e.matches(r.id));
+        const fit = expectations.filter(e => e.matches(r.id)), e = fit[0];
         if (!e) continue;
+        if (fit.filter(f => f.fallback === e.fallback).length > 1) overlaps.push({id: r.id, labels: fit.filter(f => f.fallback === e.fallback).map(f => f.label)});
         (labels[e.label] ??= {decision: e.decision, tests: 0, ...zero()})[r.status]++;
         labels[e.label].tests++;
         if (r.status === 'differ') differ[e.decision]++;
@@ -75,7 +95,7 @@ export function summarize(results, expectations = [], allIds = results.map(r => 
     return {
         // "near" includes the tests that match: it is the count of tests where 5% of the pixels or less are different.
         totals: {match: by.match, near: by.match + by.near, differ: by.differ, differWontfix: differ.wontfix, differLater: differ.later, errored: by.error, skipped: by.skipped, run},
-        tests, labels, stale,
+        tests, labels, stale, overlaps,
         unused: expectations.filter(e => !allIds.some(id => e.matches(id))).map(e => e.label),
     };
 }
@@ -87,11 +107,11 @@ export const committedTotals = ({differWontfix, differLater, ...rest}) => rest;
  * The summary of the tracked files: the status of each test (render-tests.json) with the labels of the expectations.
  * `pnpm status` and the unit tests compute the totals per decision this way, so that they are not committed and a
  * pull request that only adds a label changes no total (#1861).
- * @param dir the folder test/conformance/, as a URL or a path that ends with "/".
+ * @param dir the folder test/conformance/, as a URL that ends with "/".
  */
 export function trackedSummary(dir) {
     const tests = JSON.parse(readFileSync(new URL('render-tests.json', dir), 'utf8'));
-    const expectations = readExpectations(JSON.parse(readFileSync(new URL('render-expectations.json', dir), 'utf8')));
+    const expectations = loadExpectations(dir);
     return summarize(Object.keys(tests).map(id => ({id, status: tests[id]})), expectations);
 }
 
@@ -102,14 +122,15 @@ export function trackedSummary(dir) {
 export const percent = (n, run) => run ? (n / run * 100).toFixed(1) + '%' : '0.0%';
 
 /** The lines that the run prints. The first line has the totals, and the workflow `CI` copies it into its summary. */
-export function report({totals: t, labels, stale, unused}) {
+export function report({totals: t, labels, stale, overlaps = [], unused}) {
     const lines = [`MapLibre render tests: ${t.match} of ${t.run} match (${percent(t.match, t.run)}; 1% of pixels or less are different), ${t.near} match or are near (${percent(t.near, t.run)}; 5% or less), ${t.differ} differ (${t.differWontfix} of them wontfix, ${t.differLater} later), ${t.errored} errored; ${t.skipped} skipped (tests that the run cannot do)`];
     for (const d of decisions) {
         const of = Object.entries(labels).filter(([, l]) => l.decision === d);
         if (of.length) lines.push(`Labels with the decision ${d} (differ/tests): ` + of.map(([name, l]) => `${name} ${l.differ}/${l.tests}`).join(', '));
     }
-    for (const s of stale) lines.push(`STALE: ${s.id} matches, but it has the wontfix label "${s.label}". Remove it from test/conformance/render-expectations.json.`);
-    for (const u of unused) lines.push(`UNUSED: the label "${u}" in test/conformance/render-expectations.json fits no test.`);
+    for (const s of stale) lines.push(`STALE: ${s.id} matches, but it has the wontfix label "${s.label}". Remove it from its file in test/conformance/${expectationsFolder}.`);
+    for (const o of overlaps) lines.push(`OVERLAP: ${o.id} fits the labels ${o.labels.map(l => `"${l}"`).join(' and ')}. Narrow one, or give the wider one "fallback": true.`);
+    for (const u of unused) lines.push(`UNUSED: the label "${u}" in test/conformance/${expectationsFolder} fits no test.`);
     return lines;
 }
 

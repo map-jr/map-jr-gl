@@ -1,0 +1,7 @@
+{
+  "label": "custom layer on the globe",
+  "decision": "later",
+  "issue": 1827,
+  "reason": "A custom layer draws at another place and with another shape on the globe than in MapLibre GL JS.",
+  "pattern": "^projection/globe/(terrain/)?custom/tent-3d-globe$"
+}

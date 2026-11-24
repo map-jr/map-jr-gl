@@ -1,0 +1,7 @@
+{
+  "label": "the expressions within and distance",
+  "decision": "later",
+  "issue": 1707,
+  "reason": "The expressions within and distance are not available. Each gives null and writes one warning.",
+  "pattern": "^within/|^distance/"
+}

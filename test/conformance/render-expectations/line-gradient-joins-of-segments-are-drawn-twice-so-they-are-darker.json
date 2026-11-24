@@ -1,0 +1,7 @@
+{
+  "label": "line-gradient: joins of segments are drawn twice, so they are darker",
+  "decision": "later",
+  "issue": 1809,
+  "reason": "line-gradient: joins of segments are drawn twice, so they are darker.",
+  "pattern": "^(line-gradient/gradient-step|line-gradient/translucent)$"
+}

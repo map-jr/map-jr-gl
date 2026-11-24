@@ -19,7 +19,7 @@ compared by eye with the expected image and with a mask of the pixels that diffe
 
 The column "Action" names the issue of the cause (see the list below the table).
 "none (near)" is a difference of a pixel at edges, which needs no issue. "none (decision)" is the collision boxes of
-`collisionDebug`, which the map does not draw by decision (`docs/reference/maplibre-differences.md`). In `test/conformance/render-expectations.json`, each cause with an issue has a label that
+`collisionDebug`, which the map does not draw by decision (`docs/reference/maplibre-differences.md`). In `test/conformance/render-expectations/`, each cause with an issue has a label that
 names the issue. The tests marked "none" keep the label `globe`, which names no issue, and
 `symbol-height-offset-tile-retention` has the label `symbol-height-offset` (#1007).
 

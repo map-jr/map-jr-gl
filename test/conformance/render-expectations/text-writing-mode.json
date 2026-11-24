@@ -1,0 +1,7 @@
+{
+  "label": "text-writing-mode",
+  "decision": "later",
+  "issue": 1009,
+  "reason": "text-writing-mode is not read, so vertical labels are drawn horizontally.",
+  "pattern": "^text-writing-mode/|^icon-text-fit/textFit-grid-(long|short)-vertical$|^text-field/formatted-images-vertical$"
+}

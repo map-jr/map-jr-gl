@@ -1,0 +1,7 @@
+{
+  "label": "heatmap-radius for each feature",
+  "decision": "later",
+  "issue": 1705,
+  "reason": "heatmap-radius that is different for each feature is not applied: the layer uses the default radius.",
+  "pattern": "^heatmap-radius/data-expression$"
+}
