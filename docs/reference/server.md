@@ -38,12 +38,15 @@ and the sprite.
 - A [limit for requests](#limits-for-requests) is reached, or the value of a limit is not valid.
 - A key of `data` is the id of a source that is not a GeoJSON source.
 - `tileZoomOffset` is not a whole number.
+- The options have no `bounds` and lack `center`, `zoom` or both. This happens in JavaScript, or when TypeScript does
+  not check the options.
 
 ## `RenderOptions`
 
 `RenderOptions` has the members in the table and a view, the type `RenderView`: either `center` and `zoom`, or
 `bounds`. `bounds` overrides `center` and `zoom`, so options with `bounds` can leave them out. In TypeScript, options
-without `bounds` and without both `center` and `zoom` do not compile. The type `RenderOptionsBase` has the same
+without `bounds` and without both `center` and `zoom` do not compile, and at run time the render rejects with an
+error that names what is missing. The type `RenderOptionsBase` has the same
 members without the required view, for options that get their view later.
 
 <!-- ref:RenderOptions:start -->
