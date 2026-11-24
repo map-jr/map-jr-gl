@@ -30,7 +30,9 @@ The map shows the controls of the last description, and each item of `controls` 
   `scale({maxWidth: 80, unit: 'imperial'})` are the same control. `position` is one of the options.
 - **A new list.** The map keeps a control that the new list has, also when the function is called again for each
   description. It removes a control that the new list does not have. A control whose options changed is a
-  different control: the map removes the old one and adds the new one last in its corner.
+  different control: the map removes the old one and adds the new one last in its corner. Functions in the options,
+  such as `onStyleChange` of [`styles`](#styles), do not count for the identity: a kept control calls the function of
+  the last description.
 - **`custom`.** Two items of [`custom`](#custom) are the same control when they have the same `key`. A new
   `position` with the same `key` moves the control: the map calls its `onRemove`, then its `onAdd` again, and adds it
   last in the new corner. A control that is added again starts in its initial state, so a button that was turned
@@ -350,9 +352,8 @@ the camera and the other fields of the description stay. The control then calls 
 
 An application that passes `style` itself, as a component of Vue, React or Svelte does, keeps the new value in
 `onStyleChange`, and also `terrain` and `globalState` when an entry sets them. Otherwise its next description sets
-the old style again. The map keeps the control while its options are equal as JSON (see
-[The list of controls](#the-list-of-controls)), so a new `onStyleChange` function in a later description does not
-replace the first one.
+the old style again. A new `onStyleChange` function in a later description replaces the earlier one, and the map
+keeps the control.
 
 The pictures are 120 × 80 CSS pixels. Small maps, hidden from the page, draw them one after the other with
 [`toBlob`](map.md#toblob), one map for each picture, and are then removed. They start when the map is first idle, so
