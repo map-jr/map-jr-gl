@@ -201,8 +201,8 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                 if (data === SKIP) return;
             }
             // (`geojsonBuffer` is the buffer of a source that gives none: 128 in the compat entry, as in MapLibre GL JS.)
-            const buffer = raw.buffer ?? geojsonBuffer;
-            return {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter || raw.generateId || buffer !== undefined ? {filter: raw.filter, buffer, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId, generateId: raw.generateId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
+            const buffer = raw.buffer ?? geojsonBuffer, tolerance = raw.tolerance;
+            return {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter || raw.generateId || buffer !== undefined || tolerance !== undefined ? {filter: raw.filter, buffer, tolerance, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId, generateId: raw.generateId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
         }
         if ((raw.type === 'image' && raw.url || raw.type === 'video' && raw.urls?.length || raw.type === 'canvas' && raw.canvas) && raw.coordinates?.length === 4) {
             return {type: raw.type, url: raw.url && absolute(raw.url, base), coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
