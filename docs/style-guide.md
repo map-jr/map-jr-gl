@@ -343,7 +343,7 @@ The comment on a public member is the row of the reference and the text that an 
 
 ```ts nocheck
 /**
- * The largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
+ * The largest pitch that the user can reach, in degrees. A value above 180 is limited to 180.
  * @default 60
  */
 maxPitch?: number;

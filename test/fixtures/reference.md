@@ -23,7 +23,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `hoverState` | `boolean \| null` | `false` | Whether the top feature of `interactive-layers` under the pointer has the feature state `hover: true`. |
 | `minZoom` | `number \| null` | `-2` | The smallest zoom level of the map. |
 | `maxZoom` | `number \| null` | `22` | The largest zoom level of the map. |
-| `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 90. |
+| `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 180. |
 | `maxBounds` | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map. |
 | `cooperativeGestures` | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |

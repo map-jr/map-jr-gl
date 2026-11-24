@@ -29,8 +29,9 @@ These differences change the code of most applications:
   promise. Only the promise has the complete result.
 - [`setStyle`](#setstyle), [`addImage`](#addimage) and `updateImage` return a promise where MapLibre GL JS returns
   the map.
-- `maxPitch` and `setMaxPitch` accept at most 90 degrees, where MapLibre GL JS accepts up to 180. A higher value is
-  limited to 90. The default is 60 in both.
+- `maxPitch` and `setMaxPitch` accept up to 180 degrees, as in MapLibre GL JS, and the default is 60 in both. A
+  higher value is limited to 180 and writes one warning, where MapLibre GL JS throws an error.
+  `setCenterElevation` has no effect, so above a pitch of 90 the camera is below the ground at the map center.
 - The camera has no roll, and its field of view is fixed. `setRoll` and `setVerticalFieldOfView` have no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
 - The library does not validate the style, and the option `validate` has no effect. It does not draw a layer type

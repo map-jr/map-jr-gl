@@ -1066,10 +1066,10 @@ test('a URL of a custom protocol that has another URL inside stays as it is writ
     assert.deepEqual(resolved.sources.d.tiles, ['https://example.org/styles/tiles/{z}/{x}/{y}.png']);
 });
 
-test('transform: a pitch up to 90, with a tile cover and a far plane that stop at the horizon (#886)', () => {
+test('transform: a pitch up to 180, with a tile cover and a far plane that stop at the horizon (#886, #897)', () => {
     const t = new Transform(); t.width = 1024; t.height = 768; t.maxPitch = 180; t.set([-74.006, 40.7128], 14, 0, 85);
     assert.equal(t.pitch, 85, 'a pitch above 60 is kept');
-    t.set(undefined, undefined, undefined, 120); assert.equal(t.pitch, 90, 'the pitch stops at 90');
+    t.set(undefined, undefined, undefined, 200); assert.equal(t.pitch, 180, 'the pitch stops at 180');
     t.set(undefined, undefined, undefined, 85);
     // The horizon of MapLibre GL JS: d · min(0.85 · tan(5°), tan(4.25°)) above the centre.
     const d = t.cameraDistance, h = t.horizon();
@@ -1086,4 +1086,43 @@ test('transform: a pitch up to 90, with a tile cover and a far plane that stop a
     assert.ok(clipZ(hx, hy) < 1, 'the horizon is in front of the far plane');
     assert.ok(clipZ(cx + (hx - cx) * 1.5, cy + (hy - cy) * 1.5) > 1, 'ground beyond the horizon is behind it');
     console.log(`pitch 85: ${tiles.length} tiles on zooms ${Math.min(...tiles.map(x => x.z))} to ${Math.max(...tiles.map(x => x.z))}`);
+});
+
+test('transform: above a pitch of 90 the camera looks up, and screen positions invert on both sides of the ground (#897)', () => {
+    const t = new Transform(); t.width = 512; t.height = 512; t.maxPitch = 180;
+    // Through the tile matrix (what the GPU draws) and back with screenToMerc: the point must come back.
+    const roundTrip = (mx: number, my: number, z = 0) => {
+        const n = 1024, tx = Math.floor(mx * n), ty = Math.floor(my * n), m = t.tileMatrix4({z: 10, x: tx, y: ty, w: 0, key: ''});
+        const x = (mx * n - tx) * 4096, y = (my * n - ty) * 4096, h = t.elevation + z / t.pixelsPerMetre, w = m[3] * x + m[7] * y + m[11] * h + m[15];
+        assert.ok(w > 0, 'the point is in front of the camera');
+        const sx = ((m[0] * x + m[4] * y + m[8] * h + m[12]) / w + 1) / 2 * t.width, sy = (1 - (m[1] * x + m[5] * y + m[9] * h + m[13]) / w) / 2 * t.height;
+        const back = t.screenToMerc(sx, sy, z);
+        close(back[0], mx, 1e-7); close(back[1], my, 1e-7);
+        return [sx, sy];
+    };
+    t.set([35.38, 31.55], 10, 0, 95);
+    assert.equal(t.pitch, 95);
+    const [cx, cy] = [mercX(35.38), mercY(31.55)], step = 1 / 1024 / 8;
+    // The map center 10 km above the ground (MapLibre's test high-pitch/pitch95): the camera is above the ground and
+    // sees it below the horizon, which MapLibre GL JS puts below the middle of the screen.
+    t.elevation = 10000;
+    const sea = -t.elevation * t.pixelsPerMetre;
+    assert.ok(t.horizon() < 0, 'the horizon is below the center');
+    const [, groundY] = roundTrip(cx + step, cy - 4 * step, sea);
+    assert.ok(groundY > t.cy - t.horizon(), 'the ground is below the horizon');
+    const [hx, hy] = t.cameraPosition(); assert.ok(Math.hypot(hx - cx, hy - cy) > 0, 'the camera sits back from the center');
+    // The center on the ground: the camera is below the ground plane and sees it from below. Ground between the camera
+    // and the center is above the middle of the screen, and ground beyond the center is below it (toward the horizon).
+    t.elevation = 0;
+    assert.ok(roundTrip(cx, cy + step)[1] < t.cy, 'the ground nearer than the center is above the middle of the screen');
+    assert.ok(roundTrip(cx, cy - step)[1] > t.cy, 'the ground beyond the center is below the middle of the screen');
+    roundTrip(cx, cy);
+    // A point below the line where the view rays turn upward is taken on that line, and every corner gives a position.
+    for (const [x, y] of [[0, 0], [512, 0], [512, 512], [0, 512]]) assert.ok(t.screenToMerc(x, y).every(Number.isFinite), `corner ${x},${y}`);
+    assert.deepEqual(t.screenToMerc(256, 512), t.screenToMerc(256, 400));
+    const tiles = t.tileCover(0, 14);
+    assert.ok(tiles.length > 0 && tiles.length < 200, `${tiles.length} tiles at pitch 95`);
+    // Looking straight up.
+    t.set(undefined, undefined, undefined, 180); t.elevation = 10000;
+    roundTrip(cx, cy, 0);
 });

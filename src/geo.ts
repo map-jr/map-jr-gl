@@ -1,8 +1,8 @@
 export const EXTENT = 4096;
 export const TILE_SIZE = 512;
 const MAX_LAT = 85.051129;
-/** The highest pitch that the camera takes (degrees). Above 90 the camera would look up from below the ground: that needs the elevation of the camera, which the library does not have yet. */
-export const MAX_PITCH = 90;
+/** The highest pitch that the camera takes (degrees), as in MapLibre GL JS. Above 90 the camera looks up. */
+export const MAX_PITCH = 180;
 /**
  * The change of zoom that keeps the size of the globe on the screen when the center moves from one latitude to
  * another (MapLibre's `getZoomAdjustment`). Past 85.05° the size of the globe stays that of 85.05°.
@@ -255,6 +255,16 @@ export class Transform {
         return this.cameraDistance * Math.min(0.85 * Math.tan(Math.PI / 2 - p), Math.tan((89.25 * Math.PI / 180) - p));
     }
 
+    /**
+     * Above a pitch of 90, when the camera is below the plane `z` pixels above the map center: the pixels from the map
+     * center down to the screen line above which the camera sees that plane from below (a little above the line where the
+     * view rays turn upward). Otherwise null: the camera is above the plane and sees it below `horizon`.
+     */
+    underside(z = 0): number | null {
+        const p = this.pitch * Math.PI / 180, cp = Math.cos(p), d = this.cameraDistance;
+        return cp < 0 && d * cp < z ? (-d * Math.min(0.02, -0.1 * cp) - d * cp) / Math.sin(p) : null;
+    }
+
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
     mercToScreen(mx: number, my: number): [number, number] {
         const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : 0;
@@ -267,10 +277,12 @@ export class Transform {
     screenToMerc(px: number, py: number, z = 0): [number, number] {
         if (this.globeness) return this.globe!.toMerc(this, px, py, this.elevation + z / this.pixelsPerMetre);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
-        const sx = px - this.cx, sy = Math.max(py - this.cy, -this.horizon());
+        const sx = px - this.cx, cp = Math.cos(p), sp = Math.sin(p), floor = d * Math.min(0.02, 0.1 * Math.abs(cp)), under = this.underside(z);
         // Invert the perspective for a point on that plane. Above the horizon there is no ground: a point there is taken
         // on the horizon, and the floor keeps planes above the map center (with 3D terrain) below their own horizon.
-        const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * Math.min(0.02, 0.1 * Math.cos(p)));
+        // A camera below the plane sees it above the line of `underside`, and a point below that line is taken on it.
+        const sy = under !== null ? Math.min(py - this.cy, under) : Math.max(py - this.cy, -this.horizon());
+        const denom = under !== null ? Math.min(cp * d + sy * sp, -floor) : Math.max(cp * d + sy * sp, floor);
         const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
     }
@@ -308,8 +320,9 @@ export class Transform {
     /** The screen's corners on the ground: one quad on flat ground, two (lowest and highest ground in view) with 3D terrain. */
     private footprints(): [number, number][][] {
         // Ground level with the camera or above it has no sensible footprint, so heights are capped well below the camera.
+        // (Above a pitch of 90 the camera is below the map center, and the heights are capped well above it.)
         const ppm = this.pixelsPerMetre, top = this.cameraDistance * Math.cos(this.pitch * Math.PI / 180) * 0.6;
-        const planes = this.groundRange ? this.groundRange.map(h => Math.min(top, (h - this.elevation) * ppm)) : [0];
+        const planes = this.groundRange ? this.groundRange.map(h => (top < 0 ? Math.max : Math.min)(top, (h - this.elevation) * ppm)) : [0];
         return planes.map(z => [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map(([x, y]) => this.screenToMerc(x, y, z)));
     }
 

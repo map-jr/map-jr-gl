@@ -1169,14 +1169,13 @@ export class Map {
     setMaxZoom(z?: number | null) { this.tr.maxZoom = z ?? 22; return this.limits(); }
     declare private pitchWarned?: boolean;
     /**
-     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
+     * Sets the largest pitch that the user can reach, in degrees. A value above 180 is limited to 180. Above 90 the camera looks up.
      * @param p The pitch. `undefined` or `null` restores the default, 60.
      */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
     private pitchCap(p?: number | null) {
         p ??= 60;
-        // MapLibre GL JS allows up to 180, where the camera looks up and needs its own elevation (not here yet).
-        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
+        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
     /** Returns the largest pitch that the user can reach, in degrees. */

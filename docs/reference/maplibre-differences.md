@@ -171,7 +171,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Camera
 
 - **MapLibre GL JS:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60). Roll. Field of view.
-- **This library:** Tilt to 90 degrees with `maxPitch: 90` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 90 and writes one warning. No roll. A fixed field of view. Padding is available.
+- **This library:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 180 and writes one warning, where MapLibre GL JS throws an error. The map center is always on the ground, because `setCenterElevation` has no effect: above a pitch of 90 the camera is below the ground and sees the map from below. No roll. A fixed field of view. Padding is available.
 
 ### Miter joins longer than about 2
 

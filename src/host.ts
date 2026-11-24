@@ -259,7 +259,7 @@ export interface MapDescription extends MapSetup {
      */
     maxZoom?: number | null;
     /**
-     * The largest pitch of the map in degrees, at most 90 (a larger value is limited to 90). It limits gestures, `view` and `moveTo`.
+     * The largest pitch of the map in degrees, at most 180 (a larger value is limited to 180). Above 90 the camera looks up. It limits gestures, `view` and `moveTo`.
      * @default 60
      */
     maxPitch?: number | null;

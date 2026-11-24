@@ -300,7 +300,7 @@ const MapJrComponent = defineComponent({
          */
         maxZoom: Number as PropType<number | null>,
         /**
-         * The largest pitch of the map in degrees, at most 90.
+         * The largest pitch of the map in degrees, at most 180.
          * @default 60
          */
         maxPitch: Number as PropType<number | null>,
