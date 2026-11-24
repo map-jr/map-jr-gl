@@ -2,7 +2,7 @@ import {fetchWith, httpError, withTimeout, type RequestAnswer} from './requests.
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
-import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, inertiaSpan, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -62,7 +62,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
     minZoom?: number;
     maxZoom?: number;
-    /** Largest camera tilt allowed, in degrees. The default is 60, and the limit is 90. */
+    /** Largest camera tilt allowed, in degrees. The default is 60, and the limit is 180. Above 90 the camera looks up, and it sees the sky only when the map center has a height (`setCenterElevation`) that puts the camera above the ground. */
     maxPitch?: number;
     /** Data credits are shown by default; pass false to add your own, or options for the built-in control. */
     attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
@@ -1172,16 +1172,34 @@ export class Map {
     setMaxZoom(z?: number | null) { this.tr.maxZoom = z ?? 22; return this.limits(); }
     declare private pitchWarned?: boolean;
     /**
-     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
+     * Sets the largest pitch that the user can reach, in degrees. A value above 180 is limited to 180 and warns once.
+     * Above 90 the camera looks up. While the map center is on the ground, the camera is then below the ground and sees
+     * the map from below; give the center a height with `setCenterElevation` to keep the camera above the ground.
      * @param p The pitch. `undefined` or `null` restores the default, 60.
      */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
     private pitchCap(p?: number | null) {
         p ??= 60;
-        // MapLibre GL JS allows up to 180, where the camera looks up and needs its own elevation (not here yet).
-        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
+        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
+    declare private centreHeld?: boolean;
+    /**
+     * Gives the map center a height of its own, in meters above sea level, or puts it back on the ground with `null` (the
+     * default). The camera keeps its distance and its pitch from the center, so with a center high above the ground a
+     * pitch above 90 looks up at the sky from above the ground. While the center has a height, it does not follow 3D terrain.
+     * @param meters The height in meters, or `null` for the ground (3D terrain, or sea level without it).
+     */
+    setCenterElevation(meters: number | null) {
+        if (meters !== null && !Number.isFinite(meters)) { console.warn(`[map-jr-gl] setCenterElevation(${meters}): the height is not a number. Pass a number of meters, or null to put the center on the ground.`); return this; }
+        this.centreHeld = meters !== null;
+        if (meters !== null || !this.tr.heightAt) this.tr.elevation = meters ?? 0;
+        this.post({type: 'jump', elevation: meters});
+        this.jumped = this.seq;
+        return this;
+    }
+    /** Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there, multiplied by the exaggeration of 3D terrain (0 without 3D terrain). */
+    getCenterElevation() { return this.tr.elevation; }
     /** Returns the largest pitch that the user can reach, in degrees. */
     getMaxPitch() { return this.tr.maxPitch; }
     /** Returns the smallest pitch that the user can reach, in degrees. */
@@ -1461,7 +1479,7 @@ export class Map {
     /** Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). */
     setTerrain(terrain: {source: string; exaggeration?: number} | null) {
         // (Without terrain the positions on this thread are flat at once, before the engine answers.)
-        if (!terrain) { this.tr.heightAt = undefined; this.tr.elevation = 0; }
+        if (!terrain) { this.tr.heightAt = undefined; if (!this.centreHeld) this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
     /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */
@@ -2025,7 +2043,7 @@ export class Map {
         // `isActive()` of a handler is true from the start of its gesture (see where each is set) until a pointer of the gesture lifts.
         const rest = () => { for (const h of [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch, this.boxZoom]) h.active = false; };
         this.inputCleanup.push(rest);
-        let rotating = false, moved = 0, samples: {t: number; x: number; y: number; w?: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
+        let panFrame = 0, pendingPan: {x: number; y: number} | null = null, rotating = false, moved = 0, samples: {t: number; x: number; y: number; w?: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
         let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined, wheelEnd: ReturnType<typeof setTimeout> | undefined;
@@ -2172,8 +2190,10 @@ export class Map {
                     };
                     if (!h.loop) { h.loop = true; requestAnimationFrame(frame); }
                 }
-                samples.push({t: performance.now(), x: p.x, y: p.y});
-                while (samples.length > 2 && samples[0].t < performance.now() - 160) samples.shift();
+                // As in MapLibre GL JS, the moves of one frame give one sample, at the time of the frame (see `up`).
+                const list = samples;
+                pendingPan = {x: p.x, y: p.y};
+                if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; if (pendingPan && list === samples) list.push({t: performance.now(), ...pendingPan}); pendingPan = null; });
             }
         });
         const up = (e: PointerEvent) => {
@@ -2220,17 +2240,28 @@ export class Map {
                 if (wasDragging) { this.moving = false; this.fire('moveend'); }
                 return;
             }
-            // Inertia from the last 60ms of movement; a pointer that stopped before release gives none.
             const last = samples[samples.length - 1];
-            const first = samples.find(s => now - s.t <= 60) ?? last;
             // A rotate drag turns on as in MapLibre GL JS (see `turnInertia`). Its samples are the bearing and the pitch
             // that the drag asked for, because the view of a worker renderer can be a frame behind.
             const spin = rotating && this.dragRotate.isEnabled() && turnInertia(samples, now);
             if (rotating) samples = [];
             if (spin) this.easeTo({bearing: last.x + spin.bearing, pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
-            if (wasDragging && last && first !== last && now - last.t < 60 && (last.x !== first.x || last.y !== first.y)) {
+            if (wasDragging && !rotating) {
+                // Inertia as in MapLibre GL JS (see `inertiaSpan`): in the next frame, the movement of the last 60 ms of
+                // frames over the time up to that frame, so that a pointer that slowed or stopped before the release
+                // gives less or none (#479).
+                const list = samples;
                 this.awaitingInertia = true;
-                this.post({type: 'fling', dx: last.x - first.x, dy: last.y - first.y, ms: now - first.t});
+                cancelAnimationFrame(panFrame); panFrame = 0;
+                requestAnimationFrame(() => {
+                    if (this.removed) return;
+                    if (list !== samples || this.dragging) { this.awaitingInertia = false; return; }
+                    const t = performance.now();
+                    if (pendingPan) list.push({t, ...pendingPan}), pendingPan = null;
+                    const [a, b] = inertiaSpan(list, t);
+                    if (a && b && (a.x !== b.x || a.y !== b.y)) this.post({type: 'fling', dx: b.x - a.x, dy: b.y - a.y, ms: t - a.t});
+                    else { this.awaitingInertia = false; this.moving = false; this.fire('moveend'); }
+                });
             } else if (wasDragging) { this.moving = false; this.fire('moveend'); }
             if (moved <= 3 && e.type === 'pointerup' && e.button === 0 && !suppressClick) {
                 const at = pos(e);

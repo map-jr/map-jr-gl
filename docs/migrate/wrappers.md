@@ -64,7 +64,7 @@ in the bundler or in an import map. The code of the wrapper does not change.
 | `vue-maplibre-gl` | 5.6.1 | Not run. It calls `setRenderWorldCopies`, which has no effect here. |
 | `svelte-maplibre` | 2.0.1 | Not run. It builds and the `config` that it reads exists. Its `pmtiles://` sources call `addProtocol('pmtiles')`, which warns once because the library reads those URLs itself. |
 | `svelte-maplibre-gl` | 2.2.1 | Builds, and `Hash` works. The map does not start: the wrapper reads `map.style._loaded` and `map.transform`, which are missing here. |
-| `@maplibre/ngx-maplibre-gl` | 22.3.1 | Not run. It calls `setRenderWorldCopies`, `setAnisotropicFilterPitch` and `setCenterElevation`, which have no effect here. |
+| `@maplibre/ngx-maplibre-gl` | 22.3.1 | Not run. It calls `setRenderWorldCopies` and `setAnisotropicFilterPitch`, which have no effect here, and `setCenterElevation`. |
 | `@maptiler/sdk` | 4.2.1 | Not run. It calls `setRoll`, which has no effect here. |
 
 "Runs" means that a page with the wrapper renders the map with this library and that its components work. "Not run"

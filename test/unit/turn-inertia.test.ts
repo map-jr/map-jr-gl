@@ -1,8 +1,8 @@
-// #679: the inertia after a rotate drag agrees with HandlerInertia of MapLibre GL JS 6.17
+// #679, #479: the inertia after a rotate drag and a pan agrees with HandlerInertia of MapLibre GL JS 6.17
 // (node_modules/maplibre-gl/src/ui/handler_inertia.ts) on the same recorded samples.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {addTurnSample, turnInertia} from '../../src/geo.ts';
+import {addTurnSample, inertiaSpan, turnInertia} from '../../src/geo.ts';
 
 // MapLibre GL JS: the entries of the last 60 ms (at least the last two), the deltas after the first entry, the time
 // from the first entry to the release, then calculateEasing with linearity 0.3 and deceleration 1000.
@@ -47,4 +47,14 @@ test('moves that are always less than 16 ms apart leave one sample for each 16 m
 
 test('a rotate drag that holds still for more than 160 ms before the release gives no inertia, as in MapLibre GL JS (#939)', () => {
     assert.equal(turnInertia([{t: 0, x: 0, y: 0}, {t: 16, x: 8, y: 0}], 266), undefined);
+});
+
+test('the inertia of a pan is measured between the samples that MapLibre GL JS takes (#479)', () => {
+    const at = (t: number, x: number) => ({t, x, y: 0});
+    // Moves more than 60 ms apart: the last two samples, over the time from the last but one to the release.
+    assert.deepEqual(inertiaSpan([at(0, 0), at(80, 20), at(160, 40)], 170), [at(80, 20), at(160, 40)]);
+    // Moves in each frame: the first sample of the last 60 ms.
+    assert.deepEqual(inertiaSpan([0, 16, 32, 48, 64, 80].map(t => at(t, t)), 84)[0], at(32, 32));
+    // Samples older than 160 ms do not count.
+    assert.deepEqual(inertiaSpan([at(0, 0), at(16, 8)], 200), []);
 });

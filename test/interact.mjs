@@ -3143,6 +3143,8 @@ for (const mode of renderers) {
             ptr('pointerdown', 260); ptr('pointermove', 250);
             await new Promise(res => setTimeout(res, 250));
             for (let i = 1; i <= 8; i++) { ptr('pointermove', 250 - i * 10); await frame(); await frame(); moved.push(start - x() - 10); }
+            // A pause before the release, so that the drag ends without inertia, as in MapLibre GL JS (#479).
+            await new Promise(res => setTimeout(res, 250));
             ptr('pointerup', 170);
             // (The last camera of the engine comes 150 ms late.)
             await new Promise(res => setTimeout(res, 400));
@@ -3416,6 +3418,14 @@ for (const mode of renderers) {
             projected.showTileBoundaries = false;
             projected.showCollisionBoxes = true; projected.showCollisionBoxes = true;
             out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] showCollisionBoxes has no effect')).length, warnings.length];
+            // The options of the drag handlers have no effect (#673): one warning each, and the handlers are on.
+            const dragged = make({dragPan: {linearity: 0.5}, dragRotate: {around: 'center'}, rotateSpeed: 2, pitchSpeed: 1, aroundCenter: false});
+            dragged.dragPan.disable(); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragRotate.enable({movement: 'linear'}); dragged.dragRotate.enable();
+            out.drag = [dragged.dragPan.isEnabled(), dragged.dragRotate.isEnabled(), warnings.splice(0).filter(w => /^\[map-jr-gl\] .*(dragPan|dragRotate|rotateSpeed|pitchSpeed|aroundCenter).* has no effect/.test(w)).length, warnings.length];
+            const draggedPlain = make({dragPan: true, rotateSpeed: 0.8, pitchSpeed: -0.5, aroundCenter: true});
+            draggedPlain.dragPan.enable(); draggedPlain.dragRotate.enable(true);
+            out.drag.push(warnings.splice(0).length);
+            for (const x of [dragged, draggedPlain]) { x.getContainer().remove(); x.remove(); }
             projected.getContainer().remove(); projected.remove();
             // The defaults give no warning.
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
@@ -3432,6 +3442,8 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: showCollisionBoxes = true gives one warning, and showTileBoundaries = false none (#752)',
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
+        check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
+            JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
             quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
@@ -4678,6 +4690,38 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
+        // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
+        const m479 = {};
+        for (let run = 0; run < 3; run++) for (const lib of ['ml', 'compat']) for (const [gap, step] of [[16, 30], [80, 40]]) {
+            await page.evaluate(async lib => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m479 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => setTimeout(r, 300));
+                m.once('dragend', () => { window.at479 = m.project([10, 45]).x; });
+            }, lib);
+            await page.mouse.move(20, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { if (i > 1) await page.waitForTimeout(gap); await page.mouse.move(20 + i * step, 150); }
+            await page.mouse.up();
+            const d = await page.evaluate(async () => {
+                const m = window.m479;
+                await new Promise(r => setTimeout(r, 2000));
+                const d = Math.round(m.project([10, 45]).x - window.at479);
+                const el = m.getContainer(); m.remove(); el.remove();
+                return d;
+            });
+            m479[lib + gap] = Math.max(m479[lib + gap] ?? -Infinity, d);
+        }
+        // (A loaded machine delays frames and shortens the inertia of a drag: each drag runs three times, and the longest
+        // inertia counts. After the fast drag the distances agree within a fifth or 3 px. After the slow drag the inertia
+        // is a few pixels and depends on where the frames fall, so it only has to be within a factor of 2. Before #479 the
+        // fast one went about 1.7 times as far here, and the slow one had none.)
+        const near479 = g => g === 16 ? Math.abs(m479['compat' + g] - m479['ml' + g]) <= Math.max(3, m479['ml' + g] / 5) : m479['compat' + g] >= m479['ml' + g] / 2 && m479['compat' + g] <= m479['ml' + g] * 2;
+        check('[main] maplibre-compat: the inertia of a fast and of a slow pan goes as far as in MapLibre GL JS (#479)',
+            [16, 80].every(g => m479['ml' + g] > 3 && near479(g)), JSON.stringify(m479));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -5603,6 +5647,28 @@ for (const mode of renderers) {
         check(`[${mode}] 3D terrain off and on again asks for no elevation tile again, and the ground has its height at once`,
             first > 0 && asked.length === first && toggled.off && toggled.on && toggled.elevation > 1000, JSON.stringify({first, later: asked.length - first, ...toggled}));
     }
+    // setCenterElevation lasts after setCenterClampedToGround(false), as in MapLibre GL JS, and the engine keeps it (#897).
+    // While the center is clamped, the call warns once and the center stays on the ground.
+    const elevated = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, maxPitch: 180, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const idle = () => new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+        const warn = console.warn; let warned = 0; console.warn = (...a) => { if (String(a[0]).includes('setCenterElevation')) warned++; else warn(...a); };
+        m.setCenterElevation(5000); m.setCenterElevation(6000);
+        await idle();
+        const out = {clamped: [m.getCenterClampedToGround(), m.getCenterElevation(), warned]};
+        m.setCenterClampedToGround(false); m.setCenterElevation(10000); m.setPitch(95);
+        await idle();
+        out.held = [m.getCenterClampedToGround(), m.getCenterElevation(), m.getPitch()];
+        m.setCenterClampedToGround(true);
+        await idle();
+        out.back = [m.getCenterClampedToGround(), m.getCenterElevation()];
+        console.warn = warn; m.remove(); el.remove();
+        return out;
+    });
+    check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
+        JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
