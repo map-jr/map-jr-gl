@@ -635,11 +635,12 @@ export interface MapInstance {
     removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void;
     /**
      * Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, read from the elevation tiles
-     * of the first `raster-dem` source of the style. The `exaggeration` of the terrain does not change it.
+     * of a `raster-dem` source of the style. The `exaggeration` of the terrain does not change it.
      * @param at A position, `[lng, lat]`, or a point of the screen, `{x, y}` in CSS pixels.
-     * @returns A promise of the height in meters, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
+     * @param options `source` is the ID of the `raster-dem` source (default the first one of the style), and `zoom` is the zoom level of its tile (default its `maxzoom`).
+     * @returns A promise of the height in meters, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source, or none with the ID of `options.source`.
      */
-    queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
+    queryElevation(at: Position | {x: number; y: number}, options?: {source?: string; zoom?: number}): Promise<number | null>;
     /**
      * Returns the map as an image once the map is idle, in the size of the canvas in device pixels. Markers, popups and controls are not in the image.
      * @param type The MIME type of the image. Default `'image/png'`.
@@ -810,7 +811,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     let styled = false;
     // Only the development build loads the file (see `__DEV__`): the production build has no request for it and no check.
     const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
-    const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
+    const checked: Checked = {map, name, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
     if (spec.initialView) check(1147, 'initialView', spec.initialView);
     // The data that each source has from the description: the GeoJSON of `data`.
@@ -1264,7 +1265,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         querySource,
         watchFeatures: (at, o, listener) => watch(at, undefined, () => queryFeatures(at, o), listener),
         watchSource: (id, at, o, listener) => watch(at, id, () => querySource(id, at, o), listener),
-        queryElevation: at => map.queryElevation(at),
+        queryElevation: (at, options) => map.queryElevation(at, options),
         toBlob: (type, quality) => map.toBlob(type, quality),
         moveTo,
         fitBounds: (bounds, o = {}) => moveTo({...o, bounds}, 'fitBounds'),

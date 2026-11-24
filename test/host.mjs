@@ -585,6 +585,21 @@ for (const renderer of renderers) {
         check(`[${renderer}] queryElevation without a raster-dem source rejects with a [map-jr-gl] message that says to add one (#1214)`,
             noDem.startsWith('[map-jr-gl] queryElevation()') && noDem.includes('raster-dem'), noDem);
 
+        // #1213: the option `source` of queryElevation reads the named raster-dem source, and an unknown one rejects.
+        const named = await page.evaluate(async renderer => {
+            const tile = rgb => { const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d'); g.fillStyle = rgb; g.fillRect(0, 0, 256, 256); return c.toDataURL('image/png'); };
+            const dem = rgb => ({type: 'raster-dem', tiles: [tile(rgb)], encoding: 'terrarium', tileSize: 256, maxzoom: 10});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            // rgb(131,232,0) is 1000 m and rgb(135,208,0) is 2000 m in the terrarium encoding.
+            const host = window.t.lib.createMap(el, {style: {version: 8, sources: {a: dem('rgb(131,232,0)'), b: dem('rgb(135,208,0)')}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
+            const out = [Math.round(await host.queryElevation([0, 0])), Math.round(await host.queryElevation([0, 0], {source: 'b', zoom: 3}))];
+            out.push(await host.queryElevation([0, 0], {source: 'none'}).then(() => 'resolved', e => String(e?.message ?? e)));
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] queryElevation reads the raster-dem source that the option source names, and rejects for an unknown one (#1213)`,
+            named[0] === 1000 && named[1] === 2000 && String(named[2]).includes('"none"'), JSON.stringify(named));
+
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
         const projection = await page.evaluate(async renderer => {
@@ -1182,6 +1197,25 @@ for (const renderer of renderers) {
             check(`[${renderer}] padding and maxZoom of initialView, moveTo and fitBounds warn with the new name and have no effect (#1147)`,
                 F.initialOld > 4 && F.movedOld > 5 && Math.abs(F.padded) <= 2 && said('initialView', 'maxZoom') && said('initialView', 'padding') && said('moveTo()', 'maxZoom') && said('fitBounds()', 'padding'), JSON.stringify(F));
         }
+
+        // 2d. "view" together with "initialView.bounds": the map starts at "view", and the development build says so once (#1148).
+        const viewWins = await page.evaluate(async renderer => {
+            const t = window.t, warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = {version: 8, sources: {}, layers: []}, bounds = [[-74.0101, 40.7101], [-74.01, 40.71]];
+            const both = t.lib.createMap(el, {style, view: {center: [10, 20], zoom: 3}, initialView: {bounds}, renderer, attribution: false});
+            const zoom = both.state.get().view.zoom;
+            both.update({style, view: {center: [11, 20], zoom: 3}, initialView: {bounds}, renderer, attribution: false});
+            const only = t.lib.createMap(el, {style, initialView: {bounds}, renderer, attribution: false});
+            // (The checks of the development build load on demand and run after the call.)
+            await new Promise(r => setTimeout(r, 500));
+            both.destroy(); only.destroy(); el.remove();
+            console.warn = warn;
+            return {zoom, warned: warned.filter(w => w.includes('"initialView.bounds"'))};
+        }, renderer);
+        check(`[${renderer}] view with initialView.bounds does not fit the bounds and warns once that view wins (#1148)`,
+            viewWins.zoom === 3 && viewWins.warned.length === 1 && viewWins.warned[0].startsWith('[map-jr-gl] createMap(): ') && viewWins.warned[0].includes('"view" wins, so the map does not fit'), JSON.stringify(viewWins));
 
         check(`[${renderer}] a pending toBlob leaves loaded() true for the idle listeners after its own (#1454)`, blob.loadedAtIdle === true, JSON.stringify(blob));
         check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,

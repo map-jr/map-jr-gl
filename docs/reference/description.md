@@ -190,7 +190,7 @@ createMap('map', {
 
 - When the style has `glyphs`, the labels use the glyph files, and a web font draws only the text that the files do
   not have. A style without `glyphs` draws all text with the web fonts and the fonts of the browser.
-- The map reads the weight and the style of a font from words such as `Bold`, `Semibold`, `Light` and `Italic` in
+- The map reads the weight and the style of a font from words such as `Thin`, `Extra Light`, `Bold`, `Semibold`, `Light` and `Italic` in
   its name. The rest of the name is the CSS family. So `Open Sans Semibold Italic` is the family `Open Sans` at
   weight 600 in italic.
 - An entry in `fonts` overrides the entry with the same name in the `font-faces` of the style.
@@ -231,7 +231,8 @@ createMap('map', {
 Two other fields can override `initialView` when the map is created:
 
 - When the description also has [`view`](#view-and-onviewchange), each member of `view` overrides the same member of
-  `initialView`, and the map ignores `bounds`.
+  `initialView`, and the map ignores `bounds`. The development build warns once when the first description has both
+  `view` and `initialView.bounds`.
 - With [`hash`](#hash), a view in the URL of the page overrides `center`, `zoom`, `bearing`, `pitch` and
   `bounds`. The map then does not fit `bounds`.
 
