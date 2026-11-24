@@ -586,7 +586,7 @@ These types differ from MapLibre GL JS:
 | `NavigationControlOptions` | It has no `visualizeRoll`. |
 | `GeolocateControlOptions` | It has `zoom` and no `fitBoundsOptions`. `showAccuracyCircle` has no effect. |
 | `FullscreenControlOptions` | `container` has no effect. |
-| `LogoControlOptions` | `compact` has no effect, and the constructor of `LogoControl` takes no argument. |
+| `LogoControlOptions` | `compact` has no effect and writes one warning, because this library has no logo. |
 | `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |
 | `Listener` | Its type parameter is the type of the event, and the default is `MapLibreEvent`. |
 | `Subscription` | No method returns it: `map.on` returns the map. Remove a listener with `map.off(type, listener)`. |

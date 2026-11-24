@@ -264,9 +264,15 @@ export class GlobeControl implements Control {
     };
 }
 
-/** MapLibre shows its logo with this control. This library has no logo, so the control adds an empty element. */
+/**
+ * MapLibre shows its logo with this control. This library has no logo, so the control adds an empty element. The option
+ * `compact` has no effect and writes one warning.
+ */
 export class LogoControl implements Control {
     private el?: HTMLElement;
+    constructor(public options: {compact?: boolean} = {}) {
+        if (options.compact !== undefined) noEffect('LogoControl', 'compact', ' This library has no logo. Remove the option.');
+    }
     onAdd() { return this.el = document.createElement('div'); }
     onRemove() { this.el?.remove(); }
     getDefaultPosition(): ControlPosition { return 'bottom-left'; }
