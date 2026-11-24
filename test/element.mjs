@@ -168,6 +168,22 @@ try {
     check('browser: the element takes over the markup of the server: the map removes the first view after its first frame, and nothing moves', early && !late.svg && late.canvas && late.layers === 1 && late.hover === true && late.projection?.type === 'globe' && late.after === before.after && !page.errors.length, JSON.stringify({early, late, errors: page.errors}));
     await page.close();
 
+    // With initialView.bounds, the element starts at the view of the fit, so the dot stays where the first view drew it (#1669).
+    // (The box does not have the dot at its center, so a start at another view moves the dot.)
+    ssrPage = await renderElement({style: origin + '/blank.json', initialView: {bounds: [-74.03, 40.69, -73.99, 40.72], fitPadding: 20}, layers: dot, data: {dot: point}, attribution: false},
+        {width: 600, height: 400, attributes: {style: 'width:600px;height:400px'}});
+    check('server: with initialView.bounds, renderElement writes the center and the zoom of the fit', /^<map-jr [^>]*center="-74\.0\d+,40\.70\d+" zoom="1[23]\.\d+"/.test(ssrPage), ssrPage.slice(0, ssrPage.indexOf('>')));
+    const capped = await renderElement({style: origin + '/blank.json', initialView: {bounds: [-74.03, 40.69, -73.99, 40.72], fitMaxZoom: 10}}, {width: 600, height: 400});
+    check('server: renderElement fits initialView.bounds up to fitMaxZoom, as the map does', capped.includes(' zoom="10"'), capped.slice(0, capped.indexOf('>')));
+    page = await open('/ssr', {javaScriptEnabled: false});
+    const drawn = await page.evaluate(() => { const r = document.querySelector('map-jr > svg [fill="#123456"]')?.getBoundingClientRect(); return r && [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; });
+    await page.close();
+    page = await open('/ssr');
+    await page.waitForFunction(() => window.seen.includes('load'), null, {timeout: 60000});
+    const live = await page.evaluate(() => { const a = document.querySelector('map-jr'), p = a.map.project([-74.0065, 40.7085]), r = a.getBoundingClientRect(); return [Math.round(r.x + p.x), Math.round(r.y + p.y)]; });
+    check('browser: with initialView.bounds, the dot is at the same place in the first view and in the map', !!drawn && Math.hypot(drawn[0] - live[0], drawn[1] - live[1]) <= 2 && !page.errors.length, JSON.stringify({drawn, live, errors: page.errors}));
+    await page.close();
+
     // 3. Attributes, properties set before the element was defined, events.
     page = await open('/attributes');
     await page.waitForFunction(() => window.seen.some(e => e.name === 'map-idle'), null, {timeout: 60000});

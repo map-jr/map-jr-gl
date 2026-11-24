@@ -238,6 +238,12 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     return result;
 }
 
+/** The center and the zoom that fit `bounds`, with `padding` around it, into a view of `width` by `height` CSS pixels, up to `maxZoom`. */
+function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined, width: number, height: number, maxZoom = 22) {
+    const p = sides(padding), b = (bounds as {toArray?(): unknown[]}).toArray?.() ?? bounds as unknown[];
+    return fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], width, height, p, p, maxZoom);
+}
+
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
 async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
@@ -269,7 +275,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
-    if (o.bounds) { const p = sides(o.padding), b = (o.bounds as {toArray?(): unknown[]}).toArray?.() ?? o.bounds as unknown[], fit = fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], o.width, o.height, p, p, 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
+    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
     else tr.set(o.center!, o.zoom!, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
@@ -462,6 +468,11 @@ export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 
 export async function renderElement(description: MapDescription, options: ElementRenderOptions = {}): Promise<string> {
     const d = unset(description) as Given & Record<string, unknown>, quote = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const view: Record<string, unknown> = {...d.initialView, ...d.view}, attrs: string[] = [];
+    const {attributes = {}, width = 800, height = 500, attribution, ...rest} = options;
+    // The element has no attribute for `bounds`: it gets the center and the zoom of the fit, and the first view shows them (#1669).
+    // (The map fits up to `fitMaxZoom`, else up to `maxZoom`. Bounds that cannot be read go to the render, which reports them.)
+    let fit: unknown = !d.view && d.initialView?.bounds;
+    if (fit) try { const {center, zoom} = fitBounds(fit as LngLatBoundsInput, d.initialView?.fitPadding, width, height, d.initialView?.fitMaxZoom ?? d.maxZoom ?? 22); Object.assign(view, {center: [center.lng, center.lat], zoom}); fit = undefined; } catch { /* see above */ }
     for (const [field, kind] of Object.entries(ATTRIBUTES)) {
         const v = VIEW_FIELDS.includes(field) ? view[field] : field === 'projection' ? (d.projection as {type?: string} | null)?.type
             : field === 'attributionCompact' ? (d.attribution as {compact?: boolean} | undefined)?.compact : d[field];
@@ -470,7 +481,6 @@ export async function renderElement(description: MapDescription, options: Elemen
         if (text !== undefined && readAttribute(kind, text) !== undefined) attrs.push(text ? `${attributeOf(field)}="${quote(text)}"` : attributeOf(field));
     }
     if (d.nonce) attrs.push(`nonce="${quote(d.nonce)}"`);
-    const {attributes = {}, width = 800, height = 500, attribution, ...rest} = options;
     for (const name in attributes) {
         if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(`[map-jr-gl] renderElement(): "${name}" is not the name of an attribute${/^on/i.test(name) ? ' that the element can have: an event handler attribute runs script' : ''}. Give names such as "id", "class" or "style".`);
         if (name !== 'style') attrs.push(`${name}="${quote(attributes[name])}"`);
@@ -478,7 +488,6 @@ export async function renderElement(description: MapDescription, options: Elemen
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden;' + (attributes.style ?? ''))}"`);
     let first = '';
     try {
-        const fit = !d.view && d.initialView?.bounds;
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
             width, height, images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
             attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,

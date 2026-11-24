@@ -294,6 +294,11 @@ the view of `view` or `initialView`, `sources`, `layers`, `terrain`, `sprite`, `
 `colorScheme`, `globalState`, `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection` and `attribution` of the description,
 so the first view has its controls (see [`renderFirstView`](#renderfirstview)).
 
+The element has no attribute for `bounds`. When `initialView` has `bounds` and the description has no `view`, the
+element gets the attributes `center` and `zoom` of the view that fits `bounds` and `fitPadding` into `width` by
+`height`, up to `fitMaxZoom` or else `maxZoom`, so the map starts at the view of the first view. A property `initialView` that the page sets on the element
+overrides these attributes (see [the element](element.md#mapjrelement)).
+
 **Returns** a promise of the markup as a string. When the render fails, the promise resolves to the element without
 the first view, and the console of the server has the error.
 
