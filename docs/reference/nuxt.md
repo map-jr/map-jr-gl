@@ -10,7 +10,7 @@ starts.
 export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 ```
 
-```vue
+```vue nuxt
 <!-- app/pages/index.vue (pages/index.vue in Nuxt 3) -->
 <template>
   <div style="height: 400px">
@@ -77,7 +77,7 @@ Nuxt puts around `MapJr`. It has none of the members of the map, also after hydr
 - The default slot receives `map` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{map}">`.
 - `useMapInstance()` in a component of your own inside `LazyMapJr` returns a ref with the map.
 
-```vue
+```vue nuxt
 <script setup>
 // A shallowRef keeps the map as it is, with no reactive proxy around it.
 const map = shallowRef(null);
