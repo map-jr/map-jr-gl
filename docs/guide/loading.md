@@ -92,6 +92,33 @@ const map = createMap('map', {
 });
 ```
 
+### Serve the worker files yourself
+
+A folder that `workerUrl` points to needs the worker file and each part of the worker. The worker loads a part only
+when a map needs it, from the folder of the worker file.
+
+| File | What the worker loads it for |
+|---|---|
+| `map-jr-gl-worker.js` | Every map |
+| `map-jr-gl-worker-geojson.js` | A GeoJSON source |
+| `map-jr-gl-worker-contour.js` | Contour lines |
+| `map-jr-gl-worker-pmtiles.js` | A PMTiles source |
+
+Copy every `map-jr-gl-worker*.js` file of `node_modules/@map-jr/map-jr-gl/dist/` into the folder, so that a part
+that a later version adds is there too. When a part is missing, the worker reports an error that names the file
+`map-jr-gl-worker-<name>.js` that it could not load.
+
+The package exports the parts as `@map-jr/map-jr-gl/worker-*`, next to `@map-jr/map-jr-gl/worker`. A bundler that
+gives the URL of a file, such as Vite with `?url`, writes each file into the build with a hash in its name. The
+worker looks for its parts by their names in its own folder, so a build with hashed names needs the files copied
+under their own names, as above.
+
+```js
+// Vite: the URL of each file in the build.
+import workerUrl from '@map-jr/map-jr-gl/worker?url';
+import geojsonPartUrl from '@map-jr/map-jr-gl/worker-geojson?url';
+```
+
 ## When a worker cannot start
 
 The map draws on the main thread when the worker file is not at its URL, when a Content Security Policy does not
