@@ -76,6 +76,20 @@ test('anchors along a line start at an offset and repeat every symbol-spacing, a
     assert.deepEqual(anchorsX(250, 0.4, 0.5), []);
 });
 
+test('labels along lines with the same text are kept apart by half of symbol-spacing in the tile, and not by 300 pixels on the screen (#1095)', () => {
+    // Two lines 0.3 tiles (154 pixels, 1229 tile units) apart: more than half of symbol-spacing (125 pixels, 1000 tile units).
+    const at = (y: number) => [[lngOf(tx + 0.1), latOf(ty + y)], [lngOf(tx + 0.9), latOf(ty + y)]];
+    const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, 'symbol-placement': 'line', 'symbol-spacing': 250, 'text-allow-overlap': true}})!;
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'MultiLineString', coordinates: [at(0.35), at(0.65)]}} as any), z, tx, ty);
+    const labels = buildTile(data, z, [layer], false).labels;
+    const tr = new Transform();
+    tr.width = 800; tr.height = 600;
+    tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, 0);
+    const placed = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid());
+    const rows = new Set(placed.map((p: any) => Math.round(p.y / 50)));
+    assert.equal(rows.size, 2, `labels on both lines: ${placed.map((p: any) => Math.round(p.y))}`);
+});
+
 /** A line label of the tile with its line replaced by `line` (tile units). */
 function lineLabel(line: number[], layout: Record<string, unknown> = {}) {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, 'symbol-placement': 'line', ...layout}})!;

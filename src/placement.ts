@@ -169,29 +169,25 @@ export function boxAround(x: number, y: number, w: number, h: number, angle: num
 }
 
 /**
- * The anchors of the labels placed so far in a layer, by text. Each anchor is kept in two grids: one of cells of 16
- * pixels for the test of 1 pixel between point labels, and one of 300 pixels for the test of 300 pixels between line
- * labels. A test reads only the cells that its circle touches, so a text that repeats many times stays cheap (#332).
+ * The anchors of the point labels placed so far in a layer, by text, in a grid of cells of 16 pixels for the test of
+ * 1 pixel between point labels. A test reads only the cells that its circle touches, so a text that repeats many times
+ * stays cheap (#332). (Labels along lines are kept apart only in the tile, by half of `symbol-spacing`, as in MapLibre GL JS.)
  */
 class SameText {
-    private grids: Map<string, Map<number, number[]>>[] = [new Map(), new Map()];
-    clear() { for (const g of this.grids) g.clear(); }
+    private grid = new Map<string, Map<number, number[]>>();
+    clear() { this.grid.clear(); }
     add(text: string, x: number, y: number, item: number) {
-        for (let i = 0; i < 2; i++) {
-            const size = i ? 300 : 16, g = this.grids[i];
-            let cells = g.get(text);
-            if (!cells) g.set(text, cells = new Map());
-            // (A key that two cells share only adds anchors to test, which the distance test then rejects.)
-            const k = Math.floor(x / size) * 65536 + Math.floor(y / size), c = cells.get(k);
-            if (c) c.push(x, y, item); else cells.set(k, [x, y, item]);
-        }
+        let cells = this.grid.get(text);
+        if (!cells) this.grid.set(text, cells = new Map());
+        const k = Math.floor(x / 16) * 65536 + Math.floor(y / 16), c = cells.get(k);
+        if (c) c.push(x, y, item); else cells.set(k, [x, y, item]);
     }
-    /** Whether a label with this text is closer than `r` pixels (at most 300), leaving out those of item `skip`. */
+    /** Whether a label with this text is closer than `r` pixels (at most 16), leaving out those of item `skip`. */
     near(text: string, x: number, y: number, r: number, skip: number) {
-        const size = r > 16 ? 300 : 16, cells = this.grids[r > 16 ? 1 : 0].get(text);
+        const cells = this.grid.get(text);
         if (!cells) return false;
-        for (let cx = Math.floor((x - r) / size); cx <= Math.floor((x + r) / size); cx++)
-            for (let cy = Math.floor((y - r) / size); cy <= Math.floor((y + r) / size); cy++) {
+        for (let cx = Math.floor((x - r) / 16); cx <= Math.floor((x + r) / 16); cx++)
+            for (let cy = Math.floor((y - r) / 16); cy <= Math.floor((y + r) / 16); cy++) {
                 const c = cells.get(cx * 65536 + cy);
                 if (c) for (let i = 0; i < c.length; i += 3) if (c[i + 2] !== skip && Math.hypot(c[i] - x, c[i + 1] - y) < r) return true;
             }
@@ -433,11 +429,9 @@ export function placeLabels(
                         // its size on the ground takes half of that away again, so far text stays readable.)
                         const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, tr.pitch && l.flat ? s / persp / persp : 0);
                         if (!curved) continue;
-                        if (seen.near(l.text, ax, ay, 300, -1)) continue;
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
                         // (Its boxes go into the grid after its icon is placed: as in MapLibre, an icon is not blocked by its own text.)
                         bentBoxes = l.ignore ? [] : curved.boxes;
-                        seen.add(l.text, ax, ay, itemNo);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
                         bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha};
@@ -498,7 +492,7 @@ export function placeLabels(
                     twin = line ? undefined : twins.get(twinKey = `${l.text}|${l.font}|${size}|${Math.round(ax)},${Math.round(ay)}`);
                     if (twin && (twin.layer === L.id || twin.group !== L.group)) twin = undefined;
                     // Point labels from one tile are separate features, also when they have the same position.
-                    if (!twin && !bent && seen.near(l.text, ax, ay, line ? 300 : 1, line ? -1 : itemNo)) continue; // (text on its line has passed this test already)
+                    if (!twin && !line && seen.near(l.text, ax, ay, 1, itemNo)) continue;
                 }
                 const n = 2 ** it.id.z, q = 2 ** 22;
                 const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
@@ -599,7 +593,7 @@ export function placeLabels(
                 if (textBox && twinKey && !twin) twins.set(twinKey, {layer: L.id, group: L.group, box: textBox, x: tx, y: ty, justify});
                 if (textBox && !l.ignore && !twin) grid.insert(...textBox);
                 if (iconBox && !l.icon!.ignore) grid.insert(...iconBox);
-                if (textBox) seen.add(l.text, ax, ay, itemNo);
+                if (textBox && !line) seen.add(l.text, ax, ay, itemNo);
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
