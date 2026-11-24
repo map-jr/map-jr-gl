@@ -284,10 +284,16 @@ for (const renderer of renderers) {
             t.host.update({...t.spec, padding: 0});
             t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
             t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]], {duration: 800});
+            const began = performance.now();
             for (let i = 0; i < 250 && !t.host.state.get().moving; i++) await wait(20);
+            const first = Math.round(performance.now() - began), atFirst = t.host._map.getZoom();
             t.host.update({...t.spec});
             for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
-            return {end: t.host._map.getZoom()};
+            const end = t.host._map.getZoom();
+            // (When this check fails, the map is put at the view that the fitBounds should have reached, so that the checks
+            // after it do not run at zoom 3 and fail too: four checks of the worker renderer failed with this one, #1418.)
+            if (end <= 12) t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]]);
+            return {end, first, atFirst, moving: t.host.state.get().moving};
         });
         check(`[${renderer}] update() with padding from 0 to unset does not cancel a running fitBounds (#1351)`, padKept.end > 12, JSON.stringify(padKept));
 
