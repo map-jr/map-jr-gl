@@ -3235,6 +3235,41 @@ for (const renderer of ['main', 'worker']) {
     } catch (e) { check(`[${renderer}] the test of a style that is not a style was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A map that is removed while it starts again after a lost WebGL context gives the shared tile workers back once, so
+// that another map on the page still gets tiles (#708, #97).
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        await page.goto(origin + '/bench');
+        const out = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const idle = async m => { await wait(100); for (let i = 0; i < 300 && !m.state.get().idle; i++) await wait(50); return m.state.get().idle; };
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px'}));
+            const view = {center: [-74.0065, 40.7085], zoom: 14};
+            const elB = box(), b = lib.createMap(elB, {style, renderer: 'main', attribution: false, initialView: view});
+            const elA = box(), a = lib.createMap(elA, {style, renderer: 'main', attribution: false, initialView: view});
+            await idle(b); await idle(a);
+            // restart() gives the workers back and then awaits the start of the new engine. The map is removed in a microtask after
+            // the event, so that the removal comes before start() takes the workers again.
+            let removed = false;
+            a._map.on('webglcontextlost', () => queueMicrotask(() => { a.destroy(); elA.remove(); removed = true; }));
+            a._map.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+            for (let i = 0; i < 100 && !removed; i++) await wait(50);
+            await wait(500);
+            // Map b needs new tiles: the place is far from the tiles that it has.
+            b.moveTo({center: [-73.95, 40.78], zoom: 13, duration: 0});
+            const ok = await idle(b);
+            // (Workers that ended give no answer: the check waits 5 s for one.)
+            const features = await Promise.race([b.queryFeatures([{x: 0, y: 0}, {x: 600, y: 400}]).then(f => f.length), wait(5000).then(() => 'no answer')]);
+            b.destroy(); elB.remove();
+            return {removed, idle: ok, features};
+        });
+        check('a map removed while it starts again after a lost WebGL context leaves the tile workers to the other map, which still loads tiles (#708)',
+            out.removed && out.idle && typeof out.features === 'number' && out.features > 0, JSON.stringify(out));
+    } catch (e) { check('the test of a map removed during its restart was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A warning about an unsupported expression comes once on the page, not once for each thread that compiles the layer (#1141).
 for (const renderer of renderers) {
     const page = await browser.newPage({viewport: {width: 600, height: 400}});
