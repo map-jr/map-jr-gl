@@ -2,6 +2,7 @@
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
 import {createMap, points, type AttributionOptions, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
 import {navigation, scale, geolocate, terrain, type NavigationOptions, type ScaleOptions, type GeolocateOptions, type TerrainOptions} from '@map-jr/map-jr-gl/controls';
+import {renderToImage} from '@map-jr/map-jr-gl/server';
 
 // A position that is declared apart from the call has the type number[].
 const NYC = [-74.0065, 40.7085];
@@ -122,3 +123,5 @@ const fromJSON: MapDescription = {
 map.update(fromJSON);
 // @ts-expect-error `style` is required, and null is not a style.
 map.update({style: null});
+// @ts-expect-error renderToImage always embeds images, so its options have no `inlineImages` (#1208).
+void renderToImage({style: 'https://example.com/style.json', center: [0, 0], zoom: 1, width: 1, height: 1, rasteriser: {render: async () => new Uint8Array()}, inlineImages: false});

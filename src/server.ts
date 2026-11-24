@@ -67,7 +67,8 @@ export interface RenderOptions {
     layerFilter?: (layerId: string) => boolean;
     /**
      * Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. A rasterized SVG needs it.
-     * @default false in `renderToSVG`, true in `renderToImage`
+     * `renderToImage` always embeds them and does not take this option.
+     * @default false
      */
     inlineImages?: boolean;
     /**
@@ -447,8 +448,11 @@ export interface Rasteriser {
     /** Renders HTML to an image. */
     render(source: string, options: Record<string, unknown>): Promise<Uint8Array>;
 }
-/** The options of `renderToImage`: those of `renderToSVG`, and the options of the image. */
-export interface ImageOptions extends RenderOptions {
+/**
+ * The options of `renderToImage`: those of `renderToSVG` except `inlineImages`, and the options of the image.
+ * `renderToImage` always embeds images, because the rasterizer cannot load linked ones.
+ */
+export interface ImageOptions extends Omit<RenderOptions, 'inlineImages'> {
     /** The renderer that converts the SVG to an image. */
     rasteriser: Rasteriser;
     /**
@@ -477,12 +481,18 @@ export interface ImageResult {
     tiles: string[];
 }
 
+// The warning about `inlineImages` in `renderToImage` is shown once per process; it holds no state of a map.
+let warnedInline = false;
 /**
  * Renders the first frame of a map as a raster image, whose size does not depend on how dense the data is.
  * @returns A promise of the image. It rejects as `renderToSVG` does.
  */
 export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
-    const {svg, tiles} = await renderToSVG({inlineImages: true, highDensity: (o.pixelRatio ?? 1) > 1, ...o});
+    if ('inlineImages' in o && !warnedInline) {
+        warnedInline = true;
+        console.warn('[map-jr-gl] renderToImage(): "inlineImages" has no effect, because the image always embeds raster tiles and icons. Remove "inlineImages".');
+    }
+    const {svg, tiles} = await renderToSVG({highDensity: (o.pixelRatio ?? 1) > 1, ...o, inlineImages: true});
     const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;
     const plain = svg.replace(/ data-map-jr-ssr="" style="[^"]*"/, '');
     const image = await o.rasteriser.render(`<div style="display:flex;width:${o.width}px;height:${o.height}px">${plain}</div>`, {
