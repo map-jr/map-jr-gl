@@ -504,7 +504,7 @@ Layers that the server renderer does not draw:
 Other:
 
 - Projections other than `mercator`, `globe` and `vertical-perspective` (`addProjection`)
-- The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option is not read, and nothing warns: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
+- The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option has no effect and warns once: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it, so `setRTLTextPlugin` is accepted and does nothing. This is a decision and will stay.
 - The debug drawing of MapLibre GL JS: collision boxes, padding lines, tile borders and the overdraw view (`showCollisionBoxes`, `showPadding`, `showTileBoundaries`, `showOverdrawInspector`). This is a decision and will stay.
 
