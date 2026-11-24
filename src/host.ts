@@ -1153,6 +1153,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             for (const name in next.fonts) if (differ(next.fonts[name], before?.fonts?.[name])) changed[name] = next.fonts[name];
             map.addFonts(fontFaces(absolute(changed)));
         }
+        // (Before the view: a view past the antimeridian is constrained by the new setting.)
+        if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) map.setRenderWorldCopies(next.renderWorldCopies ?? true);
         if (next.view && !same(next.view, before?.view) && before) {
             if (!reported.some(v => same(next.view, v))) map.jumpTo(next.view);
             // (A view that the map reported is not applied. A view of the latest movement can be a late echo of a slow application, so only a view of an earlier movement is a stored view: #1190.)
@@ -1161,7 +1163,6 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
-        if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) map.setRenderWorldCopies(next.renderWorldCopies ?? true);
         if ((next.centerElevation ?? null) !== (before?.centerElevation ?? null)) map.setCenterElevation(next.centerElevation ?? null);
         if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds as LngLatBoundsInput | null | undefined);
         if (differ(next.padding ?? 0, before?.padding ?? 0)) map.jumpTo({padding: next.padding ?? 0});
