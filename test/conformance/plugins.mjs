@@ -37,7 +37,7 @@ for (const n of names) {
 }
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
-const page = n => `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%}#stage{position:absolute;inset:0}#map{position:absolute;inset:0}</style>
+const page = n => `<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,"><style>html,body{margin:0;height:100%}#stage{position:absolute;inset:0}#map{position:absolute;inset:0}</style>
 <script type="importmap">{"imports": {"maplibre-gl": "/dist/map-jr-gl-maplibre-compat.js"}}</script>
 <div id="stage"><div id="map"></div></div>
 <script type="module">
@@ -69,7 +69,7 @@ for (const n of names) {
     if (bundles[n].error) { results.push({n, version, ok: false, detail: 'the scenario could not be built: ' + bundles[n].error, errors: []}); console.log(`FAIL  ${n} (${version}): ${results.at(-1).detail}`); continue; }
     const p = await browser.newPage({viewport: {width: 900, height: 600}});
     const consoleErrors = [];
-    p.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text().split('\n')[0].slice(0, 160)); });
+    p.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text().split('\n')[0].slice(0, 160) + (m.text().startsWith('Failed to load resource') ? ' ' + m.location().url : '')); });
     await p.exposeFunction('mouseClick', (x, y) => p.mouse.click(x, y));
     await p.exposeFunction('mouseDrag', async (x0, y0, x1, y1) => { await p.mouse.move(x0, y0); await p.mouse.down(); await p.mouse.move((x0 + x1) / 2, (y0 + y1) / 2, {steps: 4}); await p.mouse.move(x1, y1, {steps: 4}); await p.mouse.up(); });
     let r;
