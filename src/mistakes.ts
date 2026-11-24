@@ -7,6 +7,7 @@ import type {FeatureOptions, MapDescription, MapInstance, SourceOptions} from '.
 import type {Given} from './unset.ts';
 import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
+import {SPEC} from './style.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; /** The name that made the map, such as `createMap()` or `<MapJr>`. */ name: string; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -69,6 +70,8 @@ texts[1195] = (control, custom) => custom
 /** The option of an overlay that `option` is with another case of its letters, such as `lngLat` for `lnglat`. */
 const overlayOption = (option: string) => overlayOptions.find(k => k.toLowerCase() === option.toLowerCase());
 texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
+texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
+texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map draws the layer without it, but MapLibre GL JS rejects the style. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -129,19 +132,55 @@ export const zoomCurveError = (e: unknown): string => {
 };
 /** For the compat entry (src/compat-map.ts): calls `report` with an `error` for each property of `style` whose
  * expression MapLibre GL JS rejects for its ["zoom"] (see `zoomCurveError`), once for each layer, property and value on
- * the map (`reported`). The property is named as in MapLibre's error of `setPaintProperty` (#1087). */
+ * the map (`reported`). The property is named as in MapLibre's error of `setPaintProperty` (#1087). It does the same,
+ * once for each layer and property, for a property that the style specification does not have for the type of the layer (#1139). */
 export function zoomCurveErrors(style: {layers?: any[]} | undefined, reported: Set<string>, report: (error: Error) => void) {
     for (const l of style?.layers ?? []) for (const g of ['paint', 'layout']) for (const k in l?.[g]) {
         const why = zoomCurveError(l[g][k]), key = `${l.id} ${g} ${k} ${JSON.stringify(l[g][k])}`;
         if (why && !reported.has(key)) { reported.add(key); report(new Error(mistake(1057, `layers.${l.id}.${g}.${k}`, why))); }
     }
+    unknownProperties(style?.layers, (l, g, k, near) => { const key = `${l.id} ${g} ${k}`; if (!reported.has(key)) { reported.add(key); report(new Error(mistake(11139, `layers.${l.id}.${g}.${k}`, near))); } });
 }
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
+/** The properties of the style specification that the map does not read (and so are not in `SPEC` of src/style.ts), by layer type. */
+const unread: Record<string, string> = {line: 'line-gradient', symbol: 'symbol-avoid-edges symbol-height-offset symbol-height-anchor text-writing-mode', heatmap: 'heatmap-color',
+    'fill-extrusion': 'fill-extrusion-rounded-corner-distance', raster: 'raster-fade-duration', 'color-relief': 'color-relief-color'};
+/** The paint and layout properties of the style specification for the layer type `type`, or undefined for a type that the map does not know or that has none. */
+export const layerProperties = (type: string) => Object.hasOwn(SPEC, type) && type !== 'custom'
+    ? [...Object.values(SPEC[type]).map(p => p[0]).filter(n => n !== 'heatmap-no-such-property'), 'visibility', ...unread[type]?.split(' ') ?? []] : undefined;
+/** The edit distance of `a` and `b` (Levenshtein). */
+const distance = (a: string, b: string) => {
+    let row = [...Array(b.length + 1).keys()];
+    for (let i = 1; i <= a.length; i++) {
+        const next = [i];
+        for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        row = next;
+    }
+    return row[b.length];
+};
+/**
+ * Calls `found` for each key of `paint` and `layout` of the layers that the style specification does not have for the
+ * type of the layer, with the group, the key and the nearest property of that type ('' when none is near). A key of
+ * `paint` that is a property and `-transition` is known. (#1139)
+ */
+export function unknownProperties(layers: unknown, found: (layer: {id: string; type: string}, group: string, key: string, near: string) => void) {
+    for (const l of Array.isArray(layers) ? layers : []) {
+        const known = layerProperties(l?.type);
+        if (known) for (const g of ['paint', 'layout']) for (const k in l[g]) {
+            if (known.includes(k) || g === 'paint' && k.endsWith('-transition') && known.includes(k.slice(0, -11))) continue;
+            // (The nearest name within a third of the length of the key, so that a short key does not get an unrelated name.)
+            const key = k.replace(/[A-Z_]/g, c => '-' + c.toLowerCase().replace('_', '')).replace(/-+/g, '-');
+            let near = '', best = Math.max(2, Math.floor(k.length / 3)) + 1;
+            for (const n of known) { const d = distance(key, n); if (d < best) { best = d; near = n; } }
+            found(l, g, k, near);
+        }
+    }
+}
 
 /**
- * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
- * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
- * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 9, a feature with no id under the pointer in the layer `a` of the source `b`
+ * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description and the
+ * properties of the layers of the map, when the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
+ * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it (also their ids, images, zoom curves and properties); 9, a feature with no id under the pointer in the layer `a` of the source `b`
  * with `hoverState`; 1189, a GeoJSON source of `sources` with no `data` and no key in `data`; 7, `moveTo` with `fitPadding` or `fitMaxZoom` and no `bounds`; 1148 is the first description (kind 2) with `view` and `initialView.bounds`; 1190, `update` with a `view` that the map reported earlier and ignores; 1147, `padding` or `maxZoom` (the old names) in the options `b` of `a` (`initialView`, `moveTo()` or `fitBounds()`); 1647, the options `b` of an overlay in the call `a` (`overlay()`, `update()` or `patch()`). Kind 2 also warns 1195 for a control that `controls` has twice.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
@@ -165,6 +204,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         };
         for (const l of [...layers, ...more]) { params(l.layout?.['icon-image']); params(l.layout?.['text-field']); }
     };
+    /** Warns for each property of the layers that the style specification does not have for the type of the layer (#1139). */
+    const properties = (layers: unknown) => unknownProperties(layers, (l, g, k, near) => warn(1139, `the ${l.type} layer "${l.id}", ${g} property "${k}"`, near));
     if (kind === 0) {
         // (An element that is hidden or not in the page has no rectangle: that is not this mistake.)
         const el = map.getContainer();
@@ -173,6 +214,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!c.ready()) return;
         const spec = c.spec();
         known(1, spec.interactiveLayers);
+        properties(map.getStyle()?.layers);
         for (const l of map.getStyle()?.layers ?? []) { const src = (l as {source?: unknown}).source; if (typeof src === 'string' && !map.getSource(src) && !c.warned.has(`6 ${l.id} ${src}`)) warn(2, l.id, src); }
     } else if (kind === 2) {
         const next = a as Given, before = b as Given | undefined;
@@ -218,6 +260,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     else {
         slots(a.layers, b?.layers);
         for (const l of [...a.layers, ...b?.layers ?? []]) for (const g of ['paint', 'layout'] as const) for (const k in l[g]) { const why = zoomCurveError(l[g][k]); if (why) warn(1057, `the layer "${l.id}", ${g} property "${k}"`, why); }
+        properties([...a.layers, ...b?.layers ?? []]);
         if (!b) return;
         const extend = b as Pick<MapDescription, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {

@@ -62,6 +62,7 @@ members without the required view, for options that get their view later.
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
+| `fitMaxZoom` | `number \| null` | `maxZoom` of `renderFirstView`, else 22 | The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description. |
 | `width` **required** | `number` | | The width of the render in CSS pixels. |
 | `height` **required** | `number` | | The height of the render in CSS pixels. |
 | [`images`](#images) | `Record<string, string \| {image: string; width?: number; height?: number}>` | | Images for the style layers, by name: an SVG document as a string, or `{image, width, height}` with the size in CSS pixels. |
@@ -99,7 +100,9 @@ The server cannot read the color scheme of the browser, so `colorScheme: 'auto'`
 ### `bounds` and `padding`
 
 With `bounds`, the renderer fits the box into the view and uses neither `center` nor `zoom`, so the options can leave
-them out. `padding` is the space in CSS pixels that the box keeps from each side.
+them out. `padding` is the space in CSS pixels that the box keeps from each side. The fit zooms in up to `fitMaxZoom`,
+else up to `maxZoom` of `renderFirstView`, else up to 22, as the map fits `initialView.bounds` up to `fitMaxZoom` or
+else `maxZoom` of the description. Pass the same values as the description, so that the first view and the map agree.
 
 ```js
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
@@ -235,6 +238,17 @@ Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the a
 right. With `controls`, it also returns the controls of the map and their style sheet. Put the HTML into the
 element of the map, which needs a `position` that is not `static`.
 
+The SVG is in a box with `position: absolute; inset: 0; overflow: hidden`, and both have the attribute
+`data-map-jr-ssr`. The SVG is centered in the element and placed as follows:
+
+- With `center` and `zoom`, the SVG has the size of `width` and `height` (1:1), and the element crops it. When the
+  element is wider or higher than the render, the SVG is scaled up as much as it needs to cover the element, and the
+  live map then shows a larger area at the render's zoom.
+- With `bounds`, the SVG is scaled to cover the element. It shows the area that the map shows when the map fits the
+  bounds to an element of the shape of the render.
+
+The guide [Server rendering](../guide/server-rendering.md) shows the cases.
+
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `options` **required** | [`FirstViewOptions`](#firstviewoptions) | | The options of `renderToSVG`, the attribution to show, and the controls. |
@@ -250,7 +264,7 @@ element of the map, which needs a `position` that is not `static`.
 | `controls` | `ControlSpec[]` | | The controls of the description, for example `[navigation(), scale()]`. With the option (also `[]`), the HTML has these controls and the attribution as markup. `custom()` controls are left out. |
 | `locale` | `Record<string, string>` | | The texts of the controls, as `locale` of the description. It has an effect with `controls`. |
 | `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'` for the style sheet of the controls. It has an effect with `controls`. |
-| `minZoom`, `maxZoom` | `number` | `-2`, `22` | The limits of the zoom of the description. At a limit, the zoom button is disabled. They have an effect with `controls`. |
+| `minZoom`, `maxZoom` | `number` | `-2`, `22` | The limits of the zoom of the description. At a limit, the zoom button is disabled with `controls`. Without `fitMaxZoom`, `maxZoom` is the highest zoom of the fit to `bounds`. |
 | `projection` | `{type?: string}` | | The projection of the description. With `{type: 'globe'}`, the globe control is on. It has an effect with `controls`. |
 | `attributionOptions` | `{compact?: boolean; customAttribution?: string \| string[]}` | | The options of the attribution, as `attribution` of the description. It has an effect with `controls`. |
 
@@ -295,6 +309,11 @@ as `layers`, `data` or a style object, as a property of the element, with the sa
 the view of `view` or `initialView`, `sources`, `layers`, `terrain`, `sprite`, `data`, `images`, `fontFamily`,
 `colorScheme`, `globalState`, `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection` and `attribution` of the description,
 so the first view has its controls (see [`renderFirstView`](#renderfirstview)).
+
+The element has no attribute for `bounds`. When `initialView` has `bounds` and the description has no `view`, the
+element gets the attributes `center` and `zoom` of the view that fits `bounds` and `fitPadding` into `width` by
+`height`, up to `fitMaxZoom` or else `maxZoom`, so the map starts at the view of the first view. A property `initialView` that the page sets on the element
+overrides these attributes (see [the element](element.md#mapjrelement)).
 
 **Returns** a promise of the markup as a string. When the render fails, the promise resolves to the element without
 the first view, and the console of the server has the error.

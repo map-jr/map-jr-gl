@@ -59,6 +59,8 @@ const OTHER = [
     ['transition', 'delay', [], 'style.ts', /delay: 0/],
     // (Accepted with no effect: the name is in src/ only for its warning, so the inputs are `null` and it counts as not read.)
     ['raster', 'raster-fade-duration', null, 'style.ts', /raster-fade-duration: the property has no effect/],
+    // (Not read: the name is in src/ only in the list of known properties of the check for unknown ones, #1139.)
+    ['fill-extrusion', 'fill-extrusion-rounded-corner-distance', null, 'mistakes.ts', /'fill-extrusion': 'fill-extrusion-rounded-corner-distance'/],
 ];
 const stale = OTHER.filter(([, , , f, re]) => !re.test(src[f]));
 const other = (group, name) => OTHER.find(([g, n]) => (g === group || (g === '*' && !['sky', 'light', 'terrain', 'projection', 'transition'].includes(group))) && n === name);

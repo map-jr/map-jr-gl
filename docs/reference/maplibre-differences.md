@@ -305,7 +305,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Requests
 
 - **MapLibre GL JS:** The `transformRequest` option and `addProtocol`.
-- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source has the request type `image`, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file. An image of `addImage` and the image of a sprite have the type `arrayBuffer` (MapLibre GL JS gives `image`), and only bytes are read as their answer.
+- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source, an image of `loadImage`, of `addImage` with a URL or of an `image` source, and the image of a sprite have the request type `image`, as in MapLibre GL JS, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file.
 
 ### `Marker`, `Popup`
 
@@ -366,6 +366,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - MapLibre GL JS reports errors in the style.
 - This library does not validate the style. It writes a warning for each layer or property that it cannot draw. Five calls fire `error` and change nothing, as in MapLibre GL JS: `addLayer` with an id that exists, `addLayer` with a source that the style does not have, `addLayer` with a source object when the style has a source with the id of the layer, `addSource` with an id that exists, and `removeSource` of a source that a layer uses. (MapLibre GL JS throws in the third case.) That the production build does not validate the style is a decision and will stay. Validation in the development build is possible later.
+- A paint or layout property that the style specification does not have for the type of the layer (for example `circle-radious`) has no effect in both entries, where MapLibre GL JS rejects the style, or the call of `addLayer`, `setPaintProperty` or `setLayoutProperty`. The development build of `@map-jr/map-jr-gl` writes one warning for each layer and property, and the development build of `@map-jr/map-jr-gl/maplibre-compat` fires `error` with the text of MapLibre GL JS (`layers.<id>.paint.circle-radious: unknown property "circle-radious"`). Both name the nearest property of that layer type when one is near, such as `circle-radius`. The production build checks nothing. A property in the wrong group (a layout property in `paint`) is not reported, and the map reads it from either group.
 
 ### Reading the canvas
 
@@ -531,7 +532,7 @@ Other:
 
 The camera methods of the entry `@map-jr/map-jr-gl/maplibre-compat` (`jumpTo`, `easeTo`, `flyTo`, `fitBounds`, `fitScreenCoordinates`, `panTo`, `panBy`, `zoomTo`, `zoomIn`, `zoomOut`, `rotateTo`, `resetNorth`, `resetNorthPitch`, `snapToNorth`, `setCenter`, `setZoom`, `setBearing`, `setPitch` and `setPadding`) take `eventData` as the last argument, as in MapLibre GL JS. Its fields are on the `move`, `zoom`, `rotate` and `pitch` events of that move, from `movestart` to `moveend`. A later camera call replaces it.
 
-The option `zoomSnap` and `setZoomSnap` work as in MapLibre GL JS: with a value above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn`, `zoomOut`, the double-click, the keyboard and the navigation buttons goes to the nearest multiple of the value, and `cameraForBounds` and `fitBounds` go to the multiple below. The scroll wheel and the pinch do not snap here, while MapLibre GL JS snaps the scroll wheel.
+The option `zoomSnap` and `setZoomSnap` work as in MapLibre GL JS: with a value above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn`, `zoomOut`, the double-click, the keyboard and the navigation buttons goes to the nearest multiple of the value, and `cameraForBounds` and `fitBounds` go to the multiple below. A turn of a mouse wheel ends at the next multiple in the direction of the turn, as in MapLibre GL JS. A trackpad and a pinch do not snap, in either library.
 
 `setEventedParent(parent, data)` passes each event of the map to `parent.fire` while `parent.listens(type)` is true, as one object with the fields of the event and of `data` (an object, or a function that returns one). The parent gets a `click` after the listeners of the map.
 

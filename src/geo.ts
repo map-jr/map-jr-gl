@@ -66,15 +66,18 @@ export const latFromMerc = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 *
 export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
 /**
  * The center and zoom that fit the box [west, south, east, north] into a view of `width` by `height` pixels, less
- * `pad` ([top, right, bottom, left]) on each side. `shift` is the part of the padding that moves the center.
+ * `pad` ([top, right, bottom, left]) on each side, as `cameraForBoxAndBearing` of MapLibre GL JS 6.17 does in Mercator.
+ * The box is turned by `bearing` (degrees) before it is fitted. `shift` is the part of the padding that moves the
+ * center, and `offset` ([x, y] in CSS pixels at the end) moves it further.
  */
-export function fitBox([w, s, e, n]: number[], width: number, height: number, pad: number[], shift: number[], maxZoom: number) {
+export function fitBox([w, s, e, n]: number[], width: number, height: number, pad: number[], shift: number[], maxZoom: number, bearing = 0, [ox, oy] = [0, 0]) {
     // An east edge west of the west edge crosses the antimeridian: the box goes one world further east.
-    const x0 = mercX(w), x1 = mercX(e < w ? e + 360 : e), y0 = mercY(n), y1 = mercY(s);
-    const zoom = Math.min(maxZoom, Math.log2(Math.min(Math.max(1, width - pad[1] - pad[3]) / Math.max(x1 - x0, 1e-12), Math.max(1, height - pad[0] - pad[2]) / Math.max(y1 - y0, 1e-12)) / 512));
-    // Shift the center so the box sits in the middle of the area inside `shift`.
-    const world = 512 * 2 ** zoom;
-    return {center: {lng: lngFromMerc((x0 + x1) / 2 - (shift[3] - shift[1]) / 2 / world), lat: latFromMerc((y0 + y1) / 2 - (shift[0] - shift[2]) / 2 / world)}, zoom};
+    const x0 = mercX(w), x1 = mercX(e < w ? e + 360 : e), y0 = mercY(n), y1 = mercY(s), dx = x1 - x0, dy = y1 - y0;
+    const r = bearing * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r), ac = Math.abs(c), as = Math.abs(sn);
+    const zoom = Math.min(maxZoom, Math.log2(Math.min(Math.max(1, width - pad[1] - pad[3]) / Math.max(dx * ac + dy * as, 1e-12), Math.max(1, height - pad[0] - pad[2]) / Math.max(dx * as + dy * ac, 1e-12)) / 512));
+    // Shift the center so the box sits in the middle of the area inside `shift` (along the turned axes), then by `offset`.
+    const world = 512 * 2 ** zoom, px = (shift[3] - shift[1]) / 2, py = (shift[0] - shift[2]) / 2;
+    return {center: {lng: lngFromMerc((x0 + x1) / 2 - (ox + c * px - sn * py) / world), lat: latFromMerc((y0 + y1) / 2 - (oy + sn * px + c * py) / world)}, zoom};
 }
 /** `PaddingInput` as [top, right, bottom, left]. */
 export const sides = (p: PaddingInput = 0) => typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];

@@ -62,6 +62,11 @@ export interface RenderOptionsBase {
      * @default 0
      */
     padding?: PaddingInput;
+    /**
+     * The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description.
+     * @default `maxZoom` of `renderFirstView`, else 22
+     */
+    fitMaxZoom?: number | null;
     /** The width of the render in CSS pixels. */
     width: number;
     /** The height of the render in CSS pixels. */
@@ -238,8 +243,14 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     return result;
 }
 
+/** The center and the zoom that fit `bounds`, with `padding` around it, into a view of `width` by `height` CSS pixels, up to `maxZoom`. */
+function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined, width: number, height: number, maxZoom = 22) {
+    const p = sides(padding), b = (bounds as {toArray?(): unknown[]}).toArray?.() ?? bounds as unknown[];
+    return fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], width, height, p, p, maxZoom);
+}
+
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
-async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
+async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
     if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] server render: the options have ${o.center == null && o.zoom == null ? 'no "center" and no "zoom"' : o.center == null ? '"zoom" but no "center"' : '"center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
@@ -275,7 +286,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
-    if (o.bounds) { const p = sides(o.padding), b = (o.bounds as {toArray?(): unknown[]}).toArray?.() ?? o.bounds as unknown[], fit = fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], o.width, o.height, p, p, 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
+    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height, o.fitMaxZoom ?? (o as FirstViewOptionsBase).maxZoom ?? 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
     else tr.set(o.center!, o.zoom!, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
@@ -384,7 +395,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     for (const l of labels) if (l.icon) l.icon.name = picked.get(l.icon.name) ?? l.icon.name;
     const svg = renderSVG({
         tr, layers, items, labels, sprite, images, fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
-        rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
+        rootAttrs,
     });
     // (The credits are those of `getAttributions` of the map: only the sources that a visible layer uses at this zoom, so that they do not change when the map takes over.)
     return {svg, tiles: urls, attribution: [...new Set(Object.entries(style.sources).filter(([id]) => layers.some(l => l.source === id && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)).map(([, s]) => s.attribution?.trim()).filter((a): a is string => !!a))], view: {lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing}};
@@ -407,7 +418,7 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
     locale?: Record<string, string> | null;
     /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the controls, as `nonce` of the description. It has an effect with `controls`. */
     nonce?: string | null;
-    /** The limits of the zoom of the description, which disable a zoom button. They have an effect with `controls`. */
+    /** The limits of the zoom of the description, which disable a zoom button with `controls`. Without `fitMaxZoom`, `maxZoom` is the highest zoom of the fit to `bounds`. */
     minZoom?: number | null;
     maxZoom?: number | null;
     /** The projection of the description, which sets the state of the globe control. It has an effect with `controls`. */
@@ -426,7 +437,12 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
  * @returns A promise of the HTML. It rejects as `renderToSVG` does.
  */
 export async function renderFirstView(o: FirstViewOptions): Promise<string> {
-    const made = await renderView(o);
+    // The map keeps the center and the zoom at any size of the element, so the picture is drawn at 1:1, centered and cropped
+    // by a box of the element's size. An element that is wider or higher than the render is covered: the picture is scaled
+    // up as little as covers it, and is not letterboxed (#1427). With `bounds` the map fits them to the element, so the
+    // picture is scaled to the element as the fit is, and covers it.
+    const made = await renderView(o, `data-map-jr-ssr="" preserveAspectRatio="xMidYMid slice" style="position:absolute;${o.bounds ? 'inset:0;width:100%;height:100%' : `left:50%;top:50%;width:max(100%,${o.width}px);height:max(100%,${o.height}px);transform:translate(-50%,-50%)`};max-width:none;max-height:none"`);
+    made.svg = `<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden">${made.svg}</div>`;
     const raw = o.attribution === false ? false : [o.attribution ?? made.attribution].flat();
     if (o.controls) {
         return made.svg + controlsMarkup({controls: o.controls, ...made.view, width: o.width, colorScheme: o.colorScheme ?? 'light', locale: o.locale, nonce: o.nonce, minZoom: o.minZoom, maxZoom: o.maxZoom,
@@ -439,7 +455,7 @@ export async function renderFirstView(o: FirstViewOptions): Promise<string> {
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'fitMaxZoom' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800
@@ -468,6 +484,11 @@ export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 
 export async function renderElement(description: MapDescription, options: ElementRenderOptions = {}): Promise<string> {
     const d = unset(description) as Given & Record<string, unknown>, quote = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const view: Record<string, unknown> = {...d.initialView, ...d.view}, attrs: string[] = [];
+    const {attributes = {}, width = 800, height = 500, attribution, ...rest} = options;
+    // The element has no attribute for `bounds`: it gets the center and the zoom of the fit, and the first view shows them (#1669).
+    // (The map fits up to `fitMaxZoom`, else up to `maxZoom`. Bounds that cannot be read go to the render, which reports them.)
+    let fit: unknown = !d.view && d.initialView?.bounds;
+    if (fit) try { const {center, zoom} = fitBounds(fit as LngLatBoundsInput, d.initialView?.fitPadding, width, height, d.initialView?.fitMaxZoom ?? d.maxZoom ?? 22); Object.assign(view, {center: [center.lng, center.lat], zoom}); fit = undefined; } catch { /* see above */ }
     for (const [field, kind] of Object.entries(ATTRIBUTES)) {
         const v = VIEW_FIELDS.includes(field) ? view[field] : field === 'projection' ? (d.projection as {type?: string} | null)?.type
             : field === 'attributionCompact' ? (d.attribution as {compact?: boolean} | undefined)?.compact : d[field];
@@ -476,7 +497,6 @@ export async function renderElement(description: MapDescription, options: Elemen
         if (text !== undefined && readAttribute(kind, text) !== undefined) attrs.push(text ? `${attributeOf(field)}="${quote(text)}"` : attributeOf(field));
     }
     if (d.nonce) attrs.push(`nonce="${quote(d.nonce)}"`);
-    const {attributes = {}, width = 800, height = 500, attribution, ...rest} = options;
     for (const name in attributes) {
         if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(`[map-jr-gl] renderElement(): "${name}" is not the name of an attribute${/^on/i.test(name) ? ' that the element can have: an event handler attribute runs script' : ''}. Give names such as "id", "class" or "style".`);
         if (name !== 'style') attrs.push(`${name}="${quote(attributes[name])}"`);
@@ -484,7 +504,6 @@ export async function renderElement(description: MapDescription, options: Elemen
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden;' + (attributes.style ?? ''))}"`);
     let first = '';
     try {
-        const fit = !d.view && d.initialView?.bounds;
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
             width, height, images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
             attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,

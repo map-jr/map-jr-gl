@@ -405,11 +405,16 @@ for (const renderer of renderers) {
             host.update({...spec, style: {...style, layers: moved}});
             await wait(300); await idle();
             const order = map.getStyle().layers.map(l => l.id).indexOf(layers[fill].id) === last;
+            // (A positive control: a zoom out after the reorder loads new tiles, so the map must report `req`. Without it
+            // the check passes on an empty report, as it did on the shared map of the suite; #976.)
+            const after = {...steps};
+            host.moveTo({zoom: 12.3, duration: 0}); await idle();
+            const control = (steps.req ?? 0) - (after.req ?? 0);
             host.destroy(); el.remove();
-            return {fill: fill >= 0 && fill < last, order, steps};
+            return {fill: fill >= 0 && fill < last, order, steps: after, control};
         }, renderer);
         check(`[${renderer}] update with a new order of the layers of the style object builds no tile again (#961)`,
-            reorder.fill && reorder.order && !reorder.steps.rebuild && !reorder.steps.req && !reorder.steps.drop, JSON.stringify(reorder));
+            reorder.fill && reorder.order && !reorder.steps.rebuild && !reorder.steps.req && !reorder.steps.drop && reorder.control > 0, JSON.stringify(reorder));
         // A changed minzoom of a layer of `layers` and of a layer of the style object: the map changes the zoom range in
         // place, loads no style, and draws the layer only at the new zooms (#871).
         const range = await page.evaluate(async () => {
@@ -603,6 +608,65 @@ for (const renderer of renderers) {
         }, renderer);
         const flatWant = ['null', '{"source":"dem","exaggeration":2}', 'null', '{"source":"dem","exaggeration":1.5}', '{"source":"dem","exaggeration":2}', '{"source":"dem","exaggeration":2}'];
         check(`[${renderer}] terrain: null gives a flat map with a style that has terrain, and no field or undefined gives the terrain of the style (#1104)`, JSON.stringify(flat) === JSON.stringify(flatWant), JSON.stringify(flat));
+
+        // A change of `terrain` alone goes to the map as an edit (#1143): no `style.load` and no new request for the style,
+        // and the map shows the terrain of each step (no field gives that of the style back).
+        const terrainEdit = await page.evaluate(async renderer => {
+            const t = window.t, out = [], styleRequests = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, terrain: {source: 'dem', exaggeration: 2}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const url = URL.createObjectURL(new Blob([JSON.stringify(style)], {type: 'application/json'}));
+            const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
+            const read = async host => { await new Promise(r => setTimeout(r, 50)); await idle(host); return JSON.stringify(host.getResolvedDescription().style.terrain ?? null); };
+            const spec = {style: url, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, transformRequest: (u, type) => { if (type === 'Style') styleRequests.push(u); }};
+            const host = t.lib.createMap(el, spec);
+            await read(host);
+            let loads = 0;
+            const count = () => loads++, map = host._map, requestsBefore = styleRequests.length;
+            map.on('style.load', count);
+            host.patch({terrain: {source: 'dem', exaggeration: 1.5}}); out.push(await read(host));
+            host.patch({terrain: null}); out.push(await read(host));
+            host.update(spec); out.push(await read(host));
+            map.off('style.load', count);
+            host.destroy(); el.remove(); URL.revokeObjectURL(url);
+            return `${out.join(' > ')} loads ${loads} style requests ${styleRequests.length - requestsBefore}`;
+        }, renderer);
+        check(`[${renderer}] a change of terrain alone changes the terrain without a new style: no style.load and no style request (#1143)`,
+            terrainEdit === '{"source":"dem","exaggeration":1.5} > null > {"source":"dem","exaggeration":2} loads 0 style requests 0', terrainEdit);
+
+        // The control terrain() sets `terrain` of the description (#1106): after each click the description, the terrain
+        // of the map and the label agree, onTerrainChange gets the value, an update with the description keeps it, and no
+        // click loads the style (#1143). An update with a new description without `terrain`, as a component of Vue gives,
+        // replaces the click with the terrain of the style (none here), and the label follows.
+        const terrainButton = await page.evaluate(async renderer => {
+            const t = window.t, {terrain} = await import('/dist/controls.js'), out = [], calls = [], styleRequests = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const url = URL.createObjectURL(new Blob([JSON.stringify(style)], {type: 'application/json'}));
+            const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
+            const controls = [terrain({source: 'dem', exaggeration: 2, onTerrainChange: v => calls.push(JSON.stringify(v))})];
+            const base = {style: url, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, controls, transformRequest: (u, type) => { if (type === 'Style') styleRequests.push(u); }};
+            const host = t.lib.createMap(el, {...base, terrain: {source: 'dem'}});
+            for (let i = 0; i < 300 && !el.querySelector('.map-jr-ctrl-terrain'); i++) await new Promise(r => setTimeout(r, 30));
+            const b = el.querySelector('.map-jr-ctrl-terrain');
+            const read = async () => { await new Promise(r => setTimeout(r, 50)); await idle(host); return `${JSON.stringify(host.description.terrain)}/${JSON.stringify(host.getResolvedDescription().style.terrain ?? null)}/${b.getAttribute('aria-label')}`; };
+            out.push(await read());
+            let loads = 0;
+            const count = () => loads++, map = host._map, requestsBefore = styleRequests.length;
+            map.on('style.load', count);
+            b.click(); out.push(await read());
+            host.update({...host.description, globalState: {x: 1}}); out.push(await read());
+            b.click(); out.push(await read());
+            host.patch({globalState: {x: 2}}); out.push(await read());
+            const clickLoads = `loads ${loads} style requests ${styleRequests.length - requestsBefore}`;
+            map.off('style.load', count);
+            host.update({...base, globalState: {x: 3}}); out.push(await read());
+            host.destroy(); el.remove(); URL.revokeObjectURL(url);
+            return `${out.join(' > ')} calls ${calls.join(',')} ${clickLoads}`;
+        }, renderer);
+        const tOn1 = '{"source":"dem"}/{"source":"dem"}/Disable terrain', tOff = 'null/null/Enable terrain', tOn2 = '{"source":"dem","exaggeration":2}/{"source":"dem","exaggeration":2}/Disable terrain';
+        check(`[${renderer}] the control terrain() sets terrain of the description without a new style, calls onTerrainChange, and an update with the description keeps the terrain (#1106)`,
+            terrainButton === `${tOn1} > ${tOff} > ${tOff} > ${tOn2} > ${tOn2} > undefined/null/Enable terrain calls null,{"source":"dem","exaggeration":2} loads 0 style requests 0`, terrainButton);
 
         // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
         const noDem = await page.evaluate(async renderer => {
@@ -1428,6 +1492,30 @@ for (const renderer of renderers) {
         check(`[${renderer}] a key of data with no source makes a GeoJSON source, also as a new key and after a new style; a removed key removes it, and a key of a source of another type is an error`,
             madeData.first === 1 && madeData.added === 1 && madeData.restyled + '' === '1,1' && madeData.removed && madeData.errors.length === 1 && madeData.errors[0].startsWith('[map-jr-gl] data: the source ')
             && madeData.said.length === 1 && madeData.said[0].startsWith('[map-jr-gl] the layer "b-fill" uses the source "b"'), JSON.stringify(madeData));
+
+        // 3d. A paint or layout property that the style specification does not have for the type of the layer warns once
+        // for each layer and property in the development build, with the nearest name: in the first description and in a
+        // layer that an update() adds as an edit (#1139).
+        const unknownProps = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const point = {type: 'Point', coordinates: [-74.0065, 40.7085]};
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false, data: {p: point},
+                layers: [{id: 'p-circle', type: 'circle', source: 'p', paint: {'circle-colour': 'red', 'circle-radius': 4}}]};
+            const host = t.lib.createMap(el, spec);
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            const s2 = {...spec, layers: [...spec.layers, {id: 'p-line', type: 'line', source: 'p', layout: {'line-capp': 'round'}}]};
+            host.update(s2); await new Promise(r => setTimeout(r, 300));
+            host.update({...s2, layers: s2.layers.map(l => ({...l}))});
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 3000); });
+            await new Promise(r => setTimeout(r, 300));
+            console.warn = warn; host.destroy(); el.remove();
+            return said.filter(w => / property "/.test(w));
+        }, renderer);
+        check(`[${renderer}] an unknown paint or layout property warns once for each layer and property with the nearest name in the development build (#1139)`,
+            unknownProps.length === 2 && unknownProps[0].startsWith('[map-jr-gl] the circle layer "p-circle", paint property "circle-colour":') && unknownProps[0].endsWith('Write "circle-color".')
+            && unknownProps[1].startsWith('[map-jr-gl] the line layer "p-line", layout property "line-capp":') && unknownProps[1].endsWith('Write "line-cap".'), JSON.stringify(unknownProps));
 
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {

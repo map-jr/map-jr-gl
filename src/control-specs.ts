@@ -9,7 +9,7 @@ import type * as More from './controls-more.ts';
 import type {Map} from './map.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {ControlSpec, MapDescription, MapInstance, Position} from './host.ts';
-import type {StyleSpecification} from './compat-types.ts';
+import type {StyleSpecification, TerrainSpecification} from './compat-types.ts';
 
 // The control classes import the map, so this file loads them with `import()` when the map adds a control. A page
 // that imports a control function before it makes the map then does not download the map with it (#160).
@@ -72,7 +72,40 @@ export const geolocate = spec('geolocate', (m, o: GeolocateOptions) => new m.Geo
  * @param options The options of `TerrainOptions`, and `position`.
  * @returns A control for `controls` of the description.
  */
-export const terrain: (options: TerrainOptions & {position?: ControlPosition}) => ControlSpec = spec('terrain', (m, o: TerrainOptions) => new m.TerrainControl(o));
+export const terrain: (options: TerrainOptions & {position?: ControlPosition}) => ControlSpec = spec('terrain', (m, o: TerrainOptions, instance) => {
+    // In a map of the main API, a click sets `terrain` of the description with `patch`, so that the description says what
+    // the map shows, and the label follows the description. This part stays here, and not in TerrainControl, because the
+    // compat entry loads that class up front.
+    const c = new m.TerrainControl(o);
+    if (!instance) return c;
+    const add = c.onAdd.bind(c), remove = c.onRemove.bind(c);
+    let off = () => {};
+    c.onAdd = (map: Map) => {
+        const host = instance(), el = add(map), b = el.querySelector('button')!;
+        // (The description can have changed before the map has its new style: it is read first.)
+        const on = () => host.description.terrain !== undefined ? !!host.description.terrain : !!map.getTerrain();
+        const name = () => {
+            const t = on(), key = t ? 'Disable' : 'Enable';
+            b.title = (map as {_getUIString?(k: string): string | undefined})._getUIString?.('TerrainControl.' + key) ?? key + ' terrain';
+            b.setAttribute('aria-label', b.title);
+        };
+        // The listener runs in the capture phase on the group, so the click of TerrainControl, which calls setTerrain, does not run.
+        el.addEventListener('click', e => {
+            e.stopPropagation();
+            const {source, exaggeration} = o, to: TerrainSpecification | null = on() ? null : {source, ...exaggeration !== undefined && {exaggeration}};
+            host.patch({terrain: to});
+            o.onTerrainChange?.(to);
+            name();
+        }, true);
+        map.on('terrain', name);
+        map.on('styledata', name);
+        off = () => { map.off('terrain', name); map.off('styledata', name); };
+        name();
+        return el;
+    };
+    c.onRemove = () => { off(); remove(); };
+    return c;
+});
 /**
  * Creates a button that switches the projection between the globe and Mercator. The control is placed at `'top-right'` unless `position` sets it.
  * @returns A control for `controls` of the description.
@@ -167,6 +200,12 @@ export interface TerrainOptions {
      * @default 1
      */
     exaggeration?: number;
+    /**
+     * Called with the new value of `terrain` of the description after a click has set it: `{source, exaggeration}` or
+     * `null`. An application that passes its description again, as a component of Vue, React or Svelte does, keeps the
+     * value here and passes it as `terrain`, or its next description replaces the terrain of the click.
+     */
+    onTerrainChange?: (terrain: TerrainSpecification | null) => void;
 }
 /** An entry of `styles()`. */
 export interface StyleEntry {

@@ -24,6 +24,7 @@ BSD-3-Clause.
 - The placement of `text-variable-anchor` and `text-variable-anchor-offset` follows `placeLayerBucketPart` and `attemptAnchorPlacement` of MapLibre GL JS 6.17 (BSD-3-Clause): the anchor of the previous placement first, then every anchor without overlap, then every anchor with overlap, and an icon of `icon-text-fit` tested at each anchor. The code is new.
 - `fill-extrusion-pattern` follows the method of the shader `fill_extrusion_pattern` and of `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): the image lies on the roof by tile position and on the walls by the distance along the ring and the height, and the light of a patterned wall is computed with a gray of 0.5. The code is new.
 - The level of detail of a pitched view (`lodZoom` in `src/geo.ts`, used with 3D terrain and by `setSourceTileLodParams`) follows the formula of `createCalculateTileZoomFunction` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
+- The zoom of the scroll wheel (`src/engine.ts`), and its snap to `zoomSnap` in the compat entry, follow the method of `ScrollZoomHandler` and `evaluateZoomSnap` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
 - glsl-atmosphere (github.com/wwwtyro/glsl-atmosphere, Unlicense): the atmosphere shader of MapLibre GL JS, which the shader of the atmosphere on the globe copies, follows its scattering method.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
   in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera
@@ -70,8 +71,8 @@ BSD-3-Clause.
 - The curve of `flyTo` (and of `moveTo` with `fly` in the main API) follows `flyTo` of MapLibre GL JS 6.17
   (`src/ui/camera.ts`), which implements the method of van Wijk and Nuij, "Smooth and efficient zooming and panning"
   (2003), with the same options and defaults.
-- `fitScreenCoordinates` of the compat entry follows the method of `_cameraForBoxAndBearing` of MapLibre GL JS 6.17
-  (`src/ui/camera.ts`, BSD-3-Clause) for the zoom and the center of a box at a bearing. The code is new.
+- `cameraForBounds`, `fitBounds` and `fitScreenCoordinates` of the compat entry follow the method of `_cameraForBoxAndBearing` of MapLibre GL JS 6.17
+  (`src/ui/camera.ts`, BSD-3-Clause) for the zoom and the center of a box at a bearing, with the padding and `offset`. The code is new.
 - The check for a canvas that adds noise to `getImageData` (`src/exact-pixels.ts`) follows `isOffscreenCanvasDistorted`
   of MapLibre GL JS 6.17.0 (`src/util/offscreen_canvas_distorted.ts`, BSD-3-Clause), and so does reading elevation
   tiles through WebGL when the canvas is distorted. The code is new.
