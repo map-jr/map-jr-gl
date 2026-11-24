@@ -1,6 +1,6 @@
 // Runs the example pages of MapLibre GL JS (the pages of its documentation) two times: with MapLibre GL JS, and with
 // this library in its place. For each page it records the errors and how much the two images differ.
-//   node test/conformance/examples.mjs [out-dir] [--filter=<regex>] [--write]      (--write puts the results in docs/ecosystem.md)
+//   node test/conformance/examples.mjs [out-dir] [--filter=<regex of the page name without .html>] [--write]      (--write puts the results in docs/ecosystem.md)
 //   --again uses the images and errors of the last run (to write the results again without a browser).
 //   --renderer=main gives each map of this library `renderer: 'main'` (custom layers need it); --write is then ignored.
 // The pages come from the checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (the render tests clone it).
@@ -45,7 +45,7 @@ const server = http.createServer((req, res) => {
 }).listen(0);
 const origin = `http://localhost:${server.address().port}`;
 
-const names = readdirSync(pages).filter(f => f.endsWith('.html') && filter.test(f)).map(f => f.slice(0, -5));
+const names = readdirSync(pages).filter(f => f.endsWith('.html')).map(f => f.slice(0, -5)).filter(n => filter.test(n)); // the filter sees the name without ".html"
 const again = process.argv.includes('--again');
 const browser = again ? null : await launch(), rows = again ? JSON.parse(readFileSync(path.join(out, 'result.json'), 'utf8')) : [], queue = again ? [] : [...names];
 /** Loads one variant of a page, waits until the network is quiet and the map has had time to draw, and takes an image. */
