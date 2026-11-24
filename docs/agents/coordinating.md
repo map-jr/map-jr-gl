@@ -32,6 +32,10 @@ Scope: the whole issue. Triage found it open, starting at `src/engine.ts:793,814
 Keep out of: `src/compat-map.ts` (another worker, #7).
 ```
 
+- **A bundle** (up to four small fixes of tests or of the agent tools, no change of `src/`; #1603) is one worker and
+  one branch. List each issue in the prompt with its own scope line; the worker makes one commit for each issue, and
+  the body of the pull request says `Fixes #N` for each. Give a bundle only issues that triage found to be a few lines
+  each, so that one slow issue does not hold the others.
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
 - Start each worker with `isolation: "worktree"` and low effort (90,000 to 160,000 tokens for an issue).
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
