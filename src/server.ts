@@ -62,6 +62,11 @@ export interface RenderOptionsBase {
      * @default 0
      */
     padding?: PaddingInput;
+    /**
+     * The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description.
+     * @default `maxZoom` of `renderFirstView`, else 22
+     */
+    fitMaxZoom?: number | null;
     /** The width of the render in CSS pixels. */
     width: number;
     /** The height of the render in CSS pixels. */
@@ -281,7 +286,7 @@ async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" styl
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
-    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
+    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height, o.fitMaxZoom ?? (o as FirstViewOptionsBase).maxZoom ?? 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
     else tr.set(o.center!, o.zoom!, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
@@ -413,7 +418,7 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
     locale?: Record<string, string> | null;
     /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the controls, as `nonce` of the description. It has an effect with `controls`. */
     nonce?: string | null;
-    /** The limits of the zoom of the description, which disable a zoom button. They have an effect with `controls`. */
+    /** The limits of the zoom of the description, which disable a zoom button with `controls`. Without `fitMaxZoom`, `maxZoom` is the highest zoom of the fit to `bounds`. */
     minZoom?: number | null;
     maxZoom?: number | null;
     /** The projection of the description, which sets the state of the globe control. It has an effect with `controls`. */
@@ -450,7 +455,7 @@ export async function renderFirstView(o: FirstViewOptions): Promise<string> {
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'fitMaxZoom' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800

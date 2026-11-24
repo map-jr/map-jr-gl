@@ -62,6 +62,7 @@ members without the required view, for options that get their view later.
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
+| `fitMaxZoom` | `number \| null` | `maxZoom` of `renderFirstView`, else 22 | The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description. |
 | `width` **required** | `number` | | The width of the render in CSS pixels. |
 | `height` **required** | `number` | | The height of the render in CSS pixels. |
 | [`images`](#images) | `Record<string, string \| {image: string; width?: number; height?: number}>` | | Images for the style layers, by name: an SVG document as a string, or `{image, width, height}` with the size in CSS pixels. |
@@ -99,7 +100,9 @@ The server cannot read the color scheme of the browser, so `colorScheme: 'auto'`
 ### `bounds` and `padding`
 
 With `bounds`, the renderer fits the box into the view and uses neither `center` nor `zoom`, so the options can leave
-them out. `padding` is the space in CSS pixels that the box keeps from each side.
+them out. `padding` is the space in CSS pixels that the box keeps from each side. The fit zooms in up to `fitMaxZoom`,
+else up to `maxZoom` of `renderFirstView`, else up to 22, as the map fits `initialView.bounds` up to `fitMaxZoom` or
+else `maxZoom` of the description. Pass the same values as the description, so that the first view and the map agree.
 
 ```js
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
@@ -261,7 +264,7 @@ The guide [Server rendering](../guide/server-rendering.md) shows the cases.
 | `controls` | `ControlSpec[]` | | The controls of the description, for example `[navigation(), scale()]`. With the option (also `[]`), the HTML has these controls and the attribution as markup. `custom()` controls are left out. |
 | `locale` | `Record<string, string>` | | The texts of the controls, as `locale` of the description. It has an effect with `controls`. |
 | `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'` for the style sheet of the controls. It has an effect with `controls`. |
-| `minZoom`, `maxZoom` | `number` | `-2`, `22` | The limits of the zoom of the description. At a limit, the zoom button is disabled. They have an effect with `controls`. |
+| `minZoom`, `maxZoom` | `number` | `-2`, `22` | The limits of the zoom of the description. At a limit, the zoom button is disabled with `controls`. Without `fitMaxZoom`, `maxZoom` is the highest zoom of the fit to `bounds`. |
 | `projection` | `{type?: string}` | | The projection of the description. With `{type: 'globe'}`, the globe control is on. It has an effect with `controls`. |
 | `attributionOptions` | `{compact?: boolean; customAttribution?: string \| string[]}` | | The options of the attribution, as `attribution` of the description. It has an effect with `controls`. |
 
