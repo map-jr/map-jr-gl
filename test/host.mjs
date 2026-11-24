@@ -1478,6 +1478,31 @@ for (const renderer of renderers) {
             unknownProps.length === 2 && unknownProps[0].startsWith('[map-jr-gl] the circle layer "p-circle", paint property "circle-colour":') && unknownProps[0].endsWith('Write "circle-color".')
             && unknownProps[1].startsWith('[map-jr-gl] the line layer "p-line", layout property "line-capp":') && unknownProps[1].endsWith('Write "line-cap".'), JSON.stringify(unknownProps));
 
+        // 3d. A layer that an update() adds as an edit is checked at the update() call, before the map is next idle: its
+        // unknown property (#1139) and its zoom curve (#1087) warn then, once each (#1684).
+        const editChecked = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const point = {type: 'Point', coordinates: [-74.0065, 40.7085]};
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false, data: {p: point},
+                layers: [{id: 'p-circle', type: 'circle', source: 'p', paint: {'circle-radius': 4}}]};
+            const host = t.lib.createMap(el, spec);
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            // (The warnings that are there when the map fires its next idle: the check at idle comes after this listener.)
+            const atIdle = new Promise(r => { host._map.once('idle', () => r(said.filter(w => /"p-dot"/.test(w)))); setTimeout(() => r(null), 5000); });
+            const s2 = {...spec, layers: [...spec.layers, {id: 'p-dot', type: 'circle', source: 'p', paint: {'circle-colr': 'red', 'circle-radius': ['+', 1, ['interpolate', ['linear'], ['zoom'], 0, 1, 20, 8]]}}]};
+            host.update(s2);
+            const before = await atIdle;
+            host.update({...s2, layers: s2.layers.map(l => ({...l}))});
+            await new Promise(r => setTimeout(r, 500));
+            console.warn = warn; host.destroy(); el.remove();
+            return {before, all: said.filter(w => /"p-dot"/.test(w))};
+        }, renderer);
+        check(`[${renderer}] a layer that update() adds as an edit warns for its unknown property and zoom curve before the next idle, once each, in the development build (#1684)`,
+            editChecked.before?.length === 2 && editChecked.all.length === 2 && editChecked.all.some(w => w.startsWith('[map-jr-gl] the circle layer "p-dot", paint property "circle-colr":'))
+            && editChecked.all.some(w => w.startsWith('[map-jr-gl] the layer "p-dot", paint property "circle-radius":')), JSON.stringify(editChecked));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
