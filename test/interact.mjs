@@ -5285,6 +5285,23 @@ for (const mode of renderers) {
 // (The checks below run with RENDERER=main.)
 if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
 
+// The compat constructor option pixelRatio sets the size of the canvas, as in MapLibre GL JS (#662).
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const r = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, pixelRatio: 2.5, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+        await new Promise(r => { m.once('load', r); setTimeout(r, 10000); });
+        const out = {ratio: m.getPixelRatio(), width: m.getCanvas().width, height: m.getCanvas().height};
+        m.remove(); el.remove();
+        return out;
+    });
+    check('[main] compat option pixelRatio: 2.5 gives a canvas of 500 by 375 for a map of 200 by 150', r.ratio === 2.5 && r.width === 500 && r.height === 375, JSON.stringify(r));
+    await page.close();
+}
 // remove() on a map whose WebGL context is lost does not lose it a second time: WebKit reports that as an error (#776).
 {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
