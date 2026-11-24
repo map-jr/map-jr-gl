@@ -227,7 +227,7 @@ function checkValue(where: string, v: any, c: string, found: (where: string, why
 }
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 /** The properties of the style specification that the map does not read (and so are not in `SPEC` of src/style.ts), by layer type. */
-const unread: Record<string, string> = {line: 'line-gradient', symbol: 'symbol-avoid-edges symbol-height-offset symbol-height-anchor text-writing-mode', heatmap: 'heatmap-color',
+const unread: Record<string, string> = {line: 'line-gradient', symbol: 'symbol-height-offset symbol-height-anchor text-writing-mode', heatmap: 'heatmap-color',
     'fill-extrusion': 'fill-extrusion-rounded-corner-distance', raster: 'raster-fade-duration', 'color-relief': 'color-relief-color'};
 /** The paint and layout properties of the style specification for the layer type `type`, or undefined for a type that the map does not know or that has none. */
 export const layerProperties = (type: string) => Object.hasOwn(SPEC, type) && type !== 'custom'

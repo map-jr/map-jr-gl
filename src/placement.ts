@@ -160,6 +160,16 @@ export {CollisionGrid};
 
 
 type Box = [number, number, number, number];
+/** Whether the four corners of `b` are inside the convex quad `q` (x, y of four corners in order): `symbol-avoid-edges`. */
+const insideQuad = (q: number[], b: Box) => {
+    let sign = 0;
+    for (const [x, y] of [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]]) for (let i = 0; i < 8; i += 2) {
+        const c = (q[(i + 2) % 8] - q[i]) * (y - q[i + 1]) - (q[(i + 3) % 8] - q[i + 1]) * (x - q[i]);
+        if (c && sign && Math.sign(c) !== sign) return false;
+        sign ||= Math.sign(c);
+    }
+    return true;
+};
 /** `pad` is one number for every side, or [top, right, bottom, left] (`icon-padding`). */
 export function boxAround(x: number, y: number, w: number, h: number, angle: number, pad: number | readonly number[]): Box {
     const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
@@ -387,8 +397,16 @@ export function placeLabels(
             for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
             runs = all.sort((a, b) => { const p = order.get(a.labels[0])!, q = order.get(b.labels[0])!; return p[0] - q[0] || -byY(a.labels[0], b.labels[0]); });
         }
+        const avoidEdges = L.p.avoidEdges.eval(tr.zoom) === true;
+        let edgesOf: RenderItem<unknown> | undefined, edges: number[] = [];
         for (const {it, labels, no: itemNo} of runs) {
             const t = Math.min(1, Math.max(0, tr.zoom - (it.tile.z ?? it.id.z)));
+            // `symbol-avoid-edges`: a symbol must lie inside its tile on the screen (the part of it that this tile shows).
+            if (avoidEdges && edgesOf !== it) {
+                edgesOf = it; const [x0, y0, x1, y1] = it.clip;
+                edges = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].flatMap(([x, y]) => tr.projectTile(it.id, x, y).slice(0, 2));
+            }
+            const off = (b: Box) => avoidEdges && !insideQuad(edges, b);
             for (const l of labels) {
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
                 const [ax, ay, depth] = tr.projectTile(it.id, l.x, l.y);
@@ -434,7 +452,7 @@ export function placeLabels(
                         const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, tr.pitch && l.flat ? s / persp / persp : 0);
                         if (!curved) continue;
                         if (seen.near(l.text, ax, ay, 300, -1)) continue;
-                        if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
+                        if (!l.overlap && curved.boxes.some(b => grid.hits(...b)) || curved.boxes.some(off)) continue;
                         // (Its boxes go into the grid after its icon is placed: as in MapLibre, an icon is not blocked by its own text.)
                         bentBoxes = l.ignore ? [] : curved.boxes;
                         seen.add(l.text, ax, ay, itemNo);
@@ -555,7 +573,7 @@ export function placeLabels(
                     for (const k of tries) {
                         const i = k % candidates.length, overlap = k >= candidates.length;
                         const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
-                        if (!overlap && grid.hits(...box)) continue;
+                        if (!overlap && grid.hits(...box) || off(box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);
                             if (grid.hits(...boxAround(f.ix, f.iy, f.iw, f.ih, (ic.upright ? 0 : north) + ic.rotate * Math.PI / 180, ic.padding))) continue;
@@ -586,7 +604,7 @@ export function placeLabels(
                         angle = Math.atan2(iframe[1], iframe[0]); bw = iw * Math.hypot(iframe[0], iframe[1]); bh = ih * Math.hypot(iframe[2], iframe[3]);
                     }
                     const box = boxAround(bx, by, bw, bh, angle, ic.padding);
-                    if (ic.overlap || !grid.hits(...box)) {
+                    if ((ic.overlap || !grid.hits(...box)) && !off(box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)

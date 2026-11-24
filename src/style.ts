@@ -162,6 +162,7 @@ export const SPEC: Record<string, Record<string, [string, PropKind, any, string[
         padding: ['text-padding', 'number', 2],
         overlap: ['text-allow-overlap', 'raw', false],
         placement: ['symbol-placement', 'string', 'point'],
+        avoidEdges: ['symbol-avoid-edges', 'raw', false],
     },
 };
 
