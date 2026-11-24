@@ -35,11 +35,13 @@ test('render summary: a test that scripts the map or has another pixel ratio run
     assert.equal(skipReason({operations: [['addCustomLayer', 'tent-3d']]}), null);
     for (const name of operationsNotDone) assert.equal(skipReason({operations: [[name, 'a']]}), name);
     assert.equal(skipReason({pixelRatio: 5, reportWidth: 256, reportHeight: 256}), 'reportWidth');
-    // A style that setStyle loads can have tiles of the package @mapbox/mvt-fixtures, which the run does not have.
+    // A style that setStyle loads can have tiles of the package @mapbox/mvt-fixtures, which the run may not have.
     const asset = (name: string) => name === 'styles/nepal.json' ? '{"tiles": ["http://localhost:2901/nepal/{z}-{x}-{y}.mvt"]}' : name === 'styles/basic.json' ? '{}' : '';
     assert.equal(skipReason({operations: [['setStyle', 'local://styles/nepal.json'], ['wait']]}, asset), '@mapbox/mvt-fixtures');
     assert.equal(skipReason({operations: [['setStyle', 'http://localhost:1234/styles/nepal.json']]}, asset), '@mapbox/mvt-fixtures');
     assert.equal(skipReason({operations: [['setStyle', 'local://styles/basic.json']]}, asset), null);
+    // When the run has downloaded the package, those tests run (#665).
+    assert.equal(skipReason({operations: [['setStyle', 'local://styles/nepal.json'], ['wait']]}, asset, true), null);
     assert.equal(skipReason({operations: [['setStyle', {version: 8, sources: {}, layers: []}]]}, asset), null);
 });
 

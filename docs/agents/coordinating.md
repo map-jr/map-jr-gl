@@ -166,9 +166,14 @@ alone cannot.
   2026-11-18 and 2026-11-19, seven such pull requests merged this way with no conflict left in the totals.
 - **The floor of `test:render` is the match count of the last full run.** CI's render job gave the same count as a
   local run on 2026-11-19 (1205 of 1740), so a floor below the count only lets a regression through.
-- **A run with `--filter` rewrites `render-result.json` and `render-tests.json`** with the totals of that part.
-  Commit the result of `pnpm status` before you run single tests, and restore the two files afterwards
-  (`git checkout -- test/conformance/render-result.json test/conformance/render-tests.json`).
+- **Only a full run on the pinned Chromium rewrites `render-result.json` and `render-tests.json`.** A run with
+  `--filter` or `--limit` leaves them as they are.
+- **The committed result files come from CI or from a full run whose changed tests were checked.** The run runs each
+  test whose status is not the one in `render-tests.json` again alone, and the second result counts (it prints
+  `AGAIN:` when the two differ). A test near a limit can still have another status on another machine
+  (`text-field/formatted-arabic` is at 4.8%, and the limit of near is 5%; #1036). Before you commit the files, run
+  each test of the `CHANGED:` lines that your change cannot reach alone at `main`; if it moves there too, restore its
+  line in `render-tests.json`, or take the files from the render job of CI.
 - **Before you call a change of status a regression,** run the test alone several times (`--filter='^<id>$' --list`
   prints the percentage), and at the commit before the suspected merge in a temporary worktree. On 2026-11-17
   `terrain/low-zoom` moved for good (#793, caused by #726), while `terrain/tile-stiching` gave 2.7% or 33.5% from one
