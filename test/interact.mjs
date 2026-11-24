@@ -3628,6 +3628,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
     }
     // addLayer with a layer type that the library does not draw warns once for each type, as a loaded style does (#1140).
+    // (The first layer is refused for its id, and the type still warns for the next one.)
     if (mode === 'main') {
         const unknown = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -3635,15 +3636,16 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const warnings = [], warn = console.warn;
+            let afterRefused;
             console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
             try {
-                m.addLayer({id: 'a', type: 'no-such-type'}); m.addLayer({id: 'b', type: 'no-such-type'}); m.addLayer({id: 'c', type: 'background'});
+                m.addLayer({id: 'bg', type: 'no-such-type'}); afterRefused = warnings.length; m.addLayer({id: 'a', type: 'no-such-type'}); m.addLayer({id: 'b', type: 'no-such-type'}); m.addLayer({id: 'c', type: 'background'});
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            return warnings.filter(w => w.includes('layer type'));
+            return {afterRefused, warnings: warnings.filter(w => w.includes('layer type'))};
         });
         check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
-            unknown.length === 1 && unknown[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
+            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no

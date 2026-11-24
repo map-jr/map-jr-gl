@@ -443,7 +443,7 @@ export class Map extends CoreMap {
     /**
      * Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS.
      * A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise the map does not add it. The map draws a custom layer only while the projection is Mercator.
-     * A layer type that the library does not draw writes one warning for each type, as in a loaded style.
+     * A layer type that the library does not draw writes the warning of a loaded style, once for each type added with `addLayer`, for each map.
      */
     addLayer(layer: AddLayerObject, beforeId?: string) {
         let one: {id: string; source?: unknown} = layer;
@@ -457,11 +457,11 @@ export class Map extends CoreMap {
             one = Object.defineProperty({id: layer.id, type: 'custom'}, 'implementation', {value: layer});
         }
         const {id, source} = one;
-        // (As a loaded style does, once for each type on this map; #1140.)
-        const type = (one as {type?: string}).type;
-        if (one === layer && type && !LAYER_TYPES.has(type) && !(this.warnedTypes ??= new Set()).has(type)) { this.warnedTypes.add(type); console.warn('[map-jr-gl] Skipping unsupported layer types: ' + type); }
         if (this.rawStyle && this.getLayer(id)) return this.refused(`addLayer: the style has a layer with the id "${id}" already. Remove that layer first, or use another id.`);
         if (this.rawStyle && typeof source === 'string' && !this.rawStyle.sources[source]) return this.refused(`addLayer: the layer "${id}" names the source "${source}", which the style does not have. Add the source first.`);
+        // (As a loaded style does, once for each type added with addLayer on this map, after the refusals above; #1140.)
+        const type = (one as {type?: string}).type;
+        if (one === layer && type && !LAYER_TYPES.has(type) && !(this.warnedTypes ??= new Set()).has(type)) { this.warnedTypes.add(type); console.warn('[map-jr-gl] Skipping unsupported layer types: ' + type); }
         if (one !== layer) (this.customs ??= new globalThis.Map()).set(id, layer as CustomLayerInterface);
         // As in MapLibre GL JS, a source object in the layer becomes a source with the id of the layer.
         if (source && typeof source === 'object') {
