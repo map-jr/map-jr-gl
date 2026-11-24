@@ -23,7 +23,7 @@ declare const __DEV__: boolean;
  * `mapStyle`. `nonce` is the property of every HTML element, and the callbacks are events (`onClick` is `map-click`).
  */
 const PROPERTIES = ['mapStyle', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState',
-    'minZoom', 'maxZoom', 'maxPitch', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'locale', 'padding', 'transformRequest', 'renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash'] as const;
+    'minZoom', 'maxZoom', 'maxPitch', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'locale', 'padding', 'transformRequest', 'renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash'] as const;
 type Field = Exclude<keyof MapDescription, 'style' | 'nonce' | 'onViewChange' | 'onClick' | 'onError' | 'onColorSchemeChange'> | 'mapStyle';
 // (The type check fails here when the description gets a field that the list does not have.)
 true satisfies (Field extends typeof PROPERTIES[number] ? true : false);

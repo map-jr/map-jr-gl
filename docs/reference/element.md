@@ -53,7 +53,7 @@ The fields with an object, a list or a function as value have no attribute: set 
 | `zoom`, `bearing`, `pitch` | `initialView.zoom`, `.bearing`, `.pitch` | A number. |
 | `color-scheme` | `colorScheme` | `light`, `dark` or `auto`. |
 | `cursor` | `cursor` | A CSS cursor. |
-| `min-zoom`, `max-zoom`, `max-pitch` | `minZoom`, `maxZoom`, `maxPitch` | A number. |
+| `min-zoom`, `max-zoom`, `max-pitch`, `center-elevation` | `minZoom`, `maxZoom`, `maxPitch`, `centerElevation` | A number. |
 | `padding` | `padding` | A number of CSS pixels for each side. |
 | `interactive-layers` | `interactiveLayers` | The ids of style layers with spaces between them. |
 | `projection` | `projection` | `globe` or `mercator`. |

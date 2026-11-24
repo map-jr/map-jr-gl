@@ -569,7 +569,7 @@ the number is the height multiplied by the exaggeration of the terrain:
 | Method | Returns |
 |---|---|
 | `map.queryTerrainElevation(lngLat)` | The height at a position in meters above sea level, multiplied by the exaggeration, or `null` with no 3D terrain. |
-| `map.getCenterElevation()` | The height at the center of the view in meters, multiplied by the exaggeration, or `0` with no 3D terrain. |
+| `map.getCenterElevation()` | The height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there, multiplied by the exaggeration (`0` with no 3D terrain). |
 
 ## See also
 

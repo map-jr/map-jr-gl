@@ -259,10 +259,16 @@ export interface MapDescription extends MapSetup {
      */
     maxZoom?: number | null;
     /**
-     * The largest pitch of the map in degrees, at most 180 (a larger value is limited to 180). Above 90 the camera looks up. It limits gestures, `view` and `moveTo`.
+     * The largest pitch of the map in degrees, at most 180 (a larger value is limited to 180 and warns once). It limits gestures, `view` and `moveTo`. Above 90 the camera looks up: while the map center is on the ground, the camera is then below the ground and sees the map from below, so give `centerElevation` a height above the ground to see the sky.
      * @default 60
      */
     maxPitch?: number | null;
+    /**
+     * The height of the map center in meters above sea level. The camera keeps its distance and pitch from that point, so
+     * a height above the ground keeps the camera above the ground at a pitch above 90. Without this field, the center is on
+     * the ground (3D terrain, or sea level) and follows it. While it is set, the center does not follow 3D terrain.
+     */
+    centerElevation?: number | null;
     /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. Without this field, the view has no limit. */
     maxBounds?: Bounds | null;
     /**
@@ -1149,6 +1155,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
+        if ((next.centerElevation ?? null) !== (before?.centerElevation ?? null)) map.setCenterElevation(next.centerElevation ?? null);
         if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds as LngLatBoundsInput | null | undefined);
         if (differ(next.padding ?? 0, before?.padding ?? 0)) map.jumpTo({padding: next.padding ?? 0});
         // (Before the style is there, the style gets the projection of the description when it comes: see `restyle`.)

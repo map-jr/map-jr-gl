@@ -300,10 +300,12 @@ const MapJrComponent = defineComponent({
          */
         maxZoom: Number as PropType<number | null>,
         /**
-         * The largest pitch of the map in degrees, at most 180.
+         * The largest pitch of the map in degrees, at most 180 (a larger value is limited to 180 and warns once). It limits gestures, `view` and `moveTo`. Above 90 the camera looks up: while the map center is on the ground, the camera is then below the ground and sees the map from below, so give `centerElevation` a height above the ground to see the sky.
          * @default 60
          */
         maxPitch: Number as PropType<number | null>,
+        /** The height of the map center in meters above sea level. Without it, the center is on the ground and follows it. */
+        centerElevation: Number as PropType<number | null>,
         /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. */
         maxBounds: [Array, Object] as unknown as PropType<MapDescription['maxBounds']>,
         /** The CSS cursor over the map. Without it, the cursor is `pointer` over a feature of `interactive-layers`. */
@@ -422,7 +424,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapDescription>(() => {
             const out: MapDescription = {
                 style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, data: data.value, interactiveLayers: layers.value, hoverState: props.hoverState, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, locale: props.locale && toRaw(props.locale), padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, centerElevation: props.centerElevation, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, locale: props.locale && toRaw(props.locale), padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 fonts: props.fonts && toRaw(props.fonts), sprite: props.sprite && toRaw(props.sprite), renderer: props.renderer, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onColorSchemeChange: scheme => emit('update:colorScheme', scheme), onClick: event => emit('click', event),

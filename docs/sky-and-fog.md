@@ -20,7 +20,7 @@ a pitch of about 64° (estimated: at pitch 60 the horizon is 0.74 of the height 
 
 - `setMaxPitch` caps the pitch at 60 (`src/map.ts:1000`); the constructor option does not. Raise the cap to 180, as
   MapLibre GL JS allows (the owner's decision of 2026-11-18). The default stays 60. Above 90 the camera looks up, so
-  it needs its elevation (`setCenterElevation`, a no-op today), and the render tests `high-pitch/pitch95*` check it.
+  it needs its elevation (`setCenterElevation`, added in #1842), and the render tests `high-pitch/pitch95*` check it.
 - The far plane in `tileMatrix4` (`src/geo.ts:318`) cuts the ground at about 4 times the camera distance at pitch 85,
   while the horizon of MapLibre GL JS is at about 7.6 times. Port the horizon of MapLibre GL JS
   (`getMercatorHorizon`, `mercator_transform.ts:880-917`): the horizon is at
