@@ -89,9 +89,9 @@ export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, So
  */
 export function parseFontName(name: string): {family: string; weight: number; style: 'normal' | 'italic'} {
     const n = name.toLowerCase();
-    const weight = /black|heavy/.test(n) ? 900 : /extra ?bold/.test(n) ? 800 : /semi ?bold|demi/.test(n) ? 600 : /bold/.test(n) ? 700 :
-        /medium/.test(n) ? 500 : /light/.test(n) ? 300 : 400;
-    const family = name.replace(/\b(thin|extra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim().replace(/["\\|]/g, '');
+    const weight = /black|heavy/.test(n) ? 900 : /(extra|ultra) ?bold/.test(n) ? 800 : /semi ?bold|demi/.test(n) ? 600 : /bold/.test(n) ? 700 :
+        /medium/.test(n) ? 500 : /thin|hairline/.test(n) ? 100 : /(extra|ultra) ?light/.test(n) ? 200 : /light/.test(n) ? 300 : 400;
+    const family = name.replace(/\b(thin|hairline|extra ?light|ultra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|ultra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim().replace(/["\\|]/g, '');
     return {family, weight, style: /italic|oblique/.test(n) ? 'italic' : 'normal'};
 }
 
