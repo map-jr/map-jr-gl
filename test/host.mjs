@@ -1517,6 +1517,33 @@ for (const renderer of renderers) {
             unknownProps.length === 2 && unknownProps[0].startsWith('[map-jr-gl] the circle layer "p-circle", paint property "circle-colour":') && unknownProps[0].endsWith('Write "circle-color".')
             && unknownProps[1].startsWith('[map-jr-gl] the line layer "p-line", layout property "line-capp":') && unknownProps[1].endsWith('Write "line-cap".'), JSON.stringify(unknownProps));
 
+        // 3d. A layer that an update() adds as an edit is checked at the update() call, before the map is next idle: its
+        // unknown property (#1139) and its zoom curve (#1087) warn then, once each (#1684).
+        const editChecked = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const point = {type: 'Point', coordinates: [-74.0065, 40.7085]};
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false, data: {p: point},
+                layers: [{id: 'p-circle', type: 'circle', source: 'p', paint: {'circle-radius': 4}}]};
+            const host = t.lib.createMap(el, spec);
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            // (The check of that idle runs after its file has loaded: the update waits for it, or that check would see the new layer.)
+            await new Promise(r => setTimeout(r, 300));
+            // (The warnings that are there when the map fires its next idle: the check at idle comes after this listener.)
+            const atIdle = new Promise(r => { host._map.once('idle', () => r(said.filter(w => /"p-dot"/.test(w)))); setTimeout(() => r(null), 5000); });
+            const s2 = {...spec, layers: [...spec.layers, {id: 'p-dot', type: 'circle', source: 'p', paint: {'circle-colr': 'red', 'circle-radius': ['+', 1, ['interpolate', ['linear'], ['zoom'], 0, 1, 20, 8]]}}]};
+            host.update(s2);
+            const before = await atIdle;
+            host.update({...s2, layers: s2.layers.map(l => ({...l}))});
+            await new Promise(r => setTimeout(r, 500));
+            console.warn = warn; host.destroy(); el.remove();
+            return {before, all: said.filter(w => /"p-dot"/.test(w))};
+        }, renderer);
+        check(`[${renderer}] a layer that update() adds as an edit warns for its unknown property and zoom curve before the next idle, once each, in the development build (#1684)`,
+            editChecked.before?.length === 2 && editChecked.all.length === 2 && editChecked.all.some(w => w.startsWith('[map-jr-gl] the circle layer "p-dot", paint property "circle-colr":'))
+            && editChecked.all.some(w => w.startsWith('[map-jr-gl] the layer "p-dot", paint property "circle-radius":')), JSON.stringify(editChecked));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -2464,6 +2491,44 @@ for (const renderer of renderers) {
         await page.evaluate(z => window.t.host.moveTo({zoom: z}), zoom0); await page.waitForTimeout(300);
         check(`[${renderer}] cooperativeGestures: a plain wheel does not zoom and the hint is there, Ctrl + wheel zooms, and update() turns it off`,
             !plainOn && ctrlOn && plainOff && coop.hint === 1 && coop.touch === 'pan-x pan-y' && off === 0, JSON.stringify({plainOn, ctrlOn, plainOff, ...coop, off}));
+        // #1687: with cooperativeGestures, two fingers that move up in parallel move the map and do not tilt it, and a hand
+        // that puts one finger down a moment before the other, and lifts one before the other, does not see the hint.
+        const coopTouch = `[${renderer}] cooperativeGestures: two fingers that move in parallel pan the map and do not tilt it, and a touch that puts its fingers down or lifts them one after the other shows no hint (#1687)`;
+        if (!cdpTouch) skip(coopTouch, noCDP);
+        else {
+            const at = await page.evaluate(async renderer => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:50px;top:50px;width:600px;height:400px;z-index:1000'}));
+                const m = window.t.lib.createMap(el, {renderer, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 3, pitch: 30}, cooperativeGestures: true});
+                await new Promise(r => { const stop = m.state.subscribe(s => { if (s.loaded) { queueMicrotask(() => stop()); r(); } }); });
+                // (The hint comes with the code of cooperativeGestures, which loads on demand.)
+                while (!el.querySelector('.map-jr-cooperative-gesture-screen')) await new Promise(r => setTimeout(r, 20));
+                const hint = el.querySelector('.map-jr-cooperative-gesture-screen'), c = window.coopTouch = {shown: 0, view: () => m.state.get().view, remove: () => { m.destroy(); el.remove(); }};
+                new MutationObserver(() => { if (hint.style.opacity === '1') c.shown++; }).observe(hint, {attributes: true});
+                const r = el.getBoundingClientRect();
+                return {x: r.x, y: r.y};
+            }, renderer);
+            const cdp = await page.context().newCDPSession(page);
+            const touch = (type, touchPoints = []) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints});
+            const two = i => [{id: 0, x: at.x + 250, y: at.y + 300 - i * 6}, {id: 1, x: at.x + 350, y: at.y + 310 - i * 6}];
+            // Both fingers at once, up in parallel.
+            await touch('touchStart', two(0));
+            for (let i = 1; i <= 15; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+            await touch('touchEnd');
+            await page.waitForTimeout(500);
+            const parallel = await page.evaluate(() => { const v = window.coopTouch.view(); return {lat: v.center[1], pitch: v.pitch}; });
+            // One finger first, which moves 5 pixels before the second comes; the second lifts first, and the first moves on.
+            await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 300}]);
+            await touch('touchMove', [{id: 0, x: at.x + 250, y: at.y + 295}]);
+            await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 295}, two(0)[1]]);
+            for (let i = 1; i <= 10; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+            await touch('touchMove', [two(10)[0]]);
+            for (let i = 1; i <= 3; i++) { await touch('touchMove', [{...two(10)[0], y: two(10)[0].y - i * 5}]); await page.waitForTimeout(16); }
+            await touch('touchEnd');
+            await page.waitForTimeout(500);
+            await cdp.detach();
+            const after = await page.evaluate(() => { const c = window.coopTouch, v = c.view(); c.remove(); window.coopTouch = undefined; return {lat: v.center[1], pitch: v.pitch, shown: c.shown}; });
+            check(coopTouch, parallel.lat < -1 && Math.abs(parallel.pitch - 30) < 0.5 && after.lat < parallel.lat - 1 && Math.abs(after.pitch - 30) < 0.5 && after.shown === 0, JSON.stringify({parallel, after}));
+        }
         // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for no value (light), 'auto', 'light' and 'dark'.
         // (The browser fires the event `change` of the media query at its next rendering step, which can come late on a
         // loaded machine, so the check waits until the state has the expected scheme, for at most 3 s.)
@@ -4061,7 +4126,7 @@ for (const form of ['svelte', 'element']) {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     try {
-        for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles']) {
+        for (const id of ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'hover', 'fit', 'back', 'pmtiles', 'styles']) {
             await page.goto(`${origin}/site/examples/run.html?id=${id}&form=${form}`);
             const idle = await page.waitForFunction(id => window.exampleError || window.maps?.[id]?.state.get().idle, id, {timeout: 30000}).then(() => true, () => false);
             const [error, buttons, inStage] = await page.evaluate(() => [window.exampleError, document.querySelectorAll('.actions button').length, !!document.querySelector('.live canvas')]);
@@ -4069,7 +4134,7 @@ for (const form of ['svelte', 'element']) {
         }
     } catch (e) { results.push(String(e.message).split('\n')[0]); }
     check(`examples, harness page: the ${form} form of each example runs in the stage and reaches idle (#1115)`,
-        results.join(' ') === 'basic:ok reactive:ok/2 markers:ok draggable:ok images:ok terrain:ok/2 globe:ok query:ok hover:ok fit:ok/1 back:ok/1 pmtiles:ok' && !errors.length, `${results.join(' ')} ${errors.join(' | ')}`);
+        results.join(' ') === 'basic:ok reactive:ok/2 markers:ok draggable:ok images:ok terrain:ok/2 globe:ok query:ok hover:ok fit:ok/1 back:ok/1 pmtiles:ok styles:ok/1' && !errors.length, `${results.join(' ')} ${errors.join(' | ')}`);
     await page.close();
 }
 // Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested
@@ -4242,6 +4307,8 @@ for (const status of [404, 403, 503]) {
 // (#686). Two pages run at the same time, so that the check waits for 15 s once.
 // - On the first, every request of the tile at the center fails, so its overview stands in for it, and the first four
 //   requests of that overview fail. The fifth request of the overview is answered.
+//   The first `idle` comes after the fourth request of the overview, because `idle` waits for the overview between
+//   its first retries (#1644).
 // - On the second, every tile request fails (a server that is down). A background request does not make the map leave
 //   `idle` and its failure fires no `error`: from the first background request until 1 s after each tile that has one
 //   has failed it, the map fires neither, and the map is idle at the end.
@@ -4250,12 +4317,14 @@ for (const status of [404, 403, 503]) {
     try {
         const z = 13, x = tileOf(from[0], z), y = Math.floor((1 - Math.log(Math.tan(Math.PI / 4 + from[1] * Math.PI / 360)) / Math.PI) / 2 * 2 ** z);
         const bad = `/${z}/${x}/${y}.pbf`, over = `/${z - 3}/${x >> 3}/${y >> 3}.pbf`;
-        let overTries = 0, answered = 0;
+        let overTries = 0, answered = 0, fourthAt = 0;
         const tries = new Map(), failed = new Map();
         let background = 0;
-        const start = async (route, onPage) => {
+        // (Each page has a fixed index, because the two calls of `browser.newPage` can resolve in either order. With
+        // `pages.push`, the page of the server that is down was `pages[0]` in some runs, and the checks read the other map, #1761.)
+        const start = async (i, route) => {
             const page = await browser.newPage({viewport: {width: 900, height: 600}});
-            pages.push(page);
+            pages[i] = page;
             await page.goto(`${origin}/bench`);
             await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route);
             return page.evaluate(async from => {
@@ -4268,14 +4337,14 @@ for (const status of [404, 403, 503]) {
             }, from);
         };
         const [idleOne, idleDown] = await Promise.all([
-            start(async route => {
+            start(0, async route => {
                 const k = new URL(route.request().url()).pathname;
                 if (k.endsWith(bad)) return route.abort('connectionreset');
-                if (k.endsWith(over) && ++overTries <= 4) return route.abort('connectionreset');
+                if (k.endsWith(over) && ++overTries <= 4) { if (overTries === 4) fourthAt = Date.now(); return route.abort('connectionreset'); }
                 await route.continue().catch(() => {});
                 if (k.endsWith(over)) answered = Date.now();
             }),
-            start(async route => {
+            start(1, async route => {
                 const k = new URL(route.request().url()).pathname, n = (tries.get(k) ?? 0) + 1;
                 tries.set(k, n);
                 if (n === 5) background ||= Date.now();
@@ -4287,11 +4356,13 @@ for (const status of [404, 403, 503]) {
         for (const end = Date.now() + 60000; (!answered || !failed.size || failed.size < [...tries.values()].filter(n => n >= 5).length) && Date.now() < end;) await pages[0].waitForTimeout(250);
         await pages[1].waitForTimeout(1000);
         check('an overview tile that failed four times is requested again later and answered', idleOne && overTries === 5 && answered > 0, JSON.stringify({idleOne, overTries, answered: answered > 0}));
+        const firstIdle = (await pages[0].evaluate(() => window.seen)).find(([type]) => type === 'idle')?.[1] ?? 0;
+        check('the first idle of a map whose overview tile stands in comes after the fourth request of the overview', fourthAt > 0 && firstIdle >= fourthAt, JSON.stringify({fourthAt: fourthAt > 0, idleAfter: firstIdle && fourthAt && firstIdle - fourthAt}));
         const {seen, idle} = await pages[1].evaluate(() => ({seen: window.seen, idle: window.host.state.get().idle}));
         const after = seen.filter(([, t]) => background && t >= background);
         check('a background request of a tile on a server that is down fires neither `idle` nor `error`, and the map stays idle', idleDown && background > 0 && failed.size > 0 && !after.length && idle, JSON.stringify({idleDown, background: background > 0, failed: failed.size, after, idle}));
     } catch (e) { check('the test of the background requests of failed tiles was completed', false, String(e.message).split('\n')[0]); }
-    for (const page of pages) await page.close();
+    for (const page of pages) await page?.close();
 }
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with

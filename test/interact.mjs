@@ -2010,6 +2010,34 @@ for (const mode of renderers) {
         check(`[${mode}] the textures of colour ramps are deleted when their layers are removed or the style changes (#591)`,
             r.renderer === mode && r.start === 2 && r.removed === 0 && r.restyled === 2 && r.empty === 0, JSON.stringify(r));
     }
+    // #1698: line-gradient on a GeoJSON source is drawn whether `lineMetrics` is true, false or missing (the library
+    // measures the line for each source that a gradient uses). MapLibre GL JS rejects the style without `lineMetrics: true`.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:100px'}));
+            const out = {};
+            for (const lineMetrics of [true, false, undefined]) {
+                const src = {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20, 0], [20, 0]]}}, ...(lineMetrics === undefined ? {} : {lineMetrics})};
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {l: src}, layers: [
+                    {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'g', type: 'line', source: 'l', paint: {'line-width': 8, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, '#f00', 1, '#00f']}}]}});
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                const c = Object.assign(document.createElement('canvas'), {width: 200, height: 100}).getContext('2d');
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                c.drawImage(m.getCanvas(), 0, 0, 200, 100);
+                const px = x => [...c.getImageData(x, 50, 1, 1).data.slice(0, 3)];
+                out[String(lineMetrics)] = [px(60), px(140)];
+                m.remove();
+            }
+            el.remove();
+            return out;
+        });
+        // (Red is greater than blue at the start of the line, and the other way round at its end.)
+        const grad = ([a, b]) => a[0] > a[2] + 100 && b[2] > b[0] + 100;
+        check('[main] compat: line-gradient on a GeoJSON source is drawn along the line with lineMetrics true, false and missing (#1698)',
+            grad(r.true) && grad(r.false) && grad(r.undefined), JSON.stringify(r));
+    }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
     if (mode === 'main') {
@@ -3633,6 +3661,10 @@ for (const mode of renderers) {
                 window.coopDrag.moves = [];
                 window.coopDrag.record = e => window.coopDrag.moves.push(e.touches.length + ':' + e.defaultPrevented);
                 document.addEventListener('touchmove', window.coopDrag.record);
+                // (The hint comes with the code of cooperativeGestures, which loads on demand.)
+                while (!el.querySelector('.map-jr-cooperative-gesture-screen')) await new Promise(r => setTimeout(r, 20));
+                const hint = el.querySelector('.map-jr-cooperative-gesture-screen');
+                new MutationObserver(() => { if (hint.style.opacity === '1') window.coopDrag.hintAt = performance.now(); }).observe(hint, {attributes: true});
             }, entry);
             const cdp = await page.context().newCDPSession(page);
             const touch = (type, touchPoints = []) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints});
@@ -3643,6 +3675,10 @@ for (const mode of renderers) {
             for (let i = 1; i <= 5; i++) await touch('touchMove', [{id: 0, x: 400, y: 300 - i * 4}]);
             await touch('touchEnd');
             out.one = await page.evaluate(() => window.coopDrag.moves.splice(0).join());
+            // (Chromium sends a touchstart that comes less than about 90 ms after the hint was drawn during a scroll of the
+            // page as uncancelable, and the first touchmove after it too. A hand cannot start a second touch that soon, so
+            // the check waits until the hint of the finger has shown and 300 ms have passed; #1679, #1687.)
+            await page.waitForFunction(() => window.coopDrag.hintAt && performance.now() - window.coopDrag.hintAt > 300, null, {timeout: 5000});
             for (const [name, target] of [['control', ctrl], ['outside', {x: 850, y: 120}]]) {
                 const at = i => { const x = 500 + (target.x - 500) * i / 20, y = 200 + (target.y - 200) * i / 20; return [{id: 0, x, y}, {id: 1, x: x - 100, y: y + 50}]; };
                 await touch('touchStart', at(0));
@@ -3662,6 +3698,47 @@ for (const mode of renderers) {
         }
     }
     if (mode === 'main' && browserName !== 'chromium') skip('[main] cooperativeGestures: a two-finger drag over a control and out of the container (#1286)', noCDP);
+    // #1687: with cooperativeGestures, two fingers that move up in parallel move the map and do not tilt it (MapLibre GL JS
+    // tilts with three fingers there), and a hand that puts one finger down a moment before the other, and lifts one
+    // before the other, sees no hint and fires no cooperativegestureprevented.
+    const coopTouch = '[main] maplibre-compat: cooperativeGestures: two fingers that move in parallel pan the map and do not tilt it, and a touch that puts its fingers down or lifts them one after the other shows no hint (#1687)';
+    if (mode === 'main' && browserName !== 'chromium') skip(coopTouch, noCDP);
+    if (mode === 'main' && browserName === 'chromium') {
+        const at = await page.evaluate(async () => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:100px;top:100px;width:600px;height:400px;z-index:1000'}));
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [0, 0], zoom: 3, pitch: 30, cooperativeGestures: true});
+            await new Promise(r => m.once('load', r));
+            // (The hint comes with the code of cooperativeGestures, which loads on demand.)
+            while (!el.querySelector('.map-jr-cooperative-gesture-screen')) await new Promise(r => setTimeout(r, 20));
+            const hint = el.querySelector('.map-jr-cooperative-gesture-screen'), c = window.coopTouch = {shown: 0, prevented: 0, view: () => ({lat: m.getCenter().lat, pitch: m.getPitch()}), remove: () => { m.remove(); el.remove(); }};
+            m.on('cooperativegestureprevented', () => c.prevented++);
+            new MutationObserver(() => { if (hint.style.opacity === '1') c.shown++; }).observe(hint, {attributes: true});
+            const r = el.getBoundingClientRect();
+            return {x: r.x, y: r.y};
+        });
+        const cdp = await page.context().newCDPSession(page);
+        const touch = (type, touchPoints = []) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints});
+        const two = i => [{id: 0, x: at.x + 250, y: at.y + 300 - i * 6}, {id: 1, x: at.x + 350, y: at.y + 310 - i * 6}];
+        // Both fingers at once, up in parallel.
+        await touch('touchStart', two(0));
+        for (let i = 1; i <= 15; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+        await touch('touchEnd');
+        await page.waitForTimeout(500);
+        const parallel = await page.evaluate(() => window.coopTouch.view());
+        // One finger first, which moves 5 pixels before the second comes; the second lifts first, and the first moves on.
+        await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 300}]);
+        await touch('touchMove', [{id: 0, x: at.x + 250, y: at.y + 295}]);
+        await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 295}, two(0)[1]]);
+        for (let i = 1; i <= 10; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+        await touch('touchMove', [two(10)[0]]);
+        for (let i = 1; i <= 3; i++) { await touch('touchMove', [{...two(10)[0], y: two(10)[0].y - i * 5}]); await page.waitForTimeout(16); }
+        await touch('touchEnd');
+        await page.waitForTimeout(500);
+        await cdp.detach();
+        const after = await page.evaluate(() => { const c = window.coopTouch, v = c.view(); c.remove(); window.coopTouch = undefined; return {...v, shown: c.shown, prevented: c.prevented}; });
+        check(coopTouch, parallel.lat < -1 && Math.abs(parallel.pitch - 30) < 0.5 && after.lat < parallel.lat - 1 && Math.abs(after.pitch - 30) < 0.5 && after.shown === 0 && after.prevented === 0, JSON.stringify({parallel, after}));
+    }
     // Class names of MapLibre GL JS: stylesheets and end-to-end tests written for that library select by them.
     if (mode === 'main') {
         const names = await page.evaluate(async () => {

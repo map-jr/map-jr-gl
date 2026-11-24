@@ -13,6 +13,7 @@ import path from 'node:path';
 import {chromiumOptions} from '../launch.mjs';
 import {ensureCheckout} from './maplibre-checkout.mjs';
 import {summarize, readExpectations, report, changes, skipReason} from './render-summary.mjs';
+import {ensureFixtures} from './mvt-fixtures.mjs';
 
 // An option that this script does not know, or --list without --filter, stops here instead of starting the full run of
 // about ten minutes (#1048). --help prints the comment above.
@@ -28,15 +29,18 @@ const root = path.resolve(import.meta.dirname, '../..'), repo = ensureCheckout()
 const arg = name => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const filter = arg('filter') ? new RegExp(arg('filter')) : null, limit = +(arg('limit') ?? Infinity), saveDir = arg('save');
 const testsDir = path.join(repo, 'test/integration/render/tests'), assets = path.join(repo, 'test/integration/assets');
+// The tiles of the real-world tests, which MapLibre's harness serves on port 2901 (#665); null when they could not be fetched.
+const fixtures = ensureFixtures();
 
 // Serves this library's build, the tests' assets (what their styles call local://) and the expected images.
 const types = {'.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.pbf': 'application/x-protobuf', '.mvt': 'application/x-protobuf', '.geojson': 'application/json', '.html': 'text/html'};
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), p = decodeURIComponent(url.pathname);
-    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p === '/' ? null : path.join(assets, p);
+    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p.startsWith('/mvt-fixtures/') && fixtures ? path.join(fixtures, p.slice(14)) : p === '/' ? null : path.join(assets, p);
     if (!file) { res.writeHead(200, {'content-type': 'text/html'}); return res.end('<body style="margin:0;background:#fff"><div id="map"></div>'); }
-    // A style or a TileJSON file of the assets names MapLibre's test server (local:// or port 2900): it gets this server.
-    try { let body = readFileSync(file); if (file.startsWith(assets) && file.endsWith('.json')) body = body.toString().replaceAll('local://', origin + '/').replaceAll('http://localhost:2900', origin); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(p.includes('/sparse204/') ? 204 : 404, {'access-control-allow-origin': '*'}); res.end(); } // (204 for those tiles, as the test server of MapLibre answers)
+    // A style or a TileJSON file of the assets names MapLibre's test servers (local://, port 2900, and port 2901 for the
+    // tiles of @mapbox/mvt-fixtures): they get this server.
+    try { let body = readFileSync(file); if (file.startsWith(assets) && file.endsWith('.json')) body = body.toString().replaceAll('local://', origin + '/').replaceAll('http://localhost:2900', origin).replaceAll('http://localhost:2901', origin + '/mvt-fixtures'); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(p.includes('/sparse204/') ? 204 : 404, {'access-control-allow-origin': '*'}); res.end(); } // (204 for those tiles, as the test server of MapLibre answers)
 }).listen(0);
 const origin = `http://localhost:${server.address().port}`;
 
@@ -52,6 +56,14 @@ for (const [name, url] of Object.entries(fontFiles)) {
 const fontFaces = {};
 if (existsSync(path.join(fontDir, 'open-sans.woff2'))) for (const n of ['Open Sans Semibold', 'Open Sans Bold', 'Open Sans Regular']) fontFaces[n] = `${origin}/fonts/open-sans.woff2`;
 if (existsSync(path.join(fontDir, 'noto-sans.woff2'))) for (const n of ['Noto Sans Regular', 'Noto Sans Latin']) fontFaces[n] = `${origin}/fonts/noto-sans.woff2`;
+
+// The custom layers of the operation addCustomLayer are classes of MapLibre's harness (customLayerImplementations in
+// render.test.ts). They are read from the checkout and made JavaScript here, so that this repository has no copy (#666).
+const harness = readFileSync(path.join(repo, 'test/integration/render/render.test.ts'), 'utf8');
+const layerStart = harness.indexOf('class NullIsland'), layerEnd = harness.indexOf('};', harness.indexOf('const customLayerImplementations')) + 2;
+if (layerStart < 0 || layerEnd < 2) throw new Error('[map-jr-gl] render.mjs: render.test.ts of MapLibre GL JS has no customLayerImplementations. Update the code that reads it.');
+const {transformSync} = createRequire(import.meta.url)('esbuild');
+const customLayers = transformSync(harness.slice(layerStart, layerEnd) + '\nwindow.customLayerImplementations = customLayerImplementations;', {loader: 'ts'}).code;
 
 const tests = [];
 const walk = dir => {
@@ -84,13 +96,14 @@ async function worker(queue) {
     await page.goto(origin + '/');
     await page.addScriptTag({type: 'module', content: `import * as t from '/dist/map-jr-gl-maplibre-compat.js'; window.mapjr = t;`});
     await page.waitForFunction(() => window.mapjr);
+    await page.addScriptTag({content: `{${customLayers}}`});
     };
     for (let id; (id = queue.shift());) {
         const style = JSON.parse(readFileSync(path.join(testsDir, id, 'style.json'), 'utf8').replaceAll('local://', origin + '/')), meta = style.metadata?.test ?? {};
         style['font-faces'] = {...fontFaces, ...style['font-faces']};
         const width = meta.width ?? 512, height = meta.height ?? 512;
         // A test stays skipped when it has an operation that this run cannot do. The reason is the name of the operation.
-        const why = skipReason(meta, name => { try { return readFileSync(path.join(assets, name), 'utf8'); } catch { return ''; } });
+        const why = skipReason(meta, name => { try { return readFileSync(path.join(assets, name), 'utf8'); } catch { return ''; } }, !!fixtures);
         if (why) { results.push({id, status: 'skipped', why}); continue; }
         // The time that the test waits by its own operations is added to the limit.
         const timeout = 8000 + (meta.operations ?? []).reduce((sum, o) => sum + ((o[0] === 'wait' || o[0] === 'sleep') && typeof o[1] === 'number' ? o[1] : 0), 0);
@@ -116,7 +129,14 @@ async function worker(queue) {
                 // the next operation, so that a paint transition is drawn at that point of its course (#960).
                 const clock = window.clock ??= (() => { const real = performance.now.bind(performance), c = {at: null}; performance.now = () => c.at ?? real(); return c; })();
                 clock.at = null;
-                const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...(meta.maxPitch === undefined ? {} : {maxPitch: meta.maxPitch}), ...(meta.pixelRatio === undefined ? {} : {pixelRatio: meta.pixelRatio})});
+                // The map options of the test, as MapLibre's harness gives them (render.test.ts). An option that the library does
+                // not have warns once and has no effect; render-expectations.json gives those tests a label (#663).
+                const given = Object.fromEntries(['maxPitch', 'maxZoom', 'pixelRatio', 'fadeDuration', 'crossSourceCollisions', 'terrainSkirtLength', 'localIdeographFontFamily'].filter(k => meta[k] !== undefined).map(k => [k, meta[k]]));
+                const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...given});
+                if (meta.debug) map.showTileBoundaries = true;
+                if (meta.showOverdrawInspector) map.showOverdrawInspector = true;
+                if (meta.showPadding) map.showPadding = true;
+                if (meta.collisionDebug) { map.showCollisionBoxes = true; meta.operations = [...(meta.operations ?? []), ['wait']]; }
                 map.on('error', e => errors.push(String(e.error?.message ?? e.error)));
                 let idle = false, at = '';
                 map.on('idle', () => { idle = true; });
@@ -169,7 +189,12 @@ async function worker(queue) {
                         } else {
                             idle = false;
                             if (op[0] === 'addImage') map.addImage(op[1], await image(`${origin}/${op[2]}`), op[3] || {});
-                            else if (op[0] === 'setStyle') map.setStyle(typeof op[1] === 'object' && op[1] ? {...op[1], 'font-faces': {...fontFaces, ...op[1]['font-faces']}} : op[1], {localIdeographFontFamily: false});
+                            else if (op[0] === 'addCustomLayer') map.addLayer(new window.customLayerImplementations[op[1]](), op[2]);
+                            else if (op[0] === 'setStyle') {
+                                // A style by URL is fetched here, so that it gets the font-faces of the run as a style object does (#664).
+                                const next = typeof op[1] === 'string' ? await (await fetch(op[1].replace('local://', origin + '/'))).json() : op[1];
+                                map.setStyle(typeof next === 'object' && next ? {...next, 'font-faces': {...fontFaces, ...next['font-faces']}} : next, {localIdeographFontFamily: false});
+                            }
                             else if (typeof map[op[0]] === 'function') map[op[0]](...op.slice(1));
                             else throw new Error(`map.${op[0]} is not a function`);
                         }
@@ -216,6 +241,19 @@ async function worker(queue) {
 }
 const queue = [...selected];
 await Promise.all(Array.from({length: 4}, () => worker(queue)));
+// A test whose status is not the one in render-tests.json runs again alone, and the second result counts. Four tests
+// at once load the machine, and a test near a limit can move under that load only (text-field/formatted-arabic gave
+// differ in full runs and 4.8%, near, in each of five runs alone, #1036). A change that the library causes shows alone
+// too. At most 50 tests run again, so that a change of many tests is not hidden and does not double the time.
+const perTest = path.join(root, 'test/conformance/render-tests.json');
+const committed = existsSync(perTest) ? JSON.parse(readFileSync(perTest, 'utf8')) : {};
+const moved = results.filter(r => r.status !== 'skipped' && committed[r.id.split(path.sep).join('/')] !== undefined && committed[r.id.split(path.sep).join('/')] !== r.status);
+if (moved.length && moved.length <= 50) {
+    const first = new Map(moved.map(r => [r.id, r]));
+    for (const r of moved) results.splice(results.indexOf(r), 1);
+    await worker(moved.map(r => r.id));
+    for (const r of results) if (first.has(r.id) && first.get(r.id).status !== r.status) console.log(`AGAIN: ${r.id.split(path.sep).join('/')} was ${first.get(r.id).status} with other tests at once and is ${r.status} alone; the second result counts.`);
+}
 await browser.close();
 server.close();
 // The ids have "/" between their parts on each system, so that the tracked files are the same everywhere.
@@ -232,8 +270,7 @@ for (const r of results) if (r.status === 'skipped') reasons[r.why] = (reasons[r
 if (summary.totals.skipped) console.log('Skipped, by reason: ' + Object.entries(reasons).map(([why, n]) => `${why} ${n}`).join(', '));
 for (const line of lines.slice(1)) console.log(line);
 // The tests whose status is not the one in the tracked file. A test near a limit can change with the machine.
-const perTest = path.join(dir, 'render-tests.json');
-if (existsSync(perTest)) for (const line of changes(JSON.parse(readFileSync(perTest, 'utf8')), summary.tests)) console.log(line);
+if (existsSync(perTest)) for (const line of changes(committed, summary.tests)) console.log(line);
 // A full run (no filter) records its totals, which the status table of the README is written from, and the status
 // of each test. The second file has no percentages and is sorted by id, so that its diff shows the tests that changed.
 // The files are written only from Playwright's own build of Chromium, which CI runs: another build draws some tests a

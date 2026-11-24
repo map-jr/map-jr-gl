@@ -7,25 +7,27 @@ export const statuses = ['match', 'near', 'differ', 'error', 'skipped'];
 export const decisions = ['wontfix', 'later'];
 
 /**
- * The operations of a test (`metadata.test.operations` of its style) that the run cannot do. A custom layer and the
- * canvas of a canvas source are code of MapLibre's harness, and `pauseTiles` uses a private member of MapLibre's map.
+ * The operations of a test (`metadata.test.operations` of its style) that the run cannot do. `pauseTiles` uses a
+ * private member of MapLibre's map.
  */
-export const operationsNotDone = ['addCustomLayer', 'pauseTiles'];
+export const operationsNotDone = ['pauseTiles'];
 
 /**
  * Why the run skips a test, or null when the run draws it. The reason is the name of the first operation that the run
  * cannot do, `reportWidth` for a test that compares a part of the canvas only, or `@mapbox/mvt-fixtures` for a test
- * whose `setStyle` loads a style with tiles of that package, which MapLibre's harness serves on port 2901.
+ * whose `setStyle` loads a style with tiles of that package, which MapLibre's harness serves on port 2901, when the run
+ * could not download the package (#665).
  * @param meta `metadata.test` of the style of the test.
  * @param readAsset gives the text of a file of the assets of the tests (`styles/nepal.json`), or '' when there is none.
+ * @param fixtures whether the run serves the tiles of @mapbox/mvt-fixtures.
  */
-export function skipReason(meta = {}, readAsset = () => '') {
+export function skipReason(meta = {}, readAsset = () => '', fixtures = false) {
     const ops = meta.operations ?? [], op = ops.find(o => operationsNotDone.includes(o[0]));
     if (op) return op[0];
     if (meta.reportWidth !== undefined || meta.reportHeight !== undefined) return 'reportWidth';
     // (The run gives the URL of an asset its own server in place of "local://", so the name is the path of the URL.)
     const asset = url => { try { return new URL(url.replace('local://', 'http://localhost/')).pathname.slice(1); } catch { return ''; } };
-    return ops.some(o => o[0] === 'setStyle' && typeof o[1] === 'string' && readAsset(asset(o[1])).includes('localhost:2901')) ? '@mapbox/mvt-fixtures' : null;
+    return !fixtures && ops.some(o => o[0] === 'setStyle' && typeof o[1] === 'string' && readAsset(asset(o[1])).includes('localhost:2901')) ? '@mapbox/mvt-fixtures' : null;
 }
 
 /**

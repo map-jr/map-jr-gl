@@ -565,8 +565,12 @@ of its east edge, such as `[[150, -50], [-120, 10]]`, crosses the antimeridian. 
 ## `cooperativeGestures`
 
 Set `cooperativeGestures` for a map in a page that scrolls. With `true`, the wheel zooms the map only while Ctrl (⌘
-on a Mac) is pressed, one finger scrolls the page, and two fingers move the map. When the map blocks a gesture, it
-shows a hint. Set the text of the hint in [`locale`](#locale).
+on a Mac) is pressed, one finger scrolls the page, and two fingers move the map. Two fingers pan, zoom and rotate the
+map, and they do not change the pitch. When the map blocks a gesture, it shows a hint.
+
+For a touch, the hint shows
+150 ms after the first finger touches the map, and not when a second finger has come by then, because a hand puts its
+two fingers down one after the other. Set the text of the hint in [`locale`](#locale).
 
 ## `colorScheme` and `onColorSchemeChange`
 
@@ -649,8 +653,11 @@ createMap('map', {
 });
 ```
 
-The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. The map
-does not treat a new function as a change, so a framework can pass a new function in each render.
+The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. The second
+parameter has the type `ResourceType`, which `@map-jr/map-jr-gl` exports. The type also has the kind `Unknown`, as in
+MapLibre GL JS, and the map never passes it. In TypeScript, type the parameter as `ResourceType` or `string`: a
+function that accepts only some of the kinds, `Unknown` included, does not compile. The map does not treat a
+new function as a change, so a framework can pass a new function in each render.
 
 ## `renderer`
 

@@ -30,6 +30,7 @@ or an image that shows the map must show it too.
 
 The SVG links to raster tiles and to the sprite. Set [`inlineImages: true`](../reference/server.md#renderoptions) to
 embed them as data instead, for an SVG that is opened as a file or shown with an `<img>` element.
+[`renderToImage`](#create-an-image) always embeds them and has no `inlineImages`.
 
 ## Show the first view before the script runs
 
@@ -163,8 +164,9 @@ Two things go wrong most often:
 
 - The server and the map have different styles or views. The page then shows one map and replaces it with
   another. Pass the server the same `style`, `sources`, `layers`, `data`, `images`, `colorScheme` and `globalState` as the map. Pass
-  `center`, `zoom` and `bearing` of `initialView` as options of the same names, and its `bounds` and `fitPadding` as `bounds` and `padding`. The
-  Vue component and `renderElement` pass all of them themselves.
+  `center`, `zoom` and `bearing` of `initialView` as options of the same names, and its `bounds`, `fitPadding` and
+  `fitMaxZoom` as `bounds`, `padding` and `fitMaxZoom`. The Vue component
+  and `renderElement` pass all of them themselves.
 - The element of the map has no `position`. The first view is positioned at `inset: 0`, so the element needs
   `position: relative` or another position that is not `static`. The Vue and React components and `<map-jr>` set it.
 

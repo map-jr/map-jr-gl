@@ -55,6 +55,8 @@ const OTHER = [
     ['terrain', 'exaggeration', [], 'engine.ts', /exaggeration/],
     // (`globeStops` takes a name or an `interpolate` on zoom.)
     ['projection', 'type', ['zoom'], 'geo.ts', /type\[0\] === 'interpolate' && type\[2\]\?\.\[0\] === 'zoom'/],
+    // (The lines of a GeoJSON source are measured when a line-gradient layer uses it, whatever `lineMetrics` says, #1698.)
+    ['source geojson', 'lineMetrics', [], 'tiles.ts', /l\.type === 'line' && l\.ramp/],
     ['transition', 'duration', [], 'style.ts', /duration: 300/],
     ['transition', 'delay', [], 'style.ts', /delay: 0/],
     // (Accepted with no effect: the name is in src/ only for its warning, so the inputs are `null` and it counts as not read.)

@@ -1727,7 +1727,8 @@ export class Engine {
                     // (A tile of the view whose request failed needs its overview now: it stands in for that tile, so it is
                     // requested at once, its arrival changes the image, and `idle` waits for it (#379).)
                     const v = this.tiles.get(source + '|' + id.key), failed = v?.state === 'error' && !v.missing;
-                    if (failed && t?.state === 'loading' && !background(t)) { complete = false; if (t.used < 0) t.used = frameNo; }
+                    // (Between its first retries, it waits for its next request, as a tile of the view does (#1644).)
+                    if (failed && t && (t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES)) { complete = false; if (t.used < 0) t.used = frameNo; }
                     if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1; if (failed) complete = false; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.

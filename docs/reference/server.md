@@ -48,8 +48,11 @@ and the sprite.
 `RenderOptions` has the members in the table and a view, the type `RenderView`: either `center` and `zoom`, or
 `bounds`. `bounds` overrides `center` and `zoom`, so options with `bounds` can leave them out. In TypeScript, options
 without `bounds` and without both `center` and `zoom` do not compile, and at run time the render rejects with an
-error that names what is missing. The type `RenderOptionsBase` has the same
-members without the required view, for options that get their view later.
+error that names what is missing.
+
+The types `RenderOptionsBase`, `FirstViewOptionsBase` and `ImageOptionsBase` have
+the members of `RenderOptions`, `FirstViewOptions` and `ImageOptions` without the required view. Use them for options
+that get their view later, and for an `interface` that adds members: an `interface` cannot extend `RenderOptions`.
 
 <!-- ref:RenderOptions:start -->
 | Name | Type | Default | Description |
@@ -425,7 +428,8 @@ the first view, writes the error to the console of the server, and emits it as `
 The prop `:attribution="false"` overrides `attribution` and shows none.
 
 The render uses the props `map-style`, `initial-view`, `view`, `sources`, `layers`, `terrain`, `sprite`, `data`,
-`images` and `color-scheme`. It does not use `font-family`.
+`images`, `font-family`, `color-scheme`, `global-state`, `controls`, `locale`, `nonce`, `min-zoom`, `max-zoom`,
+`projection` and `attribution`, including `fitPadding` and `fitMaxZoom` of `initial-view`.
 
 The React component of `@map-jr/map-jr-gl/react` has the prop `firstView`: the HTML of `renderFirstView`. The
 component reads it in its first render only.
