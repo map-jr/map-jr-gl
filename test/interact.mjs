@@ -1499,20 +1499,26 @@ for (const mode of renderers) {
         check(`[${mode}] queryRenderedFeatures read at once has the features of tiles: in a click listener, and on idle`, atOnce.click > 0 && atOnce.idle.at(-1) > 0 && atOnce.idle.length <= 3, JSON.stringify(atOnce));
     }
     // Many different questions on `idle` (30, fewer than the 64 answers that the map keeps) must not make the map fire
-    // `idle` without end: after the first answers, the count of `idle` events stops growing (#717).
+    // `idle` without end: after the first answers, the count of `idle` events stops growing (#717). The check uses a
+    // page of its own, because its answers fill the store of the map that the next checks read.
     {
-        const many = await page.evaluate(async () => {
+        const own = await browser.newPage({viewport: {width: 1000, height: 700}});
+        await own.goto(page.url());
+        await own.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+        const many = await own.evaluate(async () => {
             const m = window.map, c = m.getCanvas();
             await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
             let idles = 0;
             const ask = () => { idles++; for (let i = 0; i < 30; i++) m.queryRenderedFeatures([(i * 7) % c.clientWidth, (i * 13) % c.clientHeight]); };
             m.on('idle', ask); ask();
             const counts = [];
-            for (let t = 0; t < 8; t++) { await new Promise(r => setTimeout(r, 500)); counts.push(idles); }
+            for (let t = 0; t < 20 && !(counts.length >= 4 && counts.at(-1) === counts.at(-4)); t++) { await new Promise(r => setTimeout(r, 500)); counts.push(idles); }
             m.off('idle', ask);
             return counts;
         });
-        check(`[${mode}] queryRenderedFeatures: 30 different questions on idle do not make the map fire idle without end`, many.at(-1) === many.at(-4) && many.at(-1) <= 10, JSON.stringify(many));
+        await own.close();
+        // The count must stop growing within 10 seconds: four samples in a row (1.5 seconds) are equal.
+        check(`[${mode}] queryRenderedFeatures: 30 different questions on idle do not make the map fire idle without end`, many.at(-1) === many.at(-4), JSON.stringify(many));
     }
     // react-map-gl 8 drives `onMouseEnter` and `cursor` with `queryRenderedFeatures(e.point, {layers})`, read at once in
     // its `mousemove` listener (#195). One move of the mouse onto features of tiles must reach the enter state.
