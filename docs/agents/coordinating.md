@@ -39,7 +39,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
 - Start each worker with `isolation: "worktree"` and low effort (90,000 to 160,000 tokens for an issue).
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
-- On the cloud VM (4 cores), run about four workers that run browser suites at once; docs-only workers do not count.
+- `scripts/agents/suite.mjs` runs at most two browser suites at once on one machine (`SUITE_SLOTS`), and the others
+  wait (#1406): on 2026-11-24 about six workers that ran suites at once on the cloud VM (4 cores) made runs time out.
+  More workers than that can still work at once, because a suite is only a part of a worker's time.
   Six gave a load of about 35 and 15 failures in one local run of `test/interact.mjs` (#1387).
 
 ## While the workers run
