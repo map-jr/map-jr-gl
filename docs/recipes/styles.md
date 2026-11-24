@@ -1,7 +1,7 @@
 # Switch between map styles
 
-This example adds a control that lets the user choose one of three styles, and keeps the chosen style in the
-description of the map. A button below the map hides and shows four sights of Lucerne, which stay on every style.
+This example adds a control that lets the user choose one of three styles, and keeps the chosen style while a button
+hides and shows four sights of Lucerne.
 
 <!-- example:styles:start -->
 **Map Jr**
@@ -563,7 +563,7 @@ export default function StyleSwitcher() {
   [`patch`](../reference/map.md#patch), so the camera stays.
 - The control calls `onStyleChange` with the chosen entry, and the example keeps that entry in its own state. Each
   new description sets `style` again: the button of the Map Jr example calls [`update`](../reference/map.md#update),
-  and the Vue, React and Svelte components pass the style again when another prop changes. Without the kept entry,
+  and the Vue and React components and the Svelte action pass the style again when another prop changes. Without the kept entry,
   the next description sets the first style again.
 - The `<map-jr>` example stores the chosen style in the property [`mapStyle`](../reference/element.md#mapjrelement),
   which overrides the attribute `map-style`.
@@ -578,8 +578,8 @@ layer of the sights again at each `style.load`.
 
 ## Variations
 
-Each variation changes the Map Jr example: `base` is the URL of the folder of the official styles, and `describe`
-returns the description that `createMap` and `update` are called with.
+Each variation replaces `entries` and `describe` of the Map Jr example, and the other names (`base`, `entry`,
+`shown`, `sights`, `sightsLayer`, `controls`) are those of that example.
 
 ### Offer a light and a dark form of each style
 
@@ -594,12 +594,24 @@ const entries = [
     },
   },
 ];
+let scheme = 'auto';
+const describe = () => ({
+  style: entry.style,
+  colorScheme: scheme,
+  onColorSchemeChange: value => {
+    scheme = value;
+  },
+  initialView: {center: [8.32, 47.054], zoom: 13.5},
+  data: {sights},
+  layers: shown ? [sightsLayer] : [],
+  controls,
+  attribution: {compact: true},
+});
 ```
 
-Each entry then shows a light and a dark picture. A choice of a picture also sets
+Each entry then shows a light and a dark picture. When a choice changes the scheme, the control sets
 [`colorScheme`](../reference/description.md#colorscheme-and-oncolorschemechange) and calls `onColorSchemeChange` of
-the description. Keep that value as the example keeps the style: write `let scheme = 'auto';`, and in `describe` add
-`colorScheme: scheme` and `onColorSchemeChange: value => { scheme = value; }`.
+the description, and `scheme` keeps the value as `entry` keeps the style.
 
 ### Show one style with and without 3D terrain
 
@@ -610,10 +622,19 @@ const entries = [
   {label: 'Elevation flat', style: elevation, terrain: null},
   {label: 'Positron', style: base + 'openfreemap-positron.json'},
 ];
+const describe = () => ({
+  style: entry.style,
+  terrain: entry.terrain,
+  initialView: {center: [8.32, 47.054], zoom: 13.5},
+  data: {sights},
+  layers: shown ? [sightsLayer] : [],
+  controls,
+  attribution: {compact: true},
+});
 ```
 
-In `describe`, add `terrain: entry.terrain`. An entry with `terrain: null` overrides the terrain of the style and
-shows a flat map. An entry without `terrain` shows the terrain of its style.
+An entry with `terrain: null` overrides the terrain of the style and shows a flat map. An entry without `terrain`
+shows the terrain of its style.
 
 ## See also
 
