@@ -46,6 +46,7 @@ const map = createMap('map', {
 | `maxZoom` | `number \| null` | `22` | The largest zoom level of the map. |
 | `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 180, where a pitch above 90 looks up and, unless `centerElevation` lifts the map center above the ground, sees the map from below the ground. |
 | `centerElevation` | `number \| null` | | The height of the map center in meters above sea level, which keeps the camera above the ground at a pitch above 90 when it is high enough. |
+| [`renderWorldCopies`](#renderworldcopies) | `boolean \| null` | `true` | Whether copies of the world are drawn beside it, as in MapLibre GL JS. |
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
@@ -315,6 +316,9 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
 - To set options of the source (`cluster`, `promoteId`, `attribution`), declare the source in `sources` or in the
   style. A GeoJSON source in `sources` whose id is a key of `data` needs no `data` of its own: `data` sets its
   features.
+- A GeoJSON source simplifies its lines and polygons at low zoom levels with `tolerance` (default `0.375`, in pixels
+  of a tile 512 pixels wide; `0` turns it off), as in MapLibre GL JS. See
+  [Data](../guide/data.md).
 - When a key is removed from `data`, the map removes the source that it created for that key. A layer that still
   uses the source draws nothing, so remove such a layer in the same description.
 
@@ -562,6 +566,14 @@ features under a click, list their layers in `interactiveLayers`.
 `maxBounds` keeps the whole view inside a box: `[[west, south], [east, north]]` or `[west, south, east, north]`.
 When the box is smaller than the view, the map zooms in until the box fills the view. A box whose west edge is east
 of its east edge, such as `[[150, -50], [-120, 10]]`, crosses the antimeridian. `maxBounds` has no effect on a globe.
+
+## `renderWorldCopies`
+
+`renderWorldCopies: false` keeps the view inside -180 to 180 degrees of longitude, as `maxBounds` does with that box,
+and the map zooms in until the world fills the width of the view. No tiles of other copies of the world load, and
+markers and popups stay at the longitude that they were given. When `update` changes the field to `false`, the view
+moves inside at once. In `@map-jr/map-jr-gl/maplibre-compat`, `setRenderWorldCopies(false)` does not move the view, as
+in MapLibre GL JS: the next camera change keeps it inside.
 
 ## `cooperativeGestures`
 

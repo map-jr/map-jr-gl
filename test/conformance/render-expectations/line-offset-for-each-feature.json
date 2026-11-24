@@ -1,7 +1,0 @@
-{
-  "label": "line-offset for each feature",
-  "decision": "later",
-  "issue": 1701,
-  "reason": "line-offset that is different for each feature is not applied. Three of the five layers of line-dasharray/zero-length-gap have it.",
-  "pattern": "^line-offset/property-function$|^line-dasharray/zero-length-gap$"
-}
