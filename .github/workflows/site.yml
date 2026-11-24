@@ -68,12 +68,15 @@ jobs:
       # The system packages of the browsers (about 140 MB of .deb files) come from the Ubuntu mirror, which sometimes
       # sends them at about 80 kB/s; apt's network timeouts do not fire on a slow transfer, and the step ran into its
       # timeout (#1328). The .deb files and the browsers are cached, keyed on the runner image and the Playwright
-      # version, so a usual run downloads neither. Each attempt of apt runs under a `timeout` that runs as root and
-      # kills its whole process group (Playwright runs apt-get itself when it is root, with no sudo that would start a
+      # version (with the build of the image as the last part), so a usual run downloads neither. Each attempt of apt
+      # runs under a `timeout` that runs as root and kills its whole process group (Playwright runs apt-get itself when it is root, with no sudo that would start a
       # new session), so a stalled attempt ends and the next one finds no dpkg lock.
       - name: Name the cache of the browsers
         id: pw
-        run: echo "key=site-playwright-$ImageOS-$ImageVersion-$(node -p "require('./website/package.json').devDependencies.playwright")" >> "$GITHUB_OUTPUT"
+        run: |
+          prefix="site-playwright-$ImageOS-$(node -p "require('./website/package.json').devDependencies.playwright")-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion" >> "$GITHUB_OUTPUT"
       - name: Restore the browsers and their system packages
         id: pw-cache
         uses: actions/cache/restore@v6
@@ -82,6 +85,9 @@ jobs:
             ~/.cache/ms-playwright
             ~/apt-debs
           key: ${{ steps.pw.outputs.key }}
+          # Runners of one image run different builds of it (20261116.88.1 and 20261116.202.1 on 2026-11-24), so the
+          # cache of another build is used when the exact key misses.
+          restore-keys: ${{ steps.pw.outputs.prefix }}
       - name: Install Chromium and WebKit
         timeout-minutes: 19
         working-directory: website

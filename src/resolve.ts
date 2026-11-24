@@ -89,9 +89,9 @@ export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, So
  */
 export function parseFontName(name: string): {family: string; weight: number; style: 'normal' | 'italic'} {
     const n = name.toLowerCase();
-    const weight = /black|heavy/.test(n) ? 900 : /extra ?bold/.test(n) ? 800 : /semi ?bold|demi/.test(n) ? 600 : /bold/.test(n) ? 700 :
-        /medium/.test(n) ? 500 : /light/.test(n) ? 300 : 400;
-    const family = name.replace(/\b(thin|extra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim().replace(/["\\|]/g, '');
+    const weight = /black|heavy/.test(n) ? 900 : /(extra|ultra) ?bold/.test(n) ? 800 : /semi ?bold|demi/.test(n) ? 600 : /bold/.test(n) ? 700 :
+        /medium/.test(n) ? 500 : /thin|hairline/.test(n) ? 100 : /(extra|ultra) ?light/.test(n) ? 200 : /light/.test(n) ? 300 : 400;
+    const family = name.replace(/\b(thin|hairline|extra ?light|ultra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|ultra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim().replace(/["\\|]/g, '');
     return {family, weight, style: /italic|oblique/.test(n) ? 'italic' : 'normal'};
 }
 
@@ -122,6 +122,8 @@ export function fontKey(names: unknown): string {
 
 /** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
 const told = new WeakSet<object>();
+// Contour sources that were warned about for a missing `thresholds`, one time for each source object (#1229).
+const noThresholds = new WeakSet<object>();
 const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: WeakSet<object>; late?: () => void}>();
 /** Puts data that the map fetched itself (`setData` with a URL) in the place of the kept result of a source. */
 export function keep(raw: object, url: string, v: unknown) { fetched.set(raw, {url, p: Promise.resolve(v), v}); }
@@ -165,6 +167,15 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (!res.ok) throw httpError('style', url, res.status);
         base = url;
         style = await res.json();
+    }
+    // A source or a layer that is not an object is left out with a message, and the rest of the style is used (#653).
+    const isObject = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x);
+    const badSources = Object.keys(style.sources ?? {}).filter(sourceId => !isObject(style.sources[sourceId]));
+    const badLayers = Array.isArray(style.layers) ? style.layers.flatMap((l: unknown, index: number) => isObject(l) ? [] : [index]) : [];
+    if (badSources.length || badLayers.length) {
+        for (const sourceId of badSources) bad(new Error(`[map-jr-gl] The source "${sourceId}" is not an object. Give it an object with "type", or remove it from "sources".`));
+        for (const index of badLayers) bad(new Error(`[map-jr-gl] The layer at index ${index} of "layers" is not an object. Give it an object with "id" and "type", or remove it.`));
+        style = {...style, sources: Object.fromEntries(Object.entries(style.sources ?? {}).filter(([, s]) => isObject(s))), layers: style.layers.filter(isObject)};
     }
     // The sources are asked for at the same time: each TileJSON, GeoJSON file or archive header is a request of its own.
     const sources: Record<string, SourceInfo> = {}, raws = Object.entries<any>(style.sources ?? {});
@@ -232,13 +243,15 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     // (In the order of the style, whichever answer came first.)
     raws.forEach(([name], i) => { if (made[i]) sources[name] = made[i]!; });
     // Contour sources (an extension to the style specification) are resolved last: each needs its elevation source.
-    for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
+    for (const [sourceId, raw] of Object.entries<any>(style.sources ?? {})) {
         if (raw.type !== 'contour') continue;
         const dem = sources[raw.source];
-        if (!dem || dem.type !== 'raster-dem') { bad(new Error(`Contour source "${name}" needs "source" to name a raster-dem source`)); continue; }
+        if (!dem || dem.type !== 'raster-dem') { bad(new Error(`Contour source "${sourceId}" needs "source" to name a raster-dem source`)); continue; }
         const zooms = Object.keys(raw.thresholds ?? {}).map(Number);
-        sources[name] = {
-            type: 'contour', tiles: [`contour://${name}/{z}/{x}/{y}`], minzoom: Math.max(0, Math.min(...zooms, 24)), maxzoom: raw.maxzoom ?? 15, tileSize: 512, attribution: dem.attribution,
+        // (A style can come from the compat entry or a URL, so this is not a check of `src/mistakes.ts`.)
+        if (!zooms.length && !noThresholds.has(raw)) { noThresholds.add(raw); console.warn(`[map-jr-gl] The contour source "${sourceId}" has no "thresholds", so it draws no lines. Give it intervals for each zoom level, for example "thresholds": {"11": [200, 1000], "14": [50, 200]}.`); }
+        sources[sourceId] = {
+            type: 'contour', tiles: [`contour://${sourceId}/{z}/{x}/{y}`], minzoom: Math.max(0, Math.min(...zooms, 24)), maxzoom: raw.maxzoom ?? 15, tileSize: 512, attribution: dem.attribution,
             contour: {
                 tiles: dem.tiles, encoding: dem.encoding ?? 'mapbox', demMaxzoom: dem.maxzoom, demMinzoom: dem.minzoom, thresholds: raw.thresholds ?? {}, multiplier: raw.multiplier ?? 1,
                 overzoom: raw.overzoom ?? 1, contourLayer: raw.contourLayer ?? 'contours', elevationKey: raw.elevationKey ?? 'ele', levelKey: raw.levelKey ?? 'level',

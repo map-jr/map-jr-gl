@@ -153,7 +153,7 @@ For a position outside of [`maxBounds`](description.md#maxbounds), the map does 
 Creates a button that turns 3D terrain on and off.
 
 ```ts
-terrain(options?: TerrainOptions): ControlSpec
+terrain(options: TerrainOptions): ControlSpec
 ```
 
 A click turns on the terrain of `source` with `exaggeration`, or turns the terrain off. The description keeps its

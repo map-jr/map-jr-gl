@@ -8,7 +8,9 @@ writing); this brief has the steps.
 1. Read the issue: `gh api repos/map-jr/map-jr-gl/issues/N` (and `…/N/comments`), or `mcp__github__issue_read`
    where `gh` is missing. Start at the files and lines that your prompt names; do not survey the repository. Check
    that the fault is still on `origin/main`. If it is fixed, change nothing and report the commit.
-2. `git fetch origin main && git checkout -b <branch> origin/main && pnpm install --frozen-lockfile`.
+2. `git fetch origin main && git checkout -b <branch> origin/main && pnpm install --frozen-lockfile &&
+   pnpm install --frozen-lockfile --dir website`. The packages of `website/` take about 5 s, and without them
+   `pnpm test` fails in `comment-reflow.test.ts` and `pnpm test:consistency` checks less than CI does (#1296).
 3. Make the smallest change that resolves the issue, with a test that fails without it. Do the parts that your
    prompt names, and leave out a part that is large or needs the owner.
 4. Run the new test against the code without the fix, and give both results in the report:
@@ -50,6 +52,11 @@ writing); this brief has the steps.
 
 ## Rules
 
+- Put a new check of `test/interact.mjs` or `test/host.mjs` next to the checks of the same feature, not at the end of
+  a section. On 2026-11-24 three pull requests added their checks at the same line after "The checks below run with
+  RENDERER=main" and each one conflicted with the others.
+- Do not write "close", "closes", "fix" or "fixes" before an issue number in the body of a pull request unless that
+  pull request closes it: GitHub reads "does not close #N" as a closing keyword (#1602 was closed this way).
 - A fault that your own change causes is not a "Found" line: fix it in your pull request, with a check. (On
   2026-11-19 a change left the filter NEAREST on a texture that terrain shares, and reported it as found, #1071.)
 - Measure the size before the change on `origin/main` (`pnpm test:size` in the copy of `without-fix.mjs`, or in a

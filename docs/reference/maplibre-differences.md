@@ -421,7 +421,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `GeolocateControl`
 
 - MapLibre GL JS can track the position, shows a dot at it, and draws an accuracy circle.
-- **This library:** Without `trackUserLocation`, moves the map to the position once per click or `trigger()` call. With `trackUserLocation`, the button turns tracking on and off as in MapLibre GL JS: the map follows the position until it moves for another reason, and a click returns to the position. The button gets the classes `maplibregl-ctrl-geolocate-waiting`, `-active`, `-active-error`, `-background` and `-background-error`, and `showUserLocation` (default `true`) shows the element `maplibregl-user-location-dot` while tracking is on. The control fires `geolocate`, `error`, `outofmaxbounds`, `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and `userlocationlostfocus` on itself (`on`, `off`, `once`), and `geolocate` and `error` also on the map. A position outside `maxBounds` fires `outofmaxbounds` and does not move the map. The code of tracking loads on demand at the first click or `trigger()` call, so the first step of tracking happens once that file has loaded. The accuracy circle is not drawn: `showAccuracyCircle: true` warns once. `fitBoundsOptions` is not read; the map zooms to `zoom` (default 14).
+- **This library:** Without `trackUserLocation`, moves the map to the position once per click or `trigger()` call. With `trackUserLocation`, the button turns tracking on and off as in MapLibre GL JS: the map follows the position until it moves for another reason, and a click returns to the position. The button gets the classes `maplibregl-ctrl-geolocate-waiting`, `-active`, `-active-error`, `-background` and `-background-error`, and `showUserLocation` (default `true`) shows the element `maplibregl-user-location-dot` while tracking is on. The control fires `geolocate`, `error`, `outofmaxbounds`, `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and `userlocationlostfocus` on itself (`on`, `off`, `once`), and `geolocate` and `error` also on the map. A position outside `maxBounds` fires `outofmaxbounds` and does not move the map. The code of tracking loads on demand at the first click or `trigger()` call, so the first step of tracking happens once that file has loaded. The accuracy circle is not drawn: `showAccuracyCircle: true` warns once. The map zooms in to `zoom`, or without it to `fitBoundsOptions.maxZoom`, and the default is 14 (MapLibre GL JS fits the accuracy circle, up to `fitBoundsOptions.maxZoom`, default 15). The other members of `fitBoundsOptions` have no effect and warn once.
 
 ### Plugins
 
@@ -504,7 +504,7 @@ Layers that the server renderer does not draw:
 Other:
 
 - Projections other than `mercator`, `globe` and `vertical-perspective` (`addProjection`)
-- The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option is not read, and nothing warns: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
+- The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option has no effect and warns once: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it, so `setRTLTextPlugin` is accepted and does nothing. This is a decision and will stay.
 - The debug drawing of MapLibre GL JS: collision boxes, padding lines, tile borders and the overdraw view (`showCollisionBoxes`, `showPadding`, `showTileBoundaries`, `showOverdrawInspector`). This is a decision and will stay.
 
@@ -584,7 +584,7 @@ These types differ from MapLibre GL JS:
 | Type | In this library |
 |---|---|
 | `NavigationControlOptions` | It has no `visualizeRoll`. |
-| `GeolocateControlOptions` | It has `zoom` and no `fitBoundsOptions`. `showAccuracyCircle` has no effect. |
+| `GeolocateControlOptions` | It has `zoom`. Of `fitBoundsOptions`, only `maxZoom` is read. `showAccuracyCircle` has no effect. |
 | `FullscreenControlOptions` | `container` has no effect. |
 | `LogoControlOptions` | `compact` has no effect and writes one warning, because this library has no logo. |
 | `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |

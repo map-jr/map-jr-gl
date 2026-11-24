@@ -71,6 +71,8 @@ export type MapOptions = CoreMapOptions & {
     fadeDuration?: number;
     /** No effect: a drag with the right mouse button changes the bearing and the pitch. */
     pitchWithRotate?: boolean;
+    /** Only `true` (the default): labels of different sources always collide with each other. `false` warns once and has no effect. */
+    crossSourceCollisions?: boolean;
     /** The wheel zooms only with Ctrl (⌘ on a Mac), one finger scrolls the page, and a hint shows over the map, as in MapLibre GL JS. */
     cooperativeGestures?: boolean | object;
     /** The UI strings of the controls and of the hint of `cooperativeGestures`, with the keys of MapLibre GL JS (`'NavigationControl.ZoomIn'`). A key that is missing keeps the English text of this library. */
@@ -231,8 +233,8 @@ type OptionsOf<C extends abstract new (...args: any) => unknown> = NonNullable<C
 export type NavigationControlOptions = OptionsOf<typeof NavigationControl>;
 /**
  * The options of `new GeolocateControl(options)`. `showAccuracyCircle` has no effect: the control shows a dot without
- * the circle. `zoom` is the lowest zoom that the map takes at the position (default 14). MapLibre GL JS has
- * `fitBoundsOptions` for that, which this library does not accept.
+ * the circle. `zoom` is the lowest zoom that the map takes at the position. Without `zoom`, `fitBoundsOptions.maxZoom`
+ * sets it, and the default is 14. The other members of `fitBoundsOptions` have no effect and warn once.
  */
 export type GeolocateControlOptions = OptionsOf<typeof GeolocateControl>;
 /** The options of `new FullscreenControl(options)`. `container` has no effect: the container of the map goes fullscreen. */
