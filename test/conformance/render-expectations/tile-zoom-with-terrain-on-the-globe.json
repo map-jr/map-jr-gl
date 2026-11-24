@@ -1,0 +1,7 @@
+{
+  "label": "tile zoom with terrain on the globe",
+  "decision": "later",
+  "issue": 1828,
+  "reason": "With terrain on the globe, a vector source uses tiles of a lower zoom than in MapLibre GL JS.",
+  "pattern": "^projection/globe/terrain/fill-seams/checkerboard$"
+}

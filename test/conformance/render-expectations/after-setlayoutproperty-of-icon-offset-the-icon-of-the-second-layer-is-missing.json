@@ -1,0 +1,7 @@
+{
+  "label": "after setLayoutProperty of icon-offset, the icon of the second layer is missing",
+  "decision": "later",
+  "issue": 1814,
+  "reason": "After setLayoutProperty of icon-offset, the icon of the second layer is missing.",
+  "pattern": "^(regressions/mapbox-gl-native#7572)$"
+}

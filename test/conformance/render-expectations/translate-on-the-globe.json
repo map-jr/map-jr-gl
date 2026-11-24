@@ -1,0 +1,7 @@
+{
+  "label": "*-translate on the globe",
+  "decision": "later",
+  "issue": 1822,
+  "reason": "fill-translate, line-translate, fill-extrusion-translate, icon-translate and text-translate are not applied on the globe, with either anchor.",
+  "pattern": "^projection/globe/(terrain/)?(collision-text-pitched-rotated|collision-icon-text-translate-map|collision-text-point-pole-to-pole|(fill|line|fill-extrusion)-translate|icon-text-translate-(map|viewport)|text-pitched-rotated|text-point-pole-to-pole)$"
+}

@@ -1,0 +1,9 @@
+{
+  "label": "MapLibre miter overflow",
+  "decision": "wontfix",
+  "issue": 1069,
+  "reason": "MapLibre GL JS stores the extrusion of a miter longer than 127/63 in a Uint8 (line_bucket.ts addCurrentVertex), so it wraps and the joins show notches. The library draws the full miter.",
+  "tests": [
+    "line-miter-limit/global-state"
+  ]
+}

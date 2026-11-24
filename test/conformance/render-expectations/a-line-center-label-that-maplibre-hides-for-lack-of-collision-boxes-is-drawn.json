@@ -1,0 +1,7 @@
+{
+  "label": "a line-center label that MapLibre hides for lack of collision boxes is drawn",
+  "decision": "later",
+  "issue": 1813,
+  "reason": "A line-center label that MapLibre hides for lack of collision boxes is drawn.",
+  "pattern": "^(regressions/mapbox-gl-js#6919)$"
+}
