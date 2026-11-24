@@ -230,8 +230,8 @@ map.on('moveend', () => console.log(map.getZoom()));
 
 The production build does not validate the style. The development build (the `development` export condition) fires
 `error` with the text of MapLibre GL JS for a missing required field of a layer or a source, for a paint or layout
-value of the wrong type, and for an unknown paint or layout property; the map option `validate: false` turns off the
-check of the required fields and of the values. Neither build checks the types of expressions.
+value or an expression of the wrong type, and for an unknown paint or layout property; the map option `validate: false`
+turns off the check of the required fields, of the values and of the expressions.
 
 > [!WARNING]
 > A mistake in the style that MapLibre GL JS reports with an `error` event, such as a value of the wrong type, fires no

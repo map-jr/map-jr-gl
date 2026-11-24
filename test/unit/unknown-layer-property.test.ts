@@ -43,7 +43,10 @@ test('the compat entry reports the error text of MapLibre GL JS once for each la
     const errors: string[] = [], reported = new Set<string>();
     zoomCurveErrors(style, reported, e => errors.push(e.message));
     zoomCurveErrors(style, reported, e => errors.push(e.message));
-    assert.equal(errors.length, 3, JSON.stringify(errors));
+    // (The first is the type check of expressions of #1748: "line-gradient" takes no data expression in MapLibre GL JS.)
+    assert.equal(errors.length, 4, JSON.stringify(errors));
+    assert.ok(errors[0].startsWith('[map-jr-gl] layers[1].paint.line-gradient: data expressions not supported.'), errors[0]);
+    errors.shift();
     assert.equal(errors[0], '[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "circle-color".');
     assert.ok(errors[2].startsWith('[map-jr-gl] layers.l.layout.lineCap: unknown property "lineCap".'), errors[2]);
 });
