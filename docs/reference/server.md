@@ -19,7 +19,7 @@ const {svg, tiles, attribution} = await renderToSVG({
 ## `renderToSVG`
 
 ```ts
-renderToSVG(options: RenderOptions): Promise<RenderResult>
+renderToSVG(options: RenderOptions & RenderView): Promise<RenderResult>
 ```
 
 Draws the view that `options` describes. The renderer loads the style, its TileJSON files, the tiles of the view
@@ -41,14 +41,18 @@ and the sprite.
 
 ## `RenderOptions`
 
+The options need a view (the type `RenderView`). Give either `center` and `zoom`, or `bounds`. With `bounds`, the
+renderer fits the box into the view, and `center` and `zoom` can be left out because they have no effect. Options
+with neither `bounds` nor both `center` and `zoom` do not compile.
+
 <!-- ref:RenderOptions:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
 | [`style`](#style) **required** | `unknown` | | The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as `style` of `MapDescription`. |
 | `colorScheme` | `'auto' \| 'light' \| 'dark'` | | The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. |
 | `globalState` | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. |
-| `center` **required** | `LngLatLike` | | The center of the view, `[lng, lat]`. |
-| `zoom` **required** | `number` | | The zoom level of the view. |
+| `center` | `LngLatLike` | | The center of the view, `[lng, lat]`. |
+| `zoom` | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
@@ -220,7 +224,7 @@ height: 100%`. A map of `@map-jr/map-jr-gl` or of `@map-jr/map-jr-gl/maplibre-co
 ## `renderFirstView`
 
 ```ts
-renderFirstView(options: FirstViewOptions): Promise<string>
+renderFirstView(options: FirstViewOptions & RenderView): Promise<string>
 ```
 
 Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
@@ -312,7 +316,7 @@ the first view, and the console of the server has the error.
 ## `renderToImage`
 
 ```ts
-renderToImage(options: ImageOptions): Promise<ImageResult>
+renderToImage(options: ImageOptions & RenderView): Promise<ImageResult>
 ```
 
 Draws the view as a JPEG, WebP or PNG image with `rasteriser`. It always embeds raster tiles and the icon sheet,
