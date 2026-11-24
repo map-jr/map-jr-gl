@@ -28,3 +28,12 @@ test('GeoJSON tolerance: the style option reaches the source', async () => {
     const style = await resolveStyle({version: 8, sources: {g: {type: 'geojson', data: line, tolerance: 1}}, layers: []} as any);
     assert.equal((style.sources.g as any).options?.tolerance, 1);
 });
+
+test('GeoJSON tolerance: a tile at the maxzoom of the source keeps every vertex', () => {
+    // The middle vertex is 0.2 pixels off the line at z14, 13 pixels at z20 when the z14 tile is overzoomed.
+    const dy = 0.2 / 512 / 2 ** 14 * 360, n = 2 ** 14;
+    const s = prepareSource({type: 'LineString', coordinates: [[0.001, 0.001], [0.002, 0.001 + dy], [0.003, 0.001]]}, {}, 14);
+    const c: number[] = [];
+    for (const f of Object.values(sliceGeoJSON(s, 14, Math.floor(180.002 / 360 * n), n / 2 - 1))[0].features) f.geometry(4096, c, []);
+    assert.equal(c.length / 2, 3);
+});

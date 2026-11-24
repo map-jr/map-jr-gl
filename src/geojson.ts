@@ -136,7 +136,7 @@ export class ClusterIndex {
 }
 
 /** Features and, with `cluster`, the cluster index of a GeoJSON source. */
-export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[]; /** In tile units. */ buffer?: number; /** In pixels of a tile 512 pixels wide. */ tolerance?: number }
+export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[]; /** In tile units. */ buffer?: number; /** In pixels of a tile 512 pixels wide. */ tolerance?: number; /** No simplification at and above this zoom. */ maxzoom?: number }
 export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZoom = 18): PreparedSource {
     let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : o.promoteId?._geojsonTileLayer, o.generateId);
     const keep = o.filter ? compileFilter(o.filter) : null;
@@ -146,10 +146,10 @@ export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZo
     // (Without `tolerance`, 0.375 as in MapLibre GL JS; 0 does not simplify.)
     const tolerance = typeof o.tolerance === 'number' && o.tolerance >= 0 ? o.tolerance : 0.375;
     if (tolerance) for (const f of all) if (f.type !== 1) f.keep = f.rings.map(importance);
-    if (!o.cluster) return {features: all, buffer, tolerance};
+    if (!o.cluster) return {features: all, buffer, tolerance, maxzoom: sourceMaxZoom};
     // Clusters are made of single points. Other features stay as they are.
     const points = all.filter(f => f.type === 1 && f.rings.length === 1), rest = all.filter(f => !(f.type === 1 && f.rings.length === 1));
-    return {features: rest, points, clusters: new ClusterIndex(points, o, sourceMaxZoom), buffer, tolerance};
+    return {features: rest, points, clusters: new ClusterIndex(points, o, sourceMaxZoom), buffer, tolerance, maxzoom: sourceMaxZoom};
 }
 
 /**
@@ -272,7 +272,8 @@ function clipLine(pts: number[], lo: number, hi: number, ranges?: number[]): num
 /** The features of one tile, clipped and in tile units. */
 export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: number, y: number, metrics = false): Record<string, {features: SlicedFeature[]}> {
     const src: PreparedSource = Array.isArray(source) ? {features: source} : source, BUFFER = src.buffer ?? DEFAULT_BUFFER;
-    const sqTol = ((src.tolerance ?? 0) / 512 / 2 ** z) ** 2;
+    // (As in geojson-vt, a tile at the maxzoom of the source keeps every vertex, because it is drawn overzoomed.)
+    const sqTol = z >= (src.maxzoom ?? Infinity) ? 0 : ((src.tolerance ?? 0) / 512 / 2 ** z) ** 2;
     const features = src.clusters ? [...src.features, ...(src.clusters.at(z) ?? src.points!)] : src.features;
     const n = 2 ** z, pad = BUFFER / EXTENT / n, x0 = x / n - pad, y0 = y / n - pad, x1 = (x + 1) / n + pad, y1 = (y + 1) / n + pad;
     const out: SlicedFeature[] = [];
