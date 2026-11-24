@@ -4179,6 +4179,8 @@ for (const status of [404, 403, 503]) {
 // (#686). Two pages run at the same time, so that the check waits for 15 s once.
 // - On the first, every request of the tile at the center fails, so its overview stands in for it, and the first four
 //   requests of that overview fail. The fifth request of the overview is answered.
+//   The first `idle` comes after the fourth request of the overview, because `idle` waits for the overview between
+//   its first retries (#1644).
 // - On the second, every tile request fails (a server that is down). A background request does not make the map leave
 //   `idle` and its failure fires no `error`: from the first background request until 1 s after each tile that has one
 //   has failed it, the map fires neither, and the map is idle at the end.
@@ -4187,7 +4189,7 @@ for (const status of [404, 403, 503]) {
     try {
         const z = 13, x = tileOf(from[0], z), y = Math.floor((1 - Math.log(Math.tan(Math.PI / 4 + from[1] * Math.PI / 360)) / Math.PI) / 2 * 2 ** z);
         const bad = `/${z}/${x}/${y}.pbf`, over = `/${z - 3}/${x >> 3}/${y >> 3}.pbf`;
-        let overTries = 0, answered = 0;
+        let overTries = 0, answered = 0, fourthAt = 0;
         const tries = new Map(), failed = new Map();
         let background = 0;
         const start = async (route, onPage) => {
@@ -4208,7 +4210,7 @@ for (const status of [404, 403, 503]) {
             start(async route => {
                 const k = new URL(route.request().url()).pathname;
                 if (k.endsWith(bad)) return route.abort('connectionreset');
-                if (k.endsWith(over) && ++overTries <= 4) return route.abort('connectionreset');
+                if (k.endsWith(over) && ++overTries <= 4) { if (overTries === 4) fourthAt = Date.now(); return route.abort('connectionreset'); }
                 await route.continue().catch(() => {});
                 if (k.endsWith(over)) answered = Date.now();
             }),
@@ -4224,6 +4226,8 @@ for (const status of [404, 403, 503]) {
         for (const end = Date.now() + 60000; (!answered || !failed.size || failed.size < [...tries.values()].filter(n => n >= 5).length) && Date.now() < end;) await pages[0].waitForTimeout(250);
         await pages[1].waitForTimeout(1000);
         check('an overview tile that failed four times is requested again later and answered', idleOne && overTries === 5 && answered > 0, JSON.stringify({idleOne, overTries, answered: answered > 0}));
+        const firstIdle = (await pages[0].evaluate(() => window.seen)).find(([type]) => type === 'idle')?.[1] ?? 0;
+        check('the first idle of a map whose overview tile stands in comes after the fourth request of the overview', fourthAt > 0 && firstIdle >= fourthAt, JSON.stringify({fourthAt: fourthAt > 0, idleAfter: firstIdle && fourthAt && firstIdle - fourthAt}));
         const {seen, idle} = await pages[1].evaluate(() => ({seen: window.seen, idle: window.host.state.get().idle}));
         const after = seen.filter(([, t]) => background && t >= background);
         check('a background request of a tile on a server that is down fires neither `idle` nor `error`, and the map stays idle', idleDown && background > 0 && failed.size > 0 && !after.length && idle, JSON.stringify({idleDown, background: background > 0, failed: failed.size, after, idle}));
