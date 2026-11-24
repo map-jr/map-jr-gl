@@ -46,6 +46,7 @@ and the sprite.
 |---|---|---|---|
 | [`style`](#style) **required** | `unknown` | | The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as `style` of `MapDescription`. |
 | `colorScheme` | `'auto' \| 'light' \| 'dark'` | | The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. |
+| `globalState` | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. |
 | `center` **required** | `LngLatLike` | | The center of the view, `[lng, lat]`. |
 | `zoom` **required** | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
@@ -284,7 +285,7 @@ Returns the markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element`, wit
 The element has an attribute for each field of the description that has one. The page sets each other field, such
 as `layers`, `data` or a style object, as a property of the element, with the same value. The render uses `style`,
 the view of `view` or `initialView`, `sources`, `layers`, `terrain`, `sprite`, `data`, `images`, `fontFamily`,
-`colorScheme`, `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection` and `attribution` of the description,
+`colorScheme`, `globalState`, `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection` and `attribution` of the description,
 so the first view has its controls (see [`renderFirstView`](#renderfirstview)).
 
 **Returns** a promise of the markup as a string. When the render fails, the promise resolves to the element without
@@ -391,6 +392,7 @@ the first view, writes the error to the console of the server, and emits it as `
 | `maxBytes` | `number` | `0` | The largest body of one response in bytes, after decompression, as `maxBytes` of `renderToSVG`. |
 | `allowHosts` | `string[]` | | The host names that the render can request, as `allowHosts` of `renderToSVG`. |
 | `tileZoomOffset` | `number` | `0` | The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. |
+| `label` | `string` | the text `Map.Title` of the prop `locale`, as the canvas of the map has it, else `'Map'` | The `aria-label` of the SVG, as `label` of `renderToSVG`. |
 <!-- ref:MapJrSSROptions:end -->
 
 The prop `:attribution="false"` overrides `attribution` and shows none.

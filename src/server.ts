@@ -27,6 +27,13 @@ export interface RenderOptions {
     style: unknown;
     /** The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. */
     colorScheme?: 'auto' | 'light' | 'dark';
+    /**
+     * Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. A value here
+     * overrides the default in `state` of the style; a name that is left out or set to `null` uses the default. Unless
+     * `globalState` sets it, the global state `color-scheme` is the scheme, as in the map. The server has no browser, so
+     * `'auto'` and no value are `'light'` here, while the map follows `prefers-color-scheme` for `'auto'`.
+     */
+    globalState?: Record<string, unknown> | null;
     /** The center of the view, `[lng, lat]`. `bounds` overrides it. */
     center: LngLatLike;
     /** The zoom level of the view. `bounds` overrides it. */
@@ -240,7 +247,11 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     style.layers = over === false ? style.layers.map(l => l.metadata?.[SSR_KEY] ? {...l, metadata: {...l.metadata, [SSR_KEY]: undefined}} : l)
         : applySSROverrides(over ? style.layers.map(l => over[l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...over[l.id]}}} : l) : style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
-    compileFor({g: style.state ?? {}, f: {}});
+    // The description's global state over the style's defaults, and the color scheme as `color-scheme`, as the map sets them (#1426).
+    const state: Record<string, unknown> = {...style.state};
+    state['color-scheme'] = o.colorScheme === 'dark' ? 'dark' : 'light';
+    for (const [k, v] of Object.entries(o.globalState ?? {})) if (v != null) state[k] = v;
+    compileFor({g: state, f: {}});
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
@@ -248,7 +259,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     else tr.set(o.center, o.zoom, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
-    builder.setStyle(style.layers, style.state);
+    builder.setStyle(style.layers, state);
     // The images of `images` that are SVG documents: the SVG and the size, and for a template its slots.
     // (The images of the style come first, and an image of `images` with the same name takes the place of one (#495).)
     const defined = Object.entries({...styleImages(given, message => console.warn(message)), ...o.images}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const);
@@ -405,7 +416,7 @@ export async function renderFirstView(o: FirstViewOptions): Promise<string> {
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800
@@ -453,7 +464,7 @@ export async function renderElement(description: MapDescription, options: Elemen
         const fit = !d.view && d.initialView?.bounds;
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
             width, height, images: d.images as RenderOptions['images'], sources: d.sources, layers: d.layers as RenderOptions['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
-            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light',
+            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
             controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, label: rest.label ?? d.locale?.['Map.Title'], nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
             attributionOptions: d.attribution === false ? undefined : d.attribution as {compact?: boolean; customAttribution?: string | string[]} | undefined});
     } catch (cause) {

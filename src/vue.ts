@@ -245,6 +245,11 @@ export interface MapJrSSROptions {
     allowHosts?: string[];
     /** The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. @default 0 */
     tileZoomOffset?: number;
+    /**
+     * The `aria-label` of the SVG, as `label` of `renderToSVG`. Say what the map shows, for example "Map of the hotels in Bern".
+     * @default the text `Map.Title` of the prop `locale`, as the canvas of the map has it, else `'Map'`
+     */
+    label?: string;
 }
 
 /**
@@ -475,7 +480,7 @@ const MapJrComponent = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) as LngLatBoundsInput : undefined, padding: props.initialView?.fitPadding, width: o.width ?? 800, height: o.height ?? 500,
-                images: props.images ? toRaw(props.images) as Record<string, string> : undefined, overrides: o.overrides, sources: toRaw(props.sources) ?? undefined, layers: toRaw(props.layers) ?? undefined, terrain: toRaw(props.terrain), sprite: props.sprite ? toRaw(props.sprite) : undefined, data: props.data ? toRaw(props.data) : undefined, timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, tileZoomOffset: o.tileZoomOffset, attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light',
+                images: props.images ? toRaw(props.images) as Record<string, string> : undefined, overrides: o.overrides, sources: toRaw(props.sources) ?? undefined, layers: toRaw(props.layers) ?? undefined, terrain: toRaw(props.terrain), sprite: props.sprite ? toRaw(props.sprite) : undefined, data: props.data ? toRaw(props.data) : undefined, timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, tileZoomOffset: o.tileZoomOffset, fontFamily: props.fontFamily ?? undefined, label: o.label ?? props.locale?.['Map.Title'], attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light',
                 controls: controls.value ?? [], locale: props.locale && toRaw(props.locale), nonce: props.nonce, minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection && toRaw(props.projection),
                 attributionOptions: typeof props.attribution === 'object' ? toRaw(props.attribution) : undefined});
             } catch (cause) {

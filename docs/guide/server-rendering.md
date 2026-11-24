@@ -162,7 +162,7 @@ The adapter for Svelte has no server rendering. Put the HTML of `renderFirstView
 Two things go wrong most often:
 
 - The server and the map have different styles or views. The page then shows one map and replaces it with
-  another. Pass the server the same `style`, `sources`, `layers`, `data`, `images` and `colorScheme` as the map. Pass
+  another. Pass the server the same `style`, `sources`, `layers`, `data`, `images`, `colorScheme` and `globalState` as the map. Pass
   `center`, `zoom` and `bearing` of `initialView` as options of the same names, and its `bounds` and `fitPadding` as `bounds` and `padding`. The
   Vue component and `renderElement` pass all of them themselves.
 - The element of the map has no `position`. The SVG is positioned at `inset: 0`, so the element needs
