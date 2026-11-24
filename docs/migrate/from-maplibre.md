@@ -116,7 +116,7 @@ that this page lists. The page is written for an application that uses MapLibre 
 | `map.querySourceFeatures(...)` | `await map.querySourceFeatures(...)` | The arguments and the features are the same. |
 | `map.getCanvas().toDataURL()` with `preserveDrawingBuffer` | `await map.toBlob()` | See [Read the canvas with `toBlob`](#read-the-canvas-with-toblob). |
 | `map.addImage(name, image)` | `map.addImage(name, image)` | It also accepts an SVG document or a URL as the image, and returns a promise that resolves when the image is loaded. |
-| `maxPitch` up to 180 | `maxPitch` up to 90 | A higher value is limited to 90. The default is 60 in both. |
+| `maxPitch` up to 180 | `maxPitch` up to 180 | A higher value is limited to 180 and warns, where MapLibre GL JS throws. Above 90, `setCenterElevation` keeps the camera above the ground. |
 | `setRoll`, `setVerticalFieldOfView` | None | Accepted with no effect. |
 | The `pmtiles` protocol of the PMTiles library | None | A source URL that starts with `pmtiles://` works with no plugin. |
 | `setRTLTextPlugin(...)` | None | Accepted with no effect. The browser shapes right-to-left text. |
@@ -230,8 +230,8 @@ map.on('moveend', () => console.log(map.getZoom()));
 
 The production build does not validate the style. The development build (the `development` export condition) fires
 `error` with the text of MapLibre GL JS for a missing required field of a layer or a source, for a paint or layout
-value of the wrong type, and for an unknown paint or layout property; the map option `validate: false` turns off the
-check of the required fields and of the values. Neither build checks the types of expressions.
+value or an expression of the wrong type, and for an unknown paint or layout property; the map option `validate: false`
+turns off the check of the required fields, of the values and of the expressions.
 
 > [!WARNING]
 > A mistake in the style that MapLibre GL JS reports with an `error` event, such as a value of the wrong type, fires no

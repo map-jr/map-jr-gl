@@ -12,7 +12,7 @@
  */
 export const ATTRIBUTES = {
     style: 's', center: 'c', zoom: 'n', bearing: 'n', pitch: 'n', colorScheme: 's', cursor: 's', renderer: 's', fontFamily: 's',
-    minZoom: 'n', maxZoom: 'n', maxPitch: 'n', padding: 'n', interactiveLayers: 'l', projection: 'p', hoverState: 'b', cooperativeGestures: 'b', hash: 'h',
+    minZoom: 'n', maxZoom: 'n', maxPitch: 'n', centerElevation: 'n', padding: 'n', interactiveLayers: 'l', projection: 'p', hoverState: 'b', cooperativeGestures: 'b', hash: 'h',
     interactive: 'o', antialias: 'b', attribution: 'o', attributionCompact: 'b',
 } as const;
 export type AttributeKind = typeof ATTRIBUTES[keyof typeof ATTRIBUTES];

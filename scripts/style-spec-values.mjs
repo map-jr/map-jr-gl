@@ -20,15 +20,31 @@ const code = v => {
         : v.type === 'array' ? (v.value === 'number' ? 'a' + (v.length ?? '') : v.value === 'string' ? 's' : v.value === 'enum' ? 'E' + enumOf(v) : '') : '';
     return c && (v.expression ? '' : '!') + c;
 };
+/** The code of the type that an expression of a property must have, as MapLibre's `getExpectedType` gives it: n
+ * (number), S (string), e (an enum, a string), b, c (color), f (formatted), i (resolvedImage), p (padding), N
+ * (numberArray), C (colorArray), v (variableAnchorOffsetCollection), P (projectionDefinition), or A<item><length> (an
+ * array; the item is n, S, b or V for value). Then a space and the flags: d (data expressions), z (zoom expressions),
+ * i (interpolate), or - for none. The fixtures of test/conformance/expressions.mjs use it for their propertySpec. */
+export const expressionCode = v => {
+    const t = {number: 'n', string: 'S', enum: 'e', boolean: 'b', color: 'c', formatted: 'f', resolvedImage: 'i', padding: 'p', numberArray: 'N', colorArray: 'C',
+        variableAnchorOffsetCollection: 'v', projectionDefinition: 'P'};
+    const type = v.type === 'array' ? 'A' + ({number: 'n', string: 'S', enum: 'S', boolean: 'b'}[v.value] ?? 'V') + (v.length ?? '') : t[v.type] ?? '';
+    const flags = (['data-driven', 'cross-faded-data-driven'].includes(v['property-type']) ? 'd' : '') + (v.expression?.parameters?.includes('zoom') ? 'z' : '') + (v.expression?.interpolated ? 'i' : '');
+    return type && `${type} ${flags || '-'}`;
+};
 export function source() {
     const types = Object.keys(spec.layer.type.values);
     const group = g => types.flatMap(t => Object.entries(spec[`${g}_${t}`] ?? {}).map(([k, v]) => code(v) && `${t} ${k} ${code(v)}`).filter(Boolean)).join('|');
+    const expressions = g => types.flatMap(t => Object.entries(spec[`${g}_${t}`] ?? {}).filter(([, v]) => v.expression && expressionCode(v)).map(([k, v]) => `${t} ${k} ${expressionCode(v)}`)).join('|');
     return `// Written by scripts/style-spec-values.mjs from the style specification ${spec.$version} of @maplibre/maplibre-gl-style-spec. Do not edit.
 // Each entry is "<layer type> <property> <code>"; the script says what the codes mean. (Development build only, #1748.)
 export const layerTypes = ${JSON.stringify(types.join(' '))};
 export const operators = ${JSON.stringify(Object.keys(spec.expression_name.values).join(' '))};
 export const paintValues = ${JSON.stringify(group('paint'))};
 export const layoutValues = ${JSON.stringify(group('layout'))};
+// The type and the flags of each property that takes an expression ("<layer type> <property> <type> <flags>").
+export const paintExpressions = ${JSON.stringify(expressions('paint'))};
+export const layoutExpressions = ${JSON.stringify(expressions('layout'))};
 `;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) writeFileSync(new URL('../src/style-spec-values.ts', import.meta.url), source());

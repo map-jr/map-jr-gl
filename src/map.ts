@@ -62,7 +62,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
     minZoom?: number;
     maxZoom?: number;
-    /** Largest camera tilt allowed, in degrees. The default is 60, and the limit is 90. */
+    /** Largest camera tilt allowed, in degrees. The default is 60, and the limit is 180. Above 90 the camera looks up, and it sees the sky only when the map center has a height (`setCenterElevation`) that puts the camera above the ground. */
     maxPitch?: number;
     /** Data credits are shown by default; pass false to add your own, or options for the built-in control. */
     attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
@@ -1170,16 +1170,34 @@ export class Map {
     setMaxZoom(z?: number | null) { this.tr.maxZoom = z ?? 22; return this.limits(); }
     declare private pitchWarned?: boolean;
     /**
-     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
+     * Sets the largest pitch that the user can reach, in degrees. A value above 180 is limited to 180 and warns once.
+     * Above 90 the camera looks up. While the map center is on the ground, the camera is then below the ground and sees
+     * the map from below; give the center a height with `setCenterElevation` to keep the camera above the ground.
      * @param p The pitch. `undefined` or `null` restores the default, 60.
      */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
     private pitchCap(p?: number | null) {
         p ??= 60;
-        // MapLibre GL JS allows up to 180, where the camera looks up and needs its own elevation (not here yet).
-        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
+        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
+    declare private centreHeld?: boolean;
+    /**
+     * Gives the map center a height of its own, in meters above sea level, or puts it back on the ground with `null` (the
+     * default). The camera keeps its distance and its pitch from the center, so with a center high above the ground a
+     * pitch above 90 looks up at the sky from above the ground. While the center has a height, it does not follow 3D terrain.
+     * @param meters The height in meters, or `null` for the ground (3D terrain, or sea level without it).
+     */
+    setCenterElevation(meters: number | null) {
+        if (meters !== null && !Number.isFinite(meters)) { console.warn(`[map-jr-gl] setCenterElevation(${meters}): the height is not a number. Pass a number of meters, or null to put the center on the ground.`); return this; }
+        this.centreHeld = meters !== null;
+        if (meters !== null || !this.tr.heightAt) this.tr.elevation = meters ?? 0;
+        this.post({type: 'jump', elevation: meters});
+        this.jumped = this.seq;
+        return this;
+    }
+    /** Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there, multiplied by the exaggeration of 3D terrain (0 without 3D terrain). */
+    getCenterElevation() { return this.tr.elevation; }
     /** Returns the largest pitch that the user can reach, in degrees. */
     getMaxPitch() { return this.tr.maxPitch; }
     /** Returns the smallest pitch that the user can reach, in degrees. */
@@ -1459,7 +1477,7 @@ export class Map {
     /** Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). */
     setTerrain(terrain: {source: string; exaggeration?: number} | null) {
         // (Without terrain the positions on this thread are flat at once, before the engine answers.)
-        if (!terrain) { this.tr.heightAt = undefined; this.tr.elevation = 0; }
+        if (!terrain) { this.tr.heightAt = undefined; if (!this.centreHeld) this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
     /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */

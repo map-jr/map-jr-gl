@@ -216,12 +216,27 @@ export class Map extends CoreMap {
         tr.setLocationAt(lng, lat, px, py);
         return {center: new LngLat(tr.lng, tr.lat), zoom: tr.zoom};
     }
-    /** Has no effect: the map center is always on the ground. */
-    setCenterClampedToGround(clamped?: boolean) { return this.unsupported('setCenterClampedToGround(false)', clamped !== false); }
-    /** Returns `true`: the map center is always on the ground. */
-    getCenterClampedToGround() { return true; }
-    /** Has no effect: the map center is always on the ground. */
-    setCenterElevation(elevation?: number) { return this.unsupported('setCenterElevation', !elevation); }
+    declare private unclamped?: boolean;
+    /**
+     * With `false`, the map center keeps its height (`setCenterElevation`) instead of following the ground, as in MapLibre
+     * GL JS. With `true` (the default), the center goes back onto the ground.
+     */
+    setCenterClampedToGround(clamped: boolean) {
+        if (!clamped === !!this.unclamped) return;
+        this.unclamped = !clamped;
+        super.setCenterElevation(clamped ? null : this.tr.elevation);
+    }
+    /** Returns whether the map center follows the ground, `true` unless `setCenterClampedToGround(false)` was called. */
+    getCenterClampedToGround() { return !this.unclamped; }
+    /**
+     * Sets the height of the map center in meters, as in MapLibre GL JS. It lasts only after `setCenterClampedToGround(false)`:
+     * while the center is clamped to the ground, the ground height replaces it in the next frame, and the call warns once.
+     */
+    setCenterElevation(elevation: number, eventData?: EventData) {
+        if (this.unclamped) return this.camera(eventData, () => super.setCenterElevation(+elevation));
+        if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
+        return this;
+    }
     /** Has no effect. */
     setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
     /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
@@ -385,6 +400,8 @@ export class Map extends CoreMap {
         if (typeof o.style === 'string') this.styleUrl = o.style;
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         if (o.cooperativeGestures) this.cooperativeGestures.enable();
+        if (o.centerClampedToGround === false) this.setCenterClampedToGround(false);
+        if (o.elevation != null) this.setCenterElevation(o.elevation);
         if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
         if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
         else this.uiLocale = o.locale;
@@ -646,8 +663,6 @@ export class Map extends CoreMap {
     getRenderWorldCopies() { return true; }
     /** Returns 0: the camera has no roll. */
     getRoll() { return 0; }
-    /** Returns the elevation of the ground at the map center in meters, multiplied by the exaggeration of the terrain, or 0 without 3D terrain. */
-    getCenterElevation() { return this.tr.elevation; }
     /** Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. */
     getCameraTargetElevation() { return this.tr.elevation; }
     /** Whether the zoom level changes now, by the user or by a camera method. */

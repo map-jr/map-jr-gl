@@ -1047,22 +1047,25 @@ for (const renderer of renderers) {
             out.removed = ['cursor' in host.description, 'maxZoom' in host.description, host.description.minZoom, host._map.getMaxZoom(), el.querySelector('canvas').style.cursor];
             try { host.patch({style: undefined}); out.style = 'no error'; } catch (e) { out.style = e.message; }
             out.styleKept = host.description.style === t.style;
-            // A maxPitch above 90 warns once per map, and null gives the default 60 (#886).
+            // A maxPitch above 180 warns once per map, and null gives the default 60 (#886, #897).
             const warn = console.warn; let warned = 0; console.warn = (...a) => { if (String(a[0]).includes('maxPitch')) warned++; else warn(...a); };
-            host._map.setMaxPitch(120); host._map.setMaxPitch(150); out.pitch = [host._map.getMaxPitch(), warned];
+            host._map.setMaxPitch(200); host._map.setMaxPitch(250); out.pitch = [host._map.getMaxPitch(), warned];
             host._map.setMaxPitch(null); out.pitch.push(host._map.getMaxPitch()); console.warn = warn;
+            // centerElevation gives the map center a height, and null puts it back on the ground (#897).
+            host.patch({centerElevation: 10000}); await new Promise(r => setTimeout(r, 300)); out.elevation = [host._map.getCenterElevation()];
+            host.patch({centerElevation: null}); await new Promise(r => setTimeout(r, 300)); out.elevation.push(host._map.getCenterElevation());
             host.destroy(); el.remove();
             return out;
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] patch keeps the other fields, undefined removes a field, and description is the last description`,
-            JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true, pitch: [90, 1, 60]}), JSON.stringify(patched));
+            JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true, pitch: [180, 1, 60], elevation: [10000, 0]}), JSON.stringify(patched));
 
         // 3b4. `null` in an optional field means "not set" (#1146): a description from JSON with `null` in every optional
         // field except `terrain` draws the same map as one without those keys, in createMap and in update, and warns nothing.
         const nulls = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
             const idle = async host => { await wait(100); for (let i = 0; i < 200 && !host.state.get().idle; i++) await wait(50); };
-            const fields = ['fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'sources', 'layers', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale'];
+            const fields = ['fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'sources', 'layers', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale'];
             const plain = {style: t.style, renderer};
             const withNulls = JSON.parse(JSON.stringify({...plain, ...Object.fromEntries(fields.map(k => [k, null]))}));
             const warned = [], warn = console.warn, error = console.error;

@@ -16,7 +16,11 @@ import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
 import {imagePixels} from './exact-pixels.ts';
 
-export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
+export interface CameraOptions {
+    center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number];
+    /** The height of the map center in meters, kept until it is set again (`setCenterElevation`); `null` puts the center on the ground. */
+    elevation?: number | null;
+}
 export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
@@ -413,6 +417,8 @@ export class Engine {
     private easeHeights: {ease: unknown; from: number} | null = null;
     /** 3D terrain: height of the ground at the map center in real (unexaggerated) meters. */
     private rawElevation = 0;
+    /** The height of the map center in meters that the page set (`setCenterElevation`), or null: the center is on the ground. */
+    private heldElevation: number | null = null;
     private lastPose = '';
     private movedAt = -1e9;
     /** When the center last took the height of the ground (a center set outright is not moved along the line of sight before the map moves, as in MapLibre GL JS, #1480). */
@@ -937,7 +943,9 @@ export class Engine {
                 try { this.frame(performance.now()); } finally { this.inResize = false; }
                 this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr, buffer: [this.renderer.gl.drawingBufferWidth, this.renderer.gl.drawingBufferHeight]});
                 return;
-            case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true; break;
+            case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true;
+                if (c.elevation !== undefined && (this.heldElevation = c.elevation) === null) this.centreGiven = true;
+                break;
             case 'ease': {
                 this.stop();
                 const to = new Transform();
@@ -1574,7 +1582,7 @@ export class Engine {
         const tilt = clamp(tr.pitch / 10, 0, 1);
         this.exaggeration = (this.style.terrain?.exaggeration ?? 0) * tilt * tilt * (3 - 2 * tilt);
         const globeness = tr.globeness;
-        const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
+        const terrain = this.exaggeration > 0 ? this.style.terrain : undefined, held = this.heldElevation;
         if (terrain && globeness) {
             // On the globe the camera looks at the ground under the center (see `frame` in globe.ts), and screen positions
             // follow the ground as in Mercator (#1430). The camera does not ease or keep its height while it moves.
@@ -1584,10 +1592,12 @@ export class Engine {
             let lo = tr.elevation, hi = tr.elevation;
             for (const [key, t] of this.tiles) if (t.range && t.used >= frameNo - 2 && key.startsWith(terrain.source + '|')) { lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration); }
             tr.groundRange = [lo, hi];
+            if (held !== null) tr.elevation = held;
         } else if (terrain) {
             tr.heightAt = this.heightAt;
             // The center's height is remembered in real meters, so it shrinks and grows together with the relief.
-            tr.elevation = this.rawElevation * this.exaggeration;
+            // (A center with a height of its own is not on the ground: the range of the ground starts at the ground there.)
+            tr.elevation = held === null ? this.rawElevation * this.exaggeration : this.heightAt(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat));
             // The lowest and highest ground on the elevation tiles in use: valleys far below the center (or peaks far
             // above it) reach further across the screen than flat ground would.
             let lo = tr.elevation, hi = tr.elevation;
@@ -1596,55 +1606,59 @@ export class Engine {
                 lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration);
             }
             tr.groundRange = [lo, hi];
-            // While the map is being moved the center keeps its height: the camera goes where it is sent rather than
-            // bobbing over every ridge. At rest the center is put back on the ground the camera is looking at, with
-            // the camera left exactly where it is, so nothing on screen moves when a gesture ends or heights arrive.
-            const pose = `${tr.lng},${tr.lat},${tr.zoom}`;
-            // (The first pose is not a movement: a map that starts is at rest, so the center takes the height of the
-            // ground as soon as it is known, and `idle` does not come with the center still at sea level, #793.)
-            if (pose !== this.lastPose) { if (this.lastPose) this.movedAt = now; this.lastPose = pose; }
-            const moving = cameraAnimating || now - this.movedAt < 150;
-            // (A turn or a tilt is a movement too while the camera is kept clear of the ground.)
-            const tilt = `${tr.bearing},${tr.pitch}`;
-            if (tilt !== this.lastTilt) { if (this.lastTilt) this.tiltedAt = now; this.lastTilt = tilt; }
-            const turning = moving || now - this.tiltedAt < 150;
-            const known = (mx: number, my: number) => !!this.demTile(mx - Math.floor(mx), my, 30);
-            const e = this.ease;
-            if (e && !e.around) {
-                // An animation to a stated place: the center's height eases to the ground there along with everything else.
-                if (this.easeHeights?.ease !== e) this.easeHeights = {ease: e, from: this.rawElevation};
-                if (known(e.to[0], e.to[1])) {
-                    const k = defaultEasing(clamp((now - e.start) / e.duration, 0, 1));
-                    tr.elevation = (this.easeHeights.from + (this.rawHeightAt(e.to[0], e.to[1]) - this.easeHeights.from) * k) * this.exaggeration;
+            // A center with a height of its own keeps it: it does not follow the ground, and the camera may go below it.
+            if (held !== null) tr.elevation = held;
+            else {
+                // While the map is being moved the center keeps its height: the camera goes where it is sent rather than
+                // bobbing over every ridge. At rest the center is put back on the ground the camera is looking at, with
+                // the camera left exactly where it is, so nothing on screen moves when a gesture ends or heights arrive.
+                const pose = `${tr.lng},${tr.lat},${tr.zoom}`;
+                // (The first pose is not a movement: a map that starts is at rest, so the center takes the height of the
+                // ground as soon as it is known, and `idle` does not come with the center still at sea level, #793.)
+                if (pose !== this.lastPose) { if (this.lastPose) this.movedAt = now; this.lastPose = pose; }
+                const moving = cameraAnimating || now - this.movedAt < 150;
+                // (A turn or a tilt is a movement too while the camera is kept clear of the ground.)
+                const tilt = `${tr.bearing},${tr.pitch}`;
+                if (tilt !== this.lastTilt) { if (this.lastTilt) this.tiltedAt = now; this.lastTilt = tilt; }
+                const turning = moving || now - this.tiltedAt < 150;
+                const known = (mx: number, my: number) => !!this.demTile(mx - Math.floor(mx), my, 30);
+                const e = this.ease;
+                if (e && !e.around) {
+                    // An animation to a stated place: the center's height eases to the ground there along with everything else.
+                    if (this.easeHeights?.ease !== e) this.easeHeights = {ease: e, from: this.rawElevation};
+                    if (known(e.to[0], e.to[1])) {
+                        const k = defaultEasing(clamp((now - e.start) / e.duration, 0, 1));
+                        tr.elevation = (this.easeHeights.from + (this.rawHeightAt(e.to[0], e.to[1]) - this.easeHeights.from) * k) * this.exaggeration;
+                    }
+                } else if (!moving) {
+                    if (this.centreGiven) {
+                        // The center was set outright (jumpTo, the end of an animation, terrain switched on): it stays where
+                        // it was put and takes the height of the ground there, as soon as that is known.
+                        // It waits for the detailed elevation tile of the view (one level above the map, as `viewCover` selects)
+                        // while that is loading: a height from the coarse tile of the surroundings would fix the camera at
+                        // another height for good, and the picture would depend on which tile arrived first, #820.
+                        const d = this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30), src = this.style.sources[terrain.source];
+                        if (d && (d.z >= Math.min(src.maxzoom, Math.floor(tr.zoom) - 1) || !this.demLoading)) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; this.placedAt = now; }
+                    } else if (this.movedAt > this.placedAt && tr.recenterOnGround()) this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`;
                 }
-            } else if (!moving) {
-                if (this.centreGiven) {
-                    // The center was set outright (jumpTo, the end of an animation, terrain switched on): it stays where
-                    // it was put and takes the height of the ground there, as soon as that is known.
-                    // It waits for the detailed elevation tile of the view (one level above the map, as `viewCover` selects)
-                    // while that is loading: a height from the coarse tile of the surroundings would fix the camera at
-                    // another height for good, and the picture would depend on which tile arrived first, #820.
-                    const d = this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30), src = this.style.sources[terrain.source];
-                    if (d && (d.z >= Math.min(src.maxzoom, Math.floor(tr.zoom) - 1) || !this.demLoading)) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; this.placedAt = now; }
-                } else if (this.movedAt > this.placedAt && tr.recenterOnGround()) this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`;
-            }
-            // Never inside the mountain (as MapLibre GL JS's _terrainHeightAboveCamera and _raiseCameraByPitchAndZoom,
-            // #1480, #1486): the ground under the camera and under 9 points of the near clipping plane stays below them.
-            // During a gesture or an animation the center's height rises instead, so that the pitch and the zoom that the
-            // movement edits are kept. At rest the camera rises over the same point of the ground and keeps the same
-            // center: the pitch and the zoom are solved again. Not while the center waits for its own height.
-            for (let pass = 0; pass < 3 && !this.centreGiven; pass++) {
-                const lift = this.terrainAboveCamera(tr);
-                if (lift <= 0) break;
-                if (turning) { tr.elevation += lift; break; }
-                const ppm = tr.pixelsPerMetre, d = tr.cameraDistance, p = tr.pitch * Math.PI / 180, across = d * Math.sin(p) / ppm, up = d * Math.cos(p) / ppm + lift;
-                tr.pitch = Math.atan2(across, up) * 180 / Math.PI;
-                tr.zoom = Math.max(tr.minZoom, tr.zoom + Math.log2(d / ppm / Math.hypot(across, up)));
-                this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`; this.lastTilt = `${tr.bearing},${tr.pitch}`;
+                // Never inside the mountain (as MapLibre GL JS's _terrainHeightAboveCamera and _raiseCameraByPitchAndZoom,
+                // #1480, #1486): the ground under the camera and under 9 points of the near clipping plane stays below them.
+                // During a gesture or an animation the center's height rises instead, so that the pitch and the zoom that the
+                // movement edits are kept. At rest the camera rises over the same point of the ground and keeps the same
+                // center: the pitch and the zoom are solved again. Not while the center waits for its own height.
+                for (let pass = 0; pass < 3 && !this.centreGiven; pass++) {
+                    const lift = this.terrainAboveCamera(tr);
+                    if (lift <= 0) break;
+                    if (turning) { tr.elevation += lift; break; }
+                    const ppm = tr.pixelsPerMetre, d = tr.cameraDistance, p = tr.pitch * Math.PI / 180, across = d * Math.sin(p) / ppm, up = d * Math.cos(p) / ppm + lift;
+                    tr.pitch = Math.atan2(across, up) * 180 / Math.PI;
+                    tr.zoom = Math.max(tr.minZoom, tr.zoom + Math.log2(d / ppm / Math.hypot(across, up)));
+                    this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`; this.lastTilt = `${tr.bearing},${tr.pitch}`;
+                }
             }
             this.rawElevation = tr.elevation / this.exaggeration;
         } else {
-            tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0;
+            tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = held ?? 0;
             const st = this.style.terrain, src = st && this.style.sources[st.source];
             if (src) {
                 // Looking straight down the relief is not drawn, but the height under the center is still tracked (it
