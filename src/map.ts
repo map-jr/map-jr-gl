@@ -934,8 +934,8 @@ export class Map {
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
     private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
         // (`RasterTile` is the kind of a `raster` or `raster-dem` tile on the way to this function only.)
-        const image = kind === 'RasterTile';
-        if (image) kind = 'Tile';
+        const image = kind === 'RasterTile' || kind === 'Image' || kind === 'SpriteImage';
+        if (kind === 'RasterTile') kind = 'Tile';
         const t = this.transformRequest?.(url, kind as ResourceType), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
         if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
         // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
@@ -944,9 +944,10 @@ export class Map {
         signal?.addEventListener('abort', stop);
         this.protocolAborts.add(ac);
         try {
-            // An image tile has the type `image` and the `accept` header of MapLibre GL JS. The protocol can answer it with
-            // the bytes of the file or with a decoded image, which is copied as bytes are: the copy goes to another thread.
-            const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
+            // An image tile, an image (`loadImage`, `addImage` by URL, an image source) and a sprite image have the type
+            // `image` and the `accept` header of MapLibre GL JS (#603, #651). The protocol can answer with the bytes of the
+            // file or with a decoded image, which is copied as bytes are: the copy can go to another thread.
+            const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
             const out = image && (data instanceof ImageBitmap || data instanceof HTMLImageElement) ? await createImageBitmap(data) : toBytes(data);
             if (ac.signal.aborted) { (out as Partial<ImageBitmap>).close?.(); throw new Error(`[map-jr-gl] the request to ${to} was aborted.`); }
             return {data: out};
@@ -1141,11 +1142,14 @@ export class Map {
     /** Stops the animation of the camera, where it is. */
     stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
 
-    /** The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
-    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number} = {}) {
+    /**
+     * The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view at
+     * `bearing` (degrees, default 0), as in MapLibre GL JS. `offset` ([x, y] or {x, y}, CSS pixels) moves the box by that much from the middle of the view.
+     */
+    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number; bearing?: number; offset?: PointLike} = {}) {
         // The map's own padding already moves the center; padding given here is on top of it.
-        const pad = sides(o.padding), own = this.tr.padding;
-        return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom), bearing: 0};
+        const pad = sides(o.padding), own = this.tr.padding, bearing = o.bearing || 0, off = o.offset;
+        return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom, bearing, off && (Array.isArray(off) ? off : [off.x, off.y])), bearing};
     }
     fitBounds(bounds: Parameters<Map['cameraForBounds']>[0], o: Parameters<Map['cameraForBounds']>[1] & {duration?: number} = {}) {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
@@ -1762,22 +1766,27 @@ export class Map {
         }
         if (typeof source === 'string') {
             const img = new Image();
+            let pic: HTMLImageElement | ImageBitmap = img;
             if (source.trimStart().startsWith('<')) {
                 const [w, h] = svgSize(source);
                 width ??= w; height ??= h;
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
             } else {
-                // (The request goes through `transformRequest` and the protocols with the kind `Image`, as in MapLibre GL JS.)
+                // (The request goes through `transformRequest` and the protocols with the kind `Image`, as in MapLibre GL JS.
+                // A protocol can answer with a decoded image, #651.)
                 const a = await this.answer(source, 'Image');
-                img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
-                img.src = a.data ? URL.createObjectURL(new Blob([a.data as BlobPart])) : a.url!;
+                if (a.data instanceof ImageBitmap) pic = a.data;
+                else {
+                    img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
+                    img.src = a.data ? URL.createObjectURL(new Blob([a.data])) : a.url!;
+                }
             }
-            try { await img.decode(); } finally { if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); }
+            if (pic === img) try { await img.decode(); } finally { if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); }
             // (While the image loaded, the map was removed, or the name got another image or was removed.)
             if (this.removed || this.imageTurns.get(name) !== turn) return this;
-            width ??= img.naturalWidth / (options.pixelRatio ?? 1); height ??= img.naturalHeight / (options.pixelRatio ?? 1);
-            sourceWidth = img.naturalWidth;
-            drawable = img;
+            sourceWidth = pic === img ? img.naturalWidth : pic.width;
+            width ??= sourceWidth / (options.pixelRatio ?? 1); height ??= (pic === img ? img.naturalHeight : pic.height) / (options.pixelRatio ?? 1);
+            drawable = pic;
         } else if ('data' in source) {
             if (typeof (source.data as {length?: unknown})?.length !== 'number') throw new Error(`[map-jr-gl] addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
             // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). They are stored at their own size, as in

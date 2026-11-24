@@ -38,6 +38,8 @@ and the sprite.
 - A [limit for requests](#limits-for-requests) is reached, or the value of a limit is not valid.
 - A key of `data` is the id of a source that is not a GeoJSON source.
 - `tileZoomOffset` is not a whole number.
+- `width` or `height` is not a finite number greater than 0, for example a string, `NaN`, `0` or a negative number.
+  The message names the option.
 - The options have no `bounds` and lack `center`, `zoom` or both. This happens in JavaScript, or when TypeScript does
   not check the options.
 
@@ -232,6 +234,17 @@ renderFirstView(options: FirstViewOptions): Promise<string>
 Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
 right. With `controls`, it also returns the controls of the map and their style sheet. Put the HTML into the
 element of the map, which needs a `position` that is not `static`.
+
+The SVG is in a box with `position: absolute; inset: 0; overflow: hidden`, and both have the attribute
+`data-map-jr-ssr`. The SVG is centered in the element and placed as follows:
+
+- With `center` and `zoom`, the SVG has the size of `width` and `height` (1:1), and the element crops it. When the
+  element is wider or higher than the render, the SVG is scaled up as much as it needs to cover the element, and the
+  live map then shows a larger area at the render's zoom.
+- With `bounds`, the SVG is scaled to cover the element. It shows the area that the map shows when the map fits the
+  bounds to an element of the shape of the render.
+
+The guide [Server rendering](../guide/server-rendering.md) shows the cases.
 
 | Name | Type | Default | Description |
 |---|---|---|---|

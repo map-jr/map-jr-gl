@@ -5,7 +5,7 @@ import path from 'node:path';
 import {readFileSync} from 'node:fs';
 import {launch} from './launch.mjs';
 import makeStyle from '../demo/style.mjs';
-import {renderElement} from '../dist/server.js';
+import {renderElement, renderFirstView} from '../dist/server.js';
 import {navigation, scale, fullscreen, geolocate, globe, terrain, colorScheme} from '../dist/controls.js';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -102,7 +102,7 @@ const server = http.createServer((req, res) => {
       if (v.length !== 1) missing.push(name + ':' + v.length); else { const r = v[0].getBoundingClientRect(); at.push([name, r.x, r.y, r.width, r.height].join()); }
     }
     // The stage: the server picture and the canvas never show together (the canvas is hidden until the picture goes), and no frame has neither.
-    const svg = !!a.querySelector(':scope > svg[data-map-jr-ssr]'), canvas = a.querySelector(':scope > canvas'), hidden = !!canvas && getComputedStyle(canvas).visibility === 'hidden';
+    const svg = !!a.querySelector(':scope > [data-map-jr-ssr] > svg[data-map-jr-ssr]'), canvas = a.querySelector(':scope > canvas'), hidden = !!canvas && getComputedStyle(canvas).visibility === 'hidden';
     window.frames.push({n: missing.length ? 0 : 1, missing, at: at.join(';'), svg, canvas: !!canvas, hidden});
     requestAnimationFrame(watch);
   };
@@ -143,7 +143,7 @@ try {
     const open_ = ssrPage.slice(0, ssrPage.indexOf('>'));
     check('server: renderElement writes the attributes of the description, escaped, and leaves out objects and false booleans',
         open_ === `<map-jr map-style="${origin}/style.json" center="-74.0065,40.7085" zoom="14" interactive-layers="dot water" projection="globe" hover-state no-attribution id="a" data-x="a&quot;b" style="display:block;position:relative;overflow:hidden;width:600px;height:400px"`, open_);
-    check('server: the first view is the children of the element, with the layers and the data of the description', /<map-jr[^>]*><svg[^>]*data-map-jr-ssr/.test(ssrPage) && ssrPage.includes('#123456') && ssrPage.endsWith('</map-jr>'), `${(ssrPage.length / 1024).toFixed(0)} KB`);
+    check('server: the first view is the children of the element, with the layers and the data of the description', /<map-jr[^>]*><div data-map-jr-ssr=""[^>]*><svg[^>]*data-map-jr-ssr/.test(ssrPage) && ssrPage.includes('#123456') && ssrPage.endsWith('</map-jr>'), `${(ssrPage.length / 1024).toFixed(0)} KB`);
     let thrown = '';
     try { await renderElement(description, {attributes: {'on click': 'x'}}); } catch (e) { thrown = e.message; }
     check('server: an attribute name that is not one throws a message', thrown.startsWith('[map-jr-gl] renderElement(): "on click"'), thrown);
@@ -157,10 +157,10 @@ try {
 
     // 2. The markup of the server in a browser: shown without scripts, then the element takes it over.
     let page = await open('/ssr', {javaScriptEnabled: false});
-    const before = await page.evaluate(() => ({svg: !!document.querySelector('map-jr > svg[data-map-jr-ssr]'), height: document.querySelector('map-jr').getBoundingClientRect().height, after: Math.round(document.getElementById('after').getBoundingClientRect().top)}));
+    const before = await page.evaluate(() => ({svg: !!document.querySelector('map-jr > [data-map-jr-ssr] > svg[data-map-jr-ssr]'), height: document.querySelector('map-jr').getBoundingClientRect().height, after: Math.round(document.getElementById('after').getBoundingClientRect().top)}));
     await page.close();
     page = await open('/ssr');
-    const early = await page.evaluate(() => !!document.querySelector('map-jr > svg[data-map-jr-ssr]'));
+    const early = await page.evaluate(() => !!document.querySelector('map-jr > [data-map-jr-ssr] > svg[data-map-jr-ssr]'));
     await page.waitForFunction(() => window.seen.includes('load'), null, {timeout: 60000});
     await page.waitForTimeout(500);
     const late = await page.evaluate(() => { const a = document.querySelector('map-jr'); return {svg: !!a.querySelector('[data-map-jr-ssr]'), canvas: !!a.querySelector(':scope > canvas'), layers: a.map.description.layers?.length, hover: a.map.description.hoverState, projection: a.map.description.projection, after: Math.round(document.getElementById('after').getBoundingClientRect().top)}; });
@@ -176,12 +176,52 @@ try {
     const capped = await renderElement({style: origin + '/blank.json', initialView: {bounds: [-74.03, 40.69, -73.99, 40.72], fitMaxZoom: 10}}, {width: 600, height: 400});
     check('server: renderElement fits initialView.bounds up to fitMaxZoom, as the map does', capped.includes(' zoom="10"'), capped.slice(0, capped.indexOf('>')));
     page = await open('/ssr', {javaScriptEnabled: false});
-    const drawn = await page.evaluate(() => { const r = document.querySelector('map-jr > svg [fill="#123456"]')?.getBoundingClientRect(); return r && [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; });
+    const drawn = await page.evaluate(() => { const r = document.querySelector('map-jr [data-map-jr-ssr] svg [fill="#123456"]')?.getBoundingClientRect(); return r && [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; });
     await page.close();
     page = await open('/ssr');
     await page.waitForFunction(() => window.seen.includes('load'), null, {timeout: 60000});
     const live = await page.evaluate(() => { const a = document.querySelector('map-jr'), p = a.map.project([-74.0065, 40.7085]), r = a.getBoundingClientRect(); return [Math.round(r.x + p.x), Math.round(r.y + p.y)]; });
     check('browser: with initialView.bounds, the dot is at the same place in the first view and in the map', !!drawn && Math.hypot(drawn[0] - live[0], drawn[1] - live[1]) <= 2 && !page.errors.length, JSON.stringify({drawn, live, errors: page.errors}));
+    await page.close();
+
+    // The first view of 200 by 200 in elements of another shape and size: drawn at 1:1 and centered, cropped by a smaller
+    // element, and scaled up as little as covers a larger one, with no band of the page and no overflow (#1427).
+    // With `bounds` the map fits them to the element, so the first view is scaled as the fit is: the bounds of 40 by 20 degrees
+    // fill the width of the render, half of it in an element of 100 x 100 and twice of it in one of 400 x 200.
+    const shapeStyle = {version: 8, sources: {c: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
+        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#00aa00'}}, {id: 'c', type: 'circle', source: 'c', paint: {'circle-radius': 20, 'circle-color': '#0000ff'}}]};
+    const shapeView = await renderFirstView({style: shapeStyle, center: [0, 0], zoom: 2, width: 200, height: 200, attribution: false});
+    const fitView = await renderFirstView({style: shapeStyle, bounds: [[-20, -10], [20, 10]], width: 200, height: 200, attribution: false});
+    const boxes = [{w: 400, h: 200, scale: 2}, {w: 200, h: 400, scale: 2}, {w: 120, h: 160, scale: 1}, {w: 100, h: 100, scale: 0.5, fit: true}, {w: 400, h: 200, scale: 2, fit: true}];
+    page = await browser.newPage({viewport: {width: 600, height: 1300}});
+    await page.setContent(`<body style="margin:0;background:#ff00ff">${boxes.map(b => `<div style="position:relative;width:${b.w}px;height:${b.h}px;margin-bottom:20px">${b.fit ? fitView : shapeView}</div>`).join('')}</body>`);
+    const shot = (await page.screenshot()).toString('base64');
+    const shape = await page.evaluate(async ({shot, boxes}) => {
+        const img = new Image();
+        img.src = 'data:image/png;base64,' + shot;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        const g = c.getContext('2d');
+        g.drawImage(img, 0, 0);
+        const px = g.getImageData(0, 0, c.width, c.height).data, at = (x, y) => px.slice((y * c.width + x) * 4, (y * c.width + x) * 4 + 3);
+        const page_ = ([r, gr, b]) => r > 200 && gr < 60 && b > 200, blue = ([r, gr, b]) => r < 60 && gr < 60 && b > 200;
+        return [...document.body.children].map((el, i) => {
+            const r = el.getBoundingClientRect(), m = el.querySelector('svg').getScreenCTM();
+            let band = 0, n = 0, x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+            for (let y = Math.ceil(r.top); y < r.bottom; y++) for (let x = Math.ceil(r.left); x < r.right; x++) {
+                const p = at(x, y);
+                if (page_(p)) band++;
+                if (blue(p)) { n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+            }
+            return {box: `${boxes[i].w}x${boxes[i].h}${boxes[i].fit ? ' bounds' : ''}`, scale: +m.a.toFixed(3), offset: [Math.round(m.e + 100 * m.a - (r.left + r.width / 2)), Math.round(m.f + 100 * m.d - (r.top + r.height / 2))], band,
+                dot: n ? {size: x1 - x0 + 1, offset: [Math.round((x0 + x1 + 1) / 2 - (r.left + r.width / 2)), Math.round((y0 + y1 + 1) / 2 - (r.top + r.height / 2))]} : null,
+                outside: page_(at(Math.round(r.right) + 5, Math.round(r.top + r.height / 2)))};
+        }).concat([{scrollWidth: document.documentElement.scrollWidth, innerWidth}]);
+    }, {shot, boxes});
+    const pageSize = shape.pop();
+    check('browser: the first view of 200 x 200 in elements of 400 x 200, 200 x 400 and 120 x 160 is centered, at 1:1 or scaled up as little as covers the element, and with bounds scaled as the fit to the element, with no band of the page', shape.every((s, i) => s.scale === boxes[i].scale && s.offset.every(d => Math.abs(d) <= 1) && s.band === 0
+        && s.dot && Math.abs(s.dot.size - 40 * boxes[i].scale) <= 3 && s.dot.offset.every(d => Math.abs(d) <= 2) && s.outside) && pageSize.scrollWidth === pageSize.innerWidth, JSON.stringify(shape) + ' ' + JSON.stringify(pageSize));
     await page.close();
 
     // 3. Attributes, properties set before the element was defined, events.

@@ -245,10 +245,16 @@ function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined,
 }
 
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
-async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
+async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
     if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] server render: the options have ${o.center == null && o.zoom == null ? 'no "center" and no "zoom"' : o.center == null ? '"zoom" but no "center"' : '"center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
+    // The size is written into the markup as it is: a string could add attributes, and NaN gives a size of NaN (#1668).
+    for (const name of ['width', 'height'] as const) {
+        const size: unknown = o[name];
+        if (typeof size === 'number' && size > 0 && size < Infinity) continue;
+        throw new Error(`[map-jr-gl] server render: "${name}" is ${typeof size === 'string' ? JSON.stringify(size) : String(size)}. Pass the ${name} in CSS pixels as a number greater than 0, for example ${name}: ${name === 'width' ? 800 : 500}.`);
+    }
     const dz = o.tileZoomOffset ?? 0;
     if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
@@ -384,7 +390,7 @@ async function renderView(o: RenderOptions): Promise<RenderResult & {view: {lat:
     for (const l of labels) if (l.icon) l.icon.name = picked.get(l.icon.name) ?? l.icon.name;
     const svg = renderSVG({
         tr, layers, items, labels, sprite, images, fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
-        rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
+        rootAttrs,
     });
     // (The credits are those of `getAttributions` of the map: only the sources that a visible layer uses at this zoom, so that they do not change when the map takes over.)
     return {svg, tiles: urls, attribution: [...new Set(Object.entries(style.sources).filter(([id]) => layers.some(l => l.source === id && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)).map(([, s]) => s.attribution?.trim()).filter((a): a is string => !!a))], view: {lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing}};
@@ -426,7 +432,12 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
  * @returns A promise of the HTML. It rejects as `renderToSVG` does.
  */
 export async function renderFirstView(o: FirstViewOptions): Promise<string> {
-    const made = await renderView(o);
+    // The map keeps the center and the zoom at any size of the element, so the picture is drawn at 1:1, centered and cropped
+    // by a box of the element's size. An element that is wider or higher than the render is covered: the picture is scaled
+    // up as little as covers it, and is not letterboxed (#1427). With `bounds` the map fits them to the element, so the
+    // picture is scaled to the element as the fit is, and covers it.
+    const made = await renderView(o, `data-map-jr-ssr="" preserveAspectRatio="xMidYMid slice" style="position:absolute;${o.bounds ? 'inset:0;width:100%;height:100%' : `left:50%;top:50%;width:max(100%,${o.width}px);height:max(100%,${o.height}px);transform:translate(-50%,-50%)`};max-width:none;max-height:none"`);
+    made.svg = `<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden">${made.svg}</div>`;
     const raw = o.attribution === false ? false : [o.attribution ?? made.attribution].flat();
     if (o.controls) {
         return made.svg + controlsMarkup({controls: o.controls, ...made.view, width: o.width, colorScheme: o.colorScheme ?? 'light', locale: o.locale, nonce: o.nonce, minZoom: o.minZoom, maxZoom: o.maxZoom,
