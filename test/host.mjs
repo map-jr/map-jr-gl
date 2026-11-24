@@ -2281,6 +2281,23 @@ for (const renderer of renderers) {
             Math.abs(overlayPatch.marker.x - 150) < 1 && Math.abs(overlayPatch.marker.y - 110) < 1 && overlayPatch.sameBox && overlayPatch.closeButton, JSON.stringify(overlayPatch));
         check(`[${renderer}] overlay().patch({lngLat: undefined}) keeps the position, and a later patch of the anchor places the marker there`,
             Math.abs(overlayPatch.kept?.x - 150) < 1 && Math.abs(overlayPatch.kept?.y - 110) < 1, JSON.stringify(overlayPatch.kept));
+        // An unknown option of overlay(), update() or patch() warns once for each map in the development build (#1647). The
+        // production build gives none (see "The map with no checks" below).
+        const overlayUnknown = await page.evaluate(async () => {
+            const t = window.t, said = [], log = console.warn, lngLat = t.host.unproject({x: 100, y: 100});
+            console.warn = (...a) => { const m = a.join(' '); if (m.includes('an option of an overlay')) said.push(m); };
+            try {
+                const ov = t.host.overlay(document.createElement('div'), {lngLat, lnglat: [3, 3]});
+                ov.update({lngLat, lnglat: [3, 3], colour: 'red'});
+                ov.patch({lnglat: [3, 3], Anchor: 'top', popup: false});
+                ov.remove();
+                await new Promise(r => setTimeout(r, 500));
+            } finally { console.warn = log; }
+            return said; });
+        check(`[${renderer}] an unknown option of overlay(), update() and patch() gives one warning for each option, which names the option and the known options`,
+            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, draggable, onDragStart, onDrag, onDragEnd.'
+            && overlayUnknown[1].startsWith('[map-jr-gl] update(): "colour" is not an option of an overlay, so it has no effect. The options are')
+            && overlayUnknown[2].startsWith('[map-jr-gl] patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
         // the callbacks get [lng, lat]. A render with the same lngLat leaves it where it was dropped.
         await page.evaluate(() => { const t = window.t, el = t.dragPin = t.lib.defaultPin({color: 'rgb(200, 0, 0)'}); t.dragged = []; el.addEventListener('click', () => t.dragged.push('click'));
@@ -3421,6 +3438,9 @@ for (const [build, file] of [['the development build, and the file of the checks
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
             const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, interactiveLayers: ['nope']});
             const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
+            // (An unknown option of an overlay warns only with the checks, #1647.)
+            const ov = host.overlay(document.createElement('div'), {lngLat: [-74.0065, 40.7085], lnglat: [3, 3]});
+            ov.update({lngLat: [-74.0065, 40.7085], colour: 'red'}); ov.patch({Anchor: 'top'}); ov.remove();
             await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
             await new Promise(r => setTimeout(r, 1200));
             const drawn = (await host.queryFeatures(undefined, {radius: 5})).length;

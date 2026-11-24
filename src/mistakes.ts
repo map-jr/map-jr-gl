@@ -63,6 +63,9 @@ texts[1258] = (attribute, kind) => kind === 'o'
 texts[10826] = () => '<map-jr>: the element has no style, so it shows no map. Write the URL of a style in the attribute "map-style", or set the property "mapStyle".';
 texts[20826] = () => '<map-jr>: the attribute "map-style" was removed and the element has no "mapStyle", so the map keeps the style that it has. To change the style, give another URL in "map-style" or set "mapStyle".';
 texts[1057] = (layerId, property) => `the layer "${layerId}" has in "${property}" a zoom-based "step" or "interpolate" that is inside another expression, or a second one. The map draws it, but MapLibre GL JS rejects the style. Write one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`;
+/** The option of an overlay that `option` is with another case of its letters, such as `lngLat` for `lnglat`. */
+const overlayOption = (option: string) => overlayOptions.find(k => k.toLowerCase() === option.toLowerCase());
+texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -85,6 +88,8 @@ export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) {
 const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
 /** The fields of `MapDescription` (and of `MapSetup`). `pnpm test:consistency` compares the list with src/host.ts. Other fields warn (#524). */
 const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'style', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale']);
+/** The options of `overlay()` (`OverlayOptions`). `pnpm test:consistency` compares the list with src/host.ts. Other options warn (#1647). */
+const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
 const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
 /** True when the expression `e` has a zoom-based `step` or `interpolate` where MapLibre GL JS does not accept one: nested in
@@ -111,7 +116,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
  * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 9, a feature with no id under the pointer in the layer `a` of the source `b`
- * with `hoverState`; 1189, a GeoJSON source of `sources` with no `data` and no key in `data`; 7, `moveTo` with `fitPadding` or `fitMaxZoom` and no `bounds`; 1148 is the first description (kind 2) with `view` and `initialView.bounds`; 1190, `update` with a `view` that the map reported earlier and ignores; 1147, `padding` or `maxZoom` (the old names) in the options `b` of `a` (`initialView`, `moveTo()` or `fitBounds()`).
+ * with `hoverState`; 1189, a GeoJSON source of `sources` with no `data` and no key in `data`; 7, `moveTo` with `fitPadding` or `fitMaxZoom` and no `bounds`; 1148 is the first description (kind 2) with `view` and `initialView.bounds`; 1190, `update` with a `view` that the map reported earlier and ignores; 1147, `padding` or `maxZoom` (the old names) in the options `b` of `a` (`initialView`, `moveTo()` or `fitBounds()`); 1647, the options `b` of an overlay in the call `a` (`overlay()`, `update()` or `patch()`).
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -176,6 +181,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 9) warn(30, a, (map.getSource(b) as {type?: string} | undefined)?.type ?? 'geojson');
     else if (kind === 7) warn(23);
+    // (Each unknown option warns once for each map, whichever of overlay(), update() and patch() gave it first.)
+    else if (kind === 1647) { for (const k in b) if (!overlayOptions.includes(k) && !c.warned.has('1647 ' + k)) { c.warned.add('1647 ' + k); console.warn(mistake(1647, k, a)); } }
     else if (kind === 1190) warn(1190);
     else if (kind === 1147) { for (const k of ['padding', 'maxZoom']) if (k in b) warn(1147, a, k); }
     else {

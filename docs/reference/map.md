@@ -861,6 +861,10 @@ the focus returns to the element of the map that had it before.
 | `onDragEnd` | `(lngLat: Position) => void` | | Called with the position where the element was dropped, `[lng, lat]`. |
 <!-- ref:OverlayOptions:end -->
 
+An option that is not in this table has no effect. In the development build (the `development` export condition,
+`dist/*.dev.js`), `overlay`, `update` and `patch` warn once for each such option on each map, and the warning lists the
+options. The production build does not warn.
+
 ### `MapOverlay`
 
 `overlay` returns a `MapOverlay`. Its `update` replaces all options of the overlay with its argument, so pass the
