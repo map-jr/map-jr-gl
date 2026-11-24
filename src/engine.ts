@@ -1214,7 +1214,8 @@ export class Engine {
             for (const s of mine) {
                 const L = this.layers.find(l => l.id === s.layer), r = s.radius;
                 let reach: [number, number, number, number] | null = L?.type === 'symbol' ? this.iconReach(L) : null;
-                // (The text of a label can reach farther than its icon: the reach covers both.)
+                // (The text of a label can reach farther than its icon: the reach covers both. A glyph of text on a line has its
+                // box around its own point, so long text on a line does not widen the rectangle.)
                 const texts = L?.type === 'symbol' ? this.textBoxes(L.id) : [];
                 for (const t of texts) {
                     const d = [t.box[0] - t.x, t.box[1] - t.y, t.box[2] - t.x, t.box[3] - t.y];
@@ -2015,12 +2016,14 @@ export class Engine {
             if (!target || !p.shaped || !key.startsWith(layer + '|')) continue;
             const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), s = p.size / EM, w = p.shaped.width * s, h = p.shaped.height * s;
             if (p.curve) {
-                // (Each glyph starts at its point of `curve` on its baseline, which lies `shift` pixels across the line.)
-                const r = h / 2 + p.src.padding, shift = (p.src.offset[1] + BASELINE) * p.size, advances = p.shaped.lines[0].advances;
+                // (Each glyph starts at its point of `curve`, which lies `shift` pixels across the line, and its box is
+                // centered on the line, as its collision box is. On a tilted map `ground` gives the length on the
+                // screen of one pixel of text along the line, and the direction of one pixel across it.)
+                const g = p.ground, r = h / 2 + p.src.padding, shift = (p.src.offset[1] + BASELINE) * p.size, advances = p.shaped.lines[0].advances;
                 for (let i = 0; i < p.curve.length / 3; i++) {
-                    const a = p.curve[i * 3 + 2], dx = Math.cos(a), dy = Math.sin(a), len = advances[i] * s;
-                    const x0 = x + p.curve[i * 3] + dy * shift, y0 = y + p.curve[i * 3 + 1] - dx * shift, x1 = x0 + dx * len, y1 = y0 + dy * len;
-                    out.push({x, y, line: true, box: [Math.min(x0, x1) - r, Math.min(y0, y1) - r, Math.max(x0, x1) + r, Math.max(y0, y1) + r]});
+                    const a = p.curve[i * 3 + 2], len = advances[i] * s * (g ? g[i * 3] : 1) / 2;
+                    const cx = x + p.curve[i * 3] + Math.cos(a) * len - (g ? g[i * 3 + 1] : -Math.sin(a)) * shift, cy = y + p.curve[i * 3 + 1] + Math.sin(a) * len - (g ? g[i * 3 + 2] : Math.cos(a)) * shift;
+                    out.push({x: cx, y: cy, line: true, box: [cx - r, cy - r, cx + r, cy + r]});
                 }
                 continue;
             }
@@ -2044,8 +2047,8 @@ export class Engine {
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
         const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
         // Text on a line is found on the boxes of its glyphs (see `textBoxes`) when it is shown, and not found when it is
-        // hidden. A label is the feature's when its point lies on the feature's line. (A line with an icon is found
-        // within `radius` pixels of its geometry as before.)
+        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. (A line
+        // with an icon is found within `radius` pixels of its geometry as before.)
         if (!points) return image || !String(L.p.field.eval(z, f) ?? '') || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
             : this.textOnLine(g, box, texts);
         const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;

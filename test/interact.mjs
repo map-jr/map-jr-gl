@@ -1683,6 +1683,45 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
             onLine.found >= 15 && onLine.run === (onLine.found - 1) * 10 && onLine.found < onLine.points - 10 && onLine.hidden === '', JSON.stringify(onLine));
+        // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
+        // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
+        // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
+        const lineText = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const line = (c, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: c}}), A = line([[-40, 0], [40, 0]], 'A long label along the line');
+            const make = async (features, layout, pitch = 0) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, pitch, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16, ...layout}}]}});
+                m.addImage('dot', {width: 8, height: 8, data: new Uint8Array(256).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                return {m, done: () => { m.remove(); el.remove(); }};
+            };
+            const ask = async (m, x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).map(f => f.properties.name).sort().join('/');
+            const out = {};
+            let {m, done} = await make([A, line([[30, -30], [30, 30]], 'V')], {'icon-image': ['case', ['==', ['get', 'name'], 'V'], 'dot', ''], 'text-allow-overlap': true});
+            const v = m.project([30, 0]);
+            out.icon = [await ask(m, v.x, v.y + 20), await ask(m, v.x - 50, v.y + 20)];
+            done();
+            ({m, done} = await make([A], {}));
+            const a = m.project([-40, 0]), b = m.project([40, 0]), found = [];
+            for (let x = a.x; x < b.x; x++) if (await ask(m, x, a.y)) found.push(x);
+            done();
+            // (The street B crosses at the middle of the text, where the label's point is.)
+            const lng = ((found[0] + found.at(-1)) / 2 - a.x) / (b.x - a.x) * 80 - 40;
+            ({m, done} = await make([A, line([[lng, -30], [lng, 30]], 'B')], {}));
+            out.cross = await ask(m, found[0] + 3, a.y);
+            done();
+            ({m, done} = await make([A], {'text-pitch-alignment': 'map', 'text-rotation-alignment': 'map'}, 60));
+            const c = m.project([0, 0]), across = [];
+            for (let dy = -30; dy <= 30; dy++) if (await ask(m, c.x, c.y + dy)) across.push(dy);
+            out.pitch = [across[0], across.at(-1)];
+            done();
+            return out;
+        });
+        check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
+            lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
         // A layer that comes after a symbol layer in the style draws over that layer's labels, as in MapLibre GL JS. The
         // label is a wide black halo in the middle; a red square after it covers it, and a square before it does not.
         const order = await page.evaluate(async () => {
