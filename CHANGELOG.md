@@ -35,6 +35,11 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   requests of `loadImage`, with the request type `Image`, as in MapLibre GL JS. A `transformRequest` function that
   changes every request now changes these too: return the request unchanged for the type `Image` if it must not
   ([#1638]).
+- Both entries: a custom protocol of `addProtocol` gets the request type `image` for the images of `loadImage` and of
+  `addImage` with a URL, for the sprite image and for an `image` source ([#1674]), and the type `arrayBuffer` for
+  glyphs and font files ([#1691]), as in MapLibre GL JS. Before, the types were `arrayBuffer` and `json`. A protocol
+  that branches on `request.type` must handle the new values. A protocol may now answer an image request with an
+  `ImageBitmap`, and an answer with bytes still works.
 
 ### New
 
@@ -52,6 +57,12 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   `locale`) to the server render ([#1617]).
 - Both entries: expressions support the property types `colorArray` and `numberArray` of the hillshade lights
   ([#1632]).
+- `@map-jr/map-jr-gl/controls`: `terrain()` in a map of the main API sets `terrain` of the description with `patch`
+  and calls the new option `onTerrainChange` with the value, and its label follows the description ([#1663]). An
+  application that passes `terrain` in its description keeps the value of `onTerrainChange`, or its next description
+  replaces the click.
+- `@map-jr/map-jr-gl/server`: `renderToSVG`, `renderFirstView` and `renderToImage` take `fitMaxZoom`, and the fit to
+  `bounds` stops there, else at `maxZoom` of `renderFirstView`, else at 22, as the map does ([#1681]).
 - `@map-jr/map-jr-gl/maplibre-compat`: the constructor reads `pixelRatio` ([#1621]), `GeolocateControl` reads
   `fitBoundsOptions.maxZoom` ([#1580]), and `LogoControl` takes `{compact}` and `crossSourceCollisions` has
   a type. `compact` and `crossSourceCollisions: false` have no effect and warn once ([#1576], [#1619]).
@@ -66,6 +77,11 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
 - Both entries: `toBlob()` waits for a style that is still loading ([#1635]), a query leaves out the features of a
   layer removed while it runs ([#1642]), and `idle` with 3D terrain waits for the raster tiles drawn on the ground
   ([#1521]). Text along a line on steep 3D terrain is no longer mirrored ([#1548]).
+- `@map-jr/map-jr-gl`: a change of `terrain` alone in `update()` or `patch()` no longer loads the style again, so the
+  map reaches `idle` sooner and requests no style or TileJSON ([#1677]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `cameraForBounds`, `fitBounds` and `fitScreenCoordinates` honor `bearing` and
+  `offset` as MapLibre GL JS does, and `cameraForBounds` returns the bearing ([#1673]). The mouse wheel snaps the zoom
+  to `zoomSnap`; a trackpad and a pinch do not snap, as in MapLibre GL JS ([#1676]).
 - Both entries: a `null` source or layer of a style is left out with an `error`, and the rest of the style is drawn
   ([#1613]). A source with no `tiles` and no `url` gives an `error` to each map that uses it, not only to the first
   ([#1646]). Font names with `Thin`, `Hairline`, `Extra Light` and `Ultra Light` get the weights 100 and 200
@@ -77,7 +93,12 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   terrain" ([#1581]).
 - `@map-jr/map-jr-gl/server`: a style image hides the sprite image of its name ([#1614]), `renderElement` labels the
   first view with `Map.Title` of the locale ([#1624]), and the SVG writes `line-cap`, `line-join` and
-  `line-miter-limit` of a style only as valid values ([#1670]).
+  `line-miter-limit` of a style only as valid values ([#1670]). `renderElement` gives the element the `center` and
+  `zoom` that fit `initialView.bounds`, so the live map starts at the view of the first view ([#1671]).
+- `@map-jr/map-jr-gl/server`: the first view of `renderFirstView` is drawn at 1:1 and centered in an element of
+  another size or shape, and it covers a larger element instead of leaving bands of the page; with `bounds` it has the
+  size of the element ([#1665]). The SVG is now inside a box with `data-map-jr-ssr`: CSS or code that selects it as a
+  direct child of the element (`#map > svg`) must use a descendant selector (`#map svg`) instead.
 - `@map-jr/map-jr-gl/vue`: the optional props of `MapJr` accept `null` in their types ([#1585]).
   `@map-jr/map-jr-gl/react`: the files start with `'use client'` ([#1578]).
 - Messages: a mistake that had no message now gets one. In every build: a change of style with unsupported layer types
@@ -85,8 +106,9 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
   ([#1612]), `configure({tileWorkers})` after the tile workers exist ([#1630]), options of the Nuxt module ([#1641]),
   and a `number-format` locale that is not text ([#1571]). In the development build: an unknown option of
   `overlay()`, `update()` and `patch()` ([#1660]), a duplicate control ([#1661]), `view` with `initialView.bounds`
-  ([#1599]), and a misplaced `["zoom"]`, for which the compat entry fires MapLibre's `error` ([#1667]). A warning of
-  an expression prints once on the page and not once per worker ([#1634]).
+  ([#1599]), an unknown paint or layout property of a layer, with the nearest name ([#1680]), and a misplaced
+  `["zoom"]`, for which the compat entry fires MapLibre's `error` ([#1667]). A warning of an expression prints once
+  on the page and not once per worker ([#1634]).
 - Messages: the HTTP errors of the server renderer and of marker images ([#1572]) and the error of `queryElevation`
   without a `raster-dem` source ([#1597]) start with `[map-jr-gl]`. Messages and the labels of the `colorScheme()`
   control use US spelling ([#1563]). Code that matches the old texts must change.
@@ -146,9 +168,19 @@ This entry covers the changes after 0.10.0 (the tag `v0.10.0`).
 [#1655]: https://github.com/map-jr/map-jr-gl/pull/1655
 [#1660]: https://github.com/map-jr/map-jr-gl/pull/1660
 [#1661]: https://github.com/map-jr/map-jr-gl/pull/1661
+[#1663]: https://github.com/map-jr/map-jr-gl/pull/1663
+[#1665]: https://github.com/map-jr/map-jr-gl/pull/1665
 [#1666]: https://github.com/map-jr/map-jr-gl/pull/1666
 [#1667]: https://github.com/map-jr/map-jr-gl/pull/1667
 [#1670]: https://github.com/map-jr/map-jr-gl/pull/1670
+[#1671]: https://github.com/map-jr/map-jr-gl/pull/1671
+[#1673]: https://github.com/map-jr/map-jr-gl/pull/1673
+[#1674]: https://github.com/map-jr/map-jr-gl/pull/1674
+[#1676]: https://github.com/map-jr/map-jr-gl/pull/1676
+[#1677]: https://github.com/map-jr/map-jr-gl/pull/1677
+[#1680]: https://github.com/map-jr/map-jr-gl/pull/1680
+[#1681]: https://github.com/map-jr/map-jr-gl/pull/1681
+[#1691]: https://github.com/map-jr/map-jr-gl/pull/1691
 
 ## 0.10.0 (2026-11-22)
 
