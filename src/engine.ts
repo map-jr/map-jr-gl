@@ -290,7 +290,7 @@ export class Engine {
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
     } | null = null;
     private prevWheelEase: {start: number; easing: (t: number) => number} | null = null;
-    private fling: {dx: number; dy: number; start: number; duration: number; done: number; turn: number} | null = null;
+    private fling: {dx: number; dy: number; start: number; duration: number; done: number; turn: number; from: number} | null = null;
     private lastTime = 0;
 
     private labels = new Map<string, LabelState>();
@@ -1012,7 +1012,7 @@ export class Engine {
                 this.grab = null;
                 // `bearing` (the compat entry's bearingSnap) turns the map to that bearing during the glide, as MapLibre GL JS does.
                 const turn = c.bearing === undefined ? 0 : c.bearing - tr.bearing;
-                this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0, turn};
+                this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0, turn, from: tr.bearing};
                 const end = new Transform();
                 Object.assign(end, tr);
                 end.set(tr.panned(-this.fling.dx, -this.fling.dy), undefined, tr.bearing + turn);
@@ -1340,7 +1340,7 @@ export class Engine {
         const glide = this.fling;
         if (glide) {
             const f = glide, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
-            tr.set(tr.panned(-f.dx * (k - f.done), -f.dy * (k - f.done)), undefined, f.turn ? tr.bearing + f.turn * (k - f.done) : undefined);
+            tr.set(tr.panned(-f.dx * (k - f.done), -f.dy * (k - f.done)), undefined, f.turn ? f.from + f.turn * k : undefined);
             f.done = k;
             if (t >= 1) this.fling = null, this.target = null;
         }
