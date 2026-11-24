@@ -116,7 +116,14 @@ async function worker(queue) {
                 // the next operation, so that a paint transition is drawn at that point of its course (#960).
                 const clock = window.clock ??= (() => { const real = performance.now.bind(performance), c = {at: null}; performance.now = () => c.at ?? real(); return c; })();
                 clock.at = null;
-                const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...(meta.maxPitch === undefined ? {} : {maxPitch: meta.maxPitch}), ...(meta.pixelRatio === undefined ? {} : {pixelRatio: meta.pixelRatio})});
+                // The map options of the test, as MapLibre's harness gives them (render.test.ts). An option that the library does
+                // not have warns once and has no effect; render-expectations.json gives those tests a label (#663).
+                const given = Object.fromEntries(['maxPitch', 'maxZoom', 'pixelRatio', 'fadeDuration', 'crossSourceCollisions', 'terrainSkirtLength', 'localIdeographFontFamily'].filter(k => meta[k] !== undefined).map(k => [k, meta[k]]));
+                const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...given});
+                if (meta.debug) map.showTileBoundaries = true;
+                if (meta.showOverdrawInspector) map.showOverdrawInspector = true;
+                if (meta.showPadding) map.showPadding = true;
+                if (meta.collisionDebug) { map.showCollisionBoxes = true; meta.operations = [...(meta.operations ?? []), ['wait']]; }
                 map.on('error', e => errors.push(String(e.error?.message ?? e.error)));
                 let idle = false, at = '';
                 map.on('idle', () => { idle = true; });
