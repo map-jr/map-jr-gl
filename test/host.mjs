@@ -4255,9 +4255,11 @@ for (const status of [404, 403, 503]) {
         let overTries = 0, answered = 0, fourthAt = 0;
         const tries = new Map(), failed = new Map();
         let background = 0;
-        const start = async (route, onPage) => {
+        // (Each page has a fixed index, because the two calls of `browser.newPage` can resolve in either order. With
+        // `pages.push`, the page of the server that is down was `pages[0]` in some runs, and the checks read the other map, #1761.)
+        const start = async (i, route) => {
             const page = await browser.newPage({viewport: {width: 900, height: 600}});
-            pages.push(page);
+            pages[i] = page;
             await page.goto(`${origin}/bench`);
             await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route);
             return page.evaluate(async from => {
@@ -4270,14 +4272,14 @@ for (const status of [404, 403, 503]) {
             }, from);
         };
         const [idleOne, idleDown] = await Promise.all([
-            start(async route => {
+            start(0, async route => {
                 const k = new URL(route.request().url()).pathname;
                 if (k.endsWith(bad)) return route.abort('connectionreset');
                 if (k.endsWith(over) && ++overTries <= 4) { if (overTries === 4) fourthAt = Date.now(); return route.abort('connectionreset'); }
                 await route.continue().catch(() => {});
                 if (k.endsWith(over)) answered = Date.now();
             }),
-            start(async route => {
+            start(1, async route => {
                 const k = new URL(route.request().url()).pathname, n = (tries.get(k) ?? 0) + 1;
                 tries.set(k, n);
                 if (n === 5) background ||= Date.now();
@@ -4295,7 +4297,7 @@ for (const status of [404, 403, 503]) {
         const after = seen.filter(([, t]) => background && t >= background);
         check('a background request of a tile on a server that is down fires neither `idle` nor `error`, and the map stays idle', idleDown && background > 0 && failed.size > 0 && !after.length && idle, JSON.stringify({idleDown, background: background > 0, failed: failed.size, after, idle}));
     } catch (e) { check('the test of the background requests of failed tiles was completed', false, String(e.message).split('\n')[0]); }
-    for (const page of pages) await page.close();
+    for (const page of pages) await page?.close();
 }
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
