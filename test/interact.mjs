@@ -4154,7 +4154,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for showAccuracyCircle',
             geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
             && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option showAccuracyCircle'), JSON.stringify(geo));
-        // fitBoundsOptions.maxZoom sets the zoom at the position when `zoom` is not given; other members warn once (#677).
+        // Without `zoom`, the control fits the position with fitBounds and all of fitBoundsOptions: maxZoom and padding (#677, #1722).
         const fit = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
@@ -4163,19 +4163,20 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(String(a[0]));
-            const gc = new mod.GeolocateControl({fitBoundsOptions: {maxZoom: 9, linear: true}});
+            const gc = new mod.GeolocateControl({fitBoundsOptions: {maxZoom: 9, linear: true, padding: {left: 100, top: 0, right: 0, bottom: 0}}});
             console.warn = warn;
             m.addControl(gc);
             await new Promise(r => m.once('load', r));
             gc.trigger();
             await new Promise(r => m.once('moveend', r));
-            const zoom = m.getZoom();
+            const zoom = m.getZoom(), lng = m.getCenter().lng;
             m.remove(); el.remove();
             if (real) delete navigator.geolocation;
-            return {zoom, warnings: warnings.filter(w => w.includes('GeolocateControl'))};
+            return {zoom, lng, warnings: warnings.filter(w => w.includes('GeolocateControl'))};
         });
-        check('[main] maplibre-compat: GeolocateControl zooms to fitBoundsOptions.maxZoom, and another member of fitBoundsOptions warns once',
-            Math.abs(fit.zoom - 9) < 1e-6 && fit.warnings.length === 1 && fit.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option fitBoundsOptions.linear'), JSON.stringify(fit));
+        // padding.left 100 puts the position 50 px right of the middle, so the center is 50 px (at zoom 9) west of it.
+        check('[main] maplibre-compat: GeolocateControl fits the position with fitBoundsOptions (maxZoom and padding), and warns for none of them',
+            Math.abs(fit.zoom - 9) < 1e-6 && Math.abs(fit.lng - (3 - 50 * 360 / (512 * 512))) < 1e-3 && fit.warnings.length === 0, JSON.stringify(fit));
         // trackUserLocation (#42): the states and events of MapLibre GL JS 6.17, the dot, and clearWatch, with a mocked watchPosition.
         const track = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
