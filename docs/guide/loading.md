@@ -15,7 +15,7 @@ bundler copies them too.
 |---|---|
 | The page script: the file of the entry and the files that it imports, called its parts | When the page imports the entry |
 | `map-jr-gl-worker.js` | When the map is created, together with the style. The same file starts the worker of the renderer and the tile workers. |
-| `map-jr-gl-worker-geojson.js`, `map-jr-gl-worker-contour.js`, `map-jr-gl-worker-pmtiles.js` | The parts of the worker. Each worker loads one once, when the style has a `geojson` source, a `contour` source or a `pmtiles://` URL. A map without such a source loads none of them. |
+| `map-jr-gl-worker-geojson.js`, `map-jr-gl-worker-dem.js`, `map-jr-gl-worker-pmtiles.js` | The parts of the worker. Each worker loads one once, when the style has a `geojson` source, a `contour` source or `terrain`, or a `pmtiles://` URL. A map without these loads none of them. |
 | `map-jr-gl-engine-entry-<hash>.js` | Only when the map draws on the main thread: with `renderer: 'main'`, or when a worker cannot draw |
 | `map-jr-gl-custom-layers-<hash>.js` | Only in `@map-jr/map-jr-gl/maplibre-compat`, when `addLayer` adds the first custom layer |
 | `map-jr-gl-standalone.js` | Only when the page imports the one-file build instead of the entry |
@@ -101,7 +101,7 @@ when a map needs it, from the folder of the worker file.
 |---|---|
 | `map-jr-gl-worker.js` | Every map |
 | `map-jr-gl-worker-geojson.js` | A GeoJSON source |
-| `map-jr-gl-worker-contour.js` | Contour lines |
+| `map-jr-gl-worker-dem.js` | Contour lines and 3D terrain. With `renderer: 'main'`, the page loads 3D terrain as a chunk of the library instead. |
 | `map-jr-gl-worker-pmtiles.js` | A PMTiles source |
 
 Copy every `map-jr-gl-worker*.js` file of `node_modules/@map-jr/map-jr-gl/dist/` into one folder under its own name, so that a part

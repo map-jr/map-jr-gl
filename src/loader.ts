@@ -94,12 +94,12 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
     // `?no-inline` keeps Vite from putting a file under 4 KB into the page script as a `data:` URL; a server ignores it.)
     const out = {
         geojson: at('geojson', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-geojson.js?no-inline', import.meta.url)),
-        contour: at('contour', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-contour.js?no-inline', import.meta.url)),
+        dem: at('dem', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-dem.js?no-inline', import.meta.url)),
         pmtiles: at('pmtiles', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;
-        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
+        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source or with 3D terrain cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
     }
     return out as Record<string, string>;
 }
@@ -111,18 +111,32 @@ let warnedParts = false;
  * as the style is there, in parallel with the worker file, and not when a tile worker first needs the part (#79).
  */
 const partCode = new globalThis.Map<string, Promise<string | null>>();
-/** Starts to fetch the parts that the sources of a style (as written) need: see `partsFor` in engine.ts. */
-export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>}) {
+/**
+ * Starts to fetch the parts that a style (as written) needs: see `partsFor` in engine.ts. 3D terrain needs the part
+ * `dem` too, in the engine worker (`engineWorker`; #1849). An engine on the page loads the chunk of that part instead.
+ */
+export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>; terrain?: unknown}, engineWorker: boolean) {
     const urls = partUrls(o);
     if (!urls) return;
-    for (const s of Object.values(style?.sources ?? {})) {
-        const name = s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'contour'
-            : [s?.url, ...(Array.isArray(s?.tiles) ? s.tiles : [])].some(u => typeof u === 'string' && u.startsWith('pmtiles://')) ? 'pmtiles' : '';
+    const names = Object.values(style?.sources ?? {}).map(s => s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'dem'
+        : [s?.url, ...(Array.isArray(s?.tiles) ? s.tiles : [])].some(u => typeof u === 'string' && u.startsWith('pmtiles://')) ? 'pmtiles' : '');
+    if (style?.terrain && engineWorker) names.push('dem');
+    for (const name of names) {
         const url = urls[name];
         if (!url || partCode.has(url)) continue;
         partCode.set(url, fetch(url).then(r => r.ok ? r.text() : null)
             .then(t => t === null ? null : URL.createObjectURL(new Blob([t, `\n//# sourceMappingURL=${url.replace(/[?#].*/, '')}.map`], {type: 'text/javascript'})), () => null));
     }
+}
+
+/**
+ * The parts that the page fetches (`prefetchParts`), for workers that start: their names, which go with the first message
+ * to each worker, and then their code to each worker when it arrives.
+ */
+export function partsComing(o: LoadOptions, workers: {postMessage(m: unknown): void}[]): string[] {
+    const coming = Object.entries(partUrls(o) ?? {}).filter(([, url]) => partCode.has(url));
+    for (const [name, url] of coming) partCode.get(url)!.then(code => { for (const w of workers) w.postMessage({role: 'part', name, code}); });
+    return coming.map(([n]) => n);
 }
 
 /**
@@ -237,9 +251,8 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
             // Each map talks to each worker over its own channel, so their styles and requests stay separate.
             ids = workers.map(() => ++channels);
             // (The parts that the page fetches for this style go to each worker when they arrive; the worker waits for them.)
-            const coming = Object.entries(parts ?? {}).filter(([, url]) => partCode.has(url));
-            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming: coming.map(([n]) => n)}, [ch.port1]); return ch.port2; });
-            for (const [name, url] of coming) partCode.get(url)!.then(code => { for (const w of workers) w.postMessage({role: 'part', name, code}); });
+            const coming = partsComing(o, workers);
+            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming}, [ch.port1]); return ch.port2; });
             return ports;
         },
         // WebKit can hold a message on the port of a worker that has been idle for a few seconds for about a second

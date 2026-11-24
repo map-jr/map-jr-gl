@@ -132,7 +132,7 @@ function partsFor(style: ResolvedStyle): PartName[] {
     const out = new Set<PartName>();
     for (const s of Object.values(style.sources)) {
         if (s.type === 'geojson') out.add('geojson');
-        if (s.contour) out.add('contour');
+        if (s.contour) out.add('dem');
         if (s.tiles?.some(t => t.startsWith('pmtiles://'))) out.add('pmtiles');
     }
     return [...out];
@@ -249,11 +249,6 @@ const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100
  * It never touches the DOM, so it runs unchanged on the main thread or inside a worker with an OffscreenCanvas,
  * driven purely by `Command` messages and reporting back through `EngineEvent`s.
  */
-/** Whether two tiles cover some of the same ground: one is the other, or contains it. */
-const touches = (a: TileID, b: TileID) => {
-    const d = a.z - b.z;
-    return a.w === b.w && (d >= 0 ? a.x >> d === b.x && a.y >> d === b.y : b.x >> -d === a.x && b.y >> -d === a.y);
-};
 
 /** How many times a tile whose request failed is requested again. */
 const TILE_RETRIES = 3;
@@ -413,15 +408,6 @@ export class Engine {
     private demVersion = 0;
     /** The elevation tiles that arrived last, with the version that each one made and its extent (mercator, 0 to 1). */
     private demArrivals: {version: number; x0: number; y0: number; x1: number; y1: number}[] = [];
-    /** True if elevation data that touches a ground tile arrived after `version`. */
-    private groundChanged(id: TileID, version: number) {
-        if (version === this.demVersion) return false;
-        const a = this.demArrivals, n = 2 ** id.z, x0 = id.x / n, y0 = id.y / n, x1 = (id.x + 1) / n, y1 = (id.y + 1) / n;
-        if (!a.length || a[0].version > version + 1) return true; // older than what is remembered
-        // (Tiles that only touch count: the heights on an edge of a tile come from its neighbor.)
-        for (const d of a) if (d.version > version && d.x0 <= x1 && d.x1 >= x0 && d.y0 <= y1 && d.y1 >= y0) return true;
-        return false;
-    }
     /** `version` is the elevation data that the heights were made from; `checked` is the newest data that is known not to change them. */
     private meshHeights = new Map<string, {data: Float32Array; version: number; checked: number; used: number}>();
     private meshBehind = false;
@@ -484,30 +470,6 @@ export class Engine {
     private rawHeightAt(mx: number, my: number): number {
         const src = this.style.terrain && this.style.sources[this.style.terrain.source];
         return src ? groundHeight(this.heights, mx, my, src.maxzoom, src.minzoom, this.rawElevation) : 0; // where nothing is known yet, level with the center; // always the most detailed data, so heights do not shift with zoom
-    }
-
-    /**
-     * Heights at the 65 x 65 corners of a ground tile's mesh. Nearly all of them lie inside one elevation tile's grid
-     * and are read straight from it; only points on the far edges (which belong to the neighboring tiles) and tiles
-     * with no single grid under them go through the general lookup.
-     */
-    private fillMesh(data: Float32Array, id: TileID) {
-        const n = 2 ** id.z, G = HEIGHT_GRID, src = this.style.sources[this.style.terrain!.source];
-        let grid: Float32Array | undefined, gz = Math.min(id.z, src.maxzoom);
-        for (; gz >= src.minzoom && !grid; gz--) grid = this.heights.get(`${gz}/${id.x >> (id.z - gz)}/${id.y >> (id.z - gz)}`);
-        gz++;
-        // The grid found is the deepest that is loaded at or above the level of this tile, which is also what the general
-        // lookup finds for the points inside the tile. So the points inside are read straight from it.
-        const direct = !!grid, k = 2 ** (id.z - gz), ox = (id.x % k) / k, oy = (id.y % k) / k;
-        for (let j = 0; j <= 64; j++) {
-            for (let i = 0; i <= 64; i++) {
-                if (direct && i < 64 && j < 64) {
-                    const fx = clamp((ox + i / 64 / k) * G - 0.5, 0, G - 1), fy = clamp((oy + j / 64 / k) * G - 0.5, 0, G - 1);
-                    const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(G - 1, x0 + 1), y1 = Math.min(G - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
-                    data[j * 65 + i] = (grid![y0 * G + x0] * (1 - tx) + grid![y0 * G + x1] * tx) * (1 - ty) + (grid![y1 * G + x0] * (1 - tx) + grid![y1 * G + x1] * tx) * ty;
-                } else data[j * 65 + i] = this.rawHeightAt((id.x + i / 64) / n, Math.min((id.y + j / 64) / n, 1 - 1e-12));
-            }
-        }
     }
 
     /**
@@ -600,131 +562,29 @@ export class Engine {
     }
     /** The raster and elevation sources that a layer on the ground draws from. */
     private imageSources: string[] = [];
-    private groundCache = new Map<string, ReturnType<Engine['groundSources']> & {used?: number}>();
-    /** 3D terrain: the straight-down view of one ground tile, and the source tiles that are drawn into its picture. */
-    private groundSources(id: TileID, zt: number, stamp: string) {
-        const n = 2 ** id.z, view = new Transform(), keys: string[] = [];
-        // The picture is drawn once, at a fixed scale a little above the tile's own (it is shown at up to twice its size
-        // before finer tiles take over), and stretched as the map zooms. Zooming therefore redraws nothing.
-        view.width = view.height = TILE_SIZE * 2 ** (zt - id.z);
-        view.lng = lngFromMerc((id.x + 0.5) / n); view.lat = latFromMerc((id.y + 0.5) / n); view.zoom = zt;
-        const cover = new Transform();
-        Object.assign(cover, {lng: view.lng, lat: view.lat});
-        const items = new Map<string, RenderItem<GLTile>[]>();
-        let complete = true;
-        let signature = `${zt}|${this.styleVersion}`;
-        for (const source in this.style.sources) {
-            const src = this.style.sources[source];
-            if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.type !== 'circle' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
-            if (src.coordinates) { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
-            // Vector tiles are of the level of the ground tile. Image tiles (raster, elevation) are those that the view
-            // itself selects, by the rule of MapLibre for each image tile: the ones that touch this ground tile are drawn
-            // into it. (Near the camera they are finer than the ground tile, far away they can be coarser.)
-            const image = src.type === 'raster' || src.type === 'raster-dem';
-            cover.zoom = id.z;
-            // (A little less than the tile: a view that ends exactly on the tile's edge would take the tiles beyond it too.)
-            cover.width = cover.height = TILE_SIZE - 2;
-            const ideal = image ? this.viewCover(source).filter(t => touches(t, id)) : cover.tileCover(src.minzoom, src.maxzoom, src.tileSize);
-            for (const t of ideal) {
-                const key = source + '|' + t.key, have = this.tiles.get(key);
-                keys.push(key);
-                if (!have) this.request(source, t, key);
-                else this.refresh(source, t, key, have);
-                if (this.tiles.get(key)?.state === 'loading') complete = false;
-            }
-            const list = renderItems(view, ideal, k => {
-                const key = source + '|' + k, t = this.tiles.get(key);
-                if (t?.state !== 'ok' || t.missing) return undefined;
-                keys.push(key); // a stand-in tile of another level: it is in use too
-                return t.gl;
-            });
-            items.set(source, list);
-            // The picture depends on exactly these tiles (and which build of each), so that is what identifies it.
-            for (const it of list) signature += `,${it.id.key}:${it.tile.uid}`;
+    private groundCache = new Map<string, ReturnType<typeof import('./terrain.ts').groundSources> & {used?: number}>();
+    /**
+     * The code of 3D terrain (terrain.ts), which loads on demand with the part for elevation data (#1849). Until it is
+     * there, the map requests the elevation tiles of the view (`demFirst`) and holds its frame as it does for the
+     * height of the center. When it fails to load, the map is drawn flat.
+     */
+    private terrainCode?: typeof import('./terrain.ts');
+    private terrainLoad?: Promise<void>;
+    private terrainFailed = false;
+    /**
+     * 3D terrain while its code loads: the elevation tiles of the view are requested now, in parallel with the code. The
+     * frame asks for the nearest one (it places the camera) before the tiles of the flat layers, and for the others after
+     * them, so that neither waits behind the other for a connection (#1849).
+     */
+    private demFirst(source: string, wanted: Set<string>, count = Infinity) {
+        this.demLoading = !this.terrainFailed;
+        for (const t of this.viewCover(source).slice(0, count)) {
+            const key = source + '|' + t.key, have = this.tiles.get(key);
+            wanted.add(key);
+            if (have) have.used = this.frameNo; else this.request(source, t, key);
         }
-        // (A tile that waits to be requested, as contour tiles do while the zoom changes, is not there yet: the picture is not complete.)
-        let revs = 0;
-        for (const k of keys) { const t = this.tiles.get(k); if (t) { t.used = this.frameNo; revs += t.rev!; } else { revs = NaN; complete = false; } }
-        return {stamp, view, items, signature, complete, keys, revs, version: this.tilesVersion};
     }
 
-    /** 3D terrain: the ground tiles in view, each with a straight-down view of itself for drawing its picture. */
-    private terrainTiles(wanted: Set<string>): TerrainTile[] {
-        const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
-        let meshBudget = 4;
-        this.meshBehind = false;
-        this.groundWaits = false;
-        this.demLoading = false;
-        this.viewCovers.clear();
-        for (const [k, m] of this.meshHeights) if (this.frameNo - m.used > 120) this.meshHeights.delete(k);
-        for (const [k, m] of this.groundCache) if (this.frameNo - (m.used ?? 0) > 120) this.groundCache.delete(k);
-        const viewLit = this.layers.some(l => l.type === 'hillshade' && l.visible && l.p.anchor.eval(tr.zoom) === 'viewport');
-        for (const id of tr.tileCover(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
-            // Each tile's picture is drawn once for a whole level of zoom: with the style as it is three quarters of the way
-            // through the level of the map, and stretched as the map zooms inside that level. A ground tile can be of a
-            // coarser level than the map (far ground, and with a steep tilt also the ground at the center) or of a finer one
-            // (ground near the camera). Its picture still uses the style of the map's level, as in MapLibre: the same layers
-            // show, and lines have the same width.
-            const zt = Math.floor(tr.zoom) + 0.75, tkey = `${id.key}|${id.w}`;
-            // Which source tiles make the picture of this ground tile is much work for each of up to 96 tiles. The answer
-            // changes only when a tile arrives or goes, the style changes, the map zooms to another level of tiles, or (for
-            // relief that is lit from the viewer's side) the map turns. Until then the last answer is used.
-            let stamp = `${this.styleVersion}|${zt}`;
-            for (const source of this.imageSources) for (const t of this.viewCover(source)) if (touches(t, id)) stamp += '|' + t.key;
-            let made = this.groundCache.get(tkey), revs = 0;
-            if (made) for (const k of made.keys) { const t = this.tiles.get(k); if (t) { t.used = this.frameNo; revs += t.rev!; } else revs = NaN; }
-            // A picture that has all its tiles depends on those tiles only. One that still waits for tiles can also get a
-            // stand-in from any other tile, so it is worked out again when any tile changes.
-            if (!made || made.stamp !== stamp || (made.complete ? revs !== made.revs : this.tilesVersion !== made.version)) {
-                made = this.groundSources(id, zt, stamp);
-                this.groundCache.set(tkey, made);
-            }
-            made.used = this.frameNo;
-            for (const k of made.keys) wanted.add(k);
-            if (!made.complete) this.groundWaits = true;
-            const {view, items, signature, complete} = made;
-            // The heights themselves: make sure the elevation tiles for this ground tile are on their way. They are the
-            // tiles that the view selects for the source, which are also the ones that relief shading of the same source
-            // draws: the two then load one set of tiles, also when the relief layer is added after the terrain. Where the
-            // source has no tile at a level (the request failed), the nearest level above that does have one is used.
-            for (const t of this.viewCover(terrain.source)) if (touches(t, id)) for (let dz = t.z; dz >= demSrc.minzoom; dz--) {
-                const x = t.x >> t.z - dz, y = t.y >> t.z - dz, dk = `${dz}/${x}/${y}`, demKey = terrain.source + '|' + dk;
-                wanted.add(demKey);
-                const dem = this.tiles.get(demKey);
-                if (!dem) { this.request(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey); this.demLoading = true; break; }
-                dem.used = this.frameNo;
-                // (A loading elevation tile holds `idle` back: no layer may draw the source, and then nothing else waits for it, #820.)
-                if (dem.state === 'loading') this.demLoading = true;
-                if (dem.state === 'loading' || dem.range) break; // otherwise it failed or came back empty: try the level above
-            }
-            // A coarse elevation tile of the surroundings stays loaded as well (one tile covers many ground tiles). Ground
-            // that comes into view next to the camera then has its shape and a soft relief at once, not a flat slab
-            // until its own tiles arrive.
-            const oz = Math.max(demSrc.minzoom, Math.min(demSrc.maxzoom, Math.floor(tr.zoom)) - 3);
-            if (id.z > oz) {
-                const x = id.x >> id.z - oz, y = id.y >> id.z - oz, dk = `${oz}/${x}/${y}`, demKey = terrain.source + '|' + dk, dem = this.tiles.get(demKey);
-                wanted.add(demKey);
-                if (dem) dem.used = this.frameNo; else this.request(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey);
-                if (!dem || dem.state === 'loading') this.demLoading = true;
-            }
-            // Heights for the tile's mesh, looked up by position in data all tiles share (so edges meet exactly), and
-            // refreshed a few tiles per frame when new elevation data arrives.
-            let mesh = this.meshHeights.get(tkey);
-            // A mesh that the new elevation data does not touch is up to date as it is.
-            if (mesh && mesh.checked !== this.demVersion && !this.groundChanged(id, mesh.checked)) mesh.checked = this.demVersion;
-            if (!mesh || (mesh.checked !== this.demVersion && meshBudget-- > 0)) {
-                const data = mesh?.data ?? new Float32Array(65 * 65);
-                this.fillMesh(data, id);
-                this.meshHeights.set(tkey, mesh = {data, version: this.demVersion, checked: this.demVersion, used: 0});
-            }
-            if (mesh.checked !== this.demVersion) this.meshBehind = true;
-            mesh.used = this.frameNo;
-            // Relief shading that is lit from the viewer's side turns with the map: the picture is drawn again when the
-            // map has turned a dozen degrees (the renderer waits until the map is still, see updateDrapes).
-            out.push({id, key: tkey, matrix: tr.tileMatrix4(id), view, items, signature, light: viewLit ? Math.round(tr.bearing / 12) : 0, complete, dem: this.demRef(id), heights: mesh.data, heightsVersion: mesh.version});
-        }
-        return out;
-    }
 
     /** Per source: what its tiles were fetched from, and what they were built with. */
     private sourceLoaded = new Map<string, number>();
@@ -813,6 +673,9 @@ export class Engine {
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
+        // 3D terrain: its code starts to load with the style, in parallel with the first elevation tiles (#1849).
+        if (style.terrain && !this.terrainLoad) this.terrainLoad = part('dem').then(m => { if (!this.lost) { this.terrainCode = m; this.invalidate(); } },
+            err => { this.terrainFailed = true; if (!this.lost) { this.emit({type: 'error', message: String(err.message)}); this.invalidate(); } });
         if (reload) {
             // The parts of the tile code that the style needs start to load before the first tile asks for one (#79).
             const parts = partsFor(style).filter(n => !this.partsSent.has(n));
@@ -1702,7 +1565,9 @@ export class Engine {
                 if (this.heights.size) this.rawElevation = this.rawHeightAt(mercX(tr.lng), mercY(tr.lat));
             } else this.rawElevation = 0;
         }
-        const ground = terrain ? this.terrainTiles(wanted) : undefined;
+        this.viewCovers.clear();
+        const ground = terrain && this.terrainCode ? this.terrainCode.terrainTiles.call(this, wanted) : undefined;
+        if (terrain && !this.terrainCode) this.demFirst(terrain.source, wanted, 1);
         // (The raster tiles that only the pictures of the ground draw are not in the loop below.)
         if (ground && this.groundWaits) complete = false;
         if (this.globeWait && !this.holdGlobe(wanted, frameNo)) complete = false;
@@ -1711,8 +1576,9 @@ export class Engine {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
             // only labels and buildings are drawn from the tiles of the view. (Without this, the elevation tiles for relief
-            // shading were loaded two times, at two sets of zoom levels.)
-            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion' || l.type === 'circle'))) {
+            // shading were loaded two times, at two sets of zoom levels.) While the code of 3D terrain loads, the flat layers ask for
+            // the tiles of the view, so that they do not wait behind the elevation tiles of `demFirst` (#1849).
+            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || !this.terrainCode || l.type === 'symbol' || l.type === 'fill-extrusion' || l.type === 'circle'))) {
                 // (Tiles on their way stay on their way: a page that hides a layer for a moment and shows it again, to
                 // load one layer after another, does not start again each time.)
                 // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
@@ -1810,6 +1676,8 @@ export class Engine {
             items.set(source, list);
             all.push(...list);
         }
+        // (The other elevation tiles, after the flat layers: see demFirst.)
+        if (terrain && !this.terrainCode) this.demFirst(terrain.source, wanted);
         this.tapTile(view, 'frame');
         for (const key of this.early) if (this.tiles.get(key)?.state !== 'loading') this.early.delete(key);
         for (const [key, t] of this.tiles) {
@@ -1920,7 +1788,8 @@ export class Engine {
         // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
         // at the center is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
-        const unplaced = !!terrain && !globeness && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
+        // (The same holds while the code of 3D terrain loads.)
+        const unplaced = !!terrain && !globeness && (this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30) || !this.terrainCode && !this.terrainFailed);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
@@ -1933,7 +1802,7 @@ export class Engine {
         }
         const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
-            terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
+            terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef, code: this.terrainCode!} : undefined});
 
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
@@ -1941,7 +1810,7 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating, seq: this.seq,
                 grab: this.grab ? [this.grab.lng, this.grab.lat, this.grab.seq] : undefined});
         }
-        const busy = animating || fading || began < this.transitionEnd || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.renderer.iconsBehind || this.meshBehind || !!ground && this.demLoading;
+        const busy = animating || fading || began < this.transitionEnd || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.renderer.iconsBehind || this.meshBehind || !!terrain && this.demLoading;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         // (The frame for the map at rest comes when the 200 ms are over, not 200 ms after this frame.)
         if (settling && !busy) setTimeout(() => this.repaint(), 200 - (began - this.cameraMovedAt));
