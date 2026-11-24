@@ -3934,7 +3934,7 @@ for (const mode of renderers) {
             const control = new mod.TerrainControl({source: 'dem'});
             m.addControl(control);
             const b = el.querySelector('.maplibregl-ctrl-terrain');
-            const cl = () => b.classList.contains('maplibregl-ctrl-terrain-enabled') + '/' + b.classList.contains('map-jr-ctrl-terrain-enabled');
+            const cl = () => b.classList.contains('maplibregl-ctrl-terrain-enabled') + '/' + b.classList.contains('map-jr-ctrl-terrain-enabled') + '/' + b.classList.contains('maplibregl-ctrl-terrain');
             const off = b.title, offClass = cl();
             b.click();
             const on = b.title, aria = b.getAttribute('aria-label'), onClass = cl();
@@ -3960,7 +3960,7 @@ for (const mode of renderers) {
             labels.appOff === 'Enable terrain' && labels.appOn === 'Disable terrain' && labels.styleOff === 'Enable terrain' && labels.removed === 'Enable terrain', JSON.stringify(labels));
         // As in MapLibre GL JS, the button has the class `maplibregl-ctrl-terrain-enabled` while terrain is on (#1716).
         check('[main] maplibre-compat: the TerrainControl button has the class ctrl-terrain-enabled exactly while terrain is on (#1716)',
-            labels.offClass === 'false/false' && labels.onClass === 'true/true' && labels.appOffClass === 'false/false' && labels.appOnClass === 'true/true' && labels.styleOffClass === 'false/false', JSON.stringify(labels));
+            labels.offClass === 'false/false/true' && labels.onClass === 'true/true/false' && labels.appOffClass === 'false/false/true' && labels.appOnClass === 'true/true/false' && labels.styleOffClass === 'false/false/true', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
@@ -4236,7 +4236,7 @@ for (const mode of renderers) {
             await new Promise(res => m.once('load', res));
             await wait(100);
             const q = s => el.querySelector(s), fb = q('.maplibregl-ctrl-fullscreen');
-            const shrink = () => fb.classList.contains('maplibregl-ctrl-shrink') + '/' + fb.classList.contains('map-jr-ctrl-shrink');
+            const shrink = () => fb.classList.contains('maplibregl-ctrl-shrink') + '/' + fb.classList.contains('map-jr-ctrl-shrink') + '/' + fb.classList.contains('maplibregl-ctrl-fullscreen');
             const out = {shrinkBefore: shrink(), zoomIn: q('.maplibregl-ctrl-zoom-in').title, zoomOut: q('.maplibregl-ctrl-zoom-out').title, compass: q('.maplibregl-ctrl-compass').title,
                 scale: q('.maplibregl-ctrl-scale').textContent, attrib: q('.maplibregl-ctrl-attrib-button')?.getAttribute('aria-label'), enter: fb.title, uiString: m._getUIString('Popup.Missing')};
             // The close button of Popup and the name of Marker take the locale when they are added to the map.
@@ -4277,7 +4277,7 @@ for (const mode of renderers) {
             && r.warnings.length === 0 && r.coreCompass === 'Reset bearing to north', JSON.stringify(r));
         // As in MapLibre GL JS, the button has the class `maplibregl-ctrl-shrink` while the map fills the screen (#1716).
         check('[main] maplibre-compat: the FullscreenControl button has the class ctrl-shrink exactly while the map fills the screen (#1716)',
-            r.shrinkBefore === 'false/false' && r.shrinkFull === 'true/true' && r.shrinkAfter === 'false/false', JSON.stringify(r));
+            r.shrinkBefore === 'false/false/true' && r.shrinkFull === 'true/true/false' && r.shrinkAfter === 'false/false/true', JSON.stringify(r));
     }
     if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
