@@ -356,6 +356,7 @@ export class Engine {
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.images = name => this.icon(name);
         this.atlas.onReset = () => this.labels.clear();
+        this.atlas.flush = () => this.renderer.glyphs(this.atlas);
         this.atlas.fetchGlyphs = withTimeout(this.fetchAs('Glyphs'));
         this.atlas.onGlyphs = () => this.glyphsArrived();
         this.tr.width = o.width;

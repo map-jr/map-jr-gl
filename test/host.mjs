@@ -3594,6 +3594,50 @@ for (const renderer of renderers) {
     } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// Labels without glyph files are drawn with a canvas, and the engine reads no pixels back to make them (#1841): in
+// Firefox, getImageData (and readPixels, convertToBlob) in a worker waits until the page thread is free, and the map
+// stops while the page is busy. The check counts these calls in the page and in every worker, for each renderer.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.addInitScript(() => {
+            const patch = `(() => { const bc = new BroadcastChannel('readbacks');
+                for (const [P, names] of [[self.OffscreenCanvasRenderingContext2D, ['getImageData', 'fillText']], [self.CanvasRenderingContext2D, ['getImageData', 'fillText']], [self.WebGL2RenderingContext, ['readPixels']], [self.OffscreenCanvas, ['convertToBlob']]]) {
+                    if (P) for (const k of names) { const f = P.prototype[k]; P.prototype[k] = function (...a) { bc.postMessage(k); return f.apply(this, a); }; }
+                } })();`;
+            (0, eval)(patch);
+            const Real = window.Worker;
+            window.Worker = function (url, opts) {
+                const src = opts?.type === 'module' ? `${patch}\nawait import(${JSON.stringify(String(new URL(url, location.href)))});` : `${patch}\nimportScripts(${JSON.stringify(String(new URL(url, location.href)))});`;
+                return new Real(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})), opts);
+            };
+            window.readbacks = {};
+            new BroadcastChannel('readbacks').onmessage = e => { window.readbacks[e.data] = (window.readbacks[e.data] ?? 0) + 1; };
+        });
+        await page.goto(`${origin}/style.json`);
+        const out = {};
+        for (const renderer of ['worker', 'main']) {
+            out[renderer] = await page.evaluate(async renderer => {
+                const lib = await import('/dist/map-jr-gl.js'), words = ['Harbor', 'Market', 'Station', 'Library', 'Garden', 'Bridge', 'Tower', 'Museum', 'Ferry', 'Plaza', 'Theater', 'Hospital'];
+                const features = words.flatMap((w, i) => [0, 1].map(j => ({type: 'Feature', properties: {name: `${w} ${renderer} ${j}`}, geometry: {type: 'Point', coordinates: [-74.02 + (i % 4) * 0.012, 40.70 + Math.floor(i / 4) * 0.008 + j * 0.004]}})));
+                const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'names', type: 'symbol', source: 'p', layout: {'text-field': ['get', 'name'], 'text-size': 14, 'text-allow-overlap': true}}]};
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+                window.readbacks = {};
+                const host = lib.createMap(el, {style, renderer, initialView: {center: [-74.0, 40.71], zoom: 12.5}, attribution: false});
+                const idle = await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 20000))]);
+                const used = host.state.get().renderer;
+                await new Promise(r => setTimeout(r, 300));
+                host.destroy(); el.remove();
+                return {idle, used, ...window.readbacks};
+            }, renderer);
+        }
+        const ok = r => r.idle && r.fillText > 0 && !r.getImageData && !r.readPixels && !r.convertToBlob;
+        check('labels drawn with the canvas: the engine reads no pixels back (no getImageData, readPixels or convertToBlob), with the worker and the main renderer (#1841)',
+            ok(out.worker) && ok(out.main) && out.main.used === 'main', JSON.stringify(out));
+    } catch (e) { check('labels drawn with the canvas, no readback: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // Web fonts of the description (#494): `fonts` in the shape of `font-faces` follows update(). A font that is added draws
 // the labels again with it, and a font file that does not load is an error that names the font.
 {
