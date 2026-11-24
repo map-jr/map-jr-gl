@@ -14,7 +14,7 @@ BSD-3-Clause.
 - The development build of the compat entry checks the required fields of a style, the types of its values and the types
   of its expressions as the validation of the MapLibre style specification (BSD-3-Clause) does, and its `error` events
   repeat the short texts of that validation, such as `missing required property "source"`. The type check of expressions
-  (`src/expr-check.ts`) follows the method of `ParsingContext` and of the `parse` of each expression of that project. The code is new; `scripts/style-spec-values.mjs` writes the types, enum values and
+  (`src/expr-check.ts`) is a close translation, changed, of the type check of expressions of that project (`checkSubtype` of `types.ts`, `ParsingContext` and the `parse` of each expression); `THIRD-PARTY-LICENSES.md` has its licence text. The rest of the code is new; `scripts/style-spec-values.mjs` writes the types, enum values and
   limits of the paint and layout properties from the specification file of that project.
 - Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
   (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
