@@ -30,7 +30,8 @@ export interface RenderOptions {
     /**
      * Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. A value here
      * overrides the default in `state` of the style; a name that is left out or set to `null` uses the default. Unless
-     * `globalState` sets it, the global state `color-scheme` is the scheme (`'auto'` and no value are `'light'`), as in the map.
+     * `globalState` sets it, the global state `color-scheme` is the scheme, as in the map. The server has no browser, so
+     * `'auto'` and no value are `'light'` here, while the map follows `prefers-color-scheme` for `'auto'`.
      */
     globalState?: Record<string, unknown> | null;
     /** The center of the view, `[lng, lat]`. `bounds` overrides it. */
