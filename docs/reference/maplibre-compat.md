@@ -94,7 +94,7 @@ library" names a member that MapLibre GL JS does not have.
 | `easeTo` | `(o: EaseToOptions, eventData?: EventData) => this` | Moves the camera to a view with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. |
 | [`setStyle`](#setstyle) | `(style: unknown, options?: StyleSwapOptions) => Promise<void>` | Replaces the style with a style URL or a style object, and returns a promise that settles when the new style has loaded. |
 | `getStyle` | `() => StyleSpecification` | The style, as in MapLibre GL JS. |
-| `cooperativeGestures` (read only) | `{enable(): void; disable: () => void; isEnabled: () => boolean; isActive: () => boolean}` | As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. |
+| `cooperativeGestures` (read only) | `{enable(): void; disable: () => void; isEnabled: () => boolean; isActive: () => boolean; isBypassed: (event: MouseEvent \| PointerEvent \| WheelEvent) => boolean}` | As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. |
 | `project` | `(lngLat: LngLatLike) => Point` | As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. |
 | `version` (read only) | `string` | The version of this library, as the member `version` of a map of MapLibre GL JS. |
 | `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Has no effect: the map always draws copies of the world side by side. |
