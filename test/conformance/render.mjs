@@ -176,7 +176,11 @@ async function worker(queue) {
                         } else {
                             idle = false;
                             if (op[0] === 'addImage') map.addImage(op[1], await image(`${origin}/${op[2]}`), op[3] || {});
-                            else if (op[0] === 'setStyle') map.setStyle(typeof op[1] === 'object' && op[1] ? {...op[1], 'font-faces': {...fontFaces, ...op[1]['font-faces']}} : op[1], {localIdeographFontFamily: false});
+                            else if (op[0] === 'setStyle') {
+                                // A style by URL is fetched here, so that it gets the font-faces of the run as a style object does (#664).
+                                const next = typeof op[1] === 'string' ? await (await fetch(op[1].replace('local://', origin + '/'))).json() : op[1];
+                                map.setStyle(typeof next === 'object' && next ? {...next, 'font-faces': {...fontFaces, ...next['font-faces']}} : next, {localIdeographFontFamily: false});
+                            }
                             else if (typeof map[op[0]] === 'function') map[op[0]](...op.slice(1));
                             else throw new Error(`map.${op[0]} is not a function`);
                         }
