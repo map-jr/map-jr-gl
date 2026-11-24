@@ -203,6 +203,7 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
         const n = typeof id === 'string' && !promoteId && /^\d+$/.test(id) ? +id : NaN;
         if (rings.length) out.push({type, id: Number.isSafeInteger(n) ? n : typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
+    const open = (r: number[][]) => ring(r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r.slice(0, -1) : r);
     const walk = (f: any, g: any) => {
         if (!g) return;
         const c = g.coordinates;
@@ -211,9 +212,10 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
             case 'MultiPoint': add(f, 1, c.map((p: number[]) => ring([p]))); break;
             case 'LineString': add(f, 2, [ring(c)]); break;
             case 'MultiLineString': add(f, 2, c.map(ring)); break;
-            // Closing points are dropped: rings are implicitly closed, as in vector tiles.
-            case 'Polygon': add(f, 3, c.map((r: number[][]) => ring(r.slice(0, -1)))); break;
-            case 'MultiPolygon': add(f, 3, c.flat().map((r: number[][]) => ring(r.slice(0, -1)))); break;
+            // Closing points are dropped: rings are implicitly closed, as in vector tiles. A ring without a closing
+            // point keeps its last point, as in MapLibre GL JS.
+            case 'Polygon': add(f, 3, c.map(open)); break;
+            case 'MultiPolygon': add(f, 3, c.flat().map(open)); break;
             case 'GeometryCollection': for (const part of g.geometries) walk(f, part); break;
         }
     };
