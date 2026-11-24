@@ -8,7 +8,7 @@ import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite,
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
-import {EM, GlyphAtlas} from './text.ts';
+import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
@@ -25,7 +25,7 @@ export interface CameraOptions {
 export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
-    minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
+    minZoom?: number; maxZoom?: number; maxPitch?: number; worldCopies?: boolean; antialias?: boolean;
     /** The page's rules for requests at the start, so that the first tiles follow them too (#355). */
     requests?: RequestRules;
     /** Answers that the page requested before the engine started, by URL (only for an engine on the page's thread). */
@@ -41,9 +41,9 @@ export type Command =
     | {type: 'zoom'; delta: number; x: number; y: number}
     | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'; snap?: number}
     | {type: 'rotate'; delta: number; pitch?: number}
-    | {type: 'fling'; dx: number; dy: number; ms: number}
+    | {type: 'fling'; dx: number; dy: number; ms: number; bearing?: number}
     | {type: 'stop'}
-    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources; an empty `lod` drops them (removeSource). */
@@ -306,7 +306,7 @@ export class Engine {
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
     } | null = null;
     private prevWheelEase: {start: number; easing: (t: number) => number} | null = null;
-    private fling: {dx: number; dy: number; start: number; duration: number; done: number} | null = null;
+    private fling: {dx: number; dy: number; start: number; duration: number; done: number; turn: number; from: number} | null = null;
     private lastTime = 0;
 
     private labels = new Map<string, LabelState>();
@@ -381,7 +381,7 @@ export class Engine {
         this.tr.height = o.height;
         this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
-        Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
+        Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60, worldCopies: o.worldCopies ?? true});
         // (The projection decides how the camera is kept on the map: a globe is not kept inside the height of the world.)
         this.tr.globeStops = globeStops(o.style.projection?.type);
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
@@ -572,7 +572,7 @@ export class Engine {
         const item = (shift: number): RenderItem<GLTile> => ({id, corners: corners.map((v, i) => i % 2 ? v : v + shift * n * EXTENT), matrix: tr.tileMatrix(id), matrix4: tr.tileMatrix4(id), scale: tr.worldSize / n / EXTENT, clip: [-1e9, -1e9, 1e9, 1e9], tile: st!.gl!});
         // The picture is in each copy of the world: the view can show two copies at the 180 degree meridian.
         const lngs = src.coordinates!.map(c => c[0]), west = Math.min(...lngs), east = Math.max(...lngs), reach = 360 * Math.max(tr.width, tr.height) / tr.worldSize;
-        return [-1, 0, 1].filter(k => east + k * 360 > tr.lng - reach && west + k * 360 < tr.lng + reach).map(item);
+        return (tr.worldCopies ? [-1, 0, 1] : [0]).filter(k => east + k * 360 > tr.lng - reach && west + k * 360 < tr.lng + reach).map(item);
     }
 
     /** The heights under a tile, for the GPU. */
@@ -1033,15 +1033,20 @@ export class Engine {
                 // (Two pointer events can have the same time where the clock of the browser is coarse.)
                 const speed = Math.min(1400, dist * linearity / (Math.max(c.ms, 1) / 1000)), seconds = speed / (2500 * linearity), amount = speed * seconds / 2;
                 this.grab = null;
-                this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0};
+                // `bearing` (the compat entry's bearingSnap) turns the map to that bearing during the glide, as MapLibre GL JS does.
+                const turn = c.bearing === undefined ? 0 : c.bearing - tr.bearing;
+                this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0, turn, from: tr.bearing};
                 const end = new Transform();
                 Object.assign(end, tr);
-                end.set(tr.panned(-this.fling.dx, -this.fling.dy));
+                end.set(tr.panned(-this.fling.dx, -this.fling.dy), undefined, tr.bearing + turn);
                 this.aim(end);
                 break;
             }
             case 'stop': this.stop(); break;
-            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true});
+                // (`keep`: setRenderWorldCopies does not move the view, as in MapLibre GL JS; the next camera change does.)
+                if (c.keep) { this.viewCovers.clear(); this.invalidate(); } else tr.set(undefined, tr.zoom, undefined, tr.pitch);
+                break;
             case 'lod': for (const id of c.sources) if (c.lod.length) this.lod[id] = c.lod; else delete this.lod[id]; this.viewCovers.clear(); this.invalidate(); break;
             case 'refresh':
                 for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);
@@ -1201,7 +1206,7 @@ export class Engine {
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
-        const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]}[]>();
+        const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean}[]>();
         for (const [name, src] of Object.entries(this.style.sources)) {
             const mine = c.sets.filter(s => s.source === name && this.layers.find(l => l.id === s.layer)?.visible !== false);
             if (!mine.length || !isGeometrySource(src)) continue;
@@ -1213,7 +1218,8 @@ export class Engine {
             for (const s of mine) {
                 const L = this.layers.find(l => l.id === s.layer), r = s.radius;
                 let reach: [number, number, number, number] | null = L?.type === 'symbol' ? this.iconReach(L) : null;
-                // (The text of a label can reach farther than its icon: the reach covers both.)
+                // (The text of a label can reach farther than its icon: the reach covers both. A glyph of text on a line has its
+                // box around its own point, so long text on a line does not widen the rectangle.)
                 const texts = L?.type === 'symbol' ? this.textBoxes(L.id) : [];
                 for (const t of texts) {
                     const d = [t.box[0] - t.x, t.box[1] - t.y, t.box[2] - t.x, t.box[3] - t.y];
@@ -1361,7 +1367,7 @@ export class Engine {
         const glide = this.fling;
         if (glide) {
             const f = glide, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
-            tr.set(tr.panned(-f.dx * (k - f.done), -f.dy * (k - f.done)));
+            tr.set(tr.panned(-f.dx * (k - f.done), -f.dy * (k - f.done)), undefined, f.turn ? f.from + f.turn * k : undefined);
             f.done = k;
             if (t >= 1) this.fling = null, this.target = null;
         }
@@ -2009,16 +2015,29 @@ export class Engine {
 
     /**
      * The boxes of the text of the shown labels of a layer at a point (the collision boxes, with `text-padding`), in
-     * pixels of the screen, each with the point of its label on the screen now. (Text along a line is not among them.)
+     * pixels of the screen, each with the point of its label on the screen now. Text along a line (`line`) has one box
+     * for each glyph, around the piece of the line that the glyph covers.
      */
     private textBoxes(layer: string) {
-        const out: {x: number; y: number; box: number[]}[] = [], at: [number, number, number] = [0, 0, 0];
+        const out: {x: number; y: number; box: number[]; line?: boolean}[] = [], at: [number, number, number] = [0, 0, 0];
         for (const [key, {placed: p, target}] of this.labels) {
-            if (!target || !p.shaped || p.curve || p.src.angle !== null || !key.startsWith(layer + '|')) continue;
+            if (!target || !p.shaped || !key.startsWith(layer + '|')) continue;
             const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), s = p.size / EM, w = p.shaped.width * s, h = p.shaped.height * s;
+            if (p.curve) {
+                // (Each glyph starts at its point of `curve`, which lies `shift` pixels across the line, and its box is
+                // centered on the line, as its collision box is. On a tilted map `ground` gives the length on the
+                // screen of one pixel of text along the line, and the direction of one pixel across it.)
+                const g = p.ground, r = h / 2 + p.src.padding, shift = (p.src.offset[1] + BASELINE) * p.size, advances = p.shaped.lines[0].advances;
+                for (let i = 0; i < p.curve.length / 3; i++) {
+                    const a = p.curve[i * 3 + 2], len = advances[i] * s * (g ? g[i * 3] : 1) / 2;
+                    const cx = x + p.curve[i * 3] + Math.cos(a) * len - (g ? g[i * 3 + 1] : -Math.sin(a)) * shift, cy = y + p.curve[i * 3 + 1] + Math.sin(a) * len - (g ? g[i * 3 + 2] : Math.cos(a)) * shift;
+                    out.push({x: cx, y: cy, line: true, box: [cx - r, cy - r, cx + r, cy + r]});
+                }
+                continue;
+            }
             const cos = Math.abs(Math.cos(p.angle)), sin = Math.abs(Math.sin(p.angle)), hw = (w * cos + h * sin) / 2 + p.src.padding, hh = (w * sin + h * cos) / 2 + p.src.padding;
             const cx = p.x + x - p.ax, cy = p.y + y - p.ay;
-            out.push({x, y, box: [cx - hw, cy - hh, cx + hw, cy + hh]});
+            out.push({x, y, line: p.src.angle !== null, box: [cx - hw, cy - hh, cx + hw, cy + hh]});
         }
         return out;
     }
@@ -2030,12 +2049,16 @@ export class Engine {
      * shown at the point, the feature has text and its point is within `radius` pixels of the rectangle. (A feature with no point, and an icon whose image the map
      * does not have, is found within `radius` pixels of its geometry as before.)
      */
-    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]}[]): boolean {
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
         const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
-        if (!points) return true;
+        // Text on a line is found on the boxes of its glyphs (see `textBoxes`) when it is shown, and not found when it is
+        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. (A line
+        // with an icon is found within `radius` pixels of its geometry as before.)
+        if (!points) return image || !String(L.p.field.eval(z, f) ?? '') || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
+            : this.textOnLine(g, box, texts);
         const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
             const [x, y] = tr.project(lng, lat);
@@ -2050,6 +2073,24 @@ export class Engine {
             const [cx, cy, hw, hh] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, f);
             return x + cx - hw <= box[2] && x + cx + hw >= box[0] && y + cy - hh <= box[3] && y + cy + hh >= box[1];
         });
+    }
+
+    /** Whether a shown label on a line of `g` (a feature that a question found) has a box in the rectangle `box`. */
+    private textOnLine(g: NonNullable<QueriedFeature['geometry']>, box: number[], texts: {x: number; y: number; box: number[]; line?: boolean}[]): boolean {
+        const hit = texts.filter(t => t.line && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]);
+        if (!hit.length) return false;
+        const lines = (g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' || g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? (g.coordinates as number[][][][]).flat() : []) as number[][][];
+        for (const line of lines) {
+            const pts = line.map(([lng, lat]) => this.tr.project(lng, lat));
+            for (let i = 1; i < pts.length; i++) {
+                const [ax, ay] = pts[i - 1], [bx, by] = pts[i], dx = bx - ax, dy = by - ay, d2 = dx * dx + dy * dy;
+                for (const t of hit) {
+                    const k = d2 ? clamp(((t.x - ax) * dx + (t.y - ay) * dy) / d2, 0, 1) : 0;
+                    if (Math.hypot(ax + dx * k - t.x, ay + dy * k - t.y) < 1) return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

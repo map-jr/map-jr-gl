@@ -1663,6 +1663,65 @@ for (const mode of renderers) {
         check('[main] idle comes after changed data is drawn (setData, setFeatureState, setFilter, refreshTiles), and the source is not loaded before that',
             late.setData === '255,255,255' && late.back === '255,0,0' && late.featureState === '0,0,255' && late.setFilter === '255,255,255' && late.refreshTiles === '0,0,255' && !late.loadedAfterSetData && !late.loadedAfterRefresh, JSON.stringify(late));
 
+        // A query finds text on a line on the boxes of its glyphs, as MapLibre GL JS does: along the whole text, and not
+        // on the rest of the line. A label whose text does not fit its line is not shown, and a query does not find it (#1735).
+        const onLine = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:200px'}));
+            const line = (y, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: [[-40, y], [40, y]]}});
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line(0, 'A long label along the line'), line(-10, 'This label is far too long to fit on its short line at all, ever')]}}},
+                layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const ask = async (x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).map(f => f.properties.name[0]).join();
+            // The points of the line every 10 pixels, from one end to the other: the text covers a run of about 175 pixels.
+            const a = m.project([-40, 0]), b = m.project([40, 0]), hidden = m.project([0, -10]), found = [];
+            for (let x = a.x + 5; x < b.x; x += 10) if (await ask(x, a.y) === 'A') found.push(x);
+            const out = {found: found.length, run: found.length && found.at(-1) - found[0], points: Math.floor((b.x - a.x) / 10), hidden: await ask(hidden.x, hidden.y) + await ask(hidden.x + 60, hidden.y)};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
+            onLine.found >= 15 && onLine.run === (onLine.found - 1) * 10 && onLine.found < onLine.points - 10 && onLine.hidden === '', JSON.stringify(onLine));
+        // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
+        // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
+        // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
+        const lineText = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const line = (c, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: c}}), A = line([[-40, 0], [40, 0]], 'A long label along the line');
+            const make = async (features, layout, pitch = 0) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, pitch, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16, ...layout}}]}});
+                m.addImage('dot', {width: 8, height: 8, data: new Uint8Array(256).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                return {m, done: () => { m.remove(); el.remove(); }};
+            };
+            const ask = async (m, x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).map(f => f.properties.name).sort().join('/');
+            const out = {};
+            let {m, done} = await make([A, line([[30, -30], [30, 30]], 'V')], {'icon-image': ['case', ['==', ['get', 'name'], 'V'], 'dot', ''], 'text-allow-overlap': true});
+            const v = m.project([30, 0]);
+            out.icon = [await ask(m, v.x, v.y + 20), await ask(m, v.x - 50, v.y + 20)];
+            done();
+            ({m, done} = await make([A], {}));
+            const a = m.project([-40, 0]), b = m.project([40, 0]), found = [];
+            for (let x = a.x; x < b.x; x++) if (await ask(m, x, a.y)) found.push(x);
+            done();
+            // (The street B crosses at the middle of the text, where the label's point is.)
+            const lng = ((found[0] + found.at(-1)) / 2 - a.x) / (b.x - a.x) * 80 - 40;
+            ({m, done} = await make([A, line([[lng, -30], [lng, 30]], 'B')], {}));
+            out.cross = await ask(m, found[0] + 3, a.y);
+            done();
+            ({m, done} = await make([A], {'text-pitch-alignment': 'map', 'text-rotation-alignment': 'map'}, 60));
+            const c = m.project([0, 0]), across = [];
+            for (let dy = -30; dy <= 30; dy++) if (await ask(m, c.x, c.y + dy)) across.push(dy);
+            out.pitch = [across[0], across.at(-1)];
+            done();
+            return out;
+        });
+        check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
+            lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
         // A layer that comes after a symbol layer in the style draws over that layer's labels, as in MapLibre GL JS. The
         // label is a wide black halo in the middle; a red square after it covers it, and a square before it does not.
         const order = await page.evaluate(async () => {
@@ -3426,7 +3485,7 @@ for (const mode of renderers) {
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
-            const m = make({locale: {x: 'y'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
+            const m = make({locale: {x: 'y'}, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
             // The view is inside maxBounds directly after the constructor, before the engine reports the camera (MapLibre GL JS 6.17 gives [1.2109, 3.4573]).
             const clamped = m.getCenter().toArray();
             const options = warnings.splice(0), errors = [];
@@ -3472,7 +3531,7 @@ for (const mode of renderers) {
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
             let thrown = '';
-            try { make({strict: true, renderWorldCopies: false}); } catch (e) { thrown = e.message; }
+            try { make({strict: true, canvasContextAttributes: {depth: false}}); } catch (e) { thrown = e.message; }
             const strict = make({strict: true});
             await new Promise(r => strict.once('load', r));
             let thrownCall = '';
@@ -3486,7 +3545,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
-            quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
+            quiet.options.length === 1 && ['new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
@@ -3494,7 +3553,7 @@ for (const mode of renderers) {
             quiet.inline.errors.length === 1 && /addLayer: the layer "g" has a source object, and the style has a source with the id "g" already/.test(quiet.inline.errors[0]) && quiet.inline.layers === 'bg,uses-g,inline,inline-2'
             && quiet.inline.source === 'geojson' && quiet.inline.of === 'inline' && quiet.inline.drawn > 0 && quiet.inline.kept, JSON.stringify(quiet.inline));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
-            quiet.thrown.startsWith('[map-jr-gl] The option renderWorldCopies: false has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+            quiet.thrown.startsWith('[map-jr-gl] The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
     }
     // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
     // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
@@ -4439,6 +4498,71 @@ for (const mode of renderers) {
         const same = (a, b) => a.length === b.length && a.every((p, i) => sameLng(p[0], b[i][0]) && Math.abs(p[1] - b[i][1]) < 1e-3);
         check('[main] maplibre-compat and createMap: maxBounds that cross the antimeridian keep the view where MapLibre keeps it, after a jump and a drag (#309)',
             same(anti.compat, anti.ml) && same(anti.main, anti.ml.slice(0, 5)), JSON.stringify(anti));
+        // #1710: renderWorldCopies: false. The same jumps, a drag across the antimeridian and project() in MapLibre GL JS
+        // (served at /ml/) and in the compat entry give the same centers, zooms and points; the tiles are of one world, the
+        // ground past the antimeridian is not drawn, and the main API takes the field of the description.
+        const copies = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js'), lib = await import('/dist/map-jr-gl.js');
+            const world = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]]}};
+            const style = {version: 8, sources: {w: {type: 'geojson', data: world}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'w', type: 'fill', source: 'w', paint: {'fill-color': '#f00', 'fill-antialias': false}}]};
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const loaded = m => new Promise(r => m.loaded?.() ? r(m) : m.once('load', () => r(m)));
+            const round = v => Math.round(v * 1e4) / 1e4;
+            const run = async make => {
+                const el = box(), m = await make(el), out = [];
+                for (const [c, z] of [[[190, 0], 0], [[-175, 10], 2], [[179, -20], 3], [[30, 0], 3]]) { m.jumpTo({center: c, zoom: z}); out.push([round(m.getCenter().lng), round(m.getCenter().lat), round(m.getZoom())]); }
+                m.jumpTo({center: [-170, 0], zoom: 3});
+                out.push(['project', round(m.project([170, 0]).x)]);
+                const c = m.getCanvas(), r = c.getBoundingClientRect();
+                const ptr = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, pointerId: 1, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true}));
+                const mouse = (type, x) => c.dispatchEvent(new MouseEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, button: 0, buttons: type === 'mouseup' ? 0 : 1}));
+                ptr('pointerdown', 20); mouse('mousedown', 20);
+                for (let i = 1; i <= 10; i++) { const x = 20 + 260 * i / 10; ptr('pointermove', x); mouse('mousemove', x); await new Promise(res => setTimeout(res, 40)); }
+                ptr('pointerup', 280); mouse('mouseup', 280);
+                await new Promise(res => setTimeout(res, 200));
+                out.push([round(m.getCenter().lng), round(m.getCenter().lat)]);
+                m.setRenderWorldCopies(null); out.push(m.getRenderWorldCopies());
+                m.setRenderWorldCopies(undefined); out.push(m.getRenderWorldCopies());
+                // With the view past the antimeridian, setRenderWorldCopies(false) does not move it; the next camera change does (127.2656).
+                m.jumpTo({center: [190, 0], zoom: 1}); m.setRenderWorldCopies(false); out.push(['kept', round(m.getCenter().lng)]);
+                m.jumpTo({center: [185, 1]}); out.push(['moved', round(m.getCenter().lng)]);
+                m.remove(); el.remove();
+                return out;
+            };
+            const opts = el => ({container: el, style, renderWorldCopies: false, center: [0, 0], zoom: 3, fadeDuration: 0, dragPan: {inertia: false}});
+            const mlr = await run(el => loaded(new ml.Map(opts(el))));
+            const cr = await run(el => loaded(new compat.Map({...opts(el), renderer: 'main'})));
+            // The ground past the antimeridian: red with copies of the world, and not red without them.
+            const top = async (copies, make) => {
+                const el = box(), m = await make(el, copies);
+                await new Promise(r => setTimeout(r, 300));
+                const bmp = await createImageBitmap(await m.toBlob()), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                const red = g.getImageData(bmp.width / 2, bmp.height * 0.05, 1, 1).data[0] > 200 && g.getImageData(bmp.width / 2, bmp.height * 0.05, 1, 1).data[1] < 60;
+                const tiles = m.coveringTiles ? m.coveringTiles({tileSize: 512}).map(t => t.wrap) : [];
+                m.remove?.(); m.destroy?.(); el.remove();
+                return [red, [...new Set(tiles)].sort().join()];
+            };
+            const view = {center: [170, 0], zoom: 3, pitch: 60, bearing: 90};
+            const drawn = [
+                await top(true, (el, copies) => loaded(new compat.Map({container: el, style, renderWorldCopies: copies, ...view, renderer: 'main'}))),
+                await top(false, (el, copies) => loaded(new compat.Map({container: el, style, renderWorldCopies: copies, ...view, renderer: 'main'}))),
+            ];
+            // The main API: the field of the description, and update() that turns it on.
+            const el = box(), host = lib.createMap(el, {style, renderWorldCopies: false, view: {center: [190, 0], zoom: 0}, renderer: 'main'});
+            await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
+            const main = [host.state.get().view.center.map(round), round(host.state.get().view.zoom)];
+            host.update({style, view: {center: [190, 0], zoom: 3}, renderer: 'main'});
+            for (let i = 0; i < 40 && host.state.get().view.zoom !== 3; i++) await new Promise(r => setTimeout(r, 50));
+            main.push(round(host.state.get().view.center[0]));
+            host.destroy(); el.remove();
+            return {ml: mlr, compat: cr, drawn, main};
+        });
+        check('[main] maplibre-compat and createMap: renderWorldCopies: false keeps the view and markers in one world as MapLibre does (setRenderWorldCopies moves the view only at the next camera change), and draws and covers no other copy (#1710)',
+            JSON.stringify(copies.compat) === JSON.stringify(copies.ml) && copies.drawn[0][0] && copies.drawn[0][1] !== '0' && JSON.stringify(copies.drawn[1]) === '[false,"0"]'
+            && JSON.stringify(copies.main.slice(0, 2)) === JSON.stringify([copies.ml[0].slice(0, 2), copies.ml[0][2]]) && Math.abs(copies.main[2] - 190) % 360 < 1e-3, JSON.stringify(copies));
         // #334: LngLatBounds keeps its corners as given (as MapLibre does), so a bounds object can cross the antimeridian.
         // The same calls in MapLibre GL JS (served at /ml/) and in the compat entry give the same results, and
         // fitBounds with such bounds ends at the same centre and zoom.
@@ -4750,6 +4874,36 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #1834: a fast pan released with inertia at bearing 3 turns north during the inertia, in one movement (one
+        // `moveend`), as in MapLibre GL JS (served at /ml/), and not in a second movement after it.
+        const m1834 = {};
+        // A throw that a loaded machine releases too late for inertia (the map does not move after `dragend`) is thrown
+        // again, up to three times.
+        for (const lib of ['ml', 'compat']) for (let i = 0; i < 3 && !(m1834[lib]?.glide > 0.05); i++) {
+            await page.evaluate(async lib => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m1834 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 3});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                window.m1834ends = [];
+                m.on('dragend', () => { window.m1834drag = m.getCenter().lng; });
+                m.on('moveend', () => window.m1834ends.push(+m.getBearing().toFixed(1)));
+            }, lib);
+            await page.mouse.move(100, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { if (i > 1) await page.waitForTimeout(16); await page.mouse.move(100 + i * 25, 150); }
+            await page.mouse.up();
+            m1834[lib] = await page.evaluate(async () => {
+                const m = window.m1834;
+                await new Promise(r => setTimeout(r, 2500));
+                const out = {ends: window.m1834ends, bearing: +m.getBearing().toFixed(1), glide: +(window.m1834drag - m.getCenter().lng).toFixed(2)};
+                const el = m.getContainer(); m.remove(); el.remove();
+                return out;
+            });
+        }
+        // Both throws glide past the end of the drag and end at bearing 0 with one `moveend`.
+        check('[main] maplibre-compat: the inertia of a pan that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
+            ['ml', 'compat'].every(l => m1834[l].glide > 0.05 && m1834[l].ends.length === 1 && m1834[l].ends[0] === 0 && m1834[l].bearing === 0), JSON.stringify(m1834));
         // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
         // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
         const m479 = {};

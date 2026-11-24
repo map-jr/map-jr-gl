@@ -304,6 +304,11 @@ const MapJrComponent = defineComponent({
          * @default 60
          */
         maxPitch: Number as PropType<number | null>,
+        /**
+         * Whether copies of the world are drawn beside it. With `false`, the view stays inside -180 to 180 degrees of longitude, and markers and popups are not wrapped.
+         * @default true
+         */
+        renderWorldCopies: {type: Boolean as PropType<boolean | null>, default: undefined},
         /** The height of the map center in meters above sea level, which keeps the camera above the ground at a pitch above 90 when it is high enough. Without it, the center is on the ground and follows it. */
         centerElevation: Number as PropType<number | null>,
         /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. */
@@ -424,7 +429,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapDescription>(() => {
             const out: MapDescription = {
                 style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, data: data.value, interactiveLayers: layers.value, hoverState: props.hoverState, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, centerElevation: props.centerElevation, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, locale: props.locale && toRaw(props.locale), padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, renderWorldCopies: props.renderWorldCopies, centerElevation: props.centerElevation, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, locale: props.locale && toRaw(props.locale), padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 fonts: props.fonts && toRaw(props.fonts), sprite: props.sprite && toRaw(props.sprite), renderer: props.renderer, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onColorSchemeChange: scheme => emit('update:colorScheme', scheme), onClick: event => emit('click', event),
