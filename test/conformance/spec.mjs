@@ -63,6 +63,8 @@ const OTHER = [
     ['raster', 'raster-fade-duration', null, 'style.ts', /raster-fade-duration: the property has no effect/],
     // (Not read here, as in MapLibre GL JS 6.17, which declares it and does not read it: the development build says so, #1692.)
     ['symbol', 'symbol-avoid-edges', [], 'mistakes.ts', /"symbol-avoid-edges" has no effect, as in MapLibre GL JS/],
+    // (Not read here, as in MapLibre GL JS 6.17, which declares it and does not read it: the development build says so, #1712.)
+    ['root', 'centerAltitude', [], 'mistakes.ts', /"centerAltitude" has no effect, as in MapLibre GL JS/],
     // (Not read: the name is in src/ only in the list of known properties of the check for unknown ones, #1139.)
     ['fill-extrusion', 'fill-extrusion-rounded-corner-distance', null, 'mistakes.ts', /'fill-extrusion': 'fill-extrusion-rounded-corner-distance'/],
 ];
