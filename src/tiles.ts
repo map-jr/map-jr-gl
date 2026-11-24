@@ -1,5 +1,5 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
-import {compileFor, type MapStates} from './expr.ts';
+import {compileFor, warnOnce, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import type {GlobeBuild} from './subdivide.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
@@ -239,6 +239,7 @@ export class PortBackend implements TileBackend {
             // The worker asks about a request: pass the question on, and the answer back.
             // (The answer can carry the number that the engine gave the question. The worker must get its own number back:
             // each worker counts its questions separately.)
+            if (e.data.type === 'warn') return warnOnce(e.data.msg);
             if (e.data.type === 'resource') {
                 this.ask?.(e.data.url, e.data.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => port.postMessage({...a, type: 'resourceResult', id: e.data.id}, a.data ? [a.data] : []));
                 return;
