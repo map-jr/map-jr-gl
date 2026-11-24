@@ -235,6 +235,17 @@ Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the a
 right. With `controls`, it also returns the controls of the map and their style sheet. Put the HTML into the
 element of the map, which needs a `position` that is not `static`.
 
+The SVG is in a box with `position: absolute; inset: 0; overflow: hidden`, and both have the attribute
+`data-map-jr-ssr`. The SVG is centered in the element and placed as follows:
+
+- With `center` and `zoom`, the SVG has the size of `width` and `height` (1:1), and the element crops it. When the
+  element is wider or higher than the render, the SVG is scaled up as much as it needs to cover the element, and the
+  live map then shows a larger area at the render's zoom.
+- With `bounds`, the SVG is scaled to cover the element. It shows the area that the map shows when the map fits the
+  bounds to an element of the shape of the render.
+
+The guide [Server rendering](../guide/server-rendering.md) shows the cases.
+
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `options` **required** | [`FirstViewOptions`](#firstviewoptions) | | The options of `renderToSVG`, the attribution to show, and the controls. |

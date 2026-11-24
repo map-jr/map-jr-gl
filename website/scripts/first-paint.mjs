@@ -27,13 +27,18 @@ const render = ({width, height}, controls, colorScheme = 'light') => renderFirst
     style: styleUrl, center: [8.33, 47.03], zoom: 10.6, width, height,
     colorScheme, timeout: 120000, requestTimeout: 30000, ...(controls && {controls: [navigation(), scale()]}),
 });
-// The SVG and the credits that come after it.
-const split = html => {
-    const end = html.indexOf('</svg>') + '</svg>'.length;
-    if (!/^<svg[^>]*data-map-jr-ssr/.test(html) || end < 6) throw new Error('[map-jr-gl site] first-paint: the render has no SVG.');
-    return {svg: html.slice(0, end), credits: html.slice(end)};
-};
+// The SVG and the credits that come after it. The SVG is taken out of the box that the renderer puts around it, and its root gets the
+// style `place` in place of the placement of the renderer (#1427); the lines below replace `place` with their own.
 const place = 'position:absolute;inset:0;width:100%;height:100%';
+const box = '<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden">';
+const split = html => {
+    const end = html.indexOf('</svg></div>') + '</svg>'.length;
+    if (!html.startsWith(box) || !/^<svg[^>]*data-map-jr-ssr/.test(html.slice(box.length)) || end < 6) throw new Error('[map-jr-gl site] first-paint: the render has no SVG.');
+    const own = /^(<svg[^>]*?) preserveAspectRatio="xMidYMid slice" style="[^"]*"/, inner = html.slice(box.length, end);
+    if (!own.test(inner)) throw new Error('[map-jr-gl site] first-paint: the SVG of the render does not have the placement that this script replaces. Update the pattern `own` to the root of the SVG.');
+    const svg = inner.replace(own, (_, open) => `${open} style="${place}"`);
+    return {svg, credits: html.slice(end + '</div>'.length)};
+};
 
 const [a, narrow, b, aDark, narrowDark, bDark, smallPictureDark] = await Promise.all([
     render(small, true), render({width: 390, height: small.height}, true), render(wide),
