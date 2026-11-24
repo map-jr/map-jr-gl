@@ -2464,6 +2464,44 @@ for (const renderer of renderers) {
         await page.evaluate(z => window.t.host.moveTo({zoom: z}), zoom0); await page.waitForTimeout(300);
         check(`[${renderer}] cooperativeGestures: a plain wheel does not zoom and the hint is there, Ctrl + wheel zooms, and update() turns it off`,
             !plainOn && ctrlOn && plainOff && coop.hint === 1 && coop.touch === 'pan-x pan-y' && off === 0, JSON.stringify({plainOn, ctrlOn, plainOff, ...coop, off}));
+        // #1687: with cooperativeGestures, two fingers that move up in parallel move the map and do not tilt it, and a hand
+        // that puts one finger down a moment before the other, and lifts one before the other, does not see the hint.
+        const coopTouch = `[${renderer}] cooperativeGestures: two fingers that move in parallel pan the map and do not tilt it, and a touch that puts its fingers down or lifts them one after the other shows no hint (#1687)`;
+        if (!cdpTouch) skip(coopTouch, noCDP);
+        else {
+            const at = await page.evaluate(async renderer => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:50px;top:50px;width:600px;height:400px;z-index:1000'}));
+                const m = window.t.lib.createMap(el, {renderer, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 3, pitch: 30}, cooperativeGestures: true});
+                await new Promise(r => { const stop = m.state.subscribe(s => { if (s.loaded) { queueMicrotask(() => stop()); r(); } }); });
+                // (The hint comes with the code of cooperativeGestures, which loads on demand.)
+                while (!el.querySelector('.map-jr-cooperative-gesture-screen')) await new Promise(r => setTimeout(r, 20));
+                const hint = el.querySelector('.map-jr-cooperative-gesture-screen'), c = window.coopTouch = {shown: 0, view: () => m.state.get().view, remove: () => { m.destroy(); el.remove(); }};
+                new MutationObserver(() => { if (hint.style.opacity === '1') c.shown++; }).observe(hint, {attributes: true});
+                const r = el.getBoundingClientRect();
+                return {x: r.x, y: r.y};
+            }, renderer);
+            const cdp = await page.context().newCDPSession(page);
+            const touch = (type, touchPoints = []) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints});
+            const two = i => [{id: 0, x: at.x + 250, y: at.y + 300 - i * 6}, {id: 1, x: at.x + 350, y: at.y + 310 - i * 6}];
+            // Both fingers at once, up in parallel.
+            await touch('touchStart', two(0));
+            for (let i = 1; i <= 15; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+            await touch('touchEnd');
+            await page.waitForTimeout(500);
+            const parallel = await page.evaluate(() => { const v = window.coopTouch.view(); return {lat: v.center[1], pitch: v.pitch}; });
+            // One finger first, which moves 5 pixels before the second comes; the second lifts first, and the first moves on.
+            await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 300}]);
+            await touch('touchMove', [{id: 0, x: at.x + 250, y: at.y + 295}]);
+            await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 295}, two(0)[1]]);
+            for (let i = 1; i <= 10; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+            await touch('touchMove', [two(10)[0]]);
+            for (let i = 1; i <= 3; i++) { await touch('touchMove', [{...two(10)[0], y: two(10)[0].y - i * 5}]); await page.waitForTimeout(16); }
+            await touch('touchEnd');
+            await page.waitForTimeout(500);
+            await cdp.detach();
+            const after = await page.evaluate(() => { const c = window.coopTouch, v = c.view(); c.remove(); window.coopTouch = undefined; return {lat: v.center[1], pitch: v.pitch, shown: c.shown}; });
+            check(coopTouch, parallel.lat < -1 && Math.abs(parallel.pitch - 30) < 0.5 && after.lat < parallel.lat - 1 && Math.abs(after.pitch - 30) < 0.5 && after.shown === 0, JSON.stringify({parallel, after}));
+        }
         // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for no value (light), 'auto', 'light' and 'dark'.
         // (The browser fires the event `change` of the media query at its next rendering step, which can come late on a
         // loaded machine, so the check waits until the state has the expected scheme, for at most 3 s.)
