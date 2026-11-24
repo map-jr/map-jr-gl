@@ -7,10 +7,10 @@ export const statuses = ['match', 'near', 'differ', 'error', 'skipped'];
 export const decisions = ['wontfix', 'later'];
 
 /**
- * The operations of a test (`metadata.test.operations` of its style) that the run cannot do. A custom layer and the
- * canvas of a canvas source are code of MapLibre's harness, and `pauseTiles` uses a private member of MapLibre's map.
+ * The operations of a test (`metadata.test.operations` of its style) that the run cannot do. `pauseTiles` uses a
+ * private member of MapLibre's map.
  */
-export const operationsNotDone = ['addCustomLayer', 'pauseTiles'];
+export const operationsNotDone = ['pauseTiles'];
 
 /**
  * Why the run skips a test, or null when the run draws it. The reason is the name of the first operation that the run

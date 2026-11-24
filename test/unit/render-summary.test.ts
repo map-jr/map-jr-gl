@@ -31,7 +31,8 @@ test('render summary: a test that scripts the map or has another pixel ratio run
     assert.equal(skipReason({}), null);
     assert.equal(skipReason(), null);
     // The reason is the name of the first operation that the run cannot do.
-    assert.equal(skipReason({operations: [['wait'], ['addCustomLayer', 'tent-3d'], ['pauseTiles', 'a']]}), 'addCustomLayer');
+    assert.equal(skipReason({operations: [['wait'], ['addCustomLayer', 'tent-3d'], ['pauseTiles', 'a']]}), 'pauseTiles');
+    assert.equal(skipReason({operations: [['addCustomLayer', 'tent-3d']]}), null);
     for (const name of operationsNotDone) assert.equal(skipReason({operations: [[name, 'a']]}), name);
     assert.equal(skipReason({pixelRatio: 5, reportWidth: 256, reportHeight: 256}), 'reportWidth');
     // A style that setStyle loads can have tiles of the package @mapbox/mvt-fixtures, which the run may not have.

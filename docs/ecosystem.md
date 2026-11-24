@@ -1,13 +1,17 @@
 # Plugins and frameworks
 
 This report is written by `node test/conformance/ecosystem.mjs --write`. The script reads popular MapLibre plugins and
-framework wrappers from npm. It finds the methods of `Map`, the exports of `maplibre-gl` and the map events that each
-package uses, and compares them with the entry `@map-jr/map-jr-gl/maplibre-compat` of this library.
+framework wrappers from npm. It finds the methods of `Map`, the exports of `maplibre-gl`, the map events and the methods
+of controls, `Marker` and `Popup` that each package uses, and compares them with the entry
+`@map-jr/map-jr-gl/maplibre-compat` of this library.
+
+A method of a control, `Marker` or `Popup` is found when the package keeps the new instance in a name and calls the
+method on that name in the same file (for example `const gc = new maplibregl.GeolocateControl(); gc.on(...)`).
 
 The script reads the code as text. It does not run the packages. So a package with "none" in each column can still
 have a problem, and a method in the list is possibly used only in a part of the package that you do not use.
 
-**24 of 26 packages** use only parts of the API that this library has.
+**23 of 27 packages** use only parts of the API that this library has.
 
 A missing method throws a `TypeError` when the package calls it. A method that is "accepted, with no effect" exists and
 does nothing, so the package goes on, and it does not count as missing. Most of these methods warn once when they get a
@@ -191,16 +195,34 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 
 | Missing | Kind | Packages | Names of the packages |
 |---|---|---:|---|
+| `addSourceType` | export | 1 | @maptiler/sdk |
+| `AJAXError` | export | 1 | @maptiler/sdk |
+| `BoxZoomHandler` | export | 1 | @maptiler/sdk |
 | `CanvasSource` | export | 1 | svelte-maplibre-gl |
-| `config` | export | 1 | svelte-maplibre |
-| `Event` | export | 1 | svelte-maplibre-gl |
+| `clearPrewarmedResources` | export | 1 | @maptiler/sdk |
+| `CooperativeGesturesHandler` | export | 1 | @maptiler/sdk |
+| `DoubleClickZoomHandler` | export | 1 | @maptiler/sdk |
+| `DragPanHandler` | export | 1 | @maptiler/sdk |
+| `DragRotateHandler` | export | 1 | @maptiler/sdk |
+| `EdgeInsets` | export | 1 | @maptiler/sdk |
 | `GeoJSONSource` | export | 1 | svelte-maplibre-gl |
-| `Hash` | export | 1 | svelte-maplibre-gl |
+| `GeolocateEvent` | export | 1 | @maptiler/sdk |
 | `ImageSource` | export | 1 | svelte-maplibre-gl |
+| `importScriptInWorkers` | export | 1 | @maptiler/sdk |
+| `KeyboardHandler` | export | 1 | @maptiler/sdk |
+| `prewarm` | export | 1 | @maptiler/sdk |
 | `RasterDEMTileSource` | export | 1 | svelte-maplibre-gl |
 | `RasterTileSource` | export | 1 | svelte-maplibre-gl |
+| `ScrollZoomHandler` | export | 1 | @maptiler/sdk |
+| `Style` | export | 1 | @maptiler/sdk |
+| `TwoFingersTouchPitchHandler` | export | 1 | @maptiler/sdk |
+| `TwoFingersTouchRotateHandler` | export | 1 | @maptiler/sdk |
+| `TwoFingersTouchZoomHandler` | export | 1 | @maptiler/sdk |
+| `TwoFingersTouchZoomRotateHandler` | export | 1 | @maptiler/sdk |
 | `VectorTileSource` | export | 1 | svelte-maplibre-gl |
 | `VideoSource` | export | 1 | svelte-maplibre-gl |
+| `Marker.setSubpixelPositioning` | method of an instance | 2 | @indoorequal/vue-maplibre-gl, svelte-maplibre-gl |
+| `Popup.setPadding` | method of an instance | 2 | svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
 
 ## What is accepted with no effect
 
@@ -218,52 +240,52 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 
 ### Drawing and editing
 
-| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events |
-|---|---|---:|---:|---:|---|---|---|---|
-| @mapbox/mapbox-gl-draw | 1.5.2 | 13 | 0 | 8 | none | none | none | none |
-| terra-draw-maplibre-gl-adapter | 1.5.0 | 13 | 0 | 0 | none | none | none | none |
-| @watergis/maplibre-gl-terradraw | 1.17.0 | 25 | 1 | 2 | none | none | none | none |
-| maplibre-gl-measures | 0.0.21 | 17 | 0 | 0 | none | none | none | none |
+| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events | Missing methods of instances |
+|---|---|---:|---:|---:|---|---|---|---|---|
+| @mapbox/mapbox-gl-draw | 1.5.2 | 14 | 0 | 8 | none | none | none | none | none |
+| terra-draw-maplibre-gl-adapter | 1.5.0 | 13 | 0 | 0 | none | none | none | none | none |
+| @watergis/maplibre-gl-terradraw | 1.17.0 | 25 | 1 | 2 | none | none | none | none | none |
+| maplibre-gl-measures | 0.0.21 | 18 | 0 | 0 | none | none | none | none | none |
 
 ### Search and directions
 
-| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events |
-|---|---|---:|---:|---:|---|---|---|---|
-| @maplibre/maplibre-gl-geocoder | 1.9.4 | 9 | 3 | 3 | none | none | none | none |
-| @maplibre/maplibre-gl-directions | 0.10.1 | 12 | 0 | 9 | none | none | none | none |
+| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events | Missing methods of instances |
+|---|---|---:|---:|---:|---|---|---|---|---|
+| @maplibre/maplibre-gl-geocoder | 1.9.5 | 9 | 3 | 3 | none | none | none | none | none |
+| @maplibre/maplibre-gl-directions | 0.10.1 | 13 | 0 | 9 | none | none | none | none | none |
 
 ### Controls and tools
 
-| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events |
-|---|---|---:|---:|---:|---|---|---|---|
-| @maplibre/maplibre-gl-compare | 0.5.0 | 10 | 0 | 2 | none | none | none | none |
-| @maplibre/maplibre-gl-inspect | 1.9.0 | 7 | 1 | 6 | none | none | none | none |
-| @watergis/maplibre-gl-export | 6.0.0 | 29 | 2 | 2 | none | none | none | none |
-| maplibre-gl-opacity | 1.8.0 | 2 | 0 | 0 | none | none | none | none |
-| @mapbox/mapbox-gl-sync-move | 0.4.0 | 7 | 0 | 1 | none | none | none | none |
-| maplibre-gl-basemaps | 0.1.3 | 5 | 0 | 1 | none | none | none | none |
-| maplibre-gl-style-flipper | 1.0.9 | 9 | 0 | 1 | none | none | none | none |
+| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events | Missing methods of instances |
+|---|---|---:|---:|---:|---|---|---|---|---|
+| @maplibre/maplibre-gl-compare | 0.5.0 | 11 | 0 | 2 | none | none | none | none | none |
+| @maplibre/maplibre-gl-inspect | 1.9.0 | 7 | 1 | 6 | none | none | none | none | none |
+| @watergis/maplibre-gl-export | 6.0.0 | 29 | 2 | 2 | none | none | none | none | none |
+| maplibre-gl-opacity | 1.8.0 | 2 | 0 | 0 | none | none | none | none | none |
+| @mapbox/mapbox-gl-sync-move | 0.4.0 | 7 | 0 | 1 | none | none | none | none | none |
+| maplibre-gl-basemaps | 0.1.3 | 5 | 0 | 1 | none | none | none | none | none |
+| maplibre-gl-style-flipper | 1.0.9 | 9 | 0 | 1 | none | none | none | none | none |
 
 ### Data and layers
 
-| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events |
-|---|---|---:|---:|---:|---|---|---|---|
-| pmtiles | 4.5.0 | 1 | 0 | 0 | none | none | none | none |
-| maplibre-contour | 0.1.1 | 0 | 1 | 0 | none | none | none | none |
-| @deck.gl/mapbox | 9.4.1 | 18 | 0 | 12 | none | none | none | none |
-| @maplibre/maplibre-gl-leaflet | 0.1.4 | 13 | 0 | 2 | none | none | none | none |
-| maplibre-gl-vector-text-protocol | 0.0.5 | 1 | 0 | 0 | none | none | none | none |
-| @americana/maplibre-shield-generator | 0.2.1 | 7 | 0 | 1 | none | none | none | none |
+| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events | Missing methods of instances |
+|---|---|---:|---:|---:|---|---|---|---|---|
+| pmtiles | 4.5.0 | 2 | 0 | 0 | none | none | none | none | none |
+| maplibre-contour | 0.2.0 | 0 | 1 | 0 | none | none | none | none | none |
+| @deck.gl/mapbox | 9.4.2 | 18 | 0 | 12 | none | none | none | none | none |
+| @maplibre/maplibre-gl-leaflet | 0.1.4 | 13 | 0 | 2 | none | none | none | none | none |
+| maplibre-gl-vector-text-protocol | 0.0.5 | 1 | 0 | 0 | none | none | none | none | none |
+| @americana/maplibre-shield-generator | 0.2.1 | 7 | 0 | 1 | none | none | none | none | none |
 
 ### Frameworks
 
-| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events |
-|---|---|---:|---:|---:|---|---|---|---|
-| react-map-gl | 8.1.3 | 53 | 20 | 8 | none | `setTransformCameraUpdate` | none | none |
-| @vis.gl/react-maplibre | 8.1.3 | 47 | 15 | 6 | none | `setTransformCameraUpdate` | none | none |
-| vue-maplibre-gl | 5.6.1 | 40 | 6 | 17 | none | `setRenderWorldCopies` | none | none |
-| @indoorequal/vue-maplibre-gl | 9.0.1 | 39 | 9 | 5 | none | `setRenderWorldCopies` | none | none |
-| svelte-maplibre-gl | 2.2.1 | 55 | 26 | 5 | none | `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setRenderWorldCopies`, `setTransformCameraUpdate`, `setVerticalFieldOfView` | `CanvasSource`, `Event`, `GeoJSONSource`, `Hash`, `ImageSource`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
-| svelte-maplibre | 2.0.1 | 37 | 19 | 26 | none | none | `config` | none |
-| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 | 11 | 46 | none | `setAnisotropicFilterPitch`, `setCenterElevation`, `setRenderWorldCopies` | none | none |
-| @maptiler/sdk | 4.2.1 | 66 | 1 | 18 | none | `setRoll` | none | none |
+| Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events | Missing methods of instances |
+|---|---|---:|---:|---:|---|---|---|---|---|
+| react-map-gl | 8.1.3 | 54 | 20 | 8 | none | `setTransformCameraUpdate` | none | none | none |
+| @vis.gl/react-maplibre | 8.1.3 | 48 | 15 | 6 | none | `setTransformCameraUpdate` | none | none | none |
+| vue-maplibre-gl | 5.6.1 | 40 | 6 | 17 | none | `setRenderWorldCopies` | none | none | none |
+| @indoorequal/vue-maplibre-gl | 9.0.1 | 39 | 9 | 5 | none | `setRenderWorldCopies` | none | none | `Marker.setSubpixelPositioning` |
+| svelte-maplibre-gl | 2.2.1 | 55 | 26 | 5 | none | `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setRenderWorldCopies`, `setTransformCameraUpdate`, `setVerticalFieldOfView` | `CanvasSource`, `GeoJSONSource`, `ImageSource`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none | `Marker.setSubpixelPositioning`, `Popup.setPadding` |
+| svelte-maplibre | 2.0.1 | 37 | 19 | 26 | none | none | none | none | none |
+| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 | 11 | 46 | none | `setAnisotropicFilterPitch`, `setCenterElevation`, `setRenderWorldCopies` | none | none | `Popup.setPadding` |
+| @maptiler/sdk | 5.0.0 | 71 | 57 | 20 | none | `setRoll` | `AJAXError`, `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `EdgeInsets`, `GeolocateEvent`, `KeyboardHandler`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addSourceType`, `clearPrewarmedResources`, `importScriptInWorkers`, `prewarm` | none | none |
