@@ -59,8 +59,6 @@ const OTHER = [
     ['source geojson', 'lineMetrics', [], 'tiles.ts', /l\.type === 'line' && l\.ramp/],
     ['transition', 'duration', [], 'style.ts', /duration: 300/],
     ['transition', 'delay', [], 'style.ts', /delay: 0/],
-    // (Accepted with no effect: the name is in src/ only for its warning, so the inputs are `null` and it counts as not read.)
-    ['raster', 'raster-fade-duration', null, 'style.ts', /raster-fade-duration: the property has no effect/],
     // (Not read: the name is in src/ only in the list of known properties of the check for unknown ones, #1139.)
     ['fill-extrusion', 'fill-extrusion-rounded-corner-distance', null, 'mistakes.ts', /'fill-extrusion': 'fill-extrusion-rounded-corner-distance'/],
 ];

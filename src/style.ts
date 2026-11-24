@@ -89,6 +89,7 @@ export const SPEC: Record<string, Record<string, [string, PropKind, any, string[
         resampling: ['resampling', 'string', null],
         rasterResampling: ['raster-resampling', 'string', 'linear'],
         layerBlend: ['raster-layer-blend', 'string', 'normal'],
+        fadeDuration: ['raster-fade-duration', 'number', 300],
     },
     hillshade: {
         shadow: ['hillshade-shadow-color', 'colorArray', '#000'],
@@ -295,8 +296,6 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         // These properties of a hillshade layer take one value or a list of values, one for each light. A list is kept as it is.
         p[k] = l.type === 'hillshade' && LIGHT_PROPS.includes(k) && Array.isArray(v) ? compileProp(typeof v[0] !== 'string' || parseColor(v[0]) ? ['literal', v] : v, 'string', def) : compileProp(v, kind, def, values);
     }
-    const fade = l.paint?.['raster-fade-duration'];
-    if (l.type === 'raster' && fade != null && fade !== 0) warnOnce(`raster-fade-duration: the property has no effect, and a raster tile shows at once when it has loaded. Remove it, or write 0.`);
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
     let relief: Float32Array | undefined, ramp: Uint8Array | undefined;
     if (l.type === 'color-relief') {

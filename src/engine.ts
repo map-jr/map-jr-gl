@@ -7,7 +7,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
@@ -158,7 +158,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -638,7 +638,6 @@ export class Engine {
                 keys.push(key); // a stand-in tile of another level: it is in use too
                 return t.gl;
             });
-            items.set(source, list);
             // The picture depends on exactly these tiles (and which build of each), so that is what identifies it.
             for (const it of list) signature += `,${it.id.key}:${it.tile.uid}`;
         }
@@ -1470,6 +1469,7 @@ export class Engine {
             if (this.tellLoads) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
+            t.at = performance.now();
             t.rev = ++this.tilesVersion;
             this.freshTiles.set(id.key, performance.now());
             // (A tile of the overview that no frame has drawn yet changes nothing in the image. From now on it ages like any other tile.)
@@ -1789,7 +1789,7 @@ export class Engine {
                     if (!t) { this.request(source, id, key); const made = this.tiles.get(key); if (made) { made.used = -1; this.early.add(key); } } else if (t.state !== 'loading') t.used = frameNo;
                 }
             }
-            const list = renderItems(tr, ideal, k => {
+            const get = (k: string) => {
                 const t = this.tiles.get(source + '|' + k);
                 if (t?.state !== 'ok' || t.missing) return undefined;
                 t.used = frameNo;
@@ -1800,7 +1800,10 @@ export class Engine {
                     this.rebuild(source, {z, x, y, w: 0, key: k}, source + '|' + k, t);
                 }
                 return t.gl;
-            });
+            };
+            let list = renderItems(tr, ideal, get);
+            const fade = Math.max(0, ...this.layers.map(l => l.type === 'raster' && l.source === source && l.visible ? l.p.fadeDuration.eval(tr.zoom) : 0));
+            if (fade > 0) list = this.fadeIn(tr, source, ideal, list, get, fade);
             items.set(source, list);
             all.push(...list);
         }
@@ -2088,6 +2091,31 @@ export class Engine {
      * before the labels of that layer and of the layers below it, and after the labels of the layers above it, as for
      * an icon that is placed.
      */
+    /**
+     * Marks the raster tiles of the view that arrived less than `fade` ms ago, as MapLibre GL JS 6.17 does with
+     * `raster-fade-duration`: a tile with a loaded parent or loaded children fades in over them (they are drawn below it
+     * with `under`), and a tile at the edge of the view with none fades in over nothing. Another tile shows at once.
+     */
+    private fadeIn(tr: Transform, source: string, ideal: TileID[], list: RenderItem<GLTile>[], get: (k: string) => GLTile | undefined, fade: number) {
+        const keys = new Set(ideal.map(id => id.key)), now = performance.now(), out: RenderItem<GLTile>[] = [];
+        // The edge: the tiles in the first or last row or column of the view, measured at the deepest level (MapLibre's getEdgeTiles).
+        const z = Math.max(...ideal.map(id => id.z)), at = (id: TileID) => [(id.x + id.w * 2 ** id.z) * 2 ** (z - id.z), id.y * 2 ** (z - id.z)];
+        const xs = ideal.map(id => at(id)[0]), ys = ideal.map(id => at(id)[1]);
+        const edge = (id: TileID) => { const [x, y] = at(id); return x === Math.min(...xs) || x === Math.max(...xs) || y === Math.min(...ys) || y === Math.max(...ys); };
+        for (const it of list) {
+            const t = keys.has(it.id.key) && it.clip === FULL_CLIP ? this.tiles.get(source + '|' + it.id.key) : undefined;
+            if (t?.at && now - t.at < fade) {
+                const below = renderItems(tr, [it.id], k => k === it.id.key ? undefined : get(k));
+                if (below.length || edge(it.id)) {
+                    for (const b of below) { b.under = true; out.push(b); }
+                    it.born = t.at;
+                }
+            }
+            out.push(it);
+        }
+        return out;
+    }
+
     private reserve(grid: CollisionGrid, items: Map<string, RenderItem<GLTile>[]>, only: CompiledLayer) {
         const tr = this.tr;
         const zoom = tr.zoom;

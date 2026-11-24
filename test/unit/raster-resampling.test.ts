@@ -23,15 +23,13 @@ test('raster: raster-layer-blend is read', () => {
     assert.equal(layer('raster', {}).layerBlend?.eval(0), 'normal');
 });
 
-test('raster: raster-fade-duration other than 0 warns once', () => {
+test('raster: raster-fade-duration is read, with the default 300, and writes no warning (#1694)', () => {
     const warnings: string[] = [], warn = console.warn;
     console.warn = (m: string) => { warnings.push(m); };
     try {
-        layer('raster', {'raster-fade-duration': 0});
-        assert.equal(warnings.length, 0);
-        layer('raster', {'raster-fade-duration': 500});
-        layer('raster', {'raster-fade-duration': 500});
-        assert.equal(warnings.filter(m => m.includes('raster-fade-duration')).length, 1);
+        assert.equal(layer('raster', {}).fadeDuration?.eval(0), 300);
+        assert.equal(layer('raster', {'raster-fade-duration': 500}).fadeDuration?.eval(0), 500);
+        assert.equal(warnings.filter(m => m.includes('raster-fade-duration')).length, 0);
     } finally { console.warn = warn; }
 });
 

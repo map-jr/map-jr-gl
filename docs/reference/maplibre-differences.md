@@ -138,6 +138,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A heatmap is drawn over an opaque fill or background layer that is above it in the style.
 - **This library:** The layers draw in the order of the style, so the opaque layer covers the heatmap. This is a decision and will stay.
 
+### The fade of raster tiles
+
+- **MapLibre GL JS:** `raster-fade-duration` (default 300 ms) fades a new raster tile in: over its loaded parent or children, or over nothing at the edge of the view. It mixes the two images in one draw.
+- **This library:** The fade is the same, and `idle` waits for it as in MapLibre GL JS. The tile below is drawn at full opacity and the new tile over it with the fading opacity, so a translucent image looks slightly different during the fade. With 3D terrain a tile shows at once, as in MapLibre GL JS. The server renderer draws no fade.
+
 ### Label placement
 
 - **MapLibre GL JS:** Changes gradually, tile by tile.
@@ -518,7 +523,6 @@ Properties:
 - `symbol-avoid-edges`. The property is not read, and nothing warns.
 - `symbol-height-offset`. The property is not read, and nothing warns.
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and nothing warns: the corners of an extrusion are sharp.
-- `raster-fade-duration`. A raster tile shows at once when it has loaded. A value other than 0 has no effect and writes one warning. (`raster-resampling`, `resampling` and `raster-layer-blend` are read as in MapLibre GL JS; the SVG output of the server renderer gives `nearest` to the browser as `image-rendering: pixelated`.)
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
 - An icon together with text that follows a curved line. The text is drawn without the icon.
 - `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
