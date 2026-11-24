@@ -1322,6 +1322,28 @@ for (const renderer of renderers) {
             featureState.set.state?.on === true && featureState.set.colour === 'red' && featureState.restyled.state?.on === true && featureState.restyled.colour === 'red'
             && featureState.removed.state?.on === undefined && featureState.removed.state?.n === 1 && featureState.removed.colour === 'blue' && featureState.after === 'none', JSON.stringify(featureState));
 
+        // 3d. toBlob right after a new style URL waits for that style, also while its answer is late (#1167).
+        await page.route(/\/test-style-1167\//, async route => {
+            const blue = route.request().url().includes('blue');
+            if (blue) await new Promise(r => setTimeout(r, 600));
+            await route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': blue ? '#00f' : '#f00'}}]})});
+        });
+        const lateStyle = await page.evaluate(async renderer => {
+            const t = window.t, out = [];
+            const colour = async b => { const c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1); const [r, , bl] = c.getImageData(0, 0, 1, 1).data; return r > 200 && bl < 50 ? 'red' : bl > 200 && r < 50 ? 'blue' : `${r},${bl}`; };
+            for (let i = 0; i < 3; i++) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const spec = {style: `/test-style-1167/red.json?${i}`, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+                const host = t.lib.createMap(el, spec);
+                await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
+                host.update({...spec, style: `/test-style-1167/blue.json?${i}`});
+                out.push(await colour(await host.toBlob()));
+                host.destroy(); el.remove();
+            }
+            return out;
+        }, renderer);
+        check(`[${renderer}] toBlob right after a new style URL shows the new style, also when the style comes 600 ms later (#1167)`, lateStyle.every(c => c === 'blue'), JSON.stringify(lateStyle));
+
         // 3d. A key of `data` with no source of that id makes a GeoJSON source: in the first description, as a new key, after
         // a new style, and a removed key removes it with a warning for the layer that still names it. A key that is the id of
         // a source of another type gives an error of the map (#487).
