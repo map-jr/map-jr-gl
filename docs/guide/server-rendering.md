@@ -46,7 +46,7 @@ import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const view = {center: [-74.0065, 40.7085], zoom: 13.6};
-const lib = 'https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/map-jr-gl.js';
+const lib = 'https://unpkg.com/@map-jr/map-jr-gl@0.11.0/dist/map-jr-gl.js';
 
 // Your server sends the string that page() returns as the HTML of the page.
 export async function page() {
@@ -96,7 +96,7 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 <!-- page.html. The server writes the element in place of the last line. -->
 <script
   type="module"
-  src="https://unpkg.com/@map-jr/map-jr-gl@0.10.0/dist/element.js"
+  src="https://unpkg.com/@map-jr/map-jr-gl@0.11.0/dist/element.js"
 ></script>
 MAP
 ```
