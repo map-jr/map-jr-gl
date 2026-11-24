@@ -222,10 +222,11 @@ tests of `sky/roll/` and `terrain/fog-*-roll`, `line-dasharray/zero-length-gap`,
 `terrain/dem-cell-centre-hillshade-peak`, four `terrain/` tests of "pitch above 60 degrees" and
 `terrain/symbol-height-offset-building`.
 
-The other tests that the table gives a label need a change of the file:
+This pull request gives a label to the other tests of the table:
 
 - `debug/collision-horizon-cutoff`, `debug/collision-lines-overscaled`, `debug/collision-lines-pitched-2`,
   `debug/collision-lines-simple-words`, `debug/collision-pitched`, the three `debug/collision-variable-anchor/*`
-  tests, `debug/padding/set-padding`, `debug/raster` and `regressions/mapbox-gl-js#4647` fit the label "debug
-  drawing". That label has the decision `wontfix`, so only the owner can extend it.
-- `regressions/mapbox-gl-js#6655` fits the label "circle stroke and blur for each feature" (`later`).
+  tests, `debug/padding/set-padding`, `debug/raster` and `regressions/mapbox-gl-js#4647` have the label "debug
+  drawing" (`wontfix`). The owner decided this on 2026-11-24 (#1739).
+- `regressions/mapbox-gl-js#6655` has the label "circle stroke and blur for each feature" (`later`).
+- Each test whose action is an issue number has a `later` label that names that issue.
