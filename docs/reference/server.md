@@ -109,11 +109,16 @@ const {svg} = await renderToSVG({
 Each value is an SVG document as a string, or `{image, width, height}` with the size in CSS pixels. Without a size,
 the size is that of the `viewBox` of the SVG, then that of its `width` and `height` attributes, and 24 by 24 pixels
 when it has neither. An SVG with slots (`{{color}}`) is a template, as in [`images`](description.md#images) of the
-description. An image of `images` or of `metadata["map-jr:images"]` of the style overrides an image of the sprite with
-the same name, as in the map, also when the server cannot draw it. A value that is the URL of an image is drawn when a
-symbol layer names it literally and its size is given or the server can decode it (PNG, or lossless WebP, unless
-`decodeImage` is given). The server then links to the URL, or embeds it with `inlineImages`. Otherwise the image is
-not drawn, and the server writes a warning.
+description.
+
+An image of `images` or of `metadata["map-jr:images"]` of the style takes the place of the sprite image of the same
+name, as in the map. The server draws it as follows:
+
+- An SVG document is drawn.
+- The URL of an image is drawn when a symbol layer names it literally and its size is given or the server can decode
+  it (PNG, or lossless WebP, unless `decodeImage` is given). The SVG links to the URL, or embeds it with `inlineImages`.
+- Any other image is not drawn, and the sprite image of its name is not drawn either. For a URL that fails, the server
+  writes a warning.
 
 ### `overrides`
 
