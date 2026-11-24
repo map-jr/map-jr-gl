@@ -67,7 +67,7 @@ export type MapLayerEventType = Each<'click' | 'mousemove' | 'mouseenter' | 'mou
  * accepted with no effect (see docs/reference/maplibre-differences.md).
  */
 export type MapOptions = CoreMapOptions & {
-    /** The angle in degrees from north within which `snapToNorth` and the end of a rotate gesture turn the map north. The default is 7, and 0 turns the snap off. */
+    /** The angle in degrees from north within which `snapToNorth` and the end of a gesture turn the map north. The default is 7, and 0 turns the snap off. */
     bearingSnap?: number;
     /** No effect: labels show and hide without a fade. */
     fadeDuration?: number;

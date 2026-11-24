@@ -412,16 +412,22 @@ export class Map extends CoreMap {
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
-        // As in MapLibre GL JS, a rotate gesture (dragRotate or touchZoomRotate) that ends near north turns the map north.
+        // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
+        // closer to north than bearingSnap turns the map north. (MapLibre GL JS turns the inertia north; here the snap
+        // follows the inertia.)
         let byHand = false;
-        this.on('rotate', () => { byHand ||= this.dragRotate.isActive() || this.touchZoomRotate.isActive(); });
-        // (A pause during the gesture also ends a rotation: the snap waits until the pointers of the gesture lift.)
+        const handlers = [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch];
+        const held = () => handlers.some(h => h.isActive());
+        this.on('move', () => { byHand ||= held(); });
+        const wheel = () => { byHand ||= this.scrollZoom.isEnabled(); };
+        this.getCanvasContainer().addEventListener('wheel', wheel, {passive: true});
+        // (A pause during a gesture also ends a move: the snap waits until the pointers of the gesture lift.)
         const end = () => {
-            if (!byHand || this.dragRotate.isActive() || this.touchZoomRotate.isActive() || this.isRotating()) return;
+            if (!byHand || held() || this.isMoving()) return;
             byHand = false;
             if (this.tr.bearing !== 0) this.snapToNorth();
         };
-        this.on('rotateend', end);
+        this.on('moveend', end);
         for (const type of ['pointerup', 'touchend'] as const) {
             const lifted = () => setTimeout(end);
             addEventListener(type, lifted, true);
@@ -613,7 +619,7 @@ export class Map extends CoreMap {
     zoomOut(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom - 1, ...o}, eventData); }
     /** Changes the bearing in degrees with an animation of 500 ms unless `o` sets `duration`, as in MapLibre GL JS. */
     rotateTo(bearing: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing, ...o}, eventData); }
-    /** The option `bearingSnap` in degrees: a rotate gesture that ends closer to north than this turns the map north. */
+    /** The option `bearingSnap` in degrees: a gesture that ends closer to north than this turns the map north. */
     private bearingSnap = 7;
     /**
      * Turns the map to bearing 0 when the bearing is less than the option `bearingSnap` (7 degrees by default) from
