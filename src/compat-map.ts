@@ -54,13 +54,14 @@ export interface Map {
     getStyle(): StyleSpecification;
 }
 /**
- * `map.cooperativeGestures`, as in MapLibre GL JS, with `enable()`, `disable()`, `isEnabled()` and `isActive()` (always
- * false). Its code loads on demand at the first `enable()` (cooperative-gestures.ts), so that a map without it pays little.
+ * `map.cooperativeGestures`, as in MapLibre GL JS, with `enable()`, `disable()`, `isEnabled()`, `isActive()` (always
+ * false) and `isBypassed(event)` (whether Ctrl, or ⌘ on a Mac, is down in the event). Its code loads on demand at the first `enable()` (cooperative-gestures.ts), so that a map without it pays little.
  */
 const cooperativeGestures = (map: CoreMap) => {
     let on = false, stop: (() => void) | undefined, touchAction = '';
     // (The canvas is read each time: a fall back from the worker to the main thread replaces it; #777.)
     const style = () => map.getCanvas().style;
+    const isBypassed = (event: MouseEvent | WheelEvent | PointerEvent) => event[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
     const disable = () => { if (on) { on = false; stop?.(); stop = map.gate = undefined; style().touchAction = touchAction; } };
     map.on('remove', disable);
     return {enable() {
@@ -70,10 +71,10 @@ const cooperativeGestures = (map: CoreMap) => {
         // Mac), and one finger scrolls the page.
         touchAction = style().touchAction;
         style().touchAction = 'pan-x pan-y';
-        map.gate = (type, e) => type === 'touch_pan' || !(e as WheelEvent)[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
+        map.gate = (type, e) => type === 'touch_pan' || !isBypassed(e as WheelEvent);
         // (After the import, the handler may be off again or the map removed: `disable()` has then set `on` to false.)
         import('./cooperative-gestures.ts').then(m => { if (on && !stop) stop = m.cooperate(map); });
-    }, disable, isEnabled: () => on, isActive: () => false};
+    }, disable, isEnabled: () => on, isActive: () => false, isBypassed};
 };
 declare const __VERSION__: string; // the version of package.json, set by the build
 declare const __DEV__: boolean;

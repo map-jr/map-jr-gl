@@ -8,6 +8,9 @@ import type {Given} from './unset.ts';
 import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 import {SPEC} from './style.ts';
+import {parseColor} from './expr.ts';
+import {layerTypes, layoutExpressions, layoutValues, operators, paintExpressions, paintValues} from './style-spec-values.ts';
+import {expressionErrors} from './expr-check.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; /** The name that made the map, such as `createMap()` or `<MapJr>`. */ name: string; spec(): Given; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -71,7 +74,7 @@ texts[1195] = (control, custom) => custom
 const overlayOption = (option: string) => overlayOptions.find(k => k.toLowerCase() === option.toLowerCase());
 texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
-texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Add what the style specification requires.`;
+texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.`;
 texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map draws the layer without it, but MapLibre GL JS rejects the style. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
@@ -148,10 +151,17 @@ export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: 
  * Calls `found` with the place and MapLibre's text (GL JS 6.17, style specification 26) for each required field that a
  * layer or a source of `style` lacks: the `id`, `type` and `source` of a layer (no source for `background`), the
  * `source-layer` of a layer of a vector source, the `type` of a source, `data` of a GeoJSON source, and `urls` and
- * `coordinates` of an image or video source (#1748). The types of values are not checked here.
+ * `coordinates` of an image or video source (#1748). It also checks the types of the values: a layer `type` that the
+ * specification does not have, `minzoom` and `maxzoom`, the type of the source of a layer (`layer "a" requires a
+ * raster-dem source`), and each paint and layout value that is not an expression or a function (an enum, a color, a
+ * number and its minimum and maximum, a boolean, an array and its length; see scripts/style-spec-values.mjs), and
+ * the types of each expression of a paint or layout property (`expressionErrors` of src/expr-check.ts).
  */
 export function validateStyle(style: {sources?: Record<string, any>; layers?: any[]} | undefined, found: (where: string, why: string) => void) {
     const need = (where: string, o: any, k: string) => { if (o[k] === undefined) found(where, `missing required property "${k}"`); };
+    const values: Record<string, string> = {};
+    for (const [g, t] of [['paint', paintValues], ['layout', layoutValues], ['paint=', paintExpressions], ['layout=', layoutExpressions]]) for (const e of t.split('|')) { const [type, k, ...c] = e.split(' '); values[`${g} ${type} ${k}`] = c.join(' '); }
+    const types = layerTypes.split(' ');
     for (const [id, s] of Object.entries(style?.sources ?? {})) {
         if (!s || typeof s !== 'object') continue;
         const where = 'sources.' + id;
@@ -163,10 +173,57 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
         if (!l || typeof l !== 'object') return;
         const where = `layers[${i}]`;
         if (l.type === undefined && l.ref === undefined) found(where, 'either "type" or "ref" is required');
-        if (l.type !== undefined && l.type !== 'background' && l.type !== 'custom' && l.source === undefined) need(where, l, 'source');
-        if (style?.sources?.[l.source]?.type === 'vector' && l['source-layer'] === undefined) found(where, `layer "${l.id}" must specify a "source-layer"`);
+        if (l.type !== undefined && l.type !== 'custom' && !types.includes(l.type)) checkValue(where + '.type', l.type, 'e' + types, found);
+        if (l.type !== undefined && l.type !== 'background' && l.type !== 'custom') {
+            const s = style?.sources?.[l.source]?.type, requires = (what: string) => found(where, `layer "${l.id}" requires a ${what} source`);
+            if (l.source === undefined) need(where, l, 'source');
+            else if (s === 'vector' && l.type === 'raster') requires('raster');
+            else if (s !== undefined && s !== 'raster-dem' && (l.type === 'hillshade' || l.type === 'color-relief')) requires('raster-dem');
+            else if (s === 'raster' && l.type !== 'raster') requires('vector');
+            else if (s === 'vector' && l['source-layer'] === undefined) found(where, `layer "${l.id}" must specify a "source-layer"`);
+            else if (s === 'raster-dem' && l.type !== 'hillshade' && l.type !== 'color-relief') found(where, `raster-dem source can only be used with layer type 'hillshade' or 'color-relief'.`);
+        }
         need(where, l, 'id');
+        for (const k of ['minzoom', 'maxzoom']) if (l[k] !== undefined) checkValue(`${where}.${k}`, l[k], '!n0,24', found);
+        for (const g of ['paint', 'layout']) for (const k in l[g]) {
+            const v = l[g][k], c = values[`${g} ${l.type} ${k}`], e = values[`${g}= ${l.type} ${k}`], at = `${where}.${g}.${k}`;
+            // (An expression of a property that takes one gets the type check of src/expr-check.ts, step 3 of #1748.)
+            // (An expression too deep for the stack is left to the map, which reports what it cannot draw.)
+            if (e && Array.isArray(v) && typeof v[0] === 'string' && operators.split(' ').includes(v[0])) { try { for (const r of expressionErrors(v, e, g === 'layout')) found(at + r.key, r.error); } catch { /* see above */ } }
+            else if (c) checkValue(at, v, c, found);
+        }
     });
+}
+/** The type of `v` as the style specification names it. */
+const typeOf = (v: unknown) => v === null ? 'null' : Array.isArray(v) ? 'array' : v !== v ? 'NaN' : typeof v;
+/** Calls `found` with MapLibre's text when the value `v` at `where` does not fit the code `c` of
+ * scripts/style-spec-values.mjs. An expression and a function are not checked (#1748). */
+function checkValue(where: string, v: any, c: string, found: (where: string, why: string) => void) {
+    const expression = c[0] !== '!', t = typeOf(v), kind = expression ? c[0] : c[1], arg = c.slice(expression ? 1 : 2), list = arg.split(',');
+    if (expression && t === 'object') return;
+    // (An array is an expression when its first element is the name of an operator of the style specification, as in
+    // MapLibre GL JS; any other array is a literal, so `["abc", 1]` is checked as a value.)
+    if (expression && t === 'array' && typeof v[0] === 'string' && operators.split(' ').includes(v[0])) return;
+    const each = (code: string) => v.forEach((e: unknown, i: number) => checkValue(`${where}[${i}]`, e, '!' + code, found));
+    const wrong = (what: string) => found(where, `${what} expected, ${t} found`);
+    if (kind === 'n') {
+        if (t !== 'number') wrong('number');
+        else if (list[0] !== '' && v < +list[0]) found(where, `${v} is less than the minimum value ${list[0]}`);
+        else if (list[1] !== '' && v > +list[1]) found(where, `${v} is greater than the maximum value ${list[1]}`);
+    } else if (kind === 'c') {
+        if (t !== 'string') wrong('color');
+        else if (!parseColor(v)) found(where, `color expected, "${v}" found`);
+    } else if (kind === 'b' || kind === 'S') {
+        if (t !== (kind === 'b' ? 'boolean' : 'string')) wrong(kind === 'b' ? 'boolean' : 'string');
+    } else if (kind === 'e') {
+        if (!list.includes(v)) found(where, `expected one of [${list.join(', ')}], ${JSON.stringify(v)} found`);
+    } else if (kind === 'p' || kind === 'N' || kind === 'C') {
+        if (t !== 'array') checkValue(where, v, kind === 'C' ? '!c' : '!n,', found);
+        else if (kind === 'p' ? v.length < 1 || v.length > 4 : v.length < 1) found(where, kind === 'p' ? `padding requires 1 to 4 values; ${v.length} values found` : 'array length at least 1 expected, length 0 found');
+        else each(kind === 'C' ? 'c' : 'n,');
+    } else if (t !== 'array') wrong('array');
+    else if (kind === 'a' && arg && v.length !== +arg) found(where, `array length ${arg} expected, length ${v.length} found`);
+    else each(kind === 'a' ? 'n,' : kind === 's' ? 'S' : 'e' + arg);
 }
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 /** The properties of the style specification that the map does not read (and so are not in `SPEC` of src/style.ts), by layer type. */
