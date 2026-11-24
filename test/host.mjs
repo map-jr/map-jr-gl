@@ -3883,6 +3883,35 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of the overview of a failed tile was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// An overview tile whose first four requests fail is requested again 15 s later, while the view still needs it (#686).
+// Every request of the tile at the center fails, so its overview stands in for it. The map is idle after the fourth
+// failure of the overview, and the fifth request is answered.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const z = 13, x = tileOf(from[0], z), y = Math.floor((1 - Math.log(Math.tan(Math.PI / 4 + from[1] * Math.PI / 360)) / Math.PI) / 2 * 2 ** z);
+        const bad = `/${z}/${x}/${y}.pbf`, over = `/${z - 3}/${x >> 3}/${y >> 3}.pbf`;
+        let overTries = 0, answered = 0;
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, async route => {
+            const k = new URL(route.request().url()).pathname;
+            if (k.endsWith(bad)) return route.abort('connectionreset');
+            if (k.endsWith(over) && ++overTries <= 4) return route.abort('connectionreset');
+            await route.continue().catch(() => {});
+            if (k.endsWith(over)) answered = Date.now();
+        });
+        const idleAfterFour = await page.evaluate(async from => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false, onError: () => {}});
+            return new Promise(r => { window.host.state.subscribe(s => s.idle, idle => idle && r(true)); setTimeout(() => r(false), 12000); });
+        }, from);
+        const fourBeforeIdle = overTries;
+        await page.waitForTimeout(20000);
+        check('an overview tile that failed four times is requested again later and answered, and the map is idle in between', idleAfterFour && fourBeforeIdle === 4 && overTries === 5 && answered > 0, JSON.stringify({idleAfterFour, fourBeforeIdle, overTries, answered: answered > 0}));
+    } catch (e) { check('the test of an overview tile that failed four times was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With

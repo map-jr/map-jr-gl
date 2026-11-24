@@ -78,9 +78,9 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
 - `style.load` fires each time that a new style has loaded.
 - `remove` fires during [`destroy()`](map.md#destroy), before the pending queries reject.
 - `idle` waits for the tiles of the view. A tile whose request fails with a network error or an HTTP status 5xx is
-  requested again after 0.5 s, 1 s and 2 s. After the fourth failure, the map is idle without the tile. A status 4xx
-  other than 404, a rejection by a custom protocol and an error of `transformRequest` are final: the tile is not
-  requested again. A 404 is a tile that the server does not have, and it is not an error. Each failure fires `error`.
+  requested again after 0.5 s, 1 s and 2 s. After the fourth failure, the map is idle without the tile, and the tile
+  is requested again every 15 s while the view needs it. A status 4xx other than 404, a rejection by a custom protocol
+  and an error of `transformRequest` are final: the tile is not requested again. A 404 is a tile that the server does not have, and it is not an error. Each failure fires `error`.
 - `data` fires with each `styledata` and `sourcedata`, and `dataloading` with each `styledataloading` and
   `sourcedataloading`. `styledata` has `dataType: 'style'`.
 - `projectiontransition` fires for each new style, and when `projection` of the description or the control `globe`
