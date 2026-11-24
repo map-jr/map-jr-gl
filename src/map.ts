@@ -810,7 +810,8 @@ export class Map {
             }
         } else if (e.type === 'idle') {
             // (A report from before the last command: the engine sends another after that command.)
-            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
+            // (While a style of `setStyle` loads, the map is not idle: its `idle` comes after that style; #1167.)
+            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
             // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
@@ -1481,10 +1482,11 @@ export class Map {
         // (A style that cannot be loaded is an `error` event, as a failure of the first style is. The map keeps its style.)
         let next: any;
         this.styleLoading = true;
-        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); } return; }
+        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); this.post({type: 'repaint'}); } return; }
         // (A style that was asked for later has replaced this one.)
         if (turn !== this.styleTurn) return;
-        this.styleLoading = false;
+        // (An `idle` of the engine was dropped while the style loaded, and a style that changes nothing below sends no command: a repaint brings `idle` again.)
+        this.styleLoading = false; this.post({type: 'repaint'});
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         next = options?.transformStyle?.(this.rawStyle, next) ?? next;
         // (With `diff`, as in MapLibre GL JS 6.17: a style that differs from this one only in the camera changes nothing
