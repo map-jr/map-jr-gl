@@ -673,6 +673,9 @@ export interface Scene {
  * The values of the `sky` of a style at a zoom, with the defaults of the specification: the colors (premultiplied
  * RGBA) and the blends. Fog has an opacity of 0 below a pitch of 60 that rises to 1 at 70, as in MapLibre GL JS.
  */
+/** Whether the light of the style turns with the map (`anchor` is `map`) at a zoom. `anchor` can be a zoom expression (#1699). */
+export const lightOnMap = (light: {anchor?: unknown}, zoom: number) => compileProp(light.anchor, 'string', 'viewport').eval(zoom) === 'map';
+
 export function skyValues(sky: Sky, zoom: number, pitch: number) {
     const at = (k: keyof Sky, kind: 'number' | 'color', def: unknown) => compileProp(sky[k], kind, def).eval(zoom) as any;
     return {sky: at('sky-color', 'color', '#88c6fc') as number[], horizon: at('horizon-color', 'color', '#ffffff') as number[], fog: at('fog-color', 'color', '#ffffff') as number[],
@@ -1353,7 +1356,7 @@ export class GLRenderer {
                         // (The values of the light can be functions of zoom.)
                         const light = s.light ?? {}, at = (v: unknown, kind: 'number' | 'color' | 'string', def: unknown) => compileProp(v, kind, def).eval(zoom);
                         const [r, az, polar] = at(light.position, 'string', [1.15, 210, 30]) as number[], lc = at(light.color, 'color', '#fff') as number[];
-                        const a = (az + 90) * Math.PI / 180 + (light.anchor === 'map' ? 0 : LIGHT_TURN * tr.bearing * Math.PI / 180), p = polar * Math.PI / 180;
+                        const a = (az + 90) * Math.PI / 180 + (lightOnMap(light, zoom) ? 0 : LIGHT_TURN * tr.bearing * Math.PI / 180), p = polar * Math.PI / 180;
                         gl.uniform3f(u.u_lightPos, LIGHT_X * r * Math.cos(a) * Math.sin(p), LIGHT_Y * r * Math.sin(a) * Math.sin(p), r * Math.cos(p));
                         gl.uniform3f(u.u_lightColor, lc[0], lc[1], lc[2]);
                         gl.uniform1f(u.u_lightIntensity, at(light.intensity, 'number', 0.5) as number);
@@ -1796,7 +1799,7 @@ export class GLRenderer {
         // The sun in view space (x right, y up, z toward the camera), as MapLibre's getSunPos.
         let sun = [-Math.cos(a) * Math.sin(p), -Math.sin(a) * Math.sin(p), -Math.cos(p)];
         const turn = (i: number, j: number, t: number) => { const c = Math.cos(t), n = Math.sin(t), u = sun[i], w = sun[j]; sun[i] = c * u - n * w; sun[j] = n * u + c * w; };
-        if (light.anchor === 'map') { turn(2, 0, -tr.lng * R); turn(1, 2, tr.lat * R); turn(0, 1, tr.bearing * R); turn(1, 2, -tr.pitch * R); }
+        if (lightOnMap(light, tr.zoom)) { turn(2, 0, -tr.lng * R); turn(1, 2, tr.lat * R); turn(0, 1, tr.bearing * R); turn(1, 2, -tr.pitch * R); }
         // To the space of the sphere with the rays of the screen: the ray through x, y is A x + B y + C (see `rays`).
         const r = g.rays, d = tr.cameraDistance, ax = [0, 1, 2].map(i => r[i] * d), ay = [0, 1, 2].map(i => -r[3 + i] * d), az2 = [0, 1, 2].map(i => -r[6 + i] - tr.cx * r[i] - tr.cy * r[3 + i]);
         sun = [0, 1, 2].map(i => ax[i] * sun[0] + ay[i] * sun[1] + az2[i] * sun[2]);
