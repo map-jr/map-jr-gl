@@ -4856,6 +4856,33 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #1873: a rotate drag with the right button that pauses for 16 to 50 ms with the button down fires one
+        // `rotateend` and one `moveend`, at the release, as in MapLibre GL JS (served at /ml/).
+        const m1873 = {};
+        for (const [lib, renderer] of [['ml', 'main'], ['compat', 'main'], ['compat', 'worker']]) {
+            await page.evaluate(async ([lib, renderer]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m1873 = new mod.Map({container: el, renderer, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 40});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => setTimeout(r, 300));
+                window.m1873n = {rotateend: 0, moveend: 0};
+                for (const t of ['rotateend', 'moveend']) m.on(t, () => { window.m1873n[t]++; });
+            }, [lib, renderer]);
+            await page.mouse.move(200, 150); await page.mouse.down({button: 'right'});
+            for (let i = 1; i <= 12; i++) { await page.mouse.move(200 + i * 4, 150); await page.waitForTimeout([16, 30, 50][i % 3]); }
+            await page.waitForTimeout(300); await page.mouse.up({button: 'right'});
+            m1873[lib + '-' + renderer] = await page.evaluate(async () => {
+                const m = window.m1873;
+                await new Promise(r => setTimeout(r, 1500));
+                const out = {...window.m1873n, bearing: +m.getBearing().toFixed(1)};
+                const el = m.getContainer(); m.remove(); el.remove();
+                return out;
+            });
+        }
+        check('[main] maplibre-compat: a rotate drag with short pauses fires one rotateend and one moveend, as in MapLibre GL JS (#1873)',
+            Object.values(m1873).every(r => r.rotateend === 1 && r.moveend === 1 && r.bearing !== 40), JSON.stringify(m1873));
         // #1834: a fast pan released with inertia at bearing 3 turns north during the inertia, in one movement (one
         // `moveend`), as in MapLibre GL JS (served at /ml/), and not in a second movement after it.
         const m1834 = {};
