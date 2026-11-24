@@ -1489,6 +1489,8 @@ for (const renderer of renderers) {
                 layers: [{id: 'p-circle', type: 'circle', source: 'p', paint: {'circle-radius': 4}}]};
             const host = t.lib.createMap(el, spec);
             await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            // (The check of that idle runs after its file has loaded: the update waits for it, or that check would see the new layer.)
+            await new Promise(r => setTimeout(r, 300));
             // (The warnings that are there when the map fires its next idle: the check at idle comes after this listener.)
             const atIdle = new Promise(r => { host._map.once('idle', () => r(said.filter(w => /"p-dot"/.test(w)))); setTimeout(() => r(null), 5000); });
             const s2 = {...spec, layers: [...spec.layers, {id: 'p-dot', type: 'circle', source: 'p', paint: {'circle-colr': 'red', 'circle-radius': ['+', 1, ['interpolate', ['linear'], ['zoom'], 0, 1, 20, 8]]}}]};
