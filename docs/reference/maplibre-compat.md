@@ -107,9 +107,9 @@ library" names a member that MapLibre GL JS does not have.
 | `calculateCameraOptionsFromTo` | `(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; pitch: number; bearing: number}` | The camera options that look from `from` at `altitudeFrom` meters to `to` at `altitudeTo` meters, as in MapLibre GL JS. |
 | `calculateCameraOptionsFromCameraLngLatAltRotation` | `(cameraLngLat: LngLatLike, cameraAlt: number, bearing: number, pitch: number, roll?: number \| undefined) => object` | The camera options that put the camera at `cameraLngLat` and `cameraAlt` meters with this rotation, as in MapLibre GL JS. |
 | `calculateAnchoredCameraOptions` | `(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) => {center: LngLat; zoom: number}` | The center and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. |
-| `setCenterClampedToGround` | `(clamped: boolean) => void` | With `false`, the map center keeps its height (`setCenterElevation`) instead of following the ground, as in MapLibre GL JS. With `true` (the default), the center goes back onto the ground. |
+| `setCenterClampedToGround` | `(clamped: boolean) => void` | With `false`, the map center keeps its height (`setCenterElevation`) instead of following the ground, as in MapLibre GL JS. |
 | `getCenterClampedToGround` | `() => boolean` | Returns whether the map center follows the ground, `true` unless `setCenterClampedToGround(false)` was called. |
-| `setCenterElevation` | `(elevation: number) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. It lasts only after `setCenterClampedToGround(false)`: while the center is clamped to the ground, the ground height replaces it in the next frame, and the call warns once. |
+| `setCenterElevation` | `(elevation: number) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. |
 | `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
 | `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect: the map does not draw the camera that the function returns. |
@@ -154,7 +154,6 @@ library" names a member that MapLibre GL JS does not have.
 | `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than the option `bearingSnap` (7 degrees by default) from north, as in MapLibre GL JS. |
 | `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
 | `getRoll` | `() => number` | Returns 0: the camera has no roll. |
-| `getCenterElevation` | `() => number` | Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there (0 without 3D terrain). |
 | `getCameraTargetElevation` | `() => number` | Returns the elevation of the ground at the map center in meters, as `getCenterElevation` does. |
 | `isZooming` | `() => boolean` | Whether the zoom level changes now, by the user or by a camera method. |
 | `isRotating` | `() => boolean` | Whether the bearing changes now, by the user or by a camera method. |
@@ -218,6 +217,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setMinZoom` | `(z?: number \| null \| undefined) => Map` | Sets the smallest zoom level that the user can reach. |
 | `setMaxZoom` | `(z?: number \| null \| undefined) => Map` | Sets the largest zoom level that the user can reach. |
 | `setMaxPitch` | `(p?: number \| null \| undefined) => Map` | Sets the largest pitch that the user can reach, in degrees. |
+| `getCenterElevation` | `() => number` | Returns the height of the map center in meters: the height that `setCenterElevation` gave, or else the height of the ground there (0 without 3D terrain). |
 | `getMaxPitch` | `() => number` | Returns the largest pitch that the user can reach, in degrees. |
 | `getMinPitch` | `() => number` | Returns the smallest pitch that the user can reach, in degrees. |
 | `setMinPitch` | `(p?: number \| null \| undefined) => Map` | Sets the smallest pitch that the user can reach, in degrees, from 0 to the largest pitch. |

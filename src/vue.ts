@@ -300,11 +300,11 @@ const MapJrComponent = defineComponent({
          */
         maxZoom: Number as PropType<number | null>,
         /**
-         * The largest pitch of the map in degrees, at most 180 (a larger value is limited to 180 and warns once). It limits gestures, `view` and `moveTo`. Above 90 the camera looks up: while the map center is on the ground, the camera is then below the ground and sees the map from below, so give `centerElevation` a height above the ground to see the sky.
+         * The largest pitch of the map in degrees, at most 180, where a pitch above 90 looks up and, unless `centerElevation` lifts the map center above the ground, sees the map from below the ground. A larger value is limited to 180 and warns once. It limits gestures, `view` and `moveTo`.
          * @default 60
          */
         maxPitch: Number as PropType<number | null>,
-        /** The height of the map center in meters above sea level. Without it, the center is on the ground and follows it. */
+        /** The height of the map center in meters above sea level, which keeps the camera above the ground at a pitch above 90 when it is high enough. Without it, the center is on the ground and follows it. */
         centerElevation: Number as PropType<number | null>,
         /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. */
         maxBounds: [Array, Object] as unknown as PropType<MapDescription['maxBounds']>,
