@@ -40,7 +40,7 @@ jobs:
             echo "$f"
             # What the built files and the render tests are made from.
             case "$f" in
-              src/*|build.mjs|package.json|pnpm-lock.yaml|tsconfig*.json|scripts/private-names.mjs|test/conformance/render*|.github/workflows/ci.yml) render=true ;;
+              src/*|build.mjs|package.json|pnpm-lock.yaml|tsconfig*.json|scripts/private-names.mjs|scripts/minify-shaders.mjs|scripts/gl-constants.mjs|test/conformance/render*|.github/workflows/ci.yml) render=true ;;
             esac
           done <<< "$files"
           echo "browser=$browser" >> "$GITHUB_OUTPUT"; echo "render=$render" >> "$GITHUB_OUTPUT"
