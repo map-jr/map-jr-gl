@@ -897,3 +897,5 @@ method of a map of MapLibre GL JS. A control that calls another method, such as 
   [`attribution`](../reference/description.md#attribution) in the reference of the description.
 - [Controls](controls.md) for every option of each control.
 - [Light and dark maps](color-scheme.md) for the colors of the controls in a dark map.
+- [Switch between map styles](../recipes/styles.md) for a style control in each variant, with the chosen style kept
+  in the description.
