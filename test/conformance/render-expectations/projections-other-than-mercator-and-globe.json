@@ -1,0 +1,7 @@
+{
+  "label": "projections other than mercator and globe",
+  "decision": "later",
+  "issue": 1729,
+  "reason": "Projections other than mercator, globe and vertical-perspective are not available.",
+  "pattern": "^projection/identity/"
+}

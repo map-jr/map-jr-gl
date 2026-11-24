@@ -1,0 +1,7 @@
+{
+  "label": "khmer text is not shaped: characters are drawn one after the other",
+  "decision": "later",
+  "issue": 1816,
+  "reason": "Khmer text is not shaped: characters are drawn one after the other.",
+  "pattern": "^(regressions/mapbox-gl-native#11729)$"
+}

@@ -16,7 +16,7 @@ It gave 52 matches of 166 tests, 78 near and 36 that differ. Each image that dif
 expected image. Of the near tests, only the five marked "seen" were compared; the others say "Not inspected".
 
 The column "Action" says what follows. An issue number is a cause that has its own issue (see the list below
-the table). "Label" names a label of `test/conformance/render-expectations.json`. "Harness" is a difference of the
+the table). "Label" names a label of `test/conformance/render-expectations/`. "Harness" is a difference of the
 test setup that needs no change.
 
 | Test | Result | Cause | Action |

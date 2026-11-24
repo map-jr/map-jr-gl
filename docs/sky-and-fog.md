@@ -67,7 +67,7 @@ The halo was tried in #908 (worker +365 B gzip) and changed none of the 15 rende
 
 ## Render tests
 
-All 26 tests under `sky/` are labeled "later" in `test/conformance/render-expectations.json`. The tests without
+All 26 tests under `sky/` are labeled "later" in `test/conformance/render-expectations/`. The tests without
 terrain (`sky-color`, `sky-horizon-blend`, `horizon-color`, `roll/roll-0`) are the checks of part A and B; the tests
 with terrain (`fog-color`, `fog-ground-blend`, `horizon-fog-blend`, `terrain/fog*`) are the checks of fog; and
 `atmosphere-blend/*` with `projection/globe/atmosphere/*` are the checks of part C.

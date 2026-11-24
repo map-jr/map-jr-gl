@@ -1,0 +1,7 @@
+{
+  "label": "fill-extrusion-rounded-corner-distance",
+  "decision": "later",
+  "issue": 1693,
+  "reason": "fill-extrusion-rounded-corner-distance is not read.",
+  "pattern": "^fill-extrusion-rounded-corner-distance/"
+}

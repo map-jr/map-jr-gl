@@ -1,0 +1,7 @@
+{
+  "label": "globe",
+  "decision": "later",
+  "reason": "The edges of shapes differ by a pixel, or the collision boxes of collisionDebug are not drawn (see \"debug drawing\"). docs/render-triage-globe.md gives the cause of each test of the globe.",
+  "pattern": "^projection/globe/(?!symbol-height-offset-tile-retention$)",
+  "fallback": true
+}
