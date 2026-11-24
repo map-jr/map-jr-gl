@@ -237,7 +237,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     for (const [sourceId, raw] of Object.entries<any>(style.sources ?? {})) {
         if (raw.type !== 'contour') continue;
         const dem = sources[raw.source];
-        if (!dem || dem.type !== 'raster-dem') { bad(new Error(`Contour source "${sourceId}" needs "source" to sourceId a raster-dem source`)); continue; }
+        if (!dem || dem.type !== 'raster-dem') { bad(new Error(`Contour source "${sourceId}" needs "source" to name a raster-dem source`)); continue; }
         const zooms = Object.keys(raw.thresholds ?? {}).map(Number);
         // (A style can come from the compat entry or a URL, so this is not a check of `src/mistakes.ts`.)
         if (!zooms.length && !noThresholds.has(raw)) { noThresholds.add(raw); console.warn(`[map-jr-gl] The contour source "${sourceId}" has no "thresholds", so it draws no lines. Give it intervals for each zoom level, for example "thresholds": {"11": [200, 1000], "14": [50, 200]}.`); }
