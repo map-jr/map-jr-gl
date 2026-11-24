@@ -885,7 +885,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     setTimeout(() => check(0, name), 1000);
     const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light'});
-    const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
+    const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>(), placed = new globalThis.Map<string, ControlSpec['position']>();
     // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
     let wanted: MapDescription['colorScheme'], dark: MediaQueryList | undefined;
     // The resolved scheme is also the global state property `color-scheme` (#492), unless `globalState` gives that name.
@@ -1147,9 +1147,10 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         const relabel = differ(next.locale, before?.locale);
         if (relabel && before) { map.fire('_locale'); nameCanvas(next.locale); }
         if (next.controls !== before?.controls || relabel) {
-            const wanted = new Set(relabel ? [] : (next.controls ?? []).map(c => c.key));
-            for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
-            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(() => host); controls.set(c.key, made); map.addControl(made, c.position); }
+            // (A control whose `position` changed is added again in its new corner; #1237.)
+            const wanted = new globalThis.Map(relabel ? [] : (next.controls ?? []).map(c => [c.key, c.position]));
+            for (const [key, c] of controls) if (!wanted.has(key) || wanted.get(key) !== placed.get(key)) { map.removeControl(c as any); controls.delete(key); placed.delete(key); }
+            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(() => host); controls.set(c.key, made); placed.set(c.key, c.position); map.addControl(made, c.position); }
         }
         transformLast = next.transformRequest;
         if (before && !next.transformRequest !== !before.transformRequest) map.setTransformRequest(next.transformRequest ? transform : null);
