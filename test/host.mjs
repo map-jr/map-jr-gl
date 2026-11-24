@@ -2520,17 +2520,35 @@ for (const renderer of renderers) {
             await page.waitForTimeout(500);
             const parallel = await page.evaluate(() => { const v = window.coopTouch.view(); return {lat: v.center[1], pitch: v.pitch}; });
             // One finger first, which moves 5 pixels before the second comes; the second lifts first, and the first moves on.
-            await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 300}]);
-            await touch('touchMove', [{id: 0, x: at.x + 250, y: at.y + 295}]);
-            await touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 295}, two(0)[1]]);
-            for (let i = 1; i <= 10; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
-            await touch('touchMove', [two(10)[0]]);
-            for (let i = 1; i <= 3; i++) { await touch('touchMove', [{...two(10)[0], y: two(10)[0].y - i * 5}]); await page.waitForTimeout(16); }
-            await touch('touchEnd');
-            await page.waitForTimeout(500);
+            // (The map waits 150 ms from the first finger for a second one, by the clock of the page. On a loaded runner
+            // the three events can reach the page more than 150 ms apart, and then the hint is right (#1844). The three
+            // are sent without waiting for each other, the page measures the gap between the two `pointerdown`s, and a
+            // try whose gap is 150 ms or more is repeated, at most five times. `gap` is in the message.)
+            let after;
+            for (let attempt = 0; attempt < 5; attempt++) {
+                await page.evaluate(() => {
+                    const c = window.coopTouch, el = document.querySelector('.map-jr-cooperative-gesture-screen').parentElement;
+                    c.shown = 0; c.downs = [];
+                    if (!c.listening) { c.listening = true; el.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') c.downs.push(performance.now()); }, true); }
+                });
+                const lat0 = await page.evaluate(() => window.coopTouch.view().center[1]);
+                await Promise.all([
+                    touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 300}]),
+                    touch('touchMove', [{id: 0, x: at.x + 250, y: at.y + 295}]),
+                    touch('touchStart', [{id: 0, x: at.x + 250, y: at.y + 295}, two(0)[1]]),
+                ]);
+                for (let i = 1; i <= 10; i++) { await touch('touchMove', two(i)); await page.waitForTimeout(16); }
+                await touch('touchMove', [two(10)[0]]);
+                for (let i = 1; i <= 3; i++) { await touch('touchMove', [{...two(10)[0], y: two(10)[0].y - i * 5}]); await page.waitForTimeout(16); }
+                await touch('touchEnd');
+                // (The hint shows at most 150 ms after the first finger; the wait covers it.)
+                await page.waitForTimeout(500);
+                after = await page.evaluate(([lat0, attempt]) => { const c = window.coopTouch, v = c.view(); return {moved: lat0 - v.center[1], pitch: v.pitch, shown: c.shown, gap: c.downs.length === 2 ? Math.round(c.downs[1] - c.downs[0]) : null, attempt}; }, [lat0, attempt]);
+                if (after.gap !== null && after.gap < 150) break;
+            }
             await cdp.detach();
-            const after = await page.evaluate(() => { const c = window.coopTouch, v = c.view(); c.remove(); window.coopTouch = undefined; return {lat: v.center[1], pitch: v.pitch, shown: c.shown}; });
-            check(coopTouch, parallel.lat < -1 && Math.abs(parallel.pitch - 30) < 0.5 && after.lat < parallel.lat - 1 && Math.abs(after.pitch - 30) < 0.5 && after.shown === 0, JSON.stringify({parallel, after}));
+            await page.evaluate(() => { window.coopTouch.remove(); window.coopTouch = undefined; });
+            check(coopTouch, parallel.lat < -1 && Math.abs(parallel.pitch - 30) < 0.5 && after.gap !== null && after.gap < 150 && after.moved > 1 && Math.abs(after.pitch - 30) < 0.5 && after.shown === 0, JSON.stringify({parallel, after}));
         }
         // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for no value (light), 'auto', 'light' and 'dark'.
         // (The browser fires the event `change` of the media query at its next rendering step, which can come late on a
