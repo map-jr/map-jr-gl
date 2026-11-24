@@ -468,6 +468,8 @@ export function compileExpr(e: any, flags: Flags): Fn {
                 let f = cache.get(key);
                 if (f === undefined) {
                     try {
+                        // Intl.NumberFormat turns a locale that is not text (7, true) into a default without an error.
+                        if (l != null && typeof l !== 'string') throw new TypeError('the locale is not text');
                         f = new Intl.NumberFormat(l ?? undefined, {minimumFractionDigits: mn ?? undefined, maximumFractionDigits: mx ?? undefined, ...(cur ? {style: 'currency', currency: cur} : u ? {style: 'unit', unit: u} : {})});
                     } catch (err) {
                         f = null;

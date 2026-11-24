@@ -174,30 +174,13 @@ HTML that [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/s
 only, and React reports no hydration mismatch for the HTML. The map removes the HTML when it has loaded the tiles of
 its first view.
 
-The entry has no `'use client'` directive. In the App Router of Next.js, render `MapJr` in a file of your own that
-starts with `'use client'`, and pass `firstView` to it from a server component. Next.js also sends the props of a
-client component to the browser, so the page contains the HTML of `firstView` twice.
-
-```jsx
-'use client';
-import {MapJr} from '@map-jr/map-jr-gl/react';
-
-export function ServerMap({firstView}) {
-  return (
-    <div style={{height: 500}}>
-      <MapJr
-        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
-        initialView={{center: [-74.0065, 40.7085], zoom: 13.6}}
-        firstView={firstView}
-      />
-    </div>
-  );
-}
-```
+The built files of the entry start with `'use client'`, so a server component of Next.js (App Router) imports
+`MapJr` from the entry and passes `firstView` to it. Next.js sends the props of a client component to the browser,
+so the page contains the HTML of `firstView` twice.
 
 ```jsx
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
-import {ServerMap} from './server-map.jsx';
+import {MapJr} from '@map-jr/map-jr-gl/react';
 
 export default async function Page() {
   // The same style and view as the map in the browser, at the size that the map
@@ -209,7 +192,15 @@ export default async function Page() {
     width: 800,
     height: 500,
   });
-  return <ServerMap firstView={firstView} />;
+  return (
+    <div style={{height: 500}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-74.0065, 40.7085], zoom: 13.6}}
+        firstView={firstView}
+      />
+    </div>
+  );
 }
 ```
 

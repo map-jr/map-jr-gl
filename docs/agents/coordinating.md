@@ -32,6 +32,10 @@ Scope: the whole issue. Triage found it open, starting at `src/engine.ts:793,814
 Keep out of: `src/compat-map.ts` (another worker, #7).
 ```
 
+- **A bundle** (up to four small fixes of tests or of the agent tools, no change of `src/`; #1603) is one worker and
+  one branch. List each issue in the prompt with its own scope line; the worker makes one commit for each issue, and
+  the body of the pull request says `Fixes #N` for each. Give a bundle only issues that triage found to be a few lines
+  each, so that one slow issue does not hold the others.
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
 - Start each worker with `isolation: "worktree"` and low effort (90,000 to 160,000 tokens for an issue).
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
@@ -46,8 +50,7 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   issue to a new worker with what is known, and tell the first one to stop its servers.
 - **Watch the checks** with `node scripts/agents/prs.mjs --watch` in a `Monitor` (it prints one line when the checks
   of a head finish, also for CI on `main`, which sends no event), or with `subscribe_pr_activity` when the repository
-  is in the session. In a cloud session the script fails until #1404; use `subscribe_pr_activity` for each pull request
-  there, and read CI on `main` with `gh api 'repos/map-jr/map-jr-gl/actions/runs?branch=main&per_page=5'`. A Monitor
+  is in the session. The script uses only `gh api` REST, so it also runs in a cloud session. A Monitor
   ends after 30 minutes; start it again.
 - **Send a CI failure, a review finding or a decision of the owner to the worker that opened the pull request**
   (`SendMessage`): the failure and the check run, not the task again. A follow-up costs 10,000 to 20,000 tokens and a
@@ -79,6 +82,12 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 
 ## Merging
 
+- **Merge when `checks`, the four `browser-*` jobs and `render` have passed** (see `CLAUDE.md`). Do not wait for the
+  summary job `browser`: on 2026-11-24 it ran for about 6 s and waited for a runner 10.7 min (median of 15 runs,
+  #1602). A browser job that the job `changes` skipped counts as passed.
+- **Keep about eight pull requests in CI at once.** The account ran at most 27 jobs at the same time on 2026-11-24, and
+  a pull request that changes `src/` uses about 40 runner-minutes, so 25 open pull requests made each job wait up to
+  30 minutes. Start new workers as pull requests merge, not all at once.
 - **Read the source diff before you merge** (`git diff origin/main...origin/<branch> -- src | grep -E "^[+-]"`), and
   merge with the head SHA that you read.
 - **Test the merge after a worker rebased or force-pushed.** `t=$(git merge-tree --write-tree origin/main
@@ -160,10 +169,9 @@ alone cannot.
   run to the next, also before the suspected merge (#820).
 
 - **The example pages** (`node test/conformance/examples.mjs --write`, about 30 minutes) need
-  `.cache/maplibre-gl-js` and `python3` with Pillow. In a new worktree, link the clone of another worktree
-  (`ln -s <worktree>/.cache/maplibre-gl-js .cache/`), and make a virtual environment with Pillow in the scratchpad
-  and put its `bin` first on `PATH`. The run takes the pages first and compares them at the end, so a missing Pillow
-  fails only after about ten minutes.
+  `.cache/maplibre-gl-js` and `python3` with Pillow. The tool clones the checkout when it is missing. It checks for
+  Pillow before it takes any page and stops with a message when python3 cannot import it. Make a virtual environment
+  with Pillow in the scratchpad and put its `bin` first on `PATH`.
 
 ## A release
 

@@ -341,7 +341,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Expressions
 
 - MapLibre GL JS checks the types.
-- This library does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, or a second one in the same expression, is drawn as it reads, where MapLibre GL JS rejects the style. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property; the entry `@map-jr/map-jr-gl/maplibre-compat` writes none.
+- This library does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale` that is not text, or with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, or a second one in the same expression, is drawn as it reads, where MapLibre GL JS rejects the style. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property; the entry `@map-jr/map-jr-gl/maplibre-compat` writes none.
 
 ### Style validation
 
@@ -586,7 +586,7 @@ These types differ from MapLibre GL JS:
 | `NavigationControlOptions` | It has no `visualizeRoll`. |
 | `GeolocateControlOptions` | It has `zoom` and no `fitBoundsOptions`. `showAccuracyCircle` has no effect. |
 | `FullscreenControlOptions` | `container` has no effect. |
-| `LogoControlOptions` | `compact` has no effect, and the constructor of `LogoControl` takes no argument. |
+| `LogoControlOptions` | `compact` has no effect and writes one warning, because this library has no logo. |
 | `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |
 | `Listener` | Its type parameter is the type of the event, and the default is `MapLibreEvent`. |
 | `Subscription` | No method returns it: `map.on` returns the map. Remove a listener with `map.off(type, listener)`. |

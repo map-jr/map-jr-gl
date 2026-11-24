@@ -65,15 +65,52 @@ jobs:
           retention-days: 14
       # The check does not wait for the map of the home page, which needs the style and the tiles of other hosts. It
       # checks the table of contents on a phone also in WebKit.
-      # A stalled download from the Ubuntu mirror hung this step (#1328). apt gets its own network timeouts and retries, so
-      # that a stalled download fails and is retried inside apt. A timeout around the install is not used: it kills pnpm
-      # but not the root apt-get, which then keeps the dpkg lock and fails the next attempt.
+      # The system packages of the browsers (about 140 MB of .deb files) come from the Ubuntu mirror, which sometimes
+      # sends them at about 80 kB/s; apt's network timeouts do not fire on a slow transfer, and the step ran into its
+      # timeout (#1328). The .deb files and the browsers are cached, keyed on the runner image and the Playwright
+      # version, so a usual run downloads neither. Each attempt of apt runs under a `timeout` that runs as root and
+      # kills its whole process group (Playwright runs apt-get itself when it is root, with no sudo that would start a
+      # new session), so a stalled attempt ends and the next one finds no dpkg lock.
+      - name: Name the cache of the browsers
+        id: pw
+        run: echo "key=site-playwright-$ImageOS-$ImageVersion-$(node -p "require('./website/package.json').devDependencies.playwright")" >> "$GITHUB_OUTPUT"
+      - name: Restore the browsers and their system packages
+        id: pw-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/apt-debs
+          key: ${{ steps.pw.outputs.key }}
       - name: Install Chromium and WebKit
         timeout-minutes: 19
         working-directory: website
         run: |
-          echo 'Acquire::http::Timeout "30"; Acquire::https::Timeout "30"; Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/99ci-timeouts
-          for i in 1 2 3; do pnpm exec playwright install --with-deps chromium webkit && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
+          echo 'Acquire::http::Timeout "30"; Acquire::https::Timeout "30"; Acquire::Retries "5"; APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99ci
+          sudo rm -f /etc/apt/apt.conf.d/docker-clean
+          mkdir -p ~/apt-debs
+          sudo cp ~/apt-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+          ok=
+          for i in 1 2 3; do
+            if sudo timeout -k 15 420 env "PATH=$PATH" pnpm exec playwright install-deps chromium webkit; then ok=1; break; fi
+            echo "::warning::the install of the system packages failed or took more than 7 minutes (attempt $i of 3)"
+            sudo pkill -x apt-get || true; sudo pkill -x dpkg || true; sudo dpkg --configure -a || true; sleep 10
+          done
+          [ -n "$ok" ] || exit 1
+          for i in 1 2 3; do
+            timeout -k 15 300 pnpm exec playwright install chromium webkit && break
+            echo "::warning::the download of the browsers failed (attempt $i of 3)"
+            [ "$i" = 3 ] && exit 1; sleep 10
+          done
+          cp /var/cache/apt/archives/*.deb ~/apt-debs/ 2>/dev/null || true
+      - name: Save the browsers and their system packages
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/apt-debs
+          key: ${{ steps.pw.outputs.key }}
       - run: pnpm check --no-map
         working-directory: website
       # The benchmark page at /bench/, so that a phone or a device farm can open it with no server of the project

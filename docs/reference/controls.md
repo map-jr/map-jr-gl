@@ -26,13 +26,15 @@ const map = createMap('map', {
 The map shows the controls of the last description, and each item of `controls` is one control.
 
 - **Identity.** Two items are the same control when they come from the same function with options that are equal
-  as JSON, with the properties in the same order. `position` is one of the options, and
-  `scale({unit: 'imperial', maxWidth: 80})` and `scale({maxWidth: 80, unit: 'imperial'})` are two different controls.
+  as JSON. The order of the properties does not matter, so `scale({unit: 'imperial', maxWidth: 80})` and
+  `scale({maxWidth: 80, unit: 'imperial'})` are the same control. `position` is one of the options.
 - **A new list.** The map keeps a control that the new list has, also when the function is called again for each
   description. It removes a control that the new list does not have. A control whose options changed is a
   different control: the map removes the old one and adds the new one last in its corner.
 - **`custom`.** Two items of [`custom`](#custom) are the same control when they have the same `key`. A new
-  `position` with the same `key` has no effect. To move the control, pass a new `key`.
+  `position` with the same `key` moves the control: the map calls its `onRemove`, then its `onAdd` again, and adds it
+  last in the new corner. A control that is added again starts in its initial state, so a button that was turned
+  on is off again. This is also true of a built-in control whose `position` changes.
 - **A duplicate.** When the list has the same control twice, the map shows it once.
 - **Order.** When the map is created, the first control of a corner in the list is nearest to the corner. A control
   that a later description adds goes after the controls that the corner has.
@@ -493,8 +495,8 @@ not set keeps the English text.
 | `FullscreenControl.Exit` | `Exit fullscreen` |
 | `GeolocateControl.FindMyLocation` | `Find my location` |
 | `GeolocateControl.LocationNotAvailable` | `Location not available` |
-| `TerrainControl.Enable` | `Toggle terrain` |
-| `TerrainControl.Disable` | `Toggle terrain` |
+| `TerrainControl.Enable` | `Enable terrain` |
+| `TerrainControl.Disable` | `Disable terrain` |
 | `GlobeControl.Enable` | `Enable globe` |
 | `GlobeControl.Disable` | `Disable globe` |
 | `ColorSchemeControl.Light` | `Use light colors` |

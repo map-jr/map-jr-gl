@@ -130,19 +130,13 @@ export async function page() {
 ```
 
 With React, call `renderFirstView` on the server and pass the HTML to the `firstView` prop of `<MapJr>`. The
-component of `@map-jr/map-jr-gl/react` uses hooks, so a server component of Next.js renders it through a file that
-starts with `'use client'`:
-
-```jsx
-// app/map.jsx
-'use client';
-export {MapJr} from '@map-jr/map-jr-gl/react';
-```
+built files of `@map-jr/map-jr-gl/react` start with `'use client'`, so a server component of Next.js imports `MapJr`
+from the entry and needs no client file of its own:
 
 ```jsx
 // app/page.jsx, a server component
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
-import {MapJr} from './map.jsx';
+import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const view = {center: [-74.0065, 40.7085], zoom: 13.6};

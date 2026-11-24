@@ -231,7 +231,8 @@ createMap('map', {
 Two other fields can override `initialView` when the map is created:
 
 - When the description also has [`view`](#view-and-onviewchange), each member of `view` overrides the same member of
-  `initialView`, and the map ignores `bounds`.
+  `initialView`, and the map ignores `bounds`. The development build warns once when the first description has both
+  `view` and `initialView.bounds`.
 - With [`hash`](#hash), a view in the URL of the page overrides `center`, `zoom`, `bearing`, `pitch` and
   `bounds`. The map then does not fit `bounds`.
 
@@ -543,6 +544,10 @@ The map can set the state only on a feature that has an id. For a GeoJSON source
 
 The map calls `onClick` with one object (`MapPointer`) for each click on the map. It does not call `onClick` for a
 click on a control or on an element that [`map.overlay`](map.md#overlay) placed on the map.
+
+`onClick` works without [`interactiveLayers`](#interactivelayers), for example to read only the position of a click.
+The map then does not query features, `features` is always empty, and the map gives no warning. To receive the
+features under a click, list their layers in `interactiveLayers`.
 
 | Name | Type | Description |
 |---|---|---|

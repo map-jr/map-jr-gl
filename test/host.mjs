@@ -574,6 +574,17 @@ for (const renderer of renderers) {
         const flatWant = ['null', '{"source":"dem","exaggeration":2}', 'null', '{"source":"dem","exaggeration":1.5}', '{"source":"dem","exaggeration":2}', '{"source":"dem","exaggeration":2}'];
         check(`[${renderer}] terrain: null gives a flat map with a style that has terrain, and no field or undefined gives the terrain of the style (#1104)`, JSON.stringify(flat) === JSON.stringify(flatWant), JSON.stringify(flat));
 
+        // #1214: queryElevation on a style without a raster-dem source rejects with a message that says what to add.
+        const noDem = await page.evaluate(async renderer => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const host = window.t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
+            const message = await host.queryElevation([0, 0]).then(() => 'resolved', e => String(e?.message ?? e));
+            host.destroy(); el.remove();
+            return message;
+        }, renderer);
+        check(`[${renderer}] queryElevation without a raster-dem source rejects with a [map-jr-gl] message that says to add one (#1214)`,
+            noDem.startsWith('[map-jr-gl] queryElevation()') && noDem.includes('raster-dem'), noDem);
+
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
         const projection = await page.evaluate(async renderer => {
@@ -1171,6 +1182,25 @@ for (const renderer of renderers) {
             check(`[${renderer}] padding and maxZoom of initialView, moveTo and fitBounds warn with the new name and have no effect (#1147)`,
                 F.initialOld > 4 && F.movedOld > 5 && Math.abs(F.padded) <= 2 && said('initialView', 'maxZoom') && said('initialView', 'padding') && said('moveTo()', 'maxZoom') && said('fitBounds()', 'padding'), JSON.stringify(F));
         }
+
+        // 2d. "view" together with "initialView.bounds": the map starts at "view", and the development build says so once (#1148).
+        const viewWins = await page.evaluate(async renderer => {
+            const t = window.t, warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = {version: 8, sources: {}, layers: []}, bounds = [[-74.0101, 40.7101], [-74.01, 40.71]];
+            const both = t.lib.createMap(el, {style, view: {center: [10, 20], zoom: 3}, initialView: {bounds}, renderer, attribution: false});
+            const zoom = both.state.get().view.zoom;
+            both.update({style, view: {center: [11, 20], zoom: 3}, initialView: {bounds}, renderer, attribution: false});
+            const only = t.lib.createMap(el, {style, initialView: {bounds}, renderer, attribution: false});
+            // (The checks of the development build load on demand and run after the call.)
+            await new Promise(r => setTimeout(r, 500));
+            both.destroy(); only.destroy(); el.remove();
+            console.warn = warn;
+            return {zoom, warned: warned.filter(w => w.includes('"initialView.bounds"'))};
+        }, renderer);
+        check(`[${renderer}] view with initialView.bounds does not fit the bounds and warns once that view wins (#1148)`,
+            viewWins.zoom === 3 && viewWins.warned.length === 1 && viewWins.warned[0].startsWith('[map-jr-gl] createMap(): ') && viewWins.warned[0].includes('"view" wins, so the map does not fit'), JSON.stringify(viewWins));
 
         check(`[${renderer}] a pending toBlob leaves loaded() true for the idle listeners after its own (#1454)`, blob.loadedAtIdle === true, JSON.stringify(blob));
         check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
@@ -2024,11 +2054,18 @@ for (const renderer of renderers) {
             t.host.update(t.spec = {...t.spec, controls: spec()}); // made again: the same keys keep the controls
             await settle();
             const kept = added === 1 && removed === 0 && el.isConnected;
+            // A new position under the same key moves the control, custom or built in (#1237).
+            t.host.update(t.spec = {...t.spec, controls: [navigation({position: 'bottom-left'}), custom({key: 'el', position: 'bottom-right', element: el}), custom({key: 'obj', ...obj})]});
+            // (The navigation control loads its code on demand, so the check waits up to 2 s for its buttons in the new corner.)
+            const isMoved = () => !!el.parentElement?.matches('#host .map-jr-ctrl-bottom-right') && !!document.querySelector('#host .map-jr-ctrl-bottom-left .map-jr-ctrl-zoom-in')
+                && !document.querySelector('#host .map-jr-ctrl-top-right .map-jr-ctrl-zoom-in') && added === 1;
+            for (let i = 0; i < 40 && !isMoved(); i++) await settle();
+            const moved = isMoved();
             t.host.update(t.spec = {...t.spec, controls: undefined});
             await settle();
-            return {inCorner, objIn, kept, gone: !el.isConnected && removed === 1 && !document.getElementById('own-obj')};
+            return {inCorner, objIn, kept, moved, gone: !el.isConnected && removed === 1 && !document.getElementById('own-obj')};
         });
-        check(`[${renderer}] custom controls go into their corner and follow the description by key`, custom.inCorner && custom.objIn && custom.kept && custom.gone, JSON.stringify(custom));
+        check(`[${renderer}] custom controls go into their corner, follow the description by key, and move to a new position`, custom.inCorner && custom.objIn && custom.kept && custom.moved && custom.gone, JSON.stringify(custom));
 
         // 4b. An SVG image without a viewBox has the size of its width and height attributes (#175): a 9×9 image that
         // replaces a 40×40 one under the same name is drawn at 9×9 centred on its anchor, and the 40×40 one is not cropped.
@@ -3168,9 +3205,9 @@ for (const renderer of ['main', 'worker']) {
         await page.evaluate(async () => { window.host.update({...window.spec, fonts: {'Test Square Regular': '/test-fonts/square.ttf', 'Test Gone Regular': '/test-fonts/missing.ttf'}}); await new Promise(r => setTimeout(r, 200)); await window.settle(); });
         const after = await dark(), errors = await page.evaluate(() => window.errors);
         await page.evaluate(() => window.host.destroy());
-        const failed = errors.some(m => m.includes('"Test Gone Regular"') && m.startsWith('[map-jr-gl] fonts:'));
+        const failed = errors.some(m => /^\[map-jr-gl\] the request for the font http:\/\/[^ ]+\/test-fonts\/missing\.ttf failed: HTTP 404\. The labels use the next font of their "text-font" instead of "Test Gone Regular"\.$/.test(m));
         // (The squares of the font fill much more of the label than the letters of a font of the device.)
-        check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name',
+        check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name and the HTTP status (#1193)',
             asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));
     } catch (e) { check('fonts of the description: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();

@@ -49,13 +49,15 @@ mkdirSync(path.dirname(tmp), {recursive: true});
 git(['worktree', 'add', '--detach', tmp, 'HEAD']);
 let code = 1;
 try {
-    // The changes of this checkout that are not committed: changed and untracked files, and deleted files.
-    for (const f of git(['ls-files', '-m', '-o', '--exclude-standard', '-z']).split('\0').filter(Boolean)) {
+    // The changes of this checkout that are not committed, staged or not (#1592): changed, added and untracked
+    // files, and deleted files.
+    const changed = [...git(['diff', '--name-only', '--no-renames', '-z', 'HEAD']).split('\0'), ...git(['ls-files', '-o', '--exclude-standard', '-z']).split('\0')];
+    for (const f of new Set(changed.filter(Boolean))) {
         if (!existsSync(path.join(root, f)) || statSync(path.join(root, f)).isDirectory()) continue;
         mkdirSync(path.dirname(path.join(tmp, f)), {recursive: true});
         copyFileSync(path.join(root, f), path.join(tmp, f));
     }
-    for (const f of git(['ls-files', '-d', '-z']).split('\0').filter(Boolean)) rmSync(path.join(tmp, f), {force: true});
+    for (const f of git(['diff', '--name-only', '--no-renames', '--diff-filter=D', '-z', 'HEAD']).split('\0').filter(Boolean)) rmSync(path.join(tmp, f), {force: true});
     // The paths without the fix: the files of the fork point, and no file that the branch added.
     git(['checkout', fork, '--', ...paths], tmp);
     const atFork = new Set(git(['ls-tree', '-r', '--name-only', fork, '--', ...paths]).split('\n'));

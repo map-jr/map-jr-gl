@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   # Which of the slow jobs a pull request needs. A push to main runs all of them. A pull request that changes only
-  # documents skips "browser", and one that changes nothing that the built files or the render tests read skips
+  # documents, or tools and tests that no browser job reads (scripts/ci-paths.mjs), skips "browser", and one that changes nothing that the built files or the render tests read skips
   # "render". A skipped job counts as passed for a required check, so these jobs can stay required.
   changes:
     runs-on: ubuntu-latest
@@ -30,20 +30,19 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ "$EVENT" != pull_request ]; then echo "browser=true" >> "$GITHUB_OUTPUT"; echo "render=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          browser=false; render=false
+          files="$(git diff --name-only "$BASE"...HEAD)"
+          # Documents and the tools and tests that no browser job reads (the list is NO_BROWSER of
+          # scripts/ci-paths.mjs; "checks" runs its --check, which fails when a browser job reads a skipped file).
+          browser=$(node scripts/ci-paths.mjs <<< "$files" | sed 's/^browser=//')
+          render=false
           while read -r f; do
             [ -z "$f" ] && continue
             echo "$f"
-            # Documents: no browser test and no build reads them ("checks" compares them with the code).
-            case "$f" in
-              docs/*|*.md|LICENSE*|.github/ISSUE_TEMPLATE/*) ;;
-              *) browser=true ;;
-            esac
             # What the built files and the render tests are made from.
             case "$f" in
               src/*|build.mjs|package.json|pnpm-lock.yaml|tsconfig*.json|scripts/private-names.mjs|test/conformance/render*|.github/workflows/ci.yml) render=true ;;
             esac
-          done <<< "$(git diff --name-only "$BASE"...HEAD)"
+          done <<< "$files"
           echo "browser=$browser" >> "$GITHUB_OUTPUT"; echo "render=$render" >> "$GITHUB_OUTPUT"
           echo "browser: $browser, render: $render" | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -146,7 +145,7 @@ jobs:
           exit $status
 
   # The required check. It passes when every browser job passed, or when "changes" skipped them for a pull request
-  # that changes only documents. It fails when one of them failed or timed out. When they or "changes" were cancelled (a newer
+  # that changes only files that no browser job reads. It fails when one of them failed or timed out. When they or "changes" were cancelled (a newer
   # push cancels the run) and none failed, it cancels the run again, so that this job ends as cancelled and not as a
   # failure: a cancelled job never passes a required check, and a failure then always means a failed test.
   browser:

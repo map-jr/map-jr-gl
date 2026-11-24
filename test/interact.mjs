@@ -3205,7 +3205,7 @@ for (const mode of renderers) {
                 console.warn = warn;
                 delete document.hidden; // (the property of the test: the one of the browser is on the prototype)
                 const out = {renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread: the WebGL context was lost/.test(w)).length,
-                    waited: Math.round(secondLoss - firstLoss), toMain: Math.round(toMain), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+                    waited: secondLoss && firstLoss ? Math.round(secondLoss - firstLoss) : null, toMain: Math.round(toMain), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
                 m.remove(); el.remove();
                 return out;
             }, kind);
@@ -3647,6 +3647,39 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
             unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
+    }
+    // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
+    if (mode === 'main') {
+        const logo = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+            try {
+                const a = new mod.LogoControl({compact: true});
+                new mod.LogoControl({compact: false}); new mod.LogoControl();
+                return {compact: a.options.compact, warnings: warnings.filter(w => w.includes('LogoControl'))};
+            } finally { console.warn = warn; }
+        });
+        check('[main] maplibre-compat: new LogoControl({compact}) keeps the options and warns once that compact has no effect',
+            logo.compact === true && logo.warnings.length === 1 && logo.warnings[0].startsWith('[map-jr-gl] LogoControl: the option compact has no effect.'), JSON.stringify(logo));
+    }
+    // The label of TerrainControl says what a click does, with the texts of MapLibre GL JS (#1234).
+    if (mode === 'main') {
+        const labels = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256}}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            m.addControl(new mod.TerrainControl({source: 'dem'}));
+            const b = el.querySelector('.maplibregl-ctrl-terrain');
+            const off = b.title;
+            b.click();
+            const on = b.title, aria = b.getAttribute('aria-label');
+            m.remove(); el.remove();
+            return {off, on, aria};
+        });
+        check('[main] maplibre-compat: TerrainControl is labeled "Enable terrain" and, with terrain on, "Disable terrain"',
+            labels.off === 'Enable terrain' && labels.on === 'Disable terrain' && labels.aria === 'Disable terrain', JSON.stringify(labels));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
     // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no

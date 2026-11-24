@@ -242,8 +242,8 @@ export type ScaleControlOptions = OptionsOf<typeof ScaleControl>;
 /** The options of `new AttributionControl(options)`: `compact` and `customAttribution`. */
 export type AttributionControlOptions = OptionsOf<typeof AttributionControl>;
 /**
- * The options of the `LogoControl` of MapLibre GL JS. `compact` has no effect: this library has no logo, the control
- * adds an empty element, and its constructor takes no argument.
+ * The options of `new LogoControl(options)`. `compact` has no effect and writes one warning: this library has no logo,
+ * and the control adds an empty element.
  */
 export type LogoControlOptions = {compact?: boolean};
 /** The unit of the `ScaleControl`. */
