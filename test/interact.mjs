@@ -6007,6 +6007,34 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: the inertia of a rotate drag that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
             m1834r.ends.length === 1 && m1834r.ends[0] === 0 && m1834r.bearing === 0, JSON.stringify(m1834r));
+        // #1954: a rotate drag from bearing -24 to about -3 whose moves and release come in one task (no frame between
+        // them, so no `move` while the button is down) and that pauses 200 ms before the release (no inertia) turns
+        // north after its `moveend`, as MapLibre GL JS does after every gesture (`HandlerManager._onMoveEnd`).
+        const m1954 = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: -24});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            await new Promise(r => setTimeout(r, 300));
+            const ends = [];
+            m.on('moveend', () => ends.push(+m.getBearing().toFixed(1)));
+            const canvas = m.getCanvas();
+            const fire = (type, x, buttons) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: 250, button: 2, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true};
+                canvas.dispatchEvent(new PointerEvent('pointer' + type, o)); canvas.dispatchEvent(new MouseEvent('mouse' + type, o));
+            };
+            const wait = ms => { const t0 = performance.now(); while (performance.now() - t0 < ms); };
+            fire('down', 250, 2);
+            for (let k = 1; k <= 8; k++) { wait(10); fire('move', 250 + k * 3.3, 2); }
+            wait(200);
+            fire('up', 276.4, 0);
+            await new Promise(r => setTimeout(r, 2500));
+            const out = {ends, bearing: +m.getBearing().toFixed(1)};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
+            m1954.ends.length >= 1 && Math.abs(m1954.ends[0]) > 0.5 && Math.abs(m1954.ends[0]) < 7 && m1954.bearing === 0, JSON.stringify(m1954));
         // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
         // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
         const m479 = {};
