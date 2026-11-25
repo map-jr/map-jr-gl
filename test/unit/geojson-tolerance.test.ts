@@ -57,4 +57,9 @@ test('GeoJSON tolerance: a line shorter than the tolerance and a ring with an ar
     assert.equal(rings(polygon, {}, 0), 1, 'only the outer ring of the large polygon at z0');
     assert.equal(rings(polygon, {}, 5), rings(polygon, {tolerance: 0}, 5), 'all three rings at z5');
     assert.equal(rings(polygon, {tolerance: 0}, 0), 3, 'tolerance 0 keeps all three rings');
+    // Simplification keeps this triangle at z0 (its apex is 6.8 units from its base), but its area is 31 square units,
+    // under the square of the tolerance (36).
+    const triangle = {type: 'Polygon', coordinates: [[[0, 0], [0.4, 0], [0.2, 0.3], [0, 0]]]};
+    assert.equal(rings(triangle, {}, 0), 0, 'the small triangle at z0');
+    assert.equal(rings(triangle, {tolerance: 0}, 0), 1, 'tolerance 0 keeps the small triangle');
 });
