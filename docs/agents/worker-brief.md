@@ -84,7 +84,10 @@ writing); this brief has the steps.
 - Bring your branch up to date with `node scripts/agents/merge-main.mjs`, not with a bare `git merge origin/main` or a
   rebase that squashes it into one commit. The script merges `origin/main`, writes again each generated block or
   file that is in conflict (the reference tables, the recipes, the lines of `render-tests.json`), commits the merge, and stops
-  with a list of the files when a conflict is outside generated text (#1863). After a merge, a rebase or a
+  with a list of the files when a conflict is outside generated text (#1863). It runs the copy of itself that `main`
+  has (#1928). A branch from before that change runs the copy of `main` by hand with
+  `git fetch origin main && git show origin/main:scripts/agents/merge-main.mjs | MERGE_MAIN_RUN=1 node --input-type=module -`.
+  After a merge, a rebase or a
   force-push, check that `git diff origin/main...HEAD -- src` has only your lines.
 - Two switches help to reproduce faults in Chromium: `CPU_THROTTLE=<rate>` (in `test/host.mjs` and
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
