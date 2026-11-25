@@ -1040,6 +1040,21 @@ test('sizes: a size of zoom and feature is found at the zoom that an overzoomed 
     assert.equal(tile.layers.c.radius![0], 22);
 });
 
+test('style: an over-zoomed tile evaluates layout properties and checks maxzoom at the over-zoomed zoom, as in MapLibre (#994)', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const n = 2 ** 14, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;
+    const data = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, lat]}}]};
+    const symbol = compileLayer({id: 's', type: 'symbol', source: 'g', layout: {'text-field': 'A', 'text-transform': ['step', ['zoom'], 'none', 15, 'lowercase']}})!;
+    const circle = compileLayer({id: 'c', type: 'circle', source: 'g', maxzoom: 15})!;
+    const build = (overscaled: number | false) => buildTile(sliceGeoJSON(prepareGeoJSON(data), TILE.z, TILE.x, TILE.y), TILE.z, [symbol, circle], overscaled);
+    // A tile of zoom 14 at its own zoom: "A", and the circle layer is drawn.
+    assert.equal(build(false).labels.s[0].text, 'A');
+    assert.ok(build(false).layers.c);
+    // The same tile over-zoomed to 16: the step at 15 applies, and the layer with maxzoom 15 is left out.
+    assert.equal(build(16).labels.s[0].text, 'a');
+    assert.equal(build(16).layers.c, undefined);
+});
+
 test('sizes: the GPU buffers of a circle keep the radius at the next zoom, which the map mixes in between levels (#1815)', () => {
     const geom = {coords: Int16Array.from([10, 20]), ringEnds: Uint32Array.from([1]), featEnds: Uint32Array.from([1])};
     const gl = tessellate({type: 'circle', geom, radius: Float32Array.from([0]), radius1: Float32Array.from([10])}) as any;
