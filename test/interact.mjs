@@ -1936,6 +1936,32 @@ for (const mode of renderers) {
         check(`maplibre-compat (${mode}): flyTo zooms out on the way, takes its duration from speed, and maxDuration jumps (#43)`,
             r.low < 3.2 && r.end[0] === 40 && r.end[1] === 5 && r.ms > 700 && r.ms < 3000 && r.jump === -40 && r.jumpMs < 500 && r.warns === 0, JSON.stringify(r));
     }
+    // A marker with `pitchAlignment: 'map'` lies on the ground of a map with pitch: its transform is that of MapLibre GL JS
+    // 6.17, and `auto` takes the value of `rotationAlignment` (#1714).
+    if (mode === 'main') {
+        const run = lib => page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 2, pitch: 50, bearing: 30, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(r => m.once('load', r));
+            const dot = () => Object.assign(document.createElement('div'), {style: 'width:20px;height:20px'});
+            const marks = [
+                new mod.Marker({element: dot(), pitchAlignment: 'map'}),
+                new mod.Marker({element: dot(), rotationAlignment: 'map', rotation: 10}),
+                new mod.Marker({element: dot()}),
+                new mod.Marker({element: dot()}).setPitchAlignment('map'),
+            ].map(k => k.setLngLat([5, 5]).addTo(m));
+            const matrix = k => (getComputedStyle(k.getElement()).transform.match(/-?[\d.e-]+/g) ?? []).slice(1).map(Number);
+            const out = {align: marks.map(k => k.getPitchAlignment()), matrices: marks.map(matrix)};
+            m.remove(); el.remove();
+            return out;
+        }, lib);
+        const ours = await run('ours'), ml = await run('ml');
+        const same = ours.matrices.every((a, i) => a.length === ml.matrices[i].length && a.every((v, j) => Math.abs(v - ml.matrices[i][j]) < (Math.abs(v) > 10 ? 1.01 : 1e-3)));
+        check('maplibre-compat: Marker pitchAlignment map lays the marker on the ground with the transform of MapLibre GL JS, and auto follows rotationAlignment (#1714)',
+            same && JSON.stringify(ours.align) === JSON.stringify(ml.align) && ours.matrices[0].length === 16, JSON.stringify({ours, ml}));
+    }
     // #208: Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {
         const r = await page.evaluate(async () => {
