@@ -765,7 +765,7 @@
 "line-offset/literal": "match",
 "line-offset/literal-negative": "match",
 "line-offset/loop": "match",
-"line-offset/matches-offset-geometry": "near",
+"line-offset/matches-offset-geometry": "match",
 "line-offset/property-function": "match",
 "line-offset/sharp-corners-bevel": "match",
 "line-offset/sharp-corners-miter-limit": "match",
