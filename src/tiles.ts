@@ -14,7 +14,7 @@ import {part, type PartName, type Parts} from './parts.ts';
 
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
 export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
-export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
+export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number; /** When the tile is out of date (see `TileFetchState`). */ expires?: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** The tile: zoom, x and y, for `within` and `distance`. */ at?: [number, number, number]; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
     /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). No map sends it yet (#463). */ globe?: GlobeBuild }
@@ -66,7 +66,7 @@ export class TileBuilder {
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
-            const bytes = await fetchTile(req.url, this.fetchFn, ac.signal, undefined, true);
+            const st: TileFetchState = {}, bytes = await fetchTile(req.url, this.fetchFn, ac.signal, st, true);
             if (!bytes) return null;
             const px = await decodePixels(bytes, this.decodeImage), {width: w, height: h} = px, grid = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
             let lo = Infinity, hi = -Infinity;
@@ -87,7 +87,7 @@ export class TileBuilder {
                     grid[j * HEIGHT_GRID + i] = sum / ((y1 - y0) * (x1 - x0));
                 }
             }
-            return {width: w, height: h, pixels: new Uint8Array(px.data.buffer, px.data.byteOffset, px.data.byteLength), grid, lo, hi};
+            return {width: w, height: h, pixels: new Uint8Array(px.data.buffer, px.data.byteOffset, px.data.byteLength), grid, lo, hi, expires: st.expires};
         } finally { this.aborts.delete(req.id); }
     }
 

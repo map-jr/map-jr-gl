@@ -4,7 +4,7 @@ import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {fontKey, type CompiledLayer} from './style.ts';
-import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, IMAGE_OR, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
+import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, IMAGE_OR, warnOnce, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 
 /**
@@ -66,6 +66,8 @@ export interface Batch {
 }
 /** The key of the batch of a layer for its `k`th image, when its pattern has a value for each feature: one batch for each image. */
 export const patternKey = (id: string, k: number) => k ? id + '\0' + k : id;
+/** The most batches of one image after another that a layer with a sort key and a pattern for each feature has in a tile (#1445). */
+export const MAX_RUNS = 64;
 export interface LabelSrc {
     x: number; y: number; text: string;
     /** `symbol-sort-key`, when the layer has one. */
@@ -166,7 +168,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
     const out: TileIR = {layers: {}, labels: {}, z: zs};
     // The over-scaling of MapLibre GL JS: a tile shown deeper than its own zoom has its pixels that many times smaller.
     const ov = zs > tz ? 2 ** Math.max(0, Math.floor(zs) - tz) : 1;
-    // A filter sees the zoom that the sizes are found at, as in MapLibre GL JS (the over-zoomed zoom of the tile).
+    // A filter and each property see the zoom that the sizes are found at, as in MapLibre GL JS (the over-zoomed zoom of
+    // the tile, #994).
     const ctx = {zoom: zs, f: null as Feature | null};
 
     for (const L of layers) {
@@ -174,17 +177,19 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         // A tile is drawn from its own zoom up to the next one. A tile of the source's deepest level is drawn further: it has
         // all the shapes, and the labels of the layers that show up to one level above the zoom of the map.
         if (L.minzoom >= (overscaled === false || under ? z + 1 : L.type === 'symbol' ? overscaled + 2 : 99)) continue;
+        // (The `maxzoom` of a layer is checked at the zoom of the tile, not at the over-zoomed zoom: the map hides the layer
+        // by its own zoom, and a tile built at zoom 16 is shown at 15.5 until it is built again, #994.)
         if (L.maxzoom <= z) continue;
         const vl = vt[L.sourceLayer ?? GEOJSON_LAYER];
         if (!vl) continue;
         const p = L.p;
 
         if (L.type === 'symbol') {
-            const labels: LabelSrc[] = [], keys: number[] = [], sorted = p.sortKey.dd || p.sortKey.eval(z) !== 0;
+            const labels: LabelSrc[] = [], keys: number[] = [], sorted = p.sortKey.dd || p.sortKey.eval(zs) !== 0;
             type Piece = {base: any; ring: number[]; type: number; along: boolean | 'center'; spacing: number; key: number};
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
             // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and color, and no order.)
-            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconPitch.dd && p.iconPitch.eval(z) !== 'map' && !(p.iconPitch.eval(z) === 'auto' && p.iconAlign.eval(z) === 'map') && !p.iconColor.dd && !p.iconPadding.dd;
+            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconPitch.dd && p.iconPitch.eval(zs) !== 'map' && !(p.iconPitch.eval(zs) === 'auto' && p.iconAlign.eval(zs) === 'map') && !p.iconColor.dd && !p.iconPadding.dd;
             const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
             let iconAvoid: boolean | undefined;
             for (const f of vl.features) {
@@ -194,15 +199,15 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 // A `{name}` token stands for a property of the feature only in a constant and in a zoom function, as in
                 // MapLibre GL JS. The result of a property function or of an expression keeps its braces.
                 const tokens = (q: Prop, x: unknown) => { const v = String(x ?? ''); return (q.tokens ? v.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : v).trim(); };
-                let text = tokens(p.field, p.field.eval(z, f));
+                let text = tokens(p.field, p.field.eval(zs, f));
                 // An image that is an SVG template: the name gets the value of each slot of the template, from `params` of
                 // the `image` expression, or else from the property of the feature that has the name of the slot.
                 // (`coalesce` gives several names: each one is made in this way.)
-                const icon = String(p.icon.eval(z, f) ?? ''), iconName = icon.split(IMAGE_OR).map(n => variantName(n.includes(VARIANT) ? n : tokens(p.icon, n), templates, f.properties)).join(IMAGE_OR);
+                const icon = String(p.icon.eval(zs, f) ?? ''), iconName = icon.split(IMAGE_OR).map(n => variantName(n.includes(VARIANT) ? n : tokens(p.icon, n), templates, f.properties)).join(IMAGE_OR);
                 // (The same for the images inside `format` text.)
                 if (templates && text.includes(IMAGE_OPEN)) text = text.replace(IMAGE_IN_TEXT, (_, n) => IMAGE_OPEN + variantName(n, templates, f.properties) + IMAGE_CLOSE);
                 if (!text && !iconName) continue;
-                const tt = p.transform.eval(z, f);
+                const tt = p.transform.eval(zs, f);
                 if (tt === 'uppercase' || tt === 'lowercase') {
                     // (Image names inside the text are left as they are.)
                     const change = (t: string) => tt === 'uppercase' ? t.toUpperCase() : t.toLowerCase();
@@ -210,8 +215,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 }
                 // An opacity or a size that is the same for the whole layer is found again when labels are placed, at the zoom
                 // of the map: a tile is shown at zooms other than its own. Only a value for each feature is kept here.
-                const color = p.color.eval(z, f) as RGBA, op = p.opacity.dd ? p.opacity.eval(z, f) : 1, haloColor = p.haloColor.eval(z, f) as RGBA;
-                const placement = p.placement.eval(z, f), along = placement !== 'point';
+                const color = p.color.eval(zs, f) as RGBA, op = p.opacity.dd ? p.opacity.eval(zs, f) : 1, haloColor = p.haloColor.eval(zs, f) as RGBA;
+                const placement = p.placement.eval(zs, f), along = placement !== 'point';
                 // `text-rotation-alignment` and `icon-rotation-alignment`: `auto` is `map` along a line and `viewport` at a point.
                 // (The flag is named for the usual case at a point: the symbol stays upright when the map turns.)
                 const turns = (alignment: unknown) => along ? alignment === 'viewport' : alignment !== 'map';
@@ -220,19 +225,19 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 const base = {
                     text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
-                    halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontKey(p.font.eval(z, f)),
-                    maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
-                    padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f),
-                    upright: turns(p.textAlign.eval(z, f)), flat: flat(p.textPitch.eval(z, f), p.textAlign.eval(z, f)), keepUpright: p.keepUpright.eval(z, f) !== false, textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
-                    varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
+                    halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(zs, f), haloBlur: p.haloBlur.eval(zs, f), rotate: p.rotate.eval(zs, f) * Math.PI / 180, justify: justification(p.justify.eval(zs, f), p.anchor.eval(zs, f)), font: fontKey(p.font.eval(zs, f)),
+                    maxWidth: p.maxWidth.eval(zs, f), spacing: p.spacing.eval(zs, f), offset: p.offset.eval(zs, f), anchor: p.anchor.eval(zs, f),
+                    padding: p.padding.eval(zs, f), overlap: overlaps(p.overlapMode.eval(zs, f), p.overlap.eval(zs, f)), lineHeight: p.lineHeight.eval(zs, f),
+                    upright: turns(p.textAlign.eval(zs, f)), flat: flat(p.textPitch.eval(zs, f), p.textAlign.eval(zs, f)), keepUpright: p.keepUpright.eval(zs, f) !== false, textOptional: !!p.textOptional.eval(zs, f), ignore: !!p.ignore.eval(zs, f),
+                    varAnchor: p.varAnchor.eval(zs, f), radial: p.radial.eval(zs, f), varOffset: p.varOffset.eval(zs, f), maxAngle: p.maxAngle.eval(zs, f), justifyAuto: p.justify.eval(zs, f) === 'auto',
                     icon: iconName ? {
-                        name: iconName, size: p.iconSize.eval(zs, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), haloBlur: p.iconHaloBlur.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
-                        fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f),
-                        optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)), flat: flat(p.iconPitch.eval(z, f), p.iconAlign.eval(z, f)), keepUpright: p.iconKeepUpright.eval(z, f) === true,
+                        name: iconName, size: p.iconSize.eval(zs, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(zs, f) : 1, anchor: p.iconAnchor.eval(zs, f), color: p.iconColor.eval(zs, f), halo: p.iconHalo.eval(zs, f), haloWidth: p.iconHaloWidth.eval(zs, f), haloBlur: p.iconHaloBlur.eval(zs, f), offset: p.iconOffset.eval(zs, f), rotate: p.iconRotate.eval(zs, f),
+                        fit: p.iconFit.eval(zs, f), fitPad: p.iconFitPad.eval(zs, f), overlap: overlaps(p.iconOverlapMode.eval(zs, f), p.iconOverlap.eval(zs, f)), ignore: !!p.iconIgnore.eval(zs, f), padding: p.iconPadding.eval(zs, f),
+                        optional: !!p.iconOptional.eval(zs, f), upright: turns(p.iconAlign.eval(zs, f)), flat: flat(p.iconPitch.eval(zs, f), p.iconAlign.eval(zs, f)), keepUpright: p.iconKeepUpright.eval(zs, f) === true,
                     } : undefined,
                 };
                 // symbol-spacing is in pixels; tiles are EXTENT units across TILE_SIZE pixels.
-                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512 * 2 ** (tz - z), key = sorted ? +p.sortKey.eval(z, f) || 0 : 0;
+                const g = geometry(f), spacing = p.symbolSpacing.eval(zs, f) * EXTENT / 512 * 2 ** (tz - z), key = sorted ? +p.sortKey.eval(zs, f) || 0 : 0;
                 let start = 0;
                 for (const end of g.ringEnds) {
                     const piece: Piece = {base, ring: g.coords.slice(start * 2, end * 2), type: f.type, along: along && (placement === 'line' || 'center'), spacing, key};
@@ -307,17 +312,27 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         const sortKey = (L.type === 'fill' || L.type === 'line' || L.type === 'circle') && p.sortKey.dd ? p.sortKey : null;
         if (sortKey) {
             const keyed: {f: (typeof features)[number]; key: number; i: number}[] = [];
-            for (let i = 0; i < features.length; i++) keyed.push({f: features[i], key: +sortKey.eval(z, features[i]) || 0, i});
+            for (let i = 0; i < features.length; i++) keyed.push({f: features[i], key: +sortKey.eval(zs, features[i]) || 0, i});
             features = keyed.sort((a, b) => a.key - b.key || a.i - b.i).map(k => k.f);
         }
         // fill-pattern, line-pattern and fill-extrusion-pattern with a value for each feature: the features of each image
         // are a batch of their own, drawn with that image (a feature with no image is not drawn, as in MapLibre GL JS).
-        const groups = new Map<string, typeof features>();
-        if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) for (const f of features) {
-            ctx.f = f;
-            const name = String(p.pattern.eval(z, f) ?? '');
-            if (name) groups.get(name)?.push(f) ?? groups.set(name, [f]);
-        } else groups.set('', features);
+        // With a sort key, each run of features with the same image is a batch, so that the batches keep the order of the key.
+        // Each batch is a draw call in each frame, so above MAX_RUNS runs in a tile the features of each image are one batch
+        // again, and the key orders them only within the image (#1445).
+        let groups: [string, typeof features][] = [];
+        const byName = new Map<string, typeof features>();
+        if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) {
+            for (const f of features) {
+                ctx.f = f;
+                const name = String(p.pattern.eval(zs, f) ?? ''), last = groups[groups.length - 1];
+                if (!name) continue;
+                byName.get(name)?.push(f) ?? byName.set(name, [f]);
+                if (sortKey) last?.[0] === name ? last[1].push(f) : groups.push([name, [f]]);
+            }
+            if (groups.length > MAX_RUNS) warnOnce(`layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
+            if (!sortKey || groups.length > MAX_RUNS) groups = [...byName];
+        } else groups.push(['', features]);
         let k = 0;
         for (const [pat, fs] of groups) {
             const heights: number[] = [], bases: number[] = [];
@@ -352,7 +367,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     start = end;
                 }
                 featEnds.push(ringEnds.length);
-                if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
+                if (ddColor) pushColor(color, p.color.dd ? p.color.eval(zs, f) : WHITE, p.opacity.dd ? p.opacity.eval(zs, f) : 1);
                 if (scalarProp?.dd) {
                     const now = scalarProp.eval(zs, f), next = heat ? now : scalarProp.eval(z1, f);
                     scalar.push(now); scalar1.push(next);
@@ -361,11 +376,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 if (L.type === 'line' && p.offset.dd) offset.push(p.offset.eval(zs, f));
                 if (L.type === 'line' && p.blur.dd) blur.push(Math.max(0, p.blur.eval(zs, f)));
                 if (L.type === 'line' && p.gap.dd) gap.push(Math.max(0, p.gap.eval(zs, f)));
-                if (ddStroke) pushColor(stroke, p.strokeColor.dd ? p.strokeColor.eval(z, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(z, f) : 1);
+                if (ddStroke) pushColor(stroke, p.strokeColor.dd ? p.strokeColor.eval(zs, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(zs, f) : 1);
                 if (ddSb) sb.push(heat ? p.radius.eval(zs, f) : p.strokeWidth.dd ? p.strokeWidth.eval(zs, f) : 0, !heat && p.blur.dd ? p.blur.eval(zs, f) : 0);
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
-                if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
+                if (extrude) heights.push(Math.max(0, p.height.eval(zs, f))), bases.push(Math.max(0, p.base.eval(zs, f)));
             }
             if (!featEnds.length) continue;
             const batch: Batch = {
@@ -381,9 +396,9 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (gap.length) batch.gap = Float32Array.from(gap);
             if (ddStroke) batch.stroke = Uint8Array.from(stroke);
             if (ddSb) batch.sb = Float32Array.from(sb);
-            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
-            if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
-            if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
+            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
+            if (L.type === 'line') { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
+            if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
             if (pat) batch.pat = pat;
             if (heat) batch.heat = true;
             out.layers[patternKey(L.id, k++)] = batch;

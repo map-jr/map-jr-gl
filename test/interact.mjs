@@ -3047,6 +3047,32 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a source has on, once, off and fire, and gets its own dataloading, data and error events, as in MapLibre GL JS (#1720)`,
             JSON.stringify(ours) === JSON.stringify(ml) && ours.methods && ours.same && ours.seen.length === 2 && ours.errors.r && ours.errors.u, JSON.stringify({ours, maplibre: ml}));
     }
+    // After `setData`, the compat map and the source fire `sourcedata`/`data` with `sourceDataType: 'metadata'`
+    // (`isSourceLoaded: true`) and then `'content'` (`isSourceLoaded: false`), as MapLibre GL JS 6.17 does. The event
+    // on the source has no `sourceId`, and `sourcedataloading` has `isSourceLoaded: false` (#2005).
+    {
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = x => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [x, 0]}}]});
+            const m = new mod.Map({container: el, style: {version: 8, sources: {g: {type: 'geojson', data: point(0)}}, layers: [{id: 'c', type: 'circle', source: 'g'}]}, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 1});
+            await new Promise(r => m.once('load', r));
+            // (The events of the first load are over: `idle` can come before `load` here, so a short wait.)
+            await new Promise(r => setTimeout(r, 500));
+            const log = [];
+            for (const t of ['sourcedataloading', 'sourcedata', 'data']) m.on(t, e => { if (e.sourceId === 'g' && !e.tile) log.push(['map', t, e.sourceDataType ?? null, e.isSourceLoaded]); });
+            m.getSource('g').on('data', e => { if (!e.tile) log.push(['source', 'data', e.sourceDataType ?? null, 'sourceId' in e]); });
+            m.getSource('g').setData(point(10));
+            // (Waits for the event that it compares: `content` on the map's `data`.)
+            await Promise.race([new Promise(r => m.on('data', e => { if (e.sourceDataType === 'content') r(); })), new Promise(r => setTimeout(r, 5000))]);
+            m.remove(); el.remove();
+            return log.filter(l => l[1] === 'sourcedataloading' || l[2]);
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = await run('ml', mode);
+        check(`[${mode}] compat: after setData, sourcedata fires with sourceDataType metadata and then content, on the map and on the source, as in MapLibre GL JS (#2005)`,
+            ours.length === 7 && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
+    }
     // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
     // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.
     // A second map with the same style object gets its own `error` (#809). MapLibre GL JS in WebKit requests the
@@ -3126,6 +3152,29 @@ for (const mode of renderers) {
         const ours = await run('ours', mode), ml = mode === 'main' ? await run('ml', mode) : {16: 'z15', 14.5: 'none'};
         check(`[${mode}] compat: a filter with ["zoom"] on an over-zoomed tile sees the over-zoomed zoom, as in MapLibre GL JS (#991)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
+    }
+    // A layer with maxzoom 16 on a tile that was built over-zoomed at 16 shows in the first frame after a zoom-out to 15.5,
+    // while the tile waits to be built again for the new zoom (#994). (The main renderer only: the canvas is read in the
+    // frame itself, and `toBlob` would wait for the map to be idle.)
+    if (mode === 'main') {
+        const shown = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-0.01, -0.01], [0.01, -0.01], [0.01, 0.01], [-0.01, 0.01], [-0.01, -0.01]]]}};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            // (The layer "under" keeps the tile in use at zoom 16, so that it is built there.)
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 16, style: {version: 8, sources: {g: {type: 'geojson', data: square, maxzoom: 14}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'under', type: 'fill', source: 'g', paint: {'fill-color': '#00f'}}, {id: 'f', type: 'fill', source: 'g', maxzoom: 16, paint: {'fill-color': '#f00'}}]}});
+            const pad = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d', {willReadFrequently: true});
+            const middle = () => { const c = m.getCanvas(); pad.drawImage(c, c.width / 2, c.height / 2, 1, 1, 0, 0, 1, 1); return [...pad.getImageData(0, 0, 1, 1).data].slice(0, 3).join(); };
+            const at16 = await new Promise(r => { m.once('idle', () => r(middle())); setTimeout(() => r('no idle'), 8000); });
+            const frame = new Promise(r => { m.once('render', () => r({zoom: m.getZoom(), px: middle()})); setTimeout(() => r('no frame'), 4000); });
+            m.jumpTo({zoom: 15.5});
+            const after = await frame;
+            m.remove(); el.remove();
+            return {at16, after};
+        });
+        check('[main] compat: a layer with maxzoom 16 shows in the first frame of a zoom-out from 16 to 15.5 on an over-zoomed tile (#994)',
+            shown.at16 === '0,0,255' && shown.after.zoom === 15.5 && shown.after.px === '255,0,0', JSON.stringify(shown));
     }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
     // that are given the same source object both load it.
@@ -4546,7 +4595,7 @@ for (const mode of renderers) {
             m.remove(); el.remove();
             return out;
         }).catch(e => [String(e)]);
-        check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000 nm', '1000 mi', '1000 km', '1000 nm']), JSON.stringify(texts));
+        check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000\u00a0nm', '1000\u00a0mi', '1000\u00a0km', '1000\u00a0nm']), JSON.stringify(texts));
     }
     // The bar of ScaleControl has the width that MapLibre GL JS 6.17 gives it, which measures with the mean radius of the
     // earth (6,371,008.8 m) and not the equatorial one (#1039: the bar was 0.11% shorter, 204.42 px against 204.65 px).
@@ -4570,7 +4619,7 @@ for (const mode of renderers) {
         }, lib).catch(e => [String(e)]);
         const ours = await run('ours'), ml = await run('ml');
         check('[main] maplibre-compat: the ScaleControl bar has the width of MapLibre GL JS (#1039)',
-            ml.length === 3 && ours.every((o, i) => o[1].replace(/\s/g, ' ') === ml[i][1].replace(/\s/g, ' ') && Math.abs(o[0] - ml[i][0]) < 0.01), JSON.stringify({ours, ml}));
+            ml.length === 3 && ours.every((o, i) => o[1] === ml[i][1] && Math.abs(o[0] - ml[i][0]) < 0.01), JSON.stringify({ours, ml}));
     }
     // react-map-gl 8 gives every map a function with setTransformCameraUpdate (#210). With the worker renderer the map
     // warns only when the function changes the camera; on the main thread it draws the camera that the function returns,

@@ -4683,6 +4683,50 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of tiles that expire was completed', false, String(e.message).split('\n')[0]); }
     for (const page of pages) await page?.close();
 }
+// An elevation tile (`raster-dem`) whose response has `Cache-Control: max-age=2` is requested again too, as in MapLibre
+// GL JS (#1988). Each answer is 500 m higher than the one before (terrarium, from 1000 m). The terrain of a pitched map
+// takes each new tile, and keeps the old one until then: the point that `project` gives for a place in front of the
+// center moves one way only (a moment without the tile would put it back on flat ground). With `max-age=3600` an
+// elevation tile is requested once in that time.
+{
+    const pages = [];
+    try {
+        const run = async (renderer, short) => {
+            const page = await browser.newPage({viewport: {width: 600, height: 400}});
+            pages.push(page);
+            const seen = new Map();
+            await page.goto(`${origin}/bench`);
+            await page.route(/\/dem1988\//, route => {
+                const k = new URL(route.request().url()).pathname, n = seen.get(k) ?? 0, v = 32768 + 1000 + 500 * n;
+                seen.set(k, n + 1);
+                return route.fulfill({status: 200, contentType: 'image/png', body: solidPNG(256, [v >> 8, v & 255, 0]),
+                    headers: {'access-control-allow-origin': '*', 'cache-control': short ? 'max-age=2' : 'max-age=3600'}}).catch(() => {});
+            });
+            const out = await page.evaluate(async renderer => {
+                const lib = await import('/dist/map-jr-gl.js');
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/dem1988/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 4}},
+                    terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+                const host = lib.createMap(el, {style, initialView: {center: [10, 45], zoom: 6, pitch: 60}, renderer, attribution: false});
+                await new Promise(r => host.listen('idle', r));
+                const ys = [];
+                for (const end = performance.now() + 8000; performance.now() < end;) { ys.push(Math.round(host.project([10, 45.05]).y * 10) / 10); await new Promise(r => setTimeout(r, 50)); }
+                host.destroy();
+                return ys;
+            }, renderer);
+            return {ys: out, seen};
+        };
+        const [main, worker, usual] = await Promise.all([run('main', true), run('worker', true), run('main', false)]);
+        for (const [name, r] of [['main', main], ['worker', worker]]) {
+            const most = Math.max(0, ...r.seen.values()), steps = r.ys.slice(1).map((y, i) => Math.sign(y - r.ys[i])).filter(Boolean);
+            check(`[${name}] an elevation tile with max-age=2 is requested again, and the terrain keeps the old tile until the new one is there (#1988)`,
+                most >= 3 && steps.length >= 2 && steps.every(d => d === steps[0]), JSON.stringify({requests: most, ys: [...new Set(r.ys)].slice(0, 8)}));
+        }
+        const twice = [...usual.seen].filter(([, n]) => n > 1);
+        check('an elevation tile with max-age=3600 is requested once (#1988)', usual.seen.size > 0 && twice.length === 0, JSON.stringify({tiles: usual.seen.size, twice: twice.slice(0, 3)}));
+    } catch (e) { check('the test of elevation tiles that expire was completed', false, String(e.message).split('\n')[0]); }
+    for (const page of pages) await page?.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
@@ -5076,6 +5120,6 @@ for (const renderer of renderers) {
     finally { await page.close(); }
 }
 // (Chromium on 2026-11-19 printed 158 results with RENDERER=main and 94 with RENDERER=worker.)
-tally((renderers.includes('main') ? 144 : 0) + (renderers.includes('worker') ? 86 : 0));
+tally((renderers.includes('main') ? 147 : 0) + (renderers.includes('worker') ? 86 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);

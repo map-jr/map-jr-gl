@@ -340,6 +340,14 @@ because they read few such members. The build
 stops when a file of the worker reads `Math.floor` and also has the name `Math_floor`, and when a file assigns to a
 member of `Math`. Do not give a variable a name that starts with `Math_` or `Array_`.
 
+The plugin `server-browser-only` of `build.mjs` leaves out of `server.js` the methods of the classes that the map and
+the server renderer share and that only the map calls, such as `project` of `Transform` and `query` of `TileBuilder`
+(the list `serverDrops`), and the decoding of images by a browser in `src/exact-pixels.ts` (#2041). The minifier keeps
+every method of a class, so these would otherwise be in the file. The build stops when `server.js` still reads a method
+of the list: when the server renderer comes to call one, remove its name from `serverDrops`. The check sees `x.name`,
+`x['name']` and a destructuring key `{name}`, and for a private method only `this.name`. It does not see a key that
+is computed at run time, such as `x[key]`, so do not call these methods in that way.
+
 ## Other browsers and operating systems
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
@@ -453,7 +461,7 @@ beyond the repository's own. Each prints its use with no arguments (`suite.mjs -
 |---|---|
 | `node scripts/agents/suite.mjs test/host.mjs` | Runs one browser suite: it builds `dist/` and `site-dist/` when they are older than their sources, starts the demo server on a free port for a suite that reads `PORT`, sets `BROWSER=chromium` when `BROWSER` names no browser of Playwright, prints the PASS and FAIL counts and the FAIL lines, and stops the server also on failure or interruption. The output is in `.cache/agents/`. |
 | `node scripts/agents/without-fix.mjs -- <command>` | Runs a command in a temporary worktree in `.cache/agents/` that has the files of this checkout, with `src/` as at the point where the branch left `origin/main` (`--paths`, `--base` change that). It removes the worktree afterwards and does not change the checkout. |
-| `node scripts/agents/prs.mjs [--watch]` | Prints the state of the checks of each open pull request and of the last CI run on `main`. With `--watch` it prints one line each time the checks of a head finish, for a `Monitor`. Needs `gh`. |
+| `node scripts/agents/prs.mjs [--watch]` | Prints the state of the CI run of each open pull request and of the last CI run on `main`. A head is green only when the jobs of `CI` that gate a merge have passed; other workflows do not count. With `--watch` it prints one line each time the CI run of a head finishes, for a `Monitor`. Needs `gh`. |
 | `node scripts/agents/clean-worktrees.mjs [--apply]` | Lists the worktrees under `.claude/worktrees/` that it would remove, and keeps a worktree that is locked, has changed or untracked files, or has a commit that is neither in `origin/main` nor in a merged pull request. With `--apply` it removes the others and deletes their local branches. |
 
 The MapLibre tests are pinned to one commit (in `test/conformance/maplibre-checkout.mjs` and `expressions.mjs`), so the counts
