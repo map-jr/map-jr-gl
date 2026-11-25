@@ -1,7 +1,0 @@
-{
-  "label": "a legacy zoom-and-property function with stops at zoom 0 and 0.5 draws no circle at zoom 0.999",
-  "decision": "later",
-  "issue": 1815,
-  "reason": "A legacy zoom-and-property function with stops at zoom 0 and 0.5 draws no circle at zoom 0.999.",
-  "pattern": "^(regressions/mapbox-gl-native#8460)$"
-}

@@ -1040,6 +1040,13 @@ test('sizes: a size of zoom and feature is found at the zoom that an overzoomed 
     assert.equal(tile.layers.c.radius![0], 22);
 });
 
+test('sizes: the GPU buffers of a circle keep the radius at the next zoom, which the map mixes in between levels (#1815)', () => {
+    const geom = {coords: Int16Array.from([10, 20]), ringEnds: Uint32Array.from([1]), featEnds: Uint32Array.from([1])};
+    const gl = tessellate({type: 'circle', geom, radius: Float32Array.from([0]), radius1: Float32Array.from([10])}) as any;
+    assert.deepEqual([...gl.radius], [0, 0, 0, 0]);
+    assert.deepEqual([...(gl.radius1 ?? [])], [10, 10, 10, 10]);
+});
+
 test('geojson: generateId gives each feature its index in the data as its id, replacing any id', async () => {
     const {prepareSource} = await import('../../src/geojson.ts');
     const data = {type: 'FeatureCollection', features: [
