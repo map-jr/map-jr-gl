@@ -99,6 +99,10 @@ The map compares styles by content, so a new object with the same content change
 other change, the map loads the new style. It then draws the map from the start, as when the map is created, and
 keeps the view and the other fields of the description.
 
+In the main entry (`@map-jr/map-jr-gl`), a raster layer that does not set `raster-fade-duration` shows a new tile at
+once, because the default is 0. The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) fades the tile in over 300 ms,
+as MapLibre GL JS does. See [Differences from MapLibre GL JS](maplibre-differences.md#the-fade-of-raster-tiles).
+
 ## `sources`
 
 `sources` adds sources to the style, for example the source of a layer of your own. A source in `sources` overrides
