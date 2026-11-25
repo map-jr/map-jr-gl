@@ -3701,6 +3701,69 @@ for (const mode of renderers) {
         check(`[${mode}] the globe with 3D terrain: project() gives the place where a circle is drawn, and queryRenderedFeatures finds it there (#1430)`,
             r.n > 100 && Math.hypot(r.x - r.px, r.y - r.py) < 6 && r.found === 1, JSON.stringify(r));
     }
+    // #670: on a tilted map queryRenderedFeatures finds a circle where it is drawn: smaller far from the camera
+    // (circle-pitch-scale: map), and an ellipse on the ground with circle-pitch-alignment: map. Both the array and the promise.
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:500px;z-index:60'}));
+            const out = {};
+            try {
+                for (const align of ['viewport', 'map']) {
+                    const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0.02]}}},
+                        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 20, 'circle-pitch-alignment': align}}]};
+                    const map = new mod.Map({container: el, style, center: [0, 0], zoom: 13, pitch: 70, renderer, attributionControl: false, fadeDuration: 0});
+                    try {
+                        await new Promise(r => map.once('idle', r));
+                        const p = map.project([0, 0.02]), cx = Math.round(p.x), cy = Math.round(p.y);
+                        // The drawn half width and half height of the circle, waited for (up to 10 s).
+                        let rx = 0, ry = 0;
+                        for (let t = 0; t < 50 && !rx; t++) {
+                            await new Promise(r => setTimeout(r, 200));
+                            const d = await shot(map, 600, 500), red = (x, y) => x >= 0 && y >= 0 && x < 600 && y < 500 && d[(y * 600 + x) * 4] > 200 && d[(y * 600 + x) * 4 + 1] < 120;
+                            rx = 0; ry = 0;
+                            while (red(cx + rx + 1, cy)) rx++;
+                            while (red(cx, cy - ry - 1)) ry++;
+                        }
+                        const at = (x, y) => { const now = map.queryRenderedFeatures([x, y], {layers: ['c']}); return now.then(f => [now.length, f.length]); };
+                        out[align] = {rx, ry, inX: await at(cx + rx - 2, cy), outX: await at(cx + rx + 3, cy), inY: await at(cx, cy - ry + 2), outY: await at(cx, cy - ry - 3)};
+                    } finally { map.remove(); }
+                }
+            } finally { el.remove(); }
+            return out;
+        }, mode);
+        const ok = o => o && o.rx > 3 && o.rx < 17 && [o.inX, o.inY].every(v => v.join() === '1,1') && [o.outX, o.outY].every(v => v.join() === '0,0');
+        check(`[${mode}] a tilted map: queryRenderedFeatures finds a circle at its drawn edge and not outside it, for both circle-pitch-alignment values (#670)`,
+            ok(r.viewport) && ok(r.map) && r.map.ry < r.map.rx - 2, JSON.stringify(r));
+    }
+    // #670: on a steep map a circle query with a box that reaches into the sky does not throw, does not return a circle
+    // behind the camera or beyond the horizon, and still returns the circle under the point.
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:500px;z-index:60'}));
+            const out = {};
+            try {
+                for (const align of ['viewport', 'map']) for (const pitch of [80, 85]) {
+                    const pt = (id, lat) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Point', coordinates: [0, lat]}});
+                    const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [pt(1, 0), pt(2, -0.5), pt(3, 30)]}}},
+                        layers: [{id: 'c', type: 'circle', source: 'p', paint: {'circle-radius': 20, 'circle-pitch-alignment': align}}]};
+                    const map = new mod.Map({container: el, style, center: [0, 0], zoom: 13, pitch, maxPitch: 85, renderer, attributionControl: false, fadeDuration: 0});
+                    try {
+                        await new Promise(r => map.once('idle', r));
+                        const ids = async q => { const now = q(); const f = await now; return [now.map(f => f.id).sort().join(), f.map(f => f.id).sort().join()]; };
+                        const p = map.project([0, 0]);
+                        out[align + pitch] = {sky: await ids(() => map.queryRenderedFeatures([[0, 0], [600, 40]], {layers: ['c']})),
+                            near: await ids(() => map.queryRenderedFeatures([p.x, p.y], {layers: ['c']}))};
+                    } catch (e) { out[align + pitch] = String(e); } finally { map.remove(); }
+                }
+            } finally { el.remove(); }
+            return out;
+        }, mode);
+        check(`[${mode}] a steep map: a circle query with a box in the sky returns no circle behind the camera or beyond the horizon, and finds the circle under the point (#670)`,
+            Object.keys(r).length === 4 && Object.values(r).every(o => o.sky?.join() === ',' && o.near?.join() === '1,1'), JSON.stringify(r));
+    }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
     if (mode === 'main') {

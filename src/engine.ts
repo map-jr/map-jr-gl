@@ -10,7 +10,7 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleTouches, pitchedCircles, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
@@ -1071,6 +1071,8 @@ export class Engine {
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
         const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean}[]>();
+        // (The circle layers of a tilted map, whose features are tested on the screen with `circleTouches`.)
+        const pitched = pitchedCircles(this.tr, c.box, c.sets), circles = new Map([...pitched?.circles ?? []].map(s => [s.layer, s]));
         for (const [name, src] of Object.entries(this.style.sources)) {
             const mine = c.sets.filter(s => s.source === name && this.layers.find(l => l.id === s.layer)?.visible !== false);
             if (!mine.length || !isGeometrySource(src)) continue;
@@ -1090,9 +1092,10 @@ export class Engine {
                     reach = reach ? [Math.min(reach[0], d[0]), Math.min(reach[1], d[1]), Math.max(reach[2], d[2]), Math.max(reach[3], d[3])] : [d[0], d[1], d[2], d[3]];
                 }
                 if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
-                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : c.box, key = box.join();
-                const group = boxes.get(key) ?? {box, sets: [], exact: !!reach};
-                group.sets.push(reach ? {...s, radius: 0} : s);
+                const circle = circles.get(s.layer) === s;
+                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : c.box, key = box.join();
+                const group = boxes.get(key) ?? {box, sets: [], exact: !!reach || circle};
+                group.sets.push(reach || circle ? {...s, radius: 0} : s);
                 boxes.set(key, group);
             }
             for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
@@ -1107,7 +1110,9 @@ export class Engine {
         return (await Promise.all(jobs)).flat().filter(f => {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
-            if (L && !c.geometry) delete f.geometry;
+            const circle = circles.get(f.layer!);
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), c.box, circle.radius, circle.pitch!))) return false;
+            if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));
         });
