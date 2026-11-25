@@ -579,7 +579,7 @@ export interface MapEvents {
     projectiontransition: MapEventBase<'projectiontransition'> & {newProjection: string};
     /** The geolocate control of `@map-jr/map-jr-gl/controls` received a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
-    /** An error of the map. `error` is the value that failed, which can be other than an `Error`; `onError` of the description receives it as an `Error`. `sourceId` names the source of a tile, TileJSON, GeoJSON URL or image that failed to load. */
+    /** An error of the map. `error` is the value that failed, which can be other than an `Error`; `onError` of the description receives it as an `Error`. `sourceId` names the source of a tile, TileJSON, GeoJSON URL, PMTiles archive or image that failed to load. */
     error: MapEventBase<'error'> & {error: unknown; sourceId?: string};
 }
 

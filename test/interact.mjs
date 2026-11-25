@@ -2969,6 +2969,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             const g = m.getSource('g'), seen = new Set(), removed = [];
             const methods = ['on', 'once', 'off', 'fire'].every(k => typeof g[k] === 'function');
+            if (!methods) { m.remove(); el.remove(); return {methods}; }
             let own = 0, onMap = 0;
             g.on('data', () => { own++; seen.add('data'); });
             g.on('dataloading', () => seen.add('dataloading'));
