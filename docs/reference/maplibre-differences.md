@@ -681,7 +681,7 @@ These types differ from MapLibre GL JS:
 | `CanvasSourceSpecification` | The type exists. The library draws canvas sources (see `canvas` in "Source methods"). |
 | `StyleImageInterface` | `data` is RGBA pixels. `render`, `onAdd` and `onRemove` have no effect: the map reads the pixels once. |
 | `StyleImageData` | It has only `data`, which is what `map.addImage` accepts. |
-| `StyleOptions` | `localIdeographFontFamily` and `globalState` have no effect in `map.setStyle`. For `localIdeographFontFamily`, this is a decision and will stay. `validate` checks only in the development build. |
+| `StyleOptions` | `localIdeographFontFamily` and `globalState` have no effect in `map.setStyle`. For `localIdeographFontFamily`, this is a decision and will stay. In the development build, `validate` turns the check of that style on or off. The production build checks no style. |
 | `ResourceType` | It is a union of strings and not a `const enum`. It also has `Font`. |
 | `AddProtocolAction` | It is the type `ProtocolFunction` of this library: the request has `url`, `type` and `headers`, and the result has `data`. |
 | `CustomLayerProjectionData`, `ProjectionData` | `ProjectionData` has no type parameters, and the matrices are `Float32Array` or `Float64Array`. |
