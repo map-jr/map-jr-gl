@@ -1,5 +1,5 @@
 import {part} from './parts.ts';
-import {httpError} from './requests.ts';
+import {httpError, requestError} from './requests.ts';
 
 type Fetch = typeof fetch;
 /**
@@ -31,6 +31,7 @@ export async function fetchTile(url: string, fetchFn: Fetch = (...a) => fetch(..
     if (res.status === 404 || res.status === 204) { if (state) state.missing = res.status > 204; return null; }
     const cc = res.headers?.get('cache-control'), age = cc && +/max-age="?(\d+)/i.exec(cc)?.[1]!, exp = !cc && res.headers?.get('expires');
     if (state && (age || exp)) state.expires = age ? Date.now() + age * 1e3 : Date.parse(exp as string);
-    if (!res.ok) throw Object.assign(httpError('tile', url, res.status), {final: res.status < 500});
+    // (A status 5xx is worth another request: the engine requests a tile of the view again, see `finalFailure`.)
+    if (!res.ok) throw Object.assign(res.status < 500 ? httpError('tile', url, res.status) : requestError('tile', url, `HTTP ${res.status}. The tile server answered with an error. Check the server; the map requests a tile that the view needs again.`), {final: res.status < 500});
     return res.image ?? new Uint8Array(await res.arrayBuffer());
 }

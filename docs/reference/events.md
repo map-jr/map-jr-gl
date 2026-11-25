@@ -82,12 +82,14 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
 - `idle` waits for the tiles of the view. A tile whose request fails with a network error or an HTTP status 5xx
   is handled as follows:
   - It is requested again after 0.5 s, 1 s and 2 s. The first failure fires `error`, and the retries fire none. The
-    message names the source, for example `[map-jr-gl] The source "osm": the request for the tile <URL> failed: HTTP 500`.
+    message names the source and starts, for example, with
+    `[map-jr-gl] The source "osm": the request for the tile <URL> failed: HTTP 500.`
   - After the fourth failure, the map is idle without the tile. The tile is requested again every 15 s while the view
     needs it. These later requests run in the background: the map stays idle while they load, a failure fires no
     `error`, and a tile that arrives is drawn.
   - A status 4xx other than 404, a rejection by a custom protocol, an error of `transformRequest` and a raster tile
-    whose image cannot be decoded are final: the tile is not requested again. A 404 is a tile that the server does not have, and it is not an error.
+    whose image cannot be decoded are final: the tile is not requested again. A 404 is a tile that the server does
+    not have, and it is not an error.
 - `data` fires with each `styledata` and `sourcedata`, and `dataloading` with each `styledataloading` and
   `sourcedataloading`. `styledata` has `dataType: 'style'`.
 - When new data of a GeoJSON source starts to load, `sourcedataloading` and `dataloading` have `sourceId`,

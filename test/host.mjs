@@ -4646,7 +4646,7 @@ for (const status of [404, 403, 503]) {
         const of = s => errors.filter(e => e.source === s), most = map => Math.max(...map.values());
         const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] The source "${s}": the request for the tile http`));
         check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
-            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.endsWith('failed: HTTP 500')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
+            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('failed: HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
             seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
     } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }

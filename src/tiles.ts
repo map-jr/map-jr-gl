@@ -118,7 +118,7 @@ export class TileBuilder {
             const st: TileFetchState = {}, got = await fetchTile(req.url, this.fetchFn, ac.signal, st, true);
             // An image that cannot be decoded would fail again, so it is final: it is not requested again, as in MapLibre GL JS (#2099).
             const image = got && 'length' in got ? await createImageBitmap(new Blob([got as BlobPart])).catch(e => {
-                throw Object.assign(requestError('tile', req.url, 'the response is not an image that the browser can decode. Check that the URLs of "tiles" give PNG, JPEG or WebP images.', e), {final: true});
+                throw Object.assign(requestError('tile', req.url, 'the response is not an image that the browser can decode. Check that the tile URLs of the source give PNG, JPEG or WebP images.', e), {final: true});
             }) : got;
             return {...st, image};
         } finally { this.aborts.delete(req.id); }
