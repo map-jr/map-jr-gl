@@ -2159,8 +2159,10 @@ export class Map {
         // pixels above or below the center of the map, the map turns by the angle that the sideways movement of the pointer
         // makes around that center. Nearer to the center, the map turns by 0.8 degrees for each pixel: with the pointer
         // below the center a drag to the right increases the bearing, and above the center it decreases the bearing.
+        // The center is the point of the screen that the camera looks at (`centerPoint` in MapLibre GL JS), not the
+        // projected center position: with 3D terrain the two differ (#1489).
         const turn = (a: {x: number; y: number}, b: {x: number; y: number}) => {
-            const [cx, cy] = this.tr.project(this.tr.lng, this.tr.lat), y = b.y - cy, x0 = a.x - cx, x1 = b.x - cx;
+            const {cx, cy} = this.tr, y = b.y - cy, x0 = a.x - cx, x1 = b.x - cx;
             return Math.abs(cy - a.y) > 100 ? Math.atan2(y * (x1 - x0), x1 * x0 + y * y) * 180 / Math.PI : (x1 - x0) * (y < 0 ? -.8 : .8);
         };
         listen('pointerdown', e => {
