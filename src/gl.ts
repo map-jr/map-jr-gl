@@ -458,9 +458,12 @@ void main() {
 #else
 #define ap a_pos
 #endif
-  float q = mix(mix(u_q.x, u_q.y, ap.x), mix(u_q.w, u_q.z, ap.x), ap.y);
+  // A point of the picture is the mix of the corners divided by their weights, so that the grid of the globe follows the
+  // perspective too: a straight line of the picture stays straight in Mercator, as in MapLibre GL JS.
+  vec4 b = vec4((1.0 - ap.x) * (1.0 - ap.y), ap.x * (1.0 - ap.y), ap.x * ap.y, (1.0 - ap.x) * ap.y) / u_q;
+  float q = 1.0 / (b.x + b.y + b.z + b.w);
   v_uvq = vec3(ap * q, q);
-  v_tile = mix(mix(u_corners[0], u_corners[1], ap.x), mix(u_corners[3], u_corners[2], ap.x), ap.y);
+  v_tile = (b.x * u_corners[0] + b.y * u_corners[1] + b.z * u_corners[2] + b.w * u_corners[3]) * q;
 #ifdef GLOBE
   gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile);
 #else
@@ -1329,7 +1332,7 @@ export class GLRenderer {
                     if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
                     if (L.relief) gl.uniform4fv(u.u_unpack, it.tile.unpack!);
                     gl.bindTexture(gl.TEXTURE_2D, L.relief ? it.tile.raw! : it.tile.tex);
-                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id) : gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4));
+                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id, !it.corners) : gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4));
                 }
                 continue;
             }
@@ -1576,10 +1579,14 @@ export class GLRenderer {
         return this.globeMesh = {vao, main: N * N * 6, pole: N * 6};
     }
 
-    /** Draws a tile on the grid of the globe, with the rows to the poles for a tile at the edge of the world. */
-    private drawGrid(id: TileID) {
+    /**
+     * Draws a tile on the grid of the globe, with the rows to the poles for a tile at the edge of the world. An image
+     * source (`poles` false) ends at its corners, as in MapLibre GL JS: a row to the pole would stretch its edge there.
+     */
+    private drawGrid(id: TileID, poles = true) {
         const gl = this.gl, g = this.globeGrid(), n = 2 ** id.z;
         gl.drawElements(gl.TRIANGLES, g.main, gl.UNSIGNED_SHORT, 0);
+        if (!poles) return;
         if (id.y === 0) gl.drawElements(gl.TRIANGLES, g.pole, gl.UNSIGNED_SHORT, g.main * 2);
         if (id.y === n - 1) gl.drawElements(gl.TRIANGLES, g.pole, gl.UNSIGNED_SHORT, (g.main + g.pole) * 2);
     }
