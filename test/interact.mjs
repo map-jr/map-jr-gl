@@ -5008,6 +5008,33 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #1873: a rotate drag with the right button that pauses for 16 to 50 ms with the button down fires one
+        // `rotateend` and one `moveend`, at the release, as in MapLibre GL JS (served at /ml/).
+        const m1873 = {};
+        for (const [lib, renderer] of [['ml', 'main'], ['compat', 'main'], ['compat', 'worker']]) {
+            await page.evaluate(async ([lib, renderer]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m1873 = new mod.Map({container: el, renderer, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 40});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => setTimeout(r, 300));
+                window.m1873n = {rotateend: 0, moveend: 0};
+                for (const t of ['rotateend', 'moveend']) m.on(t, () => { window.m1873n[t]++; });
+            }, [lib, renderer]);
+            await page.mouse.move(200, 150); await page.mouse.down({button: 'right'});
+            for (let i = 1; i <= 12; i++) { await page.mouse.move(200 + i * 4, 150); await page.waitForTimeout([16, 30, 50][i % 3]); }
+            await page.waitForTimeout(300); await page.mouse.up({button: 'right'});
+            m1873[lib + '-' + renderer] = await page.evaluate(async () => {
+                const m = window.m1873;
+                await new Promise(r => setTimeout(r, 1500));
+                const out = {...window.m1873n, bearing: +m.getBearing().toFixed(1)};
+                const el = m.getContainer(); m.remove(); el.remove();
+                return out;
+            });
+        }
+        check('[main] maplibre-compat: a rotate drag with short pauses fires one rotateend and one moveend, as in MapLibre GL JS (#1873)',
+            Object.values(m1873).every(r => r.rotateend === 1 && r.moveend === 1 && r.bearing !== 40), JSON.stringify(m1873));
         // #1834: a fast pan released with inertia at bearing 3 turns north during the inertia, in one movement (one
         // `moveend`), as in MapLibre GL JS (served at /ml/), and not in a second movement after it.
         const m1834 = {};
@@ -6359,6 +6386,49 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         const cone = await snap();
         check('[main] 3D terrain: jumpTo with the camera inside a cone solves the pitch and the zoom as MapLibre GL JS does (64.349, 12.9003; #1486)', Math.abs(cone[0] - 12.9003) < 0.05 && Math.abs(cone[1] - 64.349) < 1, JSON.stringify(cone));
     } catch (e) { check('[main] 3D terrain: the checks of the camera above the ground ran (#1480)', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// 3D terrain: getBounds at a high pitch has the far ground at the top of the screen, as in MapLibre GL JS 6.17 (served at
+// /ml/), which takes the top edge at the horizon on the plane of the map center (#898). Both maps look over a mountain.
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const bounds = lib => page.evaluate(async ([lib]) => {
+        const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+        if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+        // A mountain 3000 m high with a radius of 8 km, 2 km north of the center.
+        const heightAt = (lng, lat) => Math.max(0, 3000 * (1 - Math.hypot(lng * 111320, (lat - 0.018) * 110540) / 8000));
+        try { mod.removeProtocol('dem898'); } catch { /* not added yet */ }
+        mod.addProtocol('dem898', async request => {
+            const [z, x, y] = request.url.slice(9).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(256, 256), g = c.getContext('2d'), img = g.createImageData(256, 256);
+            for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+                const mx = (x + (i + 0.5) / 256) / n, my = (y + (j + 0.5) / 256) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                const v = heightAt(mx * 360 - 180, lat) + 32768, k = (j * 256 + i) * 4;
+                img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+            }
+            g.putImageData(img, 0, 0);
+            return {data: await (await c.convertToBlob()).arrayBuffer()};
+        });
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9'}));
+        const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem898://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: 14}},
+            layers: [{id: 'bg', type: 'background', paint: {'background-color': '#9c9'}}], terrain: {source: 'dem', exaggeration: 1}};
+        const m = new mod.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 13, pitch: 0, maxPitch: 85, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const out = [];
+        for (const pitch of [60, 85]) {
+            m.jumpTo({pitch});
+            await new Promise(r => { const t = setTimeout(r, 4000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
+            out.push(m.getBounds().toArray().flat().map(v => +v.toFixed(4)));
+        }
+        m.remove(); el.remove();
+        return out;
+    }, [lib]);
+    try {
+        const ours = await bounds('ours'), ml = await bounds('ml');
+        const off = Math.max(...ours.flat().map((v, i) => Math.abs(v - ml.flat()[i])));
+        check('[main] 3D terrain: getBounds at pitch 60 and 85 over a mountain gives the box of MapLibre GL JS 6.17 within 0.01° (#898)', off < 0.01, JSON.stringify({ours, ml}));
+    } catch (e) { check('[main] 3D terrain: the check of getBounds at a high pitch ran (#898)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer

@@ -6,7 +6,7 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '../..');
 export const repo = path.join(root, '.cache/maplibre-gl-js');
 // The tests of one commit, so that the counts change only with this library. To take newer tests, change the commit
-// here (the next run clones it again) and set the floor (--min) of test:render in package.json again.
+// here (the next run clones it again) and commit the render-tests.json of a full run, which is also the floor.
 export const commit = 'a5b3ed02bf0a87fff45a82b665a9d8a6e502c164';
 const git = (args, cwd) => execFileSync('git', args, {cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit']}).trim();
 /** Whether `dir` is a complete checkout of `commit`. */

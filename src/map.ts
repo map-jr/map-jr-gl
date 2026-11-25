@@ -2,7 +2,7 @@ import {fetchWith, httpError, withTimeout, type RequestAnswer} from './requests.
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
-import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, inertiaSpan, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, inertiaSpan, heightsChanged, latFromMerc, lngFromMerc, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -801,14 +801,9 @@ export class Map {
             // After a drag is released with inertia, the last drag frame can report "not moving" before the inertia's
             // first frame arrives. Movement has not ended until the inertia has been seen to start and then stop.
             if (e.moving) this.awaitingInertia = false;
-            if (!e.moving && !this.dragging && !this.awaitingInertia) {
-                this.moving = false;
-                if (this.zooming) { this.zooming = false; this.fire('zoomend'); }
-                if (this.rotating) { this.rotating = false; this.fire('rotateend'); }
-                if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
-                this.fire('moveend');
-                this.wheelDone?.();
-            }
+            this.engineMoving = !!e.moving;
+            // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
+            if (!e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
@@ -1097,7 +1092,14 @@ export class Map {
     getBounds() {
         // (On the globe: the edges of the screen and of the globe, and a pole in view; see `bounds` in globe.ts.)
         if (this.tr.globeness) return new LngLatBounds(this.tr.globe!.bounds(this.tr));
-        const {width: w, height: h} = this.tr, pts = [[0, 0], [w, 0], [0, h], [w, h]].map(([x, y]) => this.tr.unproject(x, y));
+        // With 3D terrain, as in MapLibre GL JS: the top edge moves down to the horizon, and the corners are taken on the
+        // plane of the map center, so that the far ground at the top of the screen is in the box (#898).
+        const tr = this.tr, {width: w, height: h} = tr, top = tr.heightAt ? Math.max(0, h / 2 - tr.horizon()) : 0;
+        const pts = [[0, top], [w, top], [0, h], [w, h]].map(([x, y]) => {
+            if (!tr.heightAt) return tr.unproject(x, y);
+            const [mx, my] = tr.screenToMerc(x, y, tr.flatZ, true);
+            return [lngFromMerc(mx), latFromMerc(my)];
+        });
         return new LngLatBounds([Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1])), Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]);
     }
     jumpTo(o: CameraInput) {
@@ -2028,6 +2030,16 @@ export class Map {
     // ---- input ----
     private dragging = false;
     private awaitingInertia = false;
+    private engineMoving = false;
+    /** Ends a movement: the end events of zoom, rotate and pitch, then `moveend`. */
+    private settle() {
+        this.moving = false;
+        if (this.zooming) { this.zooming = false; this.fire('zoomend'); }
+        if (this.rotating) { this.rotating = false; this.fire('rotateend'); }
+        if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
+        this.fire('moveend');
+        this.wheelDone?.();
+    }
     private gated?: (gestureType: 'wheel_zoom' | 'touch_pan', e: Event) => boolean;
     private holdTouch?: () => void;
     /** @internal Set by `cooperativeGestures`: returns true when the gesture is blocked (the page scrolls). */
@@ -2270,6 +2282,8 @@ export class Map {
             const spin = rotating && this.dragRotate.isEnabled() && turnInertia(samples, now);
             if (rotating) samples = [];
             if (spin) this.easeTo({bearing: last.x + spin.bearing, pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
+            // A rotate drag released after a pause ends here; one released while the engine still turns ends at its next report.
+            else if (rotating && this.moving && !this.engineMoving && !this.dragging) this.settle();
             if (wasDragging && !rotating) {
                 // Inertia as in MapLibre GL JS (see `inertiaSpan`): in the next frame, the movement of the last 60 ms of
                 // frames over the time up to that frame, so that a pointer that slowed or stopped before the release

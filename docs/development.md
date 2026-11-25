@@ -86,8 +86,9 @@ Three tests compare the library with MapLibre GL JS:
 - **Render tests.** `pnpm test:render` draws each MapLibre render test and compares the result with the expected
   image. The first run downloads the MapLibre GL JS repository and two fonts into `.cache`.
 
-Each test has a minimum result in `package.json`. The test fails if the result is below the minimum. Increase the
-minimum when you add a feature.
+The other conformance checks (`test:expressions`, `test:api`, `test:spec`) have a minimum result in `package.json`,
+and fail when the result is below it. Increase the minimum when you add a feature. The render tests have no number
+in `package.json`: each test is held to its line in `test/conformance/render-tests.json` (see below).
 
 After you change a feature, do these steps:
 
@@ -139,23 +140,30 @@ The run prints the count of the skipped tests for each reason in a line that sta
 
 The first line that the run prints has the totals. Its count for "match or are near" includes the tests that match,
 so it is the number of tests where 5% of the pixels or less are different. Each of the two counts has its percent
-of the tests that ran, with one decimal place. The minimum in `package.json` (`--min`) is
-for the count of tests that match.
+of the tests that ran, with one decimal place.
 
-A run without `--filter` and `--limit` writes two tracked files in `test/conformance/`. Commit both after a change
-that affects how the map is drawn.
+The run compares the status of each test with its line in `test/conformance/render-tests.json` (#1915). It prints a
+line that starts with `WORSE:` for a test that is worse than its line (match to near or differ, near to differ, any
+status to error or skipped) and fails. It prints a line that starts with `BETTER:` for a test that is better than its line. A run
+without `--filter` and `--limit` also fails when fewer tests match than the file has lines `match`; that count is the
+floor of the render job of CI. A test that the file does not have is printed and does not fail the run.
+
+Only a run with `--write` writes `render-tests.json`, and only on the Chromium that Playwright pins. A run with
+`--filter` and `--write` writes the lines of the tests of that run and leaves the others. A line is the status that the
+render job of CI gives; a run on another machine can differ for a test near a limit. `--write` does not write a line
+that is worse than the committed one unless `--lower=<id,id>` names that test. A pull request that commits a worse line
+lowers the floor of the render job, so it stays open for the owner and says why the test is worse. The totals are not committed, so two pull requests that move different tests do not conflict in them.
 
 | File | Content |
 |---|---|
-| `render-result.json` | The totals that do not depend on labels. `near` includes `match`. `pnpm status` reads this file: the row "the same" of the table in the README is `match`, the row "the same or near" is `near`, and the total is `run`. `docs/status.json` has the other counts (`renderTests`). `pnpm status` and the unit tests compute `differWontfix` and `differLater`, the parts of `differ` that have a label with that decision, from `render-tests.json` and the labels, so that a pull request that only adds a label changes no committed total (#1861). |
-| `render-tests.json` | The status of each test, sorted by id and without percentages. Its diff shows the tests that changed. |
+| `render-tests.json` | The status of each test, sorted by id and without percentages, one line for each test. Its diff shows the tests that changed. `pnpm status` computes the totals from it and from the labels: the row "the same" of the table in the README is the count of `match`, the row "the same or near" counts `match` and `near`, and the total is the count of the tests that ran. `docs/status.json` has the other counts (`renderTests`). |
 
 Each run also prints a line that starts with `CHANGED:` for a test whose status is not the status in
 `render-tests.json`. Before it counts, the run runs each such test again alone when at most 50 tests changed, because four
 tests at once load the machine and a test near a limit can move under that load only. The second result counts, and
 the run prints a line that starts with `AGAIN:` when it differs from the first. When more than 50 tests changed, none runs again, so that a change of many tests is not hidden. A test that is close to a limit can
 also have another status on another machine, because the fonts and the software renderer are not the same on each
-system (#1036). Commit the two files from the render job of CI, or from a full run where each test of a `CHANGED:`
+system (#1036). Commit the lines from the render job of CI, or from a run where each test of a `CHANGED:`
 line that the change cannot reach was run alone at `main` and gave the same status.
 
 The six `real-world/*` tests draw the tiles of the package `@mapbox/mvt-fixtures`, which MapLibre's harness serves on
@@ -378,7 +386,7 @@ Every change goes through a pull request. The workflow `CI` (`.github/workflows/
 | `browser-interact-worker` | In Chromium: `test/interact.mjs` with `RENDERER=worker` (timeout 20 minutes) |
 | `browser-host-main` | In Chromium: `test/host.mjs` with `RENDERER=main` (timeout 20 minutes) |
 | `browser-host-worker` | In Chromium: `test/host.mjs` with `RENDERER=worker`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs` (timeout 20 minutes) |
-| `render` | `pnpm test:render`: MapLibre's render tests against the floor in `package.json` |
+| `render` | `pnpm test:render`: MapLibre's render tests against `test/conformance/render-tests.json`; it fails when a test is worse than its line or fewer tests match than the file has lines `match` |
 
 The four browser jobs run at the same time, and each starts its own demo server. `test/interact.mjs` and
 `test/host.mjs` run the checks of both renderers in a loop. The variable `RENDERER` (`main` or `worker`) makes a suite
