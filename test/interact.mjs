@@ -4424,6 +4424,36 @@ for (const mode of renderers) {
             r.requested === 'outer' && r.afterMap === '' && r.events === 'start,end' && r.pseudoOuter && !r.pseudoMap && r.pseudoRemoved && r.warnings.length === 0, JSON.stringify(r));
     }
     if (mode === 'main') {
+        // #684: with `pseudo: true`, the wheel alone zooms the map while it fills the window, because cooperativeGestures
+        // is off then, as in MapLibre GL JS. Before and after, the wheel alone only shows the hint.
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(res => setTimeout(res, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(res => m.once('load', res));
+            m.addControl(new mod.FullscreenControl({pseudo: true}));
+            const wheel = async () => {
+                const z = m.getZoom();
+                const box = el.getBoundingClientRect();
+                m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -100, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, bubbles: true, cancelable: true}));
+                for (let i = 0; i < 20 && m.getZoom() === z; i++) await wait(50);
+                await wait(300);
+                return +(m.getZoom() - z).toFixed(2);
+            };
+            const fb = el.querySelector('.map-jr-ctrl-fullscreen');
+            const out = {before: await wheel()};
+            fb.click();
+            out.full = el.classList.contains('map-jr-pseudo-fullscreen');
+            out.during = await wheel();
+            fb.click();
+            out.after = await wheel();
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: FullscreenControl with pseudo: true turns cooperativeGestures off, so the wheel alone zooms the map while it fills the window (#684)',
+            r.full && r.before === 0 && r.during > 0 && r.after === 0, JSON.stringify(r));
+    }
+    if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
         const cam = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
