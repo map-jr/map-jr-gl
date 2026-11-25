@@ -2,7 +2,7 @@ import {fetchWith, httpError, withTimeout, type RequestAnswer} from './requests.
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
-import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, inertiaSpan, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, inertiaSpan, heightsChanged, latFromMerc, lngFromMerc, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -1097,7 +1097,14 @@ export class Map {
     getBounds() {
         // (On the globe: the edges of the screen and of the globe, and a pole in view; see `bounds` in globe.ts.)
         if (this.tr.globeness) return new LngLatBounds(this.tr.globe!.bounds(this.tr));
-        const {width: w, height: h} = this.tr, pts = [[0, 0], [w, 0], [0, h], [w, h]].map(([x, y]) => this.tr.unproject(x, y));
+        // With 3D terrain, as in MapLibre GL JS: the top edge moves down to the horizon, and the corners are taken on the
+        // plane of the map center, so that the far ground at the top of the screen is in the box (#898).
+        const tr = this.tr, {width: w, height: h} = tr, top = tr.heightAt ? Math.max(0, h / 2 - tr.horizon()) : 0;
+        const pts = [[0, top], [w, top], [0, h], [w, h]].map(([x, y]) => {
+            if (!tr.heightAt) return tr.unproject(x, y);
+            const [mx, my] = tr.screenToMerc(x, y, tr.flatZ, true);
+            return [lngFromMerc(mx), latFromMerc(my)];
+        });
         return new LngLatBounds([Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1])), Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]);
     }
     jumpTo(o: CameraInput) {
