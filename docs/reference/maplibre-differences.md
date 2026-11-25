@@ -126,7 +126,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `fill-sort-key` and `line-sort-key` with a pattern for each feature
 
 - **MapLibre GL JS:** The sort key orders all features of the layer.
-- **This library:** The sort key orders the features that have the same image. The features of each image are drawn together.
+- **This library:** The sort key orders all features of the layer while the features of a tile, in the order of the key, form at most 64 runs that have the same image. With more runs, the key orders the features only within each image, the features of each image are drawn together, and the layer warns once.
 
 ### Order of symbol layers
 

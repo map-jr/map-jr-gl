@@ -4,7 +4,7 @@ import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {fontKey, type CompiledLayer} from './style.ts';
-import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, IMAGE_OR, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
+import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, IMAGE_OR, warnOnce, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 
 /**
@@ -66,6 +66,8 @@ export interface Batch {
 }
 /** The key of the batch of a layer for its `k`th image, when its pattern has a value for each feature: one batch for each image. */
 export const patternKey = (id: string, k: number) => k ? id + '\0' + k : id;
+/** The most batches of one image after another that a layer with a sort key and a pattern for each feature has in a tile (#1445). */
+export const MAX_RUNS = 64;
 export interface LabelSrc {
     x: number; y: number; text: string;
     /** `symbol-sort-key`, when the layer has one. */
@@ -315,12 +317,22 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         }
         // fill-pattern, line-pattern and fill-extrusion-pattern with a value for each feature: the features of each image
         // are a batch of their own, drawn with that image (a feature with no image is not drawn, as in MapLibre GL JS).
-        const groups = new Map<string, typeof features>();
-        if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) for (const f of features) {
-            ctx.f = f;
-            const name = String(p.pattern.eval(zs, f) ?? '');
-            if (name) groups.get(name)?.push(f) ?? groups.set(name, [f]);
-        } else groups.set('', features);
+        // With a sort key, each run of features with the same image is a batch, so that the batches keep the order of the key.
+        // Each batch is a draw call in each frame, so above MAX_RUNS runs in a tile the features of each image are one batch
+        // again, and the key orders them only within the image (#1445).
+        let groups: [string, typeof features][] = [];
+        const byName = new Map<string, typeof features>();
+        if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) {
+            for (const f of features) {
+                ctx.f = f;
+                const name = String(p.pattern.eval(zs, f) ?? ''), last = groups[groups.length - 1];
+                if (!name) continue;
+                byName.get(name)?.push(f) ?? byName.set(name, [f]);
+                if (sortKey) last?.[0] === name ? last[1].push(f) : groups.push([name, [f]]);
+            }
+            if (groups.length > MAX_RUNS) warnOnce(`layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
+            if (!sortKey || groups.length > MAX_RUNS) groups = [...byName];
+        } else groups.push(['', features]);
         let k = 0;
         for (const [pat, fs] of groups) {
             const heights: number[] = [], bases: number[] = [];

@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {compileLayer} from '../../src/style.ts';
-import {buildTile, patternKey, toGL} from '../../src/tile.ts';
+import {MAX_RUNS, buildTile, patternKey, toGL} from '../../src/tile.ts';
 import {prepareGeoJSON, sliceGeoJSON} from '../../src/geojson.ts';
 
 const z = 10, tx = 300, ty = 380, n = 2 ** z;
@@ -26,4 +26,33 @@ test('a pattern that is the same for every feature keeps one batch', () => {
     const {tile} = toGL(buildTile(data, z, [L], false));
     assert.deepEqual(Object.keys(tile.layers), ['p']);
     assert.equal(tile.layers.p.pat, undefined);
+});
+
+// With a sort key, the batches follow the order of the key (#1445): brick/1, wave/2, brick/3 and wave/4 are four batches,
+// so key 3 is drawn above key 2, as in MapLibre GL JS, which sorts all features of a bucket.
+const keyed = (dx: number, kind: string, key: number) => ({...square(dx, kind), properties: {kind, key}});
+const interleaved = sliceGeoJSON(prepareGeoJSON({type: 'FeatureCollection', features: [keyed(0.04, 'brick', 3), keyed(0, 'brick', 1), keyed(0.02, 'wave', 2), keyed(0.06, 'wave', 4)]} as any), z, tx, ty);
+for (const [type, prop, key] of [['fill', 'fill-pattern', 'fill-sort-key'], ['line', 'line-pattern', 'line-sort-key']]) {
+    test(`${prop} with ${key}: the batches are in the order of the key`, () => {
+        const L = compileLayer({id: 'p', type, source: 'g', paint: {[prop]: ['get', 'kind']}, layout: {[key]: ['get', 'key']}} as any)!;
+        const {tile} = toGL(buildTile(interleaved, z, [L], false));
+        const batches = [0, 1, 2, 3, 4].map(k => tile.layers[patternKey('p', k)]);
+        assert.deepEqual(batches.map(b => b?.pat), ['brick', 'wave', 'brick', 'wave', undefined]);
+    });
+}
+
+// Above MAX_RUNS runs in a tile, each image is one batch again (one draw call each), and the layer warns once (#1445).
+const many = (runs: number) => sliceGeoJSON(prepareGeoJSON({type: 'FeatureCollection', features: Array.from({length: runs}, (_, i) =>
+    keyed(i * 0.0001, i % 2 ? 'wave' : 'brick', i))} as any), z, tx, ty);
+test(`fill-sort-key with more than ${MAX_RUNS} runs of images: one batch for each image, and one warning`, t => {
+    const warn = t.mock.method(console, 'warn', () => {});
+    const L = compileLayer({id: 'many', type: 'fill', source: 'g', paint: {'fill-pattern': ['get', 'kind']}, layout: {'fill-sort-key': ['get', 'key']}} as any)!;
+    assert.equal(Object.keys(toGL(buildTile(many(MAX_RUNS), z, [L], false)).tile.layers).length, MAX_RUNS);
+    assert.equal(warn.mock.callCount(), 0);
+    for (let i = 0; i < 2; i++) {
+        const {tile} = toGL(buildTile(many(MAX_RUNS + 1), z, [L], false));
+        assert.deepEqual(Object.values(tile.layers).map(b => b.pat), ['brick', 'wave']);
+    }
+    assert.equal(warn.mock.callCount(), 1);
+    assert.match(String(warn.mock.calls[0].arguments[0]), /^\[map-jr-gl\] layer "many": .*"fill-sort-key".* 64 runs/);
 });
