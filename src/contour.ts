@@ -1,5 +1,6 @@
 import {decodePixels, type ImageDecoder} from './exact-pixels.ts';
 import {EXTENT} from './geo.ts';
+import {warnOnce} from './expr.ts';
 import {decodeElevation, type DemEncoding} from './query.ts';
 import type {TileLayers} from './tile.ts';
 
@@ -109,10 +110,36 @@ export function isolines(v: Float32Array, n: number, interval: number): Map<numb
     return out;
 }
 
-/** Builds one contour tile. `loadDEM` fetches and decodes (and should cache) elevation tiles by URL. */
-export async function contourTile(cfg: ContourConfig, z: number, x: number, y: number, loadDEM: DEMLoader): Promise<TileLayers> {
+/**
+ * The most times that the levels of one tile may cross the cells of its grid (#2047), which bounds the time and the memory
+ * of `isolines` (about 100 MB at the limit). A synthetic z12 tile of mountains with a mean slope of 35° and lines every
+ * 10 m crosses about 160,000 times; each lower zoom doubles that. The synthetic tile of test/unit/contour-bounds.test.ts,
+ * read with the wrong `encoding` (terrarium as mapbox), crosses about 8.8 million times at 10 m, and its lines filled the memory.
+ */
+export const MAX_CROSSINGS = 1_000_000;
+
+/** How many times the levels cross the cells of a grid of `n` x `n` heights: the work and memory of `isolines`. */
+export function crossings(v: Float32Array, n: number, interval: number): number {
+    let count = 0;
+    for (let y = 0; y < n - 1; y++) {
+        for (let x = 0; x < n - 1; x++) {
+            const tl = v[y * n + x], tr = v[y * n + x + 1], bl = v[(y + 1) * n + x], br = v[(y + 1) * n + x + 1];
+            const lo = Math.min(tl, tr, bl, br), hi = Math.max(tl, tr, bl, br);
+            if (hi > lo) count += Math.floor(hi / interval) - Math.ceil(lo / interval) + 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Builds one contour tile of the source named `source`. `loadDEM` fetches and decodes (and should cache) elevation tiles
+ * by URL.
+ */
+export async function contourTile(cfg: ContourConfig, z: number, x: number, y: number, loadDEM: DEMLoader, source = ''): Promise<TileLayers> {
     const levels = thresholdsAt(cfg.thresholds, z);
     if (!levels?.length) return {};
+    const interval = levels[0];
+    if (!(interval > 0)) { warnOnce(`The contour source "${source}" has the interval ${interval} in "thresholds", so it draws no lines at the zooms of that interval. Give intervals greater than 0.`); return {}; }
     const dz = Math.max(cfg.demMinzoom, Math.min(cfg.demMaxzoom, z - cfg.overzoom)), k = z - dz;
     if (k < 0) return {};
     const url = (tx: number, ty: number) => {
@@ -148,7 +175,11 @@ export async function contourTile(cfg: ContourConfig, z: number, x: number, y: n
         }
     }
     const features: TileLayers[string]['features'] = [], scale = EXTENT / G;
-    for (const [ele, lines] of isolines(heights, n, levels[0])) {
+    if (!(crossings(heights, n, interval) <= MAX_CROSSINGS)) {
+        warnOnce(`The contour source "${source}" has a tile whose lines cross the cells of its grid more than ${MAX_CROSSINGS} times, so that tile has no lines. Check the "encoding" of the raster-dem source ("mapbox" or "terrarium") and the intervals of "thresholds".`);
+        return {};
+    }
+    for (const [ele, lines] of isolines(heights, n, interval)) {
         // How "major" the line is: the last interval in the list that its elevation is a multiple of.
         let level = 0;
         for (let i = 1; i < levels.length; i++) if (Math.abs(ele / levels[i] - Math.round(ele / levels[i])) < 1e-6) level = i;
