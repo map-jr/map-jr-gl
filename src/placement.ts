@@ -35,6 +35,8 @@ export interface PlacedIcon {
     halo?: number[]; haloReach?: number; /** How far the halo's edge is blurred, as a part of the distance field (0 to 0.99). */ haloBlur?: number;
     /** An icon that lies on the ground of a tilted map: see `Placed.frame`. Its angle is then the angle of the first pair. */
     frame?: number[];
+    /** Drawn without the perspective ratio (see `CompiledLayer.fixedSize`). */
+    fixedSize?: boolean;
     /** Set for distance-field icons, which are drawn in this color. */
     color?: number[];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
@@ -134,9 +136,10 @@ export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: n
     if (p.frame && d.frame && (rotate || turned)) turnFrame(p.frame, d.frame, gc, gs);
     if (ground && dg && (rotate || turned)) for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; dg[i] = ground[i]; dg[i + 1] = cx * gc - cy * gs; dg[i + 2] = cx * gs + cy * gc; }
     if (p.icon && d.icon) {
+        // (The icon's offset from the anchor grows as the icon does, which is not as its text does: see `fixedSize`.)
         const ix = p.icon.x - p.ax, iy = p.icon.y - p.ay;
-        d.icon.x = ax + ix * tc - iy * ts; d.icon.y = ay + ix * ts + iy * tc; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
-        const ig = p.icon.frame ? flatGrow(tr, p.depth, depth) : grow;
+        const ig = p.icon.fixedSize ? p.icon.frame ? (depth > 0 ? p.depth / depth : 1) : 1 : p.icon.frame ? flatGrow(tr, p.depth, depth) : grow;
+        d.icon.x = ax + (ix * gc - iy * gs) * ig; d.icon.y = ay + (ix * gs + iy * gc) * ig; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
         d.icon.w = p.icon.w * ig; d.icon.h = p.icon.h * ig;
         if (p.icon.frame && d.icon.frame && (rotate || turned)) turnFrame(p.icon.frame, d.icon.frame, gc, gs);
         // (A stretched icon: the odd entries of its pairs are screen pixels.)
@@ -554,10 +557,10 @@ export function placeLabels(
                 }
                 const n = 2 ** it.id.z, q = 2 ** 22;
                 const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                const ic = meta && l.icon, iflat = !!tr.pitch && !!ic && ic.flat && !line && ic.fit === 'none';
-                const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (iflat ? flatSize(tr, depth) : persp) : 0;
+                const ic = meta && l.icon, iflat = !!tr.pitch && !!ic && ic.flat && ic.fit === 'none';
+                const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (L.fixedSize ? 1 : iflat ? flatSize(tr, depth) : persp) : 0;
                 // Where the icon goes and its size, for text centered at (tx, ty).
-                const sprite = meta;
+                const sprite = meta, move = ic ? translateAt(it, l.x, l.y, ax, ay, L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom)) : [0, 0];
                 const iconAt = (fit: string, tx: number, ty: number) => {
                     const ic = l.icon!, meta = sprite!;
                     let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
@@ -589,7 +592,6 @@ export function placeLabels(
                             ih = f.len; iy = ay + top - f.off + ih / 2 + oy; gy = f.cuts;
                         } else iy = ty + oy;
                     }
-                    const move = translateAt(it, l.x, l.y, ax, ay, L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom));
                     return {ix: ix + move[0], iy: iy + move[1], iw, ih, gx, gy};
                 };
                 let textBox: Box | null = null, tx = ax, ty = ay;
@@ -630,17 +632,23 @@ export function placeLabels(
                     const along = (fit !== 'none' ? l.keepUpright : ic.keepUpright) && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
                     let angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180, iframe: number[] | undefined;
                     let bx = ix, by = iy, bw = iw, bh = ih;
-                    if (iflat && fit === 'none') {
-                        // An icon on the ground: its offset from the anchor and its picture go through the ground there.
-                        const [a, b, c, d] = groundFrame(tr, it, l.x, l.y, ax, ay, ic.upright ? -north : 0), ox = ix - ax, oy = iy - ay;
-                        bx = ax + ox * a + oy * c; by = ay + ox * b + oy * d;
-                        iframe = groundFrame(tr, it, l.x, l.y, ax, ay, angle - north);
-                        angle = Math.atan2(iframe[1], iframe[0]); bw = iw * Math.hypot(iframe[0], iframe[1]); bh = ih * Math.hypot(iframe[2], iframe[3]);
+                    if (fit === 'none') {
+                        // As in MapLibre GL JS, `icon-offset` and the shift of `icon-anchor` belong to the picture: they turn
+                        // with it (`icon-rotate`, the line, the map) and, on the ground, go through the ground with it.
+                        // (`icon-translate` is already on the screen.)
+                        const ox = ix - move[0] - ax, oy = iy - move[1] - ay;
+                        let a = Math.cos(angle), b = Math.sin(angle), c = -b, d = a;
+                        if (iflat) {
+                            // Along a line, the angle from the line on the screen becomes the angle from the line on the ground.
+                            iframe = [a, b, c, d] = groundFrame(tr, it, l.x, l.y, ax, ay, angle - (line && !ic.upright ? lineAngle - l.angle! : north));
+                            angle = Math.atan2(b, a); bw = iw * Math.hypot(a, b); bh = ih * Math.hypot(c, d);
+                        }
+                        bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1);
                     }
                     const box = boxAround(bx, by, bw, bh, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
+                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
                             haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};

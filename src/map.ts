@@ -2025,7 +2025,7 @@ export class Map {
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
             layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
-            radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 4), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+            radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 1), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
             size: size(l),
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
@@ -2159,8 +2159,10 @@ export class Map {
         // pixels above or below the center of the map, the map turns by the angle that the sideways movement of the pointer
         // makes around that center. Nearer to the center, the map turns by 0.8 degrees for each pixel: with the pointer
         // below the center a drag to the right increases the bearing, and above the center it decreases the bearing.
+        // The center is the point of the screen that the camera looks at (`centerPoint` in MapLibre GL JS), not the
+        // projected center position: with 3D terrain the two differ (#1489).
         const turn = (a: {x: number; y: number}, b: {x: number; y: number}) => {
-            const [cx, cy] = this.tr.project(this.tr.lng, this.tr.lat), y = b.y - cy, x0 = a.x - cx, x1 = b.x - cx;
+            const {cx, cy} = this.tr, y = b.y - cy, x0 = a.x - cx, x1 = b.x - cx;
             return Math.abs(cy - a.y) > 100 ? Math.atan2(y * (x1 - x0), x1 * x0 + y * y) * 180 / Math.PI : (x1 - x0) * (y < 0 ? -.8 : .8);
         };
         listen('pointerdown', e => {

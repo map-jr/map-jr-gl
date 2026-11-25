@@ -2167,6 +2167,51 @@ for (const renderer of renderers) {
         check(`[${renderer}] a question for drawn features finds a feature of a symbol layer where its icon is drawn: for each anchor, for an icon from a buffer and a placed icon, and for a larger icon`,
             reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110' && reach.own === '3,1|3,1|||2|', JSON.stringify(reach));
 
+        // An icon is found on its collision box, which has `icon-padding` around the picture, as in MapLibre GL JS (#2038).
+        // The square of 40 pixels stands on its point: its sides are 20 pixels left and right of the point.
+        const padded = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const found = async (icon, places) => {
+                t.host.update(t.spec = {...t.spec, style: t.spot({'icon-anchor': 'bottom', 'icon-ignore-placement': true, ...icon}, false), images: {square: t.square('#f0f')}});
+                await wait(300); await t.settle();
+                const out = [];
+                for (const [dx, dy] of places) out.push((await t.host.queryFeatures({x: 450 + dx, y: 300 + dy}, {layers: ['spot-icon'], radius: 0})).length);
+                return out.join('');
+            };
+            // (A question at a point with no radius. The default padding is 2 pixels; a padding of 10 on each side; 20 on the left only; 30 from an expression.)
+            return {default: await found({}, [[21, -20], [23, -20]]), ten: await found({'icon-padding': 10}, [[28, -20], [32, -20], [0, -48], [0, 8], [0, 12]]),
+                left: await found({'icon-padding': [0, 0, 0, 20]}, [[-38, -20], [-42, -20], [21, -20]]),
+                expression: await found({'icon-padding': ['coalesce', ['get', 'none'], 30]}, [[48, -20], [52, -20]])};
+        });
+        check(`[${renderer}] a question for drawn features finds an icon in its icon-padding, as MapLibre GL JS does: the default of 2 pixels, one number, four sides and an expression (#2038)`,
+            padded.default === '10' && padded.ten === '10110' && padded.left === '100' && padded.expression === '10', JSON.stringify(padded));
+
+        // The same question with `icon-offset` (#2029). The offset turns with `icon-rotate`: with a turn of 90 degrees an
+        // offset of 40 pixels up puts the icon 40 pixels to the right. A layer with `icon-offset` has no perspective ratio
+        // on a tilted map, so the icon of 40 pixels near the bottom of the map, with the default icon-padding of 2 pixels and
+        // the radius of 3 pixels of the question, is found within 25 pixels of its point and not 27 pixels from it (with the
+        // ratio, 1.24 there, the box reached 29.8 pixels).
+        const offsetReach = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const found = async (icon, places, pitch = 0) => {
+                t.host.moveTo({bearing: 0, pitch});
+                t.host.update(t.spec = {...t.spec, style: t.spot(icon, false, {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject({x: 450, y: pitch ? 550 : 300})}}), images: {square: t.square('#f0f')}});
+                await wait(300); await t.settle();
+                const out = [];
+                for (const [x, y] of places) out.push((await t.host.queryFeatures({x, y}, {layers: ['spot-icon']})).length);
+                return out.join('');
+            };
+            // At the turned place of the icon, and at the place where the offset would put it without the turn.
+            const turned = [[490, 300], [450, 260]], tilted = [[450 + 15, 550], [450 + 27, 550]];
+            const rotate = {'icon-rotate': 90, 'icon-offset': [0, -40], 'icon-ignore-placement': true}, still = {'icon-offset': [0, 0], 'icon-ignore-placement': true};
+            const out = {turned: await found(rotate, turned), turnedPlaced: await found({...rotate, 'symbol-sort-key': 1}, turned),
+                tilted: await found(still, tilted, 60), tiltedPlaced: await found({...still, 'symbol-sort-key': 1}, tilted, 60)};
+            t.host.moveTo({bearing: 0, pitch: 0});
+            return out;
+        });
+        check(`[${renderer}] a question for drawn features finds an icon with icon-offset where it is drawn: the offset turns with icon-rotate, and on a tilted map the box has no perspective ratio`,
+            offsetReach.turned === '10' && offsetReach.turnedPlaced === '10' && offsetReach.tilted === '10' && offsetReach.tiltedPlaced === '10', JSON.stringify(offsetReach));
+
         // A feature of a symbol layer with text only is found on the box of its text, as in MapLibre GL JS, and not near
         // its point outside that box (#199). The text starts at the point (`text-anchor: left`) and is about 200 pixels long.
         const onText = await page.evaluate(async () => {
@@ -2202,6 +2247,31 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] a label of a layer below keeps away from an icon from a buffer, and not when the layer of the icon has icon-ignore-placement; a label of a layer above shows`,
             avoided.avoid === '0' && avoided.ignore === '1' && avoided.above === '1', JSON.stringify(avoided));
+
+        // The space of an icon from a buffer has `icon-padding` added before the icon is turned, as in MapLibre GL JS
+        // (#1734, #2038). The square of 40 pixels at the centre is turned by 90 degrees and has a padding of 50 on its
+        // left, which the turn puts above it: a label 50 pixels left of the icon shows, and a label 60 pixels above it does not.
+        const turnedSpace = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const placed = async at => {
+                const data = {type: 'FeatureCollection', features: [{type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject({x: 450, y: 300})}},
+                    {type: 'Feature', id: 2, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject(at)}}]};
+                t.host.update(t.spec = {...t.spec, images: {square: t.square('#f0f')}, style: {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data}}, layers: [...t.style.layers.filter(l => l.type !== 'symbol'),
+                    {id: 'spot-text', type: 'symbol', source: 'spot', filter: ['==', ['id'], 2], layout: {'text-field': 'Here', 'text-size': 14}},
+                    {id: 'spot-icon', type: 'symbol', source: 'spot', filter: ['==', ['id'], 1], layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-rotate': 90, 'icon-padding': [0, 0, 0, 50]}}]}});
+                await wait(300); await t.settle();
+                t.placed.length = 0;
+                t.host.moveTo({bearing: 20, duration: 1800}); await wait(2200);
+                t.host.moveTo({bearing: 0}); await wait(300);
+                return [...new Set(t.placed.splice(0))].join();
+            };
+            const out = {left: await placed({x: 400, y: 300}), above: await placed({x: 450, y: 240})};
+            const {images: _, ...rest} = t.spec;
+            t.host.update(t.spec = {...rest, style: t.style});
+            return out;
+        });
+        check(`[${renderer}] the space of an icon from a buffer has icon-padding added before icon-rotate turns it, as in MapLibre GL JS`,
+            turnedSpace.left === '1' && turnedSpace.above === '0', JSON.stringify(turnedSpace));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.

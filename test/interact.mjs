@@ -1512,6 +1512,28 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
 
+    // A line layer without `line-width` is queried with the default of the style specification, 1 pixel, as in MapLibre
+    // GL JS 6.17 (#2002). With a `line-gap-width` of 4 the line reaches 3 pixels from its center line, so a point 4.5
+    // pixels away misses it (a width of 4 reached 6). (Without a gap the 3-pixel minimum of #2003 hides the default.)
+    if (mode === 'main') {
+        const run = lib => page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const coordinates = [[-20, 0], [20, 0]];
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}}}},
+                layers: [{id: 'gap', type: 'line', source: 'l', paint: {'line-gap-width': 4}}]}});
+            await new Promise(r => m.once('idle', r));
+            const p = m.project([0, 0]), hit = async dy => (await m.queryRenderedFeatures([p.x, p.y + dy], {layers: ['gap']})).length > 0;
+            const out = {at2: await hit(2), at4_5: await hit(4.5)};
+            m.remove(); el.remove();
+            return out;
+        }, lib);
+        const ours = await run('ours'), ml = await run('ml');
+        check('maplibre-compat: a line without line-width is queried with the width of 1 pixel of the style specification, as MapLibre GL JS (#2002)',
+            ours.at2 && !ours.at4_5 && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // A circle with `circle-translate` is found where it is drawn and not at its feature, as in MapLibre (#1910). With
     // the anchor `map` the translation turns with the bearing: [60, 0] at a bearing of 90 is 60 pixels up.
     const translated = await page.evaluate(async () => {
@@ -2331,6 +2353,30 @@ for (const mode of renderers) {
         const grad = ([a, b]) => a[0] > a[2] + 100 && b[2] > b[0] + 100;
         check('[main] compat: line-gradient on a GeoJSON source is drawn along the line with lineMetrics true, false and missing (#1698)',
             grad(r.true) && grad(r.false) && grad(r.undefined), JSON.stringify(r));
+    }
+    // #1949: with line-gap-width and line-blur, the inner edge of the gap fades as the outer edge does, as in MapLibre
+    // GL JS. A gap of 10 px, a width of 6 px and a blur of 4 px fade the inner edge from 0.5 px to 5.5 px from the middle.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:100px'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8,
+                sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20, 0], [20, 0]]}}}}, layers: [
+                    {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'g', type: 'line', source: 'l', paint: {'line-color': '#000', 'line-width': 6, 'line-gap-width': 10, 'line-blur': 4}}]}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+            m.triggerRepaint(); await new Promise(res => m.once('render', res));
+            const cv = m.getCanvas(), k = cv.height / 100, c = Object.assign(document.createElement('canvas'), {width: cv.width, height: cv.height}).getContext('2d');
+            c.drawImage(cv, 0, 0);
+            // (The gray of each row from 2 px above the middle to 14 px below it.)
+            const out = [];
+            for (let dy = -2; dy <= 14; dy++) out.push(c.getImageData(cv.width >> 1, Math.floor((50 + dy) * k), 1, 1).data[1]);
+            m.remove(); el.remove();
+            return out;
+        });
+        // (Rows 2 and 3 below the middle are in the inner fade; the middle row stays white.)
+        check('[main] compat: line-gap-width with line-blur fades the inner edge of the gap as the outer edge (#1949)',
+            r[2] > 235 && r[4] < 225 && r[5] < 200, JSON.stringify(r));
     }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
@@ -6936,10 +6982,19 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         await open('plateau');
         await page.evaluate(() => window.liftMap.jumpTo({pitch: 72, bearing: 120})); await settle();
         await page.mouse.move(100, 300); await page.mouse.down({button: 'right'});
+        await page.evaluate(() => addEventListener('pointermove', () => { window.lastMove1489 = performance.now(); }, true));
         for (let i = 1; i <= 30; i++) { await page.mouse.move(100 + i * 20, 300); await page.waitForTimeout(40); }
+        // The release comes after the page has seen no move for 200 ms, longer than the 160 ms of samples that inertia
+        // reads, so the bearing is that of the drag alone. A release soon after the page handles the last move turns the
+        // map further by inertia, and on a loaded runner the moves reach the page late: it ended at -117.8 (#2079).
+        await page.waitForFunction(() => performance.now() - window.lastMove1489 > 200);
         await page.mouse.up({button: 'right'}); await settle();
-        const turned = await snap();
+        const turned = await snap(), turnedTo = await page.evaluate(() => +window.liftMap.getBearing().toFixed(1));
         check('[main] 3D terrain: a rotate drag over a plateau keeps the pitch and the zoom, as in MapLibre GL JS (#1480)', turned[0] === 13 && turned[1] === 72, JSON.stringify(turned));
+        // The drag passes through the point the camera looks at, so it turns by 0.8 degrees for each pixel: MapLibre GL JS
+        // 6.17 ends at -120 (measured with the same terrain and drag). Before #1489 the map turned around the projected
+        // center position, which terrain moves away from that point, and ended at 24.
+        check('[main] 3D terrain: a rotate drag over a plateau ends at the bearing of MapLibre GL JS (-120; #1489)', Math.abs(turnedTo + 120) < 1, String(turnedTo));
         await open('cone');
         await page.evaluate(() => window.liftMap.jumpTo({pitch: 75})); await settle();
         const cone = await snap();
