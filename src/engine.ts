@@ -1106,13 +1106,13 @@ export class Engine {
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), key = box.join();
                 const group = boxes.get(key) ?? {box, sets: [], exact: !!reach || circle};
                 // (A tilted circle whose size depends on the feature is asked with its size grown as `pitchedCircles` grows the rectangle.)
-                group.sets.push(circle && s.circle ? {...s, radius: 0, circle: {...s.circle, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
+                group.sets.push(circle && s.size ? {...s, radius: 0, size: {...s.size, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
                 boxes.set(key, group);
             }
             for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
-                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, circle: s.circle && (s.radius || s.circle.scale) ? {...s.circle, scale: t.scale * (s.circle.scale ?? 1)} : undefined})),
+                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
                 }));
             }
         }

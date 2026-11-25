@@ -53,11 +53,12 @@ export interface QuerySet {
     /** A circle layer: the first value is true when `circle-pitch-alignment` is `map`, the second when `circle-pitch-scale` is `map`. */
     pitch?: [boolean, boolean];
     /**
-     * A circle layer whose size depends on the feature: its `circle-radius` and `circle-stroke-width` in pixels, which
-     * each feature is tested with at the zoom of the map, as in MapLibre GL JS. `scale` is the tile units of one pixel;
-     * without it the set's `radius` is used.
+     * A circle or line layer whose size depends on the feature, which each feature is tested with at the zoom of the
+     * map, as in MapLibre GL JS: for a circle `a` is `circle-radius` and `b` is `circle-stroke-width`; for a line (`line`)
+     * `a` is `line-width` and `b` is `line-gap-width`, all in pixels. `scale` is the tile units of one pixel; without
+     * it the set's `radius` is used.
      */
-    circle?: {radius: unknown; stroke: unknown; zoom: number; scale?: number};
+    size?: {line?: boolean; a: unknown; b: unknown; zoom: number; scale?: number};
     /** A circle layer with `circle-translate`: how far its circles are drawn from their features, in pixels of the screen. */
     translate?: [number, number];
 }
@@ -111,6 +112,13 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
     return inside;
 }
 
+/**
+ * How far from its geometry a feature is found, in pixels: for a circle the radius `a` and the stroke `b`; for a line
+ * half of the width `a`, or of the gap `b` and two widths when there is a gap, as MapLibre GL JS draws it, and at
+ * least 3 pixels so that a thin line can be hit.
+ */
+export const sizeOf = (line: boolean | undefined, a: number, b: number) => line ? Math.max(3, (b > 0 ? b + 2 * a : a) / 2) : a + b;
+
 /** Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. */
 export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFeature[] {
     const out: FoundFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
@@ -119,7 +127,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
     // each feature is read one time and tested for each set.
     const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius}])
         .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also),
-            size: 'circle' in s && s.circle?.scale ? {...s.circle, r: compileProp(s.circle.radius, 'number', 5), w: compileProp(s.circle.stroke, 'number', 0)} : null}));
+            size: 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0)} : null}));
     for (const name in layers) {
         if (q.sourceLayers && !q.sourceLayers.includes(name)) continue;
         const mine = q.sets ? sets.filter(s => s.sourceLayer ? s.sourceLayer === name : name === GEOJSON_LAYER || !s.layer) : sets;
@@ -135,7 +143,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
                     // tile gives it only when its bounding box touches the tile, so that a query gives it one time.
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
-                const size = set.size, radius = size ? Math.min(Math.max(size.r.eval(size.zoom, f) + size.w.eval(size.zoom, f), 0), 1e4) * size.scale! : set.radius;
+                const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
                 if (!touches(f.type, c, ends, q.px, q.py, radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
@@ -226,11 +234,11 @@ const sizes = new WeakMap<QuerySet, {r: ReturnType<typeof compileProp>; w: Retur
  * size that depends on the feature, its size at the zoom of the map (as `queryTile` evaluates it).
  */
 export function circleRadius(s: QuerySet, f: QueriedFeature): number {
-    if (!s.circle) return s.radius;
+    if (!s.size) return s.radius;
     let size = sizes.get(s);
-    if (!size) sizes.set(s, size = {r: compileProp(s.circle.radius, 'number', 5), w: compileProp(s.circle.stroke, 'number', 0)});
+    if (!size) sizes.set(s, size = {r: compileProp(s.size.a, 'number', 5), w: compileProp(s.size.b, 'number', 0)});
     const g = {type: TYPES.lastIndexOf(f.type as typeof TYPES[number]), id: f.id, properties: f.properties};
-    return Math.min(Math.max(size.r.eval(s.circle.zoom, g) + size.w.eval(s.circle.zoom, g), 0), 1e4);
+    return Math.min(Math.max(size.r.eval(s.size.zoom, g) + size.w.eval(s.size.zoom, g), 0), 1e4);
 }
 
 /** The positions of a geometry (in longitude and latitude) where a circle layer draws a circle. */
