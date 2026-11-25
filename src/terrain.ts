@@ -160,6 +160,8 @@ export function terrainTiles(this: any, wanted: Set<string>): TerrainTile[] {
             const dem = this.tiles.get(demKey);
             if (!dem) { this.request(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey); this.demLoading = true; break; }
             dem.used = this.frameNo;
+            // (An elevation tile whose response has expired is requested again, and keeps its heights until then; #1988.)
+            if (dem.state === 'ok') this.refresh(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey, dem);
             // (A loading elevation tile holds `idle` back: no layer may draw the source, and then nothing else waits for it, #820.)
             if (dem.state === 'loading') this.demLoading = true;
             if (dem.state === 'loading' || dem.range) break; // otherwise it failed or came back empty: try the level above
@@ -171,7 +173,7 @@ export function terrainTiles(this: any, wanted: Set<string>): TerrainTile[] {
         if (id.z > oz) {
             const x = id.x >> id.z - oz, y = id.y >> id.z - oz, dk = `${oz}/${x}/${y}`, demKey = terrain.source + '|' + dk, dem = this.tiles.get(demKey);
             wanted.add(demKey);
-            if (dem) dem.used = this.frameNo; else this.request(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey);
+            if (dem) { dem.used = this.frameNo; if (dem.state === 'ok') this.refresh(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey, dem); } else this.request(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey);
             if (!dem || dem.state === 'loading') this.demLoading = true;
         }
         // Heights for the tile's mesh, looked up by position in data all tiles share (so edges meet exactly), and
