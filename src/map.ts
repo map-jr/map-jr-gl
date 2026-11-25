@@ -895,7 +895,7 @@ export class Map {
                 if (!this.imageNames.has(e.name)) this.fire('styleimagemissing', {id: e.name});
             });
         }
-        else if (e.type === 'error') this.fire('error', {error: new Error(e.message)});
+        else if (e.type === 'error') this.fire('error', {error: new Error(e.message), ...e.source && {sourceId: e.source}});
     }
 
     // ---- events ----
@@ -1524,7 +1524,7 @@ export class Map {
     /** The `sky` of the style: `undefined` when the style has none, and `null` after `setSky(null)` removed it. */
     getSky(): Record<string, unknown> | null | undefined { return this.rawStyle?.sky; }
     /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
-    private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
+    private sourceFailed = (error: unknown) => { const sourceId = (error as {sourceId?: string})?.sourceId; this.fire('error', {error, ...sourceId && {sourceId}}); };
     /**
      * The JSON of a style: a copy of an object, or the answer of a URL. A style comes from another party: one without a
      * list of layers is an error here, before the map and the engine read the layers (#539).
