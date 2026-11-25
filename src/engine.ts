@@ -1091,6 +1091,9 @@ export class Engine {
                     const d = [t.box[0] - t.x, t.box[1] - t.y, t.box[2] - t.x, t.box[3] - t.y];
                     reach = reach ? [Math.min(reach[0], d[0]), Math.min(reach[1], d[1]), Math.max(reach[2], d[2]), Math.max(reach[3], d[3])] : [d[0], d[1], d[2], d[3]];
                 }
+                // (A symbol layer with no icon and no shown text is still tested with `underIcon`, so that a line whose
+                // label is hidden is not found along its geometry: #1916.)
+                if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
                 if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
                 const circle = circles.get(s.layer) === s;
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : c.box, key = box.join();
