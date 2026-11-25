@@ -297,8 +297,9 @@ void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
   if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
-  float a = c.a * clamp((v_hw - abs(v_d)) / (v_persp * (1.0 + u_blur + v_blur)), 0.0, 1.0); // line-blur widens the soft edge
-  if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
+  float bl = v_persp * (1.0 + u_blur + v_blur), a = c.a * clamp((v_hw - abs(v_d)) / bl, 0.0, 1.0); // line-blur widens the soft edge
+  // The inner edge of a gap fades over the same width, into the gap, as in MapLibre GL JS.
+  if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 - 0.5 + bl) / bl, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
     // Dash lengths are in multiples of the line width. The gap is how far this point is outside the nearest dash.
@@ -577,10 +578,12 @@ void main() {
   float s = mix(a_size.x, a_size.y, u_zt) * u_size, a = u_north + a_angle;
   // On a tilted map, far icons are smaller and near icons are larger, by half of what the perspective does (as for labels).
   if (u_persp > 0.0) s *= min(4.0, 0.5 + 0.5 * u_persp / c.w);
-  vec2 ext = abs(a_d.xy) * s, centre = (c.xy / c.w * vec2(0.5, -0.5) + 0.5) * u_view + (u_offset + u_anchor * abs(a_d.xy) * 2.0) * s + u_translate;
+  // (icon-offset and the shift of icon-anchor turn with the icon, as in placeLabels.)
+  mat2 turn = mat2(cos(a), sin(a), -sin(a), cos(a));
+  vec2 ext = abs(a_d.xy) * s, centre = (c.xy / c.w * vec2(0.5, -0.5) + 0.5) * u_view + turn * (u_offset + u_anchor * abs(a_d.xy) * 2.0) * s + u_translate;
   // An upright icon is put on whole device pixels: between pixels, the texture filter smears fine detail.
   if (a == 0.0) { vec2 corner = centre - ext; centre += floor(corner * u_dpr + 0.5) / u_dpr - corner; }
-  vec2 q = a_d.xy * s, p = centre + vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
+  vec2 p = centre + turn * a_d.xy * s;
   v_uv = a_v.zw / u_tex; v_alpha = clamp(a_alpha * u_opacity, 0.0, 1.0); v_sdf = a_d.z;
   bool inside = a_v.x >= u_clip.x && a_v.y >= u_clip.y && a_v.x < u_clip.z && a_v.y < u_clip.w;
   gl_Position = inside && c.w > 0.0 && shown(c) ? vec4((p / u_view * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
@@ -1072,7 +1075,8 @@ export class GLRenderer {
                     gl.uniform1f(u.u_opacity, p.iconOpacity.dd ? 1 : p.iconOpacity.eval(zoom));
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
                     gl.uniform1f(u.u_north, p.iconAlign.eval(zoom) === 'map' ? -tr.bearing * Math.PI / 180 : 0);
-                    gl.uniform1f(u.u_persp, tr.pitch ? tr.cameraDistance : 0);
+                    // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)
+                    gl.uniform1f(u.u_persp, tr.pitch && !L.fixedSize ? tr.cameraDistance : 0);
                     gl.uniform1f(u.u_dpr, this.dpr);
                     gl.uniform2f(u.u_offset, offset[0], offset[1]);
                     gl.uniform2f(u.u_anchor, anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0, anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0);

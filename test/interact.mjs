@@ -2332,6 +2332,30 @@ for (const mode of renderers) {
         check('[main] compat: line-gradient on a GeoJSON source is drawn along the line with lineMetrics true, false and missing (#1698)',
             grad(r.true) && grad(r.false) && grad(r.undefined), JSON.stringify(r));
     }
+    // #1949: with line-gap-width and line-blur, the inner edge of the gap fades as the outer edge does, as in MapLibre
+    // GL JS. A gap of 10 px, a width of 6 px and a blur of 4 px fade the inner edge from 0.5 px to 5.5 px from the middle.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:100px'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8,
+                sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20, 0], [20, 0]]}}}}, layers: [
+                    {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'g', type: 'line', source: 'l', paint: {'line-color': '#000', 'line-width': 6, 'line-gap-width': 10, 'line-blur': 4}}]}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+            m.triggerRepaint(); await new Promise(res => m.once('render', res));
+            const cv = m.getCanvas(), k = cv.height / 100, c = Object.assign(document.createElement('canvas'), {width: cv.width, height: cv.height}).getContext('2d');
+            c.drawImage(cv, 0, 0);
+            // (The gray of each row from 2 px above the middle to 14 px below it.)
+            const out = [];
+            for (let dy = -2; dy <= 14; dy++) out.push(c.getImageData(cv.width >> 1, Math.floor((50 + dy) * k), 1, 1).data[1]);
+            m.remove(); el.remove();
+            return out;
+        });
+        // (Rows 2 and 3 below the middle are in the inner fade; the middle row stays white.)
+        check('[main] compat: line-gap-width with line-blur fades the inner edge of the gap as the outer edge (#1949)',
+            r[2] > 235 && r[4] < 225 && r[5] < 200, JSON.stringify(r));
+    }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
     if (mode === 'main') {
@@ -3046,6 +3070,32 @@ for (const mode of renderers) {
         const ours = await run('ours', mode), ml = await run('ml', mode);
         check(`[${mode}] compat: a source has on, once, off and fire, and gets its own dataloading, data and error events, as in MapLibre GL JS (#1720)`,
             JSON.stringify(ours) === JSON.stringify(ml) && ours.methods && ours.same && ours.seen.length === 2 && ours.errors.r && ours.errors.u, JSON.stringify({ours, maplibre: ml}));
+    }
+    // After `setData`, the compat map and the source fire `sourcedata`/`data` with `sourceDataType: 'metadata'`
+    // (`isSourceLoaded: true`) and then `'content'` (`isSourceLoaded: false`), as MapLibre GL JS 6.17 does. The event
+    // on the source has no `sourceId`, and `sourcedataloading` has `isSourceLoaded: false` (#2005).
+    {
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = x => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [x, 0]}}]});
+            const m = new mod.Map({container: el, style: {version: 8, sources: {g: {type: 'geojson', data: point(0)}}, layers: [{id: 'c', type: 'circle', source: 'g'}]}, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 1});
+            await new Promise(r => m.once('load', r));
+            // (The events of the first load are over: `idle` can come before `load` here, so a short wait.)
+            await new Promise(r => setTimeout(r, 500));
+            const log = [];
+            for (const t of ['sourcedataloading', 'sourcedata', 'data']) m.on(t, e => { if (e.sourceId === 'g' && !e.tile) log.push(['map', t, e.sourceDataType ?? null, e.isSourceLoaded]); });
+            m.getSource('g').on('data', e => { if (!e.tile) log.push(['source', 'data', e.sourceDataType ?? null, 'sourceId' in e]); });
+            m.getSource('g').setData(point(10));
+            // (Waits for the event that it compares: `content` on the map's `data`.)
+            await Promise.race([new Promise(r => m.on('data', e => { if (e.sourceDataType === 'content') r(); })), new Promise(r => setTimeout(r, 5000))]);
+            m.remove(); el.remove();
+            return log.filter(l => l[1] === 'sourcedataloading' || l[2]);
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = await run('ml', mode);
+        check(`[${mode}] compat: after setData, sourcedata fires with sourceDataType metadata and then content, on the map and on the source, as in MapLibre GL JS (#2005)`,
+            ours.length === 7 && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
     }
     // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
     // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.

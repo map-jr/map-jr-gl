@@ -151,17 +151,17 @@ const SHADER_FILES = ['gl.ts', 'terrain.ts'];
  * renames in the shaders. Each returns a source map of its change, so that the source maps of the built files point at
  * the right lines of src/.
  */
-export function shortenPrivateNames() {
-    const short = privateNames(), map = (edited, id) => ({code: edited.toString(), map: edited.generateMap({source: id, hires: true})});
+export function shortenPrivateNames(dir = src, internal = INTERNAL) {
+    const short = privateNames(dir, internal), map = (edited, id) => ({code: edited.toString(), map: edited.generateMap({source: id, hires: true})});
     return [{
         name: 'shorten-private-names',
         enforce: 'pre',
         transform(code, id) {
             const file = id.split('?')[0];
             // (Vite gives a path with forward slashes on each system.)
-            if (!file.endsWith('.ts') || path.resolve(path.dirname(file)) !== src) return null;
+            if (!file.endsWith('.ts') || path.resolve(path.dirname(file)) !== path.resolve(dir)) return null;
             const u = uses(code, file), edited = new MagicString(code);
-            for (const s of [...u.sites, ...u.loose.filter(l => INTERNAL.includes(l.name))]) if (short.has(s.name)) edited.overwrite(s.start, s.end, short.get(s.name));
+            for (const s of [...u.sites, ...u.loose.filter(l => internal.includes(l.name))]) if (short.has(s.name)) edited.overwrite(s.start, s.end, short.get(s.name));
             return map(edited, id);
         },
     }, {
