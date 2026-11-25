@@ -572,7 +572,8 @@ export class Map extends CoreMap {
         };
         this.on('moveend', end);
         for (const type of ['pointerup', 'touchend'] as const) {
-            const lifted = () => setTimeout(end);
+            // (The lift marks a gesture too, because its moves can come with no frame and so no `move` before it, #1954.)
+            const lifted = () => { byHand ||= held(); setTimeout(end); };
             addEventListener(type, lifted, true);
             this.once('remove', () => removeEventListener(type, lifted, true));
         }
