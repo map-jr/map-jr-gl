@@ -10,8 +10,8 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet} from './query.ts';
-import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
+import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {oncePerPart, part, type PartName} from './parts.ts';
@@ -586,7 +586,7 @@ export class Engine {
         for (const t of this.viewCover(source).slice(0, count)) {
             const key = source + '|' + t.key, have = this.tiles.get(key);
             wanted.add(key);
-            if (have) have.used = this.frameNo; else this.request(source, t, key);
+            if (!have) this.request(source, t, key); else if ((have.used = this.frameNo, have.state === 'ok')) this.refresh(source, t, key, have);
         }
     }
 
@@ -1324,15 +1324,7 @@ export class Engine {
             if (src.type === 'raster-dem') {
                 const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++, encoding = src.encoding ?? 'mapbox';
                 t.cancel = () => backend.cancel(req);
-                load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
-                    if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
-                    t.dem = {grid: dem.grid, lo: dem.lo, hi: dem.hi};
-                    // (Its heights now place the camera. A frame that dropped it as a tile that is no longer wanted took
-                    // them away again, and the camera went back and forth between two places for good, #1468.)
-                    t.built = true;
-                    if (this.style.terrain?.source === source) this.ground(key, t, true);
-                    return this.renderer.createImageTile({width: dem.width, height: dem.height, data: dem.pixels}, encoding, id);
-                }));
+                load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : (t.expires = dem.expires, this.elevationTile(dem, source, id, key, t, encoding)));
             } else {
                 // Image tiles need no parsing, so the engine fetches and decodes them itself.
                 const ac = new AbortController();
@@ -1442,7 +1434,10 @@ export class Engine {
         this.tapTile(key, fresh ? 'expired' : 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         if (fresh) t.stale = false;
-        (t.band === undefined
+        const src = this.style.sources[source];
+        (src.type === 'raster-dem'
+            ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem && this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox')))
+            : t.band === undefined
             ? fetchTile(tileURL(this.style.sources[source], id.z, id.x, id.y, this.dpr), withTimeout(this.fetchAs('Tile')), undefined, st, true).then(bytes => this.imageTile(bytes, id, () => this.tiles.get(key) === t))
             : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
@@ -1474,6 +1469,24 @@ export class Engine {
         this.wakeAt = at;
         clearTimeout(this.wakeTimer);
         this.wakeTimer = setTimeout(() => { if (this.wakeAt === at) { this.wakeAt = 0; this.repaint(); } }, Math.min(at - Date.now(), 2 ** 31 - 1));
+    }
+
+    /**
+     * The GPU tile of an elevation tile, in its turn (see `paced`). It also gives the tile its heights, which shape 3D
+     * terrain; a tile that is loaded again because it expired replaces the heights of the old one at the same moment.
+     */
+    private elevationTile(dem: ElevationTile, source: string, id: TileID, key: string, t: TileState, encoding: DemEncoding) {
+        return this.paced(dem.pixels.length * 2, () => {
+            if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
+            const terrain = this.style.terrain?.source === source;
+            if (terrain && t.dem) this.ground(key, t, false);
+            t.dem = {grid: dem.grid, lo: dem.lo, hi: dem.hi};
+            // (Its heights now place the camera. A frame that dropped it as a tile that is no longer wanted took
+            // them away again, and the camera went back and forth between two places for good, #1468.)
+            t.built = true;
+            if (terrain) this.ground(key, t, true);
+            return this.renderer.createImageTile({width: dem.width, height: dem.height, data: dem.pixels}, encoding, id);
+        });
     }
 
     /** A raster tile from the bytes of its image (or a decoded image from a custom protocol), unless `wanted` says no more. */
@@ -1611,7 +1624,7 @@ export class Engine {
                 id.key = `${z}/${id.x}/${id.y}`;
                 const key = st!.source + '|' + id.key, t = this.tiles.get(key);
                 wanted.add(key);
-                if (t) t.used = frameNo; else this.request(st!.source, id, key);
+                if (!t) this.request(st!.source, id, key); else if ((t.used = frameNo, t.state === 'ok')) this.refresh(st!.source, id, key, t);
                 if (this.heights.size) this.rawElevation = this.rawHeightAt(mercX(tr.lng), mercY(tr.lat));
             } else this.rawElevation = 0;
         }
