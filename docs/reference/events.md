@@ -89,6 +89,8 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
     tile is not requested again. A 404 is a tile that the server does not have, and it is not an error.
 - `data` fires with each `styledata` and `sourcedata`, and `dataloading` with each `styledataloading` and
   `sourcedataloading`. `styledata` has `dataType: 'style'`.
+- When new data of a GeoJSON source starts to load, `sourcedataloading` and `dataloading` have `sourceId`,
+  `isSourceLoaded: false` and `source`. When it has loaded, `sourcedata` and `data` have `isSourceLoaded: true`.
 - `projectiontransition` fires for each new style, and when `projection` of the description or the control `globe`
   changes the type. `newProjection` is `'mercator'`, `'globe'` or `'vertical-perspective'`. An expression results in
   `'globe'`, and a type that the library does not know results in `'mercator'`.
