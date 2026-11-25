@@ -45,6 +45,8 @@ export interface Batch {
     /** `line-miter-limit` and `line-round-limit`: the longest miter (in line widths) drawn as a miter or kept sharp instead of rounded. */
     miterLimit?: number;
     roundLimit?: number;
+    /** Lines: how far from a sharp corner (tile units) each segment gets one more pair of vertices (see `tessellateLine`). */
+    sharp?: number;
     /** Fill layers with an explicit outline color. */
     outline?: boolean;
     /** False when the style turns edge smoothing off for a fill layer. */
@@ -377,7 +379,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (ddStroke) batch.stroke = Uint8Array.from(stroke);
             if (ddSb) batch.sb = Float32Array.from(sb);
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
-            if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
+            if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
             if (pat) batch.pat = pat;
             if (heat) batch.heat = true;
@@ -697,10 +699,12 @@ const ARC_STEP = Math.PI / 5;
  */
 /**
  * A line vertex is 16 bytes: position x, y (int16, tile units); the direction to push it sideways (int16, times
- * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: -1, 0, 1); the
- * `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
+ * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: its sign;
+ * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
  */
 export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
+/** The cosine of half the turn above which a corner is sharp: a turn of 75 degrees, as in MapLibre GL JS. */
+const COS_SHARP = Math.cos(75 / 2 * Math.PI / 180);
 
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
@@ -749,10 +753,17 @@ function tessellateLine(b: Batch): GLBatch | null {
             const n = xs.length;
             if (n < 2) continue;
             if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]); }
-            let last = -1, dist = 0, pdx = 0, pdy = 0;
-            const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0) => {
-                const a = vert(x, y, nx + ox, ny + oy, 1, dist);
-                vert(x, y, -nx + ox, -ny + oy, -1, dist);
+            let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0;
+            /**
+             * (ox, oy) moves the vertices along the line: both of them, or with `only` (1 or -1) the one on that side.
+             * `c` is for the other vertex of a bevel, whose partner is moved to the inner miter point: `line-offset` moves
+             * it along the miter, as MapLibre GL JS does, and not along its normal. The shader adds c times the offset
+             * along the line; c goes into the side as 2 + (c + 2) * 4096, so that a side of -1, 0 or 1 still has c = 0.
+             */
+            const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0, only = 0, c = 0) => {
+                const k = c ? 2 + Math.round((c + 2) * 4096) : 1;
+                const a = vert(x, y, nx + (only < 0 ? 0 : ox), ny + (only < 0 ? 0 : oy), only < 0 ? k : 1, dist);
+                vert(x, y, -nx + (only > 0 ? 0 : ox), -ny + (only > 0 ? 0 : oy), only > 0 ? -k : -1, dist);
                 if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
                 last = a;
             };
@@ -765,21 +776,30 @@ function tessellateLine(b: Batch): GLBatch | null {
                 } else {
                     const pnx = -pdy, pny = pdx, mx = pnx + nx, my = pny + ny, ml = Math.hypot(mx, my);
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
+                    // As in MapLibre GL JS, a corner sharper than 75 degrees has one more pair of vertices on each
+                    // segment, 15 pixels from the corner, so that the join bends the dashes only near the corner.
+                    // (A turn of more than 120 degrees is not: MapLibre draws its join in another way, which this does not follow.)
+                    const sharp = cos < COS_SHARP && cos >= 0.5 && b.sharp ? b.sharp : 0;
+                    if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - pdx * sharp, y - pdy * sharp, pnx, pny); dist += sharp; }
                     if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
                     else {
-                        // Two pairs at the corner give a bevel; a fan on the outer side rounds it off.
-                        pair(x, y, pnx, pny);
+                        // Two pairs at the corner give a bevel; a fan on the outer side rounds it off. As in MapLibre GL
+                        // JS, a corner of up to 120 degrees moves the inner vertices to where the inner edges meet, so
+                        // that the two segments do not overlap and dashes fall where MapLibre draws them.
+                        const outer = pnx * dx + pny * dy < 0 ? 1 : -1, back = cos >= 0.5 ? Math.sqrt(1 / (cos * cos) - 1) : 0;
+                        pair(x, y, pnx, pny, -pdx * back, -pdy * back, -outer, back);
                         if (round) {
-                            const outer = pnx * dx + pny * dy < 0 ? 1 : -1, a0 = Math.atan2(outer * pny, outer * pnx);
+                            const a0 = Math.atan2(outer * pny, outer * pnx);
                             let sweep = Math.atan2(outer * ny, outer * nx) - a0;
                             if (sweep > Math.PI) sweep -= 2 * Math.PI; else if (sweep < -Math.PI) sweep += 2 * Math.PI;
                             fan(x, y, a0, sweep, dist);
                         }
-                        pair(x, y, nx, ny);
+                        pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
                     }
+                    if (sharp && len > 2 * sharp) { dist += sharp; pair(x + dx * sharp, y + dy * sharp, nx, ny); dist -= sharp; }
                 }
                 dist += len;
-                pdx = dx; pdy = dy;
+                pdx = dx; pdy = dy; plen = len;
                 if (i === n - 2) {
                     const px = xs[n - 1], py = ys[n - 1];
                     pair(px, py, nx, ny, ...(b.cap === 'square' ? [dx, dy] : [0, 0]));
