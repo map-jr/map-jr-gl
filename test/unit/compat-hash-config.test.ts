@@ -72,3 +72,21 @@ test('the source names answer instanceof by the type of the source, and Event ta
     assert.equal(e instanceof m.Event, true);
     assert.equal(new m.Event('x').type, 'x');
 });
+
+test('the compat entry has the names that @maptiler/sdk re-exports: AJAXError, EdgeInsets, GeolocateEvent, prewarm (#1784)', async () => {
+    const m = await import('../../src/maplibre-compat.ts') as any;
+    for (const name of ['AJAXError', 'EdgeInsets', 'GeolocateEvent', 'prewarm', 'clearPrewarmedResources']) assert.equal(m.default[name], m[name], `default.${name}`);
+    const err = new m.AJAXError(404, 'Not Found', 'https://x/y.json', undefined);
+    assert.equal(err instanceof m.AJAXError, true);
+    assert.equal(err instanceof Error, true);
+    assert.deepEqual([err.status, err.statusText, err.url, err.message], [404, 'Not Found', 'https://x/y.json', 'AJAXError: Not Found (404): https://x/y.json']);
+    const g = new m.GeolocateEvent('trackuserlocationend');
+    assert.equal(g.type, 'trackuserlocationend');
+    assert.equal({type: 'userlocationlostfocus'} instanceof m.GeolocateEvent, true);
+    assert.equal({type: 'geolocate'} instanceof m.GeolocateEvent, false);
+    const e = new m.EdgeInsets(10, 20, 30, 40);
+    assert.deepEqual({...e}, {top: 10, bottom: 20, left: 30, right: 40});
+    assert.deepEqual({...new m.EdgeInsets()}, {top: 0, bottom: 0, left: 0, right: 0});
+    assert.equal(m.prewarm(), undefined);
+    assert.equal(m.clearPrewarmedResources(), undefined);
+});
