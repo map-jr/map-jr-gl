@@ -686,6 +686,8 @@ new function as a change, so a framework can pass a new function in each render.
 | `'worker'` | As `'auto'`, and the map warns once when it draws on the main thread instead. |
 | `'main'` | On the main thread. |
 
+In the compat entry (`@map-jr/map-jr-gl/maplibre-compat`), a map with `'auto'` or `'worker'` moves to the main thread at its first custom layer, which needs the WebGL context of the page (see [Custom layers](maplibre-differences.md#custom-layers)).
+
 `renderer` of [the state of the map](state.md#mapstate) is the thread that draws. See [Loading](../guide/loading.md) for the worker file and how the map loads it.
 
 ## `attribution`
