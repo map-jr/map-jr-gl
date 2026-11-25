@@ -125,16 +125,21 @@ const BUILTIN = {
     // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
     heat: [`${VS_COMMON}
 layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight;
-uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip;
+uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale; uniform float u_corner;
 out vec2 v_ex; out float v_w;
 void main() {
   v_w = a_weight * u_weight;
   // The bump is drawn out to where it falls below what the picture can store, and no further.
   float s = sqrt(max(0.0, -2.0 * log(${(1 / 255 / 16).toFixed(8)} / max(v_w * u_intensity * 0.3989422804, 1e-9)))) / 3.0;
-  v_ex = s * a_corner;
+  v_ex = s * a_corner * u_corner;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
+#ifdef GLOBE
+  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): u_radius is in pixels at the center of the view.
+  vec4 c = toClipTurn(a_pos, v_ex * u_radius / u_scale, 0.0);
+#else
   vec4 c = toClip(a_pos);
   c.xy += v_ex * u_radius * vec2(2.0, -2.0) / u_view * c.w;
+#endif
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
 uniform float u_intensity; in vec2 v_ex; in float v_w; out vec4 o;
@@ -622,6 +627,7 @@ interface IconBuffers {
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; /** The same for `line-gap-width`. */ gap?: boolean; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
+    /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
 export interface GLTile {
     /** Distinguishes this tile's contents from any other's, including an earlier build of the same tile. */
@@ -916,7 +922,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, gap: b.type === 'line' && !!b.gap, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, gap: b.type === 'line' && !!b.gap, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1684,6 +1690,8 @@ export class GLRenderer {
             if (!b) continue;
             this.placeTile(u, it.id, it.matrix4);
             gl.uniform4fv(u.u_clip, it.clip);
+            gl.uniform1f(u.u_scale, it.scale);
+            gl.uniform1f(u.u_corner, b.grid ? 1 / 7 : 1);
             gl.bindVertexArray(b.vao);
             if (!b.scalar) gl.vertexAttrib1f(3, 1);
             gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
