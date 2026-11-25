@@ -66,7 +66,7 @@ The option `pixelRatio` sets the number of canvas pixels for each CSS pixel, as 
 follows `devicePixelRatio`, up to 3. A value that is not a number above 0 writes a warning, and the map follows
 `devicePixelRatio`.
 
-A custom layer (`type: 'custom'`) needs `renderer: 'main'`. With `'auto'` or `'worker'`, `addLayer` adds nothing.
+A custom layer (`type: 'custom'`) needs the renderer on the main thread. A map with `'auto'` or `'worker'` starts again on the main thread at its first custom layer and keeps its camera, style and state (see [Custom layers](maplibre-differences.md#custom-layers)). Pass `renderer: 'main'` when the page adds custom layers, so that the map starts only once.
 
 ### `strict`
 
@@ -76,8 +76,8 @@ With `strict: true`, the map throws an error in these cases, and otherwise the c
 - a method or a member of [`Map`](#map) that has no effect, with a value other than the default of MapLibre GL JS,
   such as `setRoll(10)` or `showTileBoundaries = true`;
 - `setTransformConstrain` with a function, when the map does not draw on the main thread;
-- a change of the style that the map refuses and reports with an `error` event, such as `addLayer` with a custom
-  layer and without `renderer: 'main'`. Without `strict`, the map fires `error`.
+- a change of the style that the map refuses and reports with an `error` event, such as `addLayer` with a layer id
+  that the style has already. Without `strict`, the map fires `error`.
 
 A call that has no effect for any value, such as `setAnisotropicFilterPitch` or `setRTLTextPlugin`, does not throw.
 

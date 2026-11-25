@@ -124,7 +124,7 @@ vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.z
 const BUILTIN = {
     // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
     heat: [`${VS_COMMON}
-layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight;
+layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight; layout(location=6) in float a_radius;
 uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale; uniform float u_corner;
 out vec2 v_ex; out float v_w;
 void main() {
@@ -132,13 +132,14 @@ void main() {
   // The bump is drawn out to where it falls below what the picture can store, and no further.
   float s = sqrt(max(0.0, -2.0 * log(${(1 / 255 / 16).toFixed(8)} / max(v_w * u_intensity * 0.3989422804, 1e-9)))) / 3.0;
   v_ex = s * a_corner * u_corner;
+  float r = u_radius + a_radius; // a radius for each feature is a_radius, and u_radius is then 0
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
 #ifdef GLOBE
-  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): u_radius is in pixels at the center of the view.
-  vec4 c = toClipTurn(a_pos, v_ex * u_radius / u_scale, 0.0);
+  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): r is in pixels at the center of the view.
+  vec4 c = toClipTurn(a_pos, v_ex * r / u_scale, 0.0);
 #else
   vec4 c = toClip(a_pos);
-  c.xy += v_ex * u_radius * vec2(2.0, -2.0) / u_view * c.w;
+  c.xy += v_ex * r * vec2(2.0, -2.0) / u_view * c.w;
 #endif
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
@@ -273,11 +274,13 @@ void main() {
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
   v_blur = a_blur; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
-  v_gap = u_gap + a_gap; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
+  v_gap = u_gap + a_gap; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; float side = sign(a_sd.x), c = abs(a_sd.x) > 1.5 ? (abs(a_sd.x) - 2.0) / 4096.0 - 2.0 : 0.0; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
-  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * (u_offset + a_offset / 8.0)) / u_scale * lineScale(a_v.xy);
+  // (The outer vertex of a bevel also moves c times the offset along the line, so that it moves along the miter.)
+  float off = u_offset + a_offset / 8.0;
+  v_tile = a_v.xy + (a_v.zw * (v_hw + side * off) + c * off * vec2(a_v.w, -a_v.z)) / u_scale * lineScale(a_v.xy);
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;
@@ -303,7 +306,8 @@ void main() {
     float gap = min(min(outside(t, 0.0, u_dash.x), outside(t, period, period + u_dash.x)),
                     min(outside(t, second, second + u_dash.z), outside(t, second - period, second - period + u_dash.z))) * px;
     // Each dash has the cap of the line: a round or square cap makes it longer by half the line width.
-    if (u_cap == 1) a *= clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0);
+    // (The round cap takes the smaller coverage, not the product, so that the sides of a dash are not softened twice.)
+    if (u_cap == 1) a = min(a, c.a * clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0));
     else if (u_cap == 2) a *= clamp(0.5 + w * 0.5 - gap, 0.0, 1.0);
     else {
       // Butt caps: the signed distance to the dash end, so that the end is smooth over one pixel.
@@ -1691,7 +1695,7 @@ export class GLRenderer {
         let u = this.use('heat', tr);
         gl.uniform1f(u.u_weight, L.p.weight.dd ? 1 : L.p.weight.eval(zoom));
         gl.uniform1f(u.u_intensity, L.p.intensity.eval(zoom));
-        gl.uniform1f(u.u_radius, L.p.radius.dd ? 30 : L.p.radius.eval(zoom));
+        gl.uniform1f(u.u_radius, L.p.radius.dd ? 0 : L.p.radius.eval(zoom));
         for (const it of items) {
             const b = it.tile.batches[L.id];
             if (!b) continue;
@@ -1701,6 +1705,7 @@ export class GLRenderer {
             gl.uniform1f(u.u_corner, b.grid ? 1 / 7 : 1);
             gl.bindVertexArray(b.vao);
             if (!b.scalar) gl.vertexAttrib1f(3, 1);
+            if (!b.stroke) gl.vertexAttrib1f(6, 0);
             gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, back);

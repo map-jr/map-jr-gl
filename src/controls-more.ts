@@ -2,6 +2,7 @@
 // They are a file of their own, so that a page that does not use them does not load them.
 import type {Map} from './map.ts';
 import {Evented} from './evented.ts';
+import {EARTH_CIRCUMFERENCE} from './geo.ts';
 import {cls, ui, toggleClass, type Control, type ControlPosition} from './controls.ts';
 
 export const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
@@ -150,7 +151,7 @@ export class ScaleControl implements Control {
         el.className = cls('ctrl', 'ctrl-scale');
         const maxWidth = this.options.maxWidth ?? 100;
         this.update = () => {
-            const metresPerPixel = 40075016.686 * Math.cos(map.getCenter().lat * Math.PI / 180) / (512 * 2 ** map.getZoom());
+            const metresPerPixel = EARTH_CIRCUMFERENCE * Math.cos(map.getCenter().lat * Math.PI / 180) / (512 * 2 ** map.getZoom());
             // Pick the unit, then the largest 1/2/3/5 x 10^n distance that fits.
             let max = metresPerPixel * maxWidth, unit = 'Meters', perUnit = 1;
             if (this.unit === 'imperial') { max *= 3.28084; unit = 'Feet'; perUnit = 1 / 3.28084; if (max > 5280) { max /= 5280; unit = 'Miles'; perUnit = 1609.344; } } else if (this.unit === 'nautical') { max /= 1852; unit = 'NauticalMiles'; perUnit = 1852; } else if (max >= 1000) { max /= 1000; unit = 'Kilometers'; perUnit = 1000; }

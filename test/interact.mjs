@@ -1463,6 +1463,26 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A line whose `line-width` is an expression is found within half of its own width, as in MapLibre (#1941): a width
+    // of 20 pixels from a property, one of 20 pixels by zoom, and a gap of 16 pixels between two lines of 2 pixels are
+    // found at 8 pixels from the center line; a line of 4 pixels from a property is not.
+    const wide = await page.evaluate(async () => {
+        const m = window.map, p = m.project(m.getCenter()), a = m.unproject([p.x - 100, p.y]), b = m.unproject([p.x + 100, p.y]);
+        const line = (id, properties) => ({type: 'Feature', id, properties, geometry: {type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]]}});
+        m.addSource('wide', {type: 'geojson', data: {type: 'FeatureCollection', features: [line(1, {w: 20, g: 16}), line(2, {w: 4, g: 0})]}});
+        m.addLayer({id: 'w-data', type: 'line', source: 'wide', paint: {'line-width': ['get', 'w']}});
+        m.addLayer({id: 'w-zoom', type: 'line', source: 'wide', filter: ['==', ['id'], 1], paint: {'line-width': ['interpolate', ['linear'], ['zoom'], 0, 20, 24, 20]}});
+        m.addLayer({id: 'w-gap', type: 'line', source: 'wide', paint: {'line-width': 2, 'line-gap-width': ['get', 'g']}});
+        const layers = ['w-data', 'w-zoom', 'w-gap'];
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers: ['w-data']}); }
+        const now = [...m.queryRenderedFeatures([p.x, p.y + 8], {layers})];
+        const near = await m.queryRenderedFeatures([p.x, p.y + 8], {layers});
+        layers.forEach(l => m.removeLayer(l)); m.removeSource('wide');
+        return {near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort()};
+    });
+    check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
+
     // A circle with `circle-translate` is found where it is drawn and not at its feature, as in MapLibre (#1910). With
     // the anchor `map` the translation turns with the bearing: [60, 0] at a bearing of 90 is 60 pixels up.
     const translated = await page.evaluate(async () => {
@@ -4424,6 +4444,30 @@ for (const mode of renderers) {
         }).catch(e => [String(e)]);
         check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000 nm', '1000 mi', '1000 km', '1000 nm']), JSON.stringify(texts));
     }
+    // The bar of ScaleControl has the width that MapLibre GL JS 6.17 gives it, which measures with the mean radius of the
+    // earth (6,371,008.8 m) and not the equatorial one (#1039: the bar was 0.11% shorter, 204.42 px against 204.65 px).
+    if (mode === 'main') {
+        const run = lib => page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 3, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(r => m.once('load', r));
+            m.addControl(new mod.ScaleControl({maxWidth: 300}));
+            const out = [];
+            for (const [lng, lat, zoom] of [[0, 0, 3], [11.4, 47.3, 12], [139.7, 65.6, 9]]) {
+                m.jumpTo({center: [lng, lat], zoom});
+                await new Promise(r => setTimeout(r, 50));
+                const bar = el.querySelector('.maplibregl-ctrl-scale');
+                out.push([parseFloat(bar.style.width), bar.textContent]);
+            }
+            m.remove(); el.remove();
+            return out;
+        }, lib).catch(e => [String(e)]);
+        const ours = await run('ours'), ml = await run('ml');
+        check('[main] maplibre-compat: the ScaleControl bar has the width of MapLibre GL JS (#1039)',
+            ml.length === 3 && ours.every((o, i) => o[1].replace(/\s/g, ' ') === ml[i][1].replace(/\s/g, ' ') && Math.abs(o[0] - ml[i][0]) < 0.01), JSON.stringify({ours, ml}));
+    }
     // react-map-gl 8 gives every map a function with setTransformCameraUpdate (#210). With the worker renderer the map
     // warns only when the function changes the camera; on the main thread it draws the camera that the function returns,
     // as MapLibre GL JS does (#1711): no move event, and so no frame, has a latitude past the limit.
@@ -6817,6 +6861,28 @@ for (const mode of renderers) {
     await page.close();
 }
 
+// `refreshExpiredTiles: false` of the compat entry keeps a tile when it expires, as in MapLibre GL JS 6.17, and warns
+// nothing (#687). The other map on the same page has the default and requests its tile with `max-age=1` again.
+if (renderers.includes('main')) {
+    const page = await browser.newPage({viewport: {width: 900, height: 400}});
+    const seen = {off: 0, on: 0}, warnings = [], png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    page.on('console', m => { if (m.type() === 'warning' && /refreshExpiredTiles/.test(m.text())) warnings.push(m.text()); });
+    await page.route(/\/exp687(off|on)\//, route => { seen[/off/.test(route.request().url()) ? 'off' : 'on']++; return route.fulfill({status: 200, contentType: 'image/png', body: png, headers: {'access-control-allow-origin': '*', 'cache-control': 'max-age=1'}}).catch(() => {}); });
+    await page.goto(`${origin}/bench`);
+    await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const make = (left, name, refresh) => new mod.Map({renderer: 'main', attributionControl: false, refreshExpiredTiles: refresh, center: [0, 0], zoom: 0,
+            container: document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:${left}px;top:0;width:256px;height:256px;z-index:99`})),
+            style: {version: 8, sources: {r: {type: 'raster', tiles: [`${location.origin}/exp687${name}/{z}/{x}/{y}.png`], tileSize: 256, maxzoom: 0}}, layers: [{id: 'r', type: 'raster', source: 'r'}]}});
+        window.exp687 = [make(0, 'off', false), make(300, 'on', undefined)];
+    });
+    await page.waitForTimeout(5000);
+    await page.evaluate(() => window.exp687.forEach(m => m.remove()));
+    check('[main] refreshExpiredTiles: false keeps an expired tile without a warning, and the other map on the page requests its tile again (#687)',
+        seen.off === 1 && seen.on >= 3 && !warnings.length, JSON.stringify({seen, warnings}));
+    await page.close();
+}
+
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.
 const page = await browser.newPage({viewport: {width: 1000, height: 700}});
 await page.route('**/dist/map-jr-gl-maplibre-compat.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
@@ -6830,6 +6896,6 @@ await page.screenshot({path: `${out}/ssr-after.png`});
 const preloads = await page.evaluate(() => document.querySelectorAll('link[rel=preload]').length);
 check('[ssr] tile preload links emitted', preloads > 0, `${preloads} links`);
 // (Chromium on 2026-11-19 printed 218 results with RENDERER=main and 160 with RENDERER=worker.)
-tally((renderers.includes('main') ? 196 : 0) + (renderers.includes('worker') ? 146 : 0));
+tally((renderers.includes('main') ? 197 : 0) + (renderers.includes('worker') ? 146 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);

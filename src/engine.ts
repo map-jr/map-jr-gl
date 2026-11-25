@@ -30,6 +30,8 @@ export interface EngineOptions extends CameraOptions {
     requests?: RequestRules;
     /** Answers that the page requested before the engine started, by URL (only for an engine on the page's thread). */
     early?: Map<string, Promise<Response>>;
+    /** Tiles are not requested again when they expire (`refreshExpiredTiles: false` of the compat entry). */
+    noExpiry?: boolean;
 }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
@@ -160,7 +162,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -365,6 +367,7 @@ export class Engine {
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         // A part of the tile code that did not load fails each tile and query that needs it: the map reports it once (#79).
         this.emit = oncePerPart(emit);
+        this.noExpiry = o.noExpiry;
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
@@ -989,7 +992,7 @@ export class Engine {
                 this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
             case 'repaint': break;
-            case 'destroy': this.lost = true; this.renderer.destroy(); return;
+            case 'destroy': this.lost = true; clearTimeout(this.wakeTimer); this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'snapshot': this.shots.push(c); break;
@@ -1108,7 +1111,7 @@ export class Engine {
             for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
-                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, circle: s.circle && s.radius ? {...s.circle, scale: t.scale} : undefined})),
+                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && s.radius ? {...s.size, scale: t.scale} : undefined})),
                 }));
             }
         }
@@ -1313,7 +1316,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1333,15 +1336,7 @@ export class Engine {
                 // Image tiles need no parsing, so the engine fetches and decodes them itself.
                 const ac = new AbortController();
                 t.cancel = () => ac.abort();
-                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t, true).then(async bytes => {
-                    if (!bytes) return {labels: {}, batches: {}};
-                    // (A custom protocol can return the image decoded.)
-                    const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
-                    if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
-                    const tile = this.renderer.createImageTile(image, undefined, id);
-                    image.close();
-                    return tile;
-                });
+                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t, true).then(bytes => this.imageTile(bytes, id, () => this.tiles.get(key) === t));
             }
         }
         load.then(gl => {
@@ -1351,6 +1346,7 @@ export class Engine {
             if (this.tellLoads) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
+            this.expire(t, t.expires);
             t.at = performance.now();
             t.rev = ++this.tilesVersion;
             this.freshTiles.set(id.key, performance.now());
@@ -1430,25 +1426,62 @@ export class Engine {
         // (Only a tile of geometry has a zoom that it was built for. An image tile is never built again: its bytes are not geometry.)
         // The zoom must be still for a moment before a tile is built for it. A frame comes after that moment (see
         // `contourWait`, which is set under the same condition in each place of a frame).
+        // A tile whose response said when it is out of date (`Cache-Control`, `Expires`) is requested again then, while the
+        // view needs it, as in MapLibre GL JS (#687). The old tile stays on screen until the new one is there.
+        if (t.expires && t.state === 'ok' && !t.rebuilding) { if (Date.now() >= t.expires) return this.rebuild(source, id, key, t, true); this.wake(t.expires); }
         if (t.band === undefined || t.state !== 'ok' || t.rebuilding || !t.stale && (t.band === this.buildZoom(source, id) || (this.contourWait ||= this.frameTime - this.zoomMovedAt <= CONTOUR_WAIT))) return;
         t.stale = false;
         this.rebuild(source, id, key, t);
     }
 
-    private rebuild(source: string, id: TileID, key: string, t: TileState) {
+    /** With `fresh`, the tile is fetched again (it has expired); an image tile is only ever fetched again. */
+    private rebuild(source: string, id: TileID, key: string, t: TileState, fresh?: boolean) {
         // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
-        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++;
-        this.tapTile(key, 'rebuild');
+        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++, st: {expires?: number} = {};
+        this.tapTile(key, fresh ? 'expired' : 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
-        backend.load({...this.build(req, source, id, t), again: true}).then(tile => {
+        if (fresh) t.stale = false;
+        (t.band === undefined
+            ? fetchTile(tileURL(this.style.sources[source], id.z, id.x, id.y, this.dpr), withTimeout(this.fetchAs('Tile')), undefined, st, true).then(bytes => this.imageTile(bytes, id, () => this.tiles.get(key) === t))
+            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
+        ).then(gl => {
             t.rebuilding = false;
-            if (this.tiles.get(key) !== t) return;
+            if (fresh) this.expire(t, st.expires);
+            if (this.tiles.get(key) !== t || !gl) return gl && this.renderer.destroyTile(gl);
             const old = t.gl;
-            t.gl = this.renderer.createTile(tile);
+            t.gl = gl;
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
             this.invalidate();
-        }, err => { t.rebuilding = false; this.emit({type: 'error', message: err.message}); });
+        }, err => { t.rebuilding = false; if (fresh) this.expire(t, 0); this.emit({type: 'error', message: err.message}); });
+    }
+
+    /**
+     * Sets when a tile is out of date. A response that is out of date when it arrives (or a failed request) is requested
+     * again after 1 s, 2 s, 4 s and so on, as in MapLibre GL JS.
+     */
+    private expire(t: TileState, at?: number) {
+        if (this.noExpiry) return void (t.expires = undefined);
+        const now = Date.now();
+        t.late = at! <= now ? (t.late ?? 0) + 1 : 0;
+        t.expires = t.late ? now + 1000 * 2 ** Math.min(t.late - 1, 20) : at;
+    }
+    /** One timer for the next tile to expire: a frame then requests it again (see `refresh`). */
+    private wakeAt = 0; private wakeTimer?: ReturnType<typeof setTimeout>; private noExpiry?: boolean;
+    private wake(at: number) {
+        if (this.wakeAt && this.wakeAt <= at) return;
+        this.wakeAt = at;
+        clearTimeout(this.wakeTimer);
+        this.wakeTimer = setTimeout(() => { if (this.wakeAt === at) { this.wakeAt = 0; this.repaint(); } }, Math.min(at - Date.now(), 2 ** 31 - 1));
+    }
+
+    /** A raster tile from the bytes of its image (or a decoded image from a custom protocol), unless `wanted` says no more. */
+    private async imageTile(bytes: Uint8Array | ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
+        if (!bytes) return {labels: {}, batches: {}};
+        const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
+        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id) : {labels: {}, batches: {}};
+        image.close();
+        return tile;
     }
 
     private stats = {since: 0, frames: 0, cpu: 0};
