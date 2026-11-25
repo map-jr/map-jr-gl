@@ -91,7 +91,7 @@ export function controlsMarkup(o: FirstViewControls): string {
             const pow = 10 ** Math.floor(Math.log10(max)), lead = max / pow, nice = (lead >= 5 ? 5 : lead >= 3 ? 3 : lead >= 2 ? 2 : 1) * pow, width = nice * per / mpp + 'px';
             if (Number.isFinite(nice * per / mpp)) {
                 rule(`.map-jr-ssr-s${name(width)}{width:${width};--map-jr-scale:${width}}`);
-                html = `<div class="${cls('ctrl', 'ctrl-scale')} map-jr-ssr-s${name(width)}">${nice >= 1 ? nice : +nice.toPrecision(1)} ${ui('ScaleControl.' + unit, UNITS[unit])}</div>`;
+                html = `<div class="${cls('ctrl', 'ctrl-scale')} map-jr-ssr-s${name(width)}">${nice >= 1 ? nice : +nice.toPrecision(1)}\u00a0${ui('ScaleControl.' + unit, UNITS[unit])}</div>`;
             }
         } else if (m[1] === 'fullscreen') {
             html = group(button('fullscreen', ui('FullscreenControl.Enter', 'Enter fullscreen'), ICONS.fullscreen, ' aria-pressed="false"'));

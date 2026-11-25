@@ -159,7 +159,7 @@ export class ScaleControl implements Control {
             const width = nice * perUnit / metresPerPixel + 'px';
             el.style.width = width;
             el.style.setProperty('--map-jr-scale', width); // (the length of the bar of the main API, which draws it after the text)
-            el.textContent = `${nice >= 1 ? nice : +nice.toPrecision(1)} ${ui(map, 'ScaleControl.' + unit, units[unit])}`;
+            el.textContent = `${nice >= 1 ? nice : +nice.toPrecision(1)}\u00a0${ui(map, 'ScaleControl.' + unit, units[unit])}`;
         };
         map.on('move', this.update);
         this.update();
