@@ -1315,7 +1315,7 @@
 "sky/atmosphere-blend/function": "match",
 "sky/atmosphere-blend/global-state": "match",
 "sky/fog-color/default": "match",
-"sky/fog-color/function": "near",
+"sky/fog-color/function": "match",
 "sky/fog-color/global-state": "near",
 "sky/fog-ground-blend/default": "near",
 "sky/fog-ground-blend/function": "near",

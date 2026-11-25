@@ -4386,6 +4386,30 @@ for (const mode of renderers) {
         }).catch(e => [String(e)]);
         check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000 nm', '1000 mi', '1000 km', '1000 nm']), JSON.stringify(texts));
     }
+    // The bar of ScaleControl has the width that MapLibre GL JS 6.17 gives it, which measures with the mean radius of the
+    // earth (6,371,008.8 m) and not the equatorial one (#1039: the bar was 0.11% shorter, 204.42 px against 204.65 px).
+    if (mode === 'main') {
+        const run = lib => page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 3, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(r => m.once('load', r));
+            m.addControl(new mod.ScaleControl({maxWidth: 300}));
+            const out = [];
+            for (const [lng, lat, zoom] of [[0, 0, 3], [11.4, 47.3, 12], [139.7, 65.6, 9]]) {
+                m.jumpTo({center: [lng, lat], zoom});
+                await new Promise(r => setTimeout(r, 50));
+                const bar = el.querySelector('.maplibregl-ctrl-scale');
+                out.push([parseFloat(bar.style.width), bar.textContent]);
+            }
+            m.remove(); el.remove();
+            return out;
+        }, lib).catch(e => [String(e)]);
+        const ours = await run('ours'), ml = await run('ml');
+        check('[main] maplibre-compat: the ScaleControl bar has the width of MapLibre GL JS (#1039)',
+            ml.length === 3 && ours.every((o, i) => o[1].replace(/\s/g, ' ') === ml[i][1].replace(/\s/g, ' ') && Math.abs(o[0] - ml[i][0]) < 0.01), JSON.stringify({ours, ml}));
+    }
     // react-map-gl 8 gives every map a function with setTransformCameraUpdate (#210). With the worker renderer the map
     // warns only when the function changes the camera; on the main thread it draws the camera that the function returns,
     // as MapLibre GL JS does (#1711): no move event, and so no frame, has a latitude past the limit.
