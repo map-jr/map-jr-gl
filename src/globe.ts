@@ -287,3 +287,101 @@ export const tileMerc = (id: TileID): [number, number, number, number] => {
     const n = 2 ** id.z;
     return [id.x / n, id.y / n, 1 / n / EXTENT, 1 / n / EXTENT];
 };
+
+/**
+ * The globe (#463): the variant of a map-space program that is compiled with `#define GLOBE` puts tile units on the
+ * unit sphere (u_tileMerc: the corner of the tile in Mercator units and the size of a tile unit), takes them to clip
+ * space with u_globe, and mixes that with the Mercator position of u_matrix by u_globeness (between zoom 11 and 12).
+ * z becomes the side of the plane of the horizon (u_horizon), so that the GPU clips away the far side of the globe.
+ * The y values -32768 and 32767 are the poles (see subdivide.ts). The method follows MapLibre GL JS (BSD-3-Clause).
+ * Without `GLOBE` the programs are exactly those of a Mercator map. The text is here, in the part of the globe that
+ * loads on demand, and the renderer puts it in the place of `GLOBE_GLSL` in `VS_COMMON` (gl.ts) when it links a program
+ * for the globe.
+ */
+export const GLOBE_GLSL = `uniform mat4 u_globe; uniform vec4 u_horizon; uniform float u_globeness; uniform vec4 u_tileMerc; uniform float u_cosLat;
+const float GLOBE_PI = 3.141592653589793;
+bool isPole(vec2 t) { return t.y < -32767.5 || t.y > 32766.5; }
+vec3 toSphere(vec2 t) {
+  if (t.y < -32767.5) return vec3(0.0, 1.0, 0.0);
+  if (t.y > 32766.5) return vec3(0.0, -1.0, 0.0);
+  vec2 m = u_tileMerc.xy + u_tileMerc.zw * t;
+  // (exp and rational arithmetic, not atan and sin: as precise near the equator as MapLibre's formula.)
+  float e = exp(GLOBE_PI - m.y * 2.0 * GLOBE_PI), a = (m.x - 0.5) * 2.0 * GLOBE_PI, c = 2.0 * e / (e * e + 1.0);
+  return vec3(sin(a) * c, (e * e - 1.0) / (e * e + 1.0), cos(a) * c);
+}
+// f is the Mercator position in clip space, s the point on the sphere (a radius of 1 is the ground).
+vec4 mixClip(vec4 f, vec3 s, bool pole) {
+  vec4 g = u_globe * vec4(s, 1.0);
+  g.z = (1.0 - dot(s, u_horizon.xyz) - u_horizon.w) * g.w;
+  if (u_globeness >= 1.0) return g;
+  vec4 r = vec4(mix(f.xy, g.xy, u_globeness), mix(0.0, g.z, clamp((u_globeness - 0.2) / 0.8, 0.0, 1.0)), mix(f.w, g.w, u_globeness));
+  // The caps at the poles show only in the last 2 percent of the change to the globe.
+  if (pole && u_globeness < 0.98) r.z = 2.0 * r.w;
+  return r;
+}
+vec4 toClip3(vec2 t, float h) {
+  return mixClip(u_matrix * vec4(isPole(t) ? vec2(t.x, t.y < 0.0 ? 0.0 : ${EXTENT}.0) : t, h, 1.0), toSphere(t) * (1.0 + h / 6371008.8), isPole(t));
+}
+vec4 toClip(vec2 t) { return toClip3(t, 0.0); }
+// The point t moved by o tile units in the plane that touches the sphere at t, as a circle with circle-pitch-alignment
+// 'map' is drawn (MapLibre's globeRotateVector): the offset is an angle, the same at every latitude, and the quad
+// lies flat on the sphere, so that it is foreshortened toward the edge of the globe.
+vec4 toClipTurn(vec2 t, vec2 o, float h) {
+  vec3 v = toSphere(t), r = normalize(vec3(v.z, 0.0, -v.x)), d = normalize(cross(r, v));
+  vec2 a = tan(o * u_tileMerc.zw * 2.0 * GLOBE_PI * u_cosLat);
+  return mixClip(u_matrix * vec4(t + o, h, 1.0), normalize(v + r * a.x + d * a.y) * (1.0 + h / 6371008.8), false);
+}
+// Buildings get a depth, so that their walls and roofs hide each other (MapLibre's projectTileFor3D). u_globe gives
+// every point the same depth; here the depth grows with the distance w (in pixels) as in a projection with no far
+// plane, whose near plane is at 0.0005 of the distance to the center of the sphere (below zoom 12 that is nearer than
+// the ground under the camera). The far side of the globe is hidden by horizonSide: it is below zero for a point of the ground behind the horizon.
+vec4 toClip3D(vec2 t, float h) {
+  vec4 g = u_globe * vec4(toSphere(t) * (1.0 + h / 6371008.8), 1.0);
+  g.z = g.w - 0.0005 * u_globe[3].w;
+  return u_globeness >= 1.0 ? g : mix(u_matrix * vec4(t, h, 1.0), g, u_globeness);
+}
+float horizonSide(vec2 t) { return dot(toSphere(t), u_horizon.xyz) + u_horizon.w; }
+// A tile unit is shorter toward the poles on the sphere: lines are made wider by as much (MapLibre's projectLineThickness).
+float lineScale(vec2 t) { float e = exp(GLOBE_PI - (u_tileMerc.y + u_tileMerc.w * t.y) * 2.0 * GLOBE_PI); return mix(1.0, (e * e + 1.0) / (2.0 * e) * u_cosLat, u_globeness); }
+// For the clip test, a pole vertex is on the border of its tile.
+vec2 unpole(vec2 t) { return vec2(t.x, t.y < -32767.5 ? 0.0 : t.y > 32766.5 ? ${EXTENT}.0 : t.y); }
+bool shown(vec4 c) { return c.z <= c.w; }
+`;
+
+// The atmosphere on the globe: a port of atmosphere.fragment.glsl of MapLibre GL JS (BSD-3-Clause), which follows
+// glsl-atmosphere (Rayleigh and Mie scattering, 5 steps along the ray and 3 toward the sun). u_rays gives the ray
+// of a screen pixel in the space of the unit sphere, u_cam is the camera and u_sun the direction to the sun there.
+// The globe is scaled to the radius of the earth. u_halo is the blend and the device pixels per pixel.
+export const HALO: [string, string] = [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform mat3 u_rays; uniform vec3 u_cam; uniform vec3 u_sun; uniform vec2 u_halo; uniform vec2 u_view; out vec4 o;
+const float RP = 6371e3, RA = 6471e3, HR = 8e3, HM = 1.2e3, KM = 21e-6, G = 0.758;
+const vec3 KR = vec3(5.5e-6, 13.0e-6, 22.4e-6);
+vec2 rsi(vec3 r0, vec3 rd, float sr) {
+  float b = 2.0 * dot(rd, r0), d = b * b - 4.0 * (dot(r0, r0) - sr * sr);
+  return d < 0.0 ? vec2(1e5, -1e5) : vec2(-b - sqrt(d), -b + sqrt(d)) / 2.0;
+}
+void main() {
+  vec3 r = normalize(u_rays * vec3(gl_FragCoord.x / u_halo.y, u_view.y - gl_FragCoord.y / u_halo.y, 1.0)), r0 = u_cam * RP, s = normalize(u_sun);
+  vec2 p = rsi(r0, r, RA);
+  vec4 c = vec4(0.0, 0.0, 0.0, 1.0);
+  if (p.x <= p.y) {
+    p.x = max(p.x, 0.0);
+    vec2 p2 = rsi(r0, r, RP);
+    if (p2.x <= p2.y && p2.x > 0.0) p.y = min(p.y, p2.x);
+    float st = (p.y - p.x) / 5.0, t = p.x + st * 0.5, odR = 0.0, odM = 0.0, mu = dot(r, s), gg = G * G;
+    vec3 tR = vec3(0.0), tM = vec3(0.0);
+    for (int i = 0; i < 5; i++) {
+      vec3 q = r0 + r * t;
+      float h = length(q) - RP, dR = exp(-h / HR) * st, dM = exp(-h / HM) * st, js = rsi(q, s, RA).y / 3.0, jt = js * 0.5, jR = 0.0, jM = 0.0;
+      odR += dR; odM += dM;
+      for (int j = 0; j < 3; j++) { float jh = length(q + s * jt) - RP; jR += exp(-jh / HR) * js; jM += exp(-jh / HM) * js; jt += js; }
+      vec3 at = exp(-(KM * (odM + jM) + KR * (odR + jR)));
+      tR += dR * at; tM += dM * at; t += st;
+    }
+    float pR = 3.0 / (16.0 * 3.141593) * (1.0 + mu * mu), pM = 3.0 / (8.0 * 3.141593) * ((1.0 - gg) * (mu * mu + 1.0)) / (pow(1.0 + gg - 2.0 * mu * G, 1.5) * (2.0 + gg));
+    c = vec4(22.0 * (pR * KR * tR + pM * KM * tM), exp(-(length(KR) * length(tR) + KM * length(tM))));
+  }
+  c.rgb = 1.0 - exp(-c.rgb);
+  c = pow(c, vec4(1.0 / 2.2));
+  o = vec4(c.rgb, 1.0 - c.a) * u_halo.x;
+}`];

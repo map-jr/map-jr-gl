@@ -102,7 +102,8 @@ export function privateNames(dir = src, internal = INTERNAL) {
  * They are only in the files of SHADER_FILES: in the GLSL text, and in the JavaScript that sets a uniform (`u.u_matrix`).
  * The JavaScript learns the names of the uniforms from the compiled program, so the two always agree. The names are
  * counted in `files`, all the files of the shaders, so that each file gets the same short names: the shader of
- * terrain.ts includes the GLSL of gl.ts (#1849).
+ * terrain.ts includes the GLSL of gl.ts (#1849), and the renderer puts the GLSL of the globe of globe.ts into the shaders
+ * of gl.ts (#2075).
  */
 function shortenShaderNames(code, files = [code]) {
     const count = new Map(), all = files.join('\n');
@@ -144,7 +145,7 @@ function shortenShaderLocals(code, files = [code]) {
 }
 
 /** The files that have shaders. */
-const SHADER_FILES = ['gl.ts', 'terrain.ts'];
+const SHADER_FILES = ['gl.ts', 'terrain.ts', 'globe.ts'];
 
 /**
  * The Vite plugins: the first renames the members in each file of src/ before the file is compiled, and the second

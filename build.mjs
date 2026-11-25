@@ -47,14 +47,15 @@ rmSync('dist', {recursive: true, force: true});
 mkdirSync('dist', {recursive: true});
 
 /**
- * Makes the shader programs smaller: the GLSL in src/gl.ts keeps its comments and layout in the source, but the built
- * files do not need them. Whitespace and comments go, and a number loses the zeros it does not need (`1.0` is `1.`), so
- * the programs stay the same (scripts/minify-shaders.mjs).
+ * Makes the shader programs smaller: the GLSL in src/gl.ts, src/terrain.ts and src/globe.ts keeps its comments and layout
+ * in the source, but the built files do not need them. Whitespace and comments go, a number loses the zeros it does not
+ * need (`1.0` is `1.`), and declarations of one type that follow each other become one (`uniform vec4 a,b;`), so the
+ * programs stay the same (scripts/minify-shaders.mjs).
  */
 const shaders = {
     name: 'minify-shaders',
     transform(code, id) {
-        if (!/\/src\/(gl|terrain)\.ts$/.test(id)) return null;
+        if (!/\/src\/(gl|terrain|globe)\.ts$/.test(id)) return null;
         const edited = new MagicString(code);
         for (const [start, end, text] of minifyShaders(code)) edited.overwrite(start, end, text);
         return withMap(edited, id);

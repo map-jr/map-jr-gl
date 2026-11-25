@@ -9,67 +9,10 @@ import {demUnpack, type DemEncoding} from './query.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 const HEAD = '#version 300 es\nprecision highp float;\n';
-/**
- * The globe (#463): the variant of a map-space program that is compiled with `#define GLOBE` puts tile units on the
- * unit sphere (u_tileMerc: the corner of the tile in Mercator units and the size of a tile unit), takes them to clip
- * space with u_globe, and mixes that with the Mercator position of u_matrix by u_globeness (between zoom 11 and 12).
- * z becomes the side of the plane of the horizon (u_horizon), so that the GPU clips away the far side of the globe.
- * The y values -32768 and 32767 are the poles (see subdivide.ts). The method follows MapLibre GL JS (BSD-3-Clause).
- * Without `GLOBE` the programs are exactly those of a Mercator map.
- */
-const GLOBE_GLSL = `uniform mat4 u_globe; uniform vec4 u_horizon; uniform float u_globeness; uniform vec4 u_tileMerc; uniform float u_cosLat;
-const float GLOBE_PI = 3.141592653589793;
-bool isPole(vec2 t) { return t.y < -32767.5 || t.y > 32766.5; }
-vec3 toSphere(vec2 t) {
-  if (t.y < -32767.5) return vec3(0.0, 1.0, 0.0);
-  if (t.y > 32766.5) return vec3(0.0, -1.0, 0.0);
-  vec2 m = u_tileMerc.xy + u_tileMerc.zw * t;
-  // (exp and rational arithmetic, not atan and sin: as precise near the equator as MapLibre's formula.)
-  float e = exp(GLOBE_PI - m.y * 2.0 * GLOBE_PI), a = (m.x - 0.5) * 2.0 * GLOBE_PI, c = 2.0 * e / (e * e + 1.0);
-  return vec3(sin(a) * c, (e * e - 1.0) / (e * e + 1.0), cos(a) * c);
-}
-// f is the Mercator position in clip space, s the point on the sphere (a radius of 1 is the ground).
-vec4 mixClip(vec4 f, vec3 s, bool pole) {
-  vec4 g = u_globe * vec4(s, 1.0);
-  g.z = (1.0 - dot(s, u_horizon.xyz) - u_horizon.w) * g.w;
-  if (u_globeness >= 1.0) return g;
-  vec4 r = vec4(mix(f.xy, g.xy, u_globeness), mix(0.0, g.z, clamp((u_globeness - 0.2) / 0.8, 0.0, 1.0)), mix(f.w, g.w, u_globeness));
-  // The caps at the poles show only in the last 2 percent of the change to the globe.
-  if (pole && u_globeness < 0.98) r.z = 2.0 * r.w;
-  return r;
-}
-vec4 toClip3(vec2 t, float h) {
-  return mixClip(u_matrix * vec4(isPole(t) ? vec2(t.x, t.y < 0.0 ? 0.0 : ${EXTENT}.0) : t, h, 1.0), toSphere(t) * (1.0 + h / 6371008.8), isPole(t));
-}
-vec4 toClip(vec2 t) { return toClip3(t, 0.0); }
-// The point t moved by o tile units in the plane that touches the sphere at t, as a circle with circle-pitch-alignment
-// 'map' is drawn (MapLibre's globeRotateVector): the offset is an angle, the same at every latitude, and the quad
-// lies flat on the sphere, so that it is foreshortened toward the edge of the globe.
-vec4 toClipTurn(vec2 t, vec2 o, float h) {
-  vec3 v = toSphere(t), r = normalize(vec3(v.z, 0.0, -v.x)), d = normalize(cross(r, v));
-  vec2 a = tan(o * u_tileMerc.zw * 2.0 * GLOBE_PI * u_cosLat);
-  return mixClip(u_matrix * vec4(t + o, h, 1.0), normalize(v + r * a.x + d * a.y) * (1.0 + h / 6371008.8), false);
-}
-// Buildings get a depth, so that their walls and roofs hide each other (MapLibre's projectTileFor3D). u_globe gives
-// every point the same depth; here the depth grows with the distance w (in pixels) as in a projection with no far
-// plane, whose near plane is at 0.0005 of the distance to the center of the sphere (below zoom 12 that is nearer than
-// the ground under the camera). The far side of the globe is hidden by horizonSide: it is below zero for a point of the ground behind the horizon.
-vec4 toClip3D(vec2 t, float h) {
-  vec4 g = u_globe * vec4(toSphere(t) * (1.0 + h / 6371008.8), 1.0);
-  g.z = g.w - 0.0005 * u_globe[3].w;
-  return u_globeness >= 1.0 ? g : mix(u_matrix * vec4(t, h, 1.0), g, u_globeness);
-}
-float horizonSide(vec2 t) { return dot(toSphere(t), u_horizon.xyz) + u_horizon.w; }
-// A tile unit is shorter toward the poles on the sphere: lines are made wider by as much (MapLibre's projectLineThickness).
-float lineScale(vec2 t) { float e = exp(GLOBE_PI - (u_tileMerc.y + u_tileMerc.w * t.y) * 2.0 * GLOBE_PI); return mix(1.0, (e * e + 1.0) / (2.0 * e) * u_cosLat, u_globeness); }
-// For the clip test, a pole vertex is on the border of its tile.
-vec2 unpole(vec2 t) { return vec2(t.x, t.y < -32767.5 ? 0.0 : t.y > 32766.5 ? ${EXTENT}.0 : t.y); }
-bool shown(vec4 c) { return c.z <= c.w; }
-`;
 /** Shared by the map-space programs: u_matrix takes tile units (and meters of height) to clip space. */
 export const VS_COMMON = `uniform mat4 u_matrix; uniform vec2 u_view;
 #ifdef GLOBE
-${GLOBE_GLSL}
+GLOBE_GLSL
 #else
 vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 #define toClip3(t, h) (u_matrix * vec4(t, h, 1.0))
@@ -180,7 +123,7 @@ void main() {
     // On the globe (u_globeSky.x, the change to the globe, above 0) it follows MapLibre's sky.fragment.glsl: the
     // distance to the horizon is the angle of the ray of the pixel past the edge of the sphere times the distance of the
     // camera (u_globeSky.y), and the sky fades where the ray misses the atmosphere and as the camera leaves it, times
-    // 1 - atmosphere-blend (u_globeSky.z). u_rays, u_cam and u_halo.y are those of the halo below.
+    // 1 - atmosphere-blend (u_globeSky.z). u_rays, u_cam and u_halo.y are those of the halo (`HALO` in globe.ts).
     sky: [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
 uniform vec2 u_sky; uniform vec4 u_skyColor; uniform vec4 u_horizonColor; uniform vec3 u_globeSky; uniform mat3 u_rays; uniform vec3 u_cam; uniform vec2 u_halo; uniform vec2 u_view; out vec4 o;
 void main() {
@@ -194,44 +137,6 @@ void main() {
   if (b <= 0.0) discard;
   o = (b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor) * a;
 }`],
-    // The atmosphere on the globe: a port of atmosphere.fragment.glsl of MapLibre GL JS (BSD-3-Clause), which follows
-    // glsl-atmosphere (Rayleigh and Mie scattering, 5 steps along the ray and 3 toward the sun). u_rays gives the ray
-    // of a screen pixel in the space of the unit sphere, u_cam is the camera and u_sun the direction to the sun there.
-    // The globe is scaled to the radius of the earth. u_halo is the blend and the device pixels per pixel.
-    halo: [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
-uniform mat3 u_rays; uniform vec3 u_cam; uniform vec3 u_sun; uniform vec2 u_halo; uniform vec2 u_view; out vec4 o;
-const float RP = 6371e3, RA = 6471e3, HR = 8e3, HM = 1.2e3, KM = 21e-6, G = 0.758;
-const vec3 KR = vec3(5.5e-6, 13.0e-6, 22.4e-6);
-vec2 rsi(vec3 r0, vec3 rd, float sr) {
-  float b = 2.0 * dot(rd, r0), d = b * b - 4.0 * (dot(r0, r0) - sr * sr);
-  return d < 0.0 ? vec2(1e5, -1e5) : vec2(-b - sqrt(d), -b + sqrt(d)) / 2.0;
-}
-void main() {
-  vec3 r = normalize(u_rays * vec3(gl_FragCoord.x / u_halo.y, u_view.y - gl_FragCoord.y / u_halo.y, 1.0)), r0 = u_cam * RP, s = normalize(u_sun);
-  vec2 p = rsi(r0, r, RA);
-  vec4 c = vec4(0.0, 0.0, 0.0, 1.0);
-  if (p.x <= p.y) {
-    p.x = max(p.x, 0.0);
-    vec2 p2 = rsi(r0, r, RP);
-    if (p2.x <= p2.y && p2.x > 0.0) p.y = min(p.y, p2.x);
-    float st = (p.y - p.x) / 5.0, t = p.x + st * 0.5, odR = 0.0, odM = 0.0, mu = dot(r, s), gg = G * G;
-    vec3 tR = vec3(0.0), tM = vec3(0.0);
-    for (int i = 0; i < 5; i++) {
-      vec3 q = r0 + r * t;
-      float h = length(q) - RP, dR = exp(-h / HR) * st, dM = exp(-h / HM) * st, js = rsi(q, s, RA).y / 3.0, jt = js * 0.5, jR = 0.0, jM = 0.0;
-      odR += dR; odM += dM;
-      for (int j = 0; j < 3; j++) { float jh = length(q + s * jt) - RP; jR += exp(-jh / HR) * js; jM += exp(-jh / HM) * js; jt += js; }
-      vec3 at = exp(-(KM * (odM + jM) + KR * (odR + jR)));
-      tR += dR * at; tM += dM * at; t += st;
-    }
-    float pR = 3.0 / (16.0 * 3.141593) * (1.0 + mu * mu), pM = 3.0 / (8.0 * 3.141593) * ((1.0 - gg) * (mu * mu + 1.0)) / (pow(1.0 + gg - 2.0 * mu * G, 1.5) * (2.0 + gg));
-    c = vec4(22.0 * (pR * KR * tR + pM * KM * tM), exp(-(length(KR) * length(tR) + KM * length(tM))));
-  }
-  c.rgb = 1.0 - exp(-c.rgb);
-  c = pow(c, vec4(1.0 / 2.2));
-  o = vec4(c.rgb, 1.0 - c.a) * u_halo.x;
-}`],
-
     fill: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
 void main() { v_tile = unpole(a_pos); v_color = a_color; gl_Position = toClip(a_pos); }`, `
@@ -612,9 +517,12 @@ void main() {
 }`],
 };
 
-/** The name of a program: a built-in one, or `terrain`, which the part for elevation data adds (see terrain.ts). */
-type ProgramName = keyof typeof BUILTIN | 'terrain';
-/** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849). */
+/**
+ * The name of a program: a built-in one, `terrain`, which the part for elevation data adds (see terrain.ts), or `halo`,
+ * the atmosphere of the globe, which the renderer adds from the part of the globe (see `render`).
+ */
+type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo';
+/** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849), and the globe adds `halo`. */
 export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = BUILTIN;
 
 /** `u` is empty until the program is first used: see `link`. */
@@ -645,7 +553,7 @@ interface IconBuffers {
     seen?: number; fresh?: boolean;
 }
 interface GLBuffers {
-    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; /** The same for `line-gap-width`. */ gap?: boolean; bufs: WebGLBuffer[];
+    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
     /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
@@ -743,6 +651,8 @@ export class GLRenderer {
     private globePrograms: Partial<Record<ProgramName, Program>> = {};
     /** The globe of the frame that is being drawn, if any (see `Scene.globe`). */
     private globe?: Scene['globe'];
+    /** The part of the globe (globe.ts), once a frame has shown the globe: the renderer takes the code of its shaders from it. */
+    private globeCode?: typeof import('./globe.ts');
     /** The grid that raster, hillshade and background tiles are drawn on with the globe, in tile units: see `globeGrid`. */
     private globeMesh?: {vao: WebGLVertexArrayObject; main: number; pole: number};
     private quad: WebGLVertexArrayObject;
@@ -828,11 +738,12 @@ export class GLRenderer {
     }
 
     /** Starts the compile and the link of a program. Nothing reads its state here, because that would wait for the compile: `ready` does that at the first use of the program. */
-    private link(vs: string, fs: string, globe = false): Program {
+    /** `globe`: the code of the globe (`GLOBE_GLSL` of globe.ts), for the variant of a program for the globe. */
+    private link(vs: string, fs: string, globe?: string): Program {
         const gl = this.gl, prog = gl.createProgram()!;
-        const shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(([type, src]) => {
-            const s = gl.createShader(type as number)!;
-            gl.shaderSource(s, HEAD + (globe ? '#define GLOBE\n' : '') + src);
+        const shaders = ([[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]] as const).map(([type, src]) => {
+            const s = gl.createShader(type)!;
+            gl.shaderSource(s, HEAD + (globe ? '#define GLOBE\n' + src.replace('GLOBE_GLSL', () => globe) : src));
             gl.compileShader(s);
             gl.attachShader(prog, s);
             return s;
@@ -852,7 +763,7 @@ export class GLRenderer {
             for (const n in SHADERS) this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
         }
         let p = this.programs[name] ??= this.link(...SHADERS[name]! as [string, string]);
-        if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name]![0], SHADERS[name]![1], true);
+        if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name]![0], SHADERS[name]![1], this.globeCode!.GLOBE_GLSL);
         const {prog, shaders} = p;
         if (shaders) {
             p.shaders = undefined;
@@ -898,8 +809,8 @@ export class GLRenderer {
                 indexType = vertices <= 65536 ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
                 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, vertices <= 65536 ? new Uint16Array(data) : data, gl.STATIC_DRAW);
             };
-            // `Batch.next`: one float for each bit of `mask`, each at its location of `locs`.
-            const next = (data: Float32Array | undefined, mask = 0, locs: number[]) => {
+            // `Batch.feat`: one float for each bit of `mask`, each at its location of `locs`.
+            const feat = (data: Float32Array | undefined, mask = 0, locs: number[]) => {
                 if (!data) return;
                 const k = locs.filter((_, i) => mask & 1 << i).length;
                 let j = 0;
@@ -939,10 +850,9 @@ export class GLRenderer {
                 vertices = b.v.length / LINE_VERTEX;
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; if (b.width1) attr(5, b.width1, 1, gl.FLOAT); else attr(5, b.width, 1, gl.FLOAT, false, 0, 0, false, true); }
-                // line-blur for each feature; without it the attribute is off and reads 0, and the uniform u_blur has the blur.
-                if (b.blur) attr(7, b.blur, 1, gl.FLOAT);
-                if (b.gap) attr(8, b.gap, 1, gl.FLOAT); // line-gap-width for each feature, as line-blur
-                next(b.next, b.nextMask, [9, 10, 11]);
+                // line-blur and line-gap-width for each feature (without them the attribute is off and reads 0, and the
+                // uniforms u_blur and u_gap have the values), and the changes to the next zoom.
+                feat(b.feat, b.featMask, [7, 8, 9, 10, 11]);
                 index(b.idx);
                 count = b.idx.length;
             } else {
@@ -954,11 +864,11 @@ export class GLRenderer {
                 // The stroke at the next zoom is the same buffer when it does not change.
                 if (b.stroke) { attr(4, b.stroke, 4, gl.UNSIGNED_BYTE, true); attr(10, b.stroke1 ?? b.stroke, 4, gl.UNSIGNED_BYTE, true, 0, 0, false, !b.stroke1); }
                 if (b.sb) attr(6, b.sb, 2, gl.FLOAT);
-                next(b.next, b.nextMask, [9, 11]);
+                feat(b.feat, b.featMask, [9, 11]);
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, gap: b.type === 'line' && !!b.gap, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1496,12 +1406,10 @@ export class GLRenderer {
                 // Attributes without a buffer read these constants, so shaders need no variants.
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                 if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
-                if (b.type === 'line' && !b.blur) gl.vertexAttrib1f(7, 0); // a custom layer can leave another value at location 7
                 if (b.type === 'circle') { if (!(b.stroke! & 1)) gl.vertexAttrib4f(4, 1, 1, 1, 1); if (!(b.stroke! & 2)) gl.vertexAttrib2f(6, 0, 0); }
-                if (b.type === 'line' && !b.gap) gl.vertexAttrib1f(8, 0);
-                // (Without `next` the change to the next zoom is 0; see `Batch.next`.)
-                if (b.type === 'line' || b.type === 'circle') { gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z)))); gl.vertexAttrib1f(9, 0); gl.vertexAttrib1f(11, 0); }
-                if (b.type === 'line') gl.vertexAttrib1f(10, 0);
+                // A number of `Batch.feat` that the batch does not have reads 0. (A custom layer can leave another value
+                // at these locations. An attribute with a buffer does not read the value.)
+                if (b.type === 'line' || b.type === 'circle') { gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z)))); for (let l = 7; l < 12; l++) gl.vertexAttrib1f(l, 0); }
                 if (b.type === 'circle' && !(b.stroke! & 1)) gl.vertexAttrib4f(10, 1, 1, 1, 1);
                 if (b.type === 'line' || b.type === 'circle') {
                     gl.uniform1f(u.u_scale, it.scale);
@@ -1812,6 +1720,8 @@ export class GLRenderer {
     render(s: Scene): boolean {
         this.iconsBehind = false;
         const gl = this.gl, tr = s.tr;
+        // (Before the first program is linked, so that `halo` links with the others; see `ready`.)
+        if (s.globe) SHADERS.halo = (this.globeCode = tr.globe!).HALO;
         this.frame++;
         this.dropRamps(s.layers);
         gl.enable(gl.BLEND);
