@@ -13,7 +13,7 @@ import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, FOV, EARTH_CIRCUMFERENCE, type LngLatLike} from './geo.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
-import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification, Subscription} from './compat-types.ts';
+import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, StyleImageInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification, Subscription} from './compat-types.ts';
 
 /**
  * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
@@ -577,7 +577,7 @@ export class Map extends CoreMap {
             this.once('remove', () => removeEventListener(type, lifted, true));
         }
         super.setMissingStyleImageResolver(name => this.styleImage(name));
-        this.once('remove', () => { this.imagesTurn++; });
+        this.once('remove', () => { this.imagesTurn++; for (const name of [...this.animated.keys()]) this.dropAnimated(name); });
     }
 
     // ---- The images in metadata["map-jr:images"] of the style (#759), as the main entry has them (#495) ----
@@ -589,7 +589,30 @@ export class Map extends CoreMap {
     private styleImageNames = new Set<string>();
     private resolver: Parameters<CoreMap['setMissingStyleImageResolver']>[0] = null;
     setMissingStyleImageResolver(resolver: Parameters<CoreMap['setMissingStyleImageResolver']>[0]) { this.resolver = resolver; return this; }
-    addImage(...args: Parameters<CoreMap['addImage']>) { this.styleImageNames.delete(args[0]); return super.addImage(...args); }
+    addImage(...args: Parameters<CoreMap['addImage']>) {
+        const [name, image] = args;
+        this.styleImageNames.delete(name);
+        this.dropAnimated(name);
+        // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` before each frame: when it returns
+        // true, its `data` is sent again. A map without such images listens to no frame.
+        if (typeof (image as StyleImageInterface).render == 'function') {
+            if (!this.animated.size) this.on('render', this.renderImages);
+            this.animated.set(name, image as StyleImageInterface);
+            (image as StyleImageInterface).onAdd?.(this as never, name);
+        }
+        return super.addImage(...args);
+    }
+    removeImage(name: string) { this.dropAnimated(name); return super.removeImage(name); }
+    private animated = new globalThis.Map<string, StyleImageInterface>();
+    private dropAnimated(name: string) {
+        const image = this.animated.get(name);
+        if (!image || !this.animated.delete(name)) return;
+        if (!this.animated.size) this.off('render', this.renderImages);
+        image.onRemove?.();
+    }
+    private renderImages = () => {
+        for (const [name, image] of this.animated) if (image.render?.() && this.hasImage(name)) { this.updateImage(name, image); this.triggerRepaint(); }
+    };
     private async styleImage(name: string) {
         if (!await (await this.imagesFor)?.(name)) await this.resolver?.(name);
     }

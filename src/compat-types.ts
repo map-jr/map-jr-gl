@@ -334,10 +334,11 @@ export type UpdateImageOptions = Parameters<ImageSource['updateImage']>[0];
 export type CanvasSourceSpecification = {type: 'canvas'; coordinates: Coordinates; animate?: boolean; canvas?: string | HTMLCanvasElement};
 
 /**
- * An image for `map.addImage` as an object with pixels. The map reads `data` (RGBA, `width` × `height` × 4 bytes) once,
- * when the image is added. `render`, `onAdd` and `onRemove` have no effect: the map does not call them, so an image
- * cannot change itself. Call `map.updateImage` to change it. A `data` that is not pixels (the WebGL form of MapLibre GL
- * JS) is not supported.
+ * An image for `map.addImage` as an object with pixels, as in MapLibre GL JS. The map reads `data` (RGBA, `width` ×
+ * `height` × 4 bytes) when the image is added. `onAdd(map, id)` is called when the image is added, and `onRemove()` when
+ * it is removed, replaced or the map is removed. `render()` is called before each frame of the map; when it returns
+ * true, the map reads `data` again and draws another frame. Unlike MapLibre GL JS, `render` is called also while no
+ * layer uses the image. A `data` that is not pixels (the WebGL form of MapLibre GL JS) is not supported.
  */
 export interface StyleImageInterface {
     width: number; height: number; data: Uint8Array | Uint8ClampedArray;

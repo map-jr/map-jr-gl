@@ -515,6 +515,23 @@ for (const mode of renderers) {
     const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
     check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl.startsWith('[map-jr-gl] addImage("gl")') && gl.includes('WebGL'), gl);
+    // #1746: an image with render() (StyleImageInterface) gets onAdd, render before frames (new pixels when it returns
+    // true) and onRemove, as in MapLibre GL JS.
+    const anim = await page.evaluate(async () => {
+        const log = {add: 0, renders: 0, remove: 0, after: 0, id: ''};
+        const image = {width: 2, height: 2, data: new Uint8Array(16), onAdd(m, id) { log.add++; log.id = id; }, onRemove() { log.remove++; },
+            render() { log.renders++; this.data = new Uint8Array(16).fill(log.renders % 255); return true; }};
+        await window.map.addImage('pulse', image);
+        const t0 = performance.now();
+        while (log.renders < 3 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 50));
+        window.map.removeImage('pulse');
+        const n = log.renders;
+        window.map.triggerRepaint();
+        await new Promise(r => setTimeout(r, 300));
+        log.after = log.renders - n;
+        return log;
+    });
+    check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0, JSON.stringify(anim));
     // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
     const reads = await page.evaluate(async () => {
         const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;
