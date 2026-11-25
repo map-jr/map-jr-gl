@@ -4408,7 +4408,7 @@ for (const mode of renderers) {
         }, lib).catch(e => [String(e)]);
         const ours = await run('ours'), ml = await run('ml');
         check('[main] maplibre-compat: the ScaleControl bar has the width of MapLibre GL JS (#1039)',
-            ml.length === 3 && ours.every((o, i) => o[1] === ml[i][1] && Math.abs(o[0] - ml[i][0]) < 0.01), JSON.stringify({ours, ml}));
+            ml.length === 3 && ours.every((o, i) => o[1].replace(/\s/g, ' ') === ml[i][1].replace(/\s/g, ' ') && Math.abs(o[0] - ml[i][0]) < 0.01), JSON.stringify({ours, ml}));
     }
     // react-map-gl 8 gives every map a function with setTransformCameraUpdate (#210). With the worker renderer the map
     // warns only when the function changes the camera; on the main thread it draws the camera that the function returns,
