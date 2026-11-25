@@ -32,7 +32,8 @@ BSD-3-Clause.
 - The zoom of the scroll wheel (`src/engine.ts`), and its snap to `zoomSnap` in the compat entry, follow the method of `ScrollZoomHandler` and `evaluateZoomSnap` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
 - glsl-atmosphere (github.com/wwwtyro/glsl-atmosphere, Unlicense): the atmosphere shader of MapLibre GL JS, which the shader of the atmosphere on the globe copies, follows its scattering method.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
-  in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera
+  in labels, the light on buildings, the size of dashes, the joins of lines (`LineBucket`: the inner vertices of a
+  bevel and the extra vertices at a sharp corner), the size of circles on a map with pitch, and the movement of the camera
   on 3D terrain.
 - The layer type `color-relief` follows the method of MapLibre GL JS (BSD-3-Clause; `color_relief_style_layer.ts` and
   the shader `color_relief`): the stops of the `interpolate` expression go to the GPU, and the shader searches the two
