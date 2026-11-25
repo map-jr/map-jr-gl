@@ -50,15 +50,31 @@ void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v
 const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1];
 /** Heatmap densities are accumulated at this fraction of the screen's resolution: the result is smooth anyway. */
 const HEAT_SCALE = 4;
-/** Perspective weights for a quadrilateral's corners, from where its diagonals cross (all 1 for a parallelogram). */
-function cornerWeights(c: number[]): number[] {
+/**
+ * Perspective weights for a quadrilateral's corners, from where its diagonals cross (all equal for a parallelogram).
+ * A quadrilateral that is not convex (concave, or crossing itself) has none, because no perspective view gives it.
+ */
+function cornerWeights(c: number[]): number[] | undefined {
     const [x0, y0, x1, y1, x2, y2, x3, y3] = c, den = (x2 - x0) * (y3 - y1) - (y2 - y0) * (x3 - x1);
-    if (Math.abs(den) < 1e-9) return ONES;
-    const t = ((x1 - x0) * (y3 - y1) - (y1 - y0) * (x3 - x1)) / den, ix = x0 + (x2 - x0) * t, iy = y0 + (y2 - y0) * t;
-    const d = [0, 1, 2, 3].map(i => Math.hypot(c[i * 2] - ix, c[i * 2 + 1] - iy));
-    if (d.some(v => v < 1e-9) || t <= 0 || t >= 1) return ONES; // not convex: fall back to plain stretching
+    // t and s are where the diagonals cross, on the diagonal 0-2 and on the diagonal 1-3: the shape is convex when both are inside.
+    const t = ((x1 - x0) * (y3 - y1) - (y1 - y0) * (x3 - x1)) / den, s = ((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0)) / den;
+    if (Math.abs(den) < 1e-9 || !(t > 0 && t < 1 && s > 0 && s < 1)) return;
+    const ix = x0 + (x2 - x0) * t, iy = y0 + (y2 - y0) * t, d = [0, 1, 2, 3].map(i => Math.hypot(c[i * 2] - ix, c[i * 2 + 1] - iy));
     return [(d[0] + d[2]) / d[2], (d[1] + d[3]) / d[3], (d[0] + d[2]) / d[0], (d[1] + d[3]) / d[1]];
 }
+/**
+ * A quadrilateral that is not convex is drawn as MapLibre GL JS 6.17 draws it (`calculateImageWarp`): the picture is
+ * stretched bilinearly between the corners on a grid of 16 x 16 cells, and the parts where that stretch turns the
+ * picture over are not drawn (back faces are culled, with the turn of the corners 0, 1, 2 as the front). The turn at a
+ * point (u, v) of the picture is the determinant of the stretch there, j0 + j1 u + j2 v, which is linear in u and v;
+ * this gives j0, j1 and j2 with the sign of the front, scaled to at most 1. The fragment shader discards where it is negative.
+ */
+function foldOf(c: number[]): number[] {
+    const [x0, y0, x1, y1, x2, y2, x3, y3] = c, bx = x1 - x0, by = y1 - y0, cx = x3 - x0, cy = y3 - y0, dx = x0 - x1 + x2 - x3, dy = y0 - y1 + y2 - y3;
+    const j = [bx * cy - by * cx, bx * dy - by * dx, dx * cy - dy * cx], k = Math.sign(bx * (y2 - y0) - by * (x2 - x0)) / Math.max(...j.map(Math.abs));
+    return j.map(v => v * k);
+}
+const FLAT = [1, 0, 0];
 
 /** Samples a repeating image of the icon atlas at a position in units of the image. */
 const PATTERN_GLSL = `uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex;
@@ -361,7 +377,7 @@ uniform vec4 u_clip; uniform float u_pattern; in vec4 v_color; in vec2 v_tile; i
 void main() { ${FS_CLIP} if (v_side < 0.0) discard; o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
 
     raster: [`${VS_COMMON}
-layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; out vec3 v_uvq; out vec2 v_tile;
+layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; uniform vec3 u_fold; out vec3 v_uvq; out vec2 v_tile; out float v_fold;
 // A tile fills its square; an image source's picture is stretched between four given corners instead. For a shape
 // that is not a parallelogram the picture must be foreshortened as if seen in perspective: each corner carries a
 // weight q, and dividing by the interpolated weight in the fragment shader gives the right texture position.
@@ -378,15 +394,17 @@ void main() {
   float q = 1.0 / (b.x + b.y + b.z + b.w);
   v_uvq = vec3(ap * q, q);
   v_tile = (b.x * u_corners[0] + b.y * u_corners[1] + b.z * u_corners[2] + b.w * u_corners[3]) * q;
+  v_fold = dot(u_fold, vec3(1.0, ap)); // (see foldOf)
 #ifdef GLOBE
   gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile);
 #else
   gl_Position = toClip(v_tile);
 #endif
 }`, `
-uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; uniform vec2 u_bright; uniform vec3 u_spin; in vec3 v_uvq; in vec2 v_tile; out vec4 o;
+uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; uniform vec2 u_bright; uniform vec3 u_spin; in vec3 v_uvq; in vec2 v_tile; in float v_fold; out vec4 o;
 void main() {
   ${FS_CLIP}
+  if (v_fold < 0.0) discard;
   vec4 c = texture(u_image, v_uvq.xy / v_uvq.z);
   vec3 rgb = c.a > 0.0 ? c.rgb / c.a : c.rgb;
   rgb = vec3(dot(rgb, u_spin.xyz), dot(rgb, u_spin.zxy), dot(rgb, u_spin.yzx));
@@ -658,6 +676,8 @@ export class GLRenderer {
     /** The grid that raster, hillshade and background tiles are drawn on with the globe, in tile units: see `globeGrid`. */
     private globeMesh?: {vao: WebGLVertexArrayObject; main: number; pole: number};
     private quad: WebGLVertexArrayObject;
+    /** The grid of an image source that is not convex, in Mercator: see `drawSheet`. */
+    private sheet?: WebGLVertexArrayObject;
     private textVao: WebGLVertexArrayObject;
     private textBuf: WebGLBuffer;
     private spriteVao: WebGLVertexArrayObject;
@@ -1279,13 +1299,14 @@ export class GLRenderer {
                     this.placeTile(u, it.id, m);
                     gl.uniform4fv(u.u_clip, it.clip);
                     if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
-                    if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
+                    const q = it.corners ? cornerWeights(it.corners) : ONES;
+                    if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, q ?? ONES); gl.uniform3fv(u.u_fold, q ? FLAT : foldOf(it.corners!)); }
                     if (L.relief) gl.uniform4fv(u.u_unpack, it.tile.unpack!);
                     gl.bindTexture(gl.TEXTURE_2D, L.relief ? it.tile.raw! : it.tile.tex);
                     // Above the pitch of `setAnisotropicFilterPitch` (20 by default), a tile of a raster source is filtered
                     // anisotropically, as in MapLibre GL JS: the far part of the map is sharper. (0x84FE is TEXTURE_MAX_ANISOTROPY_EXT.)
                     if (it.tile.mip && this.aniso) gl.texParameterf(gl.TEXTURE_2D, 0x84FE, tr.pitch > tr.aniso ? this.aniso : 1);
-                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id, !it.corners) : gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4), it.tile.mip ? gl.LINEAR_MIPMAP_NEAREST : gl.LINEAR);
+                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id, !it.corners) : q ? gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4) : this.drawSheet(), it.tile.mip ? gl.LINEAR_MIPMAP_NEAREST : gl.LINEAR);
                 }
                 continue;
             }
@@ -1507,6 +1528,23 @@ export class GLRenderer {
     /** The grid of the globe (`globeMesh` in globe.ts), made at its first use. */
     private globeGrid() {
         return this.globeMesh ??= this.globeCode!.globeMesh(this.gl);
+    }
+
+    /** Draws a picture that is not convex in Mercator on a grid of 16 x 16 cells (see foldOf), made at its first use. */
+    private drawSheet() {
+        const gl = this.gl;
+        if (!this.sheet) {
+            const v: number[] = [];
+            for (let i = 0; i < 256; i++) for (const k of [0, 1, 16, 16, 1, 17]) v.push((i % 16 + k % 16) / 16, ((i >> 4) + (k >> 4)) / 16);
+            gl.bindVertexArray(this.sheet = gl.createVertexArray()!);
+            gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        }
+        gl.bindVertexArray(this.sheet);
+        gl.drawArrays(gl.TRIANGLES, 0, 1536);
+        gl.bindVertexArray(this.quad);
     }
 
     /**

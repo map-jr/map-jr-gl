@@ -88,6 +88,32 @@ for (const mode of renderers) {
     check(`[${mode}] the first idle comes after the picture of an image source has loaded, and a picture that fails says so once (#1449)`,
         picture.idle && picture.px?.[0] > 200 && picture.px[1] < 60 && picture.said?.length === 1 && picture.said[0].includes('no-such-1449.png'), JSON.stringify(picture));
 
+    // #1983: an image source whose corners make a concave shape is drawn as in MapLibre GL JS 6.17, in Mercator and on
+    // the globe: the picture is stretched bilinearly, and the parts that the stretch turns over are not drawn. For these
+    // corners MapLibre draws only a small shape above the inner corner (0, 10): (0, 20) is red, while (0, -20) in the
+    // lower point and (-30, 35) in the left arm stay white. Before the fix both arms of a V were drawn.
+    const concave = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const c = Object.assign(document.createElement('canvas'), {width: 8, height: 8}), g = c.getContext('2d');
+        g.fillStyle = '#f00'; g.fillRect(0, 0, 8, 8);
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:400px'})), out = {};
+        for (const type of ['mercator', 'globe']) {
+            const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 5], zoom: 0.6, style: {version: 8, projection: {type},
+                sources: {i: {type: 'image', url: c.toDataURL(), coordinates: [[-40, 50], [0, 10], [40, 50], [0, -40]]}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'i', type: 'raster', source: 'i'}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            const bmp = await createImageBitmap(await m.toBlob()), k = bmp.width / 400, cv = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), cg = cv.getContext('2d');
+            cg.drawImage(bmp, 0, 0);
+            const red = ll => { const p = m.project(ll); return cg.getImageData(Math.round(p.x * k), Math.round(p.y * k), 1, 1).data[1] < 100; };
+            out[type] = {inside: red([0, 20]), point: red([0, -20]), arm: red([-30, 35])};
+            m.remove();
+        }
+        el.remove();
+        return out;
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] compat: an image source with a concave shape of corners is drawn as in MapLibre GL JS, in Mercator and on the globe (#1983)`,
+        ['mercator', 'globe'].every(t => concave[t]?.inside && !concave[t].point && !concave[t].arm), JSON.stringify(concave));
+
     // Paint transitions (#960), as in MapLibre GL JS: setPaintProperty and setStyle with `diff` move a colour over the
     // layer's `*-transition` (here 3 s), `idle` waits for the end, and setStyle with `diff: false` changes it at once.
     // (`toBlob` waits for `idle`, so a screenshot of the page reads the colour in the middle.)
