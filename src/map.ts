@@ -1188,7 +1188,7 @@ export class Map {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
     }
 
-    private limits(keep?: boolean) { this.post({type: 'limits', keep, minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds, worldCopies: this.tr.worldCopies}); return this; }
+    private limits(keep?: boolean) { this.post({type: 'limits', keep, minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds, worldCopies: this.tr.worldCopies, aniso: this.tr.aniso}); return this; }
     /**
      * Sets whether copies of the world are drawn beside it, as in MapLibre GL JS. With `false`, the view stays inside
      * -180 to 180 degrees of longitude, no tiles of other copies are loaded or drawn, and markers and popups stay at the

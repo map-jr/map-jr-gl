@@ -87,6 +87,8 @@ export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
     crossSourceCollisions?: boolean;
     /** `true` (the default): a tile is requested again when its `Cache-Control` or `Expires` says that it is out of date. With `false` a tile is never requested again for that reason. */
     refreshExpiredTiles?: boolean;
+    /** Raster tiles are filtered anisotropically when the pitch is above this many degrees (0 to 180), as in MapLibre GL JS. The default is 20. */
+    anisotropicFilterPitch?: number;
     /** The wheel zooms only with Ctrl (⌘ on a Mac), one finger scrolls the page, and a hint shows over the map, as in MapLibre GL JS. */
     cooperativeGestures?: boolean | object;
     /** The UI strings of the controls and of the hint of `cooperativeGestures`, with the keys of MapLibre GL JS (`'NavigationControl.ZoomIn'`). A key that is missing keeps the English text of this library. */

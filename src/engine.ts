@@ -45,7 +45,7 @@ export type Command =
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number; bearing?: number}
     | {type: 'stop'}
-    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean; /** See `Transform.aniso`. */ aniso: number}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources; an empty `lod` drops them (removeSource). */
@@ -913,7 +913,7 @@ export class Engine {
                 break;
             }
             case 'stop': this.stop(); break;
-            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true});
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true, aniso: c.aniso});
                 // (`keep`: setRenderWorldCopies does not move the view, as in MapLibre GL JS; the next camera change does.)
                 if (c.keep) { this.viewCovers.clear(); this.invalidate(); } else tr.set(undefined, tr.zoom, undefined, tr.pitch);
                 break;
@@ -1479,7 +1479,7 @@ export class Engine {
     private async imageTile(bytes: Uint8Array | ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
         if (!bytes) return {labels: {}, batches: {}};
         const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
-        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id) : {labels: {}, batches: {}};
+        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id, undefined, true) : {labels: {}, batches: {}};
         image.close();
         return tile;
     }
