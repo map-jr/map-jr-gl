@@ -613,6 +613,14 @@ type ProgramName = keyof typeof BUILTIN | 'terrain';
 export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = BUILTIN;
 
 /** `u` is empty until the program is first used: see `link`. */
+/** The matrix of a tile moved by (tx, ty) pixels along the axes of the map (`*-translate`; see `mapTranslate`). */
+const moveTile = (it: RenderItem<GLTile>, tx: number, ty: number) => {
+    if (!tx && !ty) return it.matrix4;
+    const m = Float32Array.from(it.matrix4), x = tx / it.scale, y = ty / it.scale;
+    for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
+    return m;
+};
+
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
 const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
@@ -1055,11 +1063,7 @@ export class GLRenderer {
                     gl.uniform1i(u.u_img, 0);
                 }
                 this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
-                if (move[0] || move[1]) {
-                    const m = Float32Array.from(it.matrix4), x = move[0] / it.scale, y = move[1] / it.scale;
-                    for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
-                    this.placeTile(u, it.id, m, [x, y]);
-                } else this.placeTile(u, it.id, it.matrix4);
+                this.placeTile(u, it.id, moveTile(it, move[0], move[1]), [move[0] / it.scale, move[1] / it.scale]);
                 gl.uniform4fv(u.u_clip, it.clip);
                 gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 gl.bindVertexArray(b.vao);
@@ -1349,12 +1353,7 @@ export class GLRenderer {
             // fill-translate, line-translate and fill-extrusion-translate move the layer by screen pixels. The anchor
             // says if the direction turns with the map (the default) or stays fixed on the screen.
             const [tx, ty] = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? mapTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing) : [0, 0];
-            const moved = (it: RenderItem<GLTile>) => {
-                if (!tx && !ty) return it.matrix4;
-                const m = Float32Array.from(it.matrix4), x = tx / it.scale, y = ty / it.scale;
-                for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
-                return m;
-            };
+            const moved = (it: RenderItem<GLTile>) => moveTile(it, tx, ty);
             // On the globe the shaders take the point on the sphere from the tile position, so the tile is moved there
             // too, by the same tile units (MapLibre GL JS adds the translation to the position before projectTile).
             const shift = (it: RenderItem<GLTile>) => tx || ty ? [tx / it.scale, ty / it.scale] : undefined;
