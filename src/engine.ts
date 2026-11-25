@@ -631,8 +631,8 @@ export class Engine {
             if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
         }
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
-        // that needs it (built into the worker file; a file of its own for the engine on the main thread), and frames
-        // wait for it (see `frame`).
+        // that needs it (a part of the worker, `map-jr-gl-worker-globe.js`, or a chunk for the engine on the main
+        // thread; #2006), and frames wait for it (see `frame`).
         // A switch from Mercator to the globe waits until the tiles that the globe draws are cut (see `holdGlobe`).
         const stops = globeStops(style.projection?.type);
         if (stops && !this.tr.globeStops && this.tiles.size) {
@@ -640,7 +640,7 @@ export class Engine {
             if (!this.globeWait) setTimeout(() => this.invalidate(), 1010);
             this.globeWait ??= {stops, since: performance.now()};
         } else { this.globeWait = null; this.tr.globeStops = stops; }
-        if (stops && !this.tr.globe) import('./globe.ts').then(m => { this.tr.globe = m; this.repaint(); });
+        if (stops && !this.tr.globe) part('globe').then(m => { this.tr.globe = m; this.repaint(); }, err => { if (!this.lost) this.emit({type: 'error', message: String(err.message)}); });
         data ??= Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.type === 'geojson').map(([name, s]) => [name, s.data]));
         style = {...style, sources: Object.fromEntries(Object.entries(style.sources).map(([name, s]) => [name, s.type === 'geojson' ? {...s, data: undefined} : s]))};
         if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;

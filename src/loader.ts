@@ -3,6 +3,7 @@
  * next to this module. Everything can be overridden per map or globally with `configure()`.
  */
 import {LOSE_CONTEXT} from './gl-names.ts';
+import {globeStops} from './geo.ts';
 
 declare const __WORKER_SRC__: string; // the worker's source, embedded only in the standalone build
 declare const __VERSION__: string; // the version of package.json, set by the build
@@ -97,10 +98,11 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
         dem: at('dem', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-dem.js?no-inline', import.meta.url)),
         pmtiles: at('pmtiles', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
         within: at('within', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-within.js?no-inline', import.meta.url)),
+        globe: at('globe', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-globe.js?no-inline', import.meta.url)),
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;
-        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source or with 3D terrain cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
+        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain or with a globe cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
     }
     return out as Record<string, string>;
 }
@@ -114,14 +116,15 @@ let warnedParts = false;
 const partCode = new globalThis.Map<string, Promise<string | null>>();
 /**
  * Starts to fetch the parts that a style (as written) needs: see `partsFor` in engine.ts. 3D terrain needs the part
- * `dem` too, in the engine worker (`engineWorker`; #1849). An engine on the page loads the chunk of that part instead.
+ * `dem` too, and a globe the part `globe`, in the engine worker (`engineWorker`; #1849, #2006). An engine on the page loads the chunk of that part instead.
  */
-export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>; terrain?: unknown}, engineWorker: boolean) {
+export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>; terrain?: unknown; projection?: {type?: unknown}}, engineWorker: boolean) {
     const urls = partUrls(o);
     if (!urls) return;
-    const names = Object.values(style?.sources ?? {}).map(s => s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'dem'
+    const names: string[] = Object.values(style?.sources ?? {}).map(s => s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'dem'
         : [s?.url, ...(Array.isArray(s?.tiles) ? s.tiles : [])].some(u => typeof u === 'string' && u.startsWith('pmtiles://')) ? 'pmtiles' : '');
     if (style?.terrain && engineWorker) names.push('dem');
+    if (engineWorker && globeStops(style?.projection?.type)) names.push('globe');
     for (const name of names) {
         const url = urls[name];
         if (!url || partCode.has(url)) continue;
