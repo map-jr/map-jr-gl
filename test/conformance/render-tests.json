@@ -1100,7 +1100,7 @@
 "regressions/mapbox-gl-native#6903": "match",
 "regressions/mapbox-gl-native#7241": "match",
 "regressions/mapbox-gl-native#7357": "match",
-"regressions/mapbox-gl-native#7572": "near",
+"regressions/mapbox-gl-native#7572": "match",
 "regressions/mapbox-gl-native#7714": "match",
 "regressions/mapbox-gl-native#7792": "match",
 "regressions/mapbox-gl-native#8078": "match",

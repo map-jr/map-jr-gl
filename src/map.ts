@@ -4,7 +4,7 @@ import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
 import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, inertiaSpan, heightsChanged, latFromMerc, lngFromMerc, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
-import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
+import {DEFAULT_FONT, absolute, derefLayers, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature, QuerySet} from './query.ts';
@@ -1557,6 +1557,8 @@ export class Map {
             made = await res.json();
         }
         if (!Array.isArray(made?.layers)) throw new Error('[map-jr-gl] The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.');
+        // (Here, and not only when the style is resolved: a later `setLayoutProperty` of a layer with `ref` changes its own layout, #1814.)
+        made.layers = derefLayers(made.layers);
         return made;
     }
     /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
