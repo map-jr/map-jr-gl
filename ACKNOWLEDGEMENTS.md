@@ -105,7 +105,7 @@ BSD-3-Clause.
   A drag on the globe (`drag` in `src/globe.ts`) follows `versorSetLocationAtPoint` and `panSurfaceLocation` in
   `globe_utils.ts`: the rotation from the last pointer to the new one, the eased curve near the edge of the globe, and
   the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the center
-  can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the center (`interpolateLngLatForGlobe`). The code is new.
+  can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the center (`interpolateLngLatForGlobe`). The size of text along a line on the globe follows `getPitchedTextCorrection` in `vertical_perspective_transform.ts`. The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them. `test/conformance/render.mjs` applies
   the operations of a render test in the order and with the arguments of `applyOperations` in
