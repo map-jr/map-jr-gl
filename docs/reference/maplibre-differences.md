@@ -517,8 +517,8 @@ Layers:
 Properties:
 
 - `line-gradient` together with `line-dasharray`
-- Circle stroke and blur that are different for each feature
 - `line-gap-width` that is different for each feature in the server renderer. Its SVG draws such a line as one solid stroke without a gap, and nothing warns. (A line with a constant gap is left out of the SVG.)
+- Circle stroke and blur in the server renderer. Its SVG (`renderToSVG`) gives every circle of a layer one `circle-stroke-color` and one `circle-stroke-width`: a data expression is evaluated for a feature without properties. The SVG does not apply `circle-stroke-opacity` or `circle-blur`, and it applies `circle-opacity` to the stroke, which MapLibre GL JS does not.
 - `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
 - `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
 - `text-writing-mode`
