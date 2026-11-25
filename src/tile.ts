@@ -261,7 +261,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     if (sorted) keys.push(label.key = key);
                     continue;
                 }
-                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null)) {
+                // (The path of text along the line keeps `1 / ov` of a unit in an over-zoomed tile, as `lineLabels` does.)
+                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null, ov)) {
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colors and fonts.
@@ -372,9 +373,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
 
 /**
  * Yields [x, y, angle, length, (anchor index in path, ...path)] label anchors for one ring. `ds` has the distances along
- * a line of its anchors: empty for the middle of the line, and null for a label that is not along the line.
+ * a line of its anchors: empty for the middle of the line, and null for a label that is not along the line. The points
+ * of the path are rounded to `1 / grid` of a tile unit: an over-zoomed tile keeps the precision of the deeper tile that
+ * MapLibre GL JS makes of it, or a gentle slope becomes flat steps.
  */
-export function anchors(c: number[], start: number, end: number, type: number, along: boolean, window: number, ds: number[] | null): number[][] {
+export function anchors(c: number[], start: number, end: number, type: number, along: boolean, window: number, ds: number[] | null, grid = 1): number[][] {
     if (type === 1) return [[c[start * 2], c[start * 2 + 1], 0, 0]];
     if (type === 3 && !along) {
         let a = 0, cx = 0, cy = 0;
@@ -418,7 +421,7 @@ export function anchors(c: number[], start: number, end: number, type: number, a
             }
             if (index < 0) { index = path.length / 2; path.push(x, y); }
             path.push(...at(d1));
-            anchor.push(index, ...path.map(Math.round));
+            anchor.push(index, ...path.map(v => Math.round(v * grid) / grid));
         }
         out.push(anchor);
     }

@@ -1368,7 +1368,7 @@
 "symbol-placement/line-center": "near",
 "symbol-placement/line-center-buffer": "near",
 "symbol-placement/line-center-upperright": "near",
-"symbol-placement/line-overlap": "near",
+"symbol-placement/line-overlap": "match",
 "symbol-placement/line-overscaled": "near",
 "symbol-placement/line-overscaled-debug": "differ",
 "symbol-placement/line-promote-id": "near",

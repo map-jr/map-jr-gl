@@ -4,6 +4,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {lineLabels} from '../../src/placement.ts';
 import {EstimateShaper} from '../../src/text.ts';
+import {compileLayer} from '../../src/style.ts';
+import {buildTile} from '../../src/tile.ts';
+import {prepareGeoJSON, sliceGeoJSON} from '../../src/geojson.ts';
 
 test('a line of a z14 tile shown at z22 has its anchors in the rhythm of the z18 squares, as in MapLibre GL JS', () => {
     const spacing = 350 * 4096 / 512 / 256;
@@ -14,6 +17,39 @@ test('a line of a z14 tile shown at z22 has its anchors in the rhythm of the z18
     for (const x of xs) {
         const n = (x - 256) / spacing;
         assert.ok(Math.abs(n - Math.round(n)) < 1e-6, `the anchor at ${x} is not a whole number of spacings from the edge of the square`);
+    }
+});
+
+test('the path of text along a gentle slope in a z14 tile shown at z22 keeps the slope, as in MapLibre GL JS', () => {
+    // The line falls by 1 unit over 1000: at z22 a unit is 16 pixels. Rounding the path to whole units made the text flat,
+    // with a step where the rounding changed. (The ends of the part in a square and the path are each rounded to 1 / 16.)
+    const spacing = 350 * 4096 / 512 / 256;
+    const label: any = {text: 'Luhova Street', font: 'Noto Sans Regular', spacing: 0, lineHeight: 1.2, line: [0, 2000, 4096, 2004.096], lineSpacing: spacing, tpr: 4096 / 512 / 256, ov: 256, tz: 14, window: 30, maxAngle: 45, size0: 16, size1: 16};
+    const out = lineLabels([label], new EstimateShaper() as any, undefined, 22, () => [8 * 16 + 7]);
+    assert.ok(out.length > 0);
+    for (const l of out) {
+        const p = l.path!;
+        for (let i = 0; i < p.length; i += 2) {
+            const want = 2000 + p[i] / 1000;
+            assert.ok(Math.abs(p[i + 1] - want) <= 1 / 16 + 1e-9, `the point ${p[i]}, ${p[i + 1]} of the path is off the line (${want})`);
+        }
+    }
+});
+
+test('the path of line-center text along a gentle slope in a z14 tile shown at z22 keeps the slope and passes through the anchor', () => {
+    // As above, for the anchor that the tile finds itself (`symbol-placement: line-center`). Rounding the path to whole
+    // units put the anchor of the path up to half a unit (8 pixels at z22) from the label, and made the slope flat.
+    const z = 14, tx = 8000, ty = 5000, n = 2 ** z;
+    const lngOf = (x: number) => x / n * 360 - 180, latOf = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+    const ends = [[0.01, 0.5], [0.99, 0.5007]], geometry = {type: 'LineString', coordinates: ends.map(([x, y]) => [lngOf(tx + x), latOf(ty + y)])};
+    const layer = compileLayer({id: 'c', type: 'symbol', source: 'g', layout: {'symbol-placement': 'line-center', 'text-field': 'Luhova Street', 'text-size': 16}} as any)!;
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty);
+    const [l] = buildTile(data, z, [layer], 22).labels.c as any[];
+    const p = l.path as number[], i = l.pathIndex as number, slope = (p[p.length - 1] - p[1]) / (p[p.length - 2] - p[0]);
+    assert.ok(Math.hypot(p[i * 2] - l.x, p[i * 2 + 1] - l.y) <= 1 / 16, `the anchor of the path ${p[i * 2]}, ${p[i * 2 + 1]} is not at the label ${l.x}, ${l.y}`);
+    for (let j = 0; j < p.length; j += 2) {
+        const want = l.y + (p[j] - l.x) * slope;
+        assert.ok(Math.abs(p[j + 1] - want) <= 1 / 16, `the point ${p[j]}, ${p[j + 1]} of the path is off the line (${want})`);
     }
 });
 
