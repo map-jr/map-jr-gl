@@ -466,7 +466,7 @@
 "heatmap-opacity/function": "match",
 "heatmap-opacity/literal": "match",
 "heatmap-radius/antimeridian": "match",
-"heatmap-radius/data-expression": "differ",
+"heatmap-radius/data-expression": "match",
 "heatmap-radius/default": "match",
 "heatmap-radius/function": "match",
 "heatmap-radius/literal": "match",

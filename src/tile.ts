@@ -34,7 +34,10 @@ export interface Batch {
     blur?: Float32Array;
     /** Circles: straight-alpha RGBA of `circle-stroke-color` times `circle-stroke-opacity` for each feature, present only when one of them is data-driven. */
     stroke?: Uint8Array;
-    /** Circles: `circle-stroke-width` and `circle-blur` for each feature, present only when one of them is data-driven (0 for the one that is not). */
+    /**
+     * Circles: `circle-stroke-width` and `circle-blur` for each feature, present only when one of them is data-driven (0 for
+     * the one that is not). Heatmaps: `heatmap-radius` and 0 for each feature, present only when it is data-driven.
+     */
     sb?: Float32Array;
     /** `line-gap-width` for each feature (pixels), present only when it is data-driven. */
     gap?: Float32Array;
@@ -320,7 +323,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
             const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [], gap: number[] = [], stroke: number[] = [], sb: number[] = [];
-            const circle = L.type === 'circle', ddStroke = circle && (p.strokeColor.dd || p.strokeOpacity.dd), ddSb = circle && (p.strokeWidth.dd || p.blur.dd);
+            const circle = L.type === 'circle', ddStroke = circle && (p.strokeColor.dd || p.strokeOpacity.dd), ddSb = circle ? p.strokeWidth.dd || p.blur.dd : heat && p.radius.dd;
             let grows = false;
             const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
             const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
@@ -357,7 +360,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 if (L.type === 'line' && p.blur.dd) blur.push(Math.max(0, p.blur.eval(zs, f)));
                 if (L.type === 'line' && p.gap.dd) gap.push(Math.max(0, p.gap.eval(zs, f)));
                 if (ddStroke) pushColor(stroke, p.strokeColor.dd ? p.strokeColor.eval(z, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(z, f) : 1);
-                if (ddSb) sb.push(p.strokeWidth.dd ? p.strokeWidth.eval(zs, f) : 0, p.blur.dd ? p.blur.eval(zs, f) : 0);
+                if (ddSb) sb.push(heat ? p.radius.eval(zs, f) : p.strokeWidth.dd ? p.strokeWidth.eval(zs, f) : 0, !heat && p.blur.dd ? p.blur.eval(zs, f) : 0);
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
                 if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
