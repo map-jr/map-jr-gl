@@ -5,7 +5,7 @@ import type {GlobeBuild} from './subdivide.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {fetchTile, heads} from './tile-fetch.ts';
+import {fetchTile, heads, type TileFetchState} from './tile-fetch.ts';
 import {GEOJSON_PREFIX, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {decodeVectorTile} from './mvt.ts';
 import type {ContourConfig, DEM} from './contour.ts';
@@ -139,14 +139,15 @@ export class TileBuilder {
         try {
             const key = req.source + '|' + req.url, n = this.forgotten;
             let bytes = req.again && this.recent.get(key) || null;
+            const st: TileFetchState = {};
             if (!bytes) {
-                const p = fetchTile(req.url, this.fetchFn, ac.signal);
+                const p = fetchTile(req.url, this.fetchFn, ac.signal, st);
                 this.loading.set(key, p);
                 try { bytes = await p; } finally { if (this.loading.get(key) === p) this.loading.delete(key); }
             }
-            if (!bytes) return {layers: {}, labels: {}};
+            if (!bytes) return {layers: {}, labels: {}, expires: st.expires};
             if (n === this.forgotten) this.remember(key, bytes);
-            return bytes.length ? buildTile(decodeVectorTile(bytes, this.ids[req.source]), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}};
+            return {...bytes.length ? buildTile(decodeVectorTile(bytes, this.ids[req.source]), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}}, expires: st.expires};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -259,7 +260,7 @@ export class PortBackend implements TileBackend {
             if (!p) return;
             this.pending.delete(e.data.id);
             if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final}));
-            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z});
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires});
             else p.resolve(e.data.result);
         };
     }
@@ -331,7 +332,7 @@ export function serveTiles(port: Port) {
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = toGL(await builder.loadIR(m.req), m.req.globe);
-                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z}}, transfer);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final});
             }

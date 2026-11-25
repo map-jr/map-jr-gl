@@ -247,6 +247,17 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - A status 4xx other than 404, a rejection by a custom protocol and an error of `transformRequest` are final, as in
   MapLibre GL JS.
 
+### A tile that expires
+
+- **MapLibre GL JS:** A vector, raster or elevation tile whose response has `max-age` in `Cache-Control`, or else an
+  `Expires` header, is requested again when that time has passed, while the tile is in the view. The old tile stays
+  drawn until the new one has loaded. A response that is out of date when it arrives is requested again after 1 s,
+  2 s, 4 s and so on. The map option `refreshExpiredTiles: false` turns this off.
+- **This library:** The same, for vector and raster tiles of both entries. A failed request of an expired tile keeps the
+  old tile and is made again after 1 s, 2 s, 4 s and so on. `idle` waits for each new tile, as `idle` of MapLibre GL JS
+  comes after it. Elevation tiles (`raster-dem`), GeoJSON sources and tiles of PMTiles archives are not requested again.
+  The option `refreshExpiredTiles: false` of `@map-jr/map-jr-gl/maplibre-compat` has no effect and warns once.
+
 ### GeoJSON sources
 
 - **MapLibre GL JS:** `setData`, `getData`, `updateData`, the cluster methods.
@@ -544,6 +555,7 @@ Other:
 
 - Projections other than `mercator`, `globe` and `vertical-perspective` (`addProjection`)
 - The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option has no effect and warns once: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
+- The map option `refreshExpiredTiles: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option has no effect and warns once: a tile is requested again when it expires, as with the default (`true`) of MapLibre GL JS.
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it, so `setRTLTextPlugin` is accepted and does nothing. This is a decision and will stay.
 - The debug drawing of MapLibre GL JS: collision boxes, padding lines, tile borders and the overdraw view (`showCollisionBoxes`, `showPadding`, `showTileBoundaries`, `showOverdrawInspector`). This is a decision and will stay.
 

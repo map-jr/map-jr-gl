@@ -506,6 +506,7 @@ export class Map extends CoreMap {
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
+        this.unsupported('The option refreshExpiredTiles: false', o.refreshExpiredTiles !== false);
         // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
         const dragOptions = (name: string, used: boolean, todo: string) => {
             if (!used || this.warned.has(name)) return;

@@ -85,6 +85,8 @@ export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
     pitchWithRotate?: boolean;
     /** Only `true` (the default): labels of different sources always collide with each other. `false` warns once and has no effect. */
     crossSourceCollisions?: boolean;
+    /** Only `true` (the default): a tile is requested again when its `Cache-Control` or `Expires` says that it is out of date. `false` warns once and has no effect. */
+    refreshExpiredTiles?: boolean;
     /** The wheel zooms only with Ctrl (⌘ on a Mac), one finger scrolls the page, and a hint shows over the map, as in MapLibre GL JS. */
     cooperativeGestures?: boolean | object;
     /** The UI strings of the controls and of the hint of `cooperativeGestures`, with the keys of MapLibre GL JS (`'NavigationControl.ZoomIn'`). A key that is missing keeps the English text of this library. */
