@@ -199,11 +199,11 @@ The events of the data (`styledata`, `sourcedata`, `data` and the events that en
 ## `MapErrorInfo`
 
 The second argument of `onError` of the description, of the event `error` of the Vue component and of `onError` of the
-React component. The map passes an object each time, also when it has no `sourceId`.
+React component. The map passes an object each time, also when the error belongs to no source. The `map-error` event of `<map-jr>` puts the `sourceId` on the `Error` instead, as [element.md](element.md) describes.
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `sourceId` | `string` | | The id of the source of a tile, TileJSON, GeoJSON URL, PMTiles archive or image that failed to load. Absent when the error belongs to no source. |
+| `sourceId` | `string` | | The id of the source of a tile, TileJSON, GeoJSON URL, PMTiles archive or image that failed to load. The object has no `sourceId` when the error belongs to no source. |
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
