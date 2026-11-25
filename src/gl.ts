@@ -296,8 +296,9 @@ void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
   if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
-  float a = c.a * clamp((v_hw - abs(v_d)) / (v_persp * (1.0 + u_blur + v_blur)), 0.0, 1.0); // line-blur widens the soft edge
-  if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
+  float bl = v_persp * (1.0 + u_blur + v_blur), a = c.a * clamp((v_hw - abs(v_d)) / bl, 0.0, 1.0); // line-blur widens the soft edge
+  // The inner edge of a gap fades over the same width, into the gap, as in MapLibre GL JS.
+  if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 - 0.5 + bl) / bl, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
     // Dash lengths are in multiples of the line width. The gap is how far this point is outside the nearest dash.
