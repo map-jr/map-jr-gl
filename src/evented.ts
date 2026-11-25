@@ -2,8 +2,9 @@
 type Listener = (e: any) => void;
 export class Evented {
     private listeners: Record<string, Listener[]> = {};
-    on(type: string, fn: Listener) { (this.listeners[type] ??= []).push(fn); return this; }
+    /** Adds a listener and returns a `Subscription`, as in MapLibre GL JS: `unsubscribe()` removes that listener. */
+    on(type: string, fn: Listener): {unsubscribe(): void} { (this.listeners[type] ??= []).push(fn); return {unsubscribe: () => { this.off(type, fn); }}; }
     off(type: string, fn: Listener) { this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== fn); return this; }
-    once(type: string, fn: Listener) { const w: Listener = e => { this.off(type, w); fn(e); }; return this.on(type, w); }
+    once(type: string, fn: Listener) { const w: Listener = e => { this.off(type, w); fn(e); }; this.on(type, w); return this; }
     fire(type: string, data?: Record<string, unknown>) { for (const fn of [...this.listeners[type] ?? []]) fn({type, target: this, ...data}); return this; }
 }

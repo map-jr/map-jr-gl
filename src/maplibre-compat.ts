@@ -98,7 +98,7 @@ export class Marker extends CoreMarker {
 /** The control of the core with `on`, `off` and `once`. It fires `fullscreenstart` and `fullscreenend` on itself, as in MapLibre GL JS. */
 export class FullscreenControl extends CoreFullscreen {
     private events = new Evented();
-    on(type: string, fn: (e: any) => void) { this.events.on(type, fn); return this; }
+    on(type: string, fn: (e: any) => void) { return this.events.on(type, fn); }
     off(type: string, fn: (e: any) => void) { this.events.off(type, fn); return this; }
     once(type: string, fn: (e: any) => void) { this.events.once(type, fn); return this; }
     protected override changed(on: boolean) { this.events.fire(on ? 'fullscreenstart' : 'fullscreenend', {target: this}); }

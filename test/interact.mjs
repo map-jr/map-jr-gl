@@ -4449,7 +4449,7 @@ for (const mode of renderers) {
             marker.addTo(m);
             const fc = new mod.FullscreenControl(), nav = new mod.NavigationControl(), events = [];
             m.addControl(fc); m.addControl(nav); m.removeControl(nav);
-            fc.on('fullscreenstart', e => events.push('start:' + (e.target === fc))).on('fullscreenend', () => events.push('end'));
+            fc.on('fullscreenstart', e => events.push('start:' + (e.target === fc))); fc.on('fullscreenend', () => events.push('end'));
             const set = v => { Object.defineProperty(document, 'fullscreenElement', {configurable: true, get: () => v}); document.dispatchEvent(new Event('fullscreenchange')); };
             set(el); set(null); delete document.fullscreenElement;
             const p = mod.Point.convert([3, 4]);
@@ -4480,7 +4480,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer: 'main', locale, cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const nav = new mod.NavigationControl(), scale = new mod.ScaleControl(), fc = new mod.FullscreenControl(), events = [];
             m.addControl(nav); m.addControl(scale); m.addControl(fc);
-            fc.on('fullscreenstart', () => events.push('start')).on('fullscreenend', () => events.push('end'));
+            fc.on('fullscreenstart', () => events.push('start')); fc.on('fullscreenend', () => events.push('end'));
             await new Promise(res => m.once('load', res));
             await wait(100);
             const q = s => el.querySelector(s), fb = q('.maplibregl-ctrl-fullscreen');
@@ -4541,7 +4541,7 @@ for (const mode of renderers) {
             outer.requestFullscreen = function () { requested.push(this === outer ? 'outer' : 'other'); return Promise.resolve(); };
             el.requestFullscreen = () => { requested.push('map'); return Promise.resolve(); };
             const fc = new mod.FullscreenControl({container: outer}), events = [];
-            fc.on('fullscreenstart', () => events.push('start')).on('fullscreenend', () => events.push('end'));
+            fc.on('fullscreenstart', () => events.push('start')); fc.on('fullscreenend', () => events.push('end'));
             m.addControl(fc);
             const fb = el.querySelector('.map-jr-ctrl-fullscreen');
             fb.click();
@@ -5587,7 +5587,7 @@ for (const mode of renderers) {
         const faults = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
             let closes = 0;
-            const p = new mod.Popup().setLngLat([0, 0]).setText('Again').on('close', () => closes++).addTo(m);
+            const p = new mod.Popup().setLngLat([0, 0]).setText('Again'); p.on('close', () => closes++); p.addTo(m);
             await wait(300);
             p.remove(); p.remove(); p.addTo(m);
             await wait(500);
@@ -5617,7 +5617,7 @@ for (const mode of renderers) {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
             const key = el => { const e = new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}); el.dispatchEvent(e); return e.defaultPrevented; };
             let closes = 0;
-            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Escape').on('close', () => closes++)).addTo(m);
+            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Escape')).addTo(m); mk.getPopup().on('close', () => closes++);
             mk.getElement().focus();
             mk.getElement().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
             const p = mk.getPopup(), inPopup = p.getElement().contains(document.activeElement);
@@ -5673,7 +5673,7 @@ for (const mode of renderers) {
             const displayNone = on(none);
             el.style.display = '';
             let closes = 0;
-            const open = popup('Open').on('close', () => closes++), fading = popup('Fading').on('close', () => closes++);
+            const open = popup('Open'), fading = popup('Fading'); open.on('close', () => closes++); fading.on('close', () => closes++);
             const marker = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Of the marker')).addTo(m).togglePopup();
             await wait(300);
             fading.remove();
