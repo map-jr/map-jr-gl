@@ -65,6 +65,10 @@ export interface LabelSrc {
     x: number; y: number; text: string;
     /** `symbol-sort-key`, when the layer has one. */
     key?: number;
+    /** Set by the placement: how far the boxes of a point label can reach from its anchor. The first three are in units of
+     * the text size (across, down, and either way for turned text), the last in units of the icon size. A label whose
+     * anchor is further outside the view is not shaped again (see `placeLabels`). */
+    reach?: [number, number, number, number];
     /** Direction of the line at the anchor in tile space (radians), or null for point labels. */
     angle: number | null;
     /** Length of the line the label sits on, in tile units. */

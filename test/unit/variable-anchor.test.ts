@@ -65,7 +65,11 @@ const outside = (layout: Record<string, unknown>) => {
     const tr = new Transform();
     tr.width = 800; tr.height = 600;
     tr.set([lng - 520 / (512 * n) * 360, lat], z, 0, 0);
-    return placeLabels(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid(), () => icon)[0];
+    const run = () => placeLabels(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid(), () => icon)[0];
+    // (The second placement uses the reach that the first one kept with the label.)
+    const first = run(), second = run();
+    assert.deepEqual([second?.x, second?.y], [first?.x, first?.y]);
+    return second;
 };
 
 test('variable anchor: a label whose anchor is outside the view is placed at an anchor that brings its box into the view', () => {

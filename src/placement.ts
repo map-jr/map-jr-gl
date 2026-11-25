@@ -374,6 +374,12 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
     return out;
 }
 
+/** Whether a label `bx` and `by` pixels outside the grown view cannot reach into it (`reach`: see `LabelSrc`). */
+function farOut(reach: number[], bx: number, by: number, spun: boolean, size: number, iconScale: number): boolean {
+    const icon = reach[3] * iconScale;
+    return bx > (spun ? reach[2] : reach[0]) * size + icon || by > (spun ? reach[2] : reach[1]) * size + icon;
+}
+
 export function placeLabels(
     tr: Transform, items: RenderItem<{labels: Record<string, LabelSrc[]>; z?: number}>[], layers: CompiledLayer[], shaper: Shaper, grid: CollisionGrid,
     icons?: IconLookup,
@@ -414,6 +420,9 @@ export function placeLabels(
         // With `viewport-y`, and with `auto` when `symbol-sort-key` is the same for all features, symbols that may overlap
         // are drawn from the top of the screen down, so a lower symbol covers a higher one (the same order as the icons
         // that the tiles have in buffers: see `indexIcons` in `gl.ts`).
+        // (How far `text-translate` and `icon-translate` move the boxes of the layer, for the reach of a label below.)
+        const tt = L.p.translate.eval(tr.zoom), im = L.p.iconTranslate.eval(tr.zoom);
+        const moved = Math.max(Math.abs(tt[0]) + Math.abs(tt[1]), Math.abs(im[0]) + Math.abs(im[1]));
         const zOrder = L.p.zOrder.eval(tr.zoom);
         const placeByY = zOrder === 'viewport-y';
         const drawByY = (placeByY || zOrder === 'auto' && !L.p.sortKey.dd)
@@ -451,12 +460,32 @@ export function placeLabels(
                 // (Text that lies on the ground has its size on the ground: see `flatSize`.)
                 const size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * (flat ? flatSize(tr, depth) : persp), s = size / EM;
                 const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
+                // A point label outside the view grown by `margin` is tried only when its boxes can reach into it on each
+                // axis, by the text, the offset and the icon. That reach is known after the label was shaped once.
+                const bx = line ? 0 : Math.max(-margin - ax, ax - tr.width - margin) - moved;
+                const by = line ? 0 : Math.max(-margin - ay, ay - tr.height - margin) - moved;
+                const outside = bx > 0 || by > 0, spun = !!(l.rotate || !l.upright && north || flat);
+                const iconScale = outside && l.icon ? Math.max(l.icon.size, l.icon.size1) * persp : 0;
+                if (outside && l.reach && farOut(l.reach, bx, by, spun, size, iconScale)) continue;
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
                 if (shaped?.wait) continue; // its glyph file is on its way
                 let w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
                 const hasText = w > 0;
                 if (!hasText && !meta) continue;
+                if (outside) {
+                    let reach = l.reach;
+                    if (!reach) {
+                        let em = Math.abs(l.offset[0]) + Math.abs(l.offset[1]) + Math.max(0, l.radial) + 1;
+                        for (const o of l.varOffset ?? []) if (typeof o !== 'string') em = Math.max(em, Math.abs(o[0]) + Math.abs(o[1]) + 1);
+                        const ic = l.icon, p = 2 * l.padding;
+                        reach = [(w + p) / size + em, (h + p) / size + em, (w + h + p) / size + em,
+                            meta && ic ? (meta.width + meta.height) / meta.pixelRatio + Math.abs(ic.offset[0]) + Math.abs(ic.offset[1]) + ic.fitPad.reduce((a, b) => a + Math.abs(b), 0) : 0];
+                        // (Kept when the icon is known: an icon whose image is on its way counts when it has come.)
+                        if (!ic || meta) l.reach = reach;
+                    }
+                    if (farOut(reach, bx, by, spun, size, iconScale)) continue;
+                }
                 // Direction of the line on screen, found by projecting a second point a little way along it.
                 let lineAngle = 0;
                 if (line) { const [bx, by] = tr.projectTile(it.id, l.x + Math.cos(l.angle!) * 64, l.y + Math.sin(l.angle!) * 64); lineAngle = Math.atan2(by - ay, bx - ax); }
@@ -535,6 +564,8 @@ export function placeLabels(
                     if (mx || my) {
                         candidates = candidates.map(([dx, dy]) => [dx + mx, dy + my]);
                     }
+                    // (A label outside the view whose text cannot reach into it at any anchor ends here.)
+                    if (outside && !(meta && l.textOptional) && !candidates.some(([dx, dy]) => inView(boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding)))) continue;
                     // The same name often arrives from several tiles or road segments: keep them apart.
                     // The same label in a second layer (for example, to draw it twice for more weight) goes where the first is.
                     twin = line ? undefined : twins.get(twinKey = `${l.text}|${l.font}|${size}|${Math.round(ax)},${Math.round(ay)}`);
