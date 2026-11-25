@@ -50,7 +50,7 @@ export function featureKey(f: FoundFeature): string {
 }
 export interface QuerySet {
     layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number;
-    /** A circle layer: `circle-pitch-alignment` is `map`, and `circle-pitch-scale` is `map`. */
+    /** A circle layer: the first value is true when `circle-pitch-alignment` is `map`, the second when `circle-pitch-scale` is `map`. */
     pitch?: [boolean, boolean];
 }
 

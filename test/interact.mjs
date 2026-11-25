@@ -3721,6 +3721,33 @@ for (const mode of renderers) {
         check(`[${mode}] a tilted map: queryRenderedFeatures finds a circle at its drawn edge and not outside it, for both circle-pitch-alignment values (#670)`,
             ok(r.viewport) && ok(r.map) && r.map.ry < r.map.rx - 2, JSON.stringify(r));
     }
+    // #670: on a steep map a circle query with a box that reaches into the sky does not throw, does not return a circle
+    // behind the camera or beyond the horizon, and still returns the circle under the point.
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:500px;z-index:60'}));
+            const out = {};
+            try {
+                for (const align of ['viewport', 'map']) for (const pitch of [80, 85]) {
+                    const pt = (id, lat) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Point', coordinates: [0, lat]}});
+                    const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [pt(1, 0), pt(2, -0.5), pt(3, 30)]}}},
+                        layers: [{id: 'c', type: 'circle', source: 'p', paint: {'circle-radius': 20, 'circle-pitch-alignment': align}}]};
+                    const map = new mod.Map({container: el, style, center: [0, 0], zoom: 13, pitch, maxPitch: 85, renderer, attributionControl: false, fadeDuration: 0});
+                    try {
+                        await new Promise(r => map.once('idle', r));
+                        const ids = async q => { const now = q(); const f = await now; return [now.map(f => f.id).sort().join(), f.map(f => f.id).sort().join()]; };
+                        const p = map.project([0, 0]);
+                        out[align + pitch] = {sky: await ids(() => map.queryRenderedFeatures([[0, 0], [600, 40]], {layers: ['c']})),
+                            near: await ids(() => map.queryRenderedFeatures([p.x, p.y], {layers: ['c']}))};
+                    } catch (e) { out[align + pitch] = String(e); } finally { map.remove(); }
+                }
+            } finally { el.remove(); }
+            return out;
+        }, mode);
+        check(`[${mode}] a steep map: a circle query with a box in the sky returns no circle behind the camera or beyond the horizon, and finds the circle under the point (#670)`,
+            Object.keys(r).length === 4 && Object.values(r).every(o => o.sky?.join() === ',' && o.near?.join() === '1,1'), JSON.stringify(r));
+    }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
     if (mode === 'main') {
