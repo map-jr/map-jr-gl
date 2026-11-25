@@ -224,6 +224,17 @@ export class Map extends CoreMap {
     calculateCameraOptionsFromTo(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number) {
         altitudeTo ??= this.queryTerrainElevation(to) ?? 0;
         const [fl, fa] = toLngLat(from), [tl, ta] = toLngLat(to), tx = mercX(tl), ty = mercY(ta);
+        if (this.tr.globeness) {
+            // On a globe, as MapLibre GL JS: the camera and the target on a sphere of radius 1, the target at sea level, and
+            // the way from the target to the camera in the east, north and up of the target.
+            const R = EARTH_CIRCUMFERENCE / 2 / Math.PI, r = Math.PI / 180, v = (lng: number, lat: number, k: number) =>
+                [Math.sin(lng * r) * Math.cos(lat * r) * k, Math.sin(lat * r) * k, Math.cos(lng * r) * Math.cos(lat * r) * k];
+            const c = v(fl, fa, 1 + altitudeFrom / R), t = v(tl, ta, 1), w = c.map((x, i) => x - t[i]), d = Math.hypot(...w), sl = Math.sin(tl * r), cl = Math.cos(tl * r), sa = Math.sin(ta * r);
+            if (d < 1e-12 || Math.hypot(...c.map((x, i) => x - t[i] * (1 + altitudeTo! / R))) < 1e-12) throw new Error("Can't calculate camera options with same From and To");
+            const e = w[0] * cl - w[2] * sl, n = -sa * sl * w[0] + Math.cos(ta * r) * w[1] - sa * cl * w[2], u = w.reduce((s, x, i) => s + x * t[i], 0);
+            return {center: new LngLat(tl, ta), elevation: altitudeTo, zoom: Math.log2(this.tr.cameraDistance / d / (TILE_SIZE / 2 / Math.PI / Math.cos(Math.min(Math.abs(ta), 85.051129) * r))),
+                pitch: Math.acos(Math.max(-1, Math.min(1, u / d))) / r, bearing: Math.hypot(e, n) < d * 1e-9 ? this.tr.bearing : Math.atan2(-e, -n) / r};
+        }
         const dx = tx - mercX(fl), dy = ty - mercY(fa), dz = altitudeTo / mercMetres(ta) - altitudeFrom / mercMetres(fa), d = Math.hypot(dx, dy, dz);
         if (!d) throw new Error("Can't calculate camera options with same From and To");
         const pitch = Math.acos(Math.hypot(dx, dy) / d) * 180 / Math.PI;
@@ -250,8 +261,17 @@ export class Map extends CoreMap {
     calculateAnchoredCameraOptions(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) {
         const tr = Object.assign(Object.create(Object.getPrototypeOf(this.tr)), this.tr) as typeof this.tr, [lng, lat] = toLngLat(o.anchorLocation);
         const pt = o.anchorScreenPoint as {x: number; y: number} | [number, number], px = Array.isArray(pt) ? pt[0] : pt.x, py = Array.isArray(pt) ? pt[1] : pt.y;
-        tr.set(undefined, o.zoom);
-        tr.setLocationAt(lng, lat, px, py);
+        if (tr.globeness) {
+            // On a globe, as MapLibre GL JS: a zoom around the screen point, then a drag of the globe from where the place
+            // is on the screen of the map to the screen point.
+            const [ax, ay] = this.tr.project(lng, lat);
+            if (o.zoom !== undefined) { const [zl, za] = tr.unproject(px, py); tr.set(undefined, o.zoom); tr.setLocationAt(zl, za, px, py); }
+            tr.globe!.drag(tr, ax, ay, px, py);
+            tr.constrain();
+        } else {
+            tr.set(undefined, o.zoom);
+            tr.setLocationAt(lng, lat, px, py);
+        }
         return {center: new LngLat(tr.lng, tr.lat), zoom: tr.zoom};
     }
     declare private unclamped?: boolean;

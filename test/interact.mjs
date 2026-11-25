@@ -5069,6 +5069,31 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and calculateAnchoredCameraOptions agree with MapLibre to 1e-9 (#1018)',
             m1018.ml.length === m1018.compat.length && m1018.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1018.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1018.compat[i]), JSON.stringify(m1018));
+        // #1744: on a globe (zoom 2 and 5), the same three methods give the results of MapLibre GL JS, which follows the
+        // sphere for calculateCameraOptionsFromTo and calculateAnchoredCameraOptions.
+        const m1744 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async (lib, zoom) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, projection: {type: 'globe'}, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const out = [], put = c => out.push(c.center.lng, c.center.lat, c.zoom, c.elevation ?? null, c.pitch ?? null, c.bearing ?? null);
+                put(m.calculateCameraOptionsFromTo([1, 0], 1000, [1, 1], 0));
+                put(m.calculateCameraOptionsFromTo([10, 45], 5e5, [12, 47], 200));
+                put(m.calculateCameraOptionsFromTo([-30, 60], 3e6, [-30, 50]));
+                try { m.calculateCameraOptionsFromTo([5, 5], 10, [5, 5], 10); out.push('no error'); } catch { out.push('error'); }
+                put(m.calculateCameraOptionsFromCameraLngLatAltRotation([10, 45], 5e5, 20, 40));
+                put(m.calculateAnchoredCameraOptions({anchorLocation: [11, 46], anchorScreenPoint: [50, 60]}));
+                put(m.calculateAnchoredCameraOptions({anchorLocation: [30, 30], anchorScreenPoint: [200, 100], zoom: zoom + 1}));
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: [...await run(ml, 2), ...await run(ml, 5)], compat: [...await run(compat, 2), ...await run(compat, 5)]};
+        });
+        check('[main] maplibre-compat: the three calculate…CameraOptions methods agree with MapLibre on a globe to 1e-9 (#1744)',
+            m1744.ml.length === m1744.compat.length && m1744.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1744.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1744.compat[i]), JSON.stringify(m1744));
         // #1020: setTransformConstrain and the option transformConstrain limit the camera as in MapLibre GL JS (served at /ml/).
         const m1020 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
