@@ -56,3 +56,27 @@ test('variable anchor: with icon-text-fit, an anchor where the fitted icon overl
     assert.equal(p.anchor, 'right');
     assert.ok(p.icon!.x - p.icon!.w / 2 < p.x && p.x < p.ax);
 });
+
+// As in MapLibre GL JS, a label is placed when its box reaches into the view grown by 100 pixels, also when its anchor is
+// further out (#1047). The point is 120 pixels right of the view here, 20 pixels past that border.
+const outside = (layout: Record<string, unknown>) => {
+    const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout: {'text-field': 'A longer name', ...layout}})!;
+    const labels = buildTile(data, z, [layer], false).labels;
+    const tr = new Transform();
+    tr.width = 800; tr.height = 600;
+    tr.set([lng - 520 / (512 * n) * 360, lat], z, 0, 0);
+    return placeLabels(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid(), () => icon)[0];
+};
+
+test('variable anchor: a label whose anchor is outside the view is placed at an anchor that brings its box into the view', () => {
+    const p = outside({'text-variable-anchor': ['left', 'right']});
+    assert.ok(p, 'the label is placed');
+    assert.ok(p.ax > 900, `the anchor is at x ${p.ax}`);
+    assert.equal(p.anchor, 'right');
+    assert.ok(p.x < p.ax);
+});
+
+test('a box that does not reach into the view grown by 100 pixels is not placed', () => {
+    assert.equal(outside({'text-variable-anchor': ['left']}), undefined);
+    assert.equal(outside({'text-anchor': 'left'}), undefined);
+});

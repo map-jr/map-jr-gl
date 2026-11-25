@@ -148,6 +148,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** Changes gradually, tile by tile.
 - **This library:** The library decides about four times each second. Labels fade between decisions.
 
+### Labels outside the view
+
+- **MapLibre GL JS:** A label is placed when its box reaches into the view grown by 100 pixels on each side, wherever its anchor is.
+- **This library:** The same rule applies, but a label on a point whose anchor is more than 300 pixels outside the view is not placed, even when a large `text-offset` or `icon-offset` would bring its box into the view. A label along a line is placed only when its anchor is at most 100 pixels outside the view.
+
 ### Feature queries
 
 - **MapLibre GL JS:** `queryRenderedFeatures` and `querySourceFeatures` return their result synchronously.

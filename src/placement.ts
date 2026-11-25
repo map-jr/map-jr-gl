@@ -386,7 +386,11 @@ export function placeLabels(
     let itemNo = 0;
     const cover = new Map<number, TileID[]>(), keys = new Map<string, number>();
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
-    const margin = 100;
+    // As in MapLibre GL JS, a box is placed when it reaches into the view grown by `margin` on each side, wherever its
+    // anchor is: a label just outside the view can take space with a variable anchor (#1047). A point label whose anchor
+    // is more than `reach` further out is not tried, which leaves out only a box that is very far from its anchor.
+    const margin = 100, reach = 200;
+    const inView = (b: Box) => b[2] >= -margin && b[0] < tr.width + margin && b[3] >= -margin && b[1] < tr.height + margin;
     const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
@@ -431,7 +435,8 @@ export function placeLabels(
             for (const l of labels) {
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
                 const [ax, ay, depth] = tr.projectTile(it.id, l.x, l.y);
-                if (ax < -margin || ay < -margin || ax > tr.width + margin || ay > tr.height + margin) continue;
+                const cull = l.angle !== null ? margin : margin + reach;
+                if (ax < -cull || ay < -cull || ax > tr.width + cull || ay > tr.height + cull) continue;
                 // On the globe, a label behind the horizon is not placed, also when it may overlap (as in MapLibre GL JS).
                 if (tr.globeness) { const n = 2 ** it.id.z; if (tr.globe!.hidden(tr, (it.id.x + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
                 if (tr.heightAt) { const n = 2 ** it.id.z; if (tr.occluded((it.id.x + it.id.w * n + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
@@ -592,7 +597,7 @@ export function placeLabels(
                     for (const k of tries) {
                         const i = k % candidates.length, overlap = k >= candidates.length;
                         const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
-                        if (!overlap && grid.hits(...box)) continue;
+                        if (!inView(box) || !overlap && grid.hits(...box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);
                             if (grid.hits(...boxAround(f.ix, f.iy, f.iw, f.ih, (ic.upright ? 0 : north) + ic.rotate * Math.PI / 180, ic.padding))) continue;
@@ -623,7 +628,7 @@ export function placeLabels(
                         angle = Math.atan2(iframe[1], iframe[0]); bw = iw * Math.hypot(iframe[0], iframe[1]); bh = ih * Math.hypot(iframe[2], iframe[3]);
                     }
                     const box = boxAround(bx, by, bw, bh, angle, ic.padding);
-                    if (ic.overlap || !grid.hits(...box)) {
+                    if (inView(box) && (ic.overlap || !grid.hits(...box))) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
