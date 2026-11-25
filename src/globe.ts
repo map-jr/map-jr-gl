@@ -235,9 +235,9 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
 /**
  * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when all its
  * sample points are behind the horizon (with the bulge of a large tile), or outside the view, or when a hull around it
- * is outside one edge of the view, as MapLibre GL JS 6.17 culls a volume around the tile (#1922). The level that a tile
- * gets falls with the distance from the camera to its nearest sample point, as with 3D terrain (geo.ts); below zoom 5 it
- * is usually one level lower than MapLibre GL JS's, on purpose (#1828).
+ * is more than 60 pixels outside one edge of the view, as MapLibre GL JS 6.17 culls a volume around the tile (#1922).
+ * The level that a tile gets falls with the distance from the camera to its nearest sample point, as with 3D terrain
+ * (geo.ts); below zoom 5 it is usually one level lower than MapLibre GL JS's, on purpose (#1828).
  */
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];
