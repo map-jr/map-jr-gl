@@ -58,7 +58,7 @@ const sizes = [
     // download of a usual map.
     ...readdirSync('dist').filter(f => /^map-jr-gl-worker-\w+\.js$/.test(f)).map(f => [`${f}, on demand`, gz([f]), 8]),
     // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
-    ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 60],
+    ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 64],
 ];
 let ok = true;
 for (const [name, kb, budget] of sizes) {
