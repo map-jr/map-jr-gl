@@ -4287,7 +4287,9 @@ for (const mode of renderers) {
             m.addControl(gc);
             await new Promise(r => m.once('load', r));
             const b = el.querySelector('button.maplibregl-ctrl-geolocate');
-            for (let i = 0; i < 100 && !ok; i++) { if (!b.disabled && b.getAttribute('aria-pressed') !== 'true') b.click(); await new Promise(r => setTimeout(r, 20)); }
+            // One click: the tracking code loads on demand, and a second click before it has loaded turns tracking off again.
+            b.click();
+            for (let i = 0; i < 100 && !ok; i++) await new Promise(r => setTimeout(r, 20));
             ok?.({coords: {longitude: 3, latitude: 50, accuracy: 500}, timestamp: 1});
             const size = async z => {
                 m.jumpTo({center: [3, 50], zoom: z});
