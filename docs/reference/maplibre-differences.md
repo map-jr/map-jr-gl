@@ -625,7 +625,6 @@ These types differ from MapLibre GL JS:
 | `LogoControlOptions` | `compact` has no effect and writes one warning, because this library has no logo. This is a decision and will stay. |
 | `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |
 | `Listener` | Its type parameter is the type of the event, and the default is `MapLibreEvent`. |
-| `Subscription` | No method returns it: `map.on` returns the map. Remove a listener with `map.off(type, listener)`. |
 | `FullscreenControlEventType`, `GeolocateControlEventType`, `PopupEventType`, `EventTypeMap` | An event is a plain object with `type` and `target`, and not an instance of the class `Event`. The event of `geolocate` has `coords` and `timestamp`, and the event of `error` has `code` and `message`. |
 | `DragPanOptions`, `DragRotateOptions`, `AroundCenterOptions` | They have no effect and warn once: `enable(options)` of a handler turns it on, and an object as the option `dragPan` or `dragRotate` of `new Map()` counts as `true`. |
 | `UpdateImageOptions` | It has `url` and `coordinates`, and no `image`. |

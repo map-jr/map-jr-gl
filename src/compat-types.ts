@@ -274,10 +274,7 @@ export type Offset = PopupOffset;
 
 /** A listener of `on`, `once` and `off`. */
 export type Listener<E = MapLibreEvent> = (event: E) => any;
-/**
- * What `map.on` returns in MapLibre GL JS. In this library `map.on` returns the map, so no method returns a
- * `Subscription`: remove a listener with `map.off(type, listener)`.
- */
+/** What `map.on` returns, as in MapLibre GL JS: `unsubscribe()` removes the listener that `on` added. */
 export interface Subscription { unsubscribe(): void }
 /** The events of one object by name, as the type parameter of `Evented` in MapLibre GL JS. */
 export type EventTypeMap = Record<string, {type: string; target?: unknown}>;

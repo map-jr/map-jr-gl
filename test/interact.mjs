@@ -1852,6 +1852,23 @@ for (const mode of renderers) {
         check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
             Object.entries(r).every(([k, n]) => n === (k === 'validate' || k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
     }
+    // #675: `on` of maplibre-compat returns a Subscription whose `unsubscribe()` removes the listener, as in MapLibre GL JS
+    // 6.17; `once` with a listener returns the map, also with a layer id.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const m = new mod.Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const heard = [], s = m.on('ping', () => heard.push('on')), layer = m.on('click', 'water', () => {});
+            const out = {notMap: s !== m, keys: Object.keys(s), layerKeys: Object.keys(layer), once: m.once('ping', () => heard.push('once')) === m, onceLayer: m.once('click', 'water', () => {}) === m};
+            m.fire('ping', {}); s.unsubscribe(); layer.unsubscribe(); m.fire('ping', {});
+            out.heard = heard;
+            m.remove(); el.remove();
+            return out;
+        });
+        check('maplibre-compat: on returns a Subscription (with and without a layer id) whose unsubscribe() removes the listener, and once with a listener returns the map (#675)',
+            r.notMap && String(r.keys) === 'unsubscribe' && String(r.layerKeys) === 'unsubscribe' && r.once && r.onceLayer && String(r.heard) === 'on,once', JSON.stringify(r));
+    }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
         const r = await page.evaluate(async () => {

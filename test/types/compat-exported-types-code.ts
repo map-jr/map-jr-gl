@@ -37,8 +37,17 @@ const popup = new Popup({anchor, offset}).setOffset(12);
 // Listeners and the events of each object.
 const onClick: Listener<MapMouseEvent> = e => e.lngLat.lng;
 const onLoad: Listener = e => e.target.getZoom();
+// `on` returns a `Subscription`, as in MapLibre GL JS (#675), with and without a layer id; it does not return the map.
+const subscription: Subscription = map.on('click', onClick);
+subscription.unsubscribe();
+map.on('click', 'water', e => e.features).unsubscribe();
+map.on('load', onLoad);
+// @ts-expect-error `on` cannot be chained: it returns a `Subscription`.
 map.on('click', onClick).on('load', onLoad);
-const subscription: Subscription = {unsubscribe: () => { map.off('click', onClick); }};
+// `once` with a listener returns the map, and without one a promise, as in MapLibre GL JS.
+map.once('click', onClick).once('load', onLoad);
+map.once('click', 'water', onClick).getZoom();
+const loaded: Promise<unknown> = map.once('load');
 const events: EventTypeMap = {load: {type: 'load', target: map}};
 const onError = (e: ErrorEventType['error']) => e.error.message;
 const onDrag = (e: MarkerEventType['dragend']) => e.target.getLngLat();
@@ -85,4 +94,4 @@ addProtocol('custom', protocol);
 const layer: CustomLayerInterface = {id: 'custom', type: 'custom', render(_gl, input) { const data: CustomLayerProjectionData = input.defaultProjectionData, same: ProjectionData = data; void same; }};
 map.addLayer(layer);
 
-export {logo, subscription, events, gestures, cluster, clusters, canvas, stored, styleOptions, kind};
+export {logo, subscription, loaded, events, gestures, cluster, clusters, canvas, stored, styleOptions, kind};
