@@ -174,8 +174,9 @@ jobs:
           if [ "$WANTED" != true ] && [ "$PARTS" = skipped ]; then exit 0; fi
           if [ "$PARTS" != success ]; then echo "::error::a browser job did not succeed ($PARTS)"; exit 1; fi
 
-  # MapLibre's own render tests, against a floor (see "test:render" in package.json). A change that makes fewer
-  # tests match fails here.
+  # MapLibre's own render tests, against test/conformance/render-tests.json (#1915). A test that is worse than its line
+  # fails here, and so does a run with fewer matches than the file has lines "match". A test that is better than its
+  # line is printed as BETTER:, so that the author commits its line.
   render:
     needs: changes
     if: needs.changes.outputs.render == 'true'
@@ -204,8 +205,8 @@ jobs:
           path: .cache/mvt-fixtures-*
           key: mvt-fixtures-${{ hashFiles('test/conformance/mvt-fixtures.mjs') }}
       - run: node build.mjs
-      # (`shell: bash` sets pipefail, so a result below the floor fails the step and not only `tee`; #1481.)
+      # (`shell: bash` sets pipefail, so a failing run fails the step and not only `tee`; #1481.)
       - run: pnpm test:render | tee render.txt
         shell: bash
-      - run: head -2 render.txt >> "$GITHUB_STEP_SUMMARY"
+      - run: (head -2 render.txt; grep -E '^(WORSE|BETTER|FAIL):' render.txt || true) >> "$GITHUB_STEP_SUMMARY"
         if: always()

@@ -1,7 +1,7 @@
 // Writes the current test and MapLibre coverage figures into the README, between the status markers, and the same
 // figures to docs/status.json, which the docs site can read. The package does not publish that file ("files" of
 // package.json lists docs/*.md only).
-// Run with: pnpm status   (run `pnpm build` first; `pnpm test:render` writes the totals of the render tests)
+// Run with: pnpm status   (run `pnpm build` first; `pnpm test:render` writes the status of each render test)
 import {execSync} from 'node:child_process';
 import {existsSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {gzipSync} from 'node:zlib';
@@ -16,8 +16,8 @@ const unit = run('node --experimental-transform-types --no-warnings --test test/
 const expr = run('node test/conformance/expressions.mjs');
 const api = run('node test/conformance/api.mjs --write');
 const spec = run('node test/conformance/spec.mjs');
-// The totals per decision follow from the status of each test and the labels, so they are computed here (#1861).
-const render = existsSync(root + 'test/conformance/render-result.json') ? {...JSON.parse(readFileSync(root + 'test/conformance/render-result.json', 'utf8')), ...trackedSummary(new URL('../test/conformance/', import.meta.url)).totals} : null;
+// The totals follow from the status of each test and the labels, so they are computed here and not committed (#1861, #1915).
+const render = existsSync(root + 'test/conformance/render-tests.json') ? trackedSummary(new URL('../test/conformance/', import.meta.url)).totals : null;
 // The sizes are the bytes that `pnpm test:size` prints (scripts/size-check.mjs), which has the hard line.
 const bytes = (dir, files) => [...files].reduce((n, f) => n + gzipSync(readFileSync(root + dir + f)).length, 0);
 // A page script is the file of the entry and the files that it imports when it loads (not the ones that it imports on demand).

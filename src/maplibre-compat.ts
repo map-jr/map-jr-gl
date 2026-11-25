@@ -178,6 +178,61 @@ export const config = {
     get WORKER_URL() { return workerUrl; },
     set WORKER_URL(url: string) { setWorkerUrl(url); },
 };
+import type * as T from './compat-types.ts';
+/**
+ * A name that exists for `instanceof` only: `x instanceof Name` is true when `x.type` is `type`, as for the object
+ * of `map.getSource(id)`. The class cannot make a source.
+ */
+const named = <V>(type: string) => class { static [Symbol.hasInstance](x: any) { return x?.type === type; } } as unknown as abstract new () => V;
+export type GeoJSONSource = T.GeoJSONSource;
+export type VectorTileSource = T.VectorTileSource;
+export type RasterTileSource = T.RasterTileSource;
+export type RasterDEMTileSource = T.RasterDEMTileSource;
+export type ImageSource = T.ImageSource;
+export type VideoSource = T.VideoSource;
+export type CanvasSource = T.CanvasSource;
+/** `map.getSource(id) instanceof GeoJSONSource` is true for a source of type `geojson`, and likewise for the other names. */
+export const GeoJSONSource = named<GeoJSONSource>('geojson');
+export const VectorTileSource = named<VectorTileSource>('vector');
+export const RasterTileSource = named<RasterTileSource>('raster');
+export const RasterDEMTileSource = named<RasterDEMTileSource>('raster-dem');
+export const ImageSource = named<ImageSource>('image');
+export const VideoSource = named<VideoSource>('video');
+export const CanvasSource = named<CanvasSource>('canvas');
+export type Event = T.Event;
+/**
+ * `new Event(type, data)` makes an event to pass to `fire`, as in MapLibre GL JS: an object with the members of
+ * `data` and `type`. The events that the map fires are plain objects, not instances of this class.
+ */
+export const Event = class { constructor(type: string, data: object = {}) { Object.assign(this, data, {type}); } } as unknown as new (type: string, data?: object) => Event;
+/**
+ * The event of `GeolocateControl` for `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and
+ * `userlocationlostfocus`. `new GeolocateEvent(type)` makes one to pass to `fire`, and `e instanceof GeolocateEvent` is
+ * true for an event of one of these four types, also for the plain objects that the control fires.
+ */
+export class GeolocateEvent extends Event {
+    static [Symbol.hasInstance](x: any) { return /^(trackuserlocation(start|end)|userlocation(lost)?focus)$/.test(x?.type); }
+}
+/**
+ * The error class of MapLibre GL JS for a failed request, for `new` and `instanceof`. The requests of this library
+ * fail with an `Error`, not with an `AJAXError`.
+ */
+export class AJAXError extends Error {
+    declare status: number; declare statusText: string; declare url: string; declare body: Blob;
+    constructor(status: number, statusText: string, url: string, body: Blob) {
+        super(`AJAXError: ${statusText} (${status}): ${url}`);
+        Object.assign(this, {status, statusText, url, body});
+    }
+}
+/** Padding in pixels on each side, as the class of MapLibre GL JS, with its fields only: wrappers re-export it and call no method. */
+export class EdgeInsets {
+    declare top: number; declare bottom: number; declare left: number; declare right: number;
+    constructor(top = 0, bottom = 0, left = 0, right = 0) { Object.assign(this, {top, bottom, left, right}); }
+}
+/** MapLibre GL JS starts its workers ahead of the first map. This library starts them with the first map, so this does nothing. */
+export const prewarm = () => {};
+/** Does nothing, as `prewarm` does nothing. */
+export const clearPrewarmedResources = () => {};
 /** The size of a tile in tile units, as in MapLibre GL JS. */
 export const EXTENT = 8192;
 /**
@@ -221,6 +276,8 @@ import {GPUInitializationError} from './gpu-error.ts';
 export default {
     GPUInitializationError,
     Map, MapLibreMap: Map, Point, MercatorCoordinate, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set, Hash, config, Evented, EXTENT,
+    GeoJSONSource, VectorTileSource, RasterTileSource, RasterDEMTileSource, ImageSource, VideoSource, CanvasSource, Event,
+    GeolocateEvent, AJAXError, EdgeInsets, prewarm, clearPrewarmedResources,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };
