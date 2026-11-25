@@ -711,7 +711,10 @@ export interface MapInstance {
      */
     project(lngLat: Position): {x: number; y: number};
     /**
-     * Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position.
+     * Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. The position is
+     * where the line of sight through the point meets the ground (with 3D terrain, the nearest ground). Above the
+     * horizon, the line of sight meets the plane of the map center behind the camera, and the result is that point, as
+     * in MapLibre GL JS.
      * @param point The point, `{x, y}`.
      * @returns The position as `[lng, lat]`.
      */

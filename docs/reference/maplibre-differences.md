@@ -473,6 +473,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** Up to 180. Above 90 the camera looks up and is placed with `setCenterElevation`.
 - **This library:** Up to 180; a higher value writes one warning and gives 180, where MapLibre GL JS throws an error. Above 90 the camera looks up, and `setCenterElevation` (after `setCenterClampedToGround(false)`) places it as in MapLibre GL JS. Above the horizon the map draws the `sky` of the style, or nothing when the style has none.
 
+### `unproject`
+
+- **MapLibre GL JS:** A point of the screen gives the position where its line of sight meets the plane of the map center, or with 3D terrain the first ground along it. Above the horizon that position is behind the camera.
+- **This library:** The same in Mercator, at every pitch (the positions agree within 0.0001° at pitch 60, 70, 85 and 100 above, at and below the horizon). With 3D terrain, a point below the horizon gives the nearest ground along the line of sight, which can differ from MapLibre GL JS near the horizon. `getBounds` takes the top corners of the screen at the horizon when the horizon is in view, as MapLibre GL JS does.
+
 ### The root property `sky`, `setSky`, `getSky`
 
 - MapLibre GL JS draws a gradient above the horizon, fog on 3D terrain, and the atmosphere around the globe. The values can change with a transition.

@@ -302,8 +302,12 @@ export class Transform {
         return [flat[0], flat[1]];
     }
 
-    /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map center). */
-    screenToMerc(px: number, py: number, z = this.flatZ): [number, number] {
+    /**
+     * Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map center).
+     * With `exact`, the point is where the view ray meets that plane, as in MapLibre GL JS: above the horizon it is
+     * behind the camera. Without it, the point is kept on the ground in view (see below), for the tile cover and the bounds.
+     */
+    screenToMerc(px: number, py: number, z = this.flatZ, exact = false): [number, number] {
         if (this.globeness) return this.globe!.toMerc(this, px, py, this.elevation + z / this.pixelsPerMetre);
         z = this.apart(z);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
@@ -311,8 +315,8 @@ export class Transform {
         // Invert the perspective for a point on that plane. Above the horizon there is no ground: a point there is taken
         // on the horizon, and the floor keeps planes above the map center (with 3D terrain) below their own horizon.
         // A camera below the plane sees it above the line of `underside`, and a point below that line is taken on it.
-        const sy = under !== null ? Math.min(py - this.cy, under) : Math.max(py - this.cy, -this.horizon());
-        const denom = under !== null ? Math.min(cp * d + sy * sp, -floor) : Math.max(cp * d + sy * sp, floor);
+        const sy = exact ? py - this.cy : under !== null ? Math.min(py - this.cy, under) : Math.max(py - this.cy, -this.horizon());
+        const denom = exact ? cp * d + sy * sp || 1e-9 : under !== null ? Math.min(cp * d + sy * sp, -floor) : Math.max(cp * d + sy * sp, floor);
         const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
     }
@@ -427,9 +431,15 @@ export class Transform {
         return this.mercToScreen(mx, mercY(lat));
     }
 
-    unproject(px: number, py: number): [number, number] {
-        const [mx, my] = this.screenToGround(px, py);
-        return [lngFromMerc(mx), latFromMerc(clamp(my, 0, 1))];
+    /**
+     * Screen pixels to a position. With `exact` (the public `unproject`), a point on flat ground, or above the ground
+     * in view with 3D terrain, is where the view ray meets the plane of the map center, as in MapLibre GL JS: above the
+     * horizon it is behind the camera. Without it, the point is kept on the ground in view.
+     */
+    unproject(px: number, py: number, exact = false): [number, number] {
+        const flat = exact && !this.globeness && (!this.heightAt || (this.pitch <= 90 && py - this.cy < -this.horizon()));
+        const [mx, my] = flat ? this.screenToMerc(px, py, this.flatZ, true) : this.screenToGround(px, py);
+        return [lngFromMerc(mx), latFromMerc(flat ? my : clamp(my, 0, 1))];
     }
 
     /**

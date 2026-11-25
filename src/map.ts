@@ -1082,7 +1082,7 @@ export class Map {
     /** Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. */
     unproject(point: {x: number; y: number} | [number, number]) {
         const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
-        const [lng, lat] = this.tr.unproject(x, y);
+        const [lng, lat] = this.tr.unproject(x, y, true);
         return new LngLat(lng, lat);
     }
     /** Only in this library: whether the far side of the globe hides a position from the camera. It is always `false` for Mercator. */
