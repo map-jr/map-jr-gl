@@ -36,11 +36,18 @@ export interface Batch {
     stroke?: Uint8Array;
     /**
      * Circles: `circle-stroke-width` and `circle-blur` for each feature, present only when one of them is data-driven (0 for
-     * the one that is not). Heatmaps: `heatmap-radius` and 0 for each feature, present only when it is data-driven.
+     * the one that is not). Heatmaps: `heatmap-radius` at the zoom of the tile and at the next, present only when it is data-driven.
      */
     sb?: Float32Array;
     /** `line-gap-width` for each feature (pixels), present only when it is data-driven. */
     gap?: Float32Array;
+    /**
+     * How much the properties that depend on the zoom and the feature change from the zoom of the tile to the next, for
+     * each feature, present when one of them changes: `line-offset`, `line-blur` and `line-gap-width` for a line;
+     * `circle-stroke-width`, `circle-blur` and the 4 channels of `stroke` (0 to 1) for a circle. The shader adds
+     * `u_zt` times this, as `width1` does for `line-width`.
+     */
+    next?: Float32Array;
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
     cap?: string;
@@ -134,8 +141,8 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
-    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array; /** `line-gap-width` for each vertex, present only when it is data-driven. */ gap?: Float32Array}
-    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke` and `Batch.sb`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array});
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array; /** `line-gap-width` for each vertex, present only when it is data-driven. */ gap?: Float32Array; /** See `Batch.next`, for each vertex. */ next?: Float32Array}
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb` and `Batch.next`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; next?: Float32Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -341,7 +348,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const ddColor = p.color.dd || p.opacity.dd;
             const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [], gap: number[] = [], stroke: number[] = [], sb: number[] = [];
             const circle = L.type === 'circle', ddStroke = circle && (p.strokeColor.dd || p.strokeOpacity.dd), ddSb = circle ? p.strokeWidth.dd || p.blur.dd : heat && p.radius.dd;
-            let grows = false;
+            // Properties that depend on the zoom and the feature: their change to the next zoom, for each feature (see `Batch.next`).
+            const nextProps = L.type === 'line' ? [p.offset, p.blur, p.gap] : circle ? [p.strokeColor, p.strokeOpacity, p.strokeWidth, p.blur] : [], next: number[] = [], stroke1: number[] = [];
+            const moving = z1 > zs && nextProps.some(q => q.dd && q.zoom);
+            const dz = (q: Prop, now: number, lo = -Infinity) => { const d = q.dd && q.zoom ? Math.max(lo, q.eval(z1, ctx.f)) - now : 0; if (d) moves = true; return d; };
+            let grows = false, moves = false;
             const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
             const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
             for (const f of fs) {
@@ -369,15 +380,27 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 featEnds.push(ringEnds.length);
                 if (ddColor) pushColor(color, p.color.dd ? p.color.eval(zs, f) : WHITE, p.opacity.dd ? p.opacity.eval(zs, f) : 1);
                 if (scalarProp?.dd) {
-                    const now = scalarProp.eval(zs, f), next = heat ? now : scalarProp.eval(z1, f);
-                    scalar.push(now); scalar1.push(next);
-                    if (next !== now) grows = true;
+                    const now = scalarProp.eval(zs, f), then = scalarProp.eval(z1, f);
+                    scalar.push(now); scalar1.push(then);
+                    if (then !== now) grows = true;
                 }
-                if (L.type === 'line' && p.offset.dd) offset.push(p.offset.eval(zs, f));
-                if (L.type === 'line' && p.blur.dd) blur.push(Math.max(0, p.blur.eval(zs, f)));
-                if (L.type === 'line' && p.gap.dd) gap.push(Math.max(0, p.gap.eval(zs, f)));
+                if (L.type === 'line') {
+                    const o = p.offset.dd ? p.offset.eval(zs, f) : 0, bl = p.blur.dd ? Math.max(0, p.blur.eval(zs, f)) : 0, g = p.gap.dd ? Math.max(0, p.gap.eval(zs, f)) : 0;
+                    if (p.offset.dd) offset.push(o);
+                    if (p.blur.dd) blur.push(bl);
+                    if (p.gap.dd) gap.push(g);
+                    if (moving) next.push(dz(p.offset, o), dz(p.blur, bl, 0), dz(p.gap, g, 0));
+                }
                 if (ddStroke) pushColor(stroke, p.strokeColor.dd ? p.strokeColor.eval(zs, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(zs, f) : 1);
-                if (ddSb) sb.push(heat ? p.radius.eval(zs, f) : p.strokeWidth.dd ? p.strokeWidth.eval(zs, f) : 0, !heat && p.blur.dd ? p.blur.eval(zs, f) : 0);
+                // (A heatmap has `heatmap-radius` at the tile's zoom and at the next.)
+                const sw = circle && p.strokeWidth.dd ? p.strokeWidth.eval(zs, f) : 0, cb = circle && p.blur.dd ? p.blur.eval(zs, f) : 0;
+                if (ddSb) sb.push(heat ? p.radius.eval(zs, f) : sw, heat ? p.radius.eval(z1, f) : cb);
+                if (circle && moving) {
+                    next.push(dz(p.strokeWidth, sw), dz(p.blur, cb));
+                    pushColor(stroke1, p.strokeColor.dd ? p.strokeColor.eval(z1, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(z1, f) : 1);
+                    for (let i = 0; i < 4; i++) { const d = ddStroke ? (stroke1[i] - stroke[stroke.length - 4 + i]) / 255 : 0; if (d) moves = true; next.push(d); }
+                    stroke1.length = 0;
+                }
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
                 if (extrude) heights.push(Math.max(0, p.height.eval(zs, f))), bases.push(Math.max(0, p.base.eval(zs, f)));
@@ -396,6 +419,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (gap.length) batch.gap = Float32Array.from(gap);
             if (ddStroke) batch.stroke = Uint8Array.from(stroke);
             if (ddSb) batch.sb = Float32Array.from(sb);
+            if (moves) batch.next = Float32Array.from(next);
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
             if (L.type === 'line') { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
@@ -523,7 +547,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
         const grid = !!globe?.heat && b.heat, g = grid ? 4 : 2, v = g * g, e = grid ? [-7, -3, 3, 7] : [-1, 1];
         const n = ringEnds.length, pos = new Int16Array(n * v * 4), idx = new Uint32Array(n * (g - 1) ** 2 * 6);
         const color = b.color ? new Uint8Array(n * v * 4) : undefined, radius = b.radius ? new Float32Array(n * v) : undefined, radius1 = b.radius1 ? new Float32Array(n * v) : undefined;
-        const stroke = b.stroke ? new Uint8Array(n * v * 4) : undefined, sb = b.sb ? new Float32Array(n * v * 2) : undefined;
+        const stroke = b.stroke ? new Uint8Array(n * v * 4) : undefined, sb = b.sb ? new Float32Array(n * v * 2) : undefined, next = b.next ? new Float32Array(n * v * 6) : undefined;
         for (let f = 0, r = 0; f < featEnds.length; f++) {
             for (; r < featEnds[f]; r++) {
                 const i = ringEnds[r] - 1, o = r * v;
@@ -534,12 +558,13 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
                     if (radius1) radius1[o + k] = b.radius1![f];
                     if (stroke) stroke.set(b.stroke!.subarray(f * 4, f * 4 + 4), (o + k) * 4);
                     if (sb) sb.set(b.sb!.subarray(f * 2, f * 2 + 2), (o + k) * 2);
+                    if (next) next.set(b.next!.subarray(f * 6, f * 6 + 6), (o + k) * 6);
                 }
                 if (!grid) idx.set([o, o + 1, o + 2, o + 1, o + 3, o + 2], r * 6);
                 else for (let c = 0; c < 9; c++) { const q = o + (c / 3 | 0) * 4 + c % 3; idx.set([q, q + 5, q + 1, q, q + 4, q + 5], (r * 9 + c) * 6); }
             }
         }
-        return {type: 'circle', pos, idx, color, radius, radius1, stroke, sb, ...grid && {grid}};
+        return {type: 'circle', pos, idx, color, radius, radius1, stroke, sb, next, ...grid && {grid}};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
@@ -726,7 +751,7 @@ const COS_SHARP = Math.cos(75 / 2 * Math.PI / 180);
 
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
-    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [], gaps: number[] = [];
+    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [], gaps: number[] = [], next: number[] = [];
     const round = b.join === 'round';
     // As in MapLibre GL JS: a corner whose miter is longer than the limit (1 / cos of half the turn, in line widths)
     // gets a bevel or a round join; a bevel join keeps sharp the corners whose miter is shorter than 1.05.
@@ -748,6 +773,7 @@ function tessellateLine(b: Batch): GLBatch | null {
         if (b.offset) offsets.push(b.offset[f]);
         if (b.blur) blurs.push(b.blur[f]);
         if (b.gap) gaps.push(b.gap[f]);
+        if (b.next) next.push(b.next[f * 3], b.next[f * 3 + 1], b.next[f * 3 + 2]);
         return count++;
     };
     /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
@@ -842,6 +868,7 @@ function tessellateLine(b: Batch): GLBatch | null {
     if (b.width1) out.width1 = Float32Array.from(width1);
     if (b.blur) out.blur = Float32Array.from(blurs);
     if (b.gap) out.gap = Float32Array.from(gaps);
+    if (b.next) out.next = Float32Array.from(next);
     return out;
 }
 

@@ -124,15 +124,15 @@ vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.z
 const BUILTIN = {
     // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
     heat: [`${VS_COMMON}
-layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight; layout(location=6) in float a_radius;
-uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale; uniform float u_corner;
+layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight; layout(location=5) in float a_weight1; layout(location=6) in vec2 a_radius;
+uniform float u_zt; uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale; uniform float u_corner;
 out vec2 v_ex; out float v_w;
 void main() {
-  v_w = a_weight * u_weight;
+  v_w = mix(a_weight, a_weight1, u_zt) * u_weight;
   // The bump is drawn out to where it falls below what the picture can store, and no further.
   float s = sqrt(max(0.0, -2.0 * log(${(1 / 255 / 16).toFixed(8)} / max(v_w * u_intensity * 0.3989422804, 1e-9)))) / 3.0;
   v_ex = s * a_corner * u_corner;
-  float r = u_radius + a_radius; // a radius for each feature is a_radius, and u_radius is then 0
+  float r = u_radius + mix(a_radius.x, a_radius.y, u_zt); // a radius for each feature is a_radius, and u_radius is then 0
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
 #ifdef GLOBE
   // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): r is in pixels at the center of the view.
@@ -265,21 +265,21 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in v
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur; layout(location=8) in float a_gap;
+layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur; layout(location=8) in float a_gap; layout(location=9) in vec3 a_next;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
 uniform float u_cam;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap;
 void main() {
   vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
-  v_blur = a_blur; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
+  v_blur = a_blur + u_zt * a_next.y; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
-  v_gap = u_gap + a_gap; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; float side = sign(a_sd.x), c = abs(a_sd.x) > 1.5 ? (abs(a_sd.x) - 2.0) / 4096.0 - 2.0 : 0.0; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
+  v_gap = u_gap + a_gap + u_zt * a_next.z; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; float side = sign(a_sd.x), c = abs(a_sd.x) > 1.5 ? (abs(a_sd.x) - 2.0) / 4096.0 - 2.0 : 0.0; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
   // (The outer vertex of a bevel also moves c times the offset along the line, so that it moves along the miter.)
-  float off = u_offset + a_offset / 8.0;
+  float off = u_offset + a_offset / 8.0 + u_zt * a_next.x;
   v_tile = a_v.xy + (a_v.zw * (v_hw + side * off) + c * off * vec2(a_v.w, -a_v.z)) / u_scale * lineScale(a_v.xy);
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
@@ -333,14 +333,14 @@ void main() {
     // (With 3D terrain circles are drawn on the screen and stand on the ground, as in MapLibre GL JS: they are not in the ground pictures.)
     circle: [`${VS_COMMON}${TERRAIN_GLSL}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius; layout(location=5) in float a_radius1;
-layout(location=4) in vec4 a_stroke; layout(location=6) in vec2 a_sb;
+layout(location=4) in vec4 a_stroke; layout(location=6) in vec2 a_sb; layout(location=9) in vec2 a_sb1; layout(location=10) in vec4 a_stroke1;
 uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform float u_blur; uniform vec4 u_stroke; uniform vec4 u_clip; uniform vec2 u_translate;
 uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch; uniform float u_lift; uniform highp sampler2D u_depth;
 out vec4 v_color; out vec4 v_stroke; out vec2 v_off; out float v_r; out vec2 v_sb;
 void main() {
   // A stroke and blur for each feature (a_stroke, a_sb) combine with the values of the layer: a property that is the
   // same for every feature has its value in the uniform, and the attribute reads 1 for the color and 0 for the rest.
-  v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color; v_stroke = a_stroke * u_stroke; v_sb = a_sb + vec2(u_strokeWidth, u_blur);
+  v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color; v_stroke = (a_stroke + u_zt * a_stroke1) * u_stroke; v_sb = a_sb + u_zt * a_sb1 + vec2(u_strokeWidth, u_blur);
   float ext = v_r + v_sb.x + 1.0;
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
@@ -930,6 +930,7 @@ export class GLRenderer {
                 // line-blur for each feature; without it the attribute is off and reads 0, and the uniform u_blur has the blur.
                 if (b.blur) attr(7, b.blur, 1, gl.FLOAT);
                 if (b.gap) attr(8, b.gap, 1, gl.FLOAT); // line-gap-width for each feature, as line-blur
+                if (b.next) attr(9, b.next, 3, gl.FLOAT);
                 index(b.idx);
                 count = b.idx.length;
             } else {
@@ -940,6 +941,7 @@ export class GLRenderer {
                 if (b.radius) { attr(3, b.radius, 1, gl.FLOAT); scalar = true; if (b.radius1) attr(5, b.radius1, 1, gl.FLOAT); else attr(5, b.radius, 1, gl.FLOAT, false, 0, 0, false, true); }
                 if (b.stroke) attr(4, b.stroke, 4, gl.UNSIGNED_BYTE, true);
                 if (b.sb) attr(6, b.sb, 2, gl.FLOAT);
+                if (b.next) { attr(9, b.next, 2, gl.FLOAT, false, 24); attr(10, b.next, 4, gl.FLOAT, false, 24, 8, false, true); }
                 index(b.idx);
                 count = b.idx.length;
             }
@@ -1483,7 +1485,8 @@ export class GLRenderer {
                 if (b.type === 'line' && !b.blur) gl.vertexAttrib1f(7, 0); // a custom layer can leave another value at location 7
                 if (b.type === 'circle') { if (!(b.stroke! & 1)) gl.vertexAttrib4f(4, 1, 1, 1, 1); if (!(b.stroke! & 2)) gl.vertexAttrib2f(6, 0, 0); }
                 if (b.type === 'line' && !b.gap) gl.vertexAttrib1f(8, 0);
-                if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
+                // (Without `next` the change to the next zoom is 0; see `Batch.next`.)
+                if (b.type === 'line' || b.type === 'circle') { gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z)))); gl.vertexAttrib4f(9, 0, 0, 0, 0); gl.vertexAttrib4f(10, 0, 0, 0, 0); }
                 if (b.type === 'line' || b.type === 'circle') {
                     gl.uniform1f(u.u_scale, it.scale);
                     gl.uniform1f(u.u_cam, tr.cameraDistance);
@@ -1717,8 +1720,9 @@ export class GLRenderer {
             gl.uniform4fv(u.u_clip, it.clip);
             gl.uniform1f(u.u_scale, it.scale);
             gl.uniform1f(u.u_corner, b.grid ? 1 / 7 : 1);
+            gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
             gl.bindVertexArray(b.vao);
-            if (!b.scalar) gl.vertexAttrib1f(3, 1);
+            if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
             if (!b.stroke) gl.vertexAttrib1f(6, 0);
             gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
         }
