@@ -6962,8 +6962,12 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         await page.mouse.move(100, 300); await page.mouse.down({button: 'right'});
         for (let i = 1; i <= 30; i++) { await page.mouse.move(100 + i * 20, 300); await page.waitForTimeout(40); }
         await page.mouse.up({button: 'right'}); await settle();
-        const turned = await snap();
+        const turned = await snap(), turnedTo = await page.evaluate(() => +window.liftMap.getBearing().toFixed(1));
         check('[main] 3D terrain: a rotate drag over a plateau keeps the pitch and the zoom, as in MapLibre GL JS (#1480)', turned[0] === 13 && turned[1] === 72, JSON.stringify(turned));
+        // The drag passes through the point the camera looks at, so it turns by 0.8 degrees for each pixel: MapLibre GL JS
+        // 6.17 ends at -120 (measured with the same terrain and drag). Before #1489 the map turned around the projected
+        // center position, which terrain moves away from that point, and ended at 24.
+        check('[main] 3D terrain: a rotate drag over a plateau ends at the bearing of MapLibre GL JS (-120; #1489)', Math.abs(turnedTo + 120) < 1, String(turnedTo));
         await open('cone');
         await page.evaluate(() => window.liftMap.jumpTo({pitch: 75})); await settle();
         const cone = await snap();
