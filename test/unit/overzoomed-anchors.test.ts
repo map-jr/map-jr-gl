@@ -17,6 +17,22 @@ test('a line of a z14 tile shown at z22 has its anchors in the rhythm of the z18
     }
 });
 
+test('the path of text along a gentle slope in a z14 tile shown at z22 keeps the slope, as in MapLibre GL JS', () => {
+    // The line falls by 1 unit over 1000: at z22 a unit is 16 pixels. Rounding the path to whole units made the text flat,
+    // with a step where the rounding changed. (The ends of the part in a square and the path are each rounded to 1 / 16.)
+    const spacing = 350 * 4096 / 512 / 256;
+    const label: any = {text: 'Luhova Street', font: 'Noto Sans Regular', spacing: 0, lineHeight: 1.2, line: [0, 2000, 4096, 2004.096], lineSpacing: spacing, tpr: 4096 / 512 / 256, ov: 256, tz: 14, window: 30, maxAngle: 45, size0: 16, size1: 16};
+    const out = lineLabels([label], new EstimateShaper() as any, undefined, 22, () => [8 * 16 + 7]);
+    assert.ok(out.length > 0);
+    for (const l of out) {
+        const p = l.path!;
+        for (let i = 0; i < p.length; i += 2) {
+            const want = 2000 + p[i] / 1000;
+            assert.ok(Math.abs(p[i + 1] - want) <= 1 / 16 + 1e-9, `the point ${p[i]}, ${p[i + 1]} of the path is off the line (${want})`);
+        }
+    }
+});
+
 test('a line of a z0 tile shown at z22 has anchors only in the squares in view, and is laid out quickly', () => {
     // At z22 a z0 tile is cut into 2^18 squares a side. Only the 3 by 3 squares in view are laid out.
     const ov = 2 ** 22, line: number[] = [];

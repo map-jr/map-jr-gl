@@ -346,7 +346,7 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
                 if (made >= MAX_LINE_ANCHORS) break;
                 const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
                 if (!ds.length) continue;
-                for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds)) {
+                for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds, k)) {
                     if (cells) {
                         const cx = Math.floor(a[0] / repeat), cy = Math.floor(a[1] / repeat);
                         let close = false;
