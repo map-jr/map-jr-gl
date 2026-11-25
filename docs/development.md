@@ -331,6 +331,11 @@ The plugin `gl-constants` of `build.mjs` replaces each read of a WebGL constant 
 number (`scripts/gl-constants.mjs`). It changes only reads from a variable named `gl`. When `src/` reads a constant
 that the table does not have, the build stops and names it: add its value from the WebGL specification.
 
+The plugin `global-names` of `build.mjs` replaces each read of a member of `Math` and of `Array.isArray` in the
+worker file with a name that one module exports (`Math.floor` becomes `Math_floor`), so that the minifier can shorten
+it (`scripts/global-names.mjs`). Do not name a variable `Math_...` or `Array_...`: the build stops when a file of
+`src/` has such a name.
+
 ## Other browsers and operating systems
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the

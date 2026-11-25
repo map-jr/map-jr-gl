@@ -8,6 +8,7 @@ import MagicString from 'magic-string';
 import {shortenPrivateNames} from './scripts/private-names.mjs';
 import {minifyShaders} from './scripts/minify-shaders.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
+import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -68,6 +69,25 @@ const glConstants = {
         const edited = new MagicString(code);
         for (const [start, end, text] of edits) edited.overwrite(start, end, text);
         return withMap(edited, id);
+    },
+};
+
+/**
+ * For the worker file: each read of a member of `Math` or of `Array.isArray` (`Math.floor`) becomes a name that one module
+ * exports, which the minifier shortens to one or two letters (scripts/global-names.mjs). The worker has about 900 of
+ * them. The page scripts have few, and there the module would cost more than it saves.
+ */
+const globalNames = {
+    name: 'global-names',
+    resolveId: id => id === GLOBALS_MODULE ? id : null,
+    load: id => id === GLOBALS_MODULE ? globalsModule() : null,
+    transform(code, id) {
+        if (!/\/src\/[^/]+\.[jt]s$/.test(id)) return null;
+        const {edits, import: line} = aliasGlobals(code, id);
+        if (!edits.length) return null;
+        const edited = new MagicString(code);
+        for (const [start, end, text] of edits) edited.overwrite(start, end, text);
+        return withMap(edited.append(line), id);
     },
 };
 
@@ -187,9 +207,9 @@ const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
 // The copy of the worker inside a standalone file contains its parts. It starts from a blob, which has no file beside
 // it: the line that names the source map goes. (It is built into a folder of its own, and only its text is used.)
 const workerLib = {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'};
-await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne]);
+await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne, globalNames]);
 const workerSrc = readFileSync('.cache/worker-all-in-one/map-jr-gl-worker.js', 'utf8');
-await run({lib: workerLib}, undefined, [splitParts, allInOne]);
+await run({lib: workerLib}, undefined, [splitParts, allInOne, globalNames]);
 for (const {name, file} of workerParts) {
     await run({lib: {entry: `src/${file}.ts`, formats: ['iife'], name: 'MapJrPart', fileName: () => `map-jr-gl-worker-${name}.js`},
         rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}});
