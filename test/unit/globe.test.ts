@@ -71,6 +71,14 @@ test('globe: the far side is hidden, and the tiles in view are chosen, also over
     assert.ok(pole.tileCover(0, 22, 512).every(t => t.w === 0));
 });
 
+test('globe: the tile level switches a little below a whole zoom, as in MapLibre GL JS 6.17 (#1828)', () => {
+    // The views of MapLibre's render tests projection/globe/fill-seams/checkerboard (zoom 7.92: tiles of zoom 7) and
+    // projection/globe/terrain/fill-seams/checkerboard (zoom 7.95: tiles of zoom 8, also north of the center).
+    const at = (zoom: number) => { const tr = make([-151.855, 61.59], zoom); tr.width = tr.height = 256; return [...new Set(tr.tileCover(0, 22, 512).map(t => t.z))]; };
+    assert.deepEqual(at(7.92), [7]);
+    assert.deepEqual(at(7.95), [8]);
+});
+
 test('globe: a drag turns the globe so that the place stays under the pointer, and keeps the size of the planet', () => {
     const tr = make([0, 0], 2);
     const [lng, lat] = tr.unproject(500, 350);

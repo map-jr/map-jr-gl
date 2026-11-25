@@ -240,7 +240,9 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];
     // The camera distance in radii, at which the tile of the zoom of the map is wanted.
-    const unit = tr.cameraDistance / f.radius, margin = 0.15;
+    // As in MapLibre GL JS, a tile at the distance of the center counts as a little nearer (by the cosine of half the
+    // field of view), so that a zoom just below a whole level already takes the tiles of that level (#1828).
+    const unit = tr.cameraDistance / f.radius / Math.max(0.5, Math.cos(tr.fov / 2)), margin = 0.15;
     // The point of the sphere under the camera, in Mercator units: the nearest point of a tile is its point nearest to this one.
     const cl = Math.hypot(...f.cam), under = [mercX(Math.atan2(f.cam[0], f.cam[2]) / RAD), mercY(clamp(Math.asin(f.cam[1] / cl) / RAD, -85.051129, 85.051129))];
     // The places under nine points of the screen: a tile that has one of them is in view, however large it is.
@@ -263,8 +265,8 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
         const ux = under[0] - Math.floor(under[0] - x / n + 0.5 - 0.5 / n), nearest = sphere(clamp(ux, x / n, (x + 1) / n), clamp(under[1], y / n, (y + 1) / n));
         const near = Math.min(...[...pts, nearest].map(p => Math.hypot(p[0] - f.cam[0], p[1] - f.cam[1], p[2] - f.cam[2])));
         // A tile far from the latitude of the center has other pixels on the sphere: Mercator tiles get smaller toward
-        // the poles, by the cosine of the latitude (pts[12] is the middle of the tile).
-        const cos = Math.max(1e-3, Math.sqrt(1 - pts[12][1] ** 2)) / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD);
+        // the poles, by the cosine of the latitude, taken at the point of the tile nearest to the place under the camera.
+        const cos = Math.max(1e-3, Math.sqrt(1 - nearest[1] ** 2)) / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD);
         const wanted = Math.min(maxzoom, (round ? Math.round : Math.floor)(exact + Math.log2(unit / Math.max(near, 1e-9) * cos)));
         if (z >= maxzoom || z >= wanted) { if (z >= minzoom) out.push({z, x, y, w: 0, key: `${z}/${x}/${y}`, near}); return; }
         for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1));
