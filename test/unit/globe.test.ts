@@ -76,20 +76,23 @@ test('globe: the tiles of a 1000x700 map, against those of MapLibre GL JS 6.17 (
     // (measured 2026-11-24), center at longitude 10, for zoom 1, 2.5, 4 and 5.5, latitude 0, 45 and 75, pitch 0 and 60.
     // Below zoom 5 the library takes its own, lower levels on purpose (the owner's decision on #1828: fewer requests and
     // an earlier idle); `ours` has the list that it chooses for such a view. At zoom 5.5 the levels agree, and the
-    // library loads no tile at the edge of the view that MapLibre does not load (#1922).
+    // library loads no tile at the edge of the view that MapLibre does not load (#1922). It leaves out some tiles that
+    // MapLibre loads and that have no point on the screen.
     const ours: Record<string, string> = {
         '2.5/0/0': '1/0/0 1/0/1 1/1/0 1/1/1',
         '2.5/0/60': '1/0/0 1/0/1 1/1/0 1/1/1',
         '2.5/45/0': '1/0/0 1/0/1 1/1/0 1/1/1',
         '2.5/45/60': '1/0/0 2/2/0 2/2/1',
-        '2.5/75/0': '2/1/0 2/2/0 2/3/0 3/2/2 3/3/2 3/4/2 3/5/2',
+        '2.5/75/0': '2/1/0 2/2/0 2/3/0 3/3/2 3/4/2 3/5/2',
         '2.5/75/60': '2/0/0 2/1/0 2/2/0 2/3/0 3/2/2 3/5/2 3/6/2 4/6/4 4/7/4 4/8/4 4/9/4',
         '4/0/0': '3/3/3 3/3/4 3/4/3 3/4/4 3/5/3 3/5/4',
         '4/0/60': '3/3/3 3/4/3 4/7/8 4/8/8 4/9/8',
         '4/45/0': '3/3/2 3/4/2 4/7/6 4/8/6 4/9/6',
         '4/45/60': '2/1/0 2/2/0 3/3/2 3/4/2 3/5/2 4/7/6 4/8/6 4/9/6',
-        '4/75/0': '3/3/0 3/4/0 4/7/2 4/7/3 4/8/2 4/8/3 4/9/2 4/9/3',
+        '4/75/0': '4/7/2 4/7/3 4/8/2 4/8/3 4/9/2 4/9/3',
         '4/75/60': '2/0/0 2/3/0 3/2/0 3/2/1 3/3/0 3/4/0 3/5/0 3/5/1 4/6/2 4/7/2 4/7/3 4/8/2 4/9/2 4/9/3 5/16/6 5/16/7 5/17/6 5/17/7',
+        // Two tiles whose nearest edge is 20 pixels past the top of the screen, which MapLibre's volume around the tile keeps.
+        '5.5/45/0': '5/16/11 5/16/12 5/17/11 5/17/12',
         // Two far tiles at the horizon that MapLibre loads and the sample points of the tile do not reach.
         '5.5/45/60': '4/7/4 4/8/4 4/9/4 5/15/10 5/15/11 5/16/10 5/16/11 5/17/10 5/17/11 5/18/10 6/32/24 6/33/24 6/34/24',
     };
