@@ -560,7 +560,10 @@ function legacyFilter(f: any): Fn {
     if (!test) { warnOnce(`Unsupported filter "${op}"`); return () => true; }
     // A feature without an id has the id null, so `["==", "$id", null]` holds for it (MapLibre compares `["id"]`).
     if (key === '$id' && v === null && (op === '==' || op === '!=')) return c => (get(c) == null) === (op === '==');
-    return c => { const x = get(c); return x !== undefined && x !== null ? test(x, v) : op === '!='; };
+    // As MapLibre's `filter-==`: a property that is null equals null, and a missing one equals nothing. The order
+    // operators compare only values of the same type (#1914).
+    const eq = op === '==' || op === '!=';
+    return c => { const x = get(c); return (eq || typeof x === typeof v) && test(x, v); };
 }
 
 export function compileFilter(f: any): Fn | null {
