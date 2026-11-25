@@ -451,6 +451,8 @@ export class Transform {
      * horizon it is behind the camera. Without it, the point is kept on the ground in view.
      */
     unproject(px: number, py: number, exact = false): [number, number] {
+        // On the globe the latitude comes from the sphere, so that a point of a polar cap is past 85.05° (#703).
+        if (this.globeness && !this.heightAt) return this.globe!.toLngLat(this, px, py);
         const flat = exact && !this.globeness && (!this.heightAt || (this.pitch <= 90 && py - this.cy < -this.horizon()));
         const [mx, my] = flat ? this.screenToMerc(px, py, this.flatZ, true) : this.screenToGround(px, py);
         return [lngFromMerc(mx), latFromMerc(flat ? my : clamp(my, 0, 1))];

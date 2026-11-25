@@ -54,6 +54,13 @@ test('globe: unproject inverts project, and a point off the globe gives a point 
     assert.ok(!globe.hidden(small, mx, my, 1e-6));
 });
 
+test('globe: unproject gives a latitude past 85.05° on a polar cap, and project goes back to the point (#703)', () => {
+    const tr = make([0, 80], 2);
+    const [lng, lat] = tr.unproject(400, 100), [x, y] = tr.project(lng, lat);
+    assert.ok(lat > 85.1 && lat < 90, `${lat}`);
+    assert.ok(Math.abs(lng) < 1e-9 && Math.abs(y - 100) < 1e-3 && Math.abs(x - 400) < 1e-3, `${lng} ${x},${y}`);
+});
+
 test('globe: the far side is hidden, and the tiles in view are chosen, also over a pole', () => {
     const tr = make([0, 0], 1);
     assert.equal(globe.hidden(tr, mercX(180), mercY(0)), true);
