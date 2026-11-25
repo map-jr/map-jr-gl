@@ -162,7 +162,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -1455,14 +1455,20 @@ export class Engine {
             : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
             t.rebuilding = false;
-            if (fresh) this.expire(t, st.expires);
+            if (fresh) this.expire(t, st.expires), t.reloadFailed = false;
             if (this.tiles.get(key) !== t || !gl) return gl && this.renderer.destroyTile(gl);
             const old = t.gl;
             t.gl = gl;
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
             this.invalidate();
-        }, err => { t.rebuilding = false; if (fresh) this.expire(t, 0); this.emit({type: 'error', message: err.message}); });
+        }, err => {
+            t.rebuilding = false;
+            // A failed reload of an expired tile fires one `error`, with its source, as in MapLibre GL JS 6.17. The
+            // reloads after it (1 s, 2 s, 4 s and so on, see `expire`) fire none until one succeeds (#2072).
+            if (fresh) { this.expire(t, 0); if (t.reloadFailed) return; t.reloadFailed = true; }
+            this.emit({type: 'error', message: err.message, source});
+        });
     }
 
     /**
@@ -2011,9 +2017,9 @@ export class Engine {
     /**
      * Whether a feature of a symbol layer that a question found is drawn in the rectangle of the question (in pixels
      * of the screen): its own icon, with its image, size, anchor, offset and turn, is in the rectangle, or the box of
-     * its shown text (see `textBoxes`) is in the rectangle, or, when no text of it is
-     * shown at the point, the feature has text and its point is within `radius` pixels of the rectangle. (A feature with no point, and an icon whose image the map
-     * does not have, is found within `radius` pixels of its geometry as before.)
+     * its shown text (see `textBoxes`) is in the rectangle. A feature whose text is hidden is not found by its text.
+     * (A feature with no point, and a feature with no text and an icon whose image the map does not have, is found
+     * within `radius` pixels of its geometry as before.)
      */
     private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
@@ -2025,7 +2031,8 @@ export class Engine {
         // with an icon is found within `radius` pixels of its geometry as before.)
         if (!points) return image || !String(L.p.field.eval(z, f) ?? '') || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
             : this.textOnLine(g, box, texts);
-        const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
+        // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
+        const near = !image && !String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
             const [x, y] = tr.project(lng, lat);
             // A label that is shown at the point is found on the box of its text, and only there.
@@ -2047,9 +2054,26 @@ export class Engine {
     private textOnLine(g: NonNullable<QueriedFeature['geometry']>, box: number[], texts: {x: number; y: number; box: number[]; line?: boolean}[]): boolean {
         const hit = texts.filter(t => t.line && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]);
         if (!hit.length) return false;
-        const lines = (g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' || g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? (g.coordinates as number[][][][]).flat() : []) as number[][][];
+        const tr = this.tr, lines = (g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' || g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? (g.coordinates as number[][][][]).flat() : []) as number[][][];
         for (const line of lines) {
-            const pts = line.map(([lng, lat]) => this.tr.project(lng, lat));
+            const pts = line.map(([lng, lat]) => tr.project(lng, lat));
+            // On the globe a piece of the line is straight in Mercator and curved on the screen, and text that lies on the
+            // ground has its glyphs on that curve (see `followLine`). The piece is cut into steps that are straight within
+            // a tenth of a pixel (the arc of a step of length s on a sphere of radius R strays s² / 8R from its chord).
+            // Text that faces the screen has its glyphs on the straight segments between the points, so both are tested.
+            // (The steps go back from the last point to the first, after the points, so that the path stays joined.)
+            if (tr.globeness) {
+                const ws = tr.worldSize, step = Math.sqrt(0.8 * ws / (2 * Math.PI)) / ws;
+                for (let i = line.length - 1; i > 0; i--) {
+                    const ax = mercX(line[i - 1][0]), ay = mercY(line[i - 1][1]), by = mercY(line[i][1]);
+                    // (The shorter way around: a segment across the antimeridian can have longitudes such as 179 and -179.)
+                    let bx = mercX(line[i][0]);
+                    bx += Math.round(ax - bx);
+                    const n = Math.min(4096, Math.ceil(Math.hypot(bx - ax, by - ay) / step));
+                    for (let j = n - 1; j > 0; j--) pts.push(tr.mercToScreen(ax + (bx - ax) * j / n, ay + (by - ay) * j / n));
+                    pts.push(pts[i - 1]);
+                }
+            }
             for (let i = 1; i < pts.length; i++) {
                 const [ax, ay] = pts[i - 1], [bx, by] = pts[i], dx = bx - ax, dy = by - ay, d2 = dx * dx + dy * dy;
                 for (const t of hit) {

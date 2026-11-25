@@ -1553,6 +1553,40 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a circle with circle-translate is found where it is drawn, also in the array at once`,
         translated.right === 'moved-view' && translated.up === 'moved-map' && translated.at === '' && translated.nowRight === 'moved-view' && translated.nowUp === 'moved-map' && translated.nowAt === '', JSON.stringify(translated));
 
+    // A fill, a line and a fill extrusion are found where `fill-translate`, `line-translate` and
+    // `fill-extrusion-translate` draw them and not at their features, as in MapLibre GL JS 6.17 (#1975). At a bearing of
+    // 90 the fill ([60, 0], viewport) is 60 pixels right, the line ([60, 0], anchor map) 60 pixels up and the extrusion
+    // ([0, 60], viewport) 60 pixels down.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-2, -2], [2, -2], [2, 2], [-2, 2], [-2, -2]]]}};
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-2, 0], [2, 0]]}};
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 2, bearing: 90, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {a: {type: 'geojson', data: square}, l: {type: 'geojson', data: line}},
+                layers: [
+                    {id: 'fill', type: 'fill', source: 'a', paint: {'fill-translate': [60, 0], 'fill-translate-anchor': 'viewport'}},
+                    {id: 'line', type: 'line', source: 'l', paint: {'line-width': 4, 'line-translate': [60, 0]}},
+                    {id: 'extrusion', type: 'fill-extrusion', source: 'a', paint: {'fill-extrusion-translate': [0, 60], 'fill-extrusion-translate-anchor': 'viewport'}},
+                ]}});
+            await new Promise(r => m.once('idle', r));
+            // (MapLibre GL JS gives a feature without an id once per tile: the check compares the names of the layers.)
+            const p = m.project([0, 0]), ids = fs => [...new Set([...fs].map(f => f.layer.id))].sort().join();
+            const out = {};
+            for (const [name, pt] of Object.entries({right: [p.x + 60, p.y], up: [p.x, p.y - 60], down: [p.x, p.y + 60], at: [p.x, p.y]})) {
+                out[name] = ids(await m.queryRenderedFeatures(pt));
+                out[`now-${name}`] = ids(m.queryRenderedFeatures(pt));
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a fill, line and fill extrusion with *-translate are found where they are drawn, as MapLibre GL JS, also in the array at once (#1975)`,
+            ours.right === 'fill' && ours.up === 'line' && ours.down === 'extrusion' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
     // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
@@ -1844,6 +1878,26 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find a line whose label does not fit on it, and finds a line with one label only on its glyphs, with both renderers (#1916)',
             ['main', 'worker'].every(r => fewLabels[`${r}-short`].found === 0 && fewLabels[`${r}-spacing`].found >= 12 && fewLabels[`${r}-spacing`].found <= 24), JSON.stringify(fewLabels));
+        // Of two point labels whose texts collide, the hidden one is not found at its own point, which lies under the
+        // text of the shown one: MapLibre GL JS finds only placed symbols (#1968).
+        const hiddenPoint = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const point = (x, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [x, 0]}});
+                const m = new mod.Map({container: el, renderer, center: [1.5, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(0, 'First label'), point(3, 'Second label')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const ask = async lng => (await m.queryRenderedFeatures(m.project([lng, 0]), {layers: ['t']})).map(f => f.properties.name).sort().join('/');
+                out[renderer] = [await ask(0), await ask(3)];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures does not find a point label whose text is hidden by collision, with both renderers (#1968)',
+            ['main', 'worker'].every(r => hiddenPoint[r][0] === 'First label' && hiddenPoint[r][1] === 'First label'), JSON.stringify(hiddenPoint));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
@@ -1883,6 +1937,40 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
             lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
+        // On the globe a query finds text on a line where its glyphs are drawn, as MapLibre GL JS does: the line between
+        // two of its points is a curve on the screen, and the glyphs lie on that curve (#1995). The map is cut into cells
+        // of 25 pixels; each cell with dark pixels of the text must be found by a query of the cell, at zoom 2.5 and across
+        // the antimeridian. (A cell next to the text can be found too, on the padding of a glyph box. Each line lies
+        // in one tile of zoom 2, or crosses the antimeridian with 60 degrees on each side, so that its text fits.)
+        const globeText = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const [name, center, coordinates, field] of [['zoom', [45, 20], [[5, 35], [85, 35]], 'A label that follows'], ['antimeridian', [180, 20], [[120, 35], [240, 35]], 'Antimeridian']]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:400px'}));
+                const m = new mod.Map({container: el, renderer: 'main', center, zoom: 2.5, attributionControl: false, fadeDuration: 0, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': 1000, 'text-field': field, 'text-size': 24}, paint: {'text-color': '#000'}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await m.toBlob()), k = bmp.width / 600, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, dark = new Map();
+                for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i + 3] > 200 && d[i] < 80 && d[i + 1] < 80 && d[i + 2] < 80) { const key = Math.floor(x / k / 25) + ',' + Math.floor(y / k / 25); dark.set(key, (dark.get(key) ?? 0) + 1); }
+                }
+                let text = 0, found = 0, others = 0;
+                for (let x = 0; x < 600; x += 25) for (let y = 0; y < 400; y += 25) {
+                    const hit = (await m.queryRenderedFeatures([[x, y], [x + 25, y + 25]], {layers: ['t']})).length > 0;
+                    if ((dark.get(x / 25 + ',' + y / 25) ?? 0) > 3 * k * k) { text++; if (hit) found++; } else if (hit) others++;
+                }
+                out[name] = {text, found, others};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures on the globe finds text on a line in each cell where its glyphs are drawn, at zoom 2.5 and across the antimeridian (#1995)',
+            Object.values(globeText).every(r => r.text >= 5 && r.found === r.text && r.others <= 2 * r.text), JSON.stringify(globeText));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.

@@ -4776,6 +4776,52 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of tiles that expire was completed', false, String(e.message).split('\n')[0]); }
     for (const page of pages) await page?.close();
 }
+// A tile with `max-age=1` whose server then answers 500: the failed reload fires one `error` for each tile, with its
+// source, as MapLibre GL JS 6.17 does, and the reloads after it (1 s, 2 s, 4 s) fire none (#2072). Both entries.
+{
+    const page = await browser.newPage({viewport: {width: 300, height: 200}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'), seen = new Map();
+        await page.route(/\/exp2072\//, route => {
+            const k = new URL(route.request().url()).pathname, n = (seen.get(k) ?? 0) + 1;
+            seen.set(k, n);
+            const headers = {'access-control-allow-origin': '*', 'cache-control': 'max-age=1'};
+            return (n === 1 ? route.fulfill({status: 200, contentType: 'image/png', body: png, headers}) : route.fulfill({status: 500, body: '', headers})).catch(() => {});
+        });
+        const out = await page.evaluate(async () => {
+            const result = {};
+            for (const entry of ['main', 'compat']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+                const style = {version: 8, sources: {s: {type: 'raster', tiles: [location.origin + `/exp2072/${entry}/{z}/{x}/{y}.png`], tileSize: 256}}, layers: [{id: 's', type: 'raster', source: 's'}]};
+                const errors = [];
+                let remove;
+                if (entry === 'main') {
+                    const lib = await import('/dist/map-jr-gl.js');
+                    const m = lib.createMap(el, {style, initialView: {center: [0, 0], zoom: 0}, attribution: false, onError: (e, info) => errors.push({sourceId: info?.sourceId, source: true})});
+                    remove = () => m.destroy();
+                } else {
+                    const lib = await import('/dist/map-jr-gl-maplibre-compat.js');
+                    const m = new lib.Map({container: el, style, center: [0, 0], zoom: 0, attributionControl: false});
+                    m.on('error', e => errors.push({sourceId: e.sourceId, source: e.source?.type === 'raster'}));
+                    remove = () => m.remove();
+                }
+                // (The tiles load at once, expire after 1 s and fail from then on, which reloads them after 1 s, 2 s and 4 s.)
+                await new Promise(r => setTimeout(r, 9000));
+                remove(); el.remove();
+                result[entry] = errors;
+            }
+            return result;
+        });
+        for (const entry of ['main', 'compat']) {
+            const tiles = [...seen].filter(([k]) => k.startsWith(`/exp2072/${entry}/`)), errors = out[entry];
+            check(`[${entry}] a failed reload of an expired tile fires one error for each tile, with its source, also after more failed reloads (#2072)`,
+                tiles.length > 0 && tiles.every(([, n]) => n >= 4) && errors.length === tiles.length && errors.every(e => e.sourceId === 's' && e.source),
+                JSON.stringify({tiles: tiles.length, requests: tiles.map(([, n]) => n), errors: errors.length, first: errors[0]}));
+        }
+    } catch (e) { check('the test of failed reloads of expired tiles was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // An elevation tile (`raster-dem`) whose response has `Cache-Control: max-age=2` is requested again too, as in MapLibre
 // GL JS (#1988). Each answer is 500 m higher than the one before (terrarium, from 1000 m). The terrain of a pitched map
 // takes each new tile, and keeps the old one until then: the point that `project` gives for a place in front of the
