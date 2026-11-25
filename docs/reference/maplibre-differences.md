@@ -247,6 +247,18 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - A status 4xx other than 404, a rejection by a custom protocol and an error of `transformRequest` are final, as in
   MapLibre GL JS.
 
+### A tile that expires
+
+- **MapLibre GL JS:** A vector, raster or elevation tile whose response has `max-age` in `Cache-Control`, or else an
+  `Expires` header, is requested again when that time has passed, while the tile is in the view. The old tile stays
+  drawn until the new one has loaded. A response that is out of date when it arrives is requested again after 1 s,
+  2 s, 4 s and so on. The map option `refreshExpiredTiles: false` turns this off.
+- **This library:** The same, for vector and raster tiles of both entries. A failed request of an expired tile keeps the
+  old tile and is made again after 1 s, 2 s, 4 s and so on. `idle` waits for each new tile, as `idle` of MapLibre GL JS
+  comes after it. Elevation tiles (`raster-dem`), GeoJSON sources and tiles of PMTiles archives are not requested again.
+  The option `refreshExpiredTiles: false` of `@map-jr/map-jr-gl/maplibre-compat` turns this off, as in MapLibre GL JS.
+  The main entry has no such option.
+
 ### GeoJSON sources
 
 - **MapLibre GL JS:** `setData`, `getData`, `updateData`, the cluster methods.
