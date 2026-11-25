@@ -171,6 +171,8 @@ function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step
     const n = stops.length;
     return c => {
         const x = input(c);
+        // An input that is not a number (such as 0 / 0) is an error in MapLibre GL JS, so the property takes its default.
+        if (x !== x) return null;
         if (typeof x !== 'number' || x <= stops[0]) return colorize(outs[0](c));
         if (x >= stops[n - 1]) return colorize(outs[n - 1](c));
         let i = 1;

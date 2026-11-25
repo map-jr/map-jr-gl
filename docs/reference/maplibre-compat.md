@@ -89,7 +89,7 @@ library" names a member that MapLibre GL JS does not have.
 <!-- ref:CompatMap:start -->
 | Name | Type | Description |
 |---|---|---|
-| `on` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => this` | Adds a listener for an event; `on(type, layerId, listener)` hears `click`, `mousemove`, `mouseenter` and `mouseleave` over the features of a style layer. |
+| `on` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => Subscription` | Adds a listener and returns a `Subscription`, as in MapLibre GL JS: `unsubscribe()` removes that listener, as `off` with the same arguments does. |
 | `once` | `<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void) => this` | Calls `listener` one time, for the next event of `type`, as in MapLibre GL JS. |
 | `off` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => this` | Removes a listener that `on` added, as in MapLibre GL JS. |
 | `getSource` | `<T extends Source = Source>(id: string) => T \| undefined` | Returns the specification of the source with this id and the methods of its type, or `undefined` when the style has no such source. |

@@ -1836,7 +1836,6 @@ for (const mode of renderers) {
                 m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, fadeDuration: 0, pitchWithRotate: false, crossSourceCollisions: false, style: {version: 8, sources: {}, layers: []}});
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
-                    new mod.FullscreenControl({container: document.body});
                     new mod.Popup({locationOccludedOpacity: 0.5});
                     new mod.Marker({opacityWhenCovered: '0.2'});
                 }
@@ -1844,13 +1843,30 @@ for (const mode of renderers) {
                 new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, crossSourceCollisions: true, style: {version: 8, sources: {}, layers: []}}).remove();
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'crossSourceCollisions', 'locationOccludedOpacity', 'opacityWhenCovered'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'fadeDuration', 'pitchWithRotate', 'crossSourceCollisions', 'locationOccludedOpacity', 'opacityWhenCovered'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
         // visualizePitch of NavigationControl (#42) and opacityWhenCovered of Marker (the globe, #463) have an effect in
         // this entry, so they write no warning.
-        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
+        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
             Object.entries(r).every(([k, n]) => n === (k === 'validate' || k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
+    }
+    // #675: `on` of maplibre-compat returns a Subscription whose `unsubscribe()` removes the listener, as in MapLibre GL JS
+    // 6.17; `once` with a listener returns the map, also with a layer id.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const m = new mod.Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const heard = [], s = m.on('ping', () => heard.push('on')), layer = m.on('click', 'water', () => {});
+            const out = {notMap: s !== m, keys: Object.keys(s), layerKeys: Object.keys(layer), once: m.once('ping', () => heard.push('once')) === m, onceLayer: m.once('click', 'water', () => {}) === m};
+            m.fire('ping', {}); s.unsubscribe(); layer.unsubscribe(); m.fire('ping', {});
+            out.heard = heard;
+            m.remove(); el.remove();
+            return out;
+        });
+        check('maplibre-compat: on returns a Subscription (with and without a layer id) whose unsubscribe() removes the listener, and once with a listener returns the map (#675)',
+            r.notMap && String(r.keys) === 'unsubscribe' && String(r.layerKeys) === 'unsubscribe' && r.once && r.onceLayer && String(r.heard) === 'on,once', JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
@@ -4385,6 +4401,74 @@ for (const mode of renderers) {
         // As in MapLibre GL JS, the button has the class `maplibregl-ctrl-shrink` while the map fills the screen (#1716).
         check('[main] maplibre-compat: the FullscreenControl button has the class ctrl-shrink exactly while the map fills the screen (#1716)',
             r.shrinkBefore === 'false/false/true' && r.shrinkFull === 'true/true/false' && r.shrinkAfter === 'false/false/true', JSON.stringify(r));
+    }
+    if (mode === 'main') {
+        // #1723: as in MapLibre GL JS, the option `container` of FullscreenControl is the element that goes fullscreen,
+        // with the Fullscreen API and with the pseudo fullscreen.
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(String(a[0]));
+            const outer = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            const el = outer.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const requested = [];
+            outer.requestFullscreen = function () { requested.push(this === outer ? 'outer' : 'other'); return Promise.resolve(); };
+            el.requestFullscreen = () => { requested.push('map'); return Promise.resolve(); };
+            const fc = new mod.FullscreenControl({container: outer}), events = [];
+            fc.on('fullscreenstart', () => events.push('start')).on('fullscreenend', () => events.push('end'));
+            m.addControl(fc);
+            const fb = el.querySelector('.map-jr-ctrl-fullscreen');
+            fb.click();
+            const set = v => { Object.defineProperty(document, 'fullscreenElement', {configurable: true, get: () => v}); document.dispatchEvent(new Event('fullscreenchange')); };
+            set(el); const afterMap = events.join(); set(outer); set(null); delete document.fullscreenElement;
+            const out = {requested: requested.join(), afterMap, events: events.join()};
+            m.removeControl(fc);
+            // The pseudo fullscreen puts the class on the element of `container`, and removing the control takes it off.
+            const pc = new mod.FullscreenControl({container: outer, pseudo: true});
+            m.addControl(pc);
+            el.querySelector('.map-jr-ctrl-fullscreen').click();
+            out.pseudoOuter = outer.classList.contains('map-jr-pseudo-fullscreen') && outer.classList.contains('maplibregl-pseudo-fullscreen');
+            out.pseudoMap = el.classList.contains('map-jr-pseudo-fullscreen');
+            m.removeControl(pc);
+            out.pseudoRemoved = !outer.className.includes('pseudo-fullscreen');
+            console.warn = warn;
+            out.warnings = warnings.filter(w => /FullscreenControl/.test(w));
+            m.remove(); outer.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: FullscreenControl puts the element of its option container into fullscreen and pseudo fullscreen, without a warning (#1723)',
+            r.requested === 'outer' && r.afterMap === '' && r.events === 'start,end' && r.pseudoOuter && !r.pseudoMap && r.pseudoRemoved && r.warnings.length === 0, JSON.stringify(r));
+    }
+    if (mode === 'main') {
+        // #684: with `pseudo: true`, the wheel alone zooms the map while it fills the window, because cooperativeGestures
+        // is off then, as in MapLibre GL JS. Before and after, the wheel alone only shows the hint.
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(res => setTimeout(res, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(res => m.once('load', res));
+            m.addControl(new mod.FullscreenControl({pseudo: true}));
+            const wheel = async () => {
+                const z = m.getZoom();
+                const box = el.getBoundingClientRect();
+                m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -100, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, bubbles: true, cancelable: true}));
+                for (let i = 0; i < 20 && m.getZoom() === z; i++) await wait(50);
+                await wait(300);
+                return +(m.getZoom() - z).toFixed(2);
+            };
+            const fb = el.querySelector('.map-jr-ctrl-fullscreen');
+            const out = {before: await wheel()};
+            fb.click();
+            out.full = el.classList.contains('map-jr-pseudo-fullscreen');
+            out.during = await wheel();
+            fb.click();
+            out.after = await wheel();
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: FullscreenControl with pseudo: true turns cooperativeGestures off, so the wheel alone zooms the map while it fills the window (#684)',
+            r.full && r.before === 0 && r.during > 0 && r.after === 0, JSON.stringify(r));
     }
     if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
