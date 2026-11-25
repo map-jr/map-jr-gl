@@ -136,9 +136,10 @@ export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: n
     if (p.frame && d.frame && (rotate || turned)) turnFrame(p.frame, d.frame, gc, gs);
     if (ground && dg && (rotate || turned)) for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; dg[i] = ground[i]; dg[i + 1] = cx * gc - cy * gs; dg[i + 2] = cx * gs + cy * gc; }
     if (p.icon && d.icon) {
+        // (The icon's offset from the anchor grows as the icon does, which is not as its text does: see `fixedSize`.)
         const ix = p.icon.x - p.ax, iy = p.icon.y - p.ay;
-        d.icon.x = ax + ix * tc - iy * ts; d.icon.y = ay + ix * ts + iy * tc; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
         const ig = p.icon.fixedSize ? p.icon.frame ? (depth > 0 ? p.depth / depth : 1) : 1 : p.icon.frame ? flatGrow(tr, p.depth, depth) : grow;
+        d.icon.x = ax + (ix * gc - iy * gs) * ig; d.icon.y = ay + (ix * gs + iy * gc) * ig; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
         d.icon.w = p.icon.w * ig; d.icon.h = p.icon.h * ig;
         if (p.icon.frame && d.icon.frame && (rotate || turned)) turnFrame(p.icon.frame, d.icon.frame, gc, gs);
         // (A stretched icon: the odd entries of its pairs are screen pixels.)

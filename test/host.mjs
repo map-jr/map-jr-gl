@@ -2156,6 +2156,31 @@ for (const renderer of renderers) {
         check(`[${renderer}] a question for drawn features finds a feature of a symbol layer where its icon is drawn: for each anchor, for an icon from a buffer and a placed icon, and for a larger icon`,
             reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110' && reach.own === '3,1|3,1|||2|', JSON.stringify(reach));
 
+        // The same question with `icon-offset` (#2029). The offset turns with `icon-rotate`: with a turn of 90 degrees an
+        // offset of 40 pixels up puts the icon 40 pixels to the right. A layer with `icon-offset` has no perspective ratio
+        // on a tilted map, so the icon of 40 pixels near the bottom of the map is found within 20 pixels of its point and not
+        // 23 pixels from it (with the ratio, 1.24 there, the box reached 24.8 pixels).
+        const offsetReach = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const found = async (icon, places, pitch = 0) => {
+                t.host.moveTo({bearing: 0, pitch});
+                t.host.update(t.spec = {...t.spec, style: t.spot(icon, false, {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject({x: 450, y: pitch ? 550 : 300})}}), images: {square: t.square('#f0f')}});
+                await wait(300); await t.settle();
+                const out = [];
+                for (const [x, y] of places) out.push((await t.host.queryFeatures({x, y}, {layers: ['spot-icon']})).length);
+                return out.join('');
+            };
+            // At the turned place of the icon, and at the place where the offset would put it without the turn.
+            const turned = [[490, 300], [450, 260]], tilted = [[450 + 15, 550], [450 + 23, 550]];
+            const rotate = {'icon-rotate': 90, 'icon-offset': [0, -40], 'icon-ignore-placement': true}, still = {'icon-offset': [0, 0], 'icon-ignore-placement': true};
+            const out = {turned: await found(rotate, turned), turnedPlaced: await found({...rotate, 'symbol-sort-key': 1}, turned),
+                tilted: await found(still, tilted, 60), tiltedPlaced: await found({...still, 'symbol-sort-key': 1}, tilted, 60)};
+            t.host.moveTo({bearing: 0, pitch: 0});
+            return out;
+        });
+        check(`[${renderer}] a question for drawn features finds an icon with icon-offset where it is drawn: the offset turns with icon-rotate, and on a tilted map the box has no perspective ratio`,
+            offsetReach.turned === '10' && offsetReach.turnedPlaced === '10' && offsetReach.tilted === '10' && offsetReach.tiltedPlaced === '10', JSON.stringify(offsetReach));
+
         // A feature of a symbol layer with text only is found on the box of its text, as in MapLibre GL JS, and not near
         // its point outside that box (#199). The text starts at the point (`text-anchor: left`) and is about 200 pixels long.
         const onText = await page.evaluate(async () => {
