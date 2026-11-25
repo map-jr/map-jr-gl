@@ -12,6 +12,9 @@ a batch shows a fault in them.
   Triage reads and does not run, so the brief still makes each worker check its issue on `main`. Triage also issues
   that were filed the same day: on 2026-11-17 a round without triage gave #683 to a worker, although #446 had fixed
   it, and #753 did not reproduce.
+- **The table of triage has a column "checked by"** for each row (#1931). Its value is "ran" when a command reproduced
+  the fault, "read" when only the code of this library was read, and "MapLibre read" when the source of MapLibre GL JS
+  was also read for what it does. The coordinator then sees which rows are hypotheses.
 - **An issue that was read and not run can name the wrong cause.** Of sixteen issues of the triage of 2026-11-24 that
   workers took up, five had another cause than their text: two named a property that MapLibre GL JS declares and never
   reads (#1692, #1695), one fault was the reverse of its title (#1735), and two had their cause in another part of
@@ -42,6 +45,8 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   one branch. List each issue in the prompt with its own scope line; the worker makes one commit for each issue, and
   the body of the pull request says `Fixes #N` for each. Give a bundle only issues that triage found to be a few lines
   each, so that one slow issue does not hold the others.
+- **A row that triage marked "read"** gets one more line in the prompt of its worker: reproduce the fault on `main`
+  before you build, and report another cause if the fault does not reproduce as the issue says.
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
 - Start each worker with `isolation: "worktree"` and low effort (90,000 to 160,000 tokens for an issue).
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
