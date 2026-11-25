@@ -85,22 +85,56 @@ declare const __VERSION__: string; // the version of package.json, set by the bu
 declare const __DEV__: boolean;
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
 type EventData = Record<string, unknown>;
+type XY = {x: number; y: number};
 /**
- * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports. It has the methods that
- * applications use most; see docs/reference/maplibre-differences.md for the list.
+ * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports, with all of its methods.
+ * A method whose name starts with `_` changes the point and returns it; the others return a new point.
  */
 export class Point {
     constructor(public x: number, public y: number) {}
-    static convert(p: Point | [number, number] | {x: number; y: number}) { return p instanceof Point ? p : Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.x, p.y); }
+    static convert(p: Point | [number, number] | XY) {
+        if (p instanceof Point) return p;
+        if (Array.isArray(p)) return new Point(+p[0], +p[1]);
+        if (p.x !== undefined && p.y !== undefined) return new Point(+p.x, +p.y);
+        throw new Error('Expected [x, y] or {x, y} point format');
+    }
     clone() { return new Point(this.x, this.y); }
-    add(p: {x: number; y: number}) { return new Point(this.x + p.x, this.y + p.y); }
-    sub(p: {x: number; y: number}) { return new Point(this.x - p.x, this.y - p.y); }
-    mult(k: number) { return new Point(this.x * k, this.y * k); }
-    div(k: number) { return new Point(this.x / k, this.y / k); }
-    round() { return new Point(Math.round(this.x), Math.round(this.y)); }
-    mag() { return Math.hypot(this.x, this.y); }
-    dist(p: {x: number; y: number}) { return Math.hypot(this.x - p.x, this.y - p.y); }
-    equals(p: {x: number; y: number}) { return this.x === p.x && this.y === p.y; }
+    add(p: XY) { return this.clone()._add(p); }
+    sub(p: XY) { return this.clone()._sub(p); }
+    multByPoint(p: XY) { return this.clone()._multByPoint(p); }
+    divByPoint(p: XY) { return this.clone()._divByPoint(p); }
+    mult(k: number) { return this.clone()._mult(k); }
+    div(k: number) { return this.clone()._div(k); }
+    rotate(a: number) { return this.clone()._rotate(a); }
+    rotateAround(a: number, p: XY) { return this.clone()._rotateAround(a, p); }
+    matMult(m: number[]) { return this.clone()._matMult(m); }
+    unit() { return this.clone()._unit(); }
+    perp() { return this.clone()._perp(); }
+    round() { return this.clone()._round(); }
+    mag() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+    equals(p: XY) { return this.x === p.x && this.y === p.y; }
+    dist(p: XY) { return Math.sqrt(this.distSqr(p)); }
+    distSqr(p: XY) { const dx = p.x - this.x, dy = p.y - this.y; return dx * dx + dy * dy; }
+    angle() { return Math.atan2(this.y, this.x); }
+    angleTo(b: XY) { return Math.atan2(this.y - b.y, this.x - b.x); }
+    angleWith(b: XY) { return this.angleWithSep(b.x, b.y); }
+    angleWithSep(x: number, y: number) { return Math.atan2(this.x * y - this.y * x, this.x * x + this.y * y); }
+    private set(x: number, y: number) { this.x = x; this.y = y; return this; }
+    _matMult(m: number[]) { return this.set(m[0] * this.x + m[1] * this.y, m[2] * this.x + m[3] * this.y); }
+    _add(p: XY) { return this.set(this.x + p.x, this.y + p.y); }
+    _sub(p: XY) { return this.set(this.x - p.x, this.y - p.y); }
+    _mult(k: number) { return this.set(this.x * k, this.y * k); }
+    _div(k: number) { return this.set(this.x / k, this.y / k); }
+    _multByPoint(p: XY) { return this.set(this.x * p.x, this.y * p.y); }
+    _divByPoint(p: XY) { return this.set(this.x / p.x, this.y / p.y); }
+    _unit() { return this._div(this.mag()); }
+    _perp() { return this.set(-this.y, this.x); }
+    _rotate(a: number) { const c = Math.cos(a), s = Math.sin(a); return this.set(c * this.x - s * this.y, s * this.x + c * this.y); }
+    _rotateAround(a: number, p: XY) {
+        const c = Math.cos(a), s = Math.sin(a), dx = this.x - p.x, dy = this.y - p.y;
+        return this.set(p.x + c * dx - s * dy, p.y + s * dx + c * dy);
+    }
+    _round() { return this.set(Math.round(this.x), Math.round(this.y)); }
 }
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */

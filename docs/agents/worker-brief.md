@@ -84,7 +84,10 @@ writing); this brief has the steps.
 - Bring your branch up to date with `node scripts/agents/merge-main.mjs`, not with a bare `git merge origin/main` or a
   rebase that squashes it into one commit. The script merges `origin/main`, writes again each generated block or
   file that is in conflict (the reference tables, the recipes, the lines of `render-tests.json`), commits the merge, and stops
-  with a list of the files when a conflict is outside generated text (#1863). After a merge, a rebase or a
+  with a list of the files when a conflict is outside generated text (#1863). It runs the copy of itself that `main`
+  has (#1928). A branch from before that change runs the copy of `main` by hand with
+  `git fetch origin main && git show origin/main:scripts/agents/merge-main.mjs | MERGE_MAIN_RUN=1 node --input-type=module -`.
+  After a merge, a rebase or a
   force-push, check that `git diff origin/main...HEAD -- src` has only your lines.
 - Two switches help to reproduce faults in Chromium: `CPU_THROTTLE=<rate>` (in `test/host.mjs` and
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
@@ -98,7 +101,8 @@ writing); this brief has the steps.
 - A check that navigates uses its own page, so that it does not break the checks after it. A check waits for the
   value that it measures, not for a proxy of it (a label, "non-empty", an earlier state): the copy check of #1366
   took three rounds (#1369, #1372 and a fix of that) because each wait was on a proxy, and each passed locally 20
-  times. For a fix of a check that fails in some runs, ask in the pull request for three runs of its CI job.
+  times. `pnpm test:consistency` warns when a new check compares a measured time with a fixed upper bound
+  (`scripts/timing-lint.mjs`, #1930), because a loaded CI runner takes longer than this machine. For a fix of a check that fails in some runs, ask in the pull request for three runs of its CI job.
 - An error in a run of the script that you changed is not "the network" until it reproduces on `main`.
 - A "Found" line marked "read" is a hypothesis: check its premise with one command before you write it (two of
   2026-11-21, #1363 and #1383, were wrong on a second read).
@@ -106,6 +110,8 @@ writing); this brief has the steps.
   is started by the coordinator: prepare the inputs (a baseline project, a checker script) and hand them back.
 - Make an extra worktree with `git worktree add` under `.claude/worktrees/`, so that
   `scripts/agents/clean-worktrees.mjs` finds it.
+- To compare the look of your branch with `main` and MapLibre GL JS, run `node scripts/agents/compare.mjs <your worktree>`
+  in a built checkout of `main`; `--shots <dir>` writes the screenshots of three maps side by side.
 - For a change of the look, the pull request has screenshots of what users see first (JavaScript off, or before the
   map loads) at 390, 1024 and 1440 px, and a geometric check of one known feature before and after. The homepage
   checks of 2026-11-21 proved that a first paint exists, not that it was sized right.
