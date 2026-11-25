@@ -232,10 +232,90 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
 }
 
 
+type Plane = [number, number, number, number];
+const cross = (a: number[], b: number[]): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (a: number[]): V3 => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
+const side = (p: number[], q: number[]) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2] + p[3];
+/** The point where three planes meet. */
+const meet = (a: Plane, b: Plane, c: Plane): V3 => {
+    const bc = cross(b, c), ca = cross(c, a), ab = cross(a, b), det = dot(a, bc);
+    return [0, 1, 2].map(i => -(a[3] * bc[i] + b[3] * ca[i] + c[3] * ab[i]) / det) as V3;
+};
+
 /**
- * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when all its
- * sample points are behind the horizon (with the bulge of a large tile), or outside the view. The level of a tile is
- * the level that MapLibre GL JS 6.17 gives it on the globe.
+ * The view as a convex volume in the space of the unit sphere (#1922): its corner points and its planes, each with
+ * the inside on the positive side. The near plane is half a pixel in front of the camera, and the far plane goes no
+ * further than the horizon, as in MapLibre GL JS 6.17.
+ */
+function viewVolume(tr: Transform, f: GlobeFrame): {points: V3[]; planes: Plane[]} {
+    const R = f.radius, d = tr.cameraDistance, cam = f.cam, fwd = unit(view(tr, [0, 0, -1]));
+    const dirs = [[0, 0], [tr.width, 0], [tr.width, tr.height], [0, tr.height]].map(([px, py]) => view(tr, [(px - tr.cx) / d, (tr.cy - py) / d, -1]));
+    const near = 0.5 / R, far = (d + 2 * R) / R, h = f.horizon;
+    // How far along each corner ray the far corner goes: to the horizon plane at most, and not past the farthest point
+    // of the circle of the horizon in the direction of the view.
+    const lens = dirs.map(v => far * Math.hypot(...v)), units = dirs.map(unit);
+    let reach = 0;
+    units.forEach((u, i) => { const den = dot(u, h), t = den ? -(dot(cam, h) + h[3]) / den : -1; reach = Math.max(reach, t >= 0 ? t : lens[i]); });
+    const along = fwd.map((v, i) => v - h[i] * dot(fwd, h)), al = Math.hypot(...along);
+    if (al > 1e-9) {
+        const r = Math.sqrt(Math.max(0, 1 - h[3] * h[3])), edge = h.slice(0, 3).map((v, i) => -v * h[3] + along[i] / al * r);
+        reach = Math.min(reach, dot(fwd, edge.map((v, i) => v - cam[i])) / dot(units[0], fwd));
+    }
+    const nearPts = dirs.map(v => cam.map((c, i) => c + v[i] * near) as V3);
+    const farPts = units.map((u, i) => cam.map((c, j) => c + u[j] * Math.min(reach, lens[i])) as V3);
+    const points = [...nearPts, ...farPts], mid = [0, 1, 2].map(i => points.reduce((s, p) => s + p[i], 0) / 8);
+    const plane = (a: V3, b: V3, c: V3): Plane => {
+        const n = unit(cross(b.map((v, i) => v - a[i]), c.map((v, i) => v - a[i]))), p: Plane = [...n, -dot(n, a)];
+        return side(p, mid) < 0 ? [-p[0], -p[1], -p[2], -p[3]] : p;
+    };
+    const planes = [plane(nearPts[0], nearPts[1], nearPts[2]), plane(farPts[0], farPts[1], farPts[2])];
+    for (let i = 0; i < 4; i++) planes.push(plane(nearPts[i], nearPts[(i + 1) % 4], farPts[i]));
+    return {points, planes};
+}
+
+/**
+ * A convex volume around a tile on the unit sphere, as MapLibre GL JS 6.17 builds it: a box for zoom 0 and 1; above,
+ * the planes of its west and east meridians, two planes across the tile toward the north and the south, and two planes
+ * along the normal at its center (above the bulge and below the corners).
+ */
+function tileVolume(z: number, x: number, y: number): {points: V3[]; planes: Plane[]} {
+    if (z < 2) {
+        const lo = z ? [x ? 0 : -1, y ? -1 : 0, -1] : [-1, -1, -1], hi = z ? [x ? 1 : 0, y ? 0 : 1, 1] : [1, 1, 1];
+        const points = [...Array(8).keys()].map(i => [0, 1, 2].map(k => (i >> k & 1 ? hi : lo)[k]) as V3);
+        return {points, planes: [0, 1, 2].flatMap(k => { const e = [0, 0, 0]; e[k] = 1; return [[...e, -lo[k]] as Plane, [-e[0], -e[1], -e[2], hi[k]] as Plane]; })};
+    }
+    const n = 2 ** z, at = (i: number, j: number) => sphere((x + i) / n, (y + j) / n);
+    const c = [at(0, 0), at(1, 0), at(1, 1), at(0, 1)], mid = at(0.5, 0.5), north = unit(cross(mid, unit(cross([0, 1, 0], mid))));
+    const ext = [...c, mid, at(0.5, y >= n / 2 ? 0 : 1)];
+    if (y === 0) ext.push([0, 1, 0]);
+    if (y === n - 1) ext.push([0, -1, 0]);
+    const span = (a: number[]) => { const v = ext.map(p => dot(a, p)); return [Math.min(...v), Math.max(...v)]; };
+    const [lo, hi] = span(mid), [s, nn] = span(north);
+    const up: Plane = [-mid[0], -mid[1], -mid[2], hi], down: Plane = [...mid, -lo], toN: Plane = [-north[0], -north[1], -north[2], nn], toS: Plane = [...north, -s];
+    const east: Plane = [...unit(cross(c[2], c[1])), 0], west: Plane = [...unit(cross(c[0], c[3])), 0];
+    const points = [...(y === 0 ? [meet(west, east, up), meet(west, east, down)] : [meet(toN, east, up), meet(toN, east, down), meet(toN, west, up), meet(toN, west, down)]),
+        ...(y === n - 1 ? [meet(west, east, up), meet(west, east, down)] : [meet(toS, east, up), meet(toS, east, down), meet(toS, west, up), meet(toS, west, down)])];
+    return {points, planes: [up, down, toN, toS, east, west]};
+}
+
+/** 0 when a tile's volume is outside the view or behind the horizon, 2 when it is all inside both, 1 otherwise. */
+function cull(v: {points: V3[]; planes: Plane[]}, tile: {points: V3[]; planes: Plane[]}, horizon: Plane): number {
+    let all = true;
+    for (const p of v.planes) {
+        const n = tile.points.filter(q => side(p, q) >= 0).length;
+        if (!n) return 0;
+        if (n < tile.points.length) all = false;
+    }
+    // (The separating planes of the tile: the view is outside one of them.)
+    if (!all && tile.planes.some(p => v.points.every(q => side(p, q) < 0))) return 0;
+    const n = tile.points.filter(q => side(horizon, q) >= 0).length;
+    return !n ? 0 : all && n === tile.points.length ? 2 : 1;
+}
+
+/**
+ * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when a convex
+ * volume around it is outside the view or behind the plane of the horizon, as in MapLibre GL JS 6.17 (#1922). The
+ * level of a tile is the level that MapLibre GL JS 6.17 gives it on the globe.
  */
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];
@@ -243,7 +323,7 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
     // zoom, rounded down); above it, the rule of a pitched view (lodZoom), with the camera above the center of a flat
     // Mercator world at the distance of the camera, and the distance to the nearest point of a tile in that world.
     const fixed = Math.floor(exact) <= 4 ? Math.min(maxzoom, Math.max(0, (round ? Math.round : Math.floor)(exact))) : -1;
-    const d3 = tr.cameraDistance / tr.worldSize, pitch = tr.pitch * RAD, bearing = tr.bearing * RAD, margin = 0.15;
+    const d3 = tr.cameraDistance / tr.worldSize, pitch = tr.pitch * RAD, bearing = tr.bearing * RAD;
     const cx = mercX(tr.lng), cy = mercY(clamp(tr.lat, -85.051129, 85.051129));
     const camX = cx - d3 * Math.sin(pitch) * Math.sin(bearing), camY = cy + d3 * Math.sin(pitch) * Math.cos(bearing), camZ = Math.max(1e-9, d3 * Math.cos(pitch));
     // The distance on the ground to a tile, with the world repeated across the antimeridian and mirrored at the poles.
@@ -251,30 +331,26 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
     const ground = (x: number, y: number, n: number) => Math.min(flat(x / n, y / n, 1 / n), flat(x / n + 0.5, -(y + 1) / n, 1 / n), flat(x / n + 0.5, 2 - (y + 1) / n, 1 / n));
     // The point of the sphere under the camera, in Mercator units: the nearest point of a tile is its point nearest to this one.
     const cl = Math.hypot(...f.cam), under = [mercX(Math.atan2(f.cam[0], f.cam[2]) / RAD), mercY(clamp(Math.asin(f.cam[1] / cl) / RAD, -85.051129, 85.051129))];
-    // The places under nine points of the screen: a tile that has one of them is in view, however large it is.
-    const seen: number[][] = [];
-    for (const sx of [0, 0.5, 1]) for (const sy of [0, 0.5, 1]) seen.push(toMerc(tr, sx * tr.width, sy * tr.height));
-    const has = (x: number, y: number, n: number, p: number[]) => { const px = (p[0] - Math.floor(p[0])) * n, py = p[1] * n; return px >= x && px <= x + 1 && py >= y && py <= y + 1; };
-    const visit = (z: number, x: number, y: number) => {
+    const vol = viewVolume(tr, f);
+    // (A tile inside a tile that is all in view is in view too: it is not tested, as in MapLibre.)
+    const visit = (z: number, x: number, y: number, inside: boolean) => {
         const n = 2 ** z, pts: number[][] = [];
-        // Sample points of the tile (5 x 5, and the pole for a tile at the edge of the world). A tile is in view when one
-        // of them is on the near side of the horizon and on the screen, or when it has a place under the screen.
+        if (!inside) {
+            const c = cull(vol, tileVolume(z, x, y), f.horizon);
+            if (!c) return;
+            inside = c === 2;
+        }
+        // Sample points of the tile (5 x 5, and the pole for a tile at the edge of the world), for the distance to the camera.
         for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) pts.push(sphere((x + i / 4) / n, (y + j / 4) / n));
         if (y === 0) pts.push([0, 1, 0]);
         if (y === n - 1) pts.push([0, -1, 0]);
-        const inView = seen.some(p => has(x, y, n, p)) || pts.some(p => {
-            if (dot(p, f.horizon) + f.horizon[3] < -1e-3) return false;
-            const c = clipOf(f, p);
-            return c[2] > 1e-6 && Math.abs(c[0] / c[2]) <= 1 + margin && Math.abs(c[1] / c[2]) <= 1 + margin;
-        });
-        if (!inView) return;
         const ux = under[0] - Math.floor(under[0] - x / n + 0.5 - 0.5 / n), nearest = sphere(clamp(ux, x / n, (x + 1) / n), clamp(under[1], y / n, (y + 1) / n));
         const near = Math.min(...[...pts, nearest].map(p => Math.hypot(p[0] - f.cam[0], p[1] - f.cam[1], p[2] - f.cam[2])));
         const wanted = fixed >= 0 ? fixed : Math.min(maxzoom, (round ? Math.round : Math.floor)(lodZoom([9.314, 3], exact, ground(x, y, n), camZ, d3, tr.fov)));
         if (z >= maxzoom || z >= wanted) { if (z >= minzoom) out.push({z, x, y, w: 0, key: `${z}/${x}/${y}`, near}); return; }
-        for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1));
+        for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1), inside);
     };
-    visit(0, 0, 0);
+    visit(0, 0, 0, false);
     return out.sort((a, b) => a.near - b.near).slice(0, cap).map(({near: _, ...t}) => t);
 }
 
