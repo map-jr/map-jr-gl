@@ -907,8 +907,9 @@ export class Map {
     /**
      * Adds a listener for an event; `on(type, layerId, listener)` hears `click`, `mousemove`, `mouseenter` and
      * `mouseleave` over the features of a style layer. The event then has the features as `e.features`.
+     * (The type of the result is `unknown`: the compat entry returns a `Subscription` instead of the map, #675.)
      */
-    on(type: string, a: string | string[] | Listener, b?: Listener) {
+    on(type: string, a: string | string[] | Listener, b?: Listener): unknown {
         const layers = this.layerArg(type, a, b);
         if (layers) this.layerListeners.push({type, layers, fn: b!}); else (this.listeners[type] ??= []).push(a as Listener);
         // The engine reports each frame only when a listener wants the `render` event: most pages do not.
@@ -999,7 +1000,9 @@ export class Map {
     }
     once(type: string, fn: Listener) {
         const wrap: Listener = e => { this.off(type, wrap); fn(e); };
-        return this.on(type, wrap);
+        // (Not `return this.on(…)`: the `on` of the compat entry returns a `Subscription`.)
+        this.on(type, wrap);
+        return this;
     }
     /** Only in this library: sets the CSS cursor over the map, such as `'pointer'` over something that the user can click. `''` restores the default. */
     setCursor(cursor: string) { this.canvas.style.cursor = cursor; return this; }
@@ -1082,7 +1085,7 @@ export class Map {
     /** Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. */
     unproject(point: {x: number; y: number} | [number, number]) {
         const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
-        const [lng, lat] = this.tr.unproject(x, y);
+        const [lng, lat] = this.tr.unproject(x, y, true);
         return new LngLat(lng, lat);
     }
     /** Only in this library: whether the far side of the globe hides a position from the camera. It is always `false` for Mercator. */
@@ -1975,6 +1978,8 @@ export class Map {
             layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+            // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
+            pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
         }));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
         // (From the top layer down, and in a layer the feature that is drawn last, which is on top, first.)

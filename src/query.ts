@@ -48,7 +48,11 @@ export function featureKey(f: FoundFeature): string {
     delete f.index;
     return f.id === undefined && i === undefined ? '' : `${i ?? ''}|${f.layer}|${f.source}|${f.sourceLayer}|${i === undefined ? f.id : ''}`;
 }
-export interface QuerySet { layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number }
+export interface QuerySet {
+    layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number;
+    /** A circle layer: the first value is true when `circle-pitch-alignment` is `map`, the second when `circle-pitch-scale` is `map`. */
+    pitch?: [boolean, boolean];
+}
 
 function outside(c: number[]) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -167,6 +171,45 @@ export function sampleElevation(pixels: ArrayLike<number>, width: number, height
     const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(width - 1, x0 + 1), y1 = Math.min(height - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
     const e = (x: number, y: number) => decodeElevation(pixels, (y * width + x) * 4, encoding);
     return (e(x0, y0) * (1 - tx) + e(x1, y0) * tx) * (1 - ty) + (e(x0, y1) * (1 - tx) + e(x1, y1) * tx) * ty;
+}
+
+/**
+ * True if a circle of a circle layer at the mercator position (mx, my) touches the rectangle of the screen, as MapLibre
+ * GL JS tests it (`circleIntersection`), and as the circle shader draws it. `r` is the radius with the stroke in pixels.
+ * With `circle-pitch-alignment: map` the circle lies on the ground, and the rectangle is taken onto the ground. With
+ * `circle-pitch-scale: map` a circle far from the camera is smaller.
+ */
+export function circleTouches(tr: Transform, mx: number, my: number, box: number[], r: number, [onMap, scaled]: [boolean, boolean]) {
+    if (tr.worldCopies) mx += Math.round(mercX(tr.lng) - mx);
+    const k = tr.perspectiveAt(mx, my), [x, y] = tr.mercToScreen(mx, my);
+    if (x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3]) return true;
+    if (!onMap) {
+        const R = scaled ? r * k : r, dx = Math.max(box[0] - x, 0, x - box[2]), dy = Math.max(box[1] - y, 0, y - box[3]);
+        return dx * dx + dy * dy <= R * R;
+    }
+    const R = (scaled ? r : r / k) / tr.worldSize, q = [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]].map(([a, b]) => tr.screenToGround(a, b));
+    return q.some((a, i) => segmentDistSq(mx, my, a[0], a[1], q[(i + 1) % 4][0], q[(i + 1) % 4][1]) <= R * R);
+}
+
+/**
+ * For a query on a tilted map: the rectangle grown by the farthest reach of the circles of the sets, and the sets
+ * whose features `circleTouches` tests afterwards. Without pitch a circle is the same everywhere, and the tiles test
+ * it with its radius.
+ */
+export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
+    const circles = tr.pitch ? sets.filter(s => s.pitch) : [];
+    if (!circles.length) return null;
+    // A circle is largest at the bottom of the screen, which is nearest to the camera.
+    const k = Math.max(1, tr.perspectiveAt(...tr.screenToGround(tr.width / 2, Math.max(box[3], tr.height))));
+    const r = Math.max(...circles.map(s => s.radius)) * k;
+    return {box: [box[0] - r, box[1] - r, box[2] + r, box[3] + r], circles: new Set(circles)};
+}
+
+/** The positions of a geometry (in longitude and latitude) where a circle layer draws a circle. */
+export function circleCenters(g: GeoJSONGeometry): number[][] {
+    if (g.type === 'GeometryCollection') return g.geometries.flatMap(circleCenters);
+    const c = g.coordinates as unknown[];
+    return g.type === 'Point' ? [c as number[]] : c.flat(g.type === 'MultiPolygon' ? 2 : /^(Polygon|MultiLineString)$/.test(g.type) ? 1 : 0) as number[][];
 }
 
 /**
