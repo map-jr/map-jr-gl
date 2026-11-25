@@ -112,9 +112,9 @@ export function isolines(v: Float32Array, n: number, interval: number): Map<numb
 
 /**
  * The most times that the levels of one tile may cross the cells of its grid (#2047), which bounds the time and the memory
- * of `isolines` (about 100 MB at the limit). Mountains from 500 to 3500 m in waves of about 250 pixels, with lines every
- * 20 m, cross about 250,000 times. Elevation tiles read with the wrong `encoding` (terrarium as mapbox) cross 10 million times and more, and their
- * lines filled the memory.
+ * of `isolines` (about 100 MB at the limit). A synthetic z12 tile of mountains with a mean slope of 35° and lines every
+ * 10 m crosses about 160,000 times; each lower zoom doubles that. The synthetic tile of test/unit/contour-bounds.test.ts,
+ * read with the wrong `encoding` (terrarium as mapbox), crosses about 8.8 million times at 10 m, and its lines filled the memory.
  */
 export const MAX_CROSSINGS = 1_000_000;
 
