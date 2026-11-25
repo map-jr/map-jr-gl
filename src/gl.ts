@@ -324,12 +324,15 @@ void main() {
     // (With 3D terrain circles are drawn on the screen and stand on the ground, as in MapLibre GL JS: they are not in the ground pictures.)
     circle: [`${VS_COMMON}${TERRAIN_GLSL}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius; layout(location=5) in float a_radius1;
-uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
+layout(location=4) in vec4 a_stroke; layout(location=6) in vec2 a_sb;
+uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform float u_blur; uniform vec4 u_stroke; uniform vec4 u_clip; uniform vec2 u_translate;
 uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch; uniform float u_lift; uniform highp sampler2D u_depth;
-out vec4 v_color; out vec2 v_off; out float v_r;
+out vec4 v_color; out vec4 v_stroke; out vec2 v_off; out float v_r; out vec2 v_sb;
 void main() {
-  v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color;
-  float ext = v_r + u_strokeWidth + 1.0;
+  // A stroke and blur for each feature (a_stroke, a_sb) combine with the values of the layer: a property that is the
+  // same for every feature has its value in the uniform, and the attribute reads 1 for the color and 0 for the rest.
+  v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color; v_stroke = a_stroke * u_stroke; v_sb = a_sb + vec2(u_strokeWidth, u_blur);
+  float ext = v_r + v_sb.x + 1.0;
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
   float h = ground(a_pos / ${EXTENT}.0);
@@ -351,14 +354,14 @@ void main() {
   }
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
-uniform vec4 u_color; uniform vec4 u_stroke; uniform float u_strokeWidth; uniform float u_blur; in vec4 v_color; in vec2 v_off; in float v_r; out vec4 o;
+uniform vec4 u_color; in vec4 v_color; in vec4 v_stroke; in vec2 v_off; in float v_r; in vec2 v_sb; out vec4 o;
 void main() {
-  float d = length(v_off), outer = v_r + u_strokeWidth;
+  float d = length(v_off), outer = v_r + v_sb.x;
   // As in MapLibre, the antialiased (or blurred) edge sits inside the radius.
-  float w = max(u_blur * outer, 1.0);
-  float a = smoothstep(0.0, w, outer - d), st = u_strokeWidth < 0.01 ? 0.0 : smoothstep(-w, 0.0, d - v_r);
+  float w = max(v_sb.y * outer, 1.0);
+  float a = smoothstep(0.0, w, outer - d), st = v_sb.x < 0.01 ? 0.0 : smoothstep(-w, 0.0, d - v_r);
   vec4 c = v_color * u_color;
-  o = a * mix(vec4(c.rgb * c.a, c.a), u_stroke, st);
+  o = a * mix(vec4(c.rgb * c.a, c.a), vec4(v_stroke.rgb * v_stroke.a, v_stroke.a), st);
 }`],
 
     text: [`uniform vec2 u_view; uniform vec2 u_tex;
@@ -617,7 +620,7 @@ interface IconBuffers {
     seen?: number; fresh?: boolean;
 }
 interface GLBuffers {
-    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; bufs: WebGLBuffer[];
+    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
 }
 export interface GLTile {
@@ -907,10 +910,12 @@ export class GLRenderer {
                 attr(0, b.pos, 2, gl.SHORT, false, 8, 4, false, true);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.radius) { attr(3, b.radius, 1, gl.FLOAT); scalar = true; if (b.radius1) attr(5, b.radius1, 1, gl.FLOAT); else attr(5, b.radius, 1, gl.FLOAT, false, 0, 0, false, true); }
+                if (b.stroke) attr(4, b.stroke, 4, gl.UNSIGNED_BYTE, true);
+                if (b.sb) attr(6, b.sb, 2, gl.FLOAT);
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1419,13 +1424,14 @@ export class GLRenderer {
                         if (img || L.p.pattern.dd) gl.uniform4f(u.u_color, 1, 1, 1, L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
                     }
                     if (b.type === 'circle') {
-                        const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
+                        // (A property with a value for each feature is in the vertices: its uniform is 1 for a color and 0 for the rest.)
+                        const sc = L.p.strokeColor.dd ? [1, 1, 1, 1] : L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
                         const tl = screenTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing);
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform2f(u.u_translate, tl[0], tl[1]);
                         gl.uniform1f(u.u_radius, L.p.radius.dd ? 1 : L.p.radius.eval(zoom));
-                        gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
-                        gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
+                        gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.dd ? 0 : L.p.strokeWidth.eval(zoom));
+                        gl.uniform4f(u.u_stroke, sc[0], sc[1], sc[2], a);
                         gl.uniform2f(u.u_pitch, +(L.p.pitchAlign.eval(zoom) === 'map'), +(L.p.pitchScale.eval(zoom) !== 'viewport'));
                         // (Two cells of the terrain mesh, 64 a side, at this zoom: between its corners the mesh can be well above the ground at the center on a steep slope.)
                         gl.uniform1f(u.u_lift, s.terrain && this.depthTex ? 40075016.686 / 2 ** zoom / 32 * Math.max(1, s.terrain.exaggeration) : 0);
@@ -1447,6 +1453,7 @@ export class GLRenderer {
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                 if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
                 if (b.type === 'line' && !b.blur) gl.vertexAttrib1f(7, 0); // a custom layer can leave another value at location 7
+                if (b.type === 'circle') { if (!(b.stroke! & 1)) gl.vertexAttrib4f(4, 1, 1, 1, 1); if (!(b.stroke! & 2)) gl.vertexAttrib2f(6, 0, 0); }
                 if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 if (b.type === 'line' || b.type === 'circle') {
                     gl.uniform1f(u.u_scale, it.scale);

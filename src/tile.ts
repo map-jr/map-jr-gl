@@ -32,6 +32,10 @@ export interface Batch {
     offset?: Float32Array;
     /** `line-blur` for each feature (pixels), present only when it is data-driven. */
     blur?: Float32Array;
+    /** Circles: straight-alpha RGBA of `circle-stroke-color` times `circle-stroke-opacity` for each feature, present only when one of them is data-driven. */
+    stroke?: Uint8Array;
+    /** Circles: `circle-stroke-width` and `circle-blur` for each feature, present only when one of them is data-driven (0 for the one that is not). */
+    sb?: Float32Array;
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
     cap?: string;
@@ -120,7 +124,7 @@ export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array}
-    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array});
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** See `Batch.stroke` and `Batch.sb`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -311,7 +315,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
             const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
-            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [];
+            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [], stroke: number[] = [], sb: number[] = [];
+            const circle = L.type === 'circle', ddStroke = circle && (p.strokeColor.dd || p.strokeOpacity.dd), ddSb = circle && (p.strokeWidth.dd || p.blur.dd);
             let grows = false;
             const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
             const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
@@ -346,6 +351,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 }
                 if (L.type === 'line' && p.offset.dd) offset.push(p.offset.eval(zs, f));
                 if (L.type === 'line' && p.blur.dd) blur.push(Math.max(0, p.blur.eval(zs, f)));
+                if (ddStroke) pushColor(stroke, p.strokeColor.dd ? p.strokeColor.eval(z, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(z, f) : 1);
+                if (ddSb) sb.push(p.strokeWidth.dd ? p.strokeWidth.eval(zs, f) : 0, p.blur.dd ? p.blur.eval(zs, f) : 0);
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
                 if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
@@ -361,6 +368,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (offset.length) batch.offset = Float32Array.from(offset);
             if (blur.length) batch.blur = Float32Array.from(blur);
+            if (ddStroke) batch.stroke = Uint8Array.from(stroke);
+            if (ddSb) batch.sb = Float32Array.from(sb);
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
             if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
             if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
@@ -482,6 +491,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
         // be more compact but is many times slower on software renderers.
         const n = ringEnds.length, pos = new Int16Array(n * 16), idx = new Uint32Array(n * 6);
         const color = b.color ? new Uint8Array(n * 16) : undefined, radius = b.radius ? new Float32Array(n * 4) : undefined, radius1 = b.radius1 ? new Float32Array(n * 4) : undefined;
+        const stroke = b.stroke ? new Uint8Array(n * 16) : undefined, sb = b.sb ? new Float32Array(n * 8) : undefined;
         for (let f = 0, r = 0; f < featEnds.length; f++) {
             for (; r < featEnds[f]; r++) {
                 const i = ringEnds[r] - 1;
@@ -490,11 +500,13 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
                     if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (r * 4 + k) * 4);
                     if (radius) radius[r * 4 + k] = b.radius![f];
                     if (radius1) radius1[r * 4 + k] = b.radius1![f];
+                    if (stroke) stroke.set(b.stroke!.subarray(f * 4, f * 4 + 4), (r * 4 + k) * 4);
+                    if (sb) sb.set(b.sb!.subarray(f * 2, f * 2 + 2), (r * 4 + k) * 2);
                 }
                 idx.set([r * 4, r * 4 + 1, r * 4 + 2, r * 4 + 1, r * 4 + 3, r * 4 + 2], r * 6);
             }
         }
-        return {type: 'circle', pos, idx, color, radius, radius1};
+        return {type: 'circle', pos, idx, color, radius, radius1, stroke, sb};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {

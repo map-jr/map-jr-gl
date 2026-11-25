@@ -516,8 +516,8 @@ Layers:
 Properties:
 
 - `line-gradient` together with `line-dasharray`
-- Circle stroke and blur that are different for each feature
 - `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
+- Circle stroke and blur in the server renderer. Its SVG (`renderToSVG`) gives every circle of a layer the `circle-stroke-color` and `circle-stroke-width` of the layer, even when they are different for each feature, and it does not apply `circle-stroke-opacity` or `circle-blur`.
 - `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
 - `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
 - `text-writing-mode`
