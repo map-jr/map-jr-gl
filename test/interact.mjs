@@ -3165,18 +3165,23 @@ for (const mode of renderers) {
     // raster-fade-duration: a raster tile that arrives over its loaded parent fades in over it, and `idle` waits for the
     // fade, drawing frames meanwhile, as in MapLibre GL JS 6.17; with 0 it shows at once, and a layer that gives none fades over 300 ms in this entry (#1694). (`toBlob` waits for
     // `idle`, so the frames of the fade are counted, not read.) The parent (tile zoom 1, map zoom 0 with tiles of 256 px) is red, its children blue.
+    // The children are held until the map has asked for one, and the check reads at `idle` how many children had
+    // arrived, the time since the last one, and the frames since they were let go. (With 0, `idle` can come within
+    // half a millisecond of the release on a loaded runner, so a time above 0 is no proof of the wait; #2020.)
     {
         const r = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
             const middle = async m => { const blob = await Promise.race([m.toBlob(), new Promise(r => setTimeout(r, 8000))]); if (!blob) return ['no image']; const bmp = await createImageBitmap(blob), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data]; };
             for (const fade of [2000, 0, undefined]) {
-                let release, held = new Promise(r => release = r);
+                let release, held = new Promise(r => release = r), asked = 0, given = 0, last = 0;
                 const name = 'fade1694x' + (fade ?? 'none');
                 mod.addProtocol(name, async request => {
                     const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
-                    if (z > 1) await held;
+                    if (z > 1) { asked++; await held; }
                     g.fillStyle = z > 1 ? '#0000ff' : '#ff0000'; g.fillRect(0, 0, 64, 64);
-                    return {data: await createImageBitmap(c)};
+                    const data = await createImageBitmap(c);
+                    if (z > 1) { given++; last = performance.now(); }
+                    return {data};
                 });
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
                 const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [10, 10], zoom: 0,
@@ -3184,25 +3189,26 @@ for (const mode of renderers) {
                 await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
                 const before = await middle(m);
                 m.jumpTo({zoom: 1});
-                await new Promise(r => setTimeout(r, 200));
-                let idleAt = 0;
-                m.once('idle', () => idleAt = performance.now());
-                const t0 = performance.now();
-                release();
-                let frames = 0;
+                for (let i = 0; i < 400 && !asked; i++) await new Promise(r => setTimeout(r, 20));
+                let frames = 0, idle;
                 const count = () => frames++;
                 m.on('render', count);
-                for (let i = 0; i < 80 && !idleAt; i++) await new Promise(r => setTimeout(r, 100));
+                m.once('idle', () => idle = {asked, given, ms: Math.round(performance.now() - last), frames});
+                release();
+                for (let i = 0; i < 400 && !idle; i++) await new Promise(r => setTimeout(r, 20));
                 m.off('render', count);
                 const after = await middle(m);
-                out[fade ?? 'none'] = {before: before.slice(0, 3).join(), after: after.slice(0, 3).join(), ms: Math.round(idleAt - t0), frames};
+                out[fade ?? 'none'] = {before: before.slice(0, 3).join(), after: after.slice(0, 3).join(), ...idle};
                 m.remove(); el.remove(); mod.removeProtocol(name);
             }
             return out;
         }, mode);
+        // (`idle` comes once every child that the map asked for has arrived, and with a fade, that long after the last one.)
+        const waited = x => x.asked > 0 && x.given === x.asked && x.ms >= 0;
         check(`[${mode}] raster-fade-duration: a raster tile fades in over its parent and idle waits for the fade; with 0 it shows at once; the default of the compat entry is 300 ms (#1694)`,
-            r[2000].before === '255,0,0' && r[2000].after === '0,0,255' && r[2000].ms >= 1900 && r[2000].frames > 10 && r[0].after === '0,0,255' && r[0].ms > 0 && r[0].ms < 1900
-            && r.none.after === '0,0,255' && r.none.ms >= 280, JSON.stringify(r));
+            r[2000].before === '255,0,0' && r[2000].after === '0,0,255' && waited(r[2000]) && r[2000].ms >= 1900 && r[2000].frames > 10
+            && r[0].after === '0,0,255' && waited(r[0]) && r[0].frames < r[2000].frames
+            && r.none.after === '0,0,255' && waited(r.none) && r.none.ms >= 280, JSON.stringify(r));
     }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
