@@ -1115,6 +1115,8 @@ export class Map extends CoreMap {
         // The events of a source also go to the listeners on `getSource(id)`, with MapLibre's names on a source.
         const own = {sourcedata: 'data', sourcedataloading: 'dataloading', error: 'error'}[type], ev = this.sourceEvents.get(data.sourceId as string);
         if (type === 'sourcedataloading' && !data.tile) this.dataPending.add(data.sourceId as string);
+        // (An error of a source carries the source's specification as `source`, as in MapLibre GL JS; #2072.)
+        if (type === 'error' && data.sourceId && !data.source) data = {...data, source: this.rawStyle.sources[data.sourceId as string]};
         // (As in MapLibre GL JS, an event of the data on the source has no `sourceId`, `isSourceLoaded` or `source`.)
         if (own && ev) { const {sourceId, isSourceLoaded, source, ...rest} = data; ev.fire(own, own === 'error' ? {...data} : rest); }
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
