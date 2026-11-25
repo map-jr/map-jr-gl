@@ -907,8 +907,9 @@ export class Map {
     /**
      * Adds a listener for an event; `on(type, layerId, listener)` hears `click`, `mousemove`, `mouseenter` and
      * `mouseleave` over the features of a style layer. The event then has the features as `e.features`.
+     * (The type of the result is `unknown`: the compat entry returns a `Subscription` instead of the map, #675.)
      */
-    on(type: string, a: string | string[] | Listener, b?: Listener) {
+    on(type: string, a: string | string[] | Listener, b?: Listener): unknown {
         const layers = this.layerArg(type, a, b);
         if (layers) this.layerListeners.push({type, layers, fn: b!}); else (this.listeners[type] ??= []).push(a as Listener);
         // The engine reports each frame only when a listener wants the `render` event: most pages do not.
@@ -999,7 +1000,9 @@ export class Map {
     }
     once(type: string, fn: Listener) {
         const wrap: Listener = e => { this.off(type, wrap); fn(e); };
-        return this.on(type, wrap);
+        // (Not `return this.on(…)`: the `on` of the compat entry returns a `Subscription`.)
+        this.on(type, wrap);
+        return this;
     }
     /** Only in this library: sets the CSS cursor over the map, such as `'pointer'` over something that the user can click. `''` restores the default. */
     setCursor(cursor: string) { this.canvas.style.cursor = cursor; return this; }

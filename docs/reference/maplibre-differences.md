@@ -526,6 +526,7 @@ Properties:
 - On a rotated icon, the four sides of `icon-padding` are added to the screen-aligned box of the rotated icon, and not before the rotation as in MapLibre GL JS. With no rotation, the box is the same as in MapLibre GL JS.
 - `symbol-z-order` sorts the symbols within each tile by the y of their anchor in the tile, turned with the map, as MapLibre GL JS does. The order is found at each placement (about four times a second while the map moves), so it can lag behind a map that rotates. Icons without text that always show (`icon-allow-overlap` with no `text-field`, at a point) keep their order while the map turns, and are sorted again in the first frame after the turn.
 - `symbol-avoid-edges` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each layer that has it.
+- The root property `centerAltitude` of a style has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each map whose style has it.
 - `symbol-height-offset`. The property is not read, and nothing warns.
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and nothing warns: the corners of an extrusion are sharp.
 - `raster-fade-duration`. A raster tile shows at once when it has loaded. A value other than 0 has no effect and writes one warning. (`raster-resampling`, `resampling` and `raster-layer-blend` are read as in MapLibre GL JS; the SVG output of the server renderer gives `nearest` to the browser as `image-rendering: pixelated`.)
@@ -629,7 +630,6 @@ These types differ from MapLibre GL JS:
 | `LogoControlOptions` | `compact` has no effect and writes one warning, because this library has no logo. This is a decision and will stay. |
 | `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |
 | `Listener` | Its type parameter is the type of the event, and the default is `MapLibreEvent`. |
-| `Subscription` | No method returns it: `map.on` returns the map. Remove a listener with `map.off(type, listener)`. |
 | `FullscreenControlEventType`, `GeolocateControlEventType`, `PopupEventType`, `EventTypeMap` | An event is a plain object with `type` and `target`, and not an instance of the class `Event`. The event of `geolocate` has `coords` and `timestamp`, and the event of `error` has `code` and `message`. |
 | `DragPanOptions`, `DragRotateOptions`, `AroundCenterOptions` | They have no effect and warn once: `enable(options)` of a handler turns it on, and an object as the option `dragPan` or `dragRotate` of `new Map()` counts as `true`. |
 | `UpdateImageOptions` | It has `url` and `coordinates`, and no `image`. |
