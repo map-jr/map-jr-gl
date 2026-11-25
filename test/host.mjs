@@ -1169,6 +1169,8 @@ for (const renderer of renderers) {
 
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
+        const tiles2007 = new Set();
+        await page.route(/\/no-such-2007\//, r => { tiles2007.add(r.request().url()); r.fulfill({status: 500, body: ''}); });
         const mistakes = await page.evaluate(async () => {
             const t = window.t, said = fn => { try { fn(); return ''; } catch (e) { return e.message; } }, wait = ms => new Promise(r => setTimeout(r, ms));
             const out = {noId: said(() => t.lib.createMap('nope', {style: t.style})), isNull: said(() => t.lib.createMap(null, {style: t.style}))};
@@ -1185,16 +1187,25 @@ for (const renderer of renderers) {
             await wait(1200);
             out.sourceInfo = JSON.stringify(sourceInfos);
             withSource.destroy();
+            // A tile server that answers 500: one error for each tile, also after the retries (0.5 s, 1 s, 2 s) (#2007).
+            const tileErrors = [], box = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const down = t.lib.createMap(box, {style: {version: 8, sources: {v: {type: 'vector', tiles: [location.origin + '/no-such-2007/{z}/{x}/{y}.pbf']}}, layers: [{id: 'v', type: 'fill', source: 'v', 'source-layer': 'x'}]}, view: {center: [0, 0], zoom: 3}, attribution: false, onError: (e, info) => tileErrors.push(info.sourceId)});
+            await wait(5000);
+            down.destroy(); box.remove();
+            out.tileErrors = tileErrors.length; out.tileSource = [...new Set(tileErrors)].join();
             const without = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false});
             await wait(1200);
             out.logged = logged.join();
             without.destroy(); el.remove(); console.error = log;
             return out;
         });
+        await page.unroute(/\/no-such-2007\//);
         check(`[${renderer}] mistakes have a message: a container that is not there`,
             mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.left === 0, JSON.stringify(mistakes));
         check(`[${renderer}] onError gets each error, and without it the error is written to the console`,
             /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged), JSON.stringify(mistakes));
+        check(`[${renderer}] a tile server that answers 500 gives one error for each tile, with its sourceId, also after the retries (#2007)`,
+            tiles2007.size >= 4 && mistakes.tileErrors === tiles2007.size && mistakes.tileSource === 'v', JSON.stringify({...mistakes, tiles: tiles2007.size}));
         check(`[${renderer}] onError gets {sourceId} as its second argument for a source that fails, and {} for the style (#2008)`,
             mistakes.styleInfo === '[{}]' && mistakes.sourceInfo === '[{"sourceId":"broken"}]', JSON.stringify(mistakes));
 
