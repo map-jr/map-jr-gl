@@ -168,7 +168,7 @@ export class ScaleControl implements Control {
 }
 
 /**
- * Toggles the map's container in and out of fullscreen. Where the browser has no Fullscreen API (Safari on iPhone),
+ * Toggles the map's container, or the element of the option `container`, in and out of fullscreen. Where the browser has no Fullscreen API (Safari on iPhone),
  * or with `pseudo: true`, the control gives the container the class `map-jr-pseudo-fullscreen`, which makes it fill
  * the window, as the "pseudo fullscreen" of MapLibre GL JS does.
  */
@@ -177,14 +177,16 @@ export class FullscreenControl implements Control {
     private pseudo: boolean;
     private full = false;
     private restoreGestures = false;
+    private container?: HTMLElement;
+    /** `container` is the element that goes fullscreen (default: the map's container), as in MapLibre GL JS. */
     constructor(options: {container?: HTMLElement; pseudo?: boolean} = {}) {
-        if (options.container) noEffect('FullscreenControl', 'container', ' The map\'s container goes fullscreen.');
+        this.container = options.container;
         this.pseudo = !!options.pseudo;
     }
     /** Called when the container enters or leaves fullscreen (the compat entry fires its events here). */
     protected changed(_on: boolean) {}
     onAdd(map: Map) {
-        const el = this.el = group(), c = map.getContainer();
+        const el = this.el = group(), c = this.container || map.getContainer();
         const native = () => !this.pseudo && !!c.requestFullscreen && !!document.exitFullscreen;
         const set = (on: boolean) => {
             if (on === this.full) return;
