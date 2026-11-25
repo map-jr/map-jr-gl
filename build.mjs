@@ -8,6 +8,7 @@ import MagicString from 'magic-string';
 import {privateNames, shortenPrivateNames} from './scripts/private-names.mjs';
 import {minifyShaders} from './scripts/minify-shaders.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
+import {removedReads} from './scripts/server-reads.mjs';
 import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
@@ -262,8 +263,9 @@ const contourOnly = {
 // The methods of shared classes that only the browser map calls: the camera of the map (3D terrain, the globe,
 // gestures), the queries of features and of 3D terrain of the tile builder, and the cluster queries of the map. The
 // minifier keeps every method of a class, so the server build removes these (#2041). The build stops when the built
-// server.js still reads a removed name (`.name`, or `this.name` for a private method), so that a method that the server
-// renderer comes to call cannot go missing: remove its name here then.
+// server.js still reads a removed name (`x.name`, `x['name']` or a destructuring key; `this.name` for a private method;
+// see scripts/server-reads.mjs), so that a method that the server renderer comes to call cannot go missing: remove its
+// name here then.
 // Of src/exact-pixels.ts, the server renderer needs only `decodePixels` with a decoder: it always has one (`decodeImage`,
 // with a default), and it has no browser that could decode an image or an `ImageBitmap` to decode.
 const serverDrops = {
@@ -297,11 +299,14 @@ const browserOnly = () => {
             return withMap(edited, id);
         }},
         generateBundle(_, bundle) {
-            const code = Object.values(bundle).filter(c => c.type === 'chunk').map(c => c.code).join('\n');
+            const methods = new Map(), files = new Map();
             for (const [file, classes] of Object.entries(serverDrops)) for (const name of Object.values(classes).flat()) {
                 if (!dropped.has(name)) throw new Error(`build.mjs: src/${file} has no method "${name}" to leave out of the server renderer.`);
-                const built = (short.get(name) ?? name).replace(/\$/g, '\\$');
-                if (new RegExp(`${dropped.get(name) ? '\\bthis' : ''}\\.${built}\\b`).test(code)) throw new Error(`build.mjs: dist/server.js calls "${name}" of src/${file}, which serverDrops leaves out of the server renderer. Remove "${name}" from serverDrops.`);
+                for (const built of new Set([name, short.get(name) ?? name])) methods.set(built, {name, private: dropped.get(name)});
+                files.set(name, file);
+            }
+            for (const chunk of Object.values(bundle)) for (const name of chunk.type === 'chunk' ? removedReads(chunk.code, methods) : []) {
+                throw new Error(`build.mjs: dist/server.js reads "${name}" of src/${files.get(name)}, which serverDrops leaves out of the server renderer. Remove "${name}" from serverDrops.`);
             }
         },
     };
