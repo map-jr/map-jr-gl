@@ -92,7 +92,7 @@ BSD-3-Clause.
   their vertices, and a tile at the north or south edge of the world gets triangles to the pole, with the y values
   -32768 and 32767 for the pole vertices. The code is new, and the size of the grid is not that of MapLibre. A point
   of a heatmap on the globe is a grid of 4 × 4 corners at the extrusions of `CircleBucket` with the granularity 3
-  (`src/data/bucket/circle_bucket.ts`), and the code that draws it (`heatGrid` in `src/gl.ts`) is new.
+  (`src/data/bucket/circle_bucket.ts`), and the code that draws it (`tessellate` in `src/tile.ts`) is new.
 - The globe (`src/globe.ts` and the `GLOBE` variant of the programs in `src/gl.ts`) follows the globe of MapLibre GL JS
   6.17 (`src/geo/projection/vertical_perspective_transform.ts`, `globe_utils.ts`, `_projection_globe.vertex.glsl`,
   BSD-3-Clause): the radius that keeps the scale of Mercator at the center, the matrix from the unit sphere to clip

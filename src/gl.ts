@@ -125,16 +125,16 @@ const BUILTIN = {
     // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
     heat: [`${VS_COMMON}
 layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight;
-uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale;
+uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale; uniform float u_corner;
 out vec2 v_ex; out float v_w;
 void main() {
   v_w = a_weight * u_weight;
   // The bump is drawn out to where it falls below what the picture can store, and no further.
   float s = sqrt(max(0.0, -2.0 * log(${(1 / 255 / 16).toFixed(8)} / max(v_w * u_intensity * 0.3989422804, 1e-9)))) / 3.0;
-  v_ex = s * a_corner;
+  v_ex = s * a_corner * u_corner;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
 #ifdef GLOBE
-  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see heatGrid): u_radius is in pixels at the center of the view.
+  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): u_radius is in pixels at the center of the view.
   vec4 c = toClipTurn(a_pos, v_ex * u_radius / u_scale, 0.0);
 #else
   vec4 c = toClip(a_pos);
@@ -624,7 +624,7 @@ interface IconBuffers {
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
-    /** A heatmap on the globe: the grid of each point (see `heatGrid`). */ heatVao?: WebGLVertexArrayObject;
+    /** A heatmap on a map that can show the globe: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
 export interface GLTile {
     /** Distinguishes this tile's contents from any other's, including an earlier build of the same tile. */
@@ -916,7 +916,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1112,7 +1112,6 @@ export class GLRenderer {
         for (const b of Object.values(t.batches)) {
             this.gl.deleteVertexArray(b.vao);
             if (b.edgeVao) this.gl.deleteVertexArray(b.edgeVao);
-            if (b.heatVao) this.gl.deleteVertexArray(b.heatVao);
             for (const buf of b.bufs) this.gl.deleteBuffer(buf);
         }
         for (const b of Object.values(t.icons ?? {})) { this.gl.deleteVertexArray(b.vao); for (const buf of b.bufs) this.gl.deleteBuffer(buf); }
@@ -1644,39 +1643,6 @@ export class GLRenderer {
     }
     private floatTargets?: boolean;
 
-    private heatCorners?: [WebGLBuffer, WebGLBuffer];
-    /**
-     * On the globe each point of a heatmap is a grid of 4 × 4 corners, as in MapLibre GL JS. The corners lie on the
-     * sphere, and the four corners of a single quad would cut under it, which moves the bump toward the center of the
-     * globe. The grid is drawn once for each point (instanced) from the positions and weights of the tile's buffers.
-     */
-    private heatGrid(b: GLBuffers) {
-        const gl = this.gl, A = gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING;
-        if (!this.heatCorners) {
-            const e = [-1, -3 / 7, 3 / 7, 1], v: number[] = [], idx: number[] = [], c = this.heatCorners = [gl.createBuffer()!, gl.createBuffer()!];
-            for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
-                v.push(e[x], e[y]);
-                if (x < 3 && y < 3) idx.push(y * 4 + x, y * 4 + x + 5, y * 4 + x + 1, y * 4 + x, y * 4 + x + 4, y * 4 + x + 5);
-            }
-            gl.bindVertexArray(null);
-            gl.bindBuffer(gl.ARRAY_BUFFER, c[0]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, c[1]); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
-        }
-        gl.bindVertexArray(b.vao);
-        const pos = gl.getVertexAttrib(2, A), weight = b.scalar && gl.getVertexAttrib(3, A), vao = gl.createVertexArray()!;
-        gl.bindVertexArray(vao);
-        // The tile has four vertices for each point: the first one of each gives the position and the weight.
-        for (const [loc, buf, size, type, stride] of [[0, this.heatCorners[0], 2, gl.FLOAT, 0], [2, pos, 2, gl.SHORT, 32], [3, weight, 1, gl.FLOAT, 16]] as const) {
-            if (!buf) continue;
-            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-            gl.enableVertexAttribArray(loc);
-            gl.vertexAttribPointer(loc, size, type, false, stride, 0);
-            gl.vertexAttribDivisor(loc, loc && 1);
-        }
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.heatCorners[1]);
-        return vao;
-    }
-
     private drawHeatmap(L: CompiledLayer, tr: Transform, items: RenderItem<GLTile>[], target: [number, number]) {
         const gl = this.gl, zoom = tr.zoom, w = Math.max(1, Math.ceil(target[0] / HEAT_SCALE)), h = Math.max(1, Math.ceil(target[1] / HEAT_SCALE));
         const back = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
@@ -1707,10 +1673,10 @@ export class GLRenderer {
             this.placeTile(u, it.id, it.matrix4);
             gl.uniform4fv(u.u_clip, it.clip);
             gl.uniform1f(u.u_scale, it.scale);
-            gl.bindVertexArray(u.u_globe ? b.heatVao ??= this.heatGrid(b) : b.vao);
+            gl.uniform1f(u.u_corner, b.grid ? 1 / 7 : 1);
+            gl.bindVertexArray(b.vao);
             if (!b.scalar) gl.vertexAttrib1f(3, 1);
-            if (u.u_globe) gl.drawElementsInstanced(gl.TRIANGLES, 54, gl.UNSIGNED_SHORT, 0, b.count / 6);
-            else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+            gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, back);
         gl.viewport(0, 0, target[0], target[1]);

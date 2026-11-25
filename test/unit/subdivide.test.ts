@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {compileLayer} from '../../src/style.ts';
-import {LINE_VERTEX, buildTile, tessellate, toGL, type Batch} from '../../src/tile.ts';
+import {LINE_VERTEX, buildTile, tessellate, toGL, type Batch, type GLBatch} from '../../src/tile.ts';
 import {NORTH_POLE, SOUTH_POLE, cutLine, globeBuild, globeGrid, type GlobeBuild} from '../../src/subdivide.ts';
 import {sphere} from '../../src/globe.ts';
 
@@ -173,4 +173,24 @@ test('globe: a building has a roof cut along the grid and a wall under every pie
         assert.ok(Math.abs(roof[a * 2] - roof[c * 2]) <= 512 && Math.abs(roof[a * 2 + 1] - roof[c * 2 + 1]) <= 512);
     }
     for (const [k, i] of walls(cut).entries()) if (k % 4 === 0) assert.ok(Math.hypot(cut.v[i * 4] - cut.v[(i + 1) * 4], cut.v[i * 4 + 1] - cut.v[(i + 1) * 4 + 1]) <= 512);
+});
+
+// #1824: on a map that can show the globe, a point of a heatmap is a grid of 4 × 4 corners in sevenths, drawn without
+// instancing (which is about 30 times slower in SwiftShader). A circle, and a heatmap without the globe, keep one quad.
+test('a heatmap point is a grid of 4 × 4 corners on a map that can show the globe', () => {
+    const points = (heat: boolean): Batch => ({type: 'circle', heat, radius: Float32Array.from([0.5, 2]),
+        geom: {coords: Int16Array.from([10, 20, 30, 40]), ringEnds: Uint32Array.from([1, 2]), featEnds: Uint32Array.from([1, 2])}});
+    const g = tessellate(points(true), {grid: 16}) as Extract<GLBatch, {type: 'circle'}>;
+    assert.equal(g.grid, true);
+    assert.equal(g.pos.length, 2 * 16 * 4);
+    assert.equal(g.idx.length, 2 * 9 * 6);
+    assert.deepEqual([...g.pos.subarray(16 * 4, 16 * 4 + 8)], [30, 40, -7, -7, 30, 40, -3, -7]);
+    assert.deepEqual([...g.radius!], [...Array(16).fill(0.5), ...Array(16).fill(2)]);
+    assert.ok([...g.idx].every((v, i) => (v >> 4) === Math.floor(i / 54)), 'each point uses only its own 16 corners');
+    for (const [heat, globe] of [[true, undefined], [false, {grid: 16}]] as const) {
+        const q = tessellate(points(heat), globe) as Extract<GLBatch, {type: 'circle'}>;
+        assert.equal(q.grid, undefined);
+        assert.deepEqual([...q.idx], [0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6]);
+        assert.deepEqual([...q.pos.subarray(0, 16)], [10, 20, -1, -1, 10, 20, 1, -1, 10, 20, -1, 1, 10, 20, 1, 1]);
+    }
 });

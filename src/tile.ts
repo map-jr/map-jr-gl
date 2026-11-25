@@ -50,6 +50,8 @@ export interface Batch {
     ed?: boolean;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
     pat?: string;
+    /** The points of a heatmap layer. */
+    heat?: boolean;
 }
 /** The key of the batch of a layer for its `k`th image, when its pattern has a value for each feature: one batch for each image. */
 export const patternKey = (id: string, k: number) => k ? id + '\0' + k : id;
@@ -120,7 +122,7 @@ export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array}
-    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array});
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -364,6 +366,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
             if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
             if (pat) batch.pat = pat;
+            if (heat) batch.heat = true;
             out.layers[patternKey(L.id, k++)] = batch;
         }
     }
@@ -476,22 +479,27 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
     if (b.type === 'circle') {
         // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
-        // be more compact but is many times slower on software renderers.
-        const n = ringEnds.length, pos = new Int16Array(n * 16), idx = new Uint32Array(n * 6);
-        const color = b.color ? new Uint8Array(n * 16) : undefined, radius = b.radius ? new Float32Array(n * 4) : undefined, radius1 = b.radius1 ? new Float32Array(n * 4) : undefined;
+        // be more compact but is many times slower on software renderers (about 30 times in SwiftShader, #1824).
+        // On a map that can show the globe, a point of a heatmap is a grid of 4 × 4 corners, as in MapLibre GL JS
+        // (granularity 3 of its CircleBucket): the corners lie on the sphere, and the four corners of one quad would cut
+        // under it, which moves the bump toward the center of the globe. Its corners are in sevenths.
+        const grid = !!globe && b.heat, g = grid ? 4 : 2, v = g * g, e = grid ? [-7, -3, 3, 7] : [-1, 1];
+        const n = ringEnds.length, pos = new Int16Array(n * v * 4), idx = new Uint32Array(n * (g - 1) ** 2 * 6);
+        const color = b.color ? new Uint8Array(n * v * 4) : undefined, radius = b.radius ? new Float32Array(n * v) : undefined, radius1 = b.radius1 ? new Float32Array(n * v) : undefined;
         for (let f = 0, r = 0; f < featEnds.length; f++) {
             for (; r < featEnds[f]; r++) {
-                const i = ringEnds[r] - 1;
-                for (let k = 0; k < 4; k++) {
-                    pos.set([coords[i * 2], coords[i * 2 + 1], k & 1 ? 1 : -1, k & 2 ? 1 : -1], (r * 4 + k) * 4);
-                    if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (r * 4 + k) * 4);
-                    if (radius) radius[r * 4 + k] = b.radius![f];
-                    if (radius1) radius1[r * 4 + k] = b.radius1![f];
+                const i = ringEnds[r] - 1, o = r * v;
+                for (let k = 0; k < v; k++) {
+                    pos.set([coords[i * 2], coords[i * 2 + 1], e[k % g], e[k / g | 0]], (o + k) * 4);
+                    if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (o + k) * 4);
+                    if (radius) radius[o + k] = b.radius![f];
+                    if (radius1) radius1[o + k] = b.radius1![f];
                 }
-                idx.set([r * 4, r * 4 + 1, r * 4 + 2, r * 4 + 1, r * 4 + 3, r * 4 + 2], r * 6);
+                if (!grid) idx.set([o, o + 1, o + 2, o + 1, o + 3, o + 2], r * 6);
+                else for (let c = 0; c < 9; c++) { const q = o + (c / 3 | 0) * 4 + c % 3; idx.set([q, q + 5, q + 1, q, q + 4, q + 5], (r * 9 + c) * 6); }
             }
         }
-        return {type: 'circle', pos, idx, color, radius};
+        return {type: 'circle', pos, idx, color, radius, ...grid && {grid}};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
