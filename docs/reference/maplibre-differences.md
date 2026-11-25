@@ -61,6 +61,8 @@ Gives the elevation at a position from a `raster-dem` source.
 ### Contour source
 
 `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](../guide/terrain.md).
+Unlike maplibre-contour, it leaves out a tile whose lines would cross the cells of its grid more than 1,000,000 times
+(for example elevation tiles read with the wrong `encoding`), and it warns one time for each source id on the page.
 
 ### PMTiles
 

@@ -67,7 +67,7 @@ export class TileBuilder {
         const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
         if (!cfg) return {};
         const c = await part('dem');
-        return c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c));
+        return c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c), m[1]);
     }
 
     /**
