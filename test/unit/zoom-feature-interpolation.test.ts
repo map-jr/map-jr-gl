@@ -1,6 +1,6 @@
 // A line, circle or heatmap property whose expression depends on the zoom and the feature changes smoothly between
 // whole zooms, as in MapLibre GL JS, and not only at the zoom of each tile (#1950). The tile keeps the change of the value
-// to the next zoom (`next`, or the second number of `sb` and `radius1` for a heatmap), and the shader adds `u_zt` times
+// to the next zoom (`next` and `stroke1`, or the second number of `sb` and `radius1` for a heatmap), and the shader adds `u_zt` times
 // it, as for `line-width`. The checks model the shader at zoom 11.5 on a tile of zoom 11 (u_zt = 0.5) and compare with
 // what the style specification of MapLibre GL JS evaluates at 11.5.
 import {test} from 'node:test';
@@ -32,14 +32,21 @@ const batch = (type: string, paint: Record<string, unknown>, feature: object) =>
 test('line-offset, line-blur and line-gap-width of zoom and feature change between whole zooms (#1950)', () => {
     const value = ramp(g);
     const b = batch('line', {'line-offset': value, 'line-blur': value, 'line-gap-width': ramp(['+', 1, g])}, line);
-    // The shader: the offset is a_offset / 8 + u_zt * a_next.x, the blur a_blur + u_zt * a_next.y, the gap a_gap + u_zt * a_next.z.
-    const view = new DataView(b.v.buffer, b.v.byteOffset), next = b.next ?? [0, 0, 0];
+    // The shader: the offset is a_offset / 8 + u_zt * a_offset1, the blur a_blur + u_zt * a_blur1, the gap a_gap + u_zt * a_gap1,
+    // from the 3 numbers of `next` of each vertex.
+    assert.equal(b.nextMask, 7);
+    const view = new DataView(b.v.buffer, b.v.byteOffset), next = b.next;
     const offset = view.getInt16(10, true) / 8 + zt * next[0], blur = b.blur[0] + zt * next[1], gap = b.gap[0] + zt * next[2];
     near(offset, maplibre('paint_line', 'line-offset', value), 'line-offset', 1 / 16);
     near(blur, maplibre('paint_line', 'line-blur', value), 'line-blur');
     near(gap, maplibre('paint_line', 'line-gap-width', ramp(['+', 1, g])), 'line-gap-width');
     near(gap, 10, 'g = 4: 5 + 5 * 2 * 1.5 / 3');
     assert.equal(batch('line', {'line-blur': ['get', 'g'], 'line-gap-width': ['zoom']}, line).next, undefined, 'a value of the feature alone needs no second buffer');
+    // A property that does not change takes no memory: `line-offset` alone has one number for each vertex.
+    const only = batch('line', {'line-offset': value}, line);
+    assert.equal(only.nextMask, 1);
+    assert.equal(only.next.length, only.v.length / 16);
+    near(new DataView(only.v.buffer, only.v.byteOffset).getInt16(10, true) / 8 + zt * only.next[0], maplibre('paint_line', 'line-offset', value), 'line-offset alone', 1 / 16);
 });
 
 test('circle-stroke-width, circle-blur and circle-stroke-color and -opacity of zoom and feature change between whole zooms (#1950)', () => {
@@ -47,20 +54,30 @@ test('circle-stroke-width, circle-blur and circle-stroke-color and -opacity of z
     const color = ['interpolate', ['linear'], ['zoom'], 10, ['rgb', 0, 0, ['*', 10, g]], 13, ['rgb', 0, 0, ['*', 40, g]]];
     const opacity = ['interpolate', ['linear'], ['zoom'], 10, ['/', g, 40], 13, ['/', g, 5]];
     const b = batch('circle', {'circle-stroke-width': value, 'circle-blur': ramp(['/', g, 10]), 'circle-stroke-color': color, 'circle-stroke-opacity': opacity}, point);
-    // The shader: a_sb + u_zt * a_sb1 and a_stroke + u_zt * a_stroke1, from the 6 numbers of `next` of each vertex.
-    assert.equal(b.next?.length, b.sb.length * 3);
+    // The shader: a_sb + u_zt * vec2(a_strokeWidth1, a_blur1) from the 2 numbers of `next` of each vertex, and
+    // mix(a_stroke, a_stroke1, u_zt).
+    assert.equal(b.nextMask, 3);
+    assert.equal(b.next.length, b.sb.length);
     near(b.sb[0] + zt * b.next[0], maplibre('paint_circle', 'circle-stroke-width', value), 'circle-stroke-width');
     near(b.sb[1] + zt * b.next[1], maplibre('paint_circle', 'circle-blur', ramp(['/', g, 10])), 'circle-blur');
     const c = maplibre('paint_circle', 'circle-stroke-color', color), a = maplibre('paint_circle', 'circle-stroke-opacity', opacity);
-    near(b.stroke[2] / 255 + zt * b.next[4], c.b, 'blue of circle-stroke-color', 1 / 255);
-    near(b.stroke[3] / 255 + zt * b.next[5], a, 'circle-stroke-opacity', 1 / 255);
+    const mix = (i: number) => (b.stroke[i] + zt * (b.stroke1[i] - b.stroke[i])) / 255;
+    near(mix(2), c.b, 'blue of circle-stroke-color', 1 / 255);
+    near(mix(3), a, 'circle-stroke-opacity', 1 / 255);
+    // `circle-stroke-width` alone has one number for each vertex, and no second color.
+    const only = batch('circle', {'circle-stroke-width': value, 'circle-stroke-color': ['case', ['>', ['get', 'g'], 2], 'red', 'blue']}, point);
+    assert.equal(only.nextMask, 1);
+    assert.equal(only.next.length, only.pos.length / 4);
+    assert.equal(only.stroke1, undefined);
+    near(only.sb[0] + zt * only.next[0], maplibre('paint_circle', 'circle-stroke-width', value), 'circle-stroke-width alone');
     assert.equal(batch('circle', {'circle-stroke-width': ['get', 'g'], 'circle-stroke-color': ['case', ['>', ['get', 'g'], 2], 'red', 'blue']}, point).next, undefined, 'values of the feature alone need no second buffer');
 });
 
 test('heatmap-weight and heatmap-radius of zoom and feature change between whole zooms (#1950)', () => {
     const value = ramp(g);
     const b = batch('heatmap', {'heatmap-weight': value, 'heatmap-radius': value}, point);
-    // The shader: mix(a_weight, a_weight1, u_zt) and mix(a_radius.x, a_radius.y, u_zt).
+    // The shader: mix(a_weight, a_weight1, u_zt) and a_radius.x + u_zt * a_radius.y.
     near(b.radius[0] + zt * ((b.radius1 ?? b.radius)[0] - b.radius[0]), maplibre('paint_heatmap', 'heatmap-weight', value), 'heatmap-weight');
-    near(b.sb[0] + zt * (b.sb[1] - b.sb[0]), maplibre('paint_heatmap', 'heatmap-radius', value), 'heatmap-radius');
+    near(b.sb[0] + zt * b.sb[1], maplibre('paint_heatmap', 'heatmap-radius', value), 'heatmap-radius');
+    assert.equal(batch('heatmap', {'heatmap-radius': g}, point).sb[1], 0, 'a radius of the feature alone does not change');
 });
