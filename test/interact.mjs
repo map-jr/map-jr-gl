@@ -1587,6 +1587,36 @@ for (const mode of renderers) {
             ours.right === 'fill' && ours.up === 'line' && ours.down === 'extrusion' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
 
+    // A line with `line-offset` is found where it is drawn and not at its geometry, as in MapLibre GL JS 6.17 (#2001). A
+    // positive offset moves a line to the right of its direction: a line drawn east with an offset of 20 is 20 pixels
+    // down, and one with an offset of -20 from a property is 20 pixels up.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const line = {type: 'Feature', properties: {o: -20}, geometry: {type: 'LineString', coordinates: [[-2, 0], [2, 0]]}};
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {l: {type: 'geojson', data: line}},
+                layers: [
+                    {id: 'down', type: 'line', source: 'l', paint: {'line-width': 4, 'line-offset': 20}},
+                    {id: 'up', type: 'line', source: 'l', paint: {'line-width': 4, 'line-offset': ['get', 'o']}},
+                ]}});
+            await new Promise(r => m.once('idle', r));
+            const p = m.project([0, 0]), ids = fs => [...new Set([...fs].map(f => f.layer.id))].sort().join();
+            const out = {};
+            for (const [name, pt] of Object.entries({down: [p.x, p.y + 20], up: [p.x, p.y - 20], at: [p.x, p.y]})) {
+                out[name] = ids(await m.queryRenderedFeatures(pt));
+                out[`now-${name}`] = ids(m.queryRenderedFeatures(pt));
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a line with line-offset, also from a property, is found where it is drawn, as MapLibre GL JS, also in the array at once (#2001)`,
+            ours.down === 'down' && ours.up === 'up' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
     // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
