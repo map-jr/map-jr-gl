@@ -133,7 +133,6 @@ table names the causes that this triage found. "label" names a label of
 | `regressions/mapbox-gl-js#8273` | differ 5.7% | The pattern image is sampled sharper than in MapLibre, and on narrow lines it is scaled differently. | #1810 |
 | `regressions/mapbox-gl-native#11729` | near 2.1% | Khmer text is not shaped: the characters are drawn one after the other. | #1816 |
 | `regressions/mapbox-gl-native#7572` | near 3.2% | Only one of the two icons is drawn after `setLayoutProperty` changes `icon-offset` of the second layer. | #1814 |
-| `regressions/mapbox-gl-native#8460` | differ 9.1% | A circle with a legacy function of zoom and property (stops at zoom 0 and 0.5) is not drawn at zoom 0.999. | #1815 |
 | `regressions/mapbox-gl-native#9976` | near 4.7% | The pattern image is sampled sharper than in MapLibre, and on narrow lines it is scaled differently. | #1810 |
 | `regressions/mapbox-gl-shaders#37` | near 1.1% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
 | `regressions/maplibre-gl-js#7704-pattern` | near 3.6% | The pattern image is sampled sharper than in MapLibre, and on narrow lines it is scaled differently. | #1810 |

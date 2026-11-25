@@ -67,7 +67,7 @@ export function fontFaces(faces: FontFaces | undefined, base?: string): FontSour
     }
     return fonts;
 }
-export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; /** The URL of the glyph files of the style, with `{fontstack}` and `{range}`. */ glyphs?: string; /** A source is still on its way (see `Partial`): the map is not idle. */ waiting?: boolean; sprite?: string; fonts?: FontSource[];
+export interface ResolvedStyle { layers: LayerJSON[]; /** The `raster-fade-duration` of a raster layer that gives none, in ms (set by the map, see `rasterFade` of map.ts). */ rasterFade?: number; sources: Record<string, SourceInfo>; unsupported: string[]; /** The URL of the glyph files of the style, with `{fontstack}` and `{range}`. */ glyphs?: string; /** A source is still on its way (see `Partial`): the map is not idle. */ waiting?: boolean; sprite?: string; fonts?: FontSource[];
     /** The names of the images in `metadata["map-jr:images"]` of the style: they win over the sprite images of the same name (#1199). */
     own?: string[];
     /** 3D terrain: the raster-dem source that shapes the ground, and how much to exaggerate it. */

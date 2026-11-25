@@ -346,7 +346,7 @@ choice of the renderer, the workers or the canvas, and after a new version of Sa
 | Input of a start by hand | Effect |
 |---|---|
 | `safari` | The usual jobs and the job `safari`; the results of Safari go to `bench-results` with the others. |
-| `safari_only` | Only the job `safari`, and the branch is not written. For trying a change of the job. |
+| `safari_only` | Only the job `safari`, and the branch is not written. For trying a change of the job. The run has a concurrency group of its own, so a push to `main` does not cancel it and it does not cancel a push run. |
 | `simulator` | The job `safari` also tries Safari of the iOS Simulator. On the hosted runner the session started in one run of two, and no run finished the benchmark (2026-11-12). |
 
 Two things are known about these machines (2026-11-12). In Safari 27.2 on the macOS runner, the WebGL context of a

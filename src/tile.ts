@@ -32,6 +32,8 @@ export interface Batch {
     offset?: Float32Array;
     /** `line-blur` for each feature (pixels), present only when it is data-driven. */
     blur?: Float32Array;
+    /** `line-gap-width` for each feature (pixels), present only when it is data-driven. */
+    gap?: Float32Array;
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
     cap?: string;
@@ -121,7 +123,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
-    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array}
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array; /** `line-gap-width` for each vertex, present only when it is data-driven. */ gap?: Float32Array}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
@@ -263,7 +265,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     if (sorted) keys.push(label.key = key);
                     continue;
                 }
-                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null)) {
+                // (The path of text along the line keeps `1 / ov` of a unit in an over-zoomed tile, as `lineLabels` does.)
+                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null, ov)) {
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colors and fonts.
@@ -312,7 +315,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
             const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
-            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [];
+            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [], gap: number[] = [];
             let grows = false;
             const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
             const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
@@ -347,6 +350,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 }
                 if (L.type === 'line' && p.offset.dd) offset.push(p.offset.eval(zs, f));
                 if (L.type === 'line' && p.blur.dd) blur.push(Math.max(0, p.blur.eval(zs, f)));
+                if (L.type === 'line' && p.gap.dd) gap.push(Math.max(0, p.gap.eval(zs, f)));
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
                 if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
@@ -362,6 +366,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (offset.length) batch.offset = Float32Array.from(offset);
             if (blur.length) batch.blur = Float32Array.from(blur);
+            if (gap.length) batch.gap = Float32Array.from(gap);
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
             if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
             if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
@@ -375,9 +380,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
 
 /**
  * Yields [x, y, angle, length, (anchor index in path, ...path)] label anchors for one ring. `ds` has the distances along
- * a line of its anchors: empty for the middle of the line, and null for a label that is not along the line.
+ * a line of its anchors: empty for the middle of the line, and null for a label that is not along the line. The points
+ * of the path are rounded to `1 / grid` of a tile unit: an over-zoomed tile keeps the precision of the deeper tile that
+ * MapLibre GL JS makes of it, or a gentle slope becomes flat steps.
  */
-export function anchors(c: number[], start: number, end: number, type: number, along: boolean, window: number, ds: number[] | null): number[][] {
+export function anchors(c: number[], start: number, end: number, type: number, along: boolean, window: number, ds: number[] | null, grid = 1): number[][] {
     if (type === 1) return [[c[start * 2], c[start * 2 + 1], 0, 0]];
     if (type === 3 && !along) {
         let a = 0, cx = 0, cy = 0;
@@ -421,7 +428,7 @@ export function anchors(c: number[], start: number, end: number, type: number, a
             }
             if (index < 0) { index = path.length / 2; path.push(x, y); }
             path.push(...at(d1));
-            anchor.push(index, ...path.map(Math.round));
+            anchor.push(index, ...path.map(v => Math.round(v * grid) / grid));
         }
         out.push(anchor);
     }
@@ -499,7 +506,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
                 else for (let c = 0; c < 9; c++) { const q = o + (c / 3 | 0) * 4 + c % 3; idx.set([q, q + 5, q + 1, q, q + 4, q + 5], (r * 9 + c) * 6); }
             }
         }
-        return {type: 'circle', pos, idx, color, radius, ...grid && {grid}};
+        return {type: 'circle', pos, idx, color, radius, radius1, ...grid && {grid}};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
@@ -684,7 +691,7 @@ export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
 
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
-    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [];
+    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [], gaps: number[] = [];
     const round = b.join === 'round';
     // As in MapLibre GL JS: a corner whose miter is longer than the limit (1 / cos of half the turn, in line widths)
     // gets a bevel or a round join; a bevel join keeps sharp the corners whose miter is shorter than 1.05.
@@ -705,6 +712,7 @@ function tessellateLine(b: Batch): GLBatch | null {
         if (b.width1) width1.push(b.width1[f]);
         if (b.offset) offsets.push(b.offset[f]);
         if (b.blur) blurs.push(b.blur[f]);
+        if (b.gap) gaps.push(b.gap[f]);
         return count++;
     };
     /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
@@ -782,6 +790,7 @@ function tessellateLine(b: Batch): GLBatch | null {
     if (b.width) out.width = Float32Array.from(width);
     if (b.width1) out.width1 = Float32Array.from(width1);
     if (b.blur) out.blur = Float32Array.from(blurs);
+    if (b.gap) out.gap = Float32Array.from(gaps);
     return out;
 }
 
