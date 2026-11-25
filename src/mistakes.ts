@@ -55,6 +55,7 @@ texts[1147] = (target, option) => `${target}: "${option}" is not an option of a 
 texts[1189] = sourceId => `sources: the GeoJSON source "${sourceId}" has no "data", and "data" of the description has no key "${sourceId}", so the source has no features. Give the source its own "data", or write the features as "data: {${sourceId}: geojson}".`;
 texts[30] = (layerId, sourceType) => `hoverState: a feature of the layer "${layerId}" has no id, so it gets no feature state "hover". ${sourceType === 'geojson' ? 'Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.' : 'Write a numeric id for each feature into the tiles when you build them, or set "promoteId" of the source to a property that has one.'}`;
 texts[1692] = layer => `${layer}: "symbol-avoid-edges" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`;
+texts[1712] = () => 'style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.';
 texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
 texts[40] = scheme => `colorScheme: ${scheme} is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
@@ -350,6 +351,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         slots(a.layers, b?.layers);
         for (const l of [...a.layers, ...b?.layers ?? []]) for (const g of ['paint', 'layout'] as const) for (const k in l[g]) { const why = zoomCurveError(l[g][k]); if (why) warn(1057, `the layer "${l.id}", ${g} property "${k}"`, why); }
         properties([...a.layers, ...b?.layers ?? []]);
+        // (Accepted, and read neither here nor by MapLibre GL JS 6.17: #1712.)
+        if (a.centerAltitude != null) warn(1712);
         if (!b) return;
         const extend = b as Pick<MapDescription, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {

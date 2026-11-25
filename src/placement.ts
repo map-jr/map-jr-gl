@@ -210,25 +210,51 @@ class SameText {
 /** The distance on each axis for a radial offset: a corner anchor shares it between both. */
 const rx_ = (anchor: string, r: number) => anchor.includes('-') ? r / Math.SQRT2 : r;
 
-/** A line cut to the tile (0 to EXTENT on both axes), as MapLibre GL JS does before it places labels along it: the parts that are inside. */
-function clipLine(c: number[]): number[][] {
-    const out: number[][] = [];
+/**
+ * A line cut to a square (`x0`, `y0` and the side `size`), as MapLibre GL JS does before it places labels along it: the
+ * parts that are inside. The points where the line is cut are rounded to `1 / grid` of a tile unit.
+ */
+function clipLine(c: number[], x0 = 0, y0 = 0, size = EXTENT, grid = 1): number[][] {
+    const out: number[][] = [], r = (v: number) => Math.round(v * grid) / grid;
     let cur: number[] | null = null;
     for (let i = 0; i + 3 < c.length; i += 2) {
-        const x0 = c[i], y0 = c[i + 1], dx = c[i + 2] - x0, dy = c[i + 3] - y0;
+        const ax = c[i], ay = c[i + 1], dx = c[i + 2] - ax, dy = c[i + 3] - ay;
         let t0 = 0, t1 = 1;
-        for (const [p, q] of [[-dx, x0], [dx, EXTENT - x0], [-dy, y0], [dy, EXTENT - y0]]) {
+        for (const [p, q] of [[-dx, ax - x0], [dx, x0 + size - ax], [-dy, ay - y0], [dy, y0 + size - ay]]) {
             if (!p) { if (q < 0) t1 = -1; continue; }
-            const r = q / p;
-            if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+            const t = q / p;
+            if (p < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
         }
         if (t0 > t1) { cur = null; continue; }
-        if (!cur || t0 > 0) out.push(cur = [Math.round(x0 + dx * t0), Math.round(y0 + dy * t0)]);
-        cur.push(Math.round(x0 + dx * t1), Math.round(y0 + dy * t1));
+        if (!cur || t0 > 0) out.push(cur = [r(ax + dx * t0), r(ay + dy * t0)]);
+        cur.push(r(ax + dx * t1), r(ay + dy * t1));
         if (t1 < 1) cur = null;
     }
     return out;
 }
+
+/**
+ * The squares of the tile `id` that are in view and that MapLibre GL JS lays its labels out in: a tile that is shown at a
+ * deeper zoom is cut into tiles of a deeper zoom first (`zoomLevelsToOverscale`, 4 below the `maxZoom` of the map), each
+ * of which places its anchors from its own edges. MapLibre GL JS builds only the tiles of that zoom that are in view, and
+ * so does this. `k` squares a side; each square is `x * k + y`.
+ */
+function squaresInView(tr: Transform, id: TileID, k: number, cover: Map<number, TileID[]>): number[] {
+    if (k === 1) return [0];
+    const z = id.z + Math.log2(k), out = new Set<number>();
+    let tiles = cover.get(z);
+    if (!tiles) cover.set(z, tiles = tr.tileCover(z, z));
+    for (const t of tiles) {
+        if (t.w !== id.w) continue;
+        // (A tile of the cover that is coarser than the squares, while the map zooms out, holds several of them.)
+        const d = z - t.z, m = 2 ** Math.max(0, d), x = d >= 0 ? t.x * m - id.x * k : Math.floor(t.x / 2 ** -d) - id.x * k, y = d >= 0 ? t.y * m - id.y * k : Math.floor(t.y / 2 ** -d) - id.y * k;
+        for (let i = Math.max(0, x); i < Math.min(k, x + m); i++) for (let j = Math.max(0, y); j < Math.min(k, y + m); j++) out.add(i * k + j);
+    }
+    return [...out];
+}
+
+/** How many squares a side `squaresInView` cuts the tile of the line label `l` into. */
+const squares = (l: LabelSrc, maxZoom: number) => l.tz === undefined ? 1 : Math.min(l.ov!, 2 ** Math.max(0, Math.floor(maxZoom) - 4 - l.tz));
 
 /** The most labels that the anchors along the lines of one tile layer make. Tiles come from other parties, and a line of many short turns with a small `symbol-spacing` could otherwise make millions. */
 export const MAX_LINE_ANCHORS = 20000;
@@ -237,14 +263,16 @@ export const MAX_LINE_ANCHORS = 20000;
  * The anchors along one line (`symbol-placement: line`), by the method of MapLibre GL JS (`getAnchors`, `resample` and
  * `checkMaxAngle`): from an offset, every `symbol-spacing`, inside the tile, where the whole label fits on the line and
  * the line turns by no more than `maxAngle` (radians) within any stretch of `window` under it. A line that ends in the
- * tile and has no such place tries once more from its middle. At most `most` distances.
+ * square and has no such place tries once more from its middle. At most `most` distances. The square (`x0`, `y0`, the side
+ * `size`) is the tile, or the part of it that MapLibre GL JS makes a tile of its own (see `squaresInView`); `ov` is the
+ * over-scaling of that square.
  */
-function anchorDistances(c: number[], spacing: number, length: number, glyph: number, ov: number, window: number, maxAngle: number, most: number): number[] {
+function anchorDistances(c: number[], spacing: number, length: number, glyph: number, ov: number, window: number, maxAngle: number, most: number, x0 = 0, y0 = 0, size = EXTENT): number[] {
     const n = c.length / 2, seg = [0];
     for (let i = 1; i < n; i++) seg.push(seg[i - 1] + Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]));
-    const total = seg[n - 1], x0 = c[0], y0 = c[1];
-    // A line that comes in over the edge of the tile continues from the next tile, and keeps the rhythm of the spacing.
-    const continued = x0 === 0 || x0 === EXTENT || y0 === 0 || y0 === EXTENT;
+    const total = seg[n - 1], sx = c[0], sy = c[1];
+    // A line that comes in over the edge of the square continues from the next one, and keeps the rhythm of the spacing.
+    const continued = sx === x0 || sx === x0 + size || sy === y0 || sy === y0 + size;
     // A long label keeps at least a quarter of the spacing free between it and the next.
     if (spacing - length < spacing / 4) spacing = length + spacing / 4;
     // (The turn at each inner point of the line.)
@@ -261,7 +289,7 @@ function anchorDistances(c: number[], spacing: number, length: number, glyph: nu
             while (k < n - 1 && seg[k] < d) k++;
             const t = seg[k] > seg[k - 1] ? (d - seg[k - 1]) / (seg[k] - seg[k - 1]) : 0;
             const x = c[k * 2 - 2] + (c[k * 2] - c[k * 2 - 2]) * t, y = c[k * 2 - 1] + (c[k * 2 + 1] - c[k * 2 - 1]) * t;
-            if (x < 0 || x >= EXTENT || y < 0 || y >= EXTENT) continue;
+            if (x < x0 || x >= x0 + size || y < y0 || y >= y0 + size) continue;
             if (window) {
                 while (first < n - 1 && seg[first] - d <= -length / 2) first++;
                 const corners: [number, number][] = [];
@@ -286,19 +314,22 @@ function anchorDistances(c: number[], spacing: number, length: number, glyph: nu
  * The labels at the anchors of the line labels of one tile layer, for one shaper (one map), with the `generation` of
  * the shaper that they were found at. `final` is false while a glyph file or an icon was missing.
  */
-const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; final: boolean; out: LabelSrc[]}>();
+const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; maxZoom: number; inView: string; final: boolean; out: LabelSrc[]}>();
 /**
  * The labels of a tile with each line label (`LabelSrc.line`) made into one label at each of its anchors. The anchors
  * need the width of the label, which is known only here: a label whose glyph file is on its way has none yet, and is
  * placed when the file has arrived (the engine places the labels again then). The result is kept until the shaper has
  * new glyphs or images. (The cache holds no state of a map: its key is the label array of a tile, which belongs to one
- * map, and the entry names its shaper.)
+ * map, and the entry names its shaper.) `maxZoom` is the `maxZoom` of the map, which decides into which squares
+ * MapLibre GL JS cuts an over-zoomed tile (see `squaresInView`).
  */
-export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup): LabelSrc[] {
+export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup, maxZoom = 22, view?: (k: number) => number[]): LabelSrc[] {
     if (!labels.some(l => l.line)) return labels;
     const generation = shaper.generation ?? 0;
     let done = alongLine.get(labels);
-    if (done && done.final && done.shaper === shaper && done.generation === generation) return done.out;
+    // (The squares in view of the first line label; the same for every label of the tile.)
+    const first = labels.find(l => l.line)!, k0 = squares(first, maxZoom), shown = view && k0 > 1 ? view(k0) : null, inView = shown ? shown.join() : '';
+    if (done && done.final && done.shaper === shaper && done.generation === generation && done.maxZoom === maxZoom && done.inView === inView) return done.out;
     const out: LabelSrc[] = [], seen = new Map<string, Map<number, number[]>>();
     let final = true, made = 0;
     for (const l of labels) {
@@ -309,33 +340,41 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
         if (l.icon && !meta) final = false;
         // As in MapLibre GL JS, the wider of text and icon, scaled as text of `text-size` one zoom level in.
         const scale = l.tpr! * l.size1 / EM, length = Math.max(shaped?.width ?? 0, meta ? meta.width / meta.pixelRatio : 0) * scale;
-        // As in MapLibre GL JS, the same text is not repeated within half of `symbol-spacing` in the tile (looked up in a grid of that size).
-        const repeat = Math.max(1, l.lineSpacing! / 2), cells = l.text ? seen.get(l.text) ?? new Map<number, number[]>() : null;
-        if (cells) seen.set(l.text, cells);
-        for (const part of clipLine(l.line)) {
-            if (made >= MAX_LINE_ANCHORS) break;
-            const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, l.ov!, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made);
-            if (!ds.length) continue;
-            for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds)) {
-                if (cells) {
-                    const cx = Math.floor(a[0] / repeat), cy = Math.floor(a[1] / repeat);
-                    let close = false;
-                    for (let i = -1; i <= 1 && !close; i++) for (let j = -1; j <= 1 && !close; j++) {
-                        const near = cells.get((cx + i) * 65536 + cy + j);
-                        if (near) for (let k = 0; k < near.length && !close; k += 2) close = Math.hypot(near[k] - a[0], near[k + 1] - a[1]) < repeat;
+        // An over-zoomed tile is cut into squares as in MapLibre GL JS: `k` a side, each with the over-scaling `ov / k`.
+        const ov = l.ov!, k = squares(l, maxZoom), size = EXTENT / k, c = l.line;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let i = 0; i < c.length; i += 2) minX = Math.min(minX, c[i]), maxX = Math.max(maxX, c[i]), minY = Math.min(minY, c[i + 1]), maxY = Math.max(maxY, c[i + 1]);
+        for (const sq of shown ?? Array.from({length: k * k}, (_, i) => i)) {
+            const x0 = Math.floor(sq / k) * size, y0 = sq % k * size;
+            if (maxX < x0 || minX > x0 + size || maxY < y0 || minY > y0 + size) continue;
+            // As in MapLibre GL JS, the same text is not repeated within half of `symbol-spacing` in the square (looked up in a grid of that size).
+            const repeat = Math.max(1, l.lineSpacing! / 2), tk = l.text && l.text + '\0' + sq, cells = tk ? seen.get(tk) ?? new Map<number, number[]>() : null;
+            if (cells) seen.set(tk, cells);
+            for (const part of clipLine(l.line, x0, y0, size, k)) {
+                if (made >= MAX_LINE_ANCHORS) break;
+                const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
+                if (!ds.length) continue;
+                for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds)) {
+                    if (cells) {
+                        const cx = Math.floor(a[0] / repeat), cy = Math.floor(a[1] / repeat);
+                        let close = false;
+                        for (let i = -1; i <= 1 && !close; i++) for (let j = -1; j <= 1 && !close; j++) {
+                            const near = cells.get((cx + i) * 65536 + cy + j);
+                            if (near) for (let m = 0; m < near.length && !close; m += 2) close = Math.hypot(near[m] - a[0], near[m + 1] - a[1]) < repeat;
+                        }
+                        if (close) continue;
+                        const key = cx * 65536 + cy, list = cells.get(key);
+                        if (list) list.push(a[0], a[1]); else cells.set(key, [a[0], a[1]]);
                     }
-                    if (close) continue;
-                    const key = cx * 65536 + cy, list = cells.get(key);
-                    if (list) list.push(a[0], a[1]); else cells.set(key, [a[0], a[1]]);
+                    const one: LabelSrc = Object.assign(Object.create(Object.getPrototypeOf(l)), l, {x: a[0], y: a[1], angle: a[2], len: a[3], line: undefined});
+                    if (a.length > 4) { one.pathIndex = a[4]; one.path = a.slice(5); }
+                    out.push(one);
+                    made++;
                 }
-                const one: LabelSrc = Object.assign(Object.create(Object.getPrototypeOf(l)), l, {x: a[0], y: a[1], angle: a[2], len: a[3], line: undefined});
-                if (a.length > 4) { one.pathIndex = a[4]; one.path = a.slice(5); }
-                out.push(one);
-                made++;
             }
         }
     }
-    alongLine.set(labels, {shaper, generation, final, out});
+    alongLine.set(labels, {shaper, generation, maxZoom, inView, final, out});
     return out;
 }
 
@@ -349,7 +388,7 @@ export function placeLabels(
 ): Placed[] {
     const out: Placed[] = [], seen = new SameText(), far = tr.depthRange()[1];
     let itemNo = 0;
-    const keys = new Map<string, number>();
+    const cover = new Map<number, TileID[]>(), keys = new Map<string, number>();
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
     const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
@@ -364,7 +403,7 @@ export function placeLabels(
         // The labels of a layer with `symbol-sort-key` are placed in the order of the key over all tiles, as in MapLibre:
         // a label does not win only because its tile comes first.
         let runs: {it: typeof items[0]; labels: LabelSrc[]; no: number}[] = [];
-        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons), no: itemNo}); }
+        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons, tr.maxZoom, k => squaresInView(tr, it.id, k, cover)), no: itemNo}); }
         if (runs.length > 1 && (L.p.sortKey.dd || L.p.sortKey.eval(tr.zoom) !== 0)) {
             const all: typeof runs = [];
             for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});

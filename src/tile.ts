@@ -65,8 +65,8 @@ export interface LabelSrc {
     /** `symbol-placement: line`: the whole line in tile units. The map finds the anchors along it when it places the
      * labels (see `lineLabels`), where the width of the text and of the icon is known; `x` and `y` are its first point. */
     line?: number[];
-    /** With `line`: `symbol-spacing` in tile units, tile units per pixel, the over-scaling of the tile, and the stretch of line kept for curved text. */
-    lineSpacing?: number; tpr?: number; ov?: number; window?: number;
+    /** With `line`: `symbol-spacing` in tile units, tile units per pixel, the over-scaling of the tile, the stretch of line kept for curved text, and the zoom of the tile. */
+    lineSpacing?: number; tpr?: number; ov?: number; window?: number; tz?: number;
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number; haloBlur: number;
     /** How the lines of a multi-line label align with each other: -1 left, 0 center, 1 right. */
     justify: number;
@@ -254,7 +254,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
                 if (along === true && type !== 1) {
                     // (The anchors along the line are found when the labels are placed: see `lineLabels`.)
-                    const label: LabelSrc = Object.assign(Object.create(base), {x: ring[0], y: ring[1], angle: 0, len: 0, line: ring, lineSpacing: spacing / ov, tpr: EXTENT / 512 * 2 ** (tz - z) / ov, ov, window: window / ov});
+                    const label: LabelSrc = Object.assign(Object.create(base), {x: ring[0], y: ring[1], angle: 0, len: 0, line: ring, lineSpacing: spacing / ov, tpr: EXTENT / 512 * 2 ** (tz - z) / ov, ov, window: window / ov, tz});
                     labels.push(label);
                     if (sorted) keys.push(label.key = key);
                     continue;

@@ -1,7 +1,0 @@
-{
-  "label": "circle-pitch-alignment map on the globe",
-  "decision": "later",
-  "issue": 1825,
-  "reason": "Circles with circle-pitch-alignment map are not foreshortened toward the edge of the globe.",
-  "pattern": "^projection/globe/(terrain/)?(circle-planet|circle-pitch-alignment/map-scale-viewport)$"
-}

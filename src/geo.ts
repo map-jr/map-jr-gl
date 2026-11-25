@@ -90,6 +90,12 @@ export function toLngLat(v: LngLatLike): [number, number] {
 }
 
 export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+/** Whether two tiles cover some of the same ground: one is the other, or contains it. */
+export const touches = (a: TileID, b: TileID) => {
+    const d = a.z - b.z;
+    return a.w === b.w && (d >= 0 ? a.x >> d === b.x && a.y >> d === b.y : b.x >> -d === a.x && b.y >> -d === a.y);
+};
+
 
 /**
  * How much of a globe the projection `type` of a style draws, as stops [zoom, globeness, ...] (1 is the globe, 0 is

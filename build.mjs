@@ -51,7 +51,7 @@ mkdirSync('dist', {recursive: true});
 const shaders = {
     name: 'minify-shaders',
     transform(code, id) {
-        if (!id.endsWith('/src/gl.ts')) return null;
+        if (!/\/src\/(gl|terrain)\.ts$/.test(id)) return null;
         const edited = new MagicString(code);
         for (const [start, end, text] of minifyShaders(code)) edited.overwrite(start, end, text);
         return withMap(edited, id);
@@ -102,6 +102,9 @@ const allInOne = {
  * that their code is not in two files (the exports of src/worker.ts).
  */
 const partImport = /(?<=\(\) => )import\('\.\/([\w-]+)\.ts'\)/g;
+// The modules that only a part imports are in the file of that part, and not read from `MapJrWorker`: the part `dem`
+// is the contour lines and 3D terrain (src/dem.ts, #1849).
+const partOwn = /(^\.|\/src)\/(contour|terrain)\.ts$/;
 const workerParts = [...readFileSync('src/parts.ts', 'utf8').matchAll(/^ {4}(\w+): \(\) => import\('\.\/([\w-]+)\.ts'\),$/gm)].map(m => ({name: m[1], file: m[2]}));
 if (!workerParts.length) throw new Error('build.mjs: src/parts.ts has no parts.');
 const splitParts = {
@@ -189,7 +192,7 @@ const workerSrc = readFileSync('.cache/worker-all-in-one/map-jr-gl-worker.js', '
 await run({lib: workerLib}, undefined, [splitParts, allInOne]);
 for (const {name, file} of workerParts) {
     await run({lib: {entry: `src/${file}.ts`, formats: ['iife'], name: 'MapJrPart', fileName: () => `map-jr-gl-worker-${name}.js`},
-        rollupOptions: {external: (id, importer) => !!importer, output: {globals: () => 'MapJrWorker'}}});
+        rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}});
 }
 
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
@@ -218,8 +221,20 @@ for (const f in production) if (readFileSync('dist/' + f, 'utf8') !== production
 // a page with this file has no bundler that could choose a build, and the checks cost it no request.)
 await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc), __DEV__: 'true'});
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
-// The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
-await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [allInOne]);
+// The server renderer (Node, Cloudflare Workers and other runtimes without a DOM). It draws without WebGL, so of the
+// part `dem` it takes the contour lines and not 3D terrain, which would bring the renderer of WebGL with it (#1849).
+const contourOnly = {
+    name: 'server-dem',
+    enforce: 'pre',
+    transform(code, id) {
+        if (!id.endsWith('/src/parts.ts')) return null;
+        const edited = new MagicString(code), at = code.indexOf("dem: () => import('./dem.ts')");
+        if (at < 0) throw new Error('build.mjs: src/parts.ts has no part dem.');
+        edited.overwrite(at, at + 29, "dem: () => import('./contour.ts')");
+        return withMap(edited, id);
+    },
+};
+await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [contourOnly, allInOne]);
 
 // The name, the version and the licence go in the first line of each built file that package.json names. The chunks
 // that these files share do not get the line, because each line counts against the size budgets. (The minifier of
