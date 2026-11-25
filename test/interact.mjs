@@ -4948,13 +4948,20 @@ for (const mode of renderers) {
             const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
             const run = async lib => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
-                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [179.9, 45], zoom: 4.6, fadeDuration: 0});
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [179.9, 45], zoom: 4.6, fadeDuration: 0, maxPitch: 85});
                 await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
                 const cover = o => m.coveringTiles(o).map(t => `${t.overscaledZ}/${t.wrap}/${t.canonical.z}/${t.canonical.x}/${t.canonical.y}`).sort().join(' ');
                 const out = {};
                 for (const [name, o] of Object.entries({flat: {tileSize: 512}, small: {tileSize: 256}, round: {tileSize: 512, roundZoom: true}, max: {tileSize: 512, maxzoom: 3}, min: {tileSize: 512, minzoom: 6}})) out[name] = cover(o);
                 m.jumpTo({pitch: 60, bearing: 20});
                 out.pitched = cover({tileSize: 512, maxzoom: 14});
+                // #1045: views where the cover of MapLibre GL JS has no tile outside the view (its test of a tile against the
+                // frustum is looser than the test here), so both give the same tiles: a constant zoom at pitch 60, and a zoom
+                // that varies with the distance above it.
+                el.style.width = '800px'; el.style.height = '600px'; m.resize();
+                m.jumpTo({center: [11.5, 48.1], zoom: 9.3, pitch: 60, bearing: 0});
+                out.p60 = cover({tileSize: 512, maxzoom: 14});
+                for (const [pitch, bearing] of [[75, 0], [75, 135], [85, 20]]) { m.jumpTo({pitch, bearing}); out[`p${pitch}b${bearing}`] = cover({tileSize: 512, maxzoom: 14}); }
                 m.remove(); el.remove();
                 return out;
             };
@@ -4964,6 +4971,8 @@ for (const mode of renderers) {
         const pitchedML = m1022.ml.pitched?.split(' ') ?? [];
         check('[main] maplibre-compat: coveringTiles gives the tiles of MapLibre (flat, tileSize, roundZoom, minzoom, maxzoom; pitched within them) (#1022)',
             ['flat', 'small', 'round', 'max', 'min'].every(k => m1022.ml[k] === m1022.compat[k]) && m1022.compat.pitched?.split(' ').every(t => pitchedML.includes(t)) && m1022.compat.pitched.length > 0, JSON.stringify(m1022));
+        check('[main] maplibre-compat: coveringTiles of a pitched view gives the tiles of MapLibre GL JS: one zoom at pitch 60, a zoom by distance above it (#1045)',
+            ['p60', 'p75b0', 'p75b135', 'p85b20'].every(k => m1022.ml[k] && m1022.ml[k] === m1022.compat[k]), JSON.stringify(['p60', 'p75b0', 'p75b135', 'p85b20'].map(k => [m1022.ml[k], m1022.compat[k]])));
         // #1021: setSourceTileLodParams changes the tiles of a view at pitch 80 as in MapLibre GL JS (served at /ml/), with
         // the engine on the main thread and in a worker. (A tile that a requested deeper tile covers is a placeholder and is left out.)
         const m1021 = await page.evaluate(async () => {
