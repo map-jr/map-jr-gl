@@ -102,3 +102,40 @@ test('line joins: line-offset moves a round join and a round cap as a whole, so 
         }
     }
 });
+
+test('line joins: past a turn of 120 degrees, line-offset moves the pairs of a round join with its fan, as MapLibre GL JS does', () => {
+    // A turn of 135 degrees moves the whole corner twice the offset along the bisector. A turn of 165 degrees eases that
+    // vector back to the normal of each segment (offsetFallback of MapLibre), so that each segment keeps its own round
+    // end. Before, the pairs moved along the normals of the segments and the fan along the bisector, apart from them.
+    const z = 10, tx = 300, ty = 380, n = 2 ** z;
+    const lng = (tx + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 0.5) / n))) * 180 / Math.PI, d = 0.02;
+    for (const turn of [135, 165]) {
+        const a = turn * Math.PI / 180, coords = [[lng - d, lat], [lng, lat], [lng + d * Math.cos(a), lat + d * Math.sin(a)]];
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: coords}} as any), z, tx, ty);
+        const out = tessellate(buildTile(data, z, [compileLayer({id: 'l', type: 'line', source: 'g', layout: {'line-join': 'round'}})!], false).layers.l)!;
+        const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength);
+        // The position that the vertex shader of src/gl.ts gives a vertex for a half width hw and an offset off.
+        const at = (o: number, hw: number, off: number) => {
+            const x = view.getInt16(o, true), y = view.getInt16(o + 2, true), nx = view.getInt16(o + 4, true) / LINE_NORMAL, ny = view.getInt16(o + 6, true) / LINE_NORMAL;
+            const raw = view.getInt16(o + 8, true), sa = Math.abs(raw), side = Math.sign(raw), c = sa > 1.5 && sa < 16383.5 ? (sa - 2) / 4096 - 2 : 0, t = (sa - 24575) / 8191 * Math.PI;
+            const [ex, ey] = sa > 16383.5 ? [Math.cos(t), Math.sin(t)] : [nx * Math.abs(side), ny * Math.abs(side)], s = side || 1;
+            return [x + ex * hw + (nx * s + c * ny) * off, y + ey * hw + (ny * s - c * nx) * off];
+        };
+        const pts = new Map<number, number[]>();
+        for (let o = 0; o < view.byteLength; o += LINE_VERTEX) pts.set(view.getFloat32(o + 12, true), [view.getInt16(o, true), view.getInt16(o + 2, true)]);
+        const [p0, p1, p2] = [...pts.keys()].sort((a, b) => a - b).map(k => pts.get(k)!);
+        const unit = (x: number, y: number) => { const l = Math.hypot(x, y); return [x / l, y / l]; };
+        const [pdx, pdy] = unit(p1[0] - p0[0], p1[1] - p0[1]), [dx, dy] = unit(p2[0] - p1[0], p2[1] - p1[1]);
+        const pn = [-pdy, pdx], nn = [-dy, dx], miter = 2 / Math.hypot(pn[0] + nn[0], pn[1] + nn[1]);
+        const [bx, by] = unit(pn[0] + nn[0], pn[1] + nn[1]).map(v => v * Math.min(miter, 2)), ease = Math.min(1, Math.max(0, (miter - 3) / 5));
+        const want = [pn, nn].map(([x, y]) => [(bx + (x - bx) * ease) * 12, (by + (y - by) * ease) * 12]);
+        const seen = new Set<number>();
+        for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
+            if (view.getInt16(o, true) !== p1[0] || view.getInt16(o + 2, true) !== p1[1]) continue;
+            const [x0, y0] = at(o, 10, 0), [x1, y1] = at(o, 10, 12), k = want.findIndex(([wx, wy]) => Math.hypot(x1 - x0 - wx, y1 - y0 - wy) < 0.1);
+            assert.ok(k >= 0, `turn ${turn}: a vertex at the corner moves by ${[x1 - x0, y1 - y0]}, not by one of ${JSON.stringify(want)}`);
+            seen.add(k);
+        }
+        assert.equal(seen.size, ease ? 2 : 1, `turn ${turn}: the vectors that the offset moves the corner along`);
+    }
+});

@@ -796,9 +796,10 @@ function tessellateLine(b: Batch): GLBatch | null {
      * stores that vector as its normal, and an outer vertex stores the angle of its direction in the side, as
      * 16384 + (angle / PI + 1) * 8191. The middle vertex has side 0.
      */
+    const angle = (a: number) => 16384 + Math.round((Math.atan2(Math.sin(a), Math.cos(a)) / Math.PI + 1) * 8191);
     const fan = (x: number, y: number, from: number, sweep: number, dist: number, ox: number, oy: number) => {
         const steps = Math.max(1, Math.ceil(Math.abs(sweep) / ARC_STEP)), centre = vert(x, y, ox, oy, 0, dist);
-        const rim = (a: number) => vert(x, y, ox, oy, 16384 + Math.round((Math.atan2(Math.sin(a), Math.cos(a)) / Math.PI + 1) * 8191), dist);
+        const rim = (a: number) => vert(x, y, ox, oy, angle(a), dist);
         let prev = rim(from);
         for (let k = 1; k <= steps; k++) {
             const cur = rim(from + sweep * k / steps);
@@ -831,6 +832,13 @@ function tessellateLine(b: Batch): GLBatch | null {
                 if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
                 last = a;
             };
+            /** A pair at (x, y) across the normal (nx, ny) that `line-offset` moves along (ox, oy): stored as in `fan`. */
+            const movedPair = (x: number, y: number, nx: number, ny: number, ox: number, oy: number) => {
+                const a = vert(x, y, ox, oy, angle(Math.atan2(ny, nx)), dist);
+                vert(x, y, -ox, -oy, -angle(Math.atan2(-ny, -nx)), dist);
+                if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
+                last = a;
+            };
             for (let i = 0; i < n - 1; i++) {
                 const x = xs[i], y = ys[i], ex = xs[i + 1] - x, ey = ys[i + 1] - y, len = Math.hypot(ex, ey);
                 const dx = ex / len, dy = ey / len, nx = -dy, ny = dx;
@@ -842,8 +850,9 @@ function tessellateLine(b: Batch): GLBatch | null {
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
                     // As in MapLibre GL JS, a corner sharper than 75 degrees has one more pair of vertices on each
                     // segment, 15 pixels from the corner, so that the join bends the dashes only near the corner.
-                    // (A turn of more than 120 degrees is not: MapLibre draws its join in another way, which this does not follow.)
-                    const sharp = cos < COS_SHARP && cos >= 0.5 && b.sharp ? b.sharp : 0;
+                    // (A turn of more than 120 degrees has them only with a round join: MapLibre draws the other joins
+                    // there in another way, which this does not follow.)
+                    const sharp = cos < COS_SHARP && (cos >= 0.5 || round) && b.sharp ? b.sharp : 0;
                     if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - pdx * sharp, y - pdy * sharp, pnx, pny); dist += sharp; }
                     if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
                     else {
@@ -851,16 +860,22 @@ function tessellateLine(b: Batch): GLBatch | null {
                         // JS, a corner of up to 120 degrees moves the inner vertices to where the inner edges meet, so
                         // that the two segments do not overlap and dashes fall where MapLibre draws them.
                         const outer = pnx * dx + pny * dy < 0 ? 1 : -1, back = cos >= 0.5 ? Math.sqrt(1 / (cos * cos) - 1) : 0;
-                        pair(x, y, pnx, pny, -pdx * back, -pdy * back, -outer, back);
+                        // The offset moves a round join along the miter, at most twice the offset (MAX_OFFSET_MITER_LENGTH
+                        // of MapLibre GL JS). Past a turn of 120 degrees the pairs at the corner move with the fan, and
+                        // as in MapLibre a miter longer than 3 eases the vector back to the normal of each segment
+                        // (fully at 8): one fan then goes with each pair.
+                        const blunt = round && cos < 0.5, mc = ml * Math.max(cos, 0.5), bx = mc ? mx / mc : 0, by = mc ? my / mc : 0;
+                        const ease = blunt ? Math.min(1, Math.max(0, (1 / cos - 3) / 5)) : 0;
+                        const o1x = bx + (pnx - bx) * ease, o1y = by + (pny - by) * ease, o2x = bx + (nx - bx) * ease, o2y = by + (ny - by) * ease;
+                        if (blunt) movedPair(x, y, pnx, pny, o1x, o1y); else pair(x, y, pnx, pny, -pdx * back, -pdy * back, -outer, back);
                         if (round) {
                             const a0 = Math.atan2(outer * pny, outer * pnx);
                             let sweep = Math.atan2(outer * ny, outer * nx) - a0;
                             if (sweep > Math.PI) sweep -= 2 * Math.PI; else if (sweep < -Math.PI) sweep += 2 * Math.PI;
-                            // The offset moves the fan along the miter, as the pairs of the bevel (at most twice the offset).
-                            const mc = ml * Math.max(cos, 0.5);
-                            fan(x, y, a0, sweep, dist, mc ? mx / mc : 0, mc ? my / mc : 0);
+                            fan(x, y, a0, sweep, dist, o1x, o1y);
+                            if (ease) fan(x, y, a0, sweep, dist, o2x, o2y);
                         }
-                        pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
+                        if (blunt) movedPair(x, y, nx, ny, o2x, o2y); else pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
                     }
                     if (sharp && len > 2 * sharp) { dist += sharp; pair(x + dx * sharp, y + dy * sharp, nx, ny); dist -= sharp; }
                 }

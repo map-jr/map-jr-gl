@@ -728,7 +728,7 @@
 "line-join/property-function": "match",
 "line-join/property-function-dasharray": "differ",
 "line-join/round": "match",
-"line-join/round-transparent": "near",
+"line-join/round-transparent": "match",
 "line-layer-blend/color": "match",
 "line-layer-blend/line-layer-opacity": "match",
 "line-layer-blend/luminosity": "match",
