@@ -161,19 +161,23 @@ alone cannot.
 
 - **`node test/conformance/render.mjs --help`** prints its options. An argument that it does not know, or `--list`
   without `--filter`, stops it with that text instead of starting the whole run of about ten minutes.
-- **Pull requests that commit the render results merge one at a time.** After each merge, the worker of the next
-  one merges `main` and does a full run on the merged tree, and its result files and floor come from that run. On
-  2026-11-18 and 2026-11-19, seven such pull requests merged this way with no conflict left in the totals.
-- **The floor of `test:render` is the match count of the last full run.** CI's render job gave the same count as a
-  local run on 2026-11-19 (1205 of 1740), so a floor below the count only lets a regression through.
-- **Only a full run on the pinned Chromium rewrites `render-result.json` and `render-tests.json`.** A run with
-  `--filter` or `--limit` leaves them as they are.
-- **The committed result files come from CI or from a full run whose changed tests were checked.** The run runs each
+- **A pull request that moves render tests commits only their lines of `render-tests.json`** (#1915). No total and
+  no floor is committed: the floor is the count of lines `match`, and `pnpm status` computes the totals. Two such pull
+  requests merge one after the other with no new run of the second. When their lines are adjacent, GitHub reports a
+  conflict; `node scripts/agents/merge-main.mjs` resolves it test by test, and stops only when both changed the same
+  test.
+- **The render job fails when a test is worse than its line** (`WORSE:`; match to near or differ, near to differ, any
+  to error) or when fewer tests match than the file has lines `match`. It prints `BETTER:` for each test that is better
+  than its line; the author commits those lines. On `main`, a `BETTER:` line means that a pull request left a line
+  out: take it in the next pull request that moves render tests.
+- **Only a full run on the pinned Chromium rewrites `render-tests.json`.** A run with `--filter` or `--limit` leaves
+  it as it is.
+- **The committed lines come from CI or from a run whose changed tests were checked.** The run runs each
   test whose status is not the one in `render-tests.json` again alone, and the second result counts (it prints
   `AGAIN:` when the two differ). A test near a limit can still have another status on another machine
-  (`text-field/formatted-arabic` is at 4.8%, and the limit of near is 5%; #1036). Before you commit the files, run
+  (`text-field/formatted-arabic` is at 4.8%, and the limit of near is 5%; #1036). Before you commit the lines, run
   each test of the `CHANGED:` lines that your change cannot reach alone at `main`; if it moves there too, restore its
-  line in `render-tests.json`, or take the files from the render job of CI.
+  line in `render-tests.json`, or take the lines from the render job of CI.
 - **Before you call a change of status a regression,** run the test alone several times (`--filter='^<id>$' --list`
   prints the percentage), and at the commit before the suspected merge in a temporary worktree. On 2026-11-17
   `terrain/low-zoom` moved for good (#793, caused by #726), while `terrain/tile-stiching` gave 2.7% or 33.5% from one

@@ -1,7 +1,9 @@
 // Runs MapLibre GL JS's render tests (a style and an expected image each) against this renderer and reports how many match.
-// A full run writes the totals that do not depend on labels to render-result.json and the status of each test to render-tests.json. The labels for
+// A full run writes the status of each test to render-tests.json; `pnpm status` computes the totals from that file. The labels for
 // tests that differ by a decision are in render-expectations/, one file for each label (see "Render tests" in docs/development.md).
-//   node test/conformance/render.mjs [--filter=<regex>] [--limit=<n>] [--list] [--min=<pass count>] [--save=<dir>]
+//   node test/conformance/render.mjs [--filter=<regex>] [--limit=<n>] [--list] [--save=<dir>]
+// The run fails when a test is worse than its line in render-tests.json (WORSE: lines), or when a full run has fewer
+// matches than the file has lines "match". It prints a BETTER: line for each test that is better than its line.
 // --list prints each test of the run that is not a match, with its percentage of differing pixels; it needs --filter.
 // An option that the script does not know stops it with this text, and --help prints it.
 // The tests come from a checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (cloned on first use, not vendored).
@@ -13,16 +15,16 @@ import http from 'node:http';
 import path from 'node:path';
 import {chromiumOptions} from '../launch.mjs';
 import {ensureCheckout} from './maplibre-checkout.mjs';
-import {summarize, loadExpectations, report, changes, skipReason, committedTotals} from './render-summary.mjs';
+import {summarize, loadExpectations, report, changes, skipReason, compareWithTracked} from './render-summary.mjs';
 import {ensureFixtures} from './mvt-fixtures.mjs';
 
 // An option that this script does not know, or --list without --filter, stops here instead of starting the full run of
 // about ten minutes (#1048). --help prints the comment above.
-const known = /^--(filter|limit|min|save)=.|^--list$/;
+const known = /^--(filter|limit|save)=.|^--list$/;
 const unknown = process.argv.slice(2).filter(a => !known.test(a));
 if (unknown.length || (process.argv.includes('--list') && !process.argv.some(a => a.startsWith('--filter=')))) {
     const usage = readFileSync(import.meta.filename, 'utf8').split('\nimport ')[0].replace(/^\/\/ ?/gm, '');
-    if (!process.argv.includes('--help')) console.error(unknown.length ? `[render] Unknown option ${unknown.join(' ')}. The options are:` : '[render] --list needs --filter=<regex>: without it the run is the full run, which rewrites render-result.json and render-tests.json. The options are:');
+    if (!process.argv.includes('--help')) console.error(unknown.length ? `[render] Unknown option ${unknown.join(' ')}. The options are:` : '[render] --list needs --filter=<regex>: without it the run is the full run, which rewrites render-tests.json. The options are:');
     console.error(usage);
     process.exit(process.argv.includes('--help') && unknown.length === 1 ? 0 : 2);
 }
@@ -272,16 +274,18 @@ if (summary.totals.skipped) console.log('Skipped, by reason: ' + Object.entries(
 for (const line of lines.slice(1)) console.log(line);
 // The tests whose status is not the one in the tracked file. A test near a limit can change with the machine.
 if (existsSync(perTest)) for (const line of changes(committed, summary.tests)) console.log(line);
-// A full run (no filter) records its totals, which the status table of the README is written from, and the status
-// of each test. The second file has no percentages and is sorted by id, so that its diff shows the tests that changed.
+// A full run (no filter) records the status of each test, from which `pnpm status` computes the totals. The file has no
+// percentages, is sorted by id and has one line for each test, so that a pull request changes only the lines of the
+// tests that it moves, and two such pull requests do not conflict in a total or a floor (#1915).
 // The files are written only from Playwright's own build of Chromium, which CI runs: another build draws some tests a
 // little differently (text-local-glyphs/cjk is a match in the build of the cloud VM image and near in CI's, #1462).
 const pinned = !chromiumOptions(chromium).executablePath;
-if (!filter && limit === Infinity && !pinned) console.warn(`Not writing render-result.json and render-tests.json: this run used ${chromiumOptions(chromium).executablePath}, not the Chromium of Playwright that CI runs. Install it with \`pnpm exec playwright install chromium\` and run again.`);
+if (!filter && limit === Infinity && !pinned) console.warn(`Not writing render-tests.json: this run used ${chromiumOptions(chromium).executablePath}, not the Chromium of Playwright that CI runs. Install it with \`pnpm exec playwright install chromium\` and run again.`);
 if (!filter && limit === Infinity && pinned) {
-    writeFileSync(path.join(dir, 'render-result.json'), JSON.stringify(committedTotals(summary.totals), null, 2) + '\n');
     writeFileSync(perTest, '{\n' + Object.entries(summary.tests).map(([id, status]) => `${JSON.stringify(id)}: ${JSON.stringify(status)}`).join(',\n') + '\n}\n');
 }
 if (process.argv.includes('--list')) for (const r of results.filter(r => r.status !== 'match' && r.status !== 'skipped')) console.log(`${r.status.padEnd(6)} ${r.id} ${r.diff !== undefined ? (r.diff * 100).toFixed(1) + '%' : r.why}${r.errors?.length ? ' [' + r.errors[0].slice(0, 80) + ']' : ''}`);
-const min = +(arg('min') ?? 0);
-if (summary.totals.match < min) { console.error(`FAIL: expected at least ${min} matching`); process.exit(1); }
+// The floor is the count of lines "match" of the tracked file, and each test is held to its own line (#1915).
+const verdict = compareWithTracked(committed, summary.tests, !filter && limit === Infinity);
+for (const line of verdict.lines) (line.startsWith('FAIL') ? console.error : console.log)(line);
+if (verdict.fail) process.exit(1);
