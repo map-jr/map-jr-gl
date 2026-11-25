@@ -171,7 +171,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **For a choice between a look and a cost, show the owner the look.** Three maps side by side (`main`, the branch,
   MapLibre GL JS) from two builds and one small server, as screenshots or as a page on a local port, with the time to
   idle and the bytes in the question. The owner decided #1694 and #1906 this way, and the second against the first
-  recommendation.
+  recommendation. `node scripts/agents/compare.mjs <worktree of the branch>` serves this page from the builds of your
+  checkout and of the branch (#1927); with `--shots <dir> --views "vector,4;raster,2.5"` it writes one screenshot for
+  each view and prints the tile requests of each map by zoom level.
 
 **Every pull request that changes the docs gets a review before it merges** (the owner, 2026-11-23). The reviewer
 reads the changed pages against `docs/style-guide.md` and the "Writing" rules of `CLAUDE.md`, and checks each claim

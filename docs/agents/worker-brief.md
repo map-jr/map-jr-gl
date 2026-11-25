@@ -110,6 +110,8 @@ writing); this brief has the steps.
   is started by the coordinator: prepare the inputs (a baseline project, a checker script) and hand them back.
 - Make an extra worktree with `git worktree add` under `.claude/worktrees/`, so that
   `scripts/agents/clean-worktrees.mjs` finds it.
+- To compare the look of your branch with `main` and MapLibre GL JS, run `node scripts/agents/compare.mjs <your worktree>`
+  in a built checkout of `main`; `--shots <dir>` writes the screenshots of three maps side by side.
 - For a change of the look, the pull request has screenshots of what users see first (JavaScript off, or before the
   map loads) at 390, 1024 and 1440 px, and a geometric check of one known feature before and after. The homepage
   checks of 2026-11-21 proved that a first paint exists, not that it was sized right.
