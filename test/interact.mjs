@@ -1492,6 +1492,26 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
 
+    // A line whose `line-width` is an expression is found within half of its own width, as in MapLibre (#1941): a width
+    // of 20 pixels from a property, one of 20 pixels by zoom, and a gap of 16 pixels between two lines of 2 pixels are
+    // found at 8 pixels from the center line; a line of 4 pixels from a property is not.
+    const wide = await page.evaluate(async () => {
+        const m = window.map, p = m.project(m.getCenter()), a = m.unproject([p.x - 100, p.y]), b = m.unproject([p.x + 100, p.y]);
+        const line = (id, properties) => ({type: 'Feature', id, properties, geometry: {type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]]}});
+        m.addSource('wide', {type: 'geojson', data: {type: 'FeatureCollection', features: [line(1, {w: 20, g: 16}), line(2, {w: 4, g: 0})]}});
+        m.addLayer({id: 'w-data', type: 'line', source: 'wide', paint: {'line-width': ['get', 'w']}});
+        m.addLayer({id: 'w-zoom', type: 'line', source: 'wide', filter: ['==', ['id'], 1], paint: {'line-width': ['interpolate', ['linear'], ['zoom'], 0, 20, 24, 20]}});
+        m.addLayer({id: 'w-gap', type: 'line', source: 'wide', paint: {'line-width': 2, 'line-gap-width': ['get', 'g']}});
+        const layers = ['w-data', 'w-zoom', 'w-gap'];
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers: ['w-data']}); }
+        const now = [...m.queryRenderedFeatures([p.x, p.y + 8], {layers})];
+        const near = await m.queryRenderedFeatures([p.x, p.y + 8], {layers});
+        layers.forEach(l => m.removeLayer(l)); m.removeSource('wide');
+        return {near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort()};
+    });
+    check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
+
     // A circle with `circle-translate` is found where it is drawn and not at its feature, as in MapLibre (#1910). With
     // the anchor `map` the translation turns with the bearing: [60, 0] at a bearing of 90 is 60 pixels up.
     const translated = await page.evaluate(async () => {
