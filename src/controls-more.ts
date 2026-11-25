@@ -306,10 +306,12 @@ export class LogoControl implements Control {
  * With `trackUserLocation`, the button turns tracking on and off, as in MapLibre GL JS 6.17. The control follows the
  * position (`watchPosition`) and keeps the map on it until the map moves for another reason, which fires
  * `trackuserlocationend` and `userlocationlostfocus`. A click then returns to the position and fires
- * `trackuserlocationstart` and `userlocationfocus`. `showUserLocation` (default true) shows a dot at the position while
- * tracking is on. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds`
- * and `fitBoundsOptions` (default `{maxZoom: 15}`, replaced as a whole when given), as MapLibre GL JS does. The
- * accuracy circle (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts) loads on demand at the first click, so the first step of tracking happens once that file has loaded.
+ * `trackuserlocationstart` and `userlocationfocus`. `showUserLocation` (default `true`) shows a dot at the position while
+ * tracking is on, and `showAccuracyCircle` (default `true`) a circle around it whose radius is `coords.accuracy` in meters at
+ * the current zoom and latitude, as MapLibre GL JS draws it (the element has the class
+ * `map-jr-user-location-accuracy-circle`). As in MapLibre GL JS, the circle is never shown when `showUserLocation` is
+ * `false`. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds`
+ * and `fitBoundsOptions` (default `{maxZoom: 15}`, replaced as a whole when given), as MapLibre GL JS does. The code of tracking (geolocate-track.ts) loads on demand at the first click, so the first step of tracking happens once that file has loaded.
  */
 export class GeolocateControl extends Evented implements Control {
     private el?: HTMLElement;
@@ -318,7 +320,6 @@ export class GeolocateControl extends Evented implements Control {
     private t?: Promise<{click(): void; remove(): void}>;
     constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean; showAccuracyCircle?: boolean; fitBoundsOptions?: Parameters<Map['fitBounds']>[1] & Record<string, unknown>} = {}) {
         super();
-        if (options.showAccuracyCircle) noEffect('GeolocateControl', 'showAccuracyCircle', ' The control shows a dot at the position without the circle.');
     }
     onAdd(map: Map) {
         this.map = map;
@@ -342,7 +343,7 @@ export class GeolocateControl extends Evented implements Control {
                 failed: (e: {code: number; message: string}) => this.failed(map, e),
                 follow: (p: GeolocationPosition) => this.follow(map, p),
             };
-            (this.t ??= import('./geolocate-track.ts').then(m => m.tracker(host, map, b, o.positionOptions, o.showUserLocation !== false)))
+            (this.t ??= import('./geolocate-track.ts').then(m => m.tracker(host, map, b, o.positionOptions, o.showUserLocation !== false, o.showAccuracyCircle !== false)))
                 .then(t => { if (this.map === map) t.click(); }, e => console.error('[map-jr-gl] GeolocateControl: the code of trackUserLocation could not be loaded. Check that the files of the library are served.', e));
             return true;
         }

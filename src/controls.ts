@@ -67,6 +67,7 @@ export const CONTROL_CSS = `
 .map-jr-ctrl-group :where(button:focus-visible){outline:2px solid var(--map-control-focus,#2f7fd1);outline-offset:-2px}
 :where(.map-jr-user-location-dot){position:absolute;left:0;top:0;width:15px;height:15px;border-radius:50%;background:#1da1f2;box-shadow:0 0 0 2px #fff,0 0 3px 2px rgba(0,0,0,.35);pointer-events:none;z-index:1}
 :where(.map-jr-user-location-dot-stale){background:#aaa}
+:where(.map-jr-user-location-accuracy-circle){position:absolute;left:0;top:0;border-radius:50%;background:#1da1f233;pointer-events:none}
 .map-jr-ctrl-group :where(.map-jr-ctrl-geolocate-active,.map-jr-ctrl-geolocate-background,.map-jr-ctrl-globe-enabled){color:#33b5e5}.map-jr-ctrl-group :where(.map-jr-ctrl-geolocate-active-error,.map-jr-ctrl-geolocate-background-error){color:#e54e33}
 :where(.map-jr-ctrl-scale){background:rgba(255,255,255,.75);border:1.5px solid var(--map-control-color,#333);border-top:0;padding:0 5px;font-size:10px;box-sizing:border-box;white-space:nowrap}
 /* colorScheme 'dark' (the class map-jr-dark on the container). The variables of the application still win. */

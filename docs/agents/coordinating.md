@@ -12,6 +12,12 @@ a batch shows a fault in them.
   Triage reads and does not run, so the brief still makes each worker check its issue on `main`. Triage also issues
   that were filed the same day: on 2026-11-17 a round without triage gave #683 to a worker, although #446 had fixed
   it, and #753 did not reproduce.
+- **An issue that was read and not run can name the wrong cause.** Of sixteen issues of the triage of 2026-11-24 that
+  workers took up, five had another cause than their text: two named a property that MapLibre GL JS declares and never
+  reads (#1692, #1695), one fault was the reverse of its title (#1735), and two had their cause in another part of
+  the code (#1827 in the reading of GeoJSON rings, #1828 in the tile levels of the globe). For an issue with the label `unverified`, the prompt of the worker says: reproduce it on `main`,
+  and read in `node_modules/maplibre-gl/dist/maplibre-gl-dev.mjs` what MapLibre GL JS does, before you build. Correct
+  the title and the body of the issue when the report names another cause.
 - **Choose issues that do not share lines.** Give two issues on the same function to one worker after the other.
   When most issues change one file (`src/host.ts` on 2026-11-16, where six of nine pull requests needed a merge of
   `main`), merge the pull request that has waited longest first.
@@ -43,6 +49,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   wait (#1406): on 2026-11-24 about six workers that ran suites at once on the cloud VM (4 cores) made runs time out.
   More workers than that can still work at once, because a suite is only a part of a worker's time.
   Six gave a load of about 35 and 15 failures in one local run of `test/interact.mjs` (#1387).
+  On the owner's Mac (10 cores) four slots ran without failures of timing on 2026-11-24 and six gave six failures in
+  one run of `test/interact.mjs`: write `SUITE_SLOTS=4` into the prompt of each worker there. A suite takes 13 to 30
+  minutes while several workers build.
 
 ## While the workers run
 
@@ -146,6 +155,19 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 
 ## Independent review
 
+- **Let the reviewer fix what it found** when the author is past about 140,000 tokens, and ask it first to run each
+  finding that it only read: on 2026-11-24 the read findings of #1892 reproduced, and the one of #1909 did not.
+- **Measure again after a rework.** The bytes and the time to idle of a pull request change when a reviewer or a
+  second worker reworks it (#1906 went from 155 to 931 bytes). Ask for both in the last report, not only in the first.
+- **A notice that a worker may have broken a security rule** ("CI bypass", "test removal") is checked before its
+  report is used: read `git diff origin/main...HEAD -- test .github package.json scripts` in its worktree for a removed
+  test, a lower floor or a changed workflow. A diff against the old head of the branch also shows what a merge of
+  `main` removed, which is not the worker's change.
+- **For a choice between a look and a cost, show the owner the look.** Three maps side by side (`main`, the branch,
+  MapLibre GL JS) from two builds and one small server, as screenshots or as a page on a local port, with the time to
+  idle and the bytes in the question. The owner decided #1694 and #1906 this way, and the second against the first
+  recommendation.
+
 **Every pull request that changes the docs gets a review before it merges** (the owner, 2026-11-23). The reviewer
 reads the changed pages against `docs/style-guide.md` and the "Writing" rules of `CLAUDE.md`, and checks each claim
 against the source, the changelog or a run. A small change of wording can share one reviewer with others.
@@ -233,7 +255,15 @@ alone cannot.
   current branch", so the command reads as failed. Merge without it, read the state with `gh pr view N --json state`,
   and delete the branch with `git push origin --delete <branch>`.
 - In zsh, `set -- $var` does not split the value into words: read each field with its own `gh … -q` call.
-- The shell of the owner's Mac sets `noclobber`, so `cat > file` does not replace a file that exists: write `>|`.
+- The shell of the owner's Mac sets `noclobber`, so `cat > file` does not replace a file that exists: write `>|`,
+  and `2>|` for the error output.
+- The log of one job: `gh api --allow-escape-sequences repos/map-jr/map-jr-gl/actions/jobs/<id>/logs >| file`. Without
+  the option `gh` writes nothing, and the log of a run that is still in progress is not there yet.
+- `gh api -X PUT …/pulls/N/merge -f sha=` needs the full SHA of 40 characters.
+- A dispatch of the workflow `Browsers` cancels a run of it that waits, a push run of a merge included. Start it with
+  `-f safari=true` (all jobs and Safari), not with `safari_only`, when the results of the last merge are still wanted.
+- A branch that is checked out in the worktree of a worker that has ended is pushed from another worktree with
+  `git push origin HEAD:<branch>`.
 - A command that writes the body of an issue into a file must succeed before `gh issue edit --body-file` reads it;
   join the two with `&&`. A `sed` with `#` as its delimiter fails on a text with an issue number, and an empty file
   then empties the body of the issue.
