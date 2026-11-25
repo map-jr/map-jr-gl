@@ -332,8 +332,9 @@ number (`scripts/gl-constants.mjs`). It changes only reads from a variable named
 that the table does not have, the build stops and names it: add its value from the WebGL specification.
 
 The plugin `global-names` of `build.mjs` replaces each read of a member of `Math` and of `Array.isArray` in the
-worker file with a name that one module exports (`Math.floor` becomes `Math_floor`), so that the minifier can shorten
-it (`scripts/global-names.mjs`). The page scripts keep `Math.floor`, because they read few such members. The build
+worker file and in `server.js` with a name that one module exports (`Math.floor` becomes `Math_floor`), so that the
+minifier can shorten it (`scripts/global-names.mjs`). The page scripts and the parts of the worker keep `Math.floor`,
+because they read few such members. The build
 stops when a file of the worker reads `Math.floor` and also has the name `Math_floor`, and when a file assigns to a
 member of `Math`. Do not give a variable a name that starts with `Math_` or `Array_`.
 

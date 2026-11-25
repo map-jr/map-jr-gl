@@ -1463,6 +1463,26 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A line whose `line-width` is an expression is found within half of its own width, as in MapLibre (#1941): a width
+    // of 20 pixels from a property, one of 20 pixels by zoom, and a gap of 16 pixels between two lines of 2 pixels are
+    // found at 8 pixels from the center line; a line of 4 pixels from a property is not.
+    const wide = await page.evaluate(async () => {
+        const m = window.map, p = m.project(m.getCenter()), a = m.unproject([p.x - 100, p.y]), b = m.unproject([p.x + 100, p.y]);
+        const line = (id, properties) => ({type: 'Feature', id, properties, geometry: {type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]]}});
+        m.addSource('wide', {type: 'geojson', data: {type: 'FeatureCollection', features: [line(1, {w: 20, g: 16}), line(2, {w: 4, g: 0})]}});
+        m.addLayer({id: 'w-data', type: 'line', source: 'wide', paint: {'line-width': ['get', 'w']}});
+        m.addLayer({id: 'w-zoom', type: 'line', source: 'wide', filter: ['==', ['id'], 1], paint: {'line-width': ['interpolate', ['linear'], ['zoom'], 0, 20, 24, 20]}});
+        m.addLayer({id: 'w-gap', type: 'line', source: 'wide', paint: {'line-width': 2, 'line-gap-width': ['get', 'g']}});
+        const layers = ['w-data', 'w-zoom', 'w-gap'];
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers: ['w-data']}); }
+        const now = [...m.queryRenderedFeatures([p.x, p.y + 8], {layers})];
+        const near = await m.queryRenderedFeatures([p.x, p.y + 8], {layers});
+        layers.forEach(l => m.removeLayer(l)); m.removeSource('wide');
+        return {near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort()};
+    });
+    check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
+
     // A circle with `circle-translate` is found where it is drawn and not at its feature, as in MapLibre (#1910). With
     // the anchor `map` the translation turns with the bearing: [60, 0] at a bearing of 90 is 60 pixels up.
     const translated = await page.evaluate(async () => {
@@ -3145,18 +3165,23 @@ for (const mode of renderers) {
     // raster-fade-duration: a raster tile that arrives over its loaded parent fades in over it, and `idle` waits for the
     // fade, drawing frames meanwhile, as in MapLibre GL JS 6.17; with 0 it shows at once, and a layer that gives none fades over 300 ms in this entry (#1694). (`toBlob` waits for
     // `idle`, so the frames of the fade are counted, not read.) The parent (tile zoom 1, map zoom 0 with tiles of 256 px) is red, its children blue.
+    // The children are held until the map has asked for one, and the check reads at `idle` how many children had
+    // arrived, the time since the last one, and the frames since they were let go. (With 0, `idle` can come within
+    // half a millisecond of the release on a loaded runner, so a time above 0 is no proof of the wait; #2020.)
     {
         const r = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
             const middle = async m => { const blob = await Promise.race([m.toBlob(), new Promise(r => setTimeout(r, 8000))]); if (!blob) return ['no image']; const bmp = await createImageBitmap(blob), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data]; };
             for (const fade of [2000, 0, undefined]) {
-                let release, held = new Promise(r => release = r);
+                let release, held = new Promise(r => release = r), asked = 0, given = 0, last = 0;
                 const name = 'fade1694x' + (fade ?? 'none');
                 mod.addProtocol(name, async request => {
                     const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
-                    if (z > 1) await held;
+                    if (z > 1) { asked++; await held; }
                     g.fillStyle = z > 1 ? '#0000ff' : '#ff0000'; g.fillRect(0, 0, 64, 64);
-                    return {data: await createImageBitmap(c)};
+                    const data = await createImageBitmap(c);
+                    if (z > 1) { given++; last = performance.now(); }
+                    return {data};
                 });
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
                 const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [10, 10], zoom: 0,
@@ -3164,25 +3189,26 @@ for (const mode of renderers) {
                 await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
                 const before = await middle(m);
                 m.jumpTo({zoom: 1});
-                await new Promise(r => setTimeout(r, 200));
-                let idleAt = 0;
-                m.once('idle', () => idleAt = performance.now());
-                const t0 = performance.now();
-                release();
-                let frames = 0;
+                for (let i = 0; i < 400 && !asked; i++) await new Promise(r => setTimeout(r, 20));
+                let frames = 0, idle;
                 const count = () => frames++;
                 m.on('render', count);
-                for (let i = 0; i < 80 && !idleAt; i++) await new Promise(r => setTimeout(r, 100));
+                m.once('idle', () => idle = {asked, given, ms: Math.round(performance.now() - last), frames});
+                release();
+                for (let i = 0; i < 400 && !idle; i++) await new Promise(r => setTimeout(r, 20));
                 m.off('render', count);
                 const after = await middle(m);
-                out[fade ?? 'none'] = {before: before.slice(0, 3).join(), after: after.slice(0, 3).join(), ms: Math.round(idleAt - t0), frames};
+                out[fade ?? 'none'] = {before: before.slice(0, 3).join(), after: after.slice(0, 3).join(), ...idle};
                 m.remove(); el.remove(); mod.removeProtocol(name);
             }
             return out;
         }, mode);
+        // (`idle` comes once every child that the map asked for has arrived, and with a fade, that long after the last one.)
+        const waited = x => x.asked > 0 && x.given === x.asked && x.ms >= 0;
         check(`[${mode}] raster-fade-duration: a raster tile fades in over its parent and idle waits for the fade; with 0 it shows at once; the default of the compat entry is 300 ms (#1694)`,
-            r[2000].before === '255,0,0' && r[2000].after === '0,0,255' && r[2000].ms >= 1900 && r[2000].frames > 10 && r[0].after === '0,0,255' && r[0].ms > 0 && r[0].ms < 1900
-            && r.none.after === '0,0,255' && r.none.ms >= 280, JSON.stringify(r));
+            r[2000].before === '255,0,0' && r[2000].after === '0,0,255' && waited(r[2000]) && r[2000].ms >= 1900 && r[2000].frames > 10
+            && r[0].after === '0,0,255' && waited(r[0]) && r[0].frames < r[2000].frames
+            && r.none.after === '0,0,255' && waited(r.none) && r.none.ms >= 280, JSON.stringify(r));
     }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
