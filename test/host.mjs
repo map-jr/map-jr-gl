@@ -2177,8 +2177,9 @@ for (const renderer of renderers) {
 
         // The same question with `icon-offset` (#2029). The offset turns with `icon-rotate`: with a turn of 90 degrees an
         // offset of 40 pixels up puts the icon 40 pixels to the right. A layer with `icon-offset` has no perspective ratio
-        // on a tilted map, so the icon of 40 pixels near the bottom of the map is found within 20 pixels of its point and not
-        // 23 pixels from it (with the ratio, 1.24 there, the box reached 24.8 pixels).
+        // on a tilted map, so the icon of 40 pixels near the bottom of the map, with the default icon-padding of 2 pixels and
+        // the radius of 3 pixels of the question, is found within 25 pixels of its point and not 27 pixels from it (with the
+        // ratio, 1.24 there, the box reached 29.8 pixels).
         const offsetReach = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
             const found = async (icon, places, pitch = 0) => {
@@ -2190,7 +2191,7 @@ for (const renderer of renderers) {
                 return out.join('');
             };
             // At the turned place of the icon, and at the place where the offset would put it without the turn.
-            const turned = [[490, 300], [450, 260]], tilted = [[450 + 15, 550], [450 + 23, 550]];
+            const turned = [[490, 300], [450, 260]], tilted = [[450 + 15, 550], [450 + 27, 550]];
             const rotate = {'icon-rotate': 90, 'icon-offset': [0, -40], 'icon-ignore-placement': true}, still = {'icon-offset': [0, 0], 'icon-ignore-placement': true};
             const out = {turned: await found(rotate, turned), turnedPlaced: await found({...rotate, 'symbol-sort-key': 1}, turned),
                 tilted: await found(still, tilted, 60), tiltedPlaced: await found({...still, 'symbol-sort-key': 1}, tilted, 60)};
@@ -2235,6 +2236,31 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] a label of a layer below keeps away from an icon from a buffer, and not when the layer of the icon has icon-ignore-placement; a label of a layer above shows`,
             avoided.avoid === '0' && avoided.ignore === '1' && avoided.above === '1', JSON.stringify(avoided));
+
+        // The space of an icon from a buffer has `icon-padding` added before the icon is turned, as in MapLibre GL JS
+        // (#1734, #2038). The square of 40 pixels at the centre is turned by 90 degrees and has a padding of 50 on its
+        // left, which the turn puts above it: a label 50 pixels left of the icon shows, and a label 60 pixels above it does not.
+        const turnedSpace = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const placed = async at => {
+                const data = {type: 'FeatureCollection', features: [{type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject({x: 450, y: 300})}},
+                    {type: 'Feature', id: 2, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject(at)}}]};
+                t.host.update(t.spec = {...t.spec, images: {square: t.square('#f0f')}, style: {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data}}, layers: [...t.style.layers.filter(l => l.type !== 'symbol'),
+                    {id: 'spot-text', type: 'symbol', source: 'spot', filter: ['==', ['id'], 2], layout: {'text-field': 'Here', 'text-size': 14}},
+                    {id: 'spot-icon', type: 'symbol', source: 'spot', filter: ['==', ['id'], 1], layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-rotate': 90, 'icon-padding': [0, 0, 0, 50]}}]}});
+                await wait(300); await t.settle();
+                t.placed.length = 0;
+                t.host.moveTo({bearing: 20, duration: 1800}); await wait(2200);
+                t.host.moveTo({bearing: 0}); await wait(300);
+                return [...new Set(t.placed.splice(0))].join();
+            };
+            const out = {left: await placed({x: 400, y: 300}), above: await placed({x: 450, y: 240})};
+            const {images: _, ...rest} = t.spec;
+            t.host.update(t.spec = {...rest, style: t.style});
+            return out;
+        });
+        check(`[${renderer}] the space of an icon from a buffer has icon-padding added before icon-rotate turns it, as in MapLibre GL JS`,
+            turnedSpace.left === '1' && turnedSpace.above === '0', JSON.stringify(turnedSpace));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
