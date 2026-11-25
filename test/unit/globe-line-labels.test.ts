@@ -12,15 +12,18 @@ import {EstimateShaper} from '../../src/text.ts';
 
 const id = {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'};
 
-/** The label of a line along the equator from 45° W to 45° E, on a view of 256 pixels at zoom 0 that looks at 45° N. */
-function place(onGlobe: boolean): any {
+/**
+ * The label of a line (by default along the equator from 45° W to 45° E), on a view of 256 pixels at zoom 0 that looks
+ * at 45° N (by default).
+ */
+function place(onGlobe: boolean, coordinates = [[-45, 0], [45, 0]], center = [0, 45], zoom = 0, size = 256): any {
     const layer = compileLayer({id: 't', type: 'symbol', source: 'g', layout: {'symbol-placement': 'line', 'text-field': 'AAAAAAAAAAA', 'text-size': 16}})!;
-    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-45, 0], [45, 0]]}} as any), 0, 0, 0);
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}} as any), 0, 0, 0);
     const labels = buildTile(data, 0, [layer], false).labels;
     const tr = new Transform();
-    tr.width = 256; tr.height = 256;
+    tr.width = size; tr.height = size;
     if (onGlobe) { tr.globe = globe; tr.globeStops = [0, 1]; }
-    tr.set([0, 45], 0, 0, 0);
+    tr.set(center as [number, number], zoom, 0, 0);
     return (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid())[0];
 }
 
@@ -35,4 +38,14 @@ test('a label along a line is drawn on the globe, along the curve of the sphere'
     // Mercator by 1 / cos 45°, and the text is not.
     const span = (p: any) => Math.hypot(p.curve[p.curve.length - 3] - p.curve[0], p.curve[p.curve.length - 2] - p.curve[1]);
     assert.ok(span(round) < span(flat), `globe ${span(round).toFixed(1)} px, Mercator ${span(flat).toFixed(1)} px`);
+});
+
+test('a label along a meridian on the globe keeps one size, also when it spans many degrees of latitude', () => {
+    // The meridian at 10° E from 40° N to 80° N, seen from above 60° N at zoom 1.6. The text spans about 25 degrees of
+    // latitude, where a step in the tile is about twice as long on the sphere at the south end as at the north end.
+    const p = place(true, Array.from({length: 41}, (_, i) => [10, 40 + i]), [10, 60], 1.6, 800);
+    assert.ok(p?.ground, 'the text lies on the sphere');
+    // `ground` has, for each glyph, the length on the screen of one pixel of text along the line, and then the step across it.
+    const along = p.ground.filter((_: number, i: number) => i % 3 === 0), ratio = Math.max(...along) / Math.min(...along);
+    assert.ok(ratio < 1.15, `the glyphs have one size, as in MapLibre GL JS: ${along.map((v: number) => v.toFixed(2))}`);
 });

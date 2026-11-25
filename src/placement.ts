@@ -663,7 +663,9 @@ function followLine(
     const path = l.path!, n = path.length / 2;
     // On the globe the ground has the scale of the sphere at the anchor (MapLibre GL JS's `getPitchedTextCorrection`):
     // the cosine of the latitude of the anchor over that of the center, mixed with Mercator by the globeness.
-    const g = flat && tr.globeness ? 1 + tr.globeness * (1 / Math.cosh(Math.PI * (1 - 2 * (it.id.y + l.y / EXTENT) / 2 ** it.id.z)) / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1) : 1;
+    // (`cosLat`: the cosine of the latitude of a y in the tile.)
+    const cosLat = (v: number) => 1 / Math.cosh(Math.PI * (1 - 2 * (it.id.y + v / EXTENT) / 2 ** it.id.z)), round = flat ? tr.globeness : 0, anchorCos = cosLat(l.y);
+    const g = round ? 1 + round * (anchorCos / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1) : 1;
     // Most text that comes here does not fit its line at this zoom, so the length is tested first, before the points
     // are projected. The length on the screen (or on the ground, for a tilted map or the globe) is the length in the
     // tile times `it.scale` (and `g`). (The exact test below decides the cases within a thousandth of a pixel.)
@@ -698,7 +700,10 @@ function followLine(
             // the whole piece made the size of the letters jump at each point of the line.)
             const tu = (us[seg] - us[seg - 1]) / len, tv = (vs[seg] - vs[seg - 1]) / len, pu = us[seg - 1] + tu * t, pv = vs[seg - 1] + tv * t, e = 16;
             const m = heightAt(tr, it, pu, pv), [px, py] = tr.projectTile(it.id, pu, pv, m), [fx, fy] = tr.projectTile(it.id, pu + tu * e, pv + tv * e, m), [qx, qy] = tr.projectTile(it.id, pu - tv * e, pv + tu * e, m);
-            cx = px; cy = py; dx = (fx - px) / e; dy = (fy - py) / e; bx = (qx - px) / e; by = (qy - py) / e;
+            // (On the globe a step in the tile is shorter on the sphere where the latitude is higher. Each glyph keeps the
+            // size at the anchor, as in MapLibre GL JS, also when the text spans many degrees of latitude.)
+            const f = round ? (1 + round * (anchorCos / cosLat(pv) - 1)) / e : 1 / e;
+            cx = px; cy = py; dx = (fx - px) * f; dy = (fy - py) * f; bx = (qx - px) * f; by = (qy - py) * f;
         }
         const angle = Math.atan2(dy, dx);
         // A sharp bend inside the text makes it unreadable. The limit is `text-max-angle`: 45 degrees by default,
