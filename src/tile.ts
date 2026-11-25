@@ -261,7 +261,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     if (sorted) keys.push(label.key = key);
                     continue;
                 }
-                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null)) {
+                // (The path of text along the line keeps `1 / ov` of a unit in an over-zoomed tile, as `lineLabels` does.)
+                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null, ov)) {
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colors and fonts.
