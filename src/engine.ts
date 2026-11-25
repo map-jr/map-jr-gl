@@ -1,6 +1,5 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {globeBuild} from './subdivide.ts';
 import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
@@ -12,7 +11,7 @@ import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
-import type {TileGL} from './tile.ts';
+import {globeBuild, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
@@ -139,6 +138,7 @@ function partsFor(style: ResolvedStyle): PartName[] {
         if (s.contour) out.add('dem');
         if (s.tiles?.some(t => t.startsWith('pmtiles://'))) out.add('pmtiles');
     }
+    if (globeStops(style.projection?.type)) out.add('subdivide');
     return [...out];
 }
 
@@ -1317,7 +1317,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
