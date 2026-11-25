@@ -420,8 +420,8 @@ JS. The events that the map fires are plain objects, so `instanceof Event` is fa
 
 - `new AJAXError(status, statusText, url, body)` has these four fields and the message of MapLibre GL JS. A failed
   request of this library rejects with an `Error`, not with an `AJAXError`.
-- `new EdgeInsets(top, bottom, left, right)` takes pixels, each 0 by default, and has `interpolate`, `getCenter`,
-  `equals`, `clone` and `toJSON`. It throws for a negative value or a value that is not a number.
+- `new EdgeInsets(top, bottom, left, right)` has the four fields in pixels, each 0 by default. It has none of the
+  methods of MapLibre GL JS (`interpolate`, `getCenter`, `equals`, `clone`, `toJSON`), because no wrapper calls them.
 - `new GeolocateEvent(type)` makes an event to pass to `fire`. `e instanceof GeolocateEvent` is true for an event of
   the type `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` or `userlocationlostfocus`.
 

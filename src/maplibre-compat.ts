@@ -224,25 +224,10 @@ export class AJAXError extends Error {
         Object.assign(this, {status, statusText, url, body});
     }
 }
-type Padding = {top?: number; bottom?: number; left?: number; right?: number};
-/** Padding in pixels on each side, as the class of MapLibre GL JS with its methods. */
+/** Padding in pixels on each side, as the class of MapLibre GL JS, with its fields only: wrappers re-export it and call no method. */
 export class EdgeInsets {
     declare top: number; declare bottom: number; declare left: number; declare right: number;
-    constructor(top = 0, bottom = 0, left = 0, right = 0) {
-        Object.assign(this, {top, bottom, left, right});
-        if (![top, bottom, left, right].every(v => v >= 0)) throw new Error('[map-jr-gl] new EdgeInsets(): each value must be a number of 0 or more.');
-    }
-    interpolate(start: Padding, target: Padding, t: number) {
-        for (const k of ['top', 'bottom', 'left', 'right'] as const) if (target[k] != null && start[k] != null) this[k] = start[k] + (target[k] - start[k]) * t;
-        return this;
-    }
-    getCenter(width: number, height: number) {
-        const c = (v: number, max: number) => Math.min(max, Math.max(0, v / 2));
-        return new Point(c(this.left + width - this.right, width), c(this.top + height - this.bottom, height));
-    }
-    equals(o: Padding) { return this.top === o.top && this.bottom === o.bottom && this.left === o.left && this.right === o.right; }
-    clone() { return new EdgeInsets(this.top, this.bottom, this.left, this.right); }
-    toJSON() { return {top: this.top, bottom: this.bottom, left: this.left, right: this.right}; }
+    constructor(top = 0, bottom = 0, left = 0, right = 0) { Object.assign(this, {top, bottom, left, right}); }
 }
 /** MapLibre GL JS starts its workers ahead of the first map. This library starts them with the first map, so this does nothing. */
 export const prewarm = () => {};
