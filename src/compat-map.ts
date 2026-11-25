@@ -12,7 +12,7 @@ import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, FOV, type LngLatLike} from './geo.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
-import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
+import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification, Subscription} from './compat-types.ts';
 
 /**
  * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
@@ -20,10 +20,15 @@ import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFea
  * of the core map.)
  */
 export interface Map {
-    on<T extends keyof MapLayerEventType>(type: T, layerId: string | string[], listener: (e: MapLayerEventType[T]) => void): this;
-    on<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
-    on(type: string, listener: (e: any) => void): this;
-    on(type: string, layerId: string | string[], listener: (e: any) => void): this;
+    /**
+     * Adds a listener and returns a `Subscription`, as in MapLibre GL JS: `unsubscribe()` removes that listener, as
+     * `off` with the same arguments does. With `layerId`, the event is one of a layer. `on` does not return the map, so
+     * calls of `on` cannot be chained.
+     */
+    on<T extends keyof MapLayerEventType>(type: T, layerId: string | string[], listener: (e: MapLayerEventType[T]) => void): Subscription;
+    on<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): Subscription;
+    on(type: string, listener: (e: any) => void): Subscription;
+    on(type: string, layerId: string | string[], listener: (e: any) => void): Subscription;
     /**
      * Calls `listener` one time, for the next event of `type`, as in MapLibre GL JS. With `layerId`, the event is one of a
      * layer (`click` on that layer, for example). Without `listener`, `once` returns a promise of the event.
@@ -118,12 +123,17 @@ export class Map extends CoreMap {
         if (!fn) return new Promise(resolve => layer ? this.once(type, layer, resolve) : this.once(type, resolve));
         if (!layer) return super.once(type, fn);
         const wrap = (e: any) => { this.off(type, layer, wrap); fn(e); };
-        return this.on(type, layer, wrap);
+        this.on(type, layer, wrap);
+        return this;
     }
-    /** As in MapLibre GL JS, a listener for `data` or `sourcedata` hears each tile that loads (`e.tile`); the engine reports tiles only from then on. */
-    override on(type: string, a: any, b?: any): this {
+    /**
+     * As in MapLibre GL JS, `on` returns a `Subscription`, and a listener for `data` or `sourcedata` hears each tile that
+     * loads (`e.tile`); the engine reports tiles only from then on. (The return type is in the interface above.)
+     */
+    override on(type: string, a: any, b?: any): any {
         if (type === 'data' || type === 'sourcedata') this.reportTiles();
-        return super.on(type, a, b);
+        super.on(type, a, b);
+        return {unsubscribe: () => { this.off(type, a, b); }};
     }
     protected override tileLoaded(sourceId: string, z: number, x: number, y: number) {
         const canonical = {z, x, y, key: `${z}/${x}/${y}`}, tile = {tileID: {canonical, overscaledZ: z, wrap: 0, key: canonical.key}, state: 'loaded'};
