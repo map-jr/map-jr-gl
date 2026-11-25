@@ -342,11 +342,20 @@ export class Transform {
     screenToGround(px: number, py: number): [number, number] {
         if (!this.heightAt) return this.screenToMerc(px, py);
         // Walk the view ray from the highest ground down to the lowest and stop where it first goes under the surface,
-        // then narrow that step down. (Raising or lowering the assumed plane moves along the ray.)
+        // then narrow that step down. (Raising or lowering the assumed plane moves along the ray.) A step covers at most
+        // one pixel of the world on the ground, so that a crest one cell of the elevation data wide is not stepped
+        // over (#1488); MapLibre GL JS walks its ray the same way, in steps of 4 pixels.
         const ppm = this.pixelsPerMetre, [lo, hi] = this.groundRange ?? [this.elevation, this.elevation];
-        const below = (h: number) => { const m = this.screenToMerc(px, py, (h - this.elevation) * ppm); return this.heightAt!(m[0], m[1]) >= h; };
+        // The walk takes its points between the two ends, since the ray is straight; the narrowing asks for each point.
+        const at = (h: number) => this.screenToMerc(px, py, (h - this.elevation) * ppm);
+        const below = (h: number) => { const m = at(h); return this.heightAt!(m[0], m[1]) >= h; };
+        const p = at(hi), q = at(lo), n = clamp(Math.ceil(Math.hypot(p[0] - q[0], p[1] - q[1]) * this.worldSize), 96, 4096);
         let a = hi + 1, b = lo - 1;
-        for (let i = 1; i <= 96; i++) { const h = hi + (lo - hi) * i / 96; if (below(h)) { b = h; break; } a = h; }
+        for (let i = 1; i <= n; i++) {
+            const t = i / n, h = hi + (lo - hi) * t;
+            if (this.heightAt(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t) >= h) { b = h; break; }
+            a = h;
+        }
         for (let i = 0; i < 12; i++) { const mid = (a + b) / 2; if (below(mid)) b = mid; else a = mid; }
         return this.screenToMerc(px, py, ((a + b) / 2 - this.elevation) * ppm);
     }
