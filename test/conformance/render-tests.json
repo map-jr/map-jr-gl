@@ -535,7 +535,7 @@
 "icon-image/token": "match",
 "icon-no-cross-source-collision/default": "near",
 "icon-offset/literal": "match",
-"icon-offset/pitched-offset": "differ",
+"icon-offset/pitched-offset": "near",
 "icon-offset/property-function": "match",
 "icon-offset/zoom-and-property-function": "match",
 "icon-opacity/default": "match",

@@ -47,6 +47,17 @@ test('an icon with icon-pitch-alignment map lies on the ground of a tilted map',
     assert.ok(place({'text-field': '', 'icon-image': 'a', 'icon-pitch-alignment': 'map'}, point, 60, true)?.icon?.frame, 'the icon has a frame on the ground');
     assert.equal(place({'text-field': '', 'icon-image': 'a'}, point, 60, true)?.icon?.frame, undefined);
 });
+test('icon-offset turns with icon-rotate, as in MapLibre GL JS (#2029)', () => {
+    const p = place({'text-field': '', 'icon-image': 'a', 'icon-rotate': 90, 'icon-offset': [10, 0]}, point, 0, true);
+    assert.ok(Math.abs(p.icon.x - p.ax) < 1e-6 && Math.abs(p.icon.y - p.ay - 10) < 1e-6, `the icon is at ${p.icon.x - p.ax}, ${p.icon.y - p.ay}`);
+});
+test('an icon along a line with icon-pitch-alignment map lies on the ground, and icon-offset moves it across the line (#2029)', () => {
+    // The line runs east on the screen; an offset of [0, 10] is across it, so the icon moves down the screen (and a little to the side, by the perspective).
+    const p = place({'text-field': '', 'icon-image': 'a', 'symbol-placement': 'line', 'icon-pitch-alignment': 'map', 'icon-offset': [0, 10]}, line, 60, true);
+    assert.ok(p?.icon?.frame, 'the icon has a frame on the ground');
+    const dx = p.icon.x - p.ax, dy = p.icon.y - p.ay;
+    assert.ok(Math.abs(dx) < dy / 2 && dy > 3 && dy < 10, `the icon is at ${dx}, ${dy}`);
+});
 test('an image inside text with text-pitch-alignment map uses the frame of its label (#1064)', async () => {
     const {GLRenderer} = await import('../../src/gl.ts');
     const p = place({'text-pitch-alignment': 'map'}, point, 60);

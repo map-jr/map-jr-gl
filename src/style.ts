@@ -230,6 +230,12 @@ export interface CompiledLayer {
     relief?: Float32Array;
     /** Symbol layers: the same for layers that have the same data and layout. As in MapLibre, such layers share their labels. */
     group?: string;
+    /**
+     * Symbol layers whose layout has `icon-offset` (any value, also `[0, 0]`): as in MapLibre GL JS (`u_is_offset` of its
+     * symbol shaders), their icons are drawn without the perspective ratio of a tilted map. Their text keeps the ratio
+     * here, where MapLibre GL JS drops it for the text too (#2057).
+     */
+    fixedSize?: boolean;
 }
 
 /** The most lights that a `hillshade` layer with the method `multidirectional` draws. */
@@ -320,6 +326,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     return {
         ssr: l.metadata?.[SSR_KEY],
         group: l.type === 'symbol' ? JSON.stringify([l.source, l['source-layer'], l.minzoom, l.maxzoom, l.filter, l.layout]) : undefined,
+        fixedSize: l.layout?.['icon-offset'] != null,
         relief, ramp: ramp ?? (l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : l.type === 'line' && l.paint?.['line-gradient'] ? colorRamp(l.paint['line-gradient']) : undefined),
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
