@@ -7,7 +7,7 @@ import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
-import type {QueriedFeature} from './query.ts';
+import type {QueriedFeature, QuerySet} from './query.ts';
 import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
 import type {GeoJSONGeometry} from './host.ts';
@@ -1975,11 +1975,16 @@ export class Map {
         else { box = [0, 0, this.tr.width, this.tr.height]; if (geometry) options = geometry as RenderedQueryOptions; }
         const only = options.layers ? new Set(options.layers) : null, z = this.tr.zoom, layers: any[] = this.rawStyle?.layers ?? [];
         const number = (v: unknown, fallback: number) => typeof v === 'number' ? v : fallback;
+        // A circle layer whose size is not a number (an expression or a function) is tested with the size of each
+        // feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.circle`).
+        const size = (l: any): QuerySet['circle'] => l.type === 'circle' && [l.paint?.['circle-radius'], l.paint?.['circle-stroke-width']].some(v => v !== undefined && typeof v !== 'number')
+            ? {radius: l.paint['circle-radius'], stroke: l.paint['circle-stroke-width'], zoom: z} : undefined;
         const sets = layers.filter(l => l.source && (!only || only.has(l.id)) && l.layout?.visibility !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
             layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+            circle: size(l),
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
         }));

@@ -1,7 +1,7 @@
 import {EXTENT, clamp, latFromMerc, lngFromMerc, mercX, mercY, type Transform} from './geo.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
-import {compileFilter} from './expr.ts';
+import {compileFilter, compileProp} from './expr.ts';
 import type {TileLayers} from './tile.ts';
 import type {GeoJSONGeometry} from './host.ts';
 
@@ -52,6 +52,12 @@ export interface QuerySet {
     layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number;
     /** A circle layer: the first value is true when `circle-pitch-alignment` is `map`, the second when `circle-pitch-scale` is `map`. */
     pitch?: [boolean, boolean];
+    /**
+     * A circle layer whose size depends on the feature: its `circle-radius` and `circle-stroke-width` in pixels, which
+     * each feature is tested with at the zoom of the map, as in MapLibre GL JS. `scale` is the tile units of one pixel;
+     * without it the set's `radius` is used.
+     */
+    circle?: {radius: unknown; stroke: unknown; zoom: number; scale?: number};
 }
 
 function outside(c: number[]) {
@@ -107,7 +113,8 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
     // each feature is read one time and tested for each set.
     const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius}])
-        .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also)}));
+        .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also),
+            size: 'circle' in s && s.circle?.scale ? {...s.circle, r: compileProp(s.circle.radius, 'number', 5), w: compileProp(s.circle.stroke, 'number', 0)} : null}));
     for (const name in layers) {
         if (q.sourceLayers && !q.sourceLayers.includes(name)) continue;
         const mine = q.sets ? sets.filter(s => s.sourceLayer ? s.sourceLayer === name : name === GEOJSON_LAYER || !s.layer) : sets;
@@ -123,7 +130,8 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
                     // tile gives it only when its bounding box touches the tile, so that a query gives it one time.
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
-                if (!touches(f.type, c, ends, q.px, q.py, set.radius, q.box)) continue;
+                const size = set.size, radius = size ? (size.r.eval(size.zoom, f) + size.w.eval(size.zoom, f)) * size.scale! : set.radius;
+                if (!touches(f.type, c, ends, q.px, q.py, radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
                 if (q.box && f.index !== undefined) feature.index = f.index;

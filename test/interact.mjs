@@ -1444,6 +1444,23 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures; a layer removed during a query`,
         rendered.removed === 0 && rendered.noLayer === 0 && rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
 
+    // A circle whose `circle-radius` is an expression is found within its own radius, as in MapLibre (#1911): a
+    // radius of 30 pixels from a property, and one of 30 pixels by zoom, are found at 20 pixels from the center.
+    const sized = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter(), p = m.project(c), z = m.getZoom();
+        m.addSource('sized', {type: 'geojson', data: {type: 'FeatureCollection', features: [
+            {type: 'Feature', id: 1, properties: {r: 30}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}},
+            {type: 'Feature', id: 2, properties: {r: 4}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}]}});
+        m.addLayer({id: 'by-data', type: 'circle', source: 'sized', paint: {'circle-radius': ['get', 'r']}});
+        m.addLayer({id: 'by-zoom', type: 'circle', source: 'sized', filter: ['==', ['id'], 1], paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 30, 24, 30]}});
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers: ['by-data']}); }
+        const near = await m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']});
+        m.removeLayer('by-data'); m.removeLayer('by-zoom'); m.removeSource('sized');
+        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort()};
+    });
+    check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query`, sized.near.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
+
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
     // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
