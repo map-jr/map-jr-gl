@@ -1769,6 +1769,38 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
             lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
+        // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
+        // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
+        // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
+        const iconBent = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+            const arc = [];
+            for (let i = 0; i <= 60; i++) { const t = Math.PI - i / 60 * Math.PI; arc.push([11.25 + 8 * Math.cos(t), -14 + 8 * Math.sin(t)]); }
+            const m = new mod.Map({container: el, renderer: 'main', center: [11.25, -10], zoom: 4, attributionControl: false, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: arc}}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line-center', 'text-field': 'Bent text on an arc', 'text-size': 20, 'icon-image': 'dot'}, paint: {'text-color': '#000'}}]}});
+            const red = new Uint8Array(16 * 16 * 4);
+            for (let i = 0; i < red.length; i += 4) red.set([255, 0, 0, 255], i);
+            m.addImage('dot', {width: 16, height: 16, data: red});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const top = m.project([11.25, -6]), bmp = await createImageBitmap(await m.toBlob()), k = bmp.width / 600;
+            const c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data, reds = [], middle = [], ends = [];
+            for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                const i = (y * bmp.width + x) * 4, px = x / k - top.x, py = y / k;
+                if (d[i] > 200 && d[i + 1] < 60 && d[i + 2] < 60) reds.push([px, py - top.y]);
+                else if (d[i] < 100 && d[i + 1] < 100 && d[i + 2] < 100) (Math.abs(px) < 15 ? middle : Math.abs(px) > 70 ? ends : []).push(py);
+            }
+            const mean = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : NaN;
+            m.remove(); el.remove();
+            // (The red pixels as their count and their center from the top of the arc; the mean y of the dark pixels in the middle and at the ends.)
+            return {red: reds.length, at: [mean(reds.map(p => p[0])), mean(reds.map(p => p[1]))].map(Math.round), middle: [middle.length, Math.round(mean(middle))], ends: [ends.length, Math.round(mean(ends))]};
+        });
+        check('[main] an icon with text on a curved line draws the icon at the anchor and the text bent along the line, as MapLibre GL JS does (#1732)',
+            iconBent.red > 100 && iconBent.at.every(v => Math.abs(v) <= 4) && iconBent.middle[0] > 20 && iconBent.ends[0] > 50 && iconBent.ends[1] - iconBent.middle[1] > 8, JSON.stringify(iconBent));
         // A layer that comes after a symbol layer in the style draws over that layer's labels, as in MapLibre GL JS. The
         // label is a wide black halo in the middle; a red square after it covers it, and a square before it does not.
         const order = await page.evaluate(async () => {
