@@ -479,7 +479,9 @@ export function placeLabels(
                         // Follow the line: each glyph sits on the path at its own distance from the anchor, turned to the path's direction.
                         // (On a tilted map the text lies on the ground, and the ground gives it the whole perspective. As in MapLibre,
                         // its size on the ground takes half of that away again, so far text stays readable.)
-                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, tr.pitch && l.flat ? s / persp / persp : 0);
+                        // (On the globe the text lies on the sphere also without tilt, as in MapLibre GL JS: a path that is
+                        // straight in the tile is a curve there, and its points joined on the screen bend too sharply.)
+                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, (tr.pitch || tr.globeness) && l.flat ? s / persp / persp : 0);
                         if (!curved) continue;
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
                         // (Its boxes go into the grid after its icon is placed: as in MapLibre, an icon is not blocked by its own text.)
@@ -668,12 +670,17 @@ function followLine(
     tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, flat = 0,
 ): {curve: number[]; ground?: number[]; boxes: Box[]} | null {
     const path = l.path!, n = path.length / 2;
+    // On the globe the ground has the scale of the sphere at the anchor (MapLibre GL JS's `getPitchedTextCorrection`):
+    // the cosine of the latitude of the anchor over that of the center, mixed with Mercator by the globeness.
+    // (`cosLat`: the cosine of the latitude of a y in the tile.)
+    const cosLat = (v: number) => 1 / Math.cosh(Math.PI * (1 - 2 * (it.id.y + v / EXTENT) / 2 ** it.id.z)), round = flat ? tr.globeness : 0, anchorCos = cosLat(l.y);
+    const g = round ? 1 + round * (anchorCos / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1) : 1;
     // Most text that comes here does not fit its line at this zoom, so the length is tested first, before the points
-    // are projected. The length on the screen (or on the ground, for a tilted map) is the length in the tile times
-    // `it.scale`. (The exact test below decides the cases within a thousandth of a pixel.)
+    // are projected. The length on the screen (or on the ground, for a tilted map or the globe) is the length in the
+    // tile times `it.scale` (and `g`). (The exact test below decides the cases within a thousandth of a pixel.)
     let before = 0, total = 0;
     for (let i = 1; i < n; i++) { const d = Math.hypot(path[i * 2] - path[i * 2 - 2], path[i * 2 + 1] - path[i * 2 - 1]); total += d; if (i <= l.pathIndex!) before += d; }
-    if (Math.min(before, total - before) * it.scale < w * (flat || s) / s / 2 - 1e-3) return null;
+    if (Math.min(before, total - before) * it.scale * g < w * (flat || s) / s / 2 - 1e-3) return null;
     // The points of the line: on the screen, and in the tile (for lengths on the ground).
     let xs: number[] = [], ys: number[] = [], us: number[] = [], vs: number[] = [];
     for (let i = 0; i < n; i++) { const u = path[i * 2], v = path[i * 2 + 1], [x, y] = tr.projectTile(it.id, u, v); xs.push(x); ys.push(y); us.push(u); vs.push(v); }
@@ -683,7 +690,7 @@ function followLine(
     if (l.keepUpright && xs[n - 1] < xs[0]) { xs = xs.reverse(); ys = ys.reverse(); us = us.reverse(); vs = vs.reverse(); anchorIndex = n - 1 - anchorIndex; }
     // Distances along the line. Flat text is measured on the ground, in pixels of the map without tilt: each glyph then
     // takes the length on the screen that its piece of ground has.
-    const cum = [0], k = flat && it.scale, size = flat || s;
+    const cum = [0], k = flat && it.scale * g, size = flat || s;
     for (let i = 1; i < n; i++) cum.push(cum[i - 1] + (k ? Math.hypot(us[i] - us[i - 1], vs[i] - vs[i - 1]) * k : Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1])));
     w *= size / s;
     const start = cum[anchorIndex] - w / 2;
@@ -702,7 +709,10 @@ function followLine(
             // the whole piece made the size of the letters jump at each point of the line.)
             const tu = (us[seg] - us[seg - 1]) / len, tv = (vs[seg] - vs[seg - 1]) / len, pu = us[seg - 1] + tu * t, pv = vs[seg - 1] + tv * t, e = 16;
             const m = heightAt(tr, it, pu, pv), [px, py] = tr.projectTile(it.id, pu, pv, m), [fx, fy] = tr.projectTile(it.id, pu + tu * e, pv + tv * e, m), [qx, qy] = tr.projectTile(it.id, pu - tv * e, pv + tu * e, m);
-            cx = px; cy = py; dx = (fx - px) / e; dy = (fy - py) / e; bx = (qx - px) / e; by = (qy - py) / e;
+            // (On the globe a step in the tile is shorter on the sphere where the latitude is higher. Each glyph keeps the
+            // size at the anchor, as in MapLibre GL JS, also when the text spans many degrees of latitude.)
+            const f = round ? (1 + round * (anchorCos / cosLat(pv) - 1)) / e : 1 / e;
+            cx = px; cy = py; dx = (fx - px) * f; dy = (fy - py) * f; bx = (qx - px) * f; by = (qy - py) * f;
         }
         const angle = Math.atan2(dy, dx);
         // A sharp bend inside the text makes it unreadable. The limit is `text-max-angle`: 45 degrees by default,

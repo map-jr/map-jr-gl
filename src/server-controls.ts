@@ -6,6 +6,7 @@
 import {CONTROL_CSS, cls, type ControlPosition} from './controls.ts';
 import type {ControlSpec} from './host.ts';
 import {cleanCredits} from './svg.ts';
+import {EARTH_CIRCUMFERENCE} from './geo.ts';
 
 /** What the markup of the first view needs to know about the map. `lat`, `zoom` and `bearing` are those of the view that the SVG shows. */
 export interface FirstViewControls {
@@ -84,7 +85,7 @@ export function controlsMarkup(o: FirstViewControls): string {
             html = `<div class="${cls('ctrl')} map-jr-ssr-nav">${html}</div>`;
         } else if (m[1] === 'scale') {
             // The bar, as ScaleControl computes it: the largest 1, 2, 3 or 5 times a power of ten that fits in `maxWidth`.
-            const mpp = 40075016.686 * Math.cos(o.lat * Math.PI / 180) / (512 * 2 ** o.zoom), system = options.unit ?? 'metric';
+            const mpp = EARTH_CIRCUMFERENCE * Math.cos(o.lat * Math.PI / 180) / (512 * 2 ** o.zoom), system = options.unit ?? 'metric';
             let max = mpp * (options.maxWidth ?? 100), unit = 'Meters', per = 1;
             if (system === 'imperial') { max *= 3.28084; unit = 'Feet'; per = 1 / 3.28084; if (max > 5280) { max /= 5280; unit = 'Miles'; per = 1609.344; } } else if (system === 'nautical') { max /= 1852; unit = 'NauticalMiles'; per = 1852; } else if (max >= 1000) { max /= 1000; unit = 'Kilometers'; per = 1000; }
             const pow = 10 ** Math.floor(Math.log10(max)), lead = max / pow, nice = (lead >= 5 ? 5 : lead >= 3 ? 3 : lead >= 2 ? 2 : 1) * pow, width = nice * per / mpp + 'px';
