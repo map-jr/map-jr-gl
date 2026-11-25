@@ -246,8 +246,10 @@ export interface MapDescription extends MapSetup {
     onClick?: ((event: MapPointer) => void) | null;
     /**
      * Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console.
+     * The second argument is an object: its `sourceId` names the source when the error belongs to a source (a tile, TileJSON,
+     * GeoJSON URL, PMTiles archive or image that failed to load), and it has no `sourceId` otherwise.
      */
-    onError?: ((error: Error) => void) | null;
+    onError?: ((error: Error, info: MapErrorInfo) => void) | null;
     /**
      * The smallest zoom level of the map. It limits gestures, `view` and `moveTo`.
      * @default -2
@@ -459,6 +461,11 @@ export interface MapTouchEvent<T extends string = string> extends MapPointerEven
     /** The position of each finger on the map, `[lng, lat]`. */
     lngLats: [number, number][];
 }
+/** The second argument of `onError`: `sourceId` names the source when the error belongs to a source, and is absent otherwise. */
+export interface MapErrorInfo {
+    sourceId?: string;
+}
+
 /** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) changed. */
 export interface MapDataEvent<T extends string = string> extends MapEventBase<T> {
     /** Whether the event concerns the style or one source. */
@@ -951,7 +958,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     map.on('error', e => {
         const error = e.error instanceof Error ? e.error : new Error(String(e.error));
         // (This listener takes the place of the report of the map itself: an error must not be lost in silence.)
-        if (now.onError) now.onError(error); else logError(error);
+        if (now.onError) now.onError(error, typeof e.sourceId === 'string' ? {sourceId: e.sourceId} : {}); else logError(error);
     });
     const moved = (moving: boolean) => {
         const view = viewOf();

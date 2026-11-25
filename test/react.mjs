@@ -243,13 +243,18 @@ try {
             await wait(1500);
             root.unmount(); el.remove();
         };
-        const got = [];
-        await run({onError: e => got.push(e.message)});
+        const got = [], infos = [];
+        await run({onError: (e, info) => { got.push(e.message); infos.push(info); }});
         const loggedWithProp = logged.filter(l => l.includes('map-jr-gl')).length;
         await run({});
+        // A source that fails: the second argument has its `sourceId` (#2008).
+        const sourceInfos = [];
+        await run({mapStyle: {version: 8, sources: {broken: {type: 'geojson', data: '/no-such-data-2008.geojson'}}, layers: [{id: 'b', type: 'circle', source: 'broken'}]}, onError: (e, info) => sourceInfos.push(info)});
         console.error = log;
-        return {got, loggedWithProp, logged: logged.filter(l => l.includes('map-jr-gl'))};
+        return {got, loggedWithProp, logged: logged.filter(l => l.includes('map-jr-gl')), infos: JSON.stringify(infos), sourceInfos: JSON.stringify(sourceInfos)};
     });
+    check('browser: onError gets {sourceId} as its second argument for a source that fails, and {} for the style (#2008)',
+        failing.infos === '[{}]' && failing.sourceInfos === '[{"sourceId":"broken"}]', JSON.stringify(failing));
     check('browser: onError gets each error, and without it the error is written to the console',
         failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithProp === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));

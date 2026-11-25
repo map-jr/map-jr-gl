@@ -335,8 +335,8 @@ try {
             a.mapStyle = '/style.json';
             document.getElementById('box').append(a);
             await new Promise(r => a.addEventListener('map-load', r, {once: true}));
-            let events = 0;
-            const listener = e => { events++; if (listen === 'prevent') e.preventDefault(); };
+            let events = 0; const ids = [];
+            const listener = e => { events++; ids.push(e.detail?.sourceId); if (listen === 'prevent') e.preventDefault(); };
             if (listen === 'once') a.addEventListener('map-error', listener, {once: true});
             if (listen === 'removed' || listen === 'prevent') a.addEventListener('map-error', listener);
             if (listen === 'removed') a.removeEventListener('map-error', listener);
@@ -346,7 +346,7 @@ try {
             a.sources = {m1: a.sources.m1, m2: {type: 'geojson', data: '/missing-2.json?' + n}};
             await new Promise(r => setTimeout(r, 1500));
             a.remove();
-            return {events, console: logged.length - before};
+            return {events, ids, console: logged.length - before};
         };
         const out = {};
         for (const listen of ['none', 'once', 'removed', 'prevent']) out[listen] = await run(listen);
@@ -355,6 +355,7 @@ try {
     });
     check('browser: an error goes to the console unless a listener of map-error calls preventDefault(), also after a {once} listener has fired or a listener was removed',
         errors.none.events === 0 && errors.none.console === 2 && errors.once.events === 1 && errors.once.console === 2 && errors.removed.events === 0 && errors.removed.console === 2 && errors.prevent.events === 2 && errors.prevent.console === 0, JSON.stringify(errors));
+    check('browser: the Error in the detail of map-error has the sourceId of the source that failed', errors.prevent.ids.join() === 'm1,m2', JSON.stringify(errors.prevent.ids));
     await page.close();
 
     // 6. The boolean attributes of #1258.

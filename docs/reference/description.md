@@ -41,7 +41,7 @@ const map = createMap('map', {
 | [`interactiveLayers`](#interactivelayers) | `string[] \| null` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](state.md#mapstate) and in `onClick`. |
 | [`hoverState`](#hoverstate) | `boolean \| null` | `false` | Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for `feature-state` expressions. |
 | [`onClick`](#onclick) | `((event: MapPointer) => void) \| null` | | Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. |
-| `onError` | `((error: Error) => void) \| null` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
+| `onError` | `((error: Error, info: MapErrorInfo) => void) \| null` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
 | `minZoom` | `number \| null` | `-2` | The smallest zoom level of the map. |
 | `maxZoom` | `number \| null` | `22` | The largest zoom level of the map. |
 | `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 180, where a pitch above 90 looks up and, unless `centerElevation` lifts the map center above the ground, sees the map from below the ground. |

@@ -58,7 +58,7 @@ lists.
 | `onHover` | `(features: `[`RenderedFeature`](types.md#renderedfeature)`[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
-| `onError` | `(error: Error) => void` | | Called with each error of the map. |
+| `onError` | `(error: Error, info: MapErrorInfo) => void` | | Called with each error of the map. |
 | [`firstView`](#firstview) | `string` | | The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
 | `className` | `string` | | A CSS class to add to the element, after the class `map-jr-react`. |
 | `style` | `CSSProperties` | | The CSS style of the element, merged over `{position: 'relative', width: '100%', height: '100%'}`. |
@@ -160,6 +160,8 @@ fields of the description. These six props receive the value that their entry st
 `listen`.
 
 Without `onError`, the map writes each error to the console. With `onError`, the map calls it and writes nothing.
+`onError` receives the `Error` and a [`MapErrorInfo`](events.md#maperrorinfo) object, whose `sourceId` names the
+source when the error belongs to a source: `onError={(error, {sourceId}) => …}`.
 
 ### The ref
 

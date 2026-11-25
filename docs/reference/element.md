@@ -162,7 +162,7 @@ Each event of the map is a `CustomEvent` that bubbles, named `map-` and the name
 | `map-hover` | The features of `interactive-layers` under the pointer, the top one first, when they change. |
 | `map-viewchange` | The view, `{center, zoom, bearing, pitch, bounds}`: once with the first view before `map-load`, and then at each change of the view. |
 | `map-colorschemechange` | The `colorScheme` that the control `colorScheme()` set. |
-| `map-error` | Each error of the map, an `Error`. |
+| `map-error` | Each error of the map, an `Error`. When the error belongs to a source, such as a tile or a GeoJSON URL that does not load, the `Error` has the property `sourceId` with the id of that source. |
 | `map-` and the name of each other event | The event object of [`listen`](map.md#listen): `map-moveend`, `map-sourcedata` and the others. `style.load` is `map-styleload`. |
 
 The element writes each error to the console, unless a listener of `map-error` calls `event.preventDefault()`.
