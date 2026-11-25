@@ -1095,6 +1095,30 @@ test('transform: a pitch up to 180, with a tile cover and a far plane that stop 
     console.log(`pitch 85: ${tiles.length} tiles on zooms ${Math.min(...tiles.map(x => x.z))} to ${Math.max(...tiles.map(x => x.z))}`);
 });
 
+test('transform: unproject gives the point of MapLibre GL JS above, at and below the horizon (#899)', () => {
+    const t = new Transform(); t.width = 1024; t.height = 768; t.maxPitch = 180;
+    // Values of MapLibre GL JS 6.17 (MercatorTransform.screenPointToLocation) for x = 300, center -74.006, 40.7085, zoom 14.
+    const cases: [number, number, number, number][] = [
+        [60, 460, -74.0142, 40.7041], [60, 0, -74.0275, 40.7676],
+        [70, 0, -74.1141, 41.1410], [70, 26, -74.0682, 40.9410], [70, 29, -74.0653, 40.9283],
+        [85, 0, -74.0028, 40.6575], [85, 278, -73.8301, 39.9392], [85, 297, -74.0725, 40.9455], [85, 318, -74.0324, 40.7798],
+        [100, 0, -74.0091, 40.6836], [100, 583, -74.4536, 42.5174], [100, 767, -73.9957, 40.6274],
+    ];
+    for (const [pitch, y, lng, lat] of cases) {
+        t.set([-74.006, 40.7085], 14, 0, pitch);
+        const [a, b] = t.unproject(300, y, true);
+        close(a, lng, 6e-5); close(b, lat, 6e-5);
+    }
+    // Up to a pitch of 60, a point below the horizon is where it was before, with and without `exact`.
+    for (const pitch of [0, 30, 60]) {
+        t.set([-74.006, 40.7085], 14, 20, pitch);
+        for (let y = Math.ceil(t.cy - t.horizon()); y <= 768; y += 37) for (const x of [0, 300, 1024]) {
+            const before = t.screenToMerc(x, y), after = t.screenToMerc(x, y, t.flatZ, true);
+            close(after[0], before[0], 1e-12); close(after[1], before[1], 1e-12);
+        }
+    }
+});
+
 test('transform: above a pitch of 90 the camera looks up, and screen positions invert on both sides of the ground (#897)', () => {
     const t = new Transform(); t.width = 512; t.height = 512; t.maxPitch = 180;
     // Through the tile matrix (what the GPU draws) and back with screenToMerc: the point must come back.
