@@ -55,6 +55,8 @@ texts[1147] = (target, option) => `${target}: "${option}" is not an option of a 
 texts[1189] = sourceId => `sources: the GeoJSON source "${sourceId}" has no "data", and "data" of the description has no key "${sourceId}", so the source has no features. Give the source its own "data", or write the features as "data: {${sourceId}: geojson}".`;
 texts[30] = (layerId, sourceType) => `hoverState: a feature of the layer "${layerId}" has no id, so it gets no feature state "hover". ${sourceType === 'geojson' ? 'Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.' : 'Write a numeric id for each feature into the tiles when you build them, or set "promoteId" of the source to a property that has one.'}`;
 texts[1692] = layer => `${layer}: "symbol-avoid-edges" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`;
+texts[645] = (layer, set) => `${layer}: "color-relief-color" ${set ? 'is not an "interpolate" expression' : 'is missing'}, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].`;
+texts[10645] = (layer, stops) => `${layer}: "color-relief-color" has ${stops} stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.`;
 texts[1712] = () => 'style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.';
 texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
 texts[40] = scheme => `colorScheme: ${scheme} is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.`;
@@ -295,6 +297,12 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         unknownProperties(layers, (l, g, k, near) => warn(1139, `the ${l.type} layer "${l.id}", ${g} property "${k}"`, near));
         // (Accepted, and read neither here nor by MapLibre GL JS 6.17: #1692.)
         for (const l of Array.isArray(layers) ? layers : []) if (l?.type === 'symbol' && l.layout?.['symbol-avoid-edges'] != null) warn(1692, `the symbol layer "${l.id}"`);
+        // (A color-relief layer draws an `interpolate` expression of the elevation, with at most 2048 stops, as src/style.ts reads it: #645.)
+        for (const l of Array.isArray(layers) ? layers : []) if (l?.type === 'color-relief') {
+            const e = l.paint?.['color-relief-color'];
+            if (!Array.isArray(e) || !/^interpolate/.test(e[0])) warn(645, `the color-relief layer "${l.id}"`, e === undefined ? '' : 'set');
+            else { const stopCount = e.slice(3).filter((v: unknown, i: number) => i % 2 < 1 && typeof v === 'number').length; if (stopCount > 2048) warn(10645, `the color-relief layer "${l.id}"`, String(stopCount)); }
+        }
     };
     if (kind === 0) {
         // (An element that is hidden or not in the page has no rectangle: that is not this mistake.)

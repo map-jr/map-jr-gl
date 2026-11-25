@@ -495,7 +495,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
                 idx.set([r * 4, r * 4 + 1, r * 4 + 2, r * 4 + 1, r * 4 + 3, r * 4 + 2], r * 6);
             }
         }
-        return {type: 'circle', pos, idx, color, radius};
+        return {type: 'circle', pos, idx, color, radius, radius1};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {

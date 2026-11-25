@@ -12,6 +12,9 @@ a batch shows a fault in them.
   Triage reads and does not run, so the brief still makes each worker check its issue on `main`. Triage also issues
   that were filed the same day: on 2026-11-17 a round without triage gave #683 to a worker, although #446 had fixed
   it, and #753 did not reproduce.
+- **The table of triage has a column "checked by"** for each row (#1931). Its value is "ran" when a command reproduced
+  the fault, "read" when only the code of this library was read, and "MapLibre read" when the source of MapLibre GL JS
+  was also read for what it does. The coordinator then sees which rows are hypotheses.
 - **An issue that was read and not run can name the wrong cause.** Of sixteen issues of the triage of 2026-11-24 that
   workers took up, five had another cause than their text: two named a property that MapLibre GL JS declares and never
   reads (#1692, #1695), one fault was the reverse of its title (#1735), and two had their cause in another part of
@@ -42,6 +45,8 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   one branch. List each issue in the prompt with its own scope line; the worker makes one commit for each issue, and
   the body of the pull request says `Fixes #N` for each. Give a bundle only issues that triage found to be a few lines
   each, so that one slow issue does not hold the others.
+- **A row that triage marked "read"** gets one more line in the prompt of its worker: reproduce the fault on `main`
+  before you build, and report another cause if the fault does not reproduce as the issue says.
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
 - Start each worker with `isolation: "worktree"` and low effort (90,000 to 160,000 tokens for an issue).
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
@@ -138,9 +143,10 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   again.
 - **A run of merges cancels CI on `main`,** because each push cancels the run before it. After several merges, let
   one run on `main` finish before you merge more, and before a change that alters how every map starts.
-- **The `Browsers` workflow keeps one waiting run,** so a start by hand or a merge while another run waits cancels
-  the waiting one. Start the Safari run after the last merge of a series, once the run of that merge has started its
-  jobs, and merge nothing until it has finished (about 15 minutes).
+- **The `Browsers` workflow keeps one waiting run for each group,** and a newer run in the group replaces the waiting
+  one. Pushes to `main` and starts by hand with `safari` share one group, because they write `bench-results`. A start
+  by hand with `safari_only` has a group of its own (#1929), so merges go on while it runs, and no hold is needed.
+  Start it with `safari` only when you want the results of Safari in `bench-results`, after the last merge of a series.
 - **When a merged pull request did only a part of its issue,** edit the title and the body of the issue to what is
   left (the line "Left of the issue" of the report), or close it and file what is left, before the next worker starts.
 - **Do not send a worker to fight for bytes.** If a budget is reached, ask the owner at once.
@@ -166,7 +172,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **For a choice between a look and a cost, show the owner the look.** Three maps side by side (`main`, the branch,
   MapLibre GL JS) from two builds and one small server, as screenshots or as a page on a local port, with the time to
   idle and the bytes in the question. The owner decided #1694 and #1906 this way, and the second against the first
-  recommendation.
+  recommendation. `node scripts/agents/compare.mjs <worktree of the branch>` serves this page from the builds of your
+  checkout and of the branch (#1927); with `--shots <dir> --views "vector,4;raster,2.5"` it writes one screenshot for
+  each view and prints the tile requests of each map by zoom level.
 
 **Every pull request that changes the docs gets a review before it merges** (the owner, 2026-11-23). The reviewer
 reads the changed pages against `docs/style-guide.md` and the "Writing" rules of `CLAUDE.md`, and checks each claim
@@ -260,8 +268,8 @@ alone cannot.
 - The log of one job: `gh api --allow-escape-sequences repos/map-jr/map-jr-gl/actions/jobs/<id>/logs >| file`. Without
   the option `gh` writes nothing, and the log of a run that is still in progress is not there yet.
 - `gh api -X PUT …/pulls/N/merge -f sha=` needs the full SHA of 40 characters.
-- A dispatch of the workflow `Browsers` cancels a run of it that waits, a push run of a merge included. Start it with
-  `-f safari=true` (all jobs and Safari), not with `safari_only`, when the results of the last merge are still wanted.
+- A dispatch of the workflow `Browsers` with `safari` (not `safari_only`) replaces a push run of it that waits, a push
+  run of a merge included. A dispatch with `safari_only` does not (#1929).
 - A branch that is checked out in the worktree of a worker that has ended is pushed from another worktree with
   `git push origin HEAD:<branch>`.
 - A command that writes the body of an issue into a file must succeed before `gh issue edit --body-file` reads it;
