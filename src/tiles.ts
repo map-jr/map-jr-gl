@@ -1,5 +1,5 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
-import {compileFor, warnOnce, type MapStates} from './expr.ts';
+import {compileFor, geo, warnOnce, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import type {GlobeBuild} from './subdivide.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
@@ -16,7 +16,7 @@ import {part, type PartName, type Parts} from './parts.ts';
 export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
-export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
+export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** The tile: zoom, x and y, for `within` and `distance`. */ at?: [number, number, number]; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
     /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). No map sends it yet (#463). */ globe?: GlobeBuild }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
@@ -123,17 +123,27 @@ export class TileBuilder {
         this.states.g = state ?? {};
         compileFor(this.states);
         this.bySource.clear();
+        geo.wanted = false;
         for (const json of layers) {
             const l = compileLayer(json);
             if (!l?.source) continue;
             const list = this.bySource.get(l.source);
             if (list) list.push(l); else this.bySource.set(l.source, [l]);
         }
+        // The code of `within` and `distance` starts to load with the style, and tiles and queries wait for it. A failed
+        // load warns once, and the map draws on with false and NaN for the two (#1707).
+        this.geo = geo.wanted ? this.loadGeo() : undefined;
     }
+    private loadGeo() { return part('within').then(m => { geo.code = m; }, (err: Error) => warnOnce(err.message.replace(/^\[map-jr-gl\] /, ''))); }
+    /** The load of the code of `within` and `distance`, when the style of this map uses one of them. */
+    private geo?: Promise<void>;
 
+    /** Builds a tile. (`within` and `distance` see the tile through `geo.tile`, which is set right before.) */
+    private build(data: Parameters<typeof buildTile>[0], req: TileRequest) { geo.tile = req.at; return buildTile(data, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct); }
     async loadIR(req: TileRequest): Promise<TileIR> {
-        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(await this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
-        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
+        if (this.geo) await this.geo;
+        if (req.url.startsWith(GEOJSON_PREFIX)) return this.build(await this.slice(req.url), req);
+        if (req.url.startsWith('contour://')) return this.build(await this.contour(req.url), req);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
@@ -147,7 +157,7 @@ export class TileBuilder {
             }
             if (!bytes) return {layers: {}, labels: {}, expires: st.expires};
             if (n === this.forgotten) this.remember(key, bytes);
-            return {...bytes.length ? buildTile(decodeVectorTile(bytes, this.ids[req.source]), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}}, expires: st.expires};
+            return {...bytes.length ? this.build(decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -175,8 +185,11 @@ export class TileBuilder {
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
     /** (The filters of a question are compiled when it is answered: for the states of this map.) */
-    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); return queryTile(data, q); }
+    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return queryTile(data, q); }
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
+        // (A filter of the question can use them where the style does not.)
+        if (!this.geo && /"(within|distance)"/.test(JSON.stringify(q.filter ?? null))) this.geo = this.loadGeo();
+        if (this.geo) await this.geo;
         if (url.startsWith(GEOJSON_PREFIX)) return this.find(await this.slice(url), q);
         if (url.startsWith('contour://')) return this.find(await this.contour(url), q);
         const key = q.source + '|' + url, n = this.forgotten;

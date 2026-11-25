@@ -11,6 +11,7 @@ export interface Parts {
     geojson: typeof import('./geojson.ts');
     dem: typeof import('./dem.ts');
     pmtiles: typeof import('./pmtiles.ts');
+    within: typeof import('./within.ts');
 }
 export type PartName = keyof Parts;
 
@@ -18,6 +19,7 @@ const loaders: {[K in PartName]: () => Promise<Parts[K]>} = {
     geojson: () => import('./geojson.ts'),
     dem: () => import('./dem.ts'),
     pmtiles: () => import('./pmtiles.ts'),
+    within: () => import('./within.ts'),
 };
 
 /** How this thread loads a part. The worker file replaces it with a loader from URLs. */

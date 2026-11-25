@@ -13,7 +13,10 @@ const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, 
 const commit = 'f94442fd4c768a40f1896630ccb64dd50067d94b';
 if (!existsSync(repo)) execSync(`git init -q "${repo}" && git -C "${repo}" fetch -q --depth 1 https://github.com/maplibre/maplibre-style-spec.git ${commit} && git -C "${repo}" checkout -q FETCH_HEAD`, {stdio: 'inherit'});
 await build({entryPoints: [path.join(root, 'src/expr.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
-const {compileExpr, compileProp, parseColor, compileFor, pickImage} = await import(path.join(root, '.cache/expr.mjs'));
+const {compileExpr, compileProp, parseColor, compileFor, pickImage, geo} = await import(path.join(root, '.cache/expr.mjs'));
+// The code of "within" and "distance", which the tile builder loads on demand (src/within.ts, #1707).
+await build({entryPoints: [path.join(root, 'src/within.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/within.mjs'), logLevel: 'error'});
+geo.code = await import(path.join(root, '.cache/within.mjs'));
 // The type check of the development build (#1748): the fixtures that expect a compile error run against it.
 await build({stdin: {contents: "export {expressionErrors} from './src/expr-check.ts'; export {zoomCurveError} from './src/mistakes.ts';", resolveDir: root, loader: 'ts'},
     bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr-check.mjs'), logLevel: 'error', define: {__DEV__: 'true'}});
@@ -32,6 +35,14 @@ const devDiffer = [];
 const warn = console.warn; console.warn = () => {};
 
 const TYPES = {Point: 1, MultiPoint: 1, LineString: 2, MultiLineString: 2, Polygon: 3, MultiPolygon: 3};
+// The geometry of a fixture in coordinates of its tile, as MapLibre's runner makes it (test/lib/geometry.ts there):
+// each position rounded at an extent of 8192, and a ring for each point of a MultiPoint. It is given at the extent
+// that `geometry()` of a tile feature is asked for.
+const tileGeometry = (g, {z, x, y}) => {
+    const pos = p => [Math.round((180 + p[0]) / 360 * 2 ** z * 8192) - x * 8192, Math.round((180 - 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + p[1] * Math.PI / 360))) / 360 * 2 ** z * 8192) - y * 8192];
+    const c = g.coordinates, rings = g.type === 'Point' ? [[c]] : g.type === 'MultiPoint' ? c.map(p => [p]) : g.type === 'LineString' ? [c] : g.type === 'MultiPolygon' ? c.flat() : c;
+    return (extent, coords, ends) => { for (const r of rings) { for (const p of r) coords.push(...pos(p).map(v => v * extent / 8192)); ends.push(coords.length / 2); } return rings.length; };
+};
 const same = (a, b) => {
     if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) <= 1e-5 * Math.max(1, Math.abs(b)); // fixtures keep six significant digits
     if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => typeof v === 'number' && typeof b[i] === 'number' ? Math.abs(v - b[i]) <= 1e-5 * Math.max(1, Math.abs(b[i])) : same(v, b[i]));
@@ -64,8 +75,6 @@ const internal = want => {
 const deliberate = [
     {label: 'compile-error', decision: 'wontfix', match: f => f.compileError,
         reason: 'The fixture expects a compile error. By a decision of the owner of 2026-11-16, the production build does not check the types of an expression or validate a style. The development build checks them (src/expr-check.ts, #1748), and the line "Development build" counts them.'},
-    {label: 'within-distance', decision: 'later', match: f => f.op === 'within' || f.op === 'distance',
-        reason: 'The operators "within" and "distance" are not implemented.'},
     {label: 'projection-transition', decision: 'later', match: f => f.id.startsWith('interpolate/projection'),
         reason: 'An "interpolate" between two projections gives the first projection, and not the transition between the two ({from, to, transition}).'},
     {label: 'vertical-align', decision: 'later', match: f => /^format\/(basic|data-driven-vertical-align|image-sections)$/.test(f.id),
@@ -109,7 +118,9 @@ const walk = dir => {
                 let want = t.expected.outputs[i];
                 if (want && typeof want === 'object' && Array.isArray(want.values)) want = want.values.map(plain);
                 if (want && typeof want === 'object' && !Array.isArray(want) && 'error' in want) return; // runtime-error cases
-                let got = fn({zoom: globals?.zoom ?? 0, density: globals?.heatmapDensity ?? globals?.elevation, f: {type: TYPES[feature?.geometry?.type] ?? 0, id: feature?.id, properties: feature?.properties ?? {}, state: feature?.featureState}});
+                const tile = globals?.canonicalID, g = feature?.geometry;
+                geo.tile = tile ? [tile.z, tile.x, tile.y] : undefined;
+                let got = fn({zoom: globals?.zoom ?? 0, density: globals?.heatmapDensity ?? globals?.elevation, f: {type: TYPES[g?.type] ?? 0, id: feature?.id, properties: feature?.properties ?? {}, state: feature?.featureState, geometry: tile && g?.coordinates ? tileGeometry(g, tile) : undefined}});
                 // A property that is a text ("string" or "formatted"): the tile builder makes the text of the value with
                 // String(value ?? ''), where MapLibre adds "to-string" to the expression.
                 const type = t.propertySpec?.type;

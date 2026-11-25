@@ -1463,6 +1463,25 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A circle with `circle-translate` is found where it is drawn and not at its feature, as in MapLibre (#1910). With
+    // the anchor `map` the translation turns with the bearing: [60, 0] at a bearing of 90 is 60 pixels up.
+    const translated = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter(), bearing = m.getBearing();
+        m.addSource('moved', {type: 'geojson', data: {type: 'FeatureCollection', features: [{type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}]}});
+        m.addLayer({id: 'moved-view', type: 'circle', source: 'moved', paint: {'circle-radius': 5, 'circle-translate': [60, 0], 'circle-translate-anchor': 'viewport'}});
+        m.addLayer({id: 'moved-map', type: 'circle', source: 'moved', paint: {'circle-radius': 5, 'circle-translate': [60, 0]}});
+        m.jumpTo({bearing: 90});
+        const p = m.project(c), layers = ['moved-view', 'moved-map'], ids = fs => fs.map(f => f.layer.id).sort().join();
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures([p.x + 60, p.y], {layers}); }
+        const out = {right: ids(ready), up: ids(await m.queryRenderedFeatures([p.x, p.y - 60], {layers})), at: ids(await m.queryRenderedFeatures(p, {layers})),
+            nowRight: ids([...m.queryRenderedFeatures([p.x + 60, p.y], {layers})]), nowUp: ids([...m.queryRenderedFeatures([p.x, p.y - 60], {layers})]), nowAt: ids([...m.queryRenderedFeatures(p, {layers})])};
+        m.removeLayer('moved-view'); m.removeLayer('moved-map'); m.removeSource('moved'); m.jumpTo({bearing});
+        return out;
+    });
+    check(`[${mode}] queryRenderedFeatures: a circle with circle-translate is found where it is drawn, also in the array at once`,
+        translated.right === 'moved-view' && translated.up === 'moved-map' && translated.at === '' && translated.nowRight === 'moved-view' && translated.nowUp === 'moved-map' && translated.nowAt === '', JSON.stringify(translated));
+
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
     // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
@@ -2009,6 +2028,32 @@ for (const mode of renderers) {
         // zoom is 2.77, as the formula of MapLibre GL JS gives.)
         check(`maplibre-compat (${mode}): flyTo zooms out on the way, takes its duration from speed, and maxDuration jumps (#43)`,
             r.low < 3.2 && r.end[0] === 40 && r.end[1] === 5 && r.ms > 700 && r.ms < 3000 && r.jump === -40 && r.jumpMs < 500 && r.warns === 0, JSON.stringify(r));
+    }
+    // A marker with `pitchAlignment: 'map'` lies on the ground of a map with pitch: its transform is that of MapLibre GL JS
+    // 6.17, and `auto` takes the value of `rotationAlignment` (#1714).
+    if (mode === 'main') {
+        const run = lib => page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 2, pitch: 50, bearing: 30, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(r => m.once('load', r));
+            const dot = () => Object.assign(document.createElement('div'), {style: 'width:20px;height:20px'});
+            const marks = [
+                new mod.Marker({element: dot(), pitchAlignment: 'map'}),
+                new mod.Marker({element: dot(), rotationAlignment: 'map', rotation: 10}),
+                new mod.Marker({element: dot()}),
+                new mod.Marker({element: dot()}).setPitchAlignment('map'),
+            ].map(k => k.setLngLat([5, 5]).addTo(m));
+            const matrix = k => (getComputedStyle(k.getElement()).transform.replace(/^\w+\(/, '').match(/-?[\d.e-]+/g) ?? []).map(Number);
+            const out = {align: marks.map(k => k.getPitchAlignment()), matrices: marks.map(matrix)};
+            m.remove(); el.remove();
+            return out;
+        }, lib);
+        const ours = await run('ours'), ml = await run('ml');
+        const same = ours.matrices.every((a, i) => a.length === ml.matrices[i].length && a.every((v, j) => Math.abs(v - ml.matrices[i][j]) < (Math.abs(v) > 10 ? 1.01 : 1e-3)));
+        check('maplibre-compat: Marker pitchAlignment map lays the marker on the ground with the transform of MapLibre GL JS, and auto follows rotationAlignment (#1714)',
+            same && JSON.stringify(ours.align) === JSON.stringify(ml.align) && ours.matrices[0].length === 16, JSON.stringify({ours, ml}));
     }
     // #208: Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {
@@ -5901,6 +5946,12 @@ for (const mode of renderers) {
                 await wait(50);
                 const again = p.getLngLat() ? m.project(p.getLngLat()) : {x: NaN, y: NaN};
                 out.trackAgain = Math.abs(again.x - 60) < 1 && Math.abs(again.y - 70) < 1;
+                // #1737: as in MapLibre GL JS, a touch move does not move it (MapLibre's "drag" event has no point).
+                const touch = (type, x, y) => m.getCanvas().dispatchEvent(new PointerEvent(type, {bubbles: true, pointerType: 'touch', pointerId: 7, isPrimary: true, clientX: c.left + x, clientY: c.top + y}));
+                touch('pointerdown', 150, 150); touch('pointermove', 170, 160); touch('pointermove', 190, 170); touch('pointerup', 190, 170);
+                await wait(50);
+                const afterTouch = p.getLngLat() ? m.project(p.getLngLat()) : {x: NaN, y: NaN};
+                out.touchStays = Math.abs(afterTouch.x - 60) < 1 && Math.abs(afterTouch.y - 70) < 1;
                 p.remove();
                 const frac = m.unproject([100.4, 80.3]);
                 const t = q => (q.getElement().style.transform.match(/translate\(([^p]+)px/) || [])[1];
@@ -5913,8 +5964,8 @@ for (const mode of renderers) {
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
         });
-        check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat, and places itself on fractions of a pixel with subpixelPositioning (#42)',
-            options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.subpixel && !options.warns.length, JSON.stringify(options));
+        check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
+            options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};

@@ -1,7 +1,0 @@
-{
-  "label": "heatmap on the globe",
-  "decision": "later",
-  "issue": 1824,
-  "reason": "The heatmap is drawn flat and is not projected onto the globe.",
-  "pattern": "^projection/globe/(terrain/)?heatmap$"
-}

@@ -16,6 +16,10 @@ BSD-3-Clause.
   repeat the short texts of that validation, such as `missing required property "source"`. The type check of expressions
   (`src/expr-check.ts`) is a close translation, changed, of the type check of expressions of that project (`checkSubtype` of `types.ts`, `ParsingContext` and the `parse` of each expression); `THIRD-PARTY-LICENSES.md` has its licence text. The rest of the code is new; `scripts/style-spec-values.mjs` writes the types, enum values and
   limits of the paint and layout properties from the specification file of that project.
+- The expressions `within` and `distance` (`src/within.ts`, a part of the worker) are a close translation, changed, of
+  `within.ts`, `distance.ts` and `geometry_util.ts` of the MapLibre style specification (BSD-3-Clause), and their
+  distances of `cheap_ruler.ts` there, which comes from [cheap-ruler](https://github.com/mapbox/cheap-ruler) (ISC,
+  Mapbox). `THIRD-PARTY-LICENSES.md` has both license texts.
 - Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
   (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
   and which values move. The code is new.
@@ -91,7 +95,9 @@ BSD-3-Clause.
 - The cut of fills and lines for the globe (`src/subdivide.ts`) follows the subdivision of MapLibre GL JS 6.17
   (`src/render/subdivision.ts`, BSD-3-Clause): the triangles of a polygon are clipped to the cells of a grid and share
   their vertices, and a tile at the north or south edge of the world gets triangles to the pole, with the y values
-  -32768 and 32767 for the pole vertices. The code is new, and the size of the grid is not that of MapLibre.
+  -32768 and 32767 for the pole vertices. The code is new, and the size of the grid is not that of MapLibre. A point
+  of a heatmap on the globe is a grid of 4 × 4 corners at the extrusions of `CircleBucket` with the granularity 3
+  (`src/data/bucket/circle_bucket.ts`), and the code that draws it (`tessellate` in `src/tile.ts`) is new.
 - The globe (`src/globe.ts` and the `GLOBE` variant of the programs in `src/gl.ts`) follows the globe of MapLibre GL JS
   6.17 (`src/geo/projection/vertical_perspective_transform.ts`, `globe_utils.ts`, `_projection_globe.vertex.glsl`,
   BSD-3-Clause): the radius that keeps the scale of Mercator at the center, the matrix from the unit sphere to clip

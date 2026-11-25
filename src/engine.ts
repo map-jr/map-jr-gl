@@ -10,7 +10,7 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleTouches, pitchedCircles, type QueriedFeature, type QuerySet} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
@@ -1103,7 +1103,7 @@ export class Engine {
                 if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
                 if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
                 const circle = circles.get(s.layer) === s;
-                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : c.box, key = box.join();
+                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), key = box.join();
                 const group = boxes.get(key) ?? {box, sets: [], exact: !!reach || circle};
                 group.sets.push(reach || circle ? {...s, radius: 0} : s);
                 boxes.set(key, group);
@@ -1121,7 +1121,7 @@ export class Engine {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
-            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), c.box, circle.radius, circle.pitch!))) return false;
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circle.radius, circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));
@@ -1389,7 +1389,7 @@ export class Engine {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
         t.rules = this.sourceSigs.get(source)?.[1];
         // (A map that can show the globe cuts the fills and lines of a tile along a grid: see subdivide.ts.)
-        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.globeWait || this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), at: [id.z, id.x, id.y], z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.globeWait || this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
     }
     private zoomBuilt = new Set<string | undefined>();
     /**
