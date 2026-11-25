@@ -1,5 +1,5 @@
 import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
-import {screenTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
+import {screenTranslate, mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
 import {anchors as lineAnchors, justification, type LabelSrc} from './tile.ts';
 import {BASELINE, EM, type Shaped, type Shaper} from './text.ts';
 import {CollisionGrid} from './collision.ts';
@@ -388,6 +388,15 @@ export function placeLabels(
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
     const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
+    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. On the globe the
+    // point is moved by tile units and projected again, as in MapLibre GL JS, so the offset follows the curve of the sphere.
+    const translateAt = (it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, t: unknown, anchor: unknown): [number, number] => {
+        if (!tr.globeness) return screenTranslate(t, anchor, tr.bearing);
+        const [mx, my] = mapTranslate(t, anchor, tr.bearing);
+        if (!mx && !my) return [0, 0];
+        const [px, py] = tr.projectTile(it.id, x + mx / it.scale, y + my / it.scale);
+        return [px - ax, py - ay];
+    };
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
@@ -526,7 +535,7 @@ export function placeLabels(
                         candidates = candidates.map(([dx, dy]) => [dx * c - dy * sn, dx * sn + dy * c]);
                     }
                     // (The translate is a paint property: its value is the one at the zoom of the map, not of the tile.)
-                    const [mx, my] = screenTranslate(L.p.translate.eval(tr.zoom), L.p.translateAnchor.eval(tr.zoom), tr.bearing);
+                    const [mx, my] = translateAt(it, l.x, l.y, ax, ay, L.p.translate.eval(tr.zoom), L.p.translateAnchor.eval(tr.zoom));
                     if (mx || my) {
                         candidates = candidates.map(([dx, dy]) => [dx + mx, dy + my]);
                     }
@@ -574,7 +583,7 @@ export function placeLabels(
                             ih = f.len; iy = ay + top - f.off + ih / 2 + oy; gy = f.cuts;
                         } else iy = ty + oy;
                     }
-                    const move = screenTranslate(L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom), tr.bearing);
+                    const move = translateAt(it, l.x, l.y, ax, ay, L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom));
                     return {ix: ix + move[0], iy: iy + move[1], iw, ih, gx, gy};
                 };
                 let textBox: Box | null = null, tx = ax, ty = ay;

@@ -1,5 +1,5 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import {hillshadeLights, LIGHTS, withFilter, screenTranslate, type CompiledLayer, type Light} from './style.ts';
+import {hillshadeLights, LIGHTS, withFilter, screenTranslate, mapTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
@@ -1025,6 +1025,8 @@ export class GLRenderer {
             const L = s.layers[li];
             if (L.type !== 'symbol' || !L.visible || zoom < L.minzoom || zoom >= L.maxzoom) continue;
             let u: Record<string, WebGLUniformLocation> | undefined;
+            // On the globe, icon-translate moves the point by tile units before it is projected, as in MapLibre GL JS.
+            const move = this.globe ? mapTranslate(L.p.iconTranslate.eval(zoom), L.p.iconTranslateAnchor.eval(zoom), tr.bearing) : [0, 0];
             for (const it of s.items.get(L.source!) ?? []) {
                 const b = it.tile.icons?.[L.id];
                 if (!b || !(b.counts[0] + b.counts[1])) continue;
@@ -1039,7 +1041,7 @@ export class GLRenderer {
                 b.fresh = false; b.seen = angle;
                 if (!u) {
                     u = this.use('icon', tr);
-                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];
+                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = this.globe ? [0, 0] : screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];
                     gl.uniform1f(u.u_size, p.iconSize.dd ? 1 : p.iconSize.eval(zoom));
                     gl.uniform1f(u.u_opacity, p.iconOpacity.dd ? 1 : p.iconOpacity.eval(zoom));
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
@@ -1053,7 +1055,11 @@ export class GLRenderer {
                     gl.uniform1i(u.u_img, 0);
                 }
                 this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
-                this.placeTile(u, it.id, it.matrix4);
+                if (move[0] || move[1]) {
+                    const m = Float32Array.from(it.matrix4), x = move[0] / it.scale, y = move[1] / it.scale;
+                    for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
+                    this.placeTile(u, it.id, m, [x, y]);
+                } else this.placeTile(u, it.id, it.matrix4);
                 gl.uniform4fv(u.u_clip, it.clip);
                 gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 gl.bindVertexArray(b.vao);
@@ -1342,18 +1348,16 @@ export class GLRenderer {
             }
             // fill-translate, line-translate and fill-extrusion-translate move the layer by screen pixels. The anchor
             // says if the direction turns with the map (the default) or stays fixed on the screen.
-            const tl = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? L.p.translate.eval(zoom) as number[] | null : null;
-            let tx = tl?.[0] ?? 0, ty = tl?.[1] ?? 0;
-            if ((tx || ty) && L.p.translateAnchor.eval(zoom) === 'viewport') {
-                const a = -tr.bearing * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a);
-                [tx, ty] = [tx * c + ty * sn, -tx * sn + ty * c];
-            }
+            const [tx, ty] = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? mapTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing) : [0, 0];
             const moved = (it: RenderItem<GLTile>) => {
                 if (!tx && !ty) return it.matrix4;
                 const m = Float32Array.from(it.matrix4), x = tx / it.scale, y = ty / it.scale;
                 for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
                 return m;
             };
+            // On the globe the shaders take the point on the sphere from the tile position, so the tile is moved there
+            // too, by the same tile units (MapLibre GL JS adds the translation to the position before projectTile).
+            const shift = (it: RenderItem<GLTile>) => tx || ty ? [tx / it.scale, ty / it.scale] : undefined;
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {
                 for (const it of items) for (const b of parts(it, L.id)) {
@@ -1362,7 +1366,7 @@ export class GLRenderer {
                     const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom), c);
                     if (!place) continue;
                     const u = place(tilePixels(it.id));
-                    this.placeTile(u, it.id, moved(it));
+                    this.placeTile(u, it.id, moved(it), shift(it));
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.vao);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
@@ -1388,7 +1392,7 @@ export class GLRenderer {
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
             }
             draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
-                const u = use(b.type), m = moved(it);
+                const u = use(b.type), m = moved(it), sh = shift(it);
                 if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
@@ -1460,7 +1464,7 @@ export class GLRenderer {
                     bindImage(u, img);
                     if (b.type === 'line') gl.uniform2f(u.u_patSize, img.width / img.pixelRatio, img.height / img.pixelRatio);
                 }
-                this.placeTile(u, it.id, m);
+                this.placeTile(u, it.id, m, sh);
                 gl.uniform4fv(u.u_clip, it.clip);
                 gl.bindVertexArray(b.vao);
                 // Attributes without a buffer read these constants, so shaders need no variants.
@@ -1484,7 +1488,7 @@ export class GLRenderer {
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
-                        this.placeTile(u, it.id, m);
+                        this.placeTile(u, it.id, m, sh);
                         // (The walls take the height in meters to tile units as MapLibre GL JS does, whose tiles have 8192 units.)
                         if (img) { bindImage(u, img); gl.uniformMatrix3fv(u.u_pat, false, patMatrix(img, tilePixels(it.id))); gl.uniform1f(u.u_hf, -(2 ** it.id.z) / 2 / EXTENT); }
                         this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
@@ -1506,7 +1510,7 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_color, col);
                     gl.uniform2f(u.u_world, target[0], target[1]);
                     gl.uniform1f(u.u_attr, b.color && !explicit ? 1 : 0);
-                    this.placeTile(u, it.id, moved(it));
+                    this.placeTile(u, it.id, moved(it), shift(it));
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.edgeVao);
                     gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
@@ -1552,12 +1556,12 @@ export class GLRenderer {
         return p.u;
     }
 
-    /** The matrix of a tile, and with the globe the place of the tile on the sphere. */
-    private placeTile(u: Record<string, WebGLUniformLocation>, id: TileID, m: Float32Array | number[]) {
+    /** The matrix of a tile, and with the globe the place of the tile on the sphere, moved by `shift` tile units (`*-translate`). */
+    private placeTile(u: Record<string, WebGLUniformLocation>, id: TileID, m: Float32Array | number[], shift?: number[]) {
         this.gl.uniformMatrix4fv(u.u_matrix, false, m);
         if (this.globe && u.u_tileMerc) {
-            const n = 2 ** id.z;
-            this.gl.uniform4f(u.u_tileMerc, id.x / n, id.y / n, 1 / n / EXTENT, 1 / n / EXTENT);
+            const n = 2 ** id.z, d = 1 / n / EXTENT;
+            this.gl.uniform4f(u.u_tileMerc, id.x / n + (shift?.[0] ?? 0) * d, id.y / n + (shift?.[1] ?? 0) * d, d, d);
         }
     }
 
