@@ -136,7 +136,8 @@ MapLibre GL JS started from Mapbox GL JS (version 1.13 and earlier, BSD-3-Clause
 - [supercluster](https://github.com/mapbox/supercluster) (ISC, Mapbox): the method that makes clusters of points.
   The code in this library is new.
 - [geojson-vt](https://github.com/mapbox/geojson-vt) (ISC, Mapbox): the method that simplifies the lines and polygons
-  of a GeoJSON source for each zoom level (`tolerance`). The code in this library is new.
+  of a GeoJSON source for each zoom level (`tolerance`), and leaves out the lines and rings smaller than the tolerance.
+  The code in this library is new.
 - [@mapbox/point-geometry](https://github.com/mapbox/point-geometry) (ISC, Mapbox): the `Point` class of the
   compat entry has the names and results of its methods. The code in this library is new.
 - [maplibre-contour](https://github.com/onthegomap/maplibre-contour) (BSD-3-Clause): the form of the `thresholds`

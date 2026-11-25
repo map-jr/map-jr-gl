@@ -14,7 +14,10 @@ interface Prepared {
     /** Rings or lines as flat mercator coordinates in 0..1. */
     rings: Float64Array[];
     bbox: [number, number, number, number];
-    /** With `tolerance`: for each vertex of each ring, the squared distance that simplification needs to remove it. */
+    /**
+     * With `tolerance`: for each vertex of each ring, the squared distance that simplification needs to remove it, and
+     * after the last vertex the length of the line or the area of the ring.
+     */
     keep?: Float64Array[];
 }
 export interface SlicedFeature {
@@ -145,7 +148,7 @@ export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZo
     const buffer = typeof o.buffer === 'number' && o.buffer >= 0 ? Math.min(o.buffer, 512) * EXTENT / 512 : undefined;
     // (Without `tolerance`, 0.375 as in MapLibre GL JS; 0 does not simplify.)
     const tolerance = typeof o.tolerance === 'number' && o.tolerance >= 0 ? o.tolerance : 0.375;
-    if (tolerance) for (const f of all) if (f.type !== 1) f.keep = f.rings.map(importance);
+    if (tolerance) for (const f of all) if (f.type !== 1) f.keep = f.rings.map(r => importance(r, f.type === 3));
     if (!o.cluster) return {features: all, buffer, tolerance, maxzoom: sourceMaxZoom};
     // Clusters are made of single points. Other features stay as they are.
     const points = all.filter(f => f.type === 1 && f.rings.length === 1), rest = all.filter(f => !(f.type === 1 && f.rings.length === 1));
@@ -155,11 +158,15 @@ export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZo
 /**
  * The method of geojson-vt (Douglas-Peucker, done once): for each vertex, the squared distance from the line between
  * the vertices that it lies between when it is removed. A tile of zoom z keeps the vertices whose value is larger than
- * its own squared tolerance. The ends of a ring are always kept.
+ * its own squared tolerance. The ends of a ring are always kept. The last value is the length of the line or the area
+ * of the ring (which is closed implicitly): a tile whose tolerance is larger (squared for an area) leaves it out.
  */
-function importance(r: Float64Array): Float64Array {
-    const n = r.length / 2, out = new Float64Array(n);
+function importance(r: Float64Array, area: boolean): Float64Array {
+    const n = r.length / 2, out = new Float64Array(n + 1);
     out[0] = out[n - 1] = Infinity;
+    let s = 0;
+    for (let i = area ? 0 : 2, j = area ? r.length - 2 : 0; i < r.length; j = i, i += 2) s += area ? r[j] * r[i + 1] - r[i] * r[j + 1] : Math.sqrt((r[i] - r[j]) ** 2 + (r[i + 1] - r[j + 1]) ** 2);
+    out[n] = Math.abs(area ? s / 2 : s);
     const stack = [0, n - 1];
     while (stack.length) {
         const last = stack.pop()!, first = stack.pop()!;
@@ -294,6 +301,7 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
         });
         for (let ri = 0; ri < f.rings.length; ri++) {
             const r = f.rings[ri], keep = f.keep?.[ri];
+            if (keep && keep[r.length / 2] < (f.type === 3 ? sqTol : Math.sqrt(sqTol))) continue;
             let pts: number[] = [];
             for (let i = 0; i < r.length; i += 2) {
                 if (keep && keep[i / 2] <= sqTol) continue;
