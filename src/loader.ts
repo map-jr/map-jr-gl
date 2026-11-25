@@ -239,7 +239,7 @@ let channels = 0;
 /** The pool of tile workers is shared by the maps that make their workers the same way. */
 const poolKey = (o: LoadOptions): unknown => o.createWorker ?? defaults.createWorker ?? String(o.workerUrl ?? defaults.workerUrl ?? '');
 let pool: {key: unknown; count: number; workers: Promise<Worker[]>; users: number} | null = null;
-export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): MessagePort[]; wake(): void; release(): void}> {
+export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): MessagePort[]; wake(): void; parts(): void; release(): void}> {
     const key = poolKey(o);
     if (!pool || pool.key !== key) {
         const count = o.tileWorkers ?? defaults.tileWorkers ?? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 2));
@@ -266,6 +266,8 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
         // (#824). A message to the worker itself wakes it, and the message on the port then arrives at once. The map
         // wakes the workers when it asks a query, so that a `click` listener has the features in time.
         wake() { for (const w of workers) w.postMessage(0); },
+        /** Tells the workers about the parts that the page fetches after they started (`setProjection` to the globe), so that each does not fetch them itself. */
+        parts() { const coming = partsComing(o, workers); for (const w of workers) w.postMessage({coming}); },
         release() {
             for (const p of ports) { try { p.postMessage({type: 'close'}); p.close(); } catch { /* already transferred to the engine worker */ } }
             drop();

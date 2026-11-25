@@ -239,7 +239,7 @@ export class Map {
     private inputCleanup: (() => void)[] = [];
     /** The last `easeTo` (or `flyTo`) and when it was sent, for a fall back from the worker before it drew (#777). */
     private eased?: {c: Command; at: number};
-    private tilePool?: {connect(): MessagePort[]; wake(): void; release(): void};
+    private tilePool?: {connect(): MessagePort[]; wake(): void; parts(): void; release(): void};
     private removed = false;
     private beforeStyle: (() => void)[] = [];
     protected imageNames = new Set<string>();
@@ -1459,6 +1459,8 @@ export class Map {
             const was = projectionName(s.projection?.type);
             if (projection) s.projection = projection; else delete s.projection;
             if (name !== was) this.fire('projectiontransition', {newProjection: name});
+            // (The tile workers cut the tiles of the globe with the part `subdivide`: the page fetches it once for all of them, #2075.)
+            if (globeStops(s.projection?.type) && this.tilePool) { prefetchParts(this.options, s, false); this.tilePool.parts(); }
         });
     }
     /** The projection of the style as it was given (`undefined` when the style has none), as in MapLibre GL JS. */

@@ -11,8 +11,18 @@ import type {ContourConfig, DEM} from './contour.ts';
 import {decodePixels, type ImageDecoder} from './exact-pixels.ts';
 import {part, type PartName, type Parts} from './parts.ts';
 
-/** The cut of a tile for the globe, with its code, which loads on demand (the part `subdivide`). */
-const globeCut = async (req: TileRequest): Promise<GlobeCut | undefined> => req.globe && {...req.globe, ...await part('subdivide')};
+/**
+ * Builds a tile, cut for the globe with the code of the part `subdivide`, which loads on demand. When the part does not
+ * load, the tile is built without the cut, so that the globe still draws it, and `fault` carries the message, which the
+ * map reports once (`oncePerPart`).
+ */
+async function finish(ir: TileIR, req: TileRequest) {
+    let fault: string | undefined;
+    const cut: GlobeCut | undefined = req.globe && await part('subdivide').then(m => ({...req.globe!, ...m}), (err: Error) => void (fault = err.message));
+    const out = toGL(ir, cut);
+    out.tile.fault = fault;
+    return out;
+}
 
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
 export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
@@ -246,7 +256,7 @@ export class LocalBackend implements TileBackend {
     setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>) { this.builder.setContours(sources, ids); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
     need(names: PartName[]) { this.builder.need(names); }
-    async load(req: TileRequest) { return toGL(await this.builder.loadIR(req), await globeCut(req)).tile; }
+    async load(req: TileRequest) { return (await finish(await this.builder.loadIR(req), req)).tile; }
     cancel(id: number) { this.builder.cancel(id); }
     forget(source?: string) { this.builder.forget(source); }
     query(url: string, q: TileQuery) { return this.builder.query(url, q); }
@@ -275,7 +285,7 @@ export class PortBackend implements TileBackend {
             if (!p) return;
             this.pending.delete(e.data.id);
             if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final}));
-            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires});
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, fault: e.data.tile.fault});
             else p.resolve(e.data.result);
         };
     }
@@ -346,8 +356,8 @@ export function serveTiles(port: Port) {
                 err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final}));
         } else if (m.type === 'load') {
             try {
-                const {tile, transfer} = toGL(await builder.loadIR(m.req), await globeCut(m.req));
-                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires}}, transfer);
+                const {tile, transfer} = await finish(await builder.loadIR(m.req), m.req);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, fault: tile.fault}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final});
             }
