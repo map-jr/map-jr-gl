@@ -15,7 +15,7 @@ import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} f
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
-import {fontFaces, type FontFaces} from './resolve.ts';
+import {derefLayers, fontFaces, type FontFaces} from './resolve.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
 import type {BackgroundLayerSpecification, CircleLayerSpecification, ColorReliefLayerSpecification, FillExtrusionLayerSpecification, FillLayerSpecification, HeatmapLayerSpecification, HillshadeLayerSpecification, LineLayerSpecification, ProjectionSpecification, RasterLayerSpecification, SourceSpecification, StyleSpecification, SymbolLayerSpecification, TerrainSpecification} from './compat-types.ts';
@@ -1080,7 +1080,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         type L = Record<string, unknown> & {id: string; paint?: Record<string, unknown>; layout?: Record<string, unknown>};
         const a = styleFor(next, styledDark) as Record<string, unknown>, b = styleFor(before, styledDark) as Record<string, unknown>;
         if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || !Array.isArray(a.layers) || !Array.isArray(b.layers)) return false;
-        const is = a.layers as L[], was = b.layers as L[], keys = ['paint', 'layout', 'filter', 'minzoom', 'maxzoom'];
+        // (The layers are compared after `ref` is resolved, as in MapLibre GL JS: a new `layout` of a layer reaches the layers that name it, #1814.)
+        const is = derefLayers(a.layers) as L[], was = derefLayers(b.layers) as L[], keys = ['paint', 'layout', 'filter', 'minzoom', 'maxzoom'];
         if (Object.keys({...a, ...b}).some(k => k !== 'layers' && differ(a[k], b[k]))) return false;
         if (is.some(l => !l || typeof l.id !== 'string') || new Set(is.map(l => l.id)).size !== is.length) return false;
         const old = (id: string) => was.find(w => w?.id === id), kept = is.filter(l => old(l.id));

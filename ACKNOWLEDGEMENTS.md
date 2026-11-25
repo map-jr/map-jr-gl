@@ -20,6 +20,7 @@ BSD-3-Clause.
   `within.ts`, `distance.ts` and `geometry_util.ts` of the MapLibre style specification (BSD-3-Clause), and their
   distances of `cheap_ruler.ts` there, which comes from [cheap-ruler](https://github.com/mapbox/cheap-ruler) (ISC,
   Mapbox). `THIRD-PARTY-LICENSES.md` has both license texts.
+- A layer with the legacy property `ref` takes the keys of the layer that it names as `derefLayers` of the MapLibre style specification (BSD-3-Clause) does, with the same list of keys. The code in `src/resolve.ts` is new.
 - Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
   (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
   and which values move. The code is new.

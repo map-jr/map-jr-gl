@@ -4,7 +4,7 @@ import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
 import {MAX_PITCH, Transform, bezier, fitBox, addTurnSample, turnInertia, globeStops, groundHeight, inertiaSpan, heightsChanged, latFromMerc, lngFromMerc, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
-import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
+import {DEFAULT_FONT, absolute, derefLayers, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature, QuerySet} from './query.ts';
@@ -15,6 +15,9 @@ import {acquireTileWorkers, defaults as loadDefaults, partUrls, partsComing, pre
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 // The warnings of the engine workers, each once on the page, as each thread warns once (expr.ts, #1141).
+// The layers with `ref` of a style take the keys of the layer that they name, after `transformStyle` as in MapLibre GL JS,
+// and not only when the style is resolved: a later `setLayoutProperty` of such a layer changes its own layout (#1814).
+const deref = (style: any) => { if (Array.isArray(style?.layers)) style.layers = derefLayers(style.layers); return style; };
 const pageWarned = new Set<string>();
 const pageWarn = (msg: string) => {
     if (pageWarned.size > 200 || pageWarned.has(msg)) return;
@@ -420,7 +423,7 @@ export class Map {
         this.starting = false;
         // (The map can be removed during each `await` of this method. What this start acquired is then given back.)
         if (this.removed) { giveBack(); return; }
-        this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
+        this.rawStyle = deref(this.firstChange?.(undefined, raw) ?? raw);
         // The parts of the worker that the style needs load now, while the worker file loads (#79).
         prefetchParts(o, this.rawStyle, !!engine);
         // (With the engine on this thread, 3D terrain loads its chunk now, in parallel with the chunk of the engine: #1849.)
@@ -1573,7 +1576,7 @@ export class Map {
         // (An `idle` of the engine was dropped while the style loaded, and a style that changes nothing below sends no command: a repaint brings `idle` again.)
         this.styleLoading = false; this.post({type: 'repaint'});
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
-        next = options?.transformStyle?.(this.rawStyle, next) ?? next;
+        next = deref(options?.transformStyle?.(this.rawStyle, next) ?? next);
         // (With `diff`, as in MapLibre GL JS 6.17: a style that differs from this one only in the camera changes nothing
         // and fires no event. Any other style fires `style.load`.)
         if (options?.diff && sameStyle(this.rawStyle, next)) return;

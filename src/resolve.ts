@@ -120,6 +120,24 @@ export function fontKey(names: unknown): string {
     return (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family + '|' + (Array.isArray(names) ? names.join(',') : names);
 }
 
+/**
+ * A layer with `ref` (a legacy form) takes `type`, `source`, `source-layer`, `minzoom`, `maxzoom`, `filter` and
+ * `layout` from the layer that it names, and loses `ref`, as in MapLibre GL JS (`derefLayers`, #1814). The layer gets
+ * its own copy of `layout`, so that `setLayoutProperty` of one layer does not change the other. A layer whose `ref`
+ * names no layer, or a layer that has `ref` itself (a chain or a cycle, which MapLibre GL JS rejects), keeps `ref`.
+ * The input is not changed.
+ */
+export function derefLayers(layers: any[]) {
+    const byId = new Map(layers.map(l => [l?.id, l]));
+    return layers.map(l => {
+        const parent = l?.ref !== undefined && byId.get(l.ref);
+        if (!parent || parent.ref !== undefined) return l;
+        const {ref, ...r} = l;
+        for (const k of ['type', 'source', 'source-layer', 'minzoom', 'maxzoom', 'filter', 'layout']) if (k in parent) r[k] = k === 'layout' ? {...parent[k]} : parent[k];
+        return r;
+    });
+}
+
 /** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
 const told = new WeakSet<object>();
 // Contour sources that were warned about for a missing `thresholds`, one time for each source object (#1229).
@@ -275,7 +293,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         };
     }
     const unsupported = new Set<string>();
-    const layers = (style.layers as LayerJSON[]).filter(l => {
+    // (A layer whose `ref` names no layer, or a layer with `ref`, is left out with a message, one time for each map and layer object, #1814.)
+    const layers: LayerJSON[] = derefLayers(style.layers).filter(l => {
+        if (l.ref !== undefined) return badOnce(l, () => new Error(`[map-jr-gl] The layer "${l.id}": "ref" names "${l.ref}", which is no layer without "ref". Name such a layer, or give "type" and "source".`)), false;
         const ok = !!l.implementation || LAYER_TYPES.has(l.type) && (l.type === 'background' || !!sources[l.source!]);
         if (!ok && !LAYER_TYPES.has(l.type)) unsupported.add(l.type);
         return ok;
