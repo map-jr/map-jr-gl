@@ -60,7 +60,8 @@ BSD-3-Clause.
 - `calculateCameraOptionsFromTo`, `calculateCameraOptionsFromCameraLngLatAltRotation` and
   `calculateAnchoredCameraOptions` of the compat entry follow the Mercator camera math of MapLibre GL JS 6.17
   (BSD-3-Clause; `mercator_transform.ts`, `mercator_camera_helper.ts` and `camera.ts`), including its earth radius and its search
-  for the center along the view. The code in `src/compat-map.ts` is new.
+  for the center along the view, and on a globe the camera math of its globe transform and globe camera helper
+  (`calculateCameraOptionsFromTo`, and a zoom then a drag for `calculateAnchoredCameraOptions`). The code in `src/compat-map.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
