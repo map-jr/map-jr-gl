@@ -1338,10 +1338,10 @@ export class Engine {
                 t.cancel = () => backend.cancel(req);
                 load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : (t.expires = dem.expires, this.elevationTile(dem, source, id, key, t, encoding)));
             } else {
-                // Image tiles need no parsing, so the engine fetches and decodes them itself.
-                const ac = new AbortController();
-                t.cancel = () => ac.abort();
-                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t, true).then(bytes => this.imageTile(bytes, id, () => this.tiles.get(key) === t));
+                // Raster tiles are fetched and decoded in a tile worker too, and the image is transferred here (see `loadImage`).
+                const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
+                t.cancel = () => backend.cancel(req);
+                load = backend.loadImage({id: req, url}).then(r => (t.missing = r.missing, t.expires = r.expires, this.imageTile(r.image, id, () => this.tiles.get(key) === t)));
             }
         }
         load.then(gl => {
@@ -1451,7 +1451,7 @@ export class Engine {
         (src.type === 'raster-dem'
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem && this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox')))
             : t.band === undefined
-            ? fetchTile(tileURL(this.style.sources[source], id.z, id.x, id.y, this.dpr), withTimeout(this.fetchAs('Tile')), undefined, st, true).then(bytes => this.imageTile(bytes, id, () => this.tiles.get(key) === t))
+            ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
             : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
             t.rebuilding = false;
@@ -1509,13 +1509,12 @@ export class Engine {
     }
 
     /**
-     * A raster tile from the bytes of its image (or a decoded image from a custom protocol), in its turn (see `paced`),
+     * A raster tile from the image that a tile worker decoded (see `loadImage`; none for a tile that does not exist or is empty), in its turn (see `paced`),
      * unless `wanted` says no more. (WebKit takes 1.4 to 5 ms to send one image to the GPU, and a fast zoom brought
      * dozens of them in one frame, #2068. A tile that leaves the view while it waits is dropped, and its turn sends nothing.)
      */
-    private async imageTile(bytes: Uint8Array | ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
-        if (!bytes) return {labels: {}, batches: {}};
-        const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
+    private async imageTile(image: ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
+        if (!image) return {labels: {}, batches: {}};
         if (!wanted()) return image.close(), {labels: {}, batches: {}};
         return this.paced(image.width * image.height * 4, () => {
             const tile = wanted() ? this.renderer.createImageTile(image, undefined, id, undefined, true) : {labels: {}, batches: {}};

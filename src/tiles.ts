@@ -27,6 +27,9 @@ async function finish(ir: TileIR, req: TileRequest) {
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
 export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number; /** When the tile is out of date (see `TileFetchState`). */ expires?: number }
+/** A raster tile to fetch, and what comes back: its decoded image (none for a tile that does not exist or is empty) and the state of the fetch. */
+export interface ImageRequest { id: number; url: string }
+export interface ImageTile extends TileFetchState { image: ImageBitmap | null }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** The tile: zoom, x and y, for `within` and `distance`. */ at?: [number, number, number]; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
     /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). */ globe?: GlobeBuild }
@@ -100,6 +103,20 @@ export class TileBuilder {
                 }
             }
             return {width: w, height: h, pixels: new Uint8Array(px.data.buffer, px.data.byteOffset, px.data.byteLength), grid, lo, hi, expires: st.expires};
+        } finally { this.aborts.delete(req.id); }
+    }
+
+    /**
+     * A raster tile, decoded. A custom protocol can answer with an image that is decoded already. (In WebKit an image is
+     * decoded on the thread that asks for it, and decodes on the thread that draws held its frames for up to 230 ms in a
+     * fast zoom, #2068.)
+     */
+    async loadImage(req: ImageRequest): Promise<ImageTile> {
+        const ac = new AbortController();
+        this.aborts.set(req.id, ac);
+        try {
+            const st: TileFetchState = {}, got = await fetchTile(req.url, this.fetchFn, ac.signal, st, true);
+            return {...st, image: got && 'length' in got ? await createImageBitmap(new Blob([got as BlobPart])) : got};
         } finally { this.aborts.delete(req.id); }
     }
 
@@ -226,6 +243,8 @@ export interface TileBackend {
     setRequests(rules: RequestRules, ask: Ask): void;
     /** Fetches and decodes an elevation tile for the GPU and for 3D terrain. */
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null>;
+    /** Fetches and decodes a raster tile. */
+    loadImage(req: ImageRequest): Promise<ImageTile>;
     /** Sets the data of a GeoJSON source. A worker answers once it has indexed the data (see `geojsonDone` of the engine). */
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number, packed?: () => Uint8Array | null): Promise<unknown> | void;
     /** Changes the feature state of one source ("sourceLayer|id" -> state, `null` removes it); `replace` drops the other states. */
@@ -248,6 +267,7 @@ export interface TileBackend {
 export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
     loadElevation(req: ElevationRequest) { return this.builder.loadElevation(req); }
+    loadImage(req: ImageRequest) { return this.builder.loadImage(req); }
     setRequests(rules: RequestRules, ask: Ask) { this.builder.setFetch(fetchWith(() => rules, ask)); }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { return this.builder.setGeoJSON(source, data, options, maxzoom); }
@@ -294,6 +314,9 @@ export class PortBackend implements TileBackend {
     setRequests(rules: RequestRules, ask: Ask) { this.ask = ask; this.port.postMessage({type: 'requests', rules}); }
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null> {
         return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'dem', req}); });
+    }
+    loadImage(req: ImageRequest): Promise<ImageTile> {
+        return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'image', req}); });
     }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number, packed?: () => Uint8Array | null) {
         // (Data that cannot be copied throws here, before the promise, so that the engine reports it as before.)
@@ -351,8 +374,8 @@ export function serveTiles(port: Port) {
         else if (m.type === 'close') { port.onmessage = null; (port as any).close?.(); }
         else if (m.type === 'query') {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));
-        } else if (m.type === 'dem') {
-            builder.loadElevation(m.req).then(result => port.postMessage({id: m.req.id, result}, result ? [result.pixels.buffer, result.grid.buffer] : []),
+        } else if (m.type === 'dem' || m.type === 'image') {
+            (m.type === 'dem' ? builder.loadElevation(m.req) : builder.loadImage(m.req)).then(result => port.postMessage({id: m.req.id, result}, !result ? [] : 'grid' in result ? [result.pixels.buffer, result.grid.buffer] : result.image ? [result.image] : []),
                 err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final}));
         } else if (m.type === 'load') {
             try {
