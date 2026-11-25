@@ -13,7 +13,7 @@ import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCente
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import {globeBuild, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
-import {oncePerPart, part, type PartName} from './parts.ts';
+import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
 
 export interface CameraOptions {
@@ -266,8 +266,11 @@ function packGeoJSON(data: unknown): () => Uint8Array | null {
     return () => bytes !== undefined ? bytes : (bytes = data && typeof data === 'object' ? new TextEncoder().encode(JSON.stringify(data)) : null);
 }
 
-/** The message of a tile that failed names its source, after the prefix (#2099). */
-const tileMessage = (source: string, err: Error) => String(err.message).replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] The source "${source}": `);
+/**
+ * The message of a tile that failed names its source, after the prefix (#2099). A part of the worker that did not load
+ * is not a fault of the source, and its message stays the same for each source, so that the map reports it once (#79).
+ */
+const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] The source "${source}": `);
 
 export class Engine {
     tr = new Transform();
