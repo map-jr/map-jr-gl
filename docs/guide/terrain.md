@@ -493,6 +493,15 @@ interval between lines, and the second is the interval between major lines. An e
 to the zoom level of the next entry. In the example, zoom 12 and zoom 13 have a line every 100 feet and a major line
 every 500 feet. Below the lowest zoom level of `thresholds`, the source has no lines.
 
+An interval that is not greater than 0 gives no lines, and the map warns one time in the console.
+
+A contour tile has no lines when its lines would cross the cells of its grid of 256 by 256 heights more than 1,000,000
+times, and the map warns one time for each source. A tile of steep mountains, with heights from 500 to 3500 m and a
+line every 20 m, crosses about 250,000 times.
+
+More crossings usually mean that the `encoding` of the `raster-dem` source is wrong: `terrarium` tiles read as `mapbox`
+cross more than 10,000,000 times. They can also mean that the interval is too small for the zoom level.
+
 Each line has the property `ele`, its height, and the property `level`, which is 1 for a major line and 0 for
 another line. The options of a contour source:
 
