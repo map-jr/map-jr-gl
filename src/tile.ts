@@ -748,7 +748,7 @@ const ARC_STEP = Math.PI / 5;
 /**
  * A line vertex is 16 bytes: position x, y (int16, tile units); the direction to push it sideways (int16, times
  * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: its sign;
- * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
+ * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel and `fan` for the outer vertices of a fan); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
  */
 export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
 /** The cosine of half the turn above which a corner is sharp: a turn of 75 degrees, as in MapLibre GL JS. */
@@ -790,12 +790,18 @@ function tessellateLine(b: Batch): GLBatch | null {
         for (let i = f * nk; i < f * nk + nk; i++) next.push(b.next![i]);
         return count++;
     };
-    /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
-    const fan = (x: number, y: number, from: number, sweep: number, dist: number) => {
-        const steps = Math.max(1, Math.ceil(Math.abs(sweep) / ARC_STEP)), centre = vert(x, y, 0, 0, 0, dist);
-        let prev = vert(x, y, Math.cos(from), Math.sin(from), 1, dist);
+    /**
+     * A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. `line-offset` moves
+     * the whole fan along (ox, oy), as MapLibre GL JS does, so that it is centered on the offset corner: each vertex
+     * stores that vector as its normal, and an outer vertex stores the angle of its direction in the side, as
+     * 16384 + (angle / PI + 1) * 8191. The middle vertex has side 0.
+     */
+    const fan = (x: number, y: number, from: number, sweep: number, dist: number, ox: number, oy: number) => {
+        const steps = Math.max(1, Math.ceil(Math.abs(sweep) / ARC_STEP)), centre = vert(x, y, ox, oy, 0, dist);
+        const rim = (a: number) => vert(x, y, ox, oy, 16384 + Math.round((Math.atan2(Math.sin(a), Math.cos(a)) / Math.PI + 1) * 8191), dist);
+        let prev = rim(from);
         for (let k = 1; k <= steps; k++) {
-            const a = from + sweep * k / steps, cur = vert(x, y, Math.cos(a), Math.sin(a), 1, dist);
+            const cur = rim(from + sweep * k / steps);
             idx.push(centre, prev, cur);
             prev = cur;
         }
@@ -829,7 +835,7 @@ function tessellateLine(b: Batch): GLBatch | null {
                 const x = xs[i], y = ys[i], ex = xs[i + 1] - x, ey = ys[i + 1] - y, len = Math.hypot(ex, ey);
                 const dx = ex / len, dy = ey / len, nx = -dy, ny = dx;
                 if (i === 0) {
-                    if (b.cap === 'round') fan(x, y, Math.atan2(ny, nx), Math.PI, dist);
+                    if (b.cap === 'round') fan(x, y, Math.atan2(ny, nx), Math.PI, dist, nx, ny);
                     pair(x, y, nx, ny, ...(b.cap === 'square' ? [-dx, -dy] : [0, 0]));
                 } else {
                     const pnx = -pdy, pny = pdx, mx = pnx + nx, my = pny + ny, ml = Math.hypot(mx, my);
@@ -850,7 +856,9 @@ function tessellateLine(b: Batch): GLBatch | null {
                             const a0 = Math.atan2(outer * pny, outer * pnx);
                             let sweep = Math.atan2(outer * ny, outer * nx) - a0;
                             if (sweep > Math.PI) sweep -= 2 * Math.PI; else if (sweep < -Math.PI) sweep += 2 * Math.PI;
-                            fan(x, y, a0, sweep, dist);
+                            // The offset moves the fan along the miter, as the pairs of the bevel (at most twice the offset).
+                            const mc = ml * Math.max(cos, 0.5);
+                            fan(x, y, a0, sweep, dist, mc ? mx / mc : 0, mc ? my / mc : 0);
                         }
                         pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
                     }
@@ -861,7 +869,7 @@ function tessellateLine(b: Batch): GLBatch | null {
                 if (i === n - 2) {
                     const px = xs[n - 1], py = ys[n - 1];
                     pair(px, py, nx, ny, ...(b.cap === 'square' ? [dx, dy] : [0, 0]));
-                    if (b.cap === 'round') fan(px, py, Math.atan2(ny, nx), -Math.PI, dist);
+                    if (b.cap === 'round') fan(px, py, Math.atan2(ny, nx), -Math.PI, dist, nx, ny);
                 }
             }
         }
