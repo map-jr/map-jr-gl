@@ -619,8 +619,9 @@ In the compat entry, the object of each source type has the event methods `on`, 
 
 The events differ from MapLibre GL JS in these ways:
 
-- The event on the source has the fields of the event on the map (`sourceId` included), and its `target` is not the object that `getSource` returned.
-- The source gets no `dataloading` for each tile or for a change of the style, no `dataabort` and no `data` with `sourceDataType: 'metadata'`.
+- The `target` of the event on the source is not the object that `getSource` returned. As in MapLibre GL JS, the `data` and `dataloading` events on the source have no `sourceId`, `isSourceLoaded` or `source`.
+- After `setData` or `updateData`, the map and the source fire `sourcedata` and `data` (`data` on the source) with `sourceDataType: 'metadata'` and `isSourceLoaded: true`, then with `sourceDataType: 'content'` and `isSourceLoaded: false`, and then without `sourceDataType` and with `isSourceLoaded: true`. MapLibre GL JS fires the same two events, and after them one event for each tile that loads again (`tile`); this library fires no such tile events after `setData`. The events with `sourceDataType` come once the new data is drawn, not as soon as the worker has read it. A source gets no `sourceDataType` events when the style loads, and the main entry (`@map-jr/map-jr-gl`) has no `sourceDataType`.
+- The source gets no `dataloading` for each tile or for a change of the style, and no `dataabort`.
 - A video or canvas source gets no `error` of its own: the map gets it.
 - `fire` on the source calls the listeners of the source only, and the event does not reach the map.
 
