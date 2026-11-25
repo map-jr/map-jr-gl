@@ -65,6 +65,10 @@ const OTHER = [
     ['root', 'centerAltitude', [], 'mistakes.ts', /"centerAltitude" has no effect, as in MapLibre GL JS/],
     // (Not read: the name is in src/ only in the list of known properties of the check for unknown ones, #1139.)
     ['fill-extrusion', 'fill-extrusion-rounded-corner-distance', null, 'mistakes.ts', /'fill-extrusion': 'fill-extrusion-rounded-corner-distance'/],
+    // (Not read: the names are in src/ only in the check that warns for them in the development build, #648.)
+    ...['symbol-height-offset', 'symbol-height-anchor', 'text-writing-mode'].map(n => ['symbol', n, null, 'mistakes.ts', new RegExp(`symbol: \\{[^}]*'${n}'`)]),
+    // (Not read here, as in MapLibre GL JS 6.17, which declares it and does not read it: the development build says so, #648.)
+    ...['vector', 'raster', 'raster-dem'].map(t => [`source ${t}`, 'volatile', null, 'mistakes.ts', /"volatile" has no effect, as in MapLibre GL JS/]),
 ];
 const stale = OTHER.filter(([, , , f, re]) => !re.test(src[f]));
 const other = (group, name) => OTHER.find(([g, n]) => (g === group || (g === '*' && !['sky', 'light', 'terrain', 'projection', 'transition'].includes(group))) && n === name);
