@@ -2,9 +2,9 @@
 // decision, and a wontfix label on a test that matches is reported.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 // @ts-expect-error (a plain module of the conformance tools, without types)
-import {summarize, readExpectations, report, changes, percent, skipReason, operationsNotDone, committedTotals, trackedSummary} from '../../test/conformance/render-summary.mjs';
+import {summarize, readExpectations, report, changes, percent, skipReason, operationsNotDone, trackedSummary, compareWithTracked, linesToWrite} from '../../test/conformance/render-summary.mjs';
 
 const dir = new URL('../conformance/', import.meta.url);
 const results = [
@@ -97,10 +97,36 @@ test('render summary: a fallback label counts only the tests that no other label
     assert.ok(report(twice).includes('OVERLAP: globe/a fits the labels "x" and "y". Narrow one, or give the wider one "fallback": true.'));
 });
 
-test('render summary: the totals that are committed do not depend on the labels (#1861)', () => {
-    const t = committedTotals(summarize(results, expectations).totals);
-    assert.deepEqual(t, committedTotals(summarize(results, []).totals));
-    assert.ok(!('differWontfix' in t) && !('differLater' in t));
+test('render summary: a test worse than its line fails the run, and one better is printed (#1915)', () => {
+    const before = {'a/m': 'match', 'a/n': 'near', 'a/d': 'differ', 'a/s': 'skipped', 'a/k': 'match'};
+    const v = compareWithTracked(before, {'a/m': 'near', 'a/n': 'match', 'a/d': 'differ', 'a/s': 'match', 'a/k': 'match', 'a/new': 'match'});
+    assert.deepEqual(v.worse, [{id: 'a/m', was: 'match', now: 'near'}]);
+    assert.deepEqual(v.better, [{id: 'a/n', was: 'near', now: 'match'}, {id: 'a/s', was: 'skipped', now: 'match'}]);
+    assert.ok(v.fail);
+    assert.ok(v.lines.some((l: string) => l.startsWith('FAIL:') && l.includes('a/m')));
+    assert.ok(v.lines.includes('BETTER: a/n is match, and its line in render-tests.json is near. Commit the line "a/n": "match".'));
+    assert.equal(compareWithTracked(before, {...before, 'a/d': 'near'}).fail, false);
+    assert.equal(compareWithTracked(before, {'a/d': 'error'}, false).fail, true, 'an error is worse than differ');
+    // The floor is the count of lines "match": a full run with fewer matches fails even with no worse test.
+    const floor = compareWithTracked(before, {'a/m': 'match'});
+    assert.deepEqual([floor.floor, floor.match, floor.fail], [2, 1, true]);
+    assert.equal(compareWithTracked(before, {'a/m': 'match'}, false).fail, false, 'a run with a filter has no floor');
+});
+
+test('render summary: a test that becomes skipped is worse, also with a filter (#1915)', () => {
+    const before = {'a/m': 'match', 'a/n': 'near', 'a/s': 'skipped'};
+    assert.equal(compareWithTracked(before, {'a/m': 'skipped'}, false).fail, true);
+    assert.equal(compareWithTracked(before, {'a/n': 'skipped'}).fail, true);
+    assert.equal(compareWithTracked(before, {'a/s': 'match'}, false).fail, false);
+});
+
+test('render summary: --write writes no worse line unless --lower names it (#1915)', () => {
+    const before = {'a/m': 'match', 'a/n': 'near'}, run = {'a/m': 'near'};
+    const v = compareWithTracked(before, run, false);
+    assert.ok(linesToWrite(before, run, v).error?.includes('a/m'));
+    assert.equal(linesToWrite(before, run, v, ['a/m']).text, '{\n"a/m": "near",\n"a/n": "near"\n}\n');
+    // A run with a filter writes only the lines of its tests.
+    assert.equal(linesToWrite(before, {'a/n': 'match'}, compareWithTracked(before, {'a/n': 'match'}, false)).text, '{\n"a/m": "match",\n"a/n": "match"\n}\n');
 });
 
 test('render summary: the tests whose status is not the one in the tracked file are listed', () => {
@@ -110,12 +136,13 @@ test('render summary: the tests whose status is not the one in the tracked file 
 
 test('render summary: the tracked files agree with each other', () => {
     const read = (name: string) => JSON.parse(readFileSync(new URL(name, dir), 'utf8'));
-    const tests: Record<string, string> = read('render-tests.json'), totals = read('render-result.json');
+    const tests: Record<string, string> = read('render-tests.json');
     const ids = Object.keys(tests);
     assert.deepEqual(ids, [...ids].sort(), 'render-tests.json is sorted by id');
     const s = trackedSummary(dir);
-    // The totals per decision are computed and not committed, so that a pull request that adds a label changes no total (#1861).
-    assert.deepEqual(totals, committedTotals(s.totals), 'render-result.json has the totals of render-tests.json, and no totals per decision');
+    // The totals are computed and not committed, so that two pull requests that move tests change no common line (#1861, #1915).
+    assert.ok(!existsSync(new URL('render-result.json', dir)), 'render-result.json is not committed: pnpm status computes the totals from render-tests.json');
+    assert.ok(Object.values(tests).every(v => ['match', 'near', 'differ', 'error', 'skipped'].includes(v)), 'each line of render-tests.json has a status');
     assert.deepEqual(s.unused, [], 'each file of render-expectations/ fits a test');
     assert.deepEqual(s.overlaps, [], 'no test has two labels of the same kind');
     // Only the owner decides that a difference is kept (#558), and a wontfix label on a test that matches is stale.

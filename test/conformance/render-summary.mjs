@@ -100,13 +100,10 @@ export function summarize(results, expectations = [], allIds = results.map(r => 
     };
 }
 
-/** The totals that do not depend on the labels, which render.mjs writes to render-result.json (#1861). */
-export const committedTotals = ({differWontfix, differLater, ...rest}) => rest;
-
 /**
  * The summary of the tracked files: the status of each test (render-tests.json) with the labels of the expectations.
- * `pnpm status` and the unit tests compute the totals per decision this way, so that they are not committed and a
- * pull request that only adds a label changes no total (#1861).
+ * `pnpm status` computes all the totals this way: no total is committed, so that two pull requests that each move a
+ * test, or add a label, do not conflict in a total (#1861, #1915).
  * @param dir the folder test/conformance/, as a URL that ends with "/".
  */
 export function trackedSummary(dir) {
@@ -138,4 +135,47 @@ export function report({totals: t, labels, stale, overlaps = [], unused}) {
 export function changes(before, tests) {
     return Object.keys(tests).filter(id => before[id] !== undefined && before[id] !== tests[id]).map(id => `CHANGED: ${id} was ${before[id]} and is ${tests[id]}`)
         .concat(Object.keys(tests).filter(id => before[id] === undefined).map(id => `NEW: ${id} is ${tests[id]}`));
+}
+
+/** The order of the statuses from best to worst. A test that is skipped or errors no longer draws, so both are below differ. */
+const rank = {match: 0, near: 1, differ: 2, error: 3, skipped: 3};
+
+/**
+ * Compares a run with the tracked file (render-tests.json), test by test (#1915). The render job of CI fails when a
+ * test is `worse` than its line (match to near or differ, near to differ, any to error or skipped), or when fewer tests match than
+ * the file has `match` lines (`floor`). The tests that are `better` are printed, so that the author commits their lines.
+ * @param before the tracked file: the status of each test.
+ * @param tests the status of each test of the run.
+ * @param full whether the run has all the tests; the floor counts only then.
+ */
+export function compareWithTracked(before, tests, full = true) {
+    const worse = [], better = [];
+    for (const [id, now] of Object.entries(tests)) {
+        const was = before[id];
+        if (rank[was] === undefined || rank[now] === undefined || was === now) continue;
+        (rank[now] > rank[was] ? worse : better).push({id, was, now});
+    }
+    const floor = Object.values(before).filter(s => s === 'match').length, match = Object.values(tests).filter(s => s === 'match').length;
+    const lines = [
+        ...worse.map(t => `WORSE: ${t.id} is ${t.now}, and its line in render-tests.json is ${t.was}.`),
+        ...better.map(t => `BETTER: ${t.id} is ${t.now}, and its line in render-tests.json is ${t.was}. Commit the line "${t.id}": "${t.now}".`),
+    ];
+    const belowFloor = full && match < floor;
+    if (belowFloor) lines.push(`FAIL: ${match} tests match, and render-tests.json has ${floor} lines "match".`);
+    if (worse.length) lines.push(`FAIL: ${worse.length} test${worse.length === 1 ? ' is' : 's are'} worse than ${worse.length === 1 ? 'its line' : 'their lines'} in render-tests.json: ${worse.map(t => t.id).join(', ')}. Fix the cause, or, when the change is accepted, commit the new line${worse.length === 1 ? '' : 's'} and say why in the pull request.`);
+    return {worse, better, floor, match, fail: belowFloor || worse.length > 0, lines};
+}
+
+/**
+ * The new text of render-tests.json for a run with --write, or the reason not to write it (#1915). A run with --filter
+ * writes only the lines of its tests. A test that is worse than its line is written only when --lower names it.
+ * @param verdict the result of compareWithTracked.
+ * @param lower the ids that --lower names.
+ */
+export function linesToWrite(before, tests, verdict, lower = []) {
+    const refused = verdict.worse.filter(t => !lower.includes(t.id)).map(t => t.id);
+    if (refused.length) return {error: `[render] Not writing render-tests.json: ${refused.join(', ')} ${refused.length === 1 ? 'is' : 'are'} worse than ${refused.length === 1 ? 'its line' : 'their lines'}. Fix the cause, or name ${refused.length === 1 ? 'it' : 'them'} in --lower=<id,id> and leave the pull request open for the owner.`};
+    const out = {...before, ...tests};
+    const ids = Object.keys(out).sort((x, y) => x < y ? -1 : x > y ? 1 : 0);
+    return {text: '{\n' + ids.map(id => `${JSON.stringify(id)}: ${JSON.stringify(out[id])}`).join(',\n') + '\n}\n'};
 }

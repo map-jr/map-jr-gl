@@ -34,11 +34,17 @@ writing); this brief has the steps.
    text of `src/`.
 6. When the change can change what a map draws (a style property, placement, a shader, the building of tiles), run
    the render tests of the groups that it touches with and without the change
-   (`node test/conformance/render.mjs --filter='<regex>'`), and give the counts of match, near and differ. If a test
-   moves to match or away from it, merge `origin/main`, do a full run on the merged tree (about ten minutes), commit
-   `test/conformance/render-result.json` and `render-tests.json`, and set the floor of `test:render` in
-   `package.json` to the match count of that run (CI gives the same count). If no test moves, restore the two files
-   and leave the floor.
+   (`node test/conformance/render.mjs --filter='<regex>'`), and give the counts of match, near and differ. The run
+   prints `WORSE:` for a test that is worse than its line in `test/conformance/render-tests.json` and `BETTER:` for a
+   test that is better, and it fails when a test is worse. To record the tests that your change moves, run the same
+   command with `--write`: it rewrites the lines of the tests of that run in `render-tests.json` and leaves the other
+   lines as they are. Commit that file; a full run is not needed, and no total or floor is committed (the floor is the
+   count of lines `match`; #1915). A line gives the status that the render job of CI gives, and a run on another
+   machine can differ for a test near a limit: check such a test alone (`--filter='^<id>$' --list` prints its
+   percentage), and take its line from the `BETTER:` or `WORSE:` lines of CI when the two differ. `--write` does not
+   write a line that is worse (match to near or differ, near to differ, any to error or skipped) unless
+   `--lower=<id,id>` names the test. A pull request that commits a worse line lowers the floor: give the reason in it,
+   leave it open, and write "Needs owner" in your report.
    Run render tests and pixel checks on the Chromium build that CI uses, which is the build that the installed
    Playwright pins. The cloud VM has an older build in `/opt/pw-browsers`, which `test/launch.mjs` takes when the
    pinned build is missing, and that build counts some tests differently (`text-local-glyphs/cjk` is a match there
@@ -74,15 +80,15 @@ writing); this brief has the steps.
   in the report, and do not change the test for it. A test that fails in CI too is a fault.
 - Bring your branch up to date with `node scripts/agents/merge-main.mjs`, not with a bare `git merge origin/main` or a
   rebase that squashes it into one commit. The script merges `origin/main`, writes again each generated block or
-  file that is in conflict (the reference tables, the recipes, `render-result.json`), commits the merge, and stops
+  file that is in conflict (the reference tables, the recipes, the lines of `render-tests.json`), commits the merge, and stops
   with a list of the files when a conflict is outside generated text (#1863). After a merge, a rebase or a
   force-push, check that `git diff origin/main...HEAD -- src` has only your lines.
 - Two switches help to reproduce faults in Chromium: `CPU_THROTTLE=<rate>` (in `test/host.mjs` and
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
   takes WebGL away from workers, as in WebKit on Linux and Windows.
 - `node test/conformance/render.mjs --help` prints its options. An argument that it does not know, or `--list`
-  without `--filter`, stops it with that text. Only a full run (no `--filter` and no `--limit`) on the pinned Chromium
-  rewrites `test/conformance/render-result.json` and `render-tests.json`; a run with `--filter` leaves them as they are.
+  without `--filter`, stops it with that text. Only a run with `--write` on the pinned Chromium writes
+  `test/conformance/render-tests.json`, and with `--filter` it writes only the lines of the tests of that run.
 - `gh pr edit` fails on this repository; change the body of your pull request with
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`. In cloud sessions GraphQL is blocked, so
   `gh issue view`, `gh pr view` and `gh pr list` fail too: use `gh api` REST for everything.
