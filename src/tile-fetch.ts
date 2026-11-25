@@ -1,4 +1,5 @@
 import {part} from './parts.ts';
+import {httpError} from './requests.ts';
 
 type Fetch = typeof fetch;
 /**
@@ -30,6 +31,6 @@ export async function fetchTile(url: string, fetchFn: Fetch = (...a) => fetch(..
     if (res.status === 404 || res.status === 204) { if (state) state.missing = res.status > 204; return null; }
     const cc = res.headers?.get('cache-control'), age = cc && +/max-age="?(\d+)/i.exec(cc)?.[1]!, exp = !cc && res.headers?.get('expires');
     if (state && (age || exp)) state.expires = age ? Date.now() + age * 1e3 : Date.parse(exp as string);
-    if (!res.ok) throw Object.assign(new Error(`Tile ${url}: HTTP ${res.status}`), {final: res.status < 500});
+    if (!res.ok) throw Object.assign(httpError('tile', url, res.status), {final: res.status < 500});
     return res.image ?? new Uint8Array(await res.arrayBuffer());
 }

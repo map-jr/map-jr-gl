@@ -4621,6 +4621,37 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check(`the test of a tile that answers HTTP ${status} was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A raster tile that fails gives one error with the prefix and the name of its source (#2099): one source answers 500,
+// the other answers 200 with bytes that are not an image. A tile that cannot be decoded would fail again, so it is
+// requested once in 6 s, as in MapLibre GL JS; a 500 is requested again (0.5 s, 1 s, 2 s).
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = {five: new Map(), png: new Map()};
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/raster-2099\/(five|png)\//, route => {
+            const u = new URL(route.request().url()), kind = u.pathname.split('/')[2];
+            seen[kind].set(u.pathname, (seen[kind].get(u.pathname) ?? 0) + 1);
+            return kind === 'five' ? route.fulfill({status: 500, body: 'down'}) : route.fulfill({status: 200, contentType: 'image/png', body: 'not a png'});
+        });
+        const errors = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), errors = [], tiles = kind => ({type: 'raster', tiles: [`${location.origin}/raster-2099/${kind}/{z}/{x}/{y}.png`], tileSize: 256});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = lib.createMap(el, {style: {version: 8, sources: {five: tiles('five'), png: tiles('png')}, layers: [{id: 'a', type: 'raster', source: 'five'}, {id: 'b', type: 'raster', source: 'png'}]},
+                view: {center: [0, 0], zoom: 2}, attribution: false, onError: (e, info) => errors.push({source: info.sourceId, message: e.message})});
+            await new Promise(r => setTimeout(r, 6000));
+            m.destroy();
+            return errors;
+        });
+        const of = s => errors.filter(e => e.source === s), most = map => Math.max(...map.values());
+        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] The source "${s}": the request for the tile http`));
+        check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
+            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.endsWith('failed: HTTP 500')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
+        check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
+            seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
+    } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A tile that a custom protocol rejects is asked for once (#652): the loader is called once for each tile in 6 s.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
