@@ -101,7 +101,8 @@ writing); this brief has the steps.
 - A check that navigates uses its own page, so that it does not break the checks after it. A check waits for the
   value that it measures, not for a proxy of it (a label, "non-empty", an earlier state): the copy check of #1366
   took three rounds (#1369, #1372 and a fix of that) because each wait was on a proxy, and each passed locally 20
-  times. For a fix of a check that fails in some runs, ask in the pull request for three runs of its CI job.
+  times. `pnpm test:consistency` warns when a new check compares a measured time with a fixed upper bound
+  (`scripts/timing-lint.mjs`, #1930), because a loaded CI runner takes longer than this machine. For a fix of a check that fails in some runs, ask in the pull request for three runs of its CI job.
 - An error in a run of the script that you changed is not "the network" until it reproduces on `main`.
 - A "Found" line marked "read" is a hypothesis: check its premise with one command before you write it (two of
   2026-11-21, #1363 and #1383, were wrong on a second read).
