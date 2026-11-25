@@ -3,5 +3,5 @@
   "decision": "later",
   "issue": 1708,
   "reason": "The camera has no roll: setRoll and the camera option roll have no effect.",
-  "pattern": "^sky/roll/roll(?!-0)|^terrain/fog.*-roll$|^high-pitch/pitch95-roll135$"
+  "pattern": "^sky/roll/roll(?!-0)|^terrain/fog.*-roll$|^high-pitch/pitch95-roll135$|^text-keep-upright/line-placement-true-roll|^text-pitch-scaling/line-half-roll$"
 }

@@ -32,6 +32,15 @@ export interface Batch {
     offset?: Float32Array;
     /** `line-blur` for each feature (pixels), present only when it is data-driven. */
     blur?: Float32Array;
+    /** Circles: straight-alpha RGBA of `circle-stroke-color` times `circle-stroke-opacity` for each feature, present only when one of them is data-driven. */
+    stroke?: Uint8Array;
+    /**
+     * Circles: `circle-stroke-width` and `circle-blur` for each feature, present only when one of them is data-driven (0 for
+     * the one that is not). Heatmaps: `heatmap-radius` and 0 for each feature, present only when it is data-driven.
+     */
+    sb?: Float32Array;
+    /** `line-gap-width` for each feature (pixels), present only when it is data-driven. */
+    gap?: Float32Array;
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
     cap?: string;
@@ -39,6 +48,8 @@ export interface Batch {
     /** `line-miter-limit` and `line-round-limit`: the longest miter (in line widths) drawn as a miter or kept sharp instead of rounded. */
     miterLimit?: number;
     roundLimit?: number;
+    /** Lines: how far from a sharp corner (tile units) each segment gets one more pair of vertices (see `tessellateLine`). */
+    sharp?: number;
     /** Fill layers with an explicit outline color. */
     outline?: boolean;
     /** False when the style turns edge smoothing off for a fill layer. */
@@ -50,6 +61,8 @@ export interface Batch {
     ed?: boolean;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
     pat?: string;
+    /** The points of a heatmap layer. */
+    heat?: boolean;
 }
 /** The key of the batch of a layer for its `k`th image, when its pattern has a value for each feature: one batch for each image. */
 export const patternKey = (id: string, k: number) => k ? id + '\0' + k : id;
@@ -114,14 +127,14 @@ export interface IconBatch {
     avoid?: boolean;
 }
 /** `z`: the zoom that the sizes of the tile were found at, when it is not the zoom of the tile (see `buildTile`). */
-export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
+export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** When the fetched tile is out of date (see `TileFetchState`). */ expires?: number }
 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
-    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array}
-    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array});
-export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array; /** `line-gap-width` for each vertex, present only when it is data-driven. */ gap?: Float32Array}
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke` and `Batch.sb`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array});
+export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
 
@@ -261,7 +274,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     if (sorted) keys.push(label.key = key);
                     continue;
                 }
-                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null)) {
+                // (The path of text along the line keeps `1 / ov` of a unit in an over-zoomed tile, as `lineLabels` does.)
+                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null, ov)) {
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colors and fonts.
@@ -310,7 +324,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
             const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
-            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [];
+            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [], gap: number[] = [], stroke: number[] = [], sb: number[] = [];
+            const circle = L.type === 'circle', ddStroke = circle && (p.strokeColor.dd || p.strokeOpacity.dd), ddSb = circle ? p.strokeWidth.dd || p.blur.dd : heat && p.radius.dd;
             let grows = false;
             const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
             const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
@@ -345,6 +360,9 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 }
                 if (L.type === 'line' && p.offset.dd) offset.push(p.offset.eval(zs, f));
                 if (L.type === 'line' && p.blur.dd) blur.push(Math.max(0, p.blur.eval(zs, f)));
+                if (L.type === 'line' && p.gap.dd) gap.push(Math.max(0, p.gap.eval(zs, f)));
+                if (ddStroke) pushColor(stroke, p.strokeColor.dd ? p.strokeColor.eval(z, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(z, f) : 1);
+                if (ddSb) sb.push(heat ? p.radius.eval(zs, f) : p.strokeWidth.dd ? p.strokeWidth.eval(zs, f) : 0, !heat && p.blur.dd ? p.blur.eval(zs, f) : 0);
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
                 if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
@@ -360,10 +378,14 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (offset.length) batch.offset = Float32Array.from(offset);
             if (blur.length) batch.blur = Float32Array.from(blur);
+            if (gap.length) batch.gap = Float32Array.from(gap);
+            if (ddStroke) batch.stroke = Uint8Array.from(stroke);
+            if (ddSb) batch.sb = Float32Array.from(sb);
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
-            if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
+            if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
             if (pat) batch.pat = pat;
+            if (heat) batch.heat = true;
             out.layers[patternKey(L.id, k++)] = batch;
         }
     }
@@ -372,9 +394,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
 
 /**
  * Yields [x, y, angle, length, (anchor index in path, ...path)] label anchors for one ring. `ds` has the distances along
- * a line of its anchors: empty for the middle of the line, and null for a label that is not along the line.
+ * a line of its anchors: empty for the middle of the line, and null for a label that is not along the line. The points
+ * of the path are rounded to `1 / grid` of a tile unit: an over-zoomed tile keeps the precision of the deeper tile that
+ * MapLibre GL JS makes of it, or a gentle slope becomes flat steps.
  */
-export function anchors(c: number[], start: number, end: number, type: number, along: boolean, window: number, ds: number[] | null): number[][] {
+export function anchors(c: number[], start: number, end: number, type: number, along: boolean, window: number, ds: number[] | null, grid = 1): number[][] {
     if (type === 1) return [[c[start * 2], c[start * 2 + 1], 0, 0]];
     if (type === 3 && !along) {
         let a = 0, cx = 0, cy = 0;
@@ -418,7 +442,7 @@ export function anchors(c: number[], start: number, end: number, type: number, a
             }
             if (index < 0) { index = path.length / 2; path.push(x, y); }
             path.push(...at(d1));
-            anchor.push(index, ...path.map(Math.round));
+            anchor.push(index, ...path.map(v => Math.round(v * grid) / grid));
         }
         out.push(anchor);
     }
@@ -476,22 +500,31 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
     if (b.type === 'circle') {
         // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
-        // be more compact but is many times slower on software renderers.
-        const n = ringEnds.length, pos = new Int16Array(n * 16), idx = new Uint32Array(n * 6);
-        const color = b.color ? new Uint8Array(n * 16) : undefined, radius = b.radius ? new Float32Array(n * 4) : undefined, radius1 = b.radius1 ? new Float32Array(n * 4) : undefined;
+        // be more compact but is many times slower on software renderers (about 30 times in SwiftShader, #1824).
+        // On a globe below zoom 6 (see `globeBuild`), a point of a heatmap is a grid of 4 × 4 corners, as in MapLibre GL JS
+        // (granularity 3 of its CircleBucket): the corners lie on the sphere, and the four corners of one quad would cut
+        // under it, which moves the bump toward the center of the globe. Its corners are in sevenths. (A grid of 3 × 3
+        // is 1.3 % off the render test projection/globe/heatmap.)
+        const grid = !!globe?.heat && b.heat, g = grid ? 4 : 2, v = g * g, e = grid ? [-7, -3, 3, 7] : [-1, 1];
+        const n = ringEnds.length, pos = new Int16Array(n * v * 4), idx = new Uint32Array(n * (g - 1) ** 2 * 6);
+        const color = b.color ? new Uint8Array(n * v * 4) : undefined, radius = b.radius ? new Float32Array(n * v) : undefined, radius1 = b.radius1 ? new Float32Array(n * v) : undefined;
+        const stroke = b.stroke ? new Uint8Array(n * v * 4) : undefined, sb = b.sb ? new Float32Array(n * v * 2) : undefined;
         for (let f = 0, r = 0; f < featEnds.length; f++) {
             for (; r < featEnds[f]; r++) {
-                const i = ringEnds[r] - 1;
-                for (let k = 0; k < 4; k++) {
-                    pos.set([coords[i * 2], coords[i * 2 + 1], k & 1 ? 1 : -1, k & 2 ? 1 : -1], (r * 4 + k) * 4);
-                    if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (r * 4 + k) * 4);
-                    if (radius) radius[r * 4 + k] = b.radius![f];
-                    if (radius1) radius1[r * 4 + k] = b.radius1![f];
+                const i = ringEnds[r] - 1, o = r * v;
+                for (let k = 0; k < v; k++) {
+                    pos.set([coords[i * 2], coords[i * 2 + 1], e[k % g], e[k / g | 0]], (o + k) * 4);
+                    if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (o + k) * 4);
+                    if (radius) radius[o + k] = b.radius![f];
+                    if (radius1) radius1[o + k] = b.radius1![f];
+                    if (stroke) stroke.set(b.stroke!.subarray(f * 4, f * 4 + 4), (o + k) * 4);
+                    if (sb) sb.set(b.sb!.subarray(f * 2, f * 2 + 2), (o + k) * 2);
                 }
-                idx.set([r * 4, r * 4 + 1, r * 4 + 2, r * 4 + 1, r * 4 + 3, r * 4 + 2], r * 6);
+                if (!grid) idx.set([o, o + 1, o + 2, o + 1, o + 3, o + 2], r * 6);
+                else for (let c = 0; c < 9; c++) { const q = o + (c / 3 | 0) * 4 + c % 3; idx.set([q, q + 5, q + 1, q, q + 4, q + 5], (r * 9 + c) * 6); }
             }
         }
-        return {type: 'circle', pos, idx, color, radius, radius1};
+        return {type: 'circle', pos, idx, color, radius, radius1, stroke, sb, ...grid && {grid}};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
@@ -669,14 +702,16 @@ const ARC_STEP = Math.PI / 5;
  */
 /**
  * A line vertex is 16 bytes: position x, y (int16, tile units); the direction to push it sideways (int16, times
- * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: -1, 0, 1); the
- * `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
+ * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: its sign;
+ * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
  */
 export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
+/** The cosine of half the turn above which a corner is sharp: a turn of 75 degrees, as in MapLibre GL JS. */
+const COS_SHARP = Math.cos(75 / 2 * Math.PI / 180);
 
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
-    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [];
+    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [], gaps: number[] = [];
     const round = b.join === 'round';
     // As in MapLibre GL JS: a corner whose miter is longer than the limit (1 / cos of half the turn, in line widths)
     // gets a bevel or a round join; a bevel join keeps sharp the corners whose miter is shorter than 1.05.
@@ -697,6 +732,7 @@ function tessellateLine(b: Batch): GLBatch | null {
         if (b.width1) width1.push(b.width1[f]);
         if (b.offset) offsets.push(b.offset[f]);
         if (b.blur) blurs.push(b.blur[f]);
+        if (b.gap) gaps.push(b.gap[f]);
         return count++;
     };
     /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
@@ -720,10 +756,17 @@ function tessellateLine(b: Batch): GLBatch | null {
             const n = xs.length;
             if (n < 2) continue;
             if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]); }
-            let last = -1, dist = 0, pdx = 0, pdy = 0;
-            const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0) => {
-                const a = vert(x, y, nx + ox, ny + oy, 1, dist);
-                vert(x, y, -nx + ox, -ny + oy, -1, dist);
+            let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0;
+            /**
+             * (ox, oy) moves the vertices along the line: both of them, or with `only` (1 or -1) the one on that side.
+             * `c` is for the other vertex of a bevel, whose partner is moved to the inner miter point: `line-offset` moves
+             * it along the miter, as MapLibre GL JS does, and not along its normal. The shader adds c times the offset
+             * along the line; c goes into the side as 2 + (c + 2) * 4096, so that a side of -1, 0 or 1 still has c = 0.
+             */
+            const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0, only = 0, c = 0) => {
+                const k = c ? 2 + Math.round((c + 2) * 4096) : 1;
+                const a = vert(x, y, nx + (only < 0 ? 0 : ox), ny + (only < 0 ? 0 : oy), only < 0 ? k : 1, dist);
+                vert(x, y, -nx + (only > 0 ? 0 : ox), -ny + (only > 0 ? 0 : oy), only > 0 ? -k : -1, dist);
                 if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
                 last = a;
             };
@@ -736,21 +779,30 @@ function tessellateLine(b: Batch): GLBatch | null {
                 } else {
                     const pnx = -pdy, pny = pdx, mx = pnx + nx, my = pny + ny, ml = Math.hypot(mx, my);
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
+                    // As in MapLibre GL JS, a corner sharper than 75 degrees has one more pair of vertices on each
+                    // segment, 15 pixels from the corner, so that the join bends the dashes only near the corner.
+                    // (A turn of more than 120 degrees is not: MapLibre draws its join in another way, which this does not follow.)
+                    const sharp = cos < COS_SHARP && cos >= 0.5 && b.sharp ? b.sharp : 0;
+                    if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - pdx * sharp, y - pdy * sharp, pnx, pny); dist += sharp; }
                     if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
                     else {
-                        // Two pairs at the corner give a bevel; a fan on the outer side rounds it off.
-                        pair(x, y, pnx, pny);
+                        // Two pairs at the corner give a bevel; a fan on the outer side rounds it off. As in MapLibre GL
+                        // JS, a corner of up to 120 degrees moves the inner vertices to where the inner edges meet, so
+                        // that the two segments do not overlap and dashes fall where MapLibre draws them.
+                        const outer = pnx * dx + pny * dy < 0 ? 1 : -1, back = cos >= 0.5 ? Math.sqrt(1 / (cos * cos) - 1) : 0;
+                        pair(x, y, pnx, pny, -pdx * back, -pdy * back, -outer, back);
                         if (round) {
-                            const outer = pnx * dx + pny * dy < 0 ? 1 : -1, a0 = Math.atan2(outer * pny, outer * pnx);
+                            const a0 = Math.atan2(outer * pny, outer * pnx);
                             let sweep = Math.atan2(outer * ny, outer * nx) - a0;
                             if (sweep > Math.PI) sweep -= 2 * Math.PI; else if (sweep < -Math.PI) sweep += 2 * Math.PI;
                             fan(x, y, a0, sweep, dist);
                         }
-                        pair(x, y, nx, ny);
+                        pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
                     }
+                    if (sharp && len > 2 * sharp) { dist += sharp; pair(x + dx * sharp, y + dy * sharp, nx, ny); dist -= sharp; }
                 }
                 dist += len;
-                pdx = dx; pdy = dy;
+                pdx = dx; pdy = dy; plen = len;
                 if (i === n - 2) {
                     const px = xs[n - 1], py = ys[n - 1];
                     pair(px, py, nx, ny, ...(b.cap === 'square' ? [dx, dy] : [0, 0]));
@@ -774,12 +826,13 @@ function tessellateLine(b: Batch): GLBatch | null {
     if (b.width) out.width = Float32Array.from(width);
     if (b.width1) out.width1 = Float32Array.from(width1);
     if (b.blur) out.blur = Float32Array.from(blurs);
+    if (b.gap) out.gap = Float32Array.from(gaps);
     return out;
 }
 
 /** `globe`: the tile is built for a map that can show the globe (see `tessellate`). */
 export function toGL(ir: TileIR, globe?: GlobeBuild): {tile: TileGL; transfer: ArrayBuffer[]} {
-    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
+    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z, expires: ir.expires}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
         const b = ir.layers[id];
