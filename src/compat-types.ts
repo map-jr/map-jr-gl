@@ -85,7 +85,7 @@ export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
     pitchWithRotate?: boolean;
     /** Only `true` (the default): labels of different sources always collide with each other. `false` warns once and has no effect. */
     crossSourceCollisions?: boolean;
-    /** Only `true` (the default): a tile is requested again when its `Cache-Control` or `Expires` says that it is out of date. `false` warns once and has no effect. */
+    /** `true` (the default): a tile is requested again when its `Cache-Control` or `Expires` says that it is out of date. With `false` a tile is never requested again for that reason. */
     refreshExpiredTiles?: boolean;
     /** The wheel zooms only with Ctrl (⌘ on a Mac), one finger scrolls the page, and a hint shows over the map, as in MapLibre GL JS. */
     cooperativeGestures?: boolean | object;

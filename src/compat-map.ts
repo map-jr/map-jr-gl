@@ -506,7 +506,7 @@ export class Map extends CoreMap {
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
-        this.unsupported('The option refreshExpiredTiles: false', o.refreshExpiredTiles !== false);
+        this.keepExpired = o.refreshExpiredTiles === false;
         // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
         const dragOptions = (name: string, used: boolean, todo: string) => {
             if (!used || this.warned.has(name)) return;
@@ -626,6 +626,9 @@ export class Map extends CoreMap {
     protected geojsonBuffer() { return 128; }
     /** As in MapLibre GL JS, a raster layer without `raster-fade-duration` fades a tile in over 300 ms (the main entry shows it at once). */
     protected rasterFade() { return 300; }
+    private keepExpired = false;
+    /** As in MapLibre GL JS, `refreshExpiredTiles: false` keeps a tile when it expires. */
+    protected override noExpiry() { return this.keepExpired; }
     /** Removes a style layer, as in MapLibre GL JS. */
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;

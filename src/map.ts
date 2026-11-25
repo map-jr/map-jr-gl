@@ -458,7 +458,7 @@ export class Map {
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, worldCopies: tr.worldCopies, antialias: o.antialias,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
             // would be fetched before `resend` sends them, without `transformRequest`; #355.)
-            requests: this.rulesSent ? this.requestRules() : undefined, early,
+            requests: this.rulesSent ? this.requestRules() : undefined, early, noExpiry: this.noExpiry(),
         };
 
         const tiles = await pool;
@@ -1327,6 +1327,8 @@ export class Map {
     protected geojsonBuffer(): number | undefined { return undefined; }
     /** The `raster-fade-duration` of a raster layer that gives none, in ms: 0 here, so that a tile shows at once. */
     protected rasterFade() { return 0; }
+    /** Whether tiles stay when they expire (see `refreshExpiredTiles` of the compat entry). */
+    protected noExpiry() { return false; }
     private reloadPending = false;
     /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
     private reuse = false;

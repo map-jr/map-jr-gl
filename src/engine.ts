@@ -30,6 +30,8 @@ export interface EngineOptions extends CameraOptions {
     requests?: RequestRules;
     /** Answers that the page requested before the engine started, by URL (only for an engine on the page's thread). */
     early?: Map<string, Promise<Response>>;
+    /** Tiles are not requested again when they expire (`refreshExpiredTiles: false` of the compat entry). */
+    noExpiry?: boolean;
 }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
@@ -365,6 +367,7 @@ export class Engine {
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         // A part of the tile code that did not load fails each tile and query that needs it: the map reports it once (#79).
         this.emit = oncePerPart(emit);
+        this.noExpiry = o.noExpiry;
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
@@ -989,7 +992,7 @@ export class Engine {
                 this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
             case 'repaint': break;
-            case 'destroy': this.lost = true; this.renderer.destroy(); return;
+            case 'destroy': this.lost = true; clearTimeout(this.wakeTimer); this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'snapshot': this.shots.push(c); break;
@@ -1458,16 +1461,18 @@ export class Engine {
      * again after 1 s, 2 s, 4 s and so on, as in MapLibre GL JS.
      */
     private expire(t: TileState, at?: number) {
+        if (this.noExpiry) return void (t.expires = undefined);
         const now = Date.now();
         t.late = at! <= now ? (t.late ?? 0) + 1 : 0;
         t.expires = t.late ? now + 1000 * 2 ** Math.min(t.late - 1, 20) : at;
     }
     /** One timer for the next tile to expire: a frame then requests it again (see `refresh`). */
-    private wakeAt = 0;
+    private wakeAt = 0; private wakeTimer?: ReturnType<typeof setTimeout>; private noExpiry?: boolean;
     private wake(at: number) {
         if (this.wakeAt && this.wakeAt <= at) return;
         this.wakeAt = at;
-        setTimeout(() => { if (this.wakeAt === at) { this.wakeAt = 0; this.repaint(); } }, Math.min(at - Date.now(), 2 ** 31 - 1));
+        clearTimeout(this.wakeTimer);
+        this.wakeTimer = setTimeout(() => { if (this.wakeAt === at) { this.wakeAt = 0; this.repaint(); } }, Math.min(at - Date.now(), 2 ** 31 - 1));
     }
 
     /** A raster tile from the bytes of its image (or a decoded image from a custom protocol), unless `wanted` says no more. */
