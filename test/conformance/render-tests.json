@@ -663,7 +663,7 @@
 "line-blur/default": "match",
 "line-blur/function": "match",
 "line-blur/literal": "match",
-"line-blur/property-function": "differ",
+"line-blur/property-function": "match",
 "line-cap/butt": "match",
 "line-cap/default": "match",
 "line-cap/global-state": "match",
