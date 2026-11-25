@@ -87,7 +87,9 @@ export type Command =
     | {type: 'tileLoads'; on: boolean}
     /** The compat entry, with the engine on the main thread: draws its custom layers (custom-layers.ts). The answer is the WebGL context. */
     | {type: 'custom'; id: number; draw: GLRenderer['custom']}
-    | {type: 'bound'; id: number; fn: ((tr: Transform) => void) | null};
+    | {type: 'bound'; id: number; fn: ((tr: Transform) => void) | null}
+    /** A function that changes the camera before each frame (`setTransformCameraUpdate` of the compat entry; main thread only). */
+    | {type: 'cameraUpdate'; fn: ((tr: Transform) => void) | null};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the center with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean;
         /** During a drag: the ground that it grabbed, and the number of the command that grabbed it (#38). */
@@ -996,6 +998,7 @@ export class Engine {
             case 'tileReport': this.tap = c.on; return;
             case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;
+            case 'cameraUpdate': this.cameraUpdate = c.fn; break;
             case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
         this.repaint();
@@ -1092,6 +1095,9 @@ export class Engine {
                     const d = [t.box[0] - t.x, t.box[1] - t.y, t.box[2] - t.x, t.box[3] - t.y];
                     reach = reach ? [Math.min(reach[0], d[0]), Math.min(reach[1], d[1]), Math.max(reach[2], d[2]), Math.max(reach[3], d[3])] : [d[0], d[1], d[2], d[3]];
                 }
+                // (A symbol layer with no icon and no shown text is still tested with `underIcon`, so that a line whose
+                // label is hidden is not found along its geometry: #1916.)
+                if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
                 if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
                 const circle = circles.get(s.layer) === s;
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : c.box, key = box.join();
@@ -1447,6 +1453,7 @@ export class Engine {
 
     private stats = {since: 0, frames: 0, cpu: 0};
 
+    private cameraUpdate: ((tr: Transform) => void) | null = null;
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
@@ -1471,6 +1478,8 @@ export class Engine {
         this.frameTime = began;
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), animating = cameraAnimating;
+        // (As in MapLibre GL JS, the camera that the function returns is the one that the frame draws, #1711.)
+        if (this.cameraUpdate) try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
         this.flushUploads(this.wentIdle && (cameraAnimating || began - this.cameraMovedAt < 200));
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];

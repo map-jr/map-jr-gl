@@ -26,7 +26,8 @@ const src = path.resolve(import.meta.dirname, '../src');
 const INTERNAL = ['heightAt', 'cameraDistance', 'pixelsPerMetre', 'worldSize', 'screenToMerc', 'screenToGround', 'tileCover', 'customConstrain', 'projectTile', 'mercToScreen',
     'createImageTile', 'createTile', 'destroyTile', 'setLocationAt', 'tileMatrix4', 'tileMatrix',
     'tileScale', 'cameraPosition', 'unprojectFlat', 'recenterOnGround', 'uploadSprite', 'setIcons', 'zoomFloor',
-    'varint', 'svarint', 'skip', 'constrain', 'occluded', 'loadIR', 'onReset', 'resets', 'expansionZoom', 'setFetch', 'dirty', 'hits', 'command', 'leaves'];
+    'varint', 'svarint', 'skip', 'constrain', 'occluded', 'loadIR', 'onReset', 'resets', 'expansionZoom', 'setFetch', 'dirty', 'hits', 'command', 'leaves',
+    'globeness', 'flatZ', 'perspectiveAt', 'glyphsURL', 'iconsBehind', 'underside', 'drawnSent', 'fetchGlyphs', 'canvasRows', 'panned', 'refreshIcons', 'moveSprites'];
 
 /** Calls `fn` for each node of a syntax tree, with its parent. */
 function walk(node, fn, parent = null) {
@@ -45,7 +46,7 @@ function uses(code, file) {
         if (n.type === 'Literal' && typeof n.value === 'string') other.add(n.value);
         else if (n.type === 'TemplateElement') for (const word of (n.value?.cooked ?? '').match(/[A-Za-z_$][\w$]*/g) ?? []) other.add(word);
         else if (n.type === 'MemberExpression' && !n.computed && n.property.type === 'Identifier') {
-            if (n.object.type === 'ThisExpression') sites.push(n.property); else loose.push(n.property);
+            if (n.object.type === 'ThisExpression') sites.push(n.property); else loose.push(n.object.type === 'Identifier' && n.object.name === 'gl' ? {...n.property, gl: true} : n.property);
         } else if (n.type === 'PropertyDefinition' || n.type === 'MethodDefinition' || n.type === 'AccessorProperty' || n.type === 'TSAbstractPropertyDefinition' || n.type === 'TSAbstractMethodDefinition') {
             const k = !n.computed && name(n.key);
             if (k && (n.accessibility === 'private' || n.accessibility === 'protected') && n.key.type === 'Identifier') sites.push({...n.key, declared: true}); else if (k && n.key.type === 'Identifier' && !n.static) loose.push({...n.key, member: true}); else if (k) other.add(k);
@@ -67,19 +68,21 @@ function uses(code, file) {
 
 /** The names that are safe to shorten, each with its short name. The most used names get the shortest ones. */
 export function privateNames(dir = src, internal = INTERNAL) {
-    const count = new Map(), declared = new Set(), other = new Set(), strict = new Set(), members = new Set(), exports = new Map();
+    const count = new Map(), declared = new Set(), other = new Set(), strict = new Set(), members = new Set(), exports = new Map(), webgl = new Set();
     for (const f of readdirSync(dir).filter(f => f.endsWith('.ts'))) {
         const u = uses(readFileSync(path.join(dir, f), 'utf8'), f);
         for (const e of u.exported) if (!exports.has(e)) exports.set(e, f);
         for (const s of u.sites) { count.set(s.name, (count.get(s.name) ?? 0) + 1); if (s.declared) declared.add(s.name); }
         for (const o of u.strict) { other.add(o); strict.add(o); }
-        for (const l of u.loose) { other.add(l.name); if (l.member) members.add(l.name); }
+        for (const l of u.loose) { other.add(l.name); if (l.member) members.add(l.name); if (l.gl) webgl.add(l.name); }
         // (An internal name is counted with the private names, so that the names used most get the shortest names.)
         for (const l of [...u.sites, ...u.loose]) if (internal.includes(l.name)) count.set(l.name, (count.get(l.name) ?? 0) + 1);
     }
     for (const n of internal) {
         // Each `.name` of an internal name is renamed, so a call `module.name()` of an export would be renamed too (#475).
         if (exports.has(n)) throw new Error(`[map-jr-gl] private-names: the internal member "${n}" has the name of the export "${n}" of src/${exports.get(n)}. Rename the export or the member, or remove "${n}" from INTERNAL in scripts/private-names.mjs.`);
+        // (`gl` is the WebGL context in src/: a method of it, such as `gl.depthRange`, must keep its name.)
+        if (webgl.has(n)) throw new Error(`[map-jr-gl] private-names: the internal member "${n}" is also read from the WebGL context (gl.${n}). Remove "${n}" from INTERNAL in scripts/private-names.mjs.`);
         if (strict.has(n) || !members.has(n)) throw new Error(`private-names: "${n}" cannot be shortened (it is a key, a field of a type or a string, or no class declares it)`);
         declared.add(n); other.delete(n);
     }
