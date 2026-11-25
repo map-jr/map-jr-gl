@@ -69,7 +69,7 @@ const stop = map.listen('click', event => console.log(event.lngLat));
 | `terrain` | [`MapEventBase`](#mapeventbase)`<'terrain'> & {terrain: {source: string; exaggeration?: number} \| null}` | The terrain changed. |
 | `projectiontransition` | [`MapEventBase`](#mapeventbase)`<'projectiontransition'> & {newProjection: string}` | The projection was applied, by a new style or a change of the projection type. |
 | `geolocate` | [`MapEventBase`](#mapeventbase)`<'geolocate'> & {coords: GeolocationCoordinates}` | The geolocate control of `@map-jr/map-jr-gl/controls` received a position. |
-| `error` | [`MapEventBase`](#mapeventbase)`<'error'> & {error: unknown}` | An error of the map. |
+| `error` | [`MapEventBase`](#mapeventbase)`<'error'> & {error: unknown; sourceId?: string}` | An error of the map. |
 <!-- ref:MapEvents:end -->
 
 A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, north]]`.

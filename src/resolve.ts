@@ -186,7 +186,11 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (!t.has(fail)) { t.add(fail); fail(error()); }
     };
     // (With `partial` or `fail`, `once` reports a failure itself, one time for each map.)
-    const get = (raw: object, url: string, load: () => Promise<any>) => partial || fail ? once(raw, url, load, partial, fail) : once(raw, url, load);
+    // (A failure names its source in `sourceId`: the map gives it to the `error` event, as MapLibre GL JS does.)
+    const get = (raw: object, url: string, load: () => Promise<any>, sourceId: string) => {
+        const named = () => load().catch(e => { throw e instanceof Error ? Object.assign(e, {sourceId}) : e; });
+        return partial || fail ? once(raw, url, named, partial, fail) : once(raw, url, named);
+    };
     if (typeof style === 'string') {
         const url = absolute(style, base);
         const res = await fetchFn(url);
@@ -214,7 +218,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                     const res = await fetchFn(url);
                     if (!res.ok) throw httpError('GeoJSON', url, res.status);
                     return res.json();
-                });
+                }, name);
                 if (data === SKIP) return;
             }
             // (`geojsonBuffer` is the buffer of a source that gives none: 128 in the compat entry, as in MapLibre GL JS.)
@@ -242,7 +246,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
             const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at;
-            const info = await get(raw, file, async () => (await import('./pmtiles-info.ts')).archive(file, fetchFn).info());
+            const info = await get(raw, file, async () => (await import('./pmtiles-info.ts')).archive(file, fetchFn).info(), name);
             if (info === SKIP) return;
             src = {minzoom: info.minzoom, maxzoom: info.maxzoom, ...info.bounds && {bounds: info.bounds}, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
         } else if (!src.tiles && src.url) {
@@ -251,7 +255,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                 const res = await fetchFn(url);
                 if (!res.ok) throw httpError('source', url, res.status);
                 return res.json();
-            });
+            }, name);
             if (json === SKIP) return;
             src = {...json, ...Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'url'))};
             src.tiles = src.tiles.map((t: string) => CUSTOM.test(t) ? t : decodeURI(new URL(t, url).href));

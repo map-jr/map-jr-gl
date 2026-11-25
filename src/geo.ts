@@ -149,6 +149,8 @@ export class Transform {
      * stays inside -180..180 as if that were `maxBounds`, tiles of other copies are left out, and `project` does not wrap.
      */
     worldCopies = true;
+    /** Raster tiles are filtered anisotropically when the pitch is above this many degrees (`setAnisotropicFilterPitch`). */
+    aniso = 20;
 
     /**
      * With 3D terrain: the height of the ground at the map center, in (exaggerated) meters. The camera looks at that

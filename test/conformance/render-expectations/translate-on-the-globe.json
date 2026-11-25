@@ -2,6 +2,6 @@
   "label": "*-translate on the globe",
   "decision": "later",
   "issue": 1822,
-  "reason": "fill-translate, line-translate, fill-extrusion-translate, icon-translate and text-translate are not applied on the globe, with either anchor.",
-  "pattern": "^projection/globe/(terrain/)?(collision-text-pitched-rotated|collision-icon-text-translate-map|collision-text-point-pole-to-pole|(fill|line|fill-extrusion)-translate|icon-text-translate-(map|viewport)|text-pitched-rotated|text-point-pole-to-pole)$"
+  "reason": "With 3D terrain, fill-translate and line-translate are drawn into the picture of each ground tile, so a translated shape is cut at the edge of its tile, and the anchor viewport moves it as the anchor map does.",
+  "pattern": "^projection/globe/terrain/(fill|line)-translate$"
 }

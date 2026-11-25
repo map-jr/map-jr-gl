@@ -225,7 +225,20 @@ export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
     const r = Math.max(...circles.map(s => s.radius)) * k;
     // (A translated circle is drawn away from its feature: the rectangle also reaches back by each translation.)
     const [x0, y0, x1, y1] = circles.reduce((b, s) => { const t = setBox(box, s); return [Math.min(b[0], t[0]), Math.min(b[1], t[1]), Math.max(b[2], t[2]), Math.max(b[3], t[3])]; }, box);
-    return {box: [x0 - r, y0 - r, x1 + r, y1 + r], circles: new Set(circles)};
+    return {box: [x0 - r, y0 - r, x1 + r, y1 + r], circles: new Set(circles), k};
+}
+
+const sizes = new WeakMap<QuerySet, {r: ReturnType<typeof compileProp>; w: ReturnType<typeof compileProp>}>();
+/**
+ * The radius with the stroke in pixels that a circle layer draws a found feature with: the set's `radius`, or for a
+ * size that depends on the feature, its size at the zoom of the map (as `queryTile` evaluates it).
+ */
+export function circleRadius(s: QuerySet, f: QueriedFeature): number {
+    if (!s.size) return s.radius;
+    let size = sizes.get(s);
+    if (!size) sizes.set(s, size = {r: compileProp(s.size.a, 'number', 5), w: compileProp(s.size.b, 'number', 0)});
+    const g = {type: TYPES.lastIndexOf(f.type as typeof TYPES[number]), id: f.id, properties: f.properties};
+    return Math.min(Math.max(size.r.eval(s.size.zoom, g) + size.w.eval(s.size.zoom, g), 0), 1e4);
 }
 
 /** The positions of a geometry (in longitude and latitude) where a circle layer draws a circle. */

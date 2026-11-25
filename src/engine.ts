@@ -4,13 +4,13 @@ import {globeBuild} from './subdivide.ts';
 import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
-import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
@@ -45,7 +45,7 @@ export type Command =
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number; bearing?: number}
     | {type: 'stop'}
-    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean; /** See `Transform.aniso`. */ aniso: number}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources; an empty `lod` drops them (removeSource). */
@@ -121,7 +121,7 @@ export type EngineEvent =
     | {type: 'resized'; width: number; height: number; dpr: number; /** The size of the drawing buffer, which the browser can clamp (#950). */ buffer: [number, number]}
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
-    | {type: 'error'; message: string}
+    | {type: 'error'; message: string; source?: string}
     /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`, `rebuild`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
     | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string}
     /** After `tileLoads`: the tile `key` (`source|z/x/y`) has loaded. */
@@ -530,7 +530,7 @@ export class Engine {
                 const image = (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
                 image.close();
-            }).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { state.loading = false; this.invalidate(); });
+            }).catch(err => this.emit({type: 'error', message: String(err.message), source})).finally(() => { state.loading = false; this.invalidate(); });
         }
         if (!st.gl) return [];
         const z = clamp(Math.floor(tr.zoom), 0, 22), n = 2 ** z, cx = mercX(tr.lng) * n, w = Math.floor(cx / n);
@@ -687,7 +687,7 @@ export class Engine {
             const parts = partsFor(style).filter(n => !this.partsSent.has(n));
             if (parts.length) { for (const n of parts) this.partsSent.add(n); for (const b of this.backends) b.need(parts); if (parts.includes('pmtiles')) part('pmtiles').catch(() => {}); }
             // Only the GeoJSON sources whose data or options changed are indexed again (#8).
-            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) Promise.resolve(b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed)).catch(err => this.emit({type: 'error', message: String(err.message)})); } }
+            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) Promise.resolve(b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed)).catch(err => this.emit({type: 'error', message: String(err.message), source: name})); } }
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
             for (const {head} of Object.values(style.sources)) if (head && !heads.has(head.url)) { heads.set(head.url, head.bytes); for (const b of this.backends) b.setHead(head.url, head.bytes); }
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), ids = promoteIds(style), text = JSON.stringify([contours, ids]);
@@ -913,7 +913,7 @@ export class Engine {
                 break;
             }
             case 'stop': this.stop(); break;
-            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true});
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true, aniso: c.aniso});
                 // (`keep`: setRenderWorldCopies does not move the view, as in MapLibre GL JS; the next camera change does.)
                 if (c.keep) { this.viewCovers.clear(); this.invalidate(); } else tr.set(undefined, tr.zoom, undefined, tr.pitch);
                 break;
@@ -1105,13 +1105,14 @@ export class Engine {
                 const circle = circles.get(s.layer) === s;
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), key = box.join();
                 const group = boxes.get(key) ?? {box, sets: [], exact: !!reach || circle};
-                group.sets.push(reach || circle ? {...s, radius: 0} : s);
+                // (A tilted circle whose size depends on the feature is asked with its size grown as `pitchedCircles` grows the rectangle.)
+                group.sets.push(circle && s.size ? {...s, radius: 0, size: {...s.size, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
                 boxes.set(key, group);
             }
             for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
-                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && s.radius ? {...s.size, scale: t.scale} : undefined})),
+                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
                 }));
             }
         }
@@ -1121,7 +1122,7 @@ export class Engine {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
-            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circle.radius, circle.pitch!))) return false;
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));
@@ -1359,7 +1360,7 @@ export class Engine {
             t.rev = ++this.tilesVersion;
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
             // (The tile reported its failure with its first four requests, as MapLibre GL JS fires one `error`.)
-            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message});
+            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message, source});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
@@ -1479,7 +1480,7 @@ export class Engine {
     private async imageTile(bytes: Uint8Array | ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
         if (!bytes) return {labels: {}, batches: {}};
         const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
-        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id) : {labels: {}, batches: {}};
+        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id, undefined, true) : {labels: {}, batches: {}};
         image.close();
         return tile;
     }
@@ -1917,11 +1918,24 @@ export class Engine {
      * half of the width and of the height of the box around it. `w` and `h` are the size of the image, and `turn` is
      * `icon-rotate` in radians. (The same rules as for an icon that is placed with the labels: see `placeLabels`.)
      */
-    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature): [number, number, number, number] {
-        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), this.tr.bearing);
+    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature, move = screenTranslate(L.p.iconTranslate.eval(this.tr.zoom), L.p.iconTranslateAnchor.eval(this.tr.zoom), this.tr.bearing)): [number, number, number, number] {
+        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[];
         const angle = (L.p.iconAlign.eval(z, f) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
         return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + move[0], (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + move[1],
             (w * cos + h * sin) / 2 * size, (w * sin + h * cos) / 2 * size];
+    }
+
+    /**
+     * `icon-translate` as an offset on the screen from the point (ax, ay) at Mercator x, y (0 to 1). On the globe the
+     * point is moved in tile units and projected again, as the GPU draws it (see `drawIcons`); in Mercator the offset is in pixels.
+     */
+    private iconMove(L: CompiledLayer, x: number, y: number, ax: number, ay: number): [number, number] {
+        const tr = this.tr, t = L.p.iconTranslate.eval(tr.zoom), a = L.p.iconTranslateAnchor.eval(tr.zoom);
+        if (!tr.globeness) return screenTranslate(t, a, tr.bearing);
+        const [mx, my] = mapTranslate(t, a, tr.bearing), ws = tr.worldSize;
+        if (!mx && !my) return [0, 0];
+        const [px, py] = tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, (x + mx / ws) * EXTENT, (y + my / ws) * EXTENT);
+        return [px - ax, py - ay];
     }
 
     /** The image with a name, or (for the name of a template) one of its variants: they all have one size. */
@@ -1989,7 +2003,7 @@ export class Engine {
             // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
             const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
             const size = L.p.iconSize.eval(z, f) * (depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
-            const [cx, cy, hw, hh] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, f);
+            const [cx, cy, hw, hh] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, f, this.iconMove(L, mercX(lng), mercY(lat), x, y));
             return x + cx - hw <= box[2] && x + cx + hw >= box[0] && y + cy - hh <= box[3] && y + cy + hh >= box[1];
         });
     }
@@ -2037,9 +2051,12 @@ export class Engine {
             // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
             // feature, an icon can reach as far as its corner and its offset in each direction.)
             size *= tr.pitch ? 4 : 1;
-            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180);
-            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) + 64 * size;
-            reach = each ? [-far, -far, far, far] : [cx - hw, cy - hh, cx + hw, cy + hh];
+            // (On the globe icon-translate moves each icon by its own amount on the screen (see `iconMove`): the reach
+            // covers twice the move in pixels, and no move.)
+            const move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), tr.bearing).map(v => tr.globeness ? 2 * v : v) as [number, number];
+            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180, undefined, move);
+            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) + 64 * size, [mx, my] = tr.globeness ? move : [0, 0];
+            reach = each ? [-far, -far, far, far] : [Math.min(cx, cx - mx) - hw, Math.min(cy, cy - my) - hh, Math.max(cx, cx - mx) + hw, Math.max(cy, cy - my) + hh];
         }
         this.reaches.set(L.id, {at, reach});
         return reach;
@@ -2090,7 +2107,7 @@ export class Engine {
                     const [ax, ay, depth] = tr.projectTile(it.id, x, y);
                     if (ax < -100 || ay < -100 || ax > tr.width + 100 || ay > tr.height + 100) continue;
                     const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * (tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
-                    const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn);
+                    const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn, undefined, this.iconMove(L, (it.id.x + it.id.w * 2 ** it.id.z + x / EXTENT) / 2 ** it.id.z, (it.id.y + y / EXTENT) / 2 ** it.id.z, ax, ay));
                     grid.insert(ax + cx - hw - pad[3], ay + cy - hh - pad[0], ax + cx + hw + pad[1], ay + cy + hh + pad[2]);
                 }
             }
