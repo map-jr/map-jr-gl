@@ -15,7 +15,8 @@ It gave 80 matches of 127 tests, 38 near and 9 that differ, and it skipped none.
 `terrain/`) were skipped before #1786, because the run had no `addCustomLayer` operation. They run now.
 `custom/tent-3d-globe-zoomed` was a differ (19.5%, the red quad missing) in one run of the whole group and a match in
 three other runs, so its result varies with the load of the machine (#1036). Each image that is near or differs was
-compared by eye with the expected image and with a mask of the pixels that differ.
+compared by eye with the expected image and with a mask of the pixels that differ. The tests `heatmap` and
+`terrain/heatmap` differed in that run, and they are a match since the fix of #1824, so the table no longer lists them. The tests `collision-text-line-equator` and `terrain/collision-text-line-equator` are a match since the fix of #1823, and the two tests `collision-text-line-pole-to-pole` now differ only by the collision boxes.
 
 The column "Action" names the issue of the cause (see the list below the table).
 "none (near)" is a difference of a pixel at edges, which needs no issue. "none (decision)" is the collision boxes of
@@ -27,18 +28,15 @@ names the issue. The tests marked "none" keep the label `globe`, which names no 
 |---|---|---|---|
 | `circle-planet` | differ 5.4% | Circles with `circle-pitch-alignment: map` are not foreshortened toward the edge of the globe. | #1825 |
 | `collision-text-pitched-rotated` | differ 5.5% | `text-translate` and `icon-translate` are not applied on the globe, and the collision boxes of `collisionDebug` are not drawn, which is a decision (`maplibre-differences.md`). | #1822 |
-| `heatmap` | differ 28.0% | The heatmap is drawn flat and is not projected onto the globe, so the blobs are not foreshortened and reach past the edge of the globe. | #1824 |
 | `image` | differ 10.8% | The image is stretched toward the pole, which is the fault that the test describes. | #1826 |
 | `image-non-parallelogram` | differ 21.7% | The image is placed differently, and the area around the pole is filled with the background color, which MapLibre leaves out. | #1826 |
 | `terrain/circle-planet` | differ 5.4% | Circles with `circle-pitch-alignment: map` are not foreshortened toward the edge of the globe. | #1825 |
 | `terrain/collision-text-pitched-rotated` | differ 5.5% | `text-translate` and `icon-translate` are not applied on the globe, and the collision boxes of `collisionDebug` are not drawn, which is a decision (`maplibre-differences.md`). | #1822 |
 | `terrain/fill-seams/checkerboard` | differ 55.4% | With terrain, the tiles of the checkerboard come from a lower zoom than in MapLibre, so the squares are twice as large. | #1828 |
-| `terrain/heatmap` | differ 28.7% | The heatmap is drawn flat and is not projected onto the globe, so the blobs are not foreshortened and reach past the edge of the globe. | #1824 |
 | `background-pattern` | near 3.6% | The edges of the shapes differ by a pixel. The shapes are in place. | none (near) |
 | `circle-pitch-alignment/map-scale-viewport` | near 1.5% | The edges of the circles with `circle-pitch-alignment: map` are a pixel off. This is the fault of `circle-planet` in a smaller form. | #1825 |
 | `collision-icon-text-translate-map` | near 4.4% | `text-translate` and `icon-translate` are not applied on the globe, and the collision boxes of `collisionDebug` are not drawn, which is a decision (`maplibre-differences.md`). | #1822 |
-| `collision-text-line-equator` | near 1.1% | The labels along the line (`symbol-placement: line`) are not drawn on the globe. The collision boxes are not drawn either, which is a decision. | #1823 |
-| `collision-text-line-pole-to-pole` | near 1.4% | The labels along the line (`symbol-placement: line`) are not drawn on the globe. The collision boxes are not drawn either, which is a decision. | #1823 |
+| `collision-text-line-pole-to-pole` | near 1.4% | The collision boxes are not drawn, which is a decision. | #570 |
 | `collision-text-point-pole-to-pole` | near 3.1% | `text-translate` and `icon-translate` are not applied on the globe, and the collision boxes of `collisionDebug` are not drawn, which is a decision (`maplibre-differences.md`). | #1822 |
 | `collision-text-variable-anchor/pitched` | near 1.0% | The collision boxes of `collisionDebug` are not drawn, which is a decision. The labels are in place. | none (decision) |
 | `custom/tent-3d-globe` | near 4.5% | The custom layer draws the tent at another place and with another shape on the globe. | #1827 |
@@ -54,8 +52,7 @@ names the issue. The tests marked "none" keep the label `globe`, which names no 
 | `symbol-height-offset-tile-retention` | near 3.6% | The icon and the label at a `symbol-height-offset` of 500 km are not drawn above the globe, because `symbol-height-offset` is not read. | #1007 |
 | `terrain/circle-pitch-alignment/map-scale-viewport` | near 1.5% | The edges of the circles with `circle-pitch-alignment: map` are a pixel off. This is the fault of `circle-planet` in a smaller form. | #1825 |
 | `terrain/collision-icon-text-translate-map` | near 4.4% | `text-translate` and `icon-translate` are not applied on the globe, and the collision boxes of `collisionDebug` are not drawn, which is a decision (`maplibre-differences.md`). | #1822 |
-| `terrain/collision-text-line-equator` | near 1.1% | The labels along the line (`symbol-placement: line`) are not drawn on the globe. The collision boxes are not drawn either, which is a decision. | #1823 |
-| `terrain/collision-text-line-pole-to-pole` | near 1.4% | The labels along the line (`symbol-placement: line`) are not drawn on the globe. The collision boxes are not drawn either, which is a decision. | #1823 |
+| `terrain/collision-text-line-pole-to-pole` | near 1.4% | The collision boxes are not drawn, which is a decision. | #570 |
 | `terrain/collision-text-point-pole-to-pole` | near 3.1% | `text-translate` and `icon-translate` are not applied on the globe, and the collision boxes of `collisionDebug` are not drawn, which is a decision (`maplibre-differences.md`). | #1822 |
 | `terrain/collision-text-variable-anchor/pitched` | near 1.0% | The collision boxes of `collisionDebug` are not drawn, which is a decision. The labels are in place. | none (decision) |
 | `terrain/custom/tent-3d-globe` | near 4.4% | The custom layer draws the tent at another place and with another shape on the globe. | #1827 |
@@ -78,8 +75,6 @@ names the issue. The tests marked "none" keep the label `globe`, which names no 
 | Issue | Cause |
 |---|---|
 | #1822 | `fill-translate`, `line-translate`, `fill-extrusion-translate`, `icon-translate` and `text-translate` are not applied on the globe, with either anchor. |
-| #1823 | Labels with `symbol-placement: line` are not drawn on the globe. |
-| #1824 | The heatmap is drawn flat and is not projected onto the globe. |
 | #1825 | Circles with `circle-pitch-alignment: map` are not foreshortened toward the edge of the globe. |
 | #1826 | An image source on the globe is stretched toward the pole, and the area around the pole is filled. |
 | #1827 | A custom layer draws at another place and with another shape on the globe than in MapLibre. |

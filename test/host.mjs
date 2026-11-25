@@ -3413,6 +3413,8 @@ for (const renderer of ['worker', 'main']) {
             const spec = what === 'vector' ? {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}}
                 : what === 'terrain' ? {style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: [dc.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10}}, terrain: {source: 'dem'},
                     layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}]}, initialView: {center: [7.7, 46], zoom: 10, pitch: 50}}
+                : what === 'within' ? {style: {version: 8, sources: {pt: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}},
+                    {id: 'pt', type: 'circle', source: 'pt', paint: {'circle-radius': 60, 'circle-color': ['case', ['within', square.geometry], '#00f', '#0f0']}}]}, initialView: {center: [0, 0], zoom: 1}}
                 : {style: {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]}, initialView: {center: [0, 0], zoom: 1}};
             const made = [0, 1].map(() => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
@@ -3430,6 +3432,7 @@ for (const renderer of ['worker', 'main']) {
         const vector = await run('vector'), afterVector = parts.splice(0);
         const geojson = await run('geojson'), afterGeoJSON = parts.splice(0);
         const terrain = await run('terrain'), afterTerrain = parts.splice(0);
+        const within = await run('within'), afterWithin = parts.splice(0);
         const seen = browserName === 'chromium';
         // 3D terrain (#1849): the engine loads the part for elevation data. In an engine worker that is the file of the part,
         // which the page fetches once with the style; an engine on the page imports the chunk of the same part instead.
@@ -3439,7 +3442,32 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
             vector.idle.every(Boolean) && !vector.errors.length && geojson.idle.every(Boolean) && !geojson.errors.length && geojson.centre[2] > 200 && geojson.centre[0] < 50 &&
             (!seen || (afterVector.length === 0 && afterGeoJSON.length >= 1 && afterGeoJSON.length <= 4 && afterGeoJSON.every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
+        // `within` and `distance` (#1707): a style that uses one loads their part, and its tiles wait for it.
+        check(`[${renderer}] the parts of the worker: two maps whose style uses "within" load the part within and draw its result (#1707)`,
+            within.idle.every(Boolean) && !within.errors.length && within.centre[2] > 200 && within.centre[1] < 50 && (!seen || afterWithin.includes('within')), JSON.stringify({within, afterWithin}));
         if (seen) {
+            // The part of `within` does not load: one warning names the file, and the map is idle with the result false.
+            const noPart = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                const warnings = [];
+                noPart.on('console', m => { if (m.type() === 'warning' && m.text().includes('within')) warnings.push(m.text()); });
+                await noPart.route(/map-jr-gl-worker-within\.js/, route => route.abort());
+                await noPart.goto(origin + '/bench');
+                const got = await noPart.evaluate(async renderer => {
+                    const lib = await import('/dist/map-jr-gl.js'), errors = [], square = {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]};
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                    const host = lib.createMap(el, {style: {version: 8, sources: {pt: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'pt', type: 'circle', source: 'pt', paint: {'circle-radius': 60, 'circle-color': ['case', ['within', square], '#00f', '#0f0']}}]},
+                        initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    const idle = await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 10000); });
+                    const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                    g.drawImage(bmp, 0, 0);
+                    const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+                    host.destroy(); el.remove();
+                    return {idle, centre, errors};
+                }, renderer);
+                check(`[${renderer}] the part of "within" does not load: one warning names the file, and the map is idle and draws "within" as false (#1707)`,
+                    got.idle && !got.errors.length && got.centre[1] > 200 && warnings.length === 1 && warnings[0].startsWith('[map-jr-gl]') && warnings[0].includes('map-jr-gl-worker-within.js'), JSON.stringify({got, warnings}));
+            } finally { await noPart.close(); }
             // (A new page: its workers have not loaded the part.)
             const other = await browser.newPage({viewport: {width: 900, height: 600}});
             try {
@@ -4554,6 +4582,54 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of the background requests of failed tiles was completed', false, String(e.message).split('\n')[0]); }
     for (const page of pages) await page?.close();
 }
+// A tile whose response has `Cache-Control: max-age=2` is requested again when it has expired, while it is in view, as
+// in MapLibre GL JS (#687). The vector tiles of the demo and the tiles of a raster source answer with that header here.
+// In 8 s a tile of each source is requested at least three times, and the map fires `idle` again after each reload. A
+// tile with the usual `max-age=3600` of the demo server is requested once in that time. Both renderers run at once.
+{
+    const pages = [];
+    try {
+        const run = async (renderer, short) => {
+            const page = await browser.newPage({viewport: {width: 600, height: 400}});
+            pages.push(page);
+            const seen = new Map(), png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+            await page.goto(`${origin}/bench`);
+            await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf|\/exp687\//, async route => {
+                const k = new URL(route.request().url()).pathname;
+                seen.set(k, (seen.get(k) ?? 0) + 1);
+                const headers = {'access-control-allow-origin': '*', 'cache-control': short ? 'max-age=2' : 'max-age=3600'};
+                if (k.startsWith('/exp687/')) return route.fulfill({status: 200, contentType: 'image/png', body: png, headers}).catch(() => {});
+                const res = await route.fetch().catch(() => null);
+                if (!res) return route.abort().catch(() => {});
+                return route.fulfill({response: res, headers: {...res.headers(), ...headers}}).catch(() => {});
+            });
+            const out = await page.evaluate(async ({from, renderer}) => {
+                const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+                style.sources.exp687 = {type: 'raster', tiles: [location.origin + '/exp687/{z}/{x}/{y}.png'], tileSize: 256};
+                style.layers.splice(1, 0, {id: 'exp687', type: 'raster', source: 'exp687'});
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+                window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer, attribution: false});
+                let idles = 0;
+                window.host.listen('idle', () => idles++);
+                await new Promise(r => setTimeout(r, 8000));
+                // (The last reload may be under way at the end: wait for the next `idle`, at most 5 s.)
+                await new Promise(r => { setTimeout(r, 5000); window.host.listen('idle', r); });
+                return {idles, idle: window.host.state.get().idle};
+            }, {from, renderer});
+            return {...out, seen};
+        };
+        const [main, worker, usual] = await Promise.all([run('main', true), run('worker', true), run('main', false)]);
+        for (const [name, r] of [['main', main], ['worker', worker]]) {
+            const vector = [...r.seen].filter(([k]) => k.startsWith('/tiles/')), raster = [...r.seen].filter(([k]) => k.startsWith('/exp687/'));
+            const most = (list) => Math.max(0, ...list.map(([, n]) => n));
+            check(`[${name}] a tile with max-age=2 is requested again while it is in view, and the map fires idle after reloads`,
+                most(vector) >= 3 && most(raster) >= 3 && r.idles >= 3 && r.idle, JSON.stringify({vector: most(vector), raster: most(raster), idles: r.idles, idle: r.idle}));
+        }
+        const twice = [...usual.seen].filter(([, n]) => n > 1);
+        check('a tile with max-age=3600 is requested once', usual.seen.size > 0 && twice.length === 0, JSON.stringify({tiles: usual.seen.size, twice: twice.slice(0, 3)}));
+    } catch (e) { check('the test of tiles that expire was completed', false, String(e.message).split('\n')[0]); }
+    for (const page of pages) await page?.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
@@ -4947,6 +5023,6 @@ for (const renderer of renderers) {
     finally { await page.close(); }
 }
 // (Chromium on 2026-11-19 printed 158 results with RENDERER=main and 94 with RENDERER=worker.)
-tally((renderers.includes('main') ? 141 : 0) + (renderers.includes('worker') ? 86 : 0));
+tally((renderers.includes('main') ? 144 : 0) + (renderers.includes('worker') ? 86 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);

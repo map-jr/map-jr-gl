@@ -20,8 +20,9 @@ export async function checkCustomLayers(page, check, label = '[main]') {
         r.diff.onRemove === 0 && r.diff.order === 'bg,red,top' && r.diff.colours === 'red,blue' && r.noDiff.onRemove === 0 && r.noDiff.order === 'bg,top', JSON.stringify({diff: r.diff, noDiff: r.noDiff}));
     check(`${label} maplibre-compat: removeLayer() calls onRemove and the layer is gone from the picture, and remove() calls onRemove of the layers that are left`,
         r.removed.calls === 1 && r.removed.gl && r.removed.after === 'white' && r.removed.order === 'bg,top' && r.removedByMap === 1, JSON.stringify({removed: r.removed, removedByMap: r.removedByMap}));
-    check(`${label} maplibre-compat: with the worker renderer, addLayer of a custom layer fires an error that says to pass renderer: 'main', and adds nothing`,
-        r.worker.errors.length === 2 && r.worker.errors.every(m => m.startsWith('[map-jr-gl] addLayer: the custom layer "red"') && m.includes("renderer: 'main'")) && r.worker.order === 'bg,top', JSON.stringify(r.worker));
+    check(`${label} maplibre-compat: with the worker renderer (asked for, and the default), the first custom layer moves the map to the main thread; onAdd runs once with its context, the layer draws, and the camera, image, feature state, sky, marker and listeners stay (#1730)`,
+        r.worker.length === 2 && r.worker.every(w => w.after === 'main' && !w.errors.length && !w.events.length && w.order === 'bg,red,top' && w.adds === 1 && w.sameGl && w.inside === 'red' && w.covered === 'blue'
+            && w.camera === '2,1,10' && w.image && w.state && w.sky && w.marker && w.moves > 0), JSON.stringify(r.worker));
     const m = r.mercator;
     check(`${label} maplibre-compat: MercatorCoordinate gives the values of MapLibre GL JS`,
         near(m.origin[0], 0.5) && near(m.origin[1], 0.5) && m.origin[2] === 0 && near(m.ny[0], 0.29444444444444445) && near(m.ny[1], 0.3760277015186852) && near(m.ny[2], 3.295078460614361e-6)
@@ -154,14 +155,32 @@ async function run() {
     const el = m.getContainer(); m.remove(); el.remove();
     out.removedByMap = removedByMap;
 
-    // The worker renderer (asked for, and the default): an error, and no layer.
-    const errors = [];
+    // The worker renderer (asked for, and the default): the first custom layer moves the engine to the main thread, as
+    // after a lost context, and the map keeps its camera, style, images, feature state, sky, markers and listeners (#1730).
+    out.worker = [];
     for (const renderer of ['worker', undefined]) {
-        const w = make(renderer);
+        const w = make(renderer), errors = [], events = [];
         w.on('error', e => errors.push(e.error.message));
         await new Promise(r => w.once('load', r));
-        w.addLayer({...layer}, 'top');
-        out.worker = {errors, order: w.getLayersOrder().join()};
+        const before = w.renderer;
+        w.jumpTo({center: [2, 1], zoom: 1.5, bearing: 10});
+        w.addImage('dot', {width: 1, height: 1, data: new Uint8Array([255, 0, 0, 255])});
+        w.setFeatureState({source: 'g', id: 1}, {hover: true});
+        w.setSky({'sky-color': '#123456'});
+        const marker = new mod.Marker().setLngLat([0, 0]).addTo(w);
+        let moves = 0;
+        w.on('move', () => moves++);
+        for (const type of ['webglcontextlost', 'webglcontextrestored']) w.on(type, () => events.push(type));
+        let adds = 0, gl;
+        w.addLayer({...layer, onAdd(map, g) { adds++; gl = g; layer.onAdd.call(this, map, g); }}, 'top');
+        const order = w.getLayersOrder().join();
+        await new Promise(r => w.once('idle', r));
+        await wait(300);
+        const [inside, covered] = await colours(w, [[-10, 0], [12, 0]]);
+        w.jumpTo({zoom: 1.6});
+        out.worker.push({renderer: renderer ?? 'default', before, after: w.renderer, errors, events, order, adds, sameGl: !!gl && gl === w.getCanvas().getContext('webgl2'), inside, covered,
+            camera: [w.getCenter().lng, w.getCenter().lat, w.getBearing()].map(v => Math.round(v * 100) / 100).join(), image: w.hasImage('dot'), state: w.getFeatureState({source: 'g', id: 1}).hover === true,
+            sky: w.getSky()?.['sky-color'] === '#123456', marker: w.getContainer().contains(marker.getElement()), moves});
         const e = w.getContainer(); w.remove(); e.remove();
     }
     const c = mod.MercatorCoordinate.fromLngLat([-74, 40.7], 100);

@@ -1,13 +1,11 @@
 // The layers of the type "custom" of the entry `@map-jr/map-jr-gl/maplibre-compat` (`CustomLayerInterface` of
 // MapLibre GL JS). The compat map loads this file with its first custom layer, and only for a map made with
 // `renderer: 'main'`, because the code of the user draws into the WebGL context of the map.
-import {mercX, mercY, type Transform} from './geo.ts';
+import {mercX, mercY, EARTH_CIRCUMFERENCE as EARTH, type Transform} from './geo.ts';
 import type {Scene} from './gl.ts';
 import type {Map} from './compat-map.ts';
 import type {CustomLayerInterface, CustomRenderMethodInput, ProjectionData} from './compat-types.ts';
 
-/** The circumference of the earth at the equator in meters, from the radius that MapLibre GL JS uses (as `MercatorCoordinate`). */
-const EARTH = 2 * Math.PI * 6371008.8;
 /** The units of a tile in MapLibre GL JS (`getProjectionData`) for each unit of a tile here (`tileMatrix4`). */
 const UNIT = 4096 / 8192;
 // The prelude of MapLibre GL JS for the Mercator projection has these functions under these names; the code is new.

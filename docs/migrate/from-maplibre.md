@@ -273,7 +273,6 @@ wrappers and plugins that run with this library, and their types.
 The library does not have these parts of MapLibre GL JS, among others:
 
 - MapLibre Tiles (MLT). A vector source with `encoding: 'mlt'` draws nothing and writes a `[map-jr-gl]` warning.
-- The expressions `within` and `distance`.
 - `text-writing-mode`.
 - Roll.
 - Custom layers with the worker renderer.

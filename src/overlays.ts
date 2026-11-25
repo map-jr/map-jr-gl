@@ -26,12 +26,14 @@ abstract class Overlay extends Evented {
         if (!this.map || !this.lngLat) return;
         const p = this.map.project(this.lngLat);
         // (A marker can be turned. With the alignment `map`, the angle is from north on the map, so it turns with the map.)
-        const turn = this.rotation - (this.rotationAlignment === 'map' ? this.map.getBearing() : 0);
-        this.el.style.transform = `translate(${this.round(p.x + this.offset[0])}px,${this.round(p.y + this.offset[1])}px) translate(-${part(this.anchor).join('%,-')}%)${turn ? ` rotate(${turn}deg)` : ''}`;
+        // With the pitch alignment `map`, it lies on the ground: a `rotateX` by the pitch, as in MapLibre GL JS.
+        const turn = this.rotation - (this.rotationAlignment === 'map' ? this.map.getBearing() : 0), tilt = this.pitchAlignment === 'map' ? this.map.getPitch() : 0;
+        this.el.style.transform = `translate(${this.round(p.x + this.offset[0])}px,${this.round(p.y + this.offset[1])}px) translate(-${part(this.anchor).join('%,-')}%)${tilt ? ` rotateX(${tilt}deg)` : ''}${turn ? ` rotate(${turn}deg)` : ''}`;
     };
     protected rotation = 0;
     protected round = Math.round;
     protected rotationAlignment = 'auto';
+    protected pitchAlignment = 'auto';
     setLngLat(lngLat: LngLatLike) { this.lngLat = toLngLat(lngLat); this.update(); return this; }
     /** The map position. Before `setLngLat`, it is `undefined`, although the type says `LngLat`, as in MapLibre GL JS. */
     getLngLat(): LngLat { return (this.lngLat ? new LngLat(this.lngLat[0], this.lngLat[1]) : undefined) as LngLat; }
@@ -298,14 +300,14 @@ export class Marker extends Overlay {
     protected anchor: Anchor;
     private popup?: Popup | null;
     private draggable = false;
-    private pitchAlignment: string;
     private ownPin = false;
     protected localize(map: Map) { if (this.ownPin) this.el.setAttribute('aria-label', ui(map, 'Marker.Title', 'Map marker')); }
     constructor(options: MarkerOptions = {}) {
         super();
         this.rotation = options.rotation ?? 0;
         this.rotationAlignment = options.rotationAlignment ?? 'auto';
-        this.pitchAlignment = options.pitchAlignment ?? 'auto';
+        // (`auto` takes the value of `rotationAlignment` when it is set, as in MapLibre GL JS.)
+        this.pitchAlignment = options.pitchAlignment && options.pitchAlignment !== 'auto' ? options.pitchAlignment : this.rotationAlignment;
         this.anchor = options.anchor ?? (options.element ? 'center' : 'bottom');
         this.offset = xy(options.offset ?? [0, 0]);
         if (options.element) this.el = options.element;
@@ -402,9 +404,9 @@ export class Marker extends Overlay {
     }
     getRotationAlignment() { return this.rotationAlignment; }
     setRotationAlignment(alignment = 'auto') { this.rotationAlignment = alignment; this.update(); return this; }
-    /** (The value is kept. A marker is always upright on the screen.) */
+    /** With `map`, the marker lies on the ground of a map with pitch. `auto` takes the value of `rotationAlignment`, and `getPitchAlignment` returns that value. */
     getPitchAlignment() { return this.pitchAlignment; }
-    setPitchAlignment(alignment = 'auto') { this.pitchAlignment = alignment; return this; }
+    setPitchAlignment(alignment?: string) { this.pitchAlignment = alignment && alignment !== 'auto' ? alignment : this.rotationAlignment; this.update(); return this; }
     setLngLat(lngLat: LngLatLike) { super.setLngLat(lngLat); if (this.popup?.isOpen()) this.popup.setLngLat(lngLat); return this; }
 
     private startDrag(e: PointerEvent) {

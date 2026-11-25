@@ -53,12 +53,18 @@ export interface QuerySet {
     /** A circle layer: the first value is true when `circle-pitch-alignment` is `map`, the second when `circle-pitch-scale` is `map`. */
     pitch?: [boolean, boolean];
     /**
-     * A circle layer whose size depends on the feature: its `circle-radius` and `circle-stroke-width` in pixels, which
-     * each feature is tested with at the zoom of the map, as in MapLibre GL JS. `scale` is the tile units of one pixel;
-     * without it the set's `radius` is used.
+     * A circle or line layer whose size depends on the feature, which each feature is tested with at the zoom of the
+     * map, as in MapLibre GL JS: for a circle `a` is `circle-radius` and `b` is `circle-stroke-width`; for a line (`line`)
+     * `a` is `line-width` and `b` is `line-gap-width`, all in pixels. `scale` is the tile units of one pixel; without
+     * it the set's `radius` is used.
      */
-    circle?: {radius: unknown; stroke: unknown; zoom: number; scale?: number};
+    size?: {line?: boolean; a: unknown; b: unknown; zoom: number; scale?: number};
+    /** A circle layer with `circle-translate`: how far its circles are drawn from their features, in pixels of the screen. */
+    translate?: [number, number];
 }
+
+/** The rectangle of the screen that a set is tested with: moved back by its translation, as MapLibre GL JS does. */
+export const setBox = (box: number[], s: QuerySet) => s.translate ? [box[0] - s.translate[0], box[1] - s.translate[1], box[2] - s.translate[0], box[3] - s.translate[1]] : box;
 
 function outside(c: number[]) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -106,6 +112,13 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
     return inside;
 }
 
+/**
+ * How far from its geometry a feature is found, in pixels: for a circle the radius `a` and the stroke `b`; for a line
+ * half of the width `a`, or of the gap `b` and two widths when there is a gap, as MapLibre GL JS draws it, and at
+ * least 3 pixels so that a thin line can be hit.
+ */
+export const sizeOf = (line: boolean | undefined, a: number, b: number) => line ? Math.max(3, (b > 0 ? b + 2 * a : a) / 2) : a + b;
+
 /** Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. */
 export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFeature[] {
     const out: FoundFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
@@ -114,7 +127,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
     // each feature is read one time and tested for each set.
     const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius}])
         .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also),
-            size: 'circle' in s && s.circle?.scale ? {...s.circle, r: compileProp(s.circle.radius, 'number', 5), w: compileProp(s.circle.stroke, 'number', 0)} : null}));
+            size: 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0)} : null}));
     for (const name in layers) {
         if (q.sourceLayers && !q.sourceLayers.includes(name)) continue;
         const mine = q.sets ? sets.filter(s => s.sourceLayer ? s.sourceLayer === name : name === GEOJSON_LAYER || !s.layer) : sets;
@@ -130,7 +143,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
                     // tile gives it only when its bounding box touches the tile, so that a query gives it one time.
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
-                const size = set.size, radius = size ? Math.min(Math.max(size.r.eval(size.zoom, f) + size.w.eval(size.zoom, f), 0), 1e4) * size.scale! : set.radius;
+                const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
                 if (!touches(f.type, c, ends, q.px, q.py, radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
@@ -210,7 +223,9 @@ export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
     // A circle is largest at the bottom of the screen, which is nearest to the camera.
     const k = Math.max(1, tr.perspectiveAt(...tr.screenToGround(tr.width / 2, Math.max(box[3], tr.height))));
     const r = Math.max(...circles.map(s => s.radius)) * k;
-    return {box: [box[0] - r, box[1] - r, box[2] + r, box[3] + r], circles: new Set(circles)};
+    // (A translated circle is drawn away from its feature: the rectangle also reaches back by each translation.)
+    const [x0, y0, x1, y1] = circles.reduce((b, s) => { const t = setBox(box, s); return [Math.min(b[0], t[0]), Math.min(b[1], t[1]), Math.max(b[2], t[2]), Math.max(b[3], t[3])]; }, box);
+    return {box: [x0 - r, y0 - r, x1 + r, y1 + r], circles: new Set(circles)};
 }
 
 /** The positions of a geometry (in longitude and latitude) where a circle layer draws a circle. */

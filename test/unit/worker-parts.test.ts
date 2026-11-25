@@ -9,7 +9,7 @@ const src = (f: string) => readFileSync(new URL(`../../src/${f}`, import.meta.ur
 const parts = [...src('parts.ts').matchAll(/^ {4}(\w+): \(\) => import\('\.\/([\w-]+)\.ts'\),$/gm)].map(m => ({name: m[1], file: m[2]}));
 
 test('each part of the worker has its URL on the page, and the worker file exports what the part imports', () => {
-    assert.deepEqual(parts.map(p => p.name), ['geojson', 'dem', 'pmtiles']);
+    assert.deepEqual(parts.map(p => p.name), ['geojson', 'dem', 'pmtiles', 'within', 'globe']);
     const loader = src('loader.ts'), worker = src('worker.ts');
     const exported = new Set([...worker.matchAll(/^export \{([^}]+)\} from/gm)].flatMap(m => m[1].split(',').map(s => s.trim())));
     for (const {name, file} of parts) {
@@ -18,7 +18,7 @@ test('each part of the worker has its URL on the page, and the worker file expor
         // (A part made of other modules, as dem.ts is, imports what they import.)
         const own = [file, ...[...src(file + '.ts').matchAll(/^export \* from '\.\/([\w-]+)\.ts';$/gm)].map(m => m[1])];
         for (const m of own.map(f => src(f + '.ts')).join('\n').matchAll(/^import \{([^}]+)\} from '\.\/[\w-]+\.ts';$/gm))
-            for (const n of m[1].split(',').map(s => s.trim()).filter(s => !s.startsWith('type '))) assert.ok(exported.has(n), `worker.ts does not export ${n}, which the part ${name} imports`);
+            for (const n of m[1].split(',').map(s => s.trim().split(' as ')[0]).filter(s => !s.startsWith('type '))) assert.ok(exported.has(n), `worker.ts does not export ${n}, which the part ${name} imports`);
     }
 });
 
@@ -38,4 +38,15 @@ test('a tile of a GeoJSON source that is asked for while the part loads waits fo
     await assert.rejects(part('dem'), /no dem part/);
     await assert.rejects(part('dem'), /no dem part/);
     assert.deepEqual(asked, ['geojson', 'dem']);
+});
+
+test('a style that uses "within" loads its part once, and its tiles wait for the part and get its result (#1707)', async () => {
+    const asked: PartName[] = [];
+    setPartLoader(async name => { asked.push(name); await new Promise(r => setTimeout(r, 30)); return import(`../../src/${name}.ts`); });
+    const b = new TileBuilder(), square = {type: 'Polygon', coordinates: [[[0, 0], [0, 5], [5, 5], [5, 0], [0, 0]]]};
+    b.setStyle([{id: 'c', type: 'circle', source: 'g', paint: {'circle-color': ['case', ['within', square], '#f00', '#00f']}}]);
+    b.setGeoJSON('g', {type: 'FeatureCollection', features: [[2, 2], [8, 8]].map(c => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}))});
+    const ir = await b.loadIR({id: 1, source: 'g', url: 'geojson://g/0/0/0', z: 0, at: [0, 0, 0], overscaled: false});
+    assert.deepEqual(Array.from((ir.layers.c as any).color), [255, 0, 0, 255, 0, 0, 255, 255]);
+    assert.equal(asked.filter(n => n === 'within').length, 1);
 });

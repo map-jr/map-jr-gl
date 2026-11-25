@@ -1,7 +1,0 @@
-{
-  "label": "line-gradient with line-dasharray",
-  "decision": "later",
-  "issue": 1706,
-  "reason": "line-gradient together with line-dasharray is not drawn as in MapLibre GL JS.",
-  "pattern": "^line-gradient-dasharray/"
-}

@@ -99,6 +99,13 @@ let compiling: MapStates = {g: {}, f: {}};
 /** Sets the map that the expressions compiled from now on (in this turn of the thread) belong to. */
 export function compileFor(states: MapStates) { compiling = states; }
 
+/**
+ * `within` and `distance` (#1707): their code is a part that loads on demand (src/within.ts). An expression that uses
+ * one sets `geo.wanted`; the tile builder then loads the part and sets `geo.code`, and sets `geo.tile` to the tile that
+ * it builds or queries. Without the code (the part failed to load), `within` gives false and `distance` NaN.
+ */
+export const geo: {wanted?: boolean; code?: typeof import('./within.ts'); tile?: [number, number, number]} = {};
+
 /** An image inside label text (`format` with `image`) travels through the text as its name between these two characters. */
 /** Rich text (`format` with options): the size, font and color of the text that follows, between these two characters. */
 export const STYLE_OPEN = '\uE002', STYLE_CLOSE = '\uE003';
@@ -495,6 +502,11 @@ export function compileExpr(e: any, flags: Flags): Fn {
             for (let i = e.length - 3; i >= 1; i -= 2) body = substitute(body, e[i], e[i + 1]);
             return compileExpr(body, flags);
         }
+        case 'within': case 'distance': {
+            geo.wanted = flags.dd = true;
+            const g = e[1], w = op === 'within';
+            return c => geo.code ? geo.code[op as 'within'](g, c.f, geo.tile) : w ? false : NaN;
+        }
         default:
             if (math1[op]) { const a = arg(1), f = math1[op]; return c => f(a(c)); }
             if (e === flags.list) return () => e;
@@ -548,7 +560,10 @@ function legacyFilter(f: any): Fn {
     if (!test) { warnOnce(`Unsupported filter "${op}"`); return () => true; }
     // A feature without an id has the id null, so `["==", "$id", null]` holds for it (MapLibre compares `["id"]`).
     if (key === '$id' && v === null && (op === '==' || op === '!=')) return c => (get(c) == null) === (op === '==');
-    return c => { const x = get(c); return x !== undefined && x !== null ? test(x, v) : op === '!='; };
+    // As MapLibre's `filter-==`: a property that is null equals null, and a missing one equals nothing. The order
+    // operators compare only values of the same type (#1914).
+    const eq = op === '==' || op === '!=';
+    return c => { const x = get(c); return (eq || typeof x === typeof v) && test(x, v); };
 }
 
 export function compileFilter(f: any): Fn | null {

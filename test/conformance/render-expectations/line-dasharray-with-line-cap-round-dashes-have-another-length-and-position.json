@@ -1,7 +1,0 @@
-{
-  "label": "line-dasharray with line-cap: round: dashes have another length and position",
-  "decision": "later",
-  "issue": 1805,
-  "reason": "line-dasharray with line-cap: round: dashes have another length and position.",
-  "pattern": "^(line-dasharray/round/segments|line-dasharray/round/single-dasharray-element|line-dasharray/round/zero-gap-width)$"
-}

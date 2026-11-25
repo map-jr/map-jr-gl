@@ -1,7 +1,0 @@
-{
-  "label": "image source on the globe",
-  "decision": "later",
-  "issue": 1826,
-  "reason": "An image source on the globe is stretched toward the pole, and the area around the pole is filled.",
-  "pattern": "^projection/globe/(terrain/)?image(-non-parallelogram)?$"
-}

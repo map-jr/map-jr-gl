@@ -16,6 +16,10 @@ BSD-3-Clause.
   repeat the short texts of that validation, such as `missing required property "source"`. The type check of expressions
   (`src/expr-check.ts`) is a close translation, changed, of the type check of expressions of that project (`checkSubtype` of `types.ts`, `ParsingContext` and the `parse` of each expression); `THIRD-PARTY-LICENSES.md` has its licence text. The rest of the code is new; `scripts/style-spec-values.mjs` writes the types, enum values and
   limits of the paint and layout properties from the specification file of that project.
+- The expressions `within` and `distance` (`src/within.ts`, a part of the worker) are a close translation, changed, of
+  `within.ts`, `distance.ts` and `geometry_util.ts` of the MapLibre style specification (BSD-3-Clause), and their
+  distances of `cheap_ruler.ts` there, which comes from [cheap-ruler](https://github.com/mapbox/cheap-ruler) (ISC,
+  Mapbox). `THIRD-PARTY-LICENSES.md` has both license texts.
 - Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
   (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
   and which values move. The code is new.
@@ -27,12 +31,14 @@ BSD-3-Clause.
 - The sky and the fog of the root property `sky` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shaders `sky` and `terrain` and `fog` in `shaders/_prelude_fog`). The code in `src/gl.ts` is new; the sky on the globe follows the blend of `u_sky_blend` in `sky.fragment.glsl` and `skyUniformValues`. The atmosphere on the globe is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS (BSD-3-Clause), changed, and follows its `drawAtmosphere`, `getSunPos` and `getAtmosphereAltitudeBlend`; the notice is in `THIRD-PARTY-LICENSES.md`.
 - The prelude that custom layers get on the globe (`src/custom-layers.ts`) is a close translation of `_projection_globe.vertex.glsl` of MapLibre GL JS 6.17 (BSD-3-Clause), shortened; the notice is in `THIRD-PARTY-LICENSES.md`.
 - The placement of `text-variable-anchor` and `text-variable-anchor-offset` follows `placeLayerBucketPart` and `attemptAnchorPlacement` of MapLibre GL JS 6.17 (BSD-3-Clause): the anchor of the previous placement first, then every anchor without overlap, then every anchor with overlap, and an icon of `icon-text-fit` tested at each anchor. The code is new.
+- The reload of expired tiles follows `setExpiryData`, `getExpiryTimeout` and `_setTileReloadTimer` of MapLibre GL JS 6.17 (BSD-3-Clause): `max-age` of `Cache-Control` before `Expires`, and a delay of 1 s, 2 s, 4 s and so on for a response that is out of date when it arrives. The code in `src/tile-fetch.ts` and `src/engine.ts` is new.
 - `fill-extrusion-pattern` follows the method of the shader `fill_extrusion_pattern` and of `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): the image lies on the roof by tile position and on the walls by the distance along the ring and the height, and the light of a patterned wall is computed with a gray of 0.5. The code is new.
 - The level of detail of a pitched view (`lodZoom` in `src/geo.ts`, used with 3D terrain and by `setSourceTileLodParams`) follows the formula of `createCalculateTileZoomFunction` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
 - The zoom of the scroll wheel (`src/engine.ts`), and its snap to `zoomSnap` in the compat entry, follow the method of `ScrollZoomHandler` and `evaluateZoomSnap` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
 - glsl-atmosphere (github.com/wwwtyro/glsl-atmosphere, Unlicense): the atmosphere shader of MapLibre GL JS, which the shader of the atmosphere on the globe copies, follows its scattering method.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
-  in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera
+  in labels, the light on buildings, the size of dashes, the joins of lines (`LineBucket`: the inner vertices of a
+  bevel and the extra vertices at a sharp corner), the size of circles on a map with pitch, and the movement of the camera
   on 3D terrain.
 - The layer type `color-relief` follows the method of MapLibre GL JS (BSD-3-Clause; `color_relief_style_layer.ts` and
   the shader `color_relief`): the stops of the `interpolate` expression go to the GPU, and the shader searches the two
@@ -90,7 +96,9 @@ BSD-3-Clause.
 - The cut of fills and lines for the globe (`src/subdivide.ts`) follows the subdivision of MapLibre GL JS 6.17
   (`src/render/subdivision.ts`, BSD-3-Clause): the triangles of a polygon are clipped to the cells of a grid and share
   their vertices, and a tile at the north or south edge of the world gets triangles to the pole, with the y values
-  -32768 and 32767 for the pole vertices. The code is new, and the size of the grid is not that of MapLibre.
+  -32768 and 32767 for the pole vertices. The code is new, and the size of the grid is not that of MapLibre. A point
+  of a heatmap on the globe is a grid of 4 × 4 corners at the extrusions of `CircleBucket` with the granularity 3
+  (`src/data/bucket/circle_bucket.ts`), and the code that draws it (`tessellate` in `src/tile.ts`) is new.
 - The globe (`src/globe.ts` and the `GLOBE` variant of the programs in `src/gl.ts`) follows the globe of MapLibre GL JS
   6.17 (`src/geo/projection/vertical_perspective_transform.ts`, `globe_utils.ts`, `_projection_globe.vertex.glsl`,
   BSD-3-Clause): the radius that keeps the scale of Mercator at the center, the matrix from the unit sphere to clip
@@ -99,7 +107,7 @@ BSD-3-Clause.
   A drag on the globe (`drag` in `src/globe.ts`) follows `versorSetLocationAtPoint` and `panSurfaceLocation` in
   `globe_utils.ts`: the rotation from the last pointer to the new one, the eased curve near the edge of the globe, and
   the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the center
-  can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the center (`interpolateLngLatForGlobe`). The code is new.
+  can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the center (`interpolateLngLatForGlobe`). The size of text along a line on the globe follows `getPitchedTextCorrection` in `vertical_perspective_transform.ts`. The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them. `test/conformance/render.mjs` applies
   the operations of a render test in the order and with the arguments of `applyOperations` in

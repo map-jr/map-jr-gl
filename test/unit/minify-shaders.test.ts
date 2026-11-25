@@ -19,3 +19,8 @@ test('a preprocessor line keeps a line of its own, and a template without GLSL i
     const code = 'const s = `#ifdef GLOBE\nuniform float u_r;\n#endif\nvoid main() {}`; const t = `x  // y`;';
     assert.equal(apply(code), 'const s = `#ifdef GLOBE\nuniform float u_r;\n#endif\nvoid main(){}`; const t = `x  // y`;');
 });
+
+test('spaces go from around + and - unless the other side is + or - too, and numbers lose the zeros they do not need (#1948)', () => {
+    const code = 'const s = `uniform float u_a; void main() { float b = u_a * 2.0 - 1.0 + 0.5; float c = b - -u_a + 10.0 - 1.05; float d = 1.0e3 + v0.0 - ${N}.0; }`;';
+    assert.equal(apply(code), 'const s = `uniform float u_a;void main(){float b=u_a*2.-1.+.5;float c=b- -u_a+10.-1.05;float d=1.0e3+v0.0-${N}.0;}`;');
+});

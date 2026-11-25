@@ -8,6 +8,7 @@ import MagicString from 'magic-string';
 import {shortenPrivateNames} from './scripts/private-names.mjs';
 import {minifyShaders} from './scripts/minify-shaders.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
+import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -46,7 +47,8 @@ mkdirSync('dist', {recursive: true});
 
 /**
  * Makes the shader programs smaller: the GLSL in src/gl.ts keeps its comments and layout in the source, but the built
- * files do not need them. Only whitespace and comments change, so the programs stay the same (scripts/minify-shaders.mjs).
+ * files do not need them. Whitespace and comments go, and a number loses the zeros it does not need (`1.0` is `1.`), so
+ * the programs stay the same (scripts/minify-shaders.mjs).
  */
 const shaders = {
     name: 'minify-shaders',
@@ -68,6 +70,25 @@ const glConstants = {
         const edited = new MagicString(code);
         for (const [start, end, text] of edits) edited.overwrite(start, end, text);
         return withMap(edited, id);
+    },
+};
+
+/**
+ * For the worker file: each read of a member of `Math` or of `Array.isArray` (`Math.floor`) becomes a name that one module
+ * exports, which the minifier shortens to one or two letters (scripts/global-names.mjs). The worker has about 900 of
+ * them. The page scripts have few, and there the module would cost more than it saves.
+ */
+const globalNames = {
+    name: 'global-names',
+    resolveId: id => id === GLOBALS_MODULE ? id : null,
+    load: id => id === GLOBALS_MODULE ? globalsModule() : null,
+    transform(code, id) {
+        if (!/\/src\/[^/]+\.[jt]s$/.test(id)) return null;
+        const {edits, import: line} = aliasGlobals(code, id);
+        if (!edits.length) return null;
+        const edited = new MagicString(code);
+        for (const [start, end, text] of edits) edited.overwrite(start, end, text);
+        return withMap(edited.append(line), id);
     },
 };
 
@@ -187,9 +208,9 @@ const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
 // The copy of the worker inside a standalone file contains its parts. It starts from a blob, which has no file beside
 // it: the line that names the source map goes. (It is built into a folder of its own, and only its text is used.)
 const workerLib = {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'};
-await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne]);
+await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne, globalNames]);
 const workerSrc = readFileSync('.cache/worker-all-in-one/map-jr-gl-worker.js', 'utf8');
-await run({lib: workerLib}, undefined, [splitParts, allInOne]);
+await run({lib: workerLib}, undefined, [splitParts, allInOne, globalNames]);
 for (const {name, file} of workerParts) {
     await run({lib: {entry: `src/${file}.ts`, formats: ['iife'], name: 'MapJrPart', fileName: () => `map-jr-gl-worker-${name}.js`},
         rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}});
@@ -223,18 +244,22 @@ await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: fal
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM). It draws without WebGL, so of the
 // part `dem` it takes the contour lines and not 3D terrain, which would bring the renderer of WebGL with it (#1849).
+// The part `globe` is for the WebGL engine only, and the server renderer does not contain it (#2006).
 const contourOnly = {
     name: 'server-dem',
     enforce: 'pre',
     transform(code, id) {
         if (!id.endsWith('/src/parts.ts')) return null;
-        const edited = new MagicString(code), at = code.indexOf("dem: () => import('./dem.ts')");
-        if (at < 0) throw new Error('build.mjs: src/parts.ts has no part dem.');
-        edited.overwrite(at, at + 29, "dem: () => import('./contour.ts')");
+        const edited = new MagicString(code);
+        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"]]) {
+            const at = code.indexOf(from);
+            if (at < 0) throw new Error(`build.mjs: src/parts.ts has no line "${from}".`);
+            edited.overwrite(at, at + from.length, to);
+        }
         return withMap(edited, id);
     },
 };
-await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [contourOnly, allInOne]);
+await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [contourOnly, allInOne, globalNames]);
 
 // The name, the version and the licence go in the first line of each built file that package.json names. The chunks
 // that these files share do not get the line, because each line counts against the size budgets. (The minifier of
