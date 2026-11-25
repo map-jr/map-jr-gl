@@ -34,9 +34,9 @@ test('globe: the grid has 40, 20, 10, 5, 3 and 1 cells at zoom 0 to 10, more for
     assert.deepEqual([0, 2, 4, 6, 8, 10, 11, 12, 15].map(z => globeGrid(z)), [40, 20, 10, 5, 3, 1, 1, 0, 0]);
     assert.equal(globeGrid(5, 9), 28); // a tile of zoom 5 shown at zoom 9: the cells are those of zoom 9
     assert.equal(globeGrid(0, 11.9), 128); // (at most 128 cells a side)
-    assert.deepEqual(globeBuild({z: 2, y: 0}), {grid: 20, north: true, south: false});
-    assert.deepEqual(globeBuild({z: 10, y: 1023}), {grid: 1, north: false, south: true});
-    assert.deepEqual(globeBuild({z: 10, y: 5}), {grid: 1, north: false, south: false}); // one cell: the border is still cut
+    assert.deepEqual(globeBuild({z: 2, y: 0}), {grid: 20, north: true, south: false, heat: true});
+    assert.deepEqual(globeBuild({z: 10, y: 1023}), {grid: 1, north: false, south: true, heat: false});
+    assert.deepEqual(globeBuild({z: 10, y: 5}), {grid: 1, north: false, south: false, heat: false}); // one cell: the border is still cut
     assert.equal(globeBuild({z: 12, y: 0}), undefined);
 });
 
@@ -175,19 +175,22 @@ test('globe: a building has a roof cut along the grid and a wall under every pie
     for (const [k, i] of walls(cut).entries()) if (k % 4 === 0) assert.ok(Math.hypot(cut.v[i * 4] - cut.v[(i + 1) * 4], cut.v[i * 4 + 1] - cut.v[(i + 1) * 4 + 1]) <= 512);
 });
 
-// #1824: on a map that can show the globe, a point of a heatmap is a grid of 4 × 4 corners in sevenths, drawn without
-// instancing (which is about 30 times slower in SwiftShader). A circle, and a heatmap without the globe, keep one quad.
-test('a heatmap point is a grid of 4 × 4 corners on a map that can show the globe', () => {
+// #1824: on a globe below zoom 6, a point of a heatmap is a grid of 4 × 4 corners in sevenths, drawn without instancing
+// (which is about 30 times slower in SwiftShader). A circle, a heatmap from zoom 6 and a heatmap without the globe keep one quad.
+test('a heatmap point is a grid of 4 × 4 corners on a globe below zoom 6', () => {
     const points = (heat: boolean): Batch => ({type: 'circle', heat, radius: Float32Array.from([0.5, 2]),
         geom: {coords: Int16Array.from([10, 20, 30, 40]), ringEnds: Uint32Array.from([1, 2]), featEnds: Uint32Array.from([1, 2])}});
-    const g = tessellate(points(true), {grid: 16}) as Extract<GLBatch, {type: 'circle'}>;
+    assert.equal(globeBuild({z: 5, y: 3})!.heat, true);
+    assert.equal(globeBuild({z: 6, y: 3})!.heat, false);
+    assert.equal(globeBuild({z: 4, y: 3}, 6)!.heat, false, 'an overzoomed tile follows the zoom that it is built for');
+    const g = tessellate(points(true), globeBuild({z: 2, y: 1})) as Extract<GLBatch, {type: 'circle'}>;
     assert.equal(g.grid, true);
     assert.equal(g.pos.length, 2 * 16 * 4);
     assert.equal(g.idx.length, 2 * 9 * 6);
     assert.deepEqual([...g.pos.subarray(16 * 4, 16 * 4 + 8)], [30, 40, -7, -7, 30, 40, -3, -7]);
     assert.deepEqual([...g.radius!], [...Array(16).fill(0.5), ...Array(16).fill(2)]);
     assert.ok([...g.idx].every((v, i) => (v >> 4) === Math.floor(i / 54)), 'each point uses only its own 16 corners');
-    for (const [heat, globe] of [[true, undefined], [false, {grid: 16}]] as const) {
+    for (const [heat, globe] of [[true, undefined], [true, globeBuild({z: 7, y: 3})], [false, globeBuild({z: 2, y: 1})]] as const) {
         const q = tessellate(points(heat), globe) as Extract<GLBatch, {type: 'circle'}>;
         assert.equal(q.grid, undefined);
         assert.deepEqual([...q.idx], [0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6]);

@@ -487,10 +487,11 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
     if (b.type === 'circle') {
         // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
         // be more compact but is many times slower on software renderers (about 30 times in SwiftShader, #1824).
-        // On a map that can show the globe, a point of a heatmap is a grid of 4 × 4 corners, as in MapLibre GL JS
+        // On a globe below zoom 6 (see `globeBuild`), a point of a heatmap is a grid of 4 × 4 corners, as in MapLibre GL JS
         // (granularity 3 of its CircleBucket): the corners lie on the sphere, and the four corners of one quad would cut
-        // under it, which moves the bump toward the center of the globe. Its corners are in sevenths.
-        const grid = !!globe && b.heat, g = grid ? 4 : 2, v = g * g, e = grid ? [-7, -3, 3, 7] : [-1, 1];
+        // under it, which moves the bump toward the center of the globe. Its corners are in sevenths. (A grid of 3 × 3
+        // is 1.3 % off the render test projection/globe/heatmap.)
+        const grid = !!globe?.heat && b.heat, g = grid ? 4 : 2, v = g * g, e = grid ? [-7, -3, 3, 7] : [-1, 1];
         const n = ringEnds.length, pos = new Int16Array(n * v * 4), idx = new Uint32Array(n * (g - 1) ** 2 * 6);
         const color = b.color ? new Uint8Array(n * v * 4) : undefined, radius = b.radius ? new Float32Array(n * v) : undefined, radius1 = b.radius1 ? new Float32Array(n * v) : undefined;
         for (let f = 0, r = 0; f < featEnds.length; f++) {

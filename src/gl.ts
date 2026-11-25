@@ -624,7 +624,7 @@ interface IconBuffers {
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; /** The same for `line-gap-width`. */ gap?: boolean; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
-    /** A heatmap on a map that can show the globe: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
+    /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
 export interface GLTile {
     /** Distinguishes this tile's contents from any other's, including an earlier build of the same tile. */
