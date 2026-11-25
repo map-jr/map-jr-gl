@@ -61,6 +61,8 @@ Gives the elevation at a position from a `raster-dem` source.
 ### Contour source
 
 `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](../guide/terrain.md).
+Unlike maplibre-contour, it leaves out a tile whose lines would cross the cells of its grid more than 1,000,000 times
+(for example elevation tiles read with the wrong `encoding`), and it warns one time for each source id on the page.
 
 ### PMTiles
 
@@ -245,7 +247,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** The failure fires `error` once. The tile is not requested again while it stays in the view. It
   is requested again when it leaves the view and comes back, or when the source loads again (MapLibre GL JS 6.17).
 - **This library:** A tile whose request fails with a network error or an HTTP status 5xx is requested again after
-  0.5 s, 1 s and 2 s. Each of these four failures fires `error`, and `idle` waits for the retries.
+  0.5 s, 1 s and 2 s. The first failure fires `error`, as in MapLibre GL JS, and the retries fire none. `idle` waits
+  for the retries.
 - After the fourth failure, the map is idle without the tile, and the tile is requested again every 15 s while the
   view or the overview needs it. These later requests run in the background: they do not make the map leave `idle`,
   they fire no `error` when they fail, and a tile that one of them loads is drawn.

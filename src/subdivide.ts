@@ -7,39 +7,15 @@
  * The method follows the subdivision of MapLibre GL JS (BSD-3-Clause): the triangles of a polygon are clipped to the
  * cells of a grid and share their vertices, and a tile at the north or south edge of the world gets triangles from its
  * border to the pole, with the special y values of MapLibre for the pole vertices. The code is new, and the size of the
- * grid is our own (see `globeGrid`).
+ * grid is our own (see `globeGrid` in tile.ts). The code is a part of the worker that loads on demand (`subdivide` in
+ * parts.ts): only a map that can show the globe needs it.
  */
-import earcut from 'earcut';
 import {EXTENT} from './geo.ts';
-
-/**
- * How a tile is built for the globe: cells a side, whether the tile touches the north or south edge of the world, and
- * whether a point of a heatmap is a grid of corners (see `tessellate`).
- */
-export interface GlobeBuild { grid: number; north?: boolean; south?: boolean; heat?: boolean }
+// (Through tile.ts, so that the part `subdivide` of the worker reads earcut from the worker file: see build.mjs.)
+import {earcut, type GlobeBuild} from './tile.ts';
 
 /** The y values that stand for the poles. No other vertex of a cut fill has them: the cut keeps fills inside the tile. */
 export const NORTH_POLE = -32768, SOUTH_POLE = 32767;
-
-/**
- * Cells a side for a tile of zoom `tileZ` that is built for the zoom `zoom` (higher for an overzoomed tile), and 0 from
- * zoom 12, where the globe has turned into Mercator. One cell then spans 360° / (40 · √2^zoom), so its chord lies about
- * half a pixel under the sphere one zoom level past `zoom`: 40, 20, 10, 5, 3 and 1 cells at zoom 0, 2, 4, 6, 8 and 10.
- */
-export function globeGrid(tileZ: number, zoom = tileZ): number {
-    return zoom >= 12 ? 0 : Math.min(128, Math.max(1, Math.round(40 * 2 ** (zoom / 2 - tileZ))));
-}
-
-/**
- * The field `globe` of the request for a tile (`id`, built for `zoom`), or undefined when the tile needs no cut. A point
- * of a heatmap is a grid of corners below zoom 6 only: from there, the chord of one quad of the default radius (30
- * pixels) lies less than 0.15 pixel under the sphere, and the grid would cost 6 times the buffers for nothing (#1824).
- */
-export function globeBuild(id: {z: number; y: number}, zoom = id.z): GlobeBuild | undefined {
-    const grid = globeGrid(id.z, zoom), north = id.y === 0, south = id.y === 2 ** id.z - 1;
-    // (A tile with one cell is still cut at its border: see `BORDER`.)
-    return grid ? {grid, north, south, heat: zoom < 6} : undefined;
-}
 
 /**
  * The border of a tile gets a vertex every BORDER tile units (128 a side), whatever its grid. A neighboring tile of

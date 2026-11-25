@@ -1,6 +1,5 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {globeBuild} from './subdivide.ts';
 import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
@@ -12,7 +11,7 @@ import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
-import type {TileGL} from './tile.ts';
+import {globeBuild, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
@@ -139,6 +138,7 @@ function partsFor(style: ResolvedStyle): PartName[] {
         if (s.contour) out.add('dem');
         if (s.tiles?.some(t => t.startsWith('pmtiles://'))) out.add('pmtiles');
     }
+    if (globeStops(style.projection?.type)) out.add('subdivide');
     return [...out];
 }
 
@@ -1329,7 +1329,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1363,8 +1363,9 @@ export class Engine {
             t.state = 'error';
             t.rev = ++this.tilesVersion;
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
-            // (The tile reported its failure with its first four requests, as MapLibre GL JS fires one `error`.)
-            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message, source});
+            // A tile reports its failure once, at its first failed request, as MapLibre GL JS 6.17 fires one `error` for
+            // each failed tile (and makes no request again). The retries below are silent (#2007).
+            if (!t.tries) this.emit({type: 'error', message: err.message, source});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).

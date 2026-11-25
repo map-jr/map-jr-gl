@@ -9,7 +9,7 @@ const src = (f: string) => readFileSync(new URL(`../../src/${f}`, import.meta.ur
 const parts = [...src('parts.ts').matchAll(/^ {4}(\w+): \(\) => import\('\.\/([\w-]+)\.ts'\),$/gm)].map(m => ({name: m[1], file: m[2]}));
 
 test('each part of the worker has its URL on the page, and the worker file exports what the part imports', () => {
-    assert.deepEqual(parts.map(p => p.name), ['geojson', 'dem', 'pmtiles', 'within', 'globe']);
+    assert.deepEqual(parts.map(p => p.name), ['geojson', 'dem', 'pmtiles', 'within', 'globe', 'subdivide']);
     const loader = src('loader.ts'), worker = src('worker.ts');
     const exported = new Set([...worker.matchAll(/^export \{([^}]+)\} from/gm)].flatMap(m => m[1].split(',').map(s => s.trim())));
     for (const {name, file} of parts) {
