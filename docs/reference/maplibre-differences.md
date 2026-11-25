@@ -575,11 +575,15 @@ The methods `calculateCameraOptionsFromTo`, `calculateCameraOptionsFromCameraLng
 
 `coveringTiles({tileSize, minzoom, maxzoom, roundZoom})` returns the tiles that the library loads for the view, synchronously, as objects with the fields `canonical` (`z`, `x`, `y`, `key`), `wrap`, `overscaledZ` and `key`. The objects are plain and do not have the methods of MapLibre's `OverscaledTileID`, and that is a decision and will stay. `key` is a string, not MapLibre's number.
 
-`overscaledZ` equals `canonical.z`, as in MapLibre GL JS for this method. The default of `maxzoom` is 30. A pitched view and a globe use the tile cover of this library, which can choose other tiles at the edges than MapLibre GL JS.
+`overscaledZ` equals `canonical.z`, as in MapLibre GL JS for this method. The default of `maxzoom` is 30.
+
+A pitched view takes the tiles that MapLibre GL JS takes: one zoom up to the pitch where MapLibre GL JS starts to vary it (78.5° less half the field of view, at most 60°), and a zoom that falls with the distance from the camera above that pitch. MapLibre GL JS can take one more tile at an edge of a pitched view, because its test of a tile against the view is looser; that tile is outside the view on the ground, and this library leaves it out.
+
+A globe uses the tile cover of this library, which can choose other tiles at the edges than MapLibre GL JS.
 
 `setSourceTileLodParams(maxZoomLevelsOnScreen, tileCountMaxMinRatio, sourceId?)` changes the level of detail of a pitched view for one source, or for all sources of the style when `sourceId` is left out, with the rule of MapLibre GL JS: each value below 1 counts as 1, and an unknown `sourceId` throws an error. The parameters apply above a pitch of 60° and with 3D terrain, as in MapLibre GL JS, and then near tiles can go deeper than the zoom of the center, up to the `maxzoom` of the source.
 
-Without them, a pitched view without terrain uses the tile cover of this library. The parameters stay with the source ID when the style changes, while MapLibre GL JS drops them with a new source object. `coveringTiles` does not use them.
+Without them, the default values of MapLibre GL JS apply (9.314 and 3). The parameters stay with the source ID when the style changes, while MapLibre GL JS drops them with a new source object. `coveringTiles` does not use them.
 
 <!-- api:start -->
 The table counts the 138 public methods of the MapLibre `Map` class in the entry `@map-jr/map-jr-gl/maplibre-compat`. The lists below it have the names.

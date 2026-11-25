@@ -548,7 +548,7 @@ export class Transform {
         if (want < minzoom) return [];
         const z = Math.min(want, maxzoom), n = 2 ** z;
         // (With 3D terrain, ground that is nearer to the camera than the center can take a deeper level, as in MapLibre.)
-        if (this.pitch > 0.5) return this.coveringPitched(this.mlRule(lod) ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod, minzoom);
+        if (this.pitch > 0.5) return this.coveringPitched(this.mlRule() ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod, minzoom);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [mx, my] of this.footprints().flat()) {
             x0 = Math.min(x0, mx); x1 = Math.max(x1, mx);
@@ -566,7 +566,7 @@ export class Transform {
     }
 
     /** Whether the tile cover of a tilted camera takes the rule of MapLibre GL JS (see `coveringPitched`). */
-    private mlRule(lod?: number[]) { return !!this.heightAt || !!lod && this.pitch > 60 || this.fov !== FOV && this.pitch > clamp(78.5 - this.fov * 90 / Math.PI, 0, 60); }
+    private mlRule() { return !!this.heightAt || this.pitch > clamp(78.5 - this.fov * 90 / Math.PI, 0, 60); }
 
     /**
      * Tile cover for a tilted camera. The view is a trapezoid on the ground whose far edge covers much more area,
@@ -580,7 +580,7 @@ export class Transform {
         const quad = pts.length > 4 ? [...half(pts), ...half([...pts].reverse())] : this.footprints()[0];
         const mid = [quad.reduce((t, q) => t + q[0], 0) / quad.length, quad.reduce((t, q) => t + q[1], 0) / quad.length];
         const d = this.cameraDistance, ws = this.worldSize, cx = mercX(this.lng), cy = mercY(this.lat);
-        const gz = this.flatZ, depthAt = (mx: number, my: number) => this.view((mx - cx) * ws, (my - cy) * ws, gz)[2];
+        const gz = this.flatZ;
         // (The rule takes the distance of the camera from the plane of the center, or from the ground without 3D terrain:
         // above a pitch of 90 the camera can be below that plane.)
         const cam = this.cameraPosition(), camZ = Math.max(1e-3 * d, Math.abs(Math.cos(this.pitch * Math.PI / 180) * d - gz)) / ws;
@@ -599,18 +599,11 @@ export class Transform {
         const visit = (z: number, x: number, y: number, w: number) => {
             const n = 2 ** z, x0 = (x + w * n) / n, y0 = y / n, x1 = x0 + 1 / n, y1 = y0 + 1 / n;
             if (!overlaps(x0, y0, x1, y1)) return;
-            // Depth of the tile's nearest point decides how much detail it needs: half the on-screen scale, one level less.
-            let wanted: number;
-            if (this.mlRule(lod)) {
-                // With 3D terrain, with the parameters of `setSourceTileLodParams` above a pitch of 60°, or with a field of
-                // view that is not the default above the pitch where MapLibre GL JS starts to vary the zoom of its tiles
-                // (78.5° less half the field of view, at most 60°), the rule is that of MapLibre GL JS, so that both show the same tiles.
-                wanted = Math.min(maxZ, (round ? Math.round : Math.floor)(lodZoom(lod ?? [9.314, 3], exact,
-                    Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1]), camZ, d / ws, this.fov)));
-            } else {
-                const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
-                wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
-            }
+            // As in MapLibre GL JS, the zoom varies with the distance from the camera with 3D terrain, and above the pitch
+            // where MapLibre GL JS starts to vary it (78.5° less half the field of view, at most 60°); below that pitch
+            // every tile takes the zoom of the center (#1045).
+            const wanted = !this.mlRule() ? maxZ : Math.min(maxZ, (round ? Math.round : Math.floor)(lodZoom(lod ?? [9.314, 3], exact,
+                Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1]), camZ, d / ws, this.fov)));
             // Far ground that wants a level below the source's minimum zoom has no tile, as in MapLibre (#1480).
             if (z >= maxZ || z >= wanted) { if (z >= minZ) out.push({z, x, y, w, key: `${z}/${x}/${y}`}); return; }
             for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1), w);
