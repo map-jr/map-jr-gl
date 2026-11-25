@@ -1674,15 +1674,20 @@ for (const mode of renderers) {
                 layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
             await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
             const ask = async (x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).map(f => f.properties.name[0]).join();
-            // The points of the line every 10 pixels, from one end to the other: the text covers a run of about 175 pixels.
+            // The points of the line every 10 pixels, from one end to the other. Since #1095 the line of about 455 pixels
+            // carries two labels, one every `symbol-spacing` (250 pixels) as in MapLibre GL JS, and the text of each covers
+            // a run of about 175 pixels.
             const a = m.project([-40, 0]), b = m.project([40, 0]), hidden = m.project([0, -10]), found = [];
             for (let x = a.x + 5; x < b.x; x += 10) if (await ask(x, a.y) === 'A') found.push(x);
-            const out = {found: found.length, run: found.length && found.at(-1) - found[0], points: Math.floor((b.x - a.x) / 10), hidden: await ask(hidden.x, hidden.y) + await ask(hidden.x + 60, hidden.y)};
+            // The runs of points where text is found, one for each label, as their numbers of points.
+            const runs = [];
+            for (let i = 0; i < found.length; i++) if (i && found[i] - found[i - 1] === 10) runs[runs.length - 1]++; else runs.push(1);
+            const out = {found: found.length, runs, points: Math.floor((b.x - a.x) / 10), hidden: await ask(hidden.x, hidden.y) + await ask(hidden.x + 60, hidden.y)};
             m.remove(); el.remove();
             return out;
         });
         check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
-            onLine.found >= 15 && onLine.run === (onLine.found - 1) * 10 && onLine.found < onLine.points - 10 && onLine.hidden === '', JSON.stringify(onLine));
+            onLine.runs.length === 2 && onLine.runs.every(n => n >= 15 && n <= 21) && onLine.found < onLine.points - 2 && onLine.hidden === '', JSON.stringify(onLine));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
