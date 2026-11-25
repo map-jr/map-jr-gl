@@ -478,19 +478,25 @@ export class Engine {
     }
 
     /**
-     * Tiles built by the workers, waiting to be sent to the GPU. Sending is the most expensive thing the drawing
-     * thread does when tiles arrive, and several often arrive together, so each frame sends only a limited amount.
+     * Tiles built by the workers and decoded raster tiles, waiting to be sent to the GPU. Sending is the most expensive
+     * thing the drawing thread does when tiles arrive, and several often arrive together, so each frame sends only a limited amount.
      */
-    private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void}[] = [];
+    /** The map was removed (`destroy`): nothing more is sent to the GPU. */
+    private removed = false;
+    private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void; drop?(): void}[] = [];
     private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
         let bytes = 0;
         for (const b of Object.values(tile.layers)) for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
         // (A tile that is no longer wanted when its turn comes is not sent.)
         return this.paced(bytes, () => wanted() ? this.renderer.createTile(tile) : {labels: {}, batches: {}});
     }
-    /** Does a piece of GPU upload work in its turn, so that one frame never has too much of it. */
-    private paced(bytes: number, make: () => GLTile): Promise<GLTile> {
-        return new Promise(done => { this.uploads.push({bytes, make, done}); this.repaint(); });
+    /**
+     * Does a piece of GPU upload work in its turn, so that one frame never has too much of it. `drop` frees what the
+     * work holds when it never comes (the map was removed).
+     */
+    private paced(bytes: number, make: () => GLTile, drop?: () => void): Promise<GLTile> {
+        if (this.removed) return drop?.(), Promise.resolve({labels: {}, batches: {}});
+        return new Promise(done => { this.uploads.push({bytes, make, done, drop}); this.repaint(); });
     }
     private flushUploads(paced = true) {
         // While the camera moves, about 4 ms of upload work a frame. Before the first idle and while the camera is still,
@@ -992,7 +998,13 @@ export class Engine {
                 this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
             case 'repaint': break;
-            case 'destroy': this.lost = true; clearTimeout(this.wakeTimer); this.renderer.destroy(); return;
+            case 'destroy':
+                this.lost = this.removed = true; clearTimeout(this.wakeTimer);
+                // The uploads that wait end with nothing, and their decoded images are closed (no tile is wanted any more).
+                this.tiles.clear();
+                for (const u of this.uploads.splice(0)) { u.drop?.(); u.done({labels: {}, batches: {}}); }
+                this.renderer.destroy();
+                return;
             case 'frames': this.reportFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'snapshot': this.shots.push(c); break;
@@ -1496,13 +1508,20 @@ export class Engine {
         });
     }
 
-    /** A raster tile from the bytes of its image (or a decoded image from a custom protocol), unless `wanted` says no more. */
+    /**
+     * A raster tile from the bytes of its image (or a decoded image from a custom protocol), in its turn (see `paced`),
+     * unless `wanted` says no more. (WebKit takes 1.4 to 5 ms to send one image to the GPU, and a fast zoom brought
+     * dozens of them in one frame, #2068. A tile that leaves the view while it waits is dropped, and its turn sends nothing.)
+     */
     private async imageTile(bytes: Uint8Array | ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
         if (!bytes) return {labels: {}, batches: {}};
         const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
-        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id, undefined, true) : {labels: {}, batches: {}};
-        image.close();
-        return tile;
+        if (!wanted()) return image.close(), {labels: {}, batches: {}};
+        return this.paced(image.width * image.height * 4, () => {
+            const tile = wanted() ? this.renderer.createImageTile(image, undefined, id, undefined, true) : {labels: {}, batches: {}};
+            image.close();
+            return tile;
+        }, () => image.close());
     }
 
     private stats = {since: 0, frames: 0, cpu: 0};

@@ -3507,6 +3507,91 @@ for (const mode of renderers) {
             && r[0].after === '0,0,255' && waited(r[0]) && r[0].frames < r[2000].frames
             && r.none.after === '0,0,255' && waited(r.none) && r.none.ms >= 280, JSON.stringify(r));
     }
+    // Raster tiles that arrive together go to the GPU over several frames (#2068). WebKit takes 1.4 to 5 ms to send one
+    // image to the GPU, and a fast zoom brought dozens in one frame. Here each upload of an image is made to take 5 ms
+    // (a hook on `texImage2D`), the tiles of zoom 3 are held and then let go at once, and the uploads are counted between
+    // two animation frames. A frame sends up to 24 ms of them (4 ms while the camera moves) and at least one, so no frame
+    // has more than 6. (The hook is on the page's WebGL, so the check runs with the main renderer; the worker runs the same engine.)
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), name = 'burst2068';
+            let release, held = new Promise(r => release = r), asked = 0;
+            mod.addProtocol(name, async request => {
+                const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
+                if (z > 1) { asked++; await held; }
+                g.fillStyle = z > 1 ? '#0000ff' : '#ff0000'; g.fillRect(0, 0, 64, 64);
+                return {data: await createImageBitmap(c)};
+            });
+            const proto = WebGL2RenderingContext.prototype, original = proto.texImage2D;
+            let uploads = 0;
+            proto.texImage2D = function (...a) {
+                if (a[a.length - 1] instanceof ImageBitmap) { uploads++; const t = performance.now(); while (performance.now() - t < 5); }
+                return original.apply(this, a);
+            };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:384px'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [10, 10], zoom: 1, pixelRatio: 1,
+                style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 128}}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            m.jumpTo({zoom: 3});
+            // (The map asks for all the tiles of the view in its next frame; the wait ends when the count is still.)
+            for (let i = 0, last = -1; i < 400 && (!asked || asked !== last); i++) { last = asked; await new Promise(r => setTimeout(r, 50)); }
+            const perFrame = [];
+            let idle = false, running = true;
+            m.once('idle', () => idle = true);
+            const tick = () => { perFrame.push(uploads); uploads = 0; if (running) requestAnimationFrame(tick); };
+            uploads = 0;
+            requestAnimationFrame(tick);
+            release();
+            for (let i = 0; i < 400 && !idle; i++) await new Promise(r => setTimeout(r, 20));
+            running = false;
+            await new Promise(r => requestAnimationFrame(r));
+            proto.texImage2D = original;
+            m.remove(); el.remove(); mod.removeProtocol(name);
+            return {asked, idle, total: perFrame.reduce((a, b) => a + b, 0), max: Math.max(...perFrame), frames: perFrame.filter(n => n).length};
+        });
+        check(`[${mode}] raster tiles that arrive together are sent to the GPU over several frames, at most 24 ms of uploads a frame (#2068)`,
+            r.idle && r.total >= 16 && r.max <= 6, JSON.stringify(r));
+        // remove() while raster tiles wait for their turn: the waiting images are closed and none is sent to the GPU later.
+        // (All the tiles of the first view are held and then let go at once, so that none is dropped before its turn.)
+        const gone = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), name = 'gone2068';
+            let release, held = new Promise(r => release = r), asked = 0;
+            // (The library copies an image that a protocol gives: the copies are the images that wait.)
+            const made = new Set(), copies = new Set(), closed = new Set(), close = ImageBitmap.prototype.close, copy = window.createImageBitmap;
+            ImageBitmap.prototype.close = function () { closed.add(this); return close.call(this); };
+            window.createImageBitmap = async function (from, ...rest) { const b = await copy.call(this, from, ...rest); if (made.has(from)) copies.add(b); return b; };
+            mod.addProtocol(name, async request => {
+                const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64});
+                asked++; await held;
+                c.getContext('2d').fillRect(0, 0, 64, 64);
+                const data = await createImageBitmap(c);
+                made.add(data);
+                return {data};
+            });
+            const proto = WebGL2RenderingContext.prototype, original = proto.texImage2D;
+            let uploads = 0;
+            proto.texImage2D = function (...a) {
+                if (a[a.length - 1] instanceof ImageBitmap) { uploads++; const t = performance.now(); while (performance.now() - t < 10); }
+                return original.apply(this, a);
+            };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:384px'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [10, 10], zoom: 3, pixelRatio: 1,
+                style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 128}}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
+            for (let i = 0, last = -1; i < 400 && (!asked || asked !== last); i++) { last = asked; await new Promise(r => setTimeout(r, 50)); }
+            release();
+            for (let i = 0; i < 200 && copies.size < asked; i++) await new Promise(r => setTimeout(r, 5));
+            await new Promise(r => setTimeout(r, 20)); // (the images reach the queue)
+            const before = uploads;
+            m.remove();
+            await new Promise(r => setTimeout(r, 300));
+            const after = uploads - before;
+            proto.texImage2D = original; ImageBitmap.prototype.close = close; window.createImageBitmap = copy;
+            el.remove(); mod.removeProtocol(name);
+            return {asked, made: copies.size, sent: before, open: [...copies].filter(b => !closed.has(b)).length, after};
+        });
+        check(`[${mode}] remove() while raster tiles wait for the GPU closes their images and sends none later (#2068)`,
+            gone.made >= 16 && gone.sent < gone.made && gone.open === 0 && gone.after === 0, JSON.stringify(gone));
+    }
     // setAnisotropicFilterPitch: above that pitch (20 by default) raster tiles are filtered anisotropically, as in MapLibre
     // GL JS (#1713). The tiles have vertical stripes 4 px wide. At a pitch of 75 the far ground is squeezed from top to
     // bottom: anisotropic filtering keeps the stripes there, and filtering with mipmaps alone (a pitch of 80 set) blurs
