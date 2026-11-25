@@ -11,7 +11,7 @@
 import {EXTENT, TILE_SIZE, clamp, keepSize as sizeZoom, latFromMerc, lngFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 
 type V3 = [number, number, number];
-const PI = Math.PI, RAD = PI / 180;
+const PI = Math.PI, RAD = PI / 180, EARTH = 6371008.8;
 /** Column-major 4x4 matrices, as WebGL takes them. */
 const mul = (a: number[], b: number[]) => {
     const o = new Array(16).fill(0);
@@ -234,13 +234,17 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
 
 /**
  * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when all its
- * sample points are behind the horizon (with the bulge of a large tile), or outside the view. The level that a tile
- * gets falls with the distance from the camera to its nearest sample point, as with 3D terrain (geo.ts).
+ * sample points are behind the horizon (with the bulge of a large tile), or outside the view, or when a hull around it
+ * is more than 60 pixels outside one edge of the view, as MapLibre GL JS 6.17 culls a volume around the tile (#1922).
+ * The level that a tile gets falls with the distance from the camera to its nearest sample point, as with 3D terrain
+ * (geo.ts); below zoom 5 it is usually one level lower than MapLibre GL JS's, on purpose (#1828).
  */
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];
     // The camera distance in radii, at which the tile of the zoom of the map is wanted.
-    const unit = tr.cameraDistance / f.radius, margin = 0.15;
+    const unit = tr.cameraDistance / f.radius, margin = 0.15, edge = [1 + 120 / tr.width, 1 + 120 / tr.height];
+    // The lowest and highest ground in view, in meters (the sphere of `frame` is at sea level).
+    const [lo, hi] = tr.groundRange ?? [tr.elevation, tr.elevation];
     // The point of the sphere under the camera, in Mercator units: the nearest point of a tile is its point nearest to this one.
     const cl = Math.hypot(...f.cam), under = [mercX(Math.atan2(f.cam[0], f.cam[2]) / RAD), mercY(clamp(Math.asin(f.cam[1] / cl) / RAD, -85.051129, 85.051129))];
     // The places under nine points of the screen: a tile that has one of them is in view, however large it is.
@@ -259,7 +263,12 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
             const c = clipOf(f, p);
             return c[2] > 1e-6 && Math.abs(c[0] / c[2]) <= 1 + margin && Math.abs(c[1] / c[2]) <= 1 + margin;
         });
-        if (!inView) return;
+        // The tile is also left out when all of a hull around it is more than 60 pixels outside one edge of the view (#1922),
+        // so that a label of a tile at the edge can still reach the screen. The hull has the sample points and a row 1/16 of
+        // a tile past the edge toward the equator (where the parallel bows out of the hull), at the lowest ground of 3D
+        // terrain, and these points at the highest ground, lifted above the bulge of the sphere between them.
+        const lifts = [lo / EARTH, (1 + hi / EARTH) / Math.cos(PI / 2 ** (z + 1)) - 1], hull = [...pts, ...[0, 1, 2, 3, 4].map(i => sphere((x + i / 4) / n, (y < n / 2 ? y + 1 + 1 / 16 : y - 1 / 16) / n))];
+        if (!inView || z > 1 && [0, 1, 2, 3].some(k => hull.every(p => lifts.every(l => { const c = clipOf(f, p, l); return (k & 2 ? c[k & 1] : -c[k & 1]) > c[2] * edge[k & 1]; })))) return;
         const ux = under[0] - Math.floor(under[0] - x / n + 0.5 - 0.5 / n), nearest = sphere(clamp(ux, x / n, (x + 1) / n), clamp(under[1], y / n, (y + 1) / n));
         const near = Math.min(...[...pts, nearest].map(p => Math.hypot(p[0] - f.cam[0], p[1] - f.cam[1], p[2] - f.cam[2])));
         // A tile far from the latitude of the center has other pixels on the sphere: Mercator tiles get smaller toward
