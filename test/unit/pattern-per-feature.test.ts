@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {compileLayer} from '../../src/style.ts';
-import {buildTile, patternKey, toGL} from '../../src/tile.ts';
+import {MAX_RUNS, buildTile, patternKey, toGL} from '../../src/tile.ts';
 import {prepareGeoJSON, sliceGeoJSON} from '../../src/geojson.ts';
 
 const z = 10, tx = 300, ty = 380, n = 2 ** z;
@@ -40,3 +40,19 @@ for (const [type, prop, key] of [['fill', 'fill-pattern', 'fill-sort-key'], ['li
         assert.deepEqual(batches.map(b => b?.pat), ['brick', 'wave', 'brick', 'wave', undefined]);
     });
 }
+
+// Above MAX_RUNS runs in a tile, each image is one batch again (one draw call each), and the layer warns once (#1445).
+const many = (runs: number) => sliceGeoJSON(prepareGeoJSON({type: 'FeatureCollection', features: Array.from({length: runs}, (_, i) =>
+    keyed(i * 0.0001, i % 2 ? 'wave' : 'brick', i))} as any), z, tx, ty);
+test(`fill-sort-key with more than ${MAX_RUNS} runs of images: one batch for each image, and one warning`, t => {
+    const warn = t.mock.method(console, 'warn', () => {});
+    const L = compileLayer({id: 'many', type: 'fill', source: 'g', paint: {'fill-pattern': ['get', 'kind']}, layout: {'fill-sort-key': ['get', 'key']}} as any)!;
+    assert.equal(Object.keys(toGL(buildTile(many(MAX_RUNS), z, [L], false)).tile.layers).length, MAX_RUNS);
+    assert.equal(warn.mock.callCount(), 0);
+    for (let i = 0; i < 2; i++) {
+        const {tile} = toGL(buildTile(many(MAX_RUNS + 1), z, [L], false));
+        assert.deepEqual(Object.values(tile.layers).map(b => b.pat), ['brick', 'wave']);
+    }
+    assert.equal(warn.mock.callCount(), 1);
+    assert.match(String(warn.mock.calls[0].arguments[0]), /^\[map-jr-gl\] layer "many": .*"fill-sort-key".* 64 runs/);
+});
