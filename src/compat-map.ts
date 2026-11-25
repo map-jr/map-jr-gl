@@ -6,6 +6,7 @@ import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, 
 import type {QueriedFeature} from './query.ts';
 import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
+import {Evented} from './evented.ts';
 import {zoomCurveErrors} from './mistakes.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
@@ -224,6 +225,17 @@ export class Map extends CoreMap {
     calculateCameraOptionsFromTo(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number) {
         altitudeTo ??= this.queryTerrainElevation(to) ?? 0;
         const [fl, fa] = toLngLat(from), [tl, ta] = toLngLat(to), tx = mercX(tl), ty = mercY(ta);
+        if (this.tr.globeness) {
+            // On a globe, as MapLibre GL JS: the camera and the target on a sphere of radius 1, the target at sea level, and
+            // the way from the target to the camera in the east, north and up of the target.
+            const R = EARTH_CIRCUMFERENCE / 2 / Math.PI, r = Math.PI / 180, v = (lng: number, lat: number, k: number) =>
+                [Math.sin(lng * r) * Math.cos(lat * r) * k, Math.sin(lat * r) * k, Math.cos(lng * r) * Math.cos(lat * r) * k];
+            const c = v(fl, fa, 1 + altitudeFrom / R), t = v(tl, ta, 1), w = c.map((x, i) => x - t[i]), d = Math.hypot(...w), sl = Math.sin(tl * r), cl = Math.cos(tl * r), sa = Math.sin(ta * r);
+            if (d < 1e-12 || Math.hypot(...c.map((x, i) => x - t[i] * (1 + altitudeTo! / R))) < 1e-12) throw new Error("Can't calculate camera options with same From and To");
+            const e = w[0] * cl - w[2] * sl, n = -sa * sl * w[0] + Math.cos(ta * r) * w[1] - sa * cl * w[2], u = w.reduce((s, x, i) => s + x * t[i], 0);
+            return {center: new LngLat(tl, ta), elevation: altitudeTo, zoom: Math.log2(this.tr.cameraDistance / d / (TILE_SIZE / 2 / Math.PI / Math.cos(Math.min(Math.abs(ta), 85.051129) * r))),
+                pitch: Math.acos(Math.max(-1, Math.min(1, u / d))) / r, bearing: Math.hypot(e, n) < d * 1e-9 ? this.tr.bearing : Math.atan2(-e, -n) / r};
+        }
         const dx = tx - mercX(fl), dy = ty - mercY(fa), dz = altitudeTo / mercMetres(ta) - altitudeFrom / mercMetres(fa), d = Math.hypot(dx, dy, dz);
         if (!d) throw new Error("Can't calculate camera options with same From and To");
         const pitch = Math.acos(Math.hypot(dx, dy) / d) * 180 / Math.PI;
@@ -250,8 +262,17 @@ export class Map extends CoreMap {
     calculateAnchoredCameraOptions(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) {
         const tr = Object.assign(Object.create(Object.getPrototypeOf(this.tr)), this.tr) as typeof this.tr, [lng, lat] = toLngLat(o.anchorLocation);
         const pt = o.anchorScreenPoint as {x: number; y: number} | [number, number], px = Array.isArray(pt) ? pt[0] : pt.x, py = Array.isArray(pt) ? pt[1] : pt.y;
-        tr.set(undefined, o.zoom);
-        tr.setLocationAt(lng, lat, px, py);
+        if (tr.globeness) {
+            // On a globe, as MapLibre GL JS: a zoom around the screen point, then a drag of the globe from where the place
+            // is on the screen of the map to the screen point.
+            const [ax, ay] = this.tr.project(lng, lat);
+            if (o.zoom !== undefined) { const [zl, za] = tr.unproject(px, py); tr.set(undefined, o.zoom); tr.setLocationAt(zl, za, px, py); }
+            tr.globe!.drag(tr, ax, ay, px, py);
+            tr.constrain();
+        } else {
+            tr.set(undefined, o.zoom);
+            tr.setLocationAt(lng, lat, px, py);
+        }
         return {center: new LngLat(tr.lng, tr.lat), zoom: tr.zoom};
     }
     declare private unclamped?: boolean;
@@ -287,10 +308,6 @@ export class Map extends CoreMap {
         if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
         return this;
     }
-    /** Has no effect. */
-    setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
-    /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
-    getAnisotropicFilterPitch() { return 20; }
     /**
      * As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the
      * map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does not apply what the
@@ -368,6 +385,19 @@ export class Map extends CoreMap {
     private debugDraw: Record<string, boolean> = {};
     private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
 
+    /**
+     * Sets the pitch in degrees above which raster tiles are filtered anisotropically, as in MapLibre GL JS: the far part
+     * of a pitched raster map is then sharper. `null` or `undefined` sets the default, 20. A value outside 0 to 180 throws.
+     */
+    setAnisotropicFilterPitch(pitch?: number | null) {
+        pitch ??= 20;
+        if (!(pitch >= 0 && pitch <= 180)) throw new Error(`[map-jr-gl] setAnisotropicFilterPitch(${pitch}): the pitch is not from 0 to 180. Pass degrees from 0 to 180, or null for the default (20).`);
+        this.tr.aniso = pitch;
+        // (This sends the limits of the camera again, and with them the pitch, to the engine.)
+        return this.setRenderWorldCopies(this.tr.worldCopies);
+    }
+    /** Returns the pitch in degrees above which raster tiles are filtered anisotropically (20 by default). */
+    getAnisotropicFilterPitch() { return this.tr.aniso; }
     /**
      * Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS.
      * A value below 1 counts as 1.
@@ -507,6 +537,7 @@ export class Map extends CoreMap {
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
         this.keepExpired = o.refreshExpiredTiles === false;
+        if (o.anisotropicFilterPitch != null) this.setAnisotropicFilterPitch(o.anisotropicFilterPitch);
         // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
         const dragOptions = (name: string, used: boolean, todo: string) => {
             if (!used || this.warned.has(name)) return;
@@ -666,7 +697,7 @@ export class Map extends CoreMap {
     /** Removes a source from the style, as in MapLibre GL JS. */
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l?.source === id);
-        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.sourceEvents.delete(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
     /**
@@ -835,7 +866,12 @@ export class Map extends CoreMap {
      */
     getSource(id: string): any {
         const spec = super.getSource(id), type = spec?.type;
-        const more = {loaded: () => this.isSourceLoaded(id), serialize: () => this.getStyle()?.sources[id]};
+        if (!spec) return spec;
+        // As in MapLibre GL JS, a source is an `Evented`: it gets `data`, `dataloading` and `error` of its own (see `dispatch`).
+        // (One object per source and map keeps the listeners, because each call of getSource returns a new object.)
+        let ev = this.sourceEvents.get(id);
+        if (!ev) this.sourceEvents.set(id, ev = new Evented());
+        const more = {loaded: () => this.isSourceLoaded(id), serialize: () => this.getStyle()?.sources[id], on: ev.on.bind(ev), once: ev.once.bind(ev), off: ev.off.bind(ev), fire: ev.fire.bind(ev)};
         if (type === 'geojson') return {
             ...spec, ...more,
             getClusterOptions: () => ({cluster: !!spec.cluster, clusterMaxZoom: spec.clusterMaxZoom ?? (spec.maxzoom ?? 18) - 1, clusterRadius: spec.clusterRadius ?? 50}),
@@ -854,7 +890,7 @@ export class Map extends CoreMap {
                 return bounds;
             },
         };
-        if (!/^(vector|raster)/.test(type)) return spec;
+        if (!/^(vector|raster)/.test(type)) return spec === this.rawStyle?.sources[id] ? {...spec, ...more} : Object.assign(spec, more);
         const set = (k: string, v: unknown, ok: boolean) => {
             if (!ok) throw new Error(`[map-jr-gl] getSource("${id}").${k === 'url' ? 'setUrl(url): "url" must be a string' : 'setTiles(tiles): "tiles" must be an array of URL strings'}.`);
             this.editStyle(s => { const src = s.sources[id]; if (src) delete src.url, delete src.tiles, src[k] = Array.isArray(v) ? [...v] : v; });
@@ -1026,6 +1062,7 @@ export class Map extends CoreMap {
     private answers = new globalThis.Map<string, {found: QueriedFeature[]}>();
     private again = false;
     private refired = new Set<string>();
+    private sourceEvents = new globalThis.Map<string, Evented>();
     private questionKey(box: number[], sets?: {layer: string; also?: unknown}[]) {
         const t = this.tr;
         return JSON.stringify([t.lng, t.lat, t.zoom, t.bearing, t.pitch, t.width, t.height, box, sets ? sets.map(s => [s.layer, s.also]) : 0]);
@@ -1063,6 +1100,9 @@ export class Map extends CoreMap {
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
+        // The events of a source also go to the listeners on `getSource(id)`, with MapLibre's names on a source.
+        const own = {sourcedata: 'data', sourcedataloading: 'dataloading', error: 'error'}[type], ev = this.sourceEvents.get(data.sourceId as string);
+        if (own && ev) ev.fire(own, {...data});
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
         const e = data.error as Error | undefined;
         if (type === 'error' && e?.message?.startsWith('[map-jr-gl] The map cannot be shown:') && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};

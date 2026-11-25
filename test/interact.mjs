@@ -244,6 +244,26 @@ for (const mode of renderers) {
             return {front, back, said: said.filter(w => w.includes('globe'))};
         }, mode);
         check(`[${mode}] the globe: a fill-extrusion layer draws at zoom 4 without a warning, and not on the far side (#1429)`, towers.front > 2000 && towers.back === 0 && towers.said.length === 0, JSON.stringify(towers));
+        // On the globe at a pitch, queryRenderedFeatures finds an icon moved by `icon-translate` where it is drawn: the point
+        // moved in tile units, as in MapLibre GL JS (#1822). The place of a move in screen pixels is 27 pixels further down.
+        const moved = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60'}));
+            const style = {version: 8, projection: {type: 'globe'}, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 45]}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}, {id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'sq', 'icon-allow-overlap': true}, paint: {'icon-translate': [0, 60]}}]};
+            const map = new mod.Map({container: el, style, center: [10, 45], zoom: 5, pitch: 60, renderer, attributionControl: false});
+            map.addImage('sq', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).map((_, i) => i % 4 === 0 ? 0 : 255)});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const bmp = await createImageBitmap(await map.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data, k = bmp.width / 400;
+            let sx = 0, sy = 0, n = 0;
+            for (let i = 0; i < d.length; i += 4) if (d[i] < 60 && d[i + 2] > 200) { sx += (i / 4) % bmp.width; sy += Math.floor(i / 4 / bmp.width); n++; }
+            const x = sx / n / k, y = sy / n / k, found = async (px, py) => (await map.queryRenderedFeatures([[px - 2, py - 2], [px + 2, py + 2]], {layers: ['i']})).length;
+            const result = {drawn: [Math.round(x), Math.round(y)], atDrawn: await found(x, y), atScreen: await found(200, 260)};
+            map.remove(); el.remove();
+            return result;
+        }, mode);
+        check(`[${mode}] the globe: queryRenderedFeatures finds an icon moved by icon-translate where it is drawn (#1822)`, moved.drawn[1] > 220 && moved.drawn[1] < 245 && moved.atDrawn === 1 && moved.atScreen === 0, JSON.stringify(moved));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();
@@ -1458,10 +1478,19 @@ for (const mode of renderers) {
         // The array that the call gives at once (from the GeoJSON on the page) uses the same radius.
         const now = [...m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']})];
         const near = await m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']});
+        // The same on a map with pitch 45, where a circle is tested on the screen (#1942).
+        const pitch = m.getPitch();
+        m.jumpTo({pitch: 45});
+        const q = m.project(c), tiltedNow = [...m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['by-data', 'by-zoom']})];
+        const tilted = await m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['by-data', 'by-zoom']});
+        m.jumpTo({pitch});
         m.removeLayer('by-data'); m.removeLayer('by-zoom'); m.removeSource('sized');
-        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort()};
+        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort(),
+            tilted: tilted.map(f => `${f.layer.id}:${f.id}`).sort(), tiltedNow: tiltedNow.map(f => `${f.layer.id}:${f.id}`).sort()};
     });
     check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
+    check(`[${mode}] queryRenderedFeatures: on a tilted map a circle-radius from a property or the zoom is the radius of the query, also in the array at once (#1942)`,
+        sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
     // A line whose `line-width` is an expression is found within half of its own width, as in MapLibre (#1941): a width
     // of 20 pixels from a property, one of 20 pixels by zoom, and a gap of 16 pixels between two lines of 2 pixels are
@@ -2955,6 +2984,45 @@ for (const mode of renderers) {
         check(`[${mode}] compat: the attribution follows a visibility expression of the global state, as in MapLibre GL JS, and drops the source when the state hides it again (#1032)`,
             JSON.stringify(ours) === JSON.stringify([...ml.slice(0, 2), false]) && JSON.stringify(ml.slice(0, 2)) === '[false,true]', JSON.stringify({ours, maplibre: ml}));
     }
+    // A source of the compat entry is an `Evented`, as in MapLibre GL JS 6.17: `getSource(id).on` gets the `dataloading`
+    // and `data` events of that source after `setData` (one `data` for each `sourcedata` of the map with its ID), `off`
+    // removes a listener, and a failed tile or GeoJSON URL fires `error` on its source (#1720).
+    {
+        await page.route(/\/no-such-1720\//, r => r.fulfill({status: 500, body: ''}));
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = x => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [x, 0]}}]});
+            const m = new mod.Map({container: el, style: {version: 8, sources: {g: {type: 'geojson', data: point(0)}}, layers: [{id: 'c', type: 'circle', source: 'g'}]}, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 1});
+            await new Promise(r => m.once('load', r));
+            const g = m.getSource('g'), seen = new Set(), removed = [];
+            const methods = ['on', 'once', 'off', 'fire'].every(k => typeof g[k] === 'function');
+            if (!methods) { m.remove(); el.remove(); return {methods}; }
+            let own = 0, onMap = 0;
+            g.on('data', () => { own++; seen.add('data'); });
+            g.on('dataloading', () => seen.add('dataloading'));
+            const gone = () => removed.push(1);
+            g.on('data', gone); g.off('data', gone);
+            m.on('sourcedata', e => { if (e.sourceId === 'g') onMap++; });
+            g.setData(point(10));
+            await wait(1000);
+            const errors = {r: 0, u: 0};
+            m.addSource('r', {type: 'raster', tiles: [location.origin + '/no-such-1720/{z}/{x}/{y}.png'], tileSize: 256});
+            m.getSource('r').on('error', e => { if (e.error) errors.r++; });
+            m.addLayer({id: 'r', type: 'raster', source: 'r'});
+            m.addSource('u', {type: 'geojson', data: location.origin + '/no-such-1720/u.json'});
+            m.getSource('u').on('error', e => { if (e.error) errors.u++; });
+            m.addLayer({id: 'u', type: 'circle', source: 'u'});
+            m.on('error', () => {});
+            await wait(2000);
+            m.remove(); el.remove();
+            return {methods, seen: [...seen].sort(), removed: removed.length, same: own > 0 && own === onMap, errors: {r: errors.r > 0, u: errors.u > 0}};
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = await run('ml', mode);
+        check(`[${mode}] compat: a source has on, once, off and fire, and gets its own dataloading, data and error events, as in MapLibre GL JS (#1720)`,
+            JSON.stringify(ours) === JSON.stringify(ml) && ours.methods && ours.same && ours.seen.length === 2 && ours.errors.r && ours.errors.u, JSON.stringify({ours, maplibre: ml}));
+    }
     // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
     // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.
     // A second map with the same style object gets its own `error` (#809). MapLibre GL JS in WebKit requests the
@@ -3232,6 +3300,50 @@ for (const mode of renderers) {
             r[2000].before === '255,0,0' && r[2000].after === '0,0,255' && waited(r[2000]) && r[2000].ms >= 1900 && r[2000].frames > 10
             && r[0].after === '0,0,255' && waited(r[0]) && r[0].frames < r[2000].frames
             && r.none.after === '0,0,255' && waited(r.none) && r.none.ms >= 280, JSON.stringify(r));
+    }
+    // setAnisotropicFilterPitch: above that pitch (20 by default) raster tiles are filtered anisotropically, as in MapLibre
+    // GL JS (#1713). The tiles have vertical stripes 4 px wide. At a pitch of 75 the far ground is squeezed from top to
+    // bottom: anisotropic filtering keeps the stripes there, and filtering with mipmaps alone (a pitch of 80 set) blurs
+    // them to gray. The check compares the contrast across rows of the far ground; the browsers of the tests have the extension.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            const name = 'aniso1713' + mode;
+            mod.addProtocol(name, async () => {
+                const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+                g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#000';
+                for (let x = 0; x < 256; x += 8) g.fillRect(x, 0, 4, 256);
+                return {data: await createImageBitmap(c)};
+            });
+            const contrast = async m => {
+                const blob = await Promise.race([m.toBlob(), new Promise(r => setTimeout(r, 8000))]);
+                if (!blob) return -1;
+                const bmp = await createImageBitmap(blob), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                let sum = 0, n = 0;
+                for (const f of [0.3, 0.35, 0.4]) {
+                    const row = g.getImageData(0, Math.round(bmp.height * f), bmp.width, 1).data, v = [];
+                    for (let i = 0; i < row.length; i += 4) v.push(row[i]);
+                    const mean = v.reduce((a, b) => a + b, 0) / v.length;
+                    sum += Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length); n++;
+                }
+                return Math.round(sum / n);
+            };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 3, pitch: 75, maxPitch: 85,
+                style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            out.pitch = m.getAnisotropicFilterPitch();
+            out.on = await contrast(m);
+            out.set = m.setAnisotropicFilterPitch(80) === m && m.getAnisotropicFilterPitch();
+            out.off = await contrast(m);
+            out.reset = m.setAnisotropicFilterPitch(null).getAnisotropicFilterPitch();
+            try { m.setAnisotropicFilterPitch(200); } catch (e) { out.error = e.message; }
+            m.remove(); el.remove(); mod.removeProtocol(name);
+            return out;
+        }, mode);
+        check(`[${mode}] setAnisotropicFilterPitch: raster tiles are filtered anisotropically above the pitch (20 by default), and a pitch above 180 throws (#1713)`,
+            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && /^\[map-jr-gl\] setAnisotropicFilterPitch\(200\)/.test(r.error), JSON.stringify(r));
     }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
@@ -5118,6 +5230,31 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and calculateAnchoredCameraOptions agree with MapLibre to 1e-9 (#1018)',
             m1018.ml.length === m1018.compat.length && m1018.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1018.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1018.compat[i]), JSON.stringify(m1018));
+        // #1744: on a globe (zoom 2 and 5), the same three methods give the results of MapLibre GL JS, which follows the
+        // sphere for calculateCameraOptionsFromTo and calculateAnchoredCameraOptions.
+        const m1744 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async (lib, zoom) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, projection: {type: 'globe'}, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const out = [], put = c => out.push(c.center.lng, c.center.lat, c.zoom, c.elevation ?? null, c.pitch ?? null, c.bearing ?? null);
+                put(m.calculateCameraOptionsFromTo([1, 0], 1000, [1, 1], 0));
+                put(m.calculateCameraOptionsFromTo([10, 45], 5e5, [12, 47], 200));
+                put(m.calculateCameraOptionsFromTo([-30, 60], 3e6, [-30, 50]));
+                try { m.calculateCameraOptionsFromTo([5, 5], 10, [5, 5], 10); out.push('no error'); } catch { out.push('error'); }
+                put(m.calculateCameraOptionsFromCameraLngLatAltRotation([10, 45], 5e5, 20, 40));
+                put(m.calculateAnchoredCameraOptions({anchorLocation: [11, 46], anchorScreenPoint: [50, 60]}));
+                put(m.calculateAnchoredCameraOptions({anchorLocation: [30, 30], anchorScreenPoint: [200, 100], zoom: zoom + 1}));
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: [...await run(ml, 2), ...await run(ml, 5)], compat: [...await run(compat, 2), ...await run(compat, 5)]};
+        });
+        check('[main] maplibre-compat: the three calculate…CameraOptions methods agree with MapLibre on a globe to 1e-9 (#1744)',
+            m1744.ml.length === m1744.compat.length && m1744.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1744.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1744.compat[i]), JSON.stringify(m1744));
         // #1020: setTransformConstrain and the option transformConstrain limit the camera as in MapLibre GL JS (served at /ml/).
         const m1020 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -5197,13 +5334,20 @@ for (const mode of renderers) {
             const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
             const run = async lib => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
-                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [179.9, 45], zoom: 4.6, fadeDuration: 0});
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [179.9, 45], zoom: 4.6, fadeDuration: 0, maxPitch: 85});
                 await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
                 const cover = o => m.coveringTiles(o).map(t => `${t.overscaledZ}/${t.wrap}/${t.canonical.z}/${t.canonical.x}/${t.canonical.y}`).sort().join(' ');
                 const out = {};
                 for (const [name, o] of Object.entries({flat: {tileSize: 512}, small: {tileSize: 256}, round: {tileSize: 512, roundZoom: true}, max: {tileSize: 512, maxzoom: 3}, min: {tileSize: 512, minzoom: 6}})) out[name] = cover(o);
                 m.jumpTo({pitch: 60, bearing: 20});
                 out.pitched = cover({tileSize: 512, maxzoom: 14});
+                // #1045: views where the cover of MapLibre GL JS has no tile outside the view (its test of a tile against the
+                // frustum is looser than the test here), so both give the same tiles: a constant zoom at pitch 60, and a zoom
+                // that varies with the distance above it.
+                el.style.width = '800px'; el.style.height = '600px'; m.resize();
+                m.jumpTo({center: [11.5, 48.1], zoom: 9.3, pitch: 60, bearing: 0});
+                out.p60 = cover({tileSize: 512, maxzoom: 14});
+                for (const [pitch, bearing] of [[75, 0], [75, 135], [85, 20]]) { m.jumpTo({pitch, bearing}); out[`p${pitch}b${bearing}`] = cover({tileSize: 512, maxzoom: 14}); }
                 m.remove(); el.remove();
                 return out;
             };
@@ -5213,6 +5357,8 @@ for (const mode of renderers) {
         const pitchedML = m1022.ml.pitched?.split(' ') ?? [];
         check('[main] maplibre-compat: coveringTiles gives the tiles of MapLibre (flat, tileSize, roundZoom, minzoom, maxzoom; pitched within them) (#1022)',
             ['flat', 'small', 'round', 'max', 'min'].every(k => m1022.ml[k] === m1022.compat[k]) && m1022.compat.pitched?.split(' ').every(t => pitchedML.includes(t)) && m1022.compat.pitched.length > 0, JSON.stringify(m1022));
+        check('[main] maplibre-compat: coveringTiles of a pitched view gives the tiles of MapLibre GL JS: one zoom at pitch 60, a zoom by distance above it (#1045)',
+            ['p60', 'p75b0', 'p75b135', 'p85b20'].every(k => m1022.ml[k] && m1022.ml[k] === m1022.compat[k]), JSON.stringify(['p60', 'p75b0', 'p75b135', 'p85b20'].map(k => [m1022.ml[k], m1022.compat[k]])));
         // #1021: setSourceTileLodParams changes the tiles of a view at pitch 80 as in MapLibre GL JS (served at /ml/), with
         // the engine on the main thread and in a worker. (A tile that a requested deeper tile covers is a placeholder and is left out.)
         const m1021 = await page.evaluate(async () => {

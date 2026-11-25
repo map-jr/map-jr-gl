@@ -8,7 +8,7 @@
 import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 declare const __DEV__: boolean;
-import {makeMap, type MapEvents, type MapInstance, type MapOverlay as Overlay, type MapPointer, type MapDescription, type MapState, type OverlayOptions, type View} from './host.ts';
+import {makeMap, type MapEvents, type MapInstance, type MapOverlay as Overlay, type MapPointer, type MapDescription, type MapErrorInfo, type MapState, type OverlayOptions, type View} from './host.ts';
 import type {RenderedFeature} from './map.ts';
 
 type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
@@ -33,7 +33,7 @@ export interface MapJrProps extends Omit<MapDescription, 'style' | 'onViewChange
     /** Called each time the camera is still and nothing loads. */
     onIdle?: () => void;
     /** Called with each error of the map. Without it, the map writes each error to the console. */
-    onError?: (error: Error) => void;
+    onError?: (error: Error, info: MapErrorInfo) => void;
     /**
      * The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. The
      * page shows it until the map has rendered. Read only on the first render.
@@ -104,7 +104,7 @@ export const MapJr = forwardRef<MapInstance | null, MapJrProps>(function MapJr(p
     }, []);
     const spec: MapDescription = {...rest, images: rest.images || owners.current.size ? {...rest.images, ...Object.fromEntries(owners.current.values())} : undefined, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event),
         // (Without `onError`, the map writes each error to the console.)
-        onError: onError && (error => last.current.onError?.(error))};
+        onError: onError && ((error, info) => last.current.onError?.(error, info))};
     // The props for the events of the map are no part of the description. Each one is a listener of its event.
     const events = Object.keys(rest).filter(k => /^on[A-Z]/.test(k) && !OWN.has(k));
     for (const k in spec) if ((spec as any)[k] === undefined || events.includes(k)) delete (spec as any)[k];

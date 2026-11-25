@@ -41,7 +41,7 @@ const map = createMap('map', {
 | [`interactiveLayers`](#interactivelayers) | `string[] \| null` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](state.md#mapstate) and in `onClick`. |
 | [`hoverState`](#hoverstate) | `boolean \| null` | `false` | Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for `feature-state` expressions. |
 | [`onClick`](#onclick) | `((event: MapPointer) => void) \| null` | | Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. |
-| `onError` | `((error: Error) => void) \| null` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
+| `onError` | `((error: Error, info: MapErrorInfo) => void) \| null` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
 | `minZoom` | `number \| null` | `-2` | The smallest zoom level of the map. |
 | `maxZoom` | `number \| null` | `22` | The largest zoom level of the map. |
 | `maxPitch` | `number \| null` | `60` | The largest pitch of the map in degrees, at most 180, where a pitch above 90 looks up and, unless `centerElevation` lifts the map center above the ground, sees the map from below the ground. |
@@ -321,7 +321,8 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
   style. A GeoJSON source in `sources` whose id is a key of `data` needs no `data` of its own: `data` sets its
   features.
 - A GeoJSON source simplifies its lines and polygons at low zoom levels with `tolerance` (default `0.375`, in pixels
-  of a tile 512 pixels wide; `0` turns it off), as in MapLibre GL JS. See
+  of a tile 512 pixels wide; `0` turns it off), as in MapLibre GL JS. Below the `maxzoom` of the source, a tile leaves
+  out a line shorter than the tolerance and a ring whose area is under the square of the tolerance. See
   [Data](../guide/data.md).
 - When a key is removed from `data`, the map removes the source that it created for that key. A layer that still
   uses the source draws nothing, so remove such a layer in the same description.

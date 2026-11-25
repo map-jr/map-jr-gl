@@ -50,11 +50,14 @@ test('transform: zooming around a point keeps that point fixed', () => {
     close(x, 650, 1e-5); close(y, 120, 1e-5);
 });
 
-test('transform: tile cover is uniform when flat and coarser with distance when tilted', () => {
+test('transform: tile cover is uniform when flat and up to pitch 60, and coarser with distance above it, as in MapLibre GL JS (#1045)', () => {
     const flat = camera().tileCover(0, 14);
     assert.ok(flat.length >= 2 && flat.every(t => t.z === 14));
     assert.equal(flat[0].key, `14/${Math.floor(mercX(-74.006) * 2 ** 14)}/${Math.floor(mercY(40.7128) * 2 ** 14)}`); // the centre's tile comes first
-    const tilted = camera(60).tileCover(0, 14), zooms = new Set(tilted.map(t => t.z));
+    const at60 = camera(60).tileCover(0, 14);
+    assert.ok(at60.length > flat.length && at60.every(t => t.z === 14), at60.map(t => t.key).join());
+    const t75 = camera(); t75.maxPitch = 85; t75.set([-74.006, 40.7128], 14.3, 0, 75);
+    const tilted = t75.tileCover(0, 14), zooms = new Set(tilted.map(t => t.z));
     assert.ok(zooms.has(14) && Math.min(...zooms) < 14, [...zooms].join());
     assert.ok(tilted.length < 60, `too many tiles: ${tilted.length}`);
     assert.equal(camera().tileCover(0, 22, 256)[0].z, 15); // 256px tiles load one level deeper

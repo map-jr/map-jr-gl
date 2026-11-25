@@ -3,7 +3,9 @@
 A map of `@map-jr/map-jr-gl` fires events when it loads, moves, renders and receives input. To receive them, call
 [`map.listen(type, fn)`](map.md#listen) or [`map.once(type)`](map.md#once). For the common needs, read
 [the state](state.md) or set `onClick`, `onViewChange` and `onError` in the [description](description.md#mapdescription).
-`onError` is `(error: Error) => void`, and it receives the errors of the `error` event.
+`onError` is `(error: Error, info: MapErrorInfo) => void`, and it receives the errors of the `error` event. `info` is
+always an object: `info.sourceId` is the `sourceId` of the event, and `info` has no `sourceId` when the error belongs to
+no source.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -69,7 +71,7 @@ const stop = map.listen('click', event => console.log(event.lngLat));
 | `terrain` | [`MapEventBase`](#mapeventbase)`<'terrain'> & {terrain: {source: string; exaggeration?: number} \| null}` | The terrain changed. |
 | `projectiontransition` | [`MapEventBase`](#mapeventbase)`<'projectiontransition'> & {newProjection: string}` | The projection was applied, by a new style or a change of the projection type. |
 | `geolocate` | [`MapEventBase`](#mapeventbase)`<'geolocate'> & {coords: GeolocationCoordinates}` | The geolocate control of `@map-jr/map-jr-gl/controls` received a position. |
-| `error` | [`MapEventBase`](#mapeventbase)`<'error'> & {error: unknown}` | An error of the map. |
+| `error` | [`MapEventBase`](#mapeventbase)`<'error'> & {error: unknown; sourceId?: string}` | An error of the map. |
 <!-- ref:MapEvents:end -->
 
 A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, north]]`.
@@ -193,6 +195,24 @@ The events of the data (`styledata`, `sourcedata`, `data` and the events that en
 | `isSourceLoaded` | `boolean` | | Whether the tiles of the source for the view have loaded, for `dataType: 'source'`. |
 | `source` | `unknown` | | The source as the style specifies it, for `dataType: 'source'`. |
 <!-- ref:MapDataEvent:end -->
+
+## `MapErrorInfo`
+
+The second argument of `onError` of the description, of the event `error` of the Vue component and of `onError` of the
+React component. The map passes an object each time, also when the error belongs to no source. The `map-error` event of `<map-jr>` puts the `sourceId` on the `Error` instead, as [element.md](element.md) describes.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `sourceId` | `string` | | The id of the source of a tile, TileJSON, GeoJSON URL, PMTiles archive or image that failed to load. The object has no `sourceId` when the error belongs to no source. |
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+createMap('map', {
+    style: 'https://demotiles.maplibre.org/style.json',
+    onError: (error, {sourceId}) => console.warn(sourceId ? `the source "${sourceId}" failed:` : 'the map failed:', error.message),
+});
+```
 
 ## See also
 

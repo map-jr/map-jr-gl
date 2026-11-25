@@ -57,7 +57,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `onHover` | `(features: `[`RenderedFeature`](../../docs/reference/types.md#renderedfeature)`[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
-| `onError` | `(error: Error) => void` | | Called with each error of the map. |
+| `onError` | `(error: Error, info: MapErrorInfo) => void` | | Called with each error of the map. |
 | `firstView` | `string` | | The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
 | `className` | `string` | | A CSS class to add to the element, after the class `map-jr-react`. |
 | `style` | `CSSProperties` | | The CSS style of the element, merged over `{position: 'relative', width: '100%', height: '100%'}`. |

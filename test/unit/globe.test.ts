@@ -71,6 +71,80 @@ test('globe: the far side is hidden, and the tiles in view are chosen, also over
     assert.ok(pole.tileCover(0, 22, 512).every(t => t.w === 0));
 });
 
+test('globe: the tiles of a 1000x700 map, against those of MapLibre GL JS 6.17 (#1828, #1922)', () => {
+    // The lists are `map.coveringTiles({tileSize: 512})` of MapLibre GL JS 6.17 on the globe in headless Chromium
+    // (measured 2026-11-24), center at longitude 10, for zoom 1, 2.5, 4 and 5.5, latitude 0, 45 and 75, pitch 0 and 60.
+    // Below zoom 5 the library takes its own, lower levels on purpose (the owner's decision on #1828: fewer requests and
+    // an earlier idle); `ours` has the list that it chooses for a view where it differs from MapLibre. At zoom 5.5 the
+    // levels agree. A tile whose hull is more than 60 pixels outside the view is left out (#1922), so that the labels of
+    // a tile at the edge can still reach the screen: at 5.5/45/0 the library keeps 5/16/10 and 5/17/10, whose edge is
+    // 20 pixels above the screen, as MapLibre does, and at 5.5/45/60 and 5.5/75/60 it loads one tile at the edge that
+    // MapLibre does not load (5/14/10 and 5/18/11 at 5.5/45/60, 5/19/4 at 5.5/75/60) and one tile fewer than main.
+    const ours: Record<string, string> = {
+        '2.5/0/0': '1/0/0 1/0/1 1/1/0 1/1/1',
+        '2.5/0/60': '1/0/0 1/0/1 1/1/0 1/1/1',
+        '2.5/45/0': '1/0/0 1/0/1 1/1/0 1/1/1',
+        '2.5/45/60': '1/0/0 2/2/0 2/2/1',
+        '2.5/75/0': '2/1/0 2/2/0 2/3/0 3/2/2 3/3/2 3/4/2 3/5/2',
+        '2.5/75/60': '2/0/0 2/1/0 2/2/0 2/3/0 3/2/2 3/5/2 3/6/2 4/6/4 4/7/4 4/8/4 4/9/4',
+        '4/0/0': '3/3/3 3/3/4 3/4/3 3/4/4 3/5/3 3/5/4',
+        '4/0/60': '3/3/3 3/4/3 4/7/8 4/8/8 4/9/8',
+        '4/45/0': '3/3/2 3/4/2 4/7/6 4/8/6 4/9/6',
+        '4/45/60': '2/1/0 2/2/0 3/3/2 3/4/2 3/5/2 4/7/6 4/8/6 4/9/6',
+        '4/75/0': '3/3/0 3/4/0 4/7/2 4/7/3 4/8/2 4/8/3 4/9/2 4/9/3',
+        '4/75/60': '2/0/0 2/3/0 3/2/0 3/2/1 3/3/0 3/4/0 3/5/0 3/5/1 4/6/2 4/7/2 4/7/3 4/8/2 4/9/2 4/9/3 5/16/6 5/16/7 5/17/6 5/17/7',
+        // Main also has 5/19/10. MapLibre has 2/1/0 and 2/2/0, two far tiles at the horizon that the sample points do not reach.
+        '5.5/45/60': '4/7/4 4/8/4 4/9/4 5/14/10 5/15/10 5/15/11 5/16/10 5/16/11 5/17/10 5/17/11 5/18/10 5/18/11 6/32/24 6/33/24 6/34/24',
+        // Main also has 6/35/12.
+        '5.5/75/60': '3/2/0 3/3/0 3/4/0 3/5/0 5/14/4 5/15/4 5/15/5 5/16/4 5/16/5 5/17/4 5/17/5 5/18/4 5/18/5 5/19/4 6/32/12 6/33/12 6/34/12',
+    };
+    const views: [number, number, number, string][] = [
+        [1, 0, 0, '1/0/0 1/0/1 1/1/0 1/1/1'],
+        [1, 0, 60, '1/0/0 1/0/1 1/1/0 1/1/1'],
+        [1, 45, 0, '1/0/0 1/0/1 1/1/0 1/1/1'],
+        [1, 45, 60, '1/0/0 1/0/1 1/1/0 1/1/1'],
+        [1, 75, 0, '1/0/0 1/1/0'],
+        [1, 75, 60, '1/0/0 1/1/0'],
+        [2.5, 0, 0, '2/1/0 2/1/1 2/1/2 2/1/3 2/2/0 2/2/1 2/2/2 2/2/3'],
+        [2.5, 0, 60, '2/0/2 2/1/1 2/1/2 2/2/1 2/2/2 2/3/2'],
+        [2.5, 45, 0, '2/0/1 2/1/0 2/1/1 2/1/2 2/2/0 2/2/1 2/2/2 2/3/0 2/3/1'],
+        [2.5, 45, 60, '2/1/0 2/1/1 2/2/0 2/2/1'],
+        [2.5, 75, 0, '2/0/1 2/1/0 2/1/1 2/2/0 2/2/1 2/3/0 2/3/1'],
+        [2.5, 75, 60, '2/0/0 2/0/1 2/1/0 2/1/1 2/2/0 2/2/1 2/3/0 2/3/1'],
+        [4, 0, 0, '4/10/6 4/10/9 4/6/6 4/6/9 4/7/7 4/7/8 4/8/7 4/8/8 4/9/7 4/9/8'],
+        [4, 0, 60, '4/10/7 4/6/7 4/7/6 4/7/7 4/7/8 4/8/6 4/8/7 4/8/8 4/9/6 4/9/7 4/9/8'],
+        [4, 45, 0, '4/6/5 4/7/4 4/7/5 4/7/6 4/8/4 4/8/5 4/8/6 4/9/4 4/9/5 4/9/6'],
+        [4, 45, 60, '4/10/4 4/10/5 4/6/4 4/6/5 4/7/3 4/7/4 4/7/5 4/7/6 4/8/3 4/8/4 4/8/5 4/8/6 4/9/3 4/9/4 4/9/5 4/9/6'],
+        [4, 75, 0, '4/6/2 4/7/2 4/7/3 4/8/2 4/8/3 4/9/2 4/9/3 4/9/4'],
+        [4, 75, 60, '4/0/0 4/1/0 4/10/0 4/10/1 4/10/2 4/11/0 4/11/1 4/11/2 4/12/0 4/12/1 4/12/2 4/13/0 4/14/0 4/15/0 4/2/0 4/3/0 4/3/1 4/4/0 4/4/1 4/4/2 4/5/0 4/5/1 4/5/2 4/6/0 4/6/1 4/6/2 4/7/0 4/7/1 4/7/2 4/7/3 4/8/0 4/8/1 4/8/2 4/8/3 4/9/0 4/9/1 4/9/2 4/9/3'],
+        [5.5, 0, 0, '5/16/15 5/16/16 5/17/15 5/17/16'],
+        [5.5, 0, 60, '5/15/14 5/15/15 5/16/14 5/16/15 5/17/14 5/17/15 5/18/14 5/18/15 6/32/32 6/32/33 6/33/32 6/33/33 6/34/32 6/34/33 6/35/32'],
+        [5.5, 45, 0, '5/16/10 5/16/11 5/16/12 5/17/10 5/17/11 5/17/12'],
+        [5.5, 45, 60, '2/1/0 2/2/0 4/7/4 4/8/4 4/9/4 5/15/10 5/15/11 5/16/10 5/16/11 5/17/10 5/17/11 5/18/10 6/32/24 6/33/24 6/34/24'],
+        [5.5, 75, 0, '5/16/5 5/16/6 5/17/5 5/17/6'],
+        [5.5, 75, 60, '3/2/0 3/3/0 3/4/0 3/5/0 5/14/4 5/15/4 5/15/5 5/16/4 5/16/5 5/17/4 5/17/5 5/18/4 5/18/5 6/32/12 6/33/12 6/34/12'],
+    ];
+    for (const [zoom, lat, pitch, list] of views) {
+        const tr = make([10, lat], zoom, 0, pitch), view = `${zoom}/${lat}/${pitch}`;
+        tr.width = 1000; tr.height = 700;
+        const keys = tr.tileCover(0, 22, 512).map(t => t.key).sort();
+        assert.deepEqual(keys, (ours[view] ?? list).split(' '), view);
+    }
+});
+
+test('globe: with 3D terrain, a tile is kept while its ground is on the screen (#1922)', () => {
+    // Ground at 4500 m (the Tibetan Plateau) at zoom 11 and pitch 75: the tile 11/1524/839 covers the bottom of the
+    // screen (y 579 to 692 of 700). A hull at sea level is 4500 m below the ground and outside the bottom edge.
+    const tr = make([88, 31], 11, 0, 75);
+    tr.width = 1000; tr.height = 700;
+    tr.elevation = 4500; tr.groundRange = [4500, 4500];
+    const [x, y] = tr.project(...[88, 31] as [number, number]);
+    assert.ok(Math.abs(x - 500) < 1 && Math.abs(y - 350) < 1, 'the center is on the ground');
+    const p = globe.toScreen(tr, (1524 + 0.5) / 2048, (839 + 0.02) / 2048, 4500, [0, 0, 1]);
+    assert.ok(p[1] > 0 && p[1] < 700 && p[0] > 0 && p[0] < 1000, `a point of the tile is on the screen: ${p}`);
+    assert.ok(tr.tileCover(0, 22, 512).some(t => t.key === '11/1524/839'));
+});
+
 test('globe: a drag turns the globe so that the place stays under the pointer, and keeps the size of the planet', () => {
     const tr = make([0, 0], 2);
     const [lng, lat] = tr.unproject(500, 350);

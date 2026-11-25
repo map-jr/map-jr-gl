@@ -45,6 +45,9 @@ Creates a map in `node` with `options.description`, and calls `options.ready` wi
 | `ready` | `(map: `[`MapInstance`](map.md#mapinstance)`) => void` | | Called with the map once it is created. |
 <!-- ref:SvelteMapAction:end -->
 
+`onError` of the description receives the errors of the map as `(error, {sourceId})`, as described in
+[`MapErrorInfo`](events.md#maperrorinfo).
+
 When the value of `use:mapJr` changes, Svelte calls `update`, and the map applies `description` as
 [`update`](map.md#update) of the main API does. To change the map, pass a new description object, for
 example from `$derived`, as in the example below. The map then applies what is different. A new object or

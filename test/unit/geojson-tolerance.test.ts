@@ -37,3 +37,29 @@ test('GeoJSON tolerance: a tile at the maxzoom of the source keeps every vertex'
     for (const f of Object.values(sliceGeoJSON(s, 14, Math.floor(180.002 / 360 * n), n / 2 - 1))[0].features) f.geometry(4096, c, []);
     assert.equal(c.length / 2, 3);
 });
+
+test('GeoJSON tolerance: a line shorter than the tolerance and a ring with an area under its square are dropped, as in geojson-vt (#1889)', () => {
+    // 0.1° is 2.3 tile units at z0, where the tolerance is 6 units, and 73 units at z5. A tile at z5 keeps what a tolerance of 0 keeps.
+    const d = 0.1, short = {type: 'LineString', coordinates: [[10, 0], [10 + d, 0]]};
+    const square = (x: number, y: number, s: number) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s], [x, y]];
+    // A large polygon with a small hole, and a small polygon of its own.
+    const polygon = {type: 'MultiPolygon', coordinates: [[square(-40, -40, 30), square(-30, -30, d)], [square(20, 20, d)]]};
+    // The number of rings or lines in all tiles of zoom z.
+    const rings = (data: unknown, o: object, z: number) => {
+        const s = prepareSource(data, o, 18), n = 2 ** z;
+        let count = 0;
+        for (let x = 0; x < n; x++) for (let y = 0; y < n; y++) for (const f of Object.values(sliceGeoJSON(s, z, x, y))[0]?.features ?? []) count += f.geometry(4096, [], []);
+        return count;
+    };
+    assert.equal(rings(short, {}, 0), 0, 'the short line at z0');
+    assert.equal(rings(short, {}, 5), rings(short, {tolerance: 0}, 5), 'the short line at z5');
+    assert.equal(rings(short, {tolerance: 0}, 0), 1, 'tolerance 0 keeps the short line');
+    assert.equal(rings(polygon, {}, 0), 1, 'only the outer ring of the large polygon at z0');
+    assert.equal(rings(polygon, {}, 5), rings(polygon, {tolerance: 0}, 5), 'all three rings at z5');
+    assert.equal(rings(polygon, {tolerance: 0}, 0), 3, 'tolerance 0 keeps all three rings');
+    // Simplification keeps this triangle at z0 (its apex is 6.8 units from its base), but its area is 31 square units,
+    // under the square of the tolerance (36).
+    const triangle = {type: 'Polygon', coordinates: [[[0, 0], [0.4, 0], [0.2, 0.3], [0, 0]]]};
+    assert.equal(rings(triangle, {}, 0), 0, 'the small triangle at z0');
+    assert.equal(rings(triangle, {tolerance: 0}, 0), 1, 'tolerance 0 keeps the small triangle');
+});

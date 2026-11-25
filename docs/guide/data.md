@@ -190,8 +190,12 @@ The unit is the pixel of a tile 512 pixels wide. The default applies to every Ge
 `tolerance` sets how far a simplified line or polygon edge may stray from the data, in the same unit. A tile keeps
 fewer vertices at low zoom levels, as in MapLibre GL JS (the Douglas-Peucker method of geojson-vt). The default is
 `0.375` in both entries, as in MapLibre GL JS. `0` turns simplification off. A tile at
-the `maxzoom` of the source and the tiles drawn above it keep every vertex. `queryRenderedFeatures` and
-`querySourceFeatures` return the simplified coordinates of the tile at the zoom that was queried.
+the `maxzoom` of the source and the tiles drawn above it keep every vertex.
+
+Below the `maxzoom` of the source, a tile also leaves out a line shorter than the tolerance and a ring (an outer ring
+or a hole) whose area is under the square of the tolerance, as geojson-vt does. `queryRenderedFeatures` and
+`querySourceFeatures` return the simplified coordinates of the tile at the zoom that was queried, and they do not
+return a line or a ring that the tile leaves out.
 
 ## Set the options of a source
 

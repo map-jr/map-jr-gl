@@ -152,7 +152,9 @@ Only a run with `--write` writes `render-tests.json`, and only on the Chromium t
 `--filter` and `--write` writes the lines of the tests of that run and leaves the others. A line is the status that the
 render job of CI gives; a run on another machine can differ for a test near a limit. `--write` does not write a line
 that is worse than the committed one unless `--lower=<id,id>` names that test. A pull request that commits a worse line
-lowers the floor of the render job, so it stays open for the owner and says why the test is worse. The totals are not committed, so two pull requests that move different tests do not conflict in them.
+lowers the floor of the render job, so it stays open for the owner and says why the test is worse. The one exception, a
+line from `near` to `differ` that moves by at most 0.5 points, is in "Branches, pull requests and merging" of
+`CLAUDE.md`. The totals are not committed, so two pull requests that move different tests do not conflict in them.
 
 | File | Content |
 |---|---|
