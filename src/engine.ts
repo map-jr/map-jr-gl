@@ -1326,10 +1326,10 @@ export class Engine {
                 t.cancel = () => backend.cancel(req);
                 load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : (t.expires = dem.expires, this.elevationTile(dem, source, id, key, t, encoding)));
             } else {
-                // Image tiles need no parsing, so the engine fetches and decodes them itself.
-                const ac = new AbortController();
-                t.cancel = () => ac.abort();
-                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t, true).then(bytes => this.imageTile(bytes, id, () => this.tiles.get(key) === t));
+                // Raster tiles are fetched and decoded in a tile worker too, and the image is transferred here (see `loadImage`).
+                const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
+                t.cancel = () => backend.cancel(req);
+                load = backend.loadImage({id: req, url}).then(r => (t.missing = r.missing, t.expires = r.expires, this.imageTile(r.image, id, () => this.tiles.get(key) === t)));
             }
         }
         load.then(gl => {
@@ -1439,7 +1439,7 @@ export class Engine {
         (src.type === 'raster-dem'
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem && this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox')))
             : t.band === undefined
-            ? fetchTile(tileURL(this.style.sources[source], id.z, id.x, id.y, this.dpr), withTimeout(this.fetchAs('Tile')), undefined, st, true).then(bytes => this.imageTile(bytes, id, () => this.tiles.get(key) === t))
+            ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
             : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
             t.rebuilding = false;

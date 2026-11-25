@@ -271,7 +271,7 @@ const contourOnly = {
 // with a default), and it has no browser that could decode an image or an `ImageBitmap` to decode.
 const serverDrops = {
     'geo.ts': {Transform: ['perspectiveAt', 'mercToScreen', 'screenToGround', 'fogRange', 'project', 'unproject', 'panned', 'unprojectFlat', 'recenterOnGround', 'setLocationAt']},
-    'tiles.ts': {TileBuilder: ['loadElevation', 'find', 'query']},
+    'tiles.ts': {TileBuilder: ['loadElevation', 'loadImage', 'find', 'query']},
     'geojson.ts': {ClusterIndex: ['expansionZoom']},
 };
 const browserOnly = () => {

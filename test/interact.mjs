@@ -3371,6 +3371,36 @@ for (const mode of renderers) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // Raster tiles are fetched and decoded in the tile workers, and the thread that draws only sends the images to the
+    // GPU (#2068). In WebKit a decode runs on the thread that asks for it, and decodes on the thread that draws held its
+    // frames for up to 230 ms in a fast zoom. The page and each worker count their calls of `createImageBitmap` with a
+    // Blob and of `texImage2D` with an image while a map loads the raster tiles of a new zoom.
+    {
+        const png = solidPNG(256, [0, 0, 255]);
+        await page.route(/\/t2068\//, route => route.fulfill({contentType: 'image/png', body: png}));
+        const made = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = window.m2068 = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1,
+                style: {version: 8, sources: {r: {type: 'raster', tiles: ['/t2068/{z}/{x}/{y}.png'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
+            return new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 10000); });
+        }, mode);
+        const hook = () => {
+            const g = globalThis, cib = g.createImageBitmap, proto = g.WebGL2RenderingContext?.prototype, tex = proto?.texImage2D;
+            g.count2068 = {decoded: 0, sent: 0};
+            g.createImageBitmap = (s, ...a) => { if (s instanceof Blob) g.count2068.decoded++; return cib.call(g, s, ...a); };
+            if (proto) proto.texImage2D = function (...a) { if (a[a.length - 1] instanceof ImageBitmap) g.count2068.sent++; return tex.apply(this, a); };
+            g.undo2068 = () => { g.createImageBitmap = cib; if (proto) proto.texImage2D = tex; };
+        };
+        const threads = [page, ...page.workers()];
+        await Promise.all(threads.map(t => t.evaluate(hook)));
+        const idle2068 = await page.evaluate(() => new Promise(r => { const m = window.m2068; m.once('idle', () => r(true)); setTimeout(() => r(false), 10000); m.jumpTo({zoom: 3}); }));
+        const counts = await Promise.all(threads.map(t => t.evaluate(() => { const c = globalThis.count2068; globalThis.undo2068(); return c; }).catch(() => null)));
+        await page.evaluate(() => { const m = window.m2068; m.getContainer().remove(); m.remove(); });
+        const drawing = counts.filter(c => c?.sent), others = counts.filter(c => c && !c.sent);
+        check(`[${mode}] raster tiles are decoded in the tile workers, and the thread that draws decodes none (#2068)`,
+            made && idle2068 && drawing.length > 0 && drawing.every(c => c.decoded === 0) && others.reduce((n, c) => n + c.decoded, 0) >= 4, JSON.stringify({made, idle2068, counts}));
+    }
     // raster-fade-duration: a raster tile that arrives over its loaded parent fades in over it, and `idle` waits for the
     // fade, drawing frames meanwhile, as in MapLibre GL JS 6.17; with 0 it shows at once, and a layer that gives none fades over 300 ms in this entry (#1694). (`toBlob` waits for
     // `idle`, so the frames of the fade are counted, not read.) The parent (tile zoom 1, map zoom 0 with tiles of 256 px) is red, its children blue.
