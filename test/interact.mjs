@@ -1836,7 +1836,6 @@ for (const mode of renderers) {
                 m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, fadeDuration: 0, pitchWithRotate: false, crossSourceCollisions: false, style: {version: 8, sources: {}, layers: []}});
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
-                    new mod.FullscreenControl({container: document.body});
                     new mod.Popup({locationOccludedOpacity: 0.5});
                     new mod.Marker({opacityWhenCovered: '0.2'});
                 }
@@ -1844,13 +1843,30 @@ for (const mode of renderers) {
                 new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, crossSourceCollisions: true, style: {version: 8, sources: {}, layers: []}}).remove();
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'crossSourceCollisions', 'locationOccludedOpacity', 'opacityWhenCovered'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'fadeDuration', 'pitchWithRotate', 'crossSourceCollisions', 'locationOccludedOpacity', 'opacityWhenCovered'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
         // visualizePitch of NavigationControl (#42) and opacityWhenCovered of Marker (the globe, #463) have an effect in
         // this entry, so they write no warning.
-        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
+        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
             Object.entries(r).every(([k, n]) => n === (k === 'validate' || k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
+    }
+    // #675: `on` of maplibre-compat returns a Subscription whose `unsubscribe()` removes the listener, as in MapLibre GL JS
+    // 6.17; `once` with a listener returns the map, also with a layer id.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const m = new mod.Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const heard = [], s = m.on('ping', () => heard.push('on')), layer = m.on('click', 'water', () => {});
+            const out = {notMap: s !== m, keys: Object.keys(s), layerKeys: Object.keys(layer), once: m.once('ping', () => heard.push('once')) === m, onceLayer: m.once('click', 'water', () => {}) === m};
+            m.fire('ping', {}); s.unsubscribe(); layer.unsubscribe(); m.fire('ping', {});
+            out.heard = heard;
+            m.remove(); el.remove();
+            return out;
+        });
+        check('maplibre-compat: on returns a Subscription (with and without a layer id) whose unsubscribe() removes the listener, and once with a listener returns the map (#675)',
+            r.notMap && String(r.keys) === 'unsubscribe' && String(r.layerKeys) === 'unsubscribe' && r.once && r.onceLayer && String(r.heard) === 'on,once', JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
@@ -3727,6 +3743,69 @@ for (const mode of renderers) {
         check(`[${mode}] the globe with 3D terrain: project() gives the place where a circle is drawn, and queryRenderedFeatures finds it there (#1430)`,
             r.n > 100 && Math.hypot(r.x - r.px, r.y - r.py) < 6 && r.found === 1, JSON.stringify(r));
     }
+    // #670: on a tilted map queryRenderedFeatures finds a circle where it is drawn: smaller far from the camera
+    // (circle-pitch-scale: map), and an ellipse on the ground with circle-pitch-alignment: map. Both the array and the promise.
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:500px;z-index:60'}));
+            const out = {};
+            try {
+                for (const align of ['viewport', 'map']) {
+                    const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0.02]}}},
+                        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 20, 'circle-pitch-alignment': align}}]};
+                    const map = new mod.Map({container: el, style, center: [0, 0], zoom: 13, pitch: 70, renderer, attributionControl: false, fadeDuration: 0});
+                    try {
+                        await new Promise(r => map.once('idle', r));
+                        const p = map.project([0, 0.02]), cx = Math.round(p.x), cy = Math.round(p.y);
+                        // The drawn half width and half height of the circle, waited for (up to 10 s).
+                        let rx = 0, ry = 0;
+                        for (let t = 0; t < 50 && !rx; t++) {
+                            await new Promise(r => setTimeout(r, 200));
+                            const d = await shot(map, 600, 500), red = (x, y) => x >= 0 && y >= 0 && x < 600 && y < 500 && d[(y * 600 + x) * 4] > 200 && d[(y * 600 + x) * 4 + 1] < 120;
+                            rx = 0; ry = 0;
+                            while (red(cx + rx + 1, cy)) rx++;
+                            while (red(cx, cy - ry - 1)) ry++;
+                        }
+                        const at = (x, y) => { const now = map.queryRenderedFeatures([x, y], {layers: ['c']}); return now.then(f => [now.length, f.length]); };
+                        out[align] = {rx, ry, inX: await at(cx + rx - 2, cy), outX: await at(cx + rx + 3, cy), inY: await at(cx, cy - ry + 2), outY: await at(cx, cy - ry - 3)};
+                    } finally { map.remove(); }
+                }
+            } finally { el.remove(); }
+            return out;
+        }, mode);
+        const ok = o => o && o.rx > 3 && o.rx < 17 && [o.inX, o.inY].every(v => v.join() === '1,1') && [o.outX, o.outY].every(v => v.join() === '0,0');
+        check(`[${mode}] a tilted map: queryRenderedFeatures finds a circle at its drawn edge and not outside it, for both circle-pitch-alignment values (#670)`,
+            ok(r.viewport) && ok(r.map) && r.map.ry < r.map.rx - 2, JSON.stringify(r));
+    }
+    // #670: on a steep map a circle query with a box that reaches into the sky does not throw, does not return a circle
+    // behind the camera or beyond the horizon, and still returns the circle under the point.
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:500px;z-index:60'}));
+            const out = {};
+            try {
+                for (const align of ['viewport', 'map']) for (const pitch of [80, 85]) {
+                    const pt = (id, lat) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Point', coordinates: [0, lat]}});
+                    const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [pt(1, 0), pt(2, -0.5), pt(3, 30)]}}},
+                        layers: [{id: 'c', type: 'circle', source: 'p', paint: {'circle-radius': 20, 'circle-pitch-alignment': align}}]};
+                    const map = new mod.Map({container: el, style, center: [0, 0], zoom: 13, pitch, maxPitch: 85, renderer, attributionControl: false, fadeDuration: 0});
+                    try {
+                        await new Promise(r => map.once('idle', r));
+                        const ids = async q => { const now = q(); const f = await now; return [now.map(f => f.id).sort().join(), f.map(f => f.id).sort().join()]; };
+                        const p = map.project([0, 0]);
+                        out[align + pitch] = {sky: await ids(() => map.queryRenderedFeatures([[0, 0], [600, 40]], {layers: ['c']})),
+                            near: await ids(() => map.queryRenderedFeatures([p.x, p.y], {layers: ['c']}))};
+                    } catch (e) { out[align + pitch] = String(e); } finally { map.remove(); }
+                }
+            } finally { el.remove(); }
+            return out;
+        }, mode);
+        check(`[${mode}] a steep map: a circle query with a box in the sky returns no circle behind the camera or beyond the horizon, and finds the circle under the point (#670)`,
+            Object.keys(r).length === 4 && Object.values(r).every(o => o.sky?.join() === ',' && o.near?.join() === '1,1'), JSON.stringify(r));
+    }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
     if (mode === 'main') {
@@ -4429,6 +4508,74 @@ for (const mode of renderers) {
             r.shrinkBefore === 'false/false/true' && r.shrinkFull === 'true/true/false' && r.shrinkAfter === 'false/false/true', JSON.stringify(r));
     }
     if (mode === 'main') {
+        // #1723: as in MapLibre GL JS, the option `container` of FullscreenControl is the element that goes fullscreen,
+        // with the Fullscreen API and with the pseudo fullscreen.
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(String(a[0]));
+            const outer = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            const el = outer.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const requested = [];
+            outer.requestFullscreen = function () { requested.push(this === outer ? 'outer' : 'other'); return Promise.resolve(); };
+            el.requestFullscreen = () => { requested.push('map'); return Promise.resolve(); };
+            const fc = new mod.FullscreenControl({container: outer}), events = [];
+            fc.on('fullscreenstart', () => events.push('start')).on('fullscreenend', () => events.push('end'));
+            m.addControl(fc);
+            const fb = el.querySelector('.map-jr-ctrl-fullscreen');
+            fb.click();
+            const set = v => { Object.defineProperty(document, 'fullscreenElement', {configurable: true, get: () => v}); document.dispatchEvent(new Event('fullscreenchange')); };
+            set(el); const afterMap = events.join(); set(outer); set(null); delete document.fullscreenElement;
+            const out = {requested: requested.join(), afterMap, events: events.join()};
+            m.removeControl(fc);
+            // The pseudo fullscreen puts the class on the element of `container`, and removing the control takes it off.
+            const pc = new mod.FullscreenControl({container: outer, pseudo: true});
+            m.addControl(pc);
+            el.querySelector('.map-jr-ctrl-fullscreen').click();
+            out.pseudoOuter = outer.classList.contains('map-jr-pseudo-fullscreen') && outer.classList.contains('maplibregl-pseudo-fullscreen');
+            out.pseudoMap = el.classList.contains('map-jr-pseudo-fullscreen');
+            m.removeControl(pc);
+            out.pseudoRemoved = !outer.className.includes('pseudo-fullscreen');
+            console.warn = warn;
+            out.warnings = warnings.filter(w => /FullscreenControl/.test(w));
+            m.remove(); outer.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: FullscreenControl puts the element of its option container into fullscreen and pseudo fullscreen, without a warning (#1723)',
+            r.requested === 'outer' && r.afterMap === '' && r.events === 'start,end' && r.pseudoOuter && !r.pseudoMap && r.pseudoRemoved && r.warnings.length === 0, JSON.stringify(r));
+    }
+    if (mode === 'main') {
+        // #684: with `pseudo: true`, the wheel alone zooms the map while it fills the window, because cooperativeGestures
+        // is off then, as in MapLibre GL JS. Before and after, the wheel alone only shows the hint.
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(res => setTimeout(res, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(res => m.once('load', res));
+            m.addControl(new mod.FullscreenControl({pseudo: true}));
+            const wheel = async () => {
+                const z = m.getZoom();
+                const box = el.getBoundingClientRect();
+                m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -100, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, bubbles: true, cancelable: true}));
+                for (let i = 0; i < 20 && m.getZoom() === z; i++) await wait(50);
+                await wait(300);
+                return +(m.getZoom() - z).toFixed(2);
+            };
+            const fb = el.querySelector('.map-jr-ctrl-fullscreen');
+            const out = {before: await wheel()};
+            fb.click();
+            out.full = el.classList.contains('map-jr-pseudo-fullscreen');
+            out.during = await wheel();
+            fb.click();
+            out.after = await wheel();
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: FullscreenControl with pseudo: true turns cooperativeGestures off, so the wheel alone zooms the map while it fills the window (#684)',
+            r.full && r.before === 0 && r.during > 0 && r.after === 0, JSON.stringify(r));
+    }
+    if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
         const cam = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -4898,6 +5045,33 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the option bearingSnap sets the threshold of snapToNorth and of the end of a rotate drag and a pan, as in MapLibre GL JS (#1724)',
             ['ml', 'compat'].every(l => m1724[l + 0][0] === 15 && m1724[l + 0][1] !== 0 && m1724[l + 0][2] === 3 && m1724[l + 20].every(b => b === 0))
             && Math.abs(m1724.ml0[1]) < 20 && Math.abs(m1724.compat0[1]) < 20, JSON.stringify(m1724));
+        // #1873: a rotate drag with the right button that pauses for 16 to 50 ms with the button down fires one
+        // `rotateend` and one `moveend`, at the release, as in MapLibre GL JS (served at /ml/).
+        const m1873 = {};
+        for (const [lib, renderer] of [['ml', 'main'], ['compat', 'main'], ['compat', 'worker']]) {
+            await page.evaluate(async ([lib, renderer]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m1873 = new mod.Map({container: el, renderer, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 40});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => setTimeout(r, 300));
+                window.m1873n = {rotateend: 0, moveend: 0};
+                for (const t of ['rotateend', 'moveend']) m.on(t, () => { window.m1873n[t]++; });
+            }, [lib, renderer]);
+            await page.mouse.move(200, 150); await page.mouse.down({button: 'right'});
+            for (let i = 1; i <= 12; i++) { await page.mouse.move(200 + i * 4, 150); await page.waitForTimeout([16, 30, 50][i % 3]); }
+            await page.waitForTimeout(300); await page.mouse.up({button: 'right'});
+            m1873[lib + '-' + renderer] = await page.evaluate(async () => {
+                const m = window.m1873;
+                await new Promise(r => setTimeout(r, 1500));
+                const out = {...window.m1873n, bearing: +m.getBearing().toFixed(1)};
+                const el = m.getContainer(); m.remove(); el.remove();
+                return out;
+            });
+        }
+        check('[main] maplibre-compat: a rotate drag with short pauses fires one rotateend and one moveend, as in MapLibre GL JS (#1873)',
+            Object.values(m1873).every(r => r.rotateend === 1 && r.moveend === 1 && r.bearing !== 40), JSON.stringify(m1873));
         // #1834: a fast pan released with inertia at bearing 3 turns north during the inertia, in one movement (one
         // `moveend`), as in MapLibre GL JS (served at /ml/), and not in a second movement after it.
         const m1834 = {};
@@ -6249,6 +6423,49 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         const cone = await snap();
         check('[main] 3D terrain: jumpTo with the camera inside a cone solves the pitch and the zoom as MapLibre GL JS does (64.349, 12.9003; #1486)', Math.abs(cone[0] - 12.9003) < 0.05 && Math.abs(cone[1] - 64.349) < 1, JSON.stringify(cone));
     } catch (e) { check('[main] 3D terrain: the checks of the camera above the ground ran (#1480)', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// 3D terrain: getBounds at a high pitch has the far ground at the top of the screen, as in MapLibre GL JS 6.17 (served at
+// /ml/), which takes the top edge at the horizon on the plane of the map center (#898). Both maps look over a mountain.
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const bounds = lib => page.evaluate(async ([lib]) => {
+        const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+        if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+        // A mountain 3000 m high with a radius of 8 km, 2 km north of the center.
+        const heightAt = (lng, lat) => Math.max(0, 3000 * (1 - Math.hypot(lng * 111320, (lat - 0.018) * 110540) / 8000));
+        try { mod.removeProtocol('dem898'); } catch { /* not added yet */ }
+        mod.addProtocol('dem898', async request => {
+            const [z, x, y] = request.url.slice(9).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(256, 256), g = c.getContext('2d'), img = g.createImageData(256, 256);
+            for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+                const mx = (x + (i + 0.5) / 256) / n, my = (y + (j + 0.5) / 256) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                const v = heightAt(mx * 360 - 180, lat) + 32768, k = (j * 256 + i) * 4;
+                img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+            }
+            g.putImageData(img, 0, 0);
+            return {data: await (await c.convertToBlob()).arrayBuffer()};
+        });
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9'}));
+        const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem898://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: 14}},
+            layers: [{id: 'bg', type: 'background', paint: {'background-color': '#9c9'}}], terrain: {source: 'dem', exaggeration: 1}};
+        const m = new mod.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 13, pitch: 0, maxPitch: 85, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const out = [];
+        for (const pitch of [60, 85]) {
+            m.jumpTo({pitch});
+            await new Promise(r => { const t = setTimeout(r, 4000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
+            out.push(m.getBounds().toArray().flat().map(v => +v.toFixed(4)));
+        }
+        m.remove(); el.remove();
+        return out;
+    }, [lib]);
+    try {
+        const ours = await bounds('ours'), ml = await bounds('ml');
+        const off = Math.max(...ours.flat().map((v, i) => Math.abs(v - ml.flat()[i])));
+        check('[main] 3D terrain: getBounds at pitch 60 and 85 over a mountain gives the box of MapLibre GL JS 6.17 within 0.01° (#898)', off < 0.01, JSON.stringify({ours, ml}));
+    } catch (e) { check('[main] 3D terrain: the check of getBounds at a high pitch ran (#898)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer

@@ -1,7 +1,0 @@
-{
-  "label": "a circle whose circle-radius expression divides by zero is not drawn",
-  "decision": "later",
-  "issue": 1811,
-  "reason": "A circle whose circle-radius expression divides by zero is not drawn.",
-  "pattern": "^(regressions/mapbox-gl-js#4172)$"
-}

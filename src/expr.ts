@@ -171,6 +171,8 @@ function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step
     const n = stops.length;
     return c => {
         const x = input(c);
+        // An input that is not a number (such as 0 / 0) is an error in MapLibre GL JS, so the property takes its default.
+        if (x !== x) return null;
         if (typeof x !== 'number' || x <= stops[0]) return colorize(outs[0](c));
         if (x >= stops[n - 1]) return colorize(outs[n - 1](c));
         let i = 1;
@@ -533,14 +535,19 @@ function legacyFilter(f: any): Fn {
     }
     const key = f[1];
     const get: Fn = key === '$type' ? c => GEOM[c.f!.type] : key === '$id' ? c => c.f!.id : c => c.f!.properties[key];
-    if (op === 'has') return c => key in c.f!.properties;
-    if (op === '!has') return c => !(key in c.f!.properties);
+    // As in MapLibre, `$type` always exists and `$id` exists when the feature has an id (#1812).
+    if (op === 'has' || op === '!has') {
+        const want = op === 'has';
+        return key === '$type' ? () => want : key === '$id' ? c => (c.f!.id != null) === want : c => (key in c.f!.properties) === want;
+    }
     if (op === 'in' || op === '!in') {
         const set = new Set(f.slice(2)), want = op === 'in';
         return c => set.has(get(c)) === want;
     }
     const test = cmp[op], v = f[2];
     if (!test) { warnOnce(`Unsupported filter "${op}"`); return () => true; }
+    // A feature without an id has the id null, so `["==", "$id", null]` holds for it (MapLibre compares `["id"]`).
+    if (key === '$id' && v === null && (op === '==' || op === '!=')) return c => (get(c) == null) === (op === '==');
     return c => { const x = get(c); return x !== undefined && x !== null ? test(x, v) : op === '!='; };
 }
 

@@ -89,7 +89,7 @@ library" names a member that MapLibre GL JS does not have.
 <!-- ref:CompatMap:start -->
 | Name | Type | Description |
 |---|---|---|
-| `on` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => this` | Adds a listener for an event; `on(type, layerId, listener)` hears `click`, `mousemove`, `mouseenter` and `mouseleave` over the features of a style layer. |
+| `on` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => Subscription` | Adds a listener and returns a `Subscription`, as in MapLibre GL JS: `unsubscribe()` removes that listener, as `off` with the same arguments does. |
 | `once` | `<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void) => this` | Calls `listener` one time, for the next event of `type`, as in MapLibre GL JS. |
 | `off` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => this` | Removes a listener that `on` added, as in MapLibre GL JS. |
 | `getSource` | `<T extends Source = Source>(id: string) => T \| undefined` | Returns the specification of the source with this id and the methods of its type, or `undefined` when the style has no such source. |
@@ -397,14 +397,33 @@ code of these sources has loaded, which the map requests when a style with such 
 | `config` | The settings object of MapLibre GL JS, with three fields. See [Hash](#hash-and-config). |
 | `Evented`, `EXTENT` | The class with `on`, `off`, `once` and `fire` that `Marker`, `Popup` and `FullscreenControl` use for their own events, and the tile size 8192. |
 | `createTileMesh(options, forceIndicesSize?)` | Returns the vertices and indices of a mesh that covers a tile, as in MapLibre GL JS 6.17. It throws when `forceIndicesSize` is `'16bit'` and the mesh needs 32-bit indices. |
+| `AJAXError`, `EdgeInsets`, `GeolocateEvent` | Classes of MapLibre GL JS 6.17 for `new` and `instanceof`. See [AJAXError, EdgeInsets and GeolocateEvent](#ajaxerror-edgeinsets-and-geolocateevent). |
+| `prewarm()`, `clearPrewarmedResources()` | They do nothing, because this library starts its workers with the first map. |
 | `GPUInitializationError` | The error of the `error` event when the map cannot start. The constructor does not throw it. |
 | `MapLibreMap` | Another name of `Map`. |
 | `InteractionHandler` | Only in this library: the class of `map.dragPan` and the other handlers. |
 | The default export | An object with the same names, for code that writes `import maplibregl from 'maplibre-gl'`. |
 
 The entry also exports the types of MapLibre GL JS under their names, such as `MapOptions`, `StyleSpecification`
-and `MapMouseEvent`. An event type or a source type, such as `MapMouseEvent` or `GeoJSONSource`, is a type only, so
-`new` and `instanceof` do not work with it. `Event`, `CanvasSource` and `VideoSource` are types for the same reason.
+and `MapMouseEvent`. An event type such as `MapMouseEvent` is a type only, so `new` and `instanceof` do not work with
+it.
+
+The source names `GeoJSONSource`, `VectorTileSource`, `RasterTileSource`, `RasterDEMTileSource`, `ImageSource`,
+`VideoSource` and `CanvasSource` are also values for `instanceof`: `map.getSource(id) instanceof GeoJSONSource` is
+true when the source has the type `geojson`, and likewise for `vector`, `raster`, `raster-dem`, `image`, `video` and
+`canvas`. The test reads only `type`. `new` does not make a source; add a source with `map.addSource`.
+
+`new Event(type, data)` makes an object with the members of `data` and `type`, to pass to `fire`, as in MapLibre GL
+JS. The events that the map fires are plain objects, so `instanceof Event` is false for them.
+
+### AJAXError, EdgeInsets and GeolocateEvent
+
+- `new AJAXError(status, statusText, url, body)` has these four fields and the message of MapLibre GL JS. A failed
+  request of this library rejects with an `Error`, not with an `AJAXError`.
+- `new EdgeInsets(top, bottom, left, right)` has the four fields in pixels, each 0 by default. It has none of the
+  methods of MapLibre GL JS (`interpolate`, `getCenter`, `equals`, `clone`, `toJSON`), because no wrapper calls them.
+- `new GeolocateEvent(type)` makes an event to pass to `fire`. `e instanceof GeolocateEvent` is true for an event of
+  the type `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` or `userlocationlostfocus`.
 
 `map.style.projection.subdivisionGranularity` has the granularities of MapLibre GL JS 6.17 for the projection of the
 style (`fill`, `line`, `tile`, `stencil` with `getGranularityForZoomLevel(zoom)`, and `circle`), for custom layers that
@@ -427,9 +446,9 @@ An import of a name in this list fails when the application is built, and `mapli
 time. The last table of [Types](maplibre-differences.md#types) says why each group of names is missing.
 
 <!-- exports:start -->
-**A type here, not a value** (20): `CanvasSource`, `ErrorEvent`, `Event`, `GeoJSONSource`, `ImageSource`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource`.
+**A type here, not a value** (12): `ErrorEvent`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`.
 
-**Not exported** (34): `AJAXError`, `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `EdgeInsets`, `FullscreenEvent`, `GeolocateErrorEvent`, `GeolocateEvent`, `GeolocatePositionEvent`, `KeyboardHandler`, `MapStyleLoadEvent`, `MapTerrainEvent`, `MarkerClickEvent`, `MarkerDragEvent`, `PopupEvent`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addProjection`, `addSourceType`, `clearPrewarmedResources`, `getGlobalDispatcher`, `importScriptInWorkers`, `isTimeFrozen`, `now`, `prewarm`, `removeProjection`, `restoreNow`, `setNow`.
+**Not exported** (29): `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `FullscreenEvent`, `GeolocateErrorEvent`, `GeolocatePositionEvent`, `KeyboardHandler`, `MapStyleLoadEvent`, `MapTerrainEvent`, `MarkerClickEvent`, `MarkerDragEvent`, `PopupEvent`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addProjection`, `addSourceType`, `getGlobalDispatcher`, `importScriptInWorkers`, `isTimeFrozen`, `now`, `removeProjection`, `restoreNow`, `setNow`.
 
 <!-- exports:end -->
 
