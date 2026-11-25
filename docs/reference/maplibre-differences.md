@@ -261,13 +261,14 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
   `Expires` header, is requested again when that time has passed, while the tile is in the view. The old tile stays
   drawn until the new one has loaded. A response that is out of date when it arrives is requested again after 1 s,
   2 s, 4 s and so on. The map option `refreshExpiredTiles: false` turns this off. A failed request of an expired tile
-  fires one `error` with `sourceId` and `source`, and the tile is not requested again.
+  fires one `error` with `sourceId`, `source`, `tile`, `isSourceLoaded` and `style`, and the tile is not requested
+  again, so each tile is requested twice in all.
 - **This library:** The same, for vector, raster and elevation tiles of both entries. A failed request of an expired tile keeps the
   old tile and is made again after 1 s, 2 s, 4 s and so on. The first failure fires one `error` with `sourceId` (and
-  `source` in the compat entry), and the failures after it fire none until a request succeeds.
-
-  `idle` waits for each new tile, as `idle` of MapLibre GL JS
-  comes after it. GeoJSON sources, tiles of PMTiles archives and the elevation tiles that contour lines are made from are
+  `source` in the compat entry), and the failures after it fire none until a request succeeds. The `error` event of the
+  compat entry has no `tile`, `isSourceLoaded` or `style`, which the event of MapLibre GL JS has. `idle` waits for each
+  new tile, as `idle` of MapLibre GL JS comes after it. GeoJSON sources, tiles of PMTiles archives and the elevation
+  tiles that contour lines are made from are
   not requested again.
   The option `refreshExpiredTiles: false` of `@map-jr/map-jr-gl/maplibre-compat` turns this off, as in MapLibre GL JS.
   The main entry has no such option.
