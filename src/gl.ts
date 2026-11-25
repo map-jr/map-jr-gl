@@ -273,11 +273,13 @@ void main() {
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
   v_blur = a_blur; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
-  v_gap = u_gap + a_gap; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
+  v_gap = u_gap + a_gap; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; float side = sign(a_sd.x), c = abs(a_sd.x) > 1.5 ? (abs(a_sd.x) - 2.0) / 4096.0 - 2.0 : 0.0; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
-  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * (u_offset + a_offset / 8.0)) / u_scale * lineScale(a_v.xy);
+  // (The outer vertex of a bevel also moves c times the offset along the line, so that it moves along the miter.)
+  float off = u_offset + a_offset / 8.0;
+  v_tile = a_v.xy + (a_v.zw * (v_hw + side * off) + c * off * vec2(a_v.w, -a_v.z)) / u_scale * lineScale(a_v.xy);
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;

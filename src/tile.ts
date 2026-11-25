@@ -699,8 +699,8 @@ const ARC_STEP = Math.PI / 5;
  */
 /**
  * A line vertex is 16 bytes: position x, y (int16, tile units); the direction to push it sideways (int16, times
- * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: -1, 0, 1); the
- * `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
+ * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: its sign;
+ * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
  */
 export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
 /** The cosine of half the turn above which a corner is sharp: a turn of 75 degrees, as in MapLibre GL JS. */
@@ -754,10 +754,16 @@ function tessellateLine(b: Batch): GLBatch | null {
             if (n < 2) continue;
             if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]); }
             let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0;
-            /** (ox, oy) moves the vertices along the line: both of them, or with `only` (1 or -1) the one on that side. */
-            const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0, only = 0) => {
-                const a = vert(x, y, nx + (only < 0 ? 0 : ox), ny + (only < 0 ? 0 : oy), 1, dist);
-                vert(x, y, -nx + (only > 0 ? 0 : ox), -ny + (only > 0 ? 0 : oy), -1, dist);
+            /**
+             * (ox, oy) moves the vertices along the line: both of them, or with `only` (1 or -1) the one on that side.
+             * `c` is for the other vertex of a bevel, whose partner is moved to the inner miter point: `line-offset` moves
+             * it along the miter, as MapLibre GL JS does, and not along its normal. The shader adds c times the offset
+             * along the line; c goes into the side as 2 + (c + 2) * 4096, so that a side of -1, 0 or 1 still has c = 0.
+             */
+            const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0, only = 0, c = 0) => {
+                const k = c ? 2 + Math.round((c + 2) * 4096) : 1;
+                const a = vert(x, y, nx + (only < 0 ? 0 : ox), ny + (only < 0 ? 0 : oy), only < 0 ? k : 1, dist);
+                vert(x, y, -nx + (only > 0 ? 0 : ox), -ny + (only > 0 ? 0 : oy), only > 0 ? -k : -1, dist);
                 if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
                 last = a;
             };
@@ -781,14 +787,14 @@ function tessellateLine(b: Batch): GLBatch | null {
                         // JS, a corner of up to 120 degrees moves the inner vertices to where the inner edges meet, so
                         // that the two segments do not overlap and dashes fall where MapLibre draws them.
                         const outer = pnx * dx + pny * dy < 0 ? 1 : -1, back = cos >= 0.5 ? Math.sqrt(1 / (cos * cos) - 1) : 0;
-                        pair(x, y, pnx, pny, -pdx * back, -pdy * back, -outer);
+                        pair(x, y, pnx, pny, -pdx * back, -pdy * back, -outer, back);
                         if (round) {
                             const a0 = Math.atan2(outer * pny, outer * pnx);
                             let sweep = Math.atan2(outer * ny, outer * nx) - a0;
                             if (sweep > Math.PI) sweep -= 2 * Math.PI; else if (sweep < -Math.PI) sweep += 2 * Math.PI;
                             fan(x, y, a0, sweep, dist);
                         }
-                        pair(x, y, nx, ny, dx * back, dy * back, -outer);
+                        pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
                     }
                     if (sharp && len > 2 * sharp) { dist += sharp; pair(x + dx * sharp, y + dy * sharp, nx, ny); dist -= sharp; }
                 }

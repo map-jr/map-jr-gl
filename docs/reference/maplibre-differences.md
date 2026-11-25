@@ -183,6 +183,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A miter join whose length is more than 127/63 (about 2.02) times the line width breaks into a notch, because the extrusion of the vertex overflows its byte (the render test `line-miter-limit/global-state` shows it).
 - This library draws the full miter up to `line-miter-limit`.
 
+### Line joins that turn more than 120 degrees
+
+- **MapLibre GL JS:** A bevel or round join that turns more than 120 degrees is drawn as a flipped bevel or a round cap, and the line gets one more pair of vertices 15 pixels from the corner on each side, so dashes and gradients bend only near the corner.
+- **This library:** Such a join is a plain bevel or round join without the extra vertices, so dashes, `line-gradient` and `line-pattern` can bend over a longer stretch near the corner. Joins of up to 120 degrees are built as in MapLibre GL JS.
+
 ### `line-gradient` and the GeoJSON option `lineMetrics`
 
 - **MapLibre GL JS:** A line layer with `line-gradient` needs a GeoJSON source with `lineMetrics: true`. Without it, the style fails to load with the error "layer specifies a line-gradient, which requires a GeoJSON source with `lineMetrics` enabled", and the map draws nothing.
