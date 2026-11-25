@@ -59,7 +59,7 @@ export interface QuerySet {
      * it the set's `radius` is used.
      */
     size?: {line?: boolean; a: unknown; b: unknown; zoom: number; scale?: number};
-    /** A circle layer with `circle-translate`: how far its circles are drawn from their features, in pixels of the screen. */
+    /** A circle, fill, line or fill-extrusion layer with `*-translate`: how far it is drawn from its features, in pixels of the screen. */
     translate?: [number, number];
 }
 

@@ -2013,8 +2013,8 @@ export class Map {
             const line = l.type === 'line', ab = line ? [l.paint?.['line-width'], l.paint?.['line-gap-width']] : l.type === 'circle' ? [l.paint?.['circle-radius'], l.paint?.['circle-stroke-width']] : [];
             return ab.some(v => v !== undefined && typeof v !== 'number') ? {line, a: ab[0], b: ab[1], zoom: z} : undefined;
         };
-        // A circle is drawn moved by `circle-translate` (pixels; with the anchor `map` they turn with the bearing), and is
-        // found where it is drawn, as in MapLibre GL JS.
+        // A circle, fill, line or fill extrusion is drawn moved by its `*-translate` (pixels; with the anchor `map` they turn
+        // with the bearing), and is found where it is drawn, as in MapLibre GL JS.
         const shift = (t: unknown, anchor: unknown): [number, number] | undefined => {
             const [x, y] = Array.isArray(t) && typeof t[0] === 'number' && typeof t[1] === 'number' ? t : [0, 0];
             if (!x && !y) return undefined;
@@ -2029,7 +2029,7 @@ export class Map {
             size: size(l),
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
-            translate: l.type === 'circle' ? shift(l.paint?.['circle-translate'], l.paint?.['circle-translate-anchor']) : undefined,
+            translate: /^(circle|fill|line|fill-extrusion)$/.test(l.type) ? shift(l.paint?.[`${l.type}-translate`], l.paint?.[`${l.type}-translate-anchor`]) : undefined,
         }));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
         // (From the top layer down, and in a layer the feature that is drawn last, which is on top, first.)
