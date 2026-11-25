@@ -124,7 +124,7 @@ vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.z
 const BUILTIN = {
     // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
     heat: [`${VS_COMMON}
-layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight;
+layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight; layout(location=6) in float a_radius;
 uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale; uniform float u_corner;
 out vec2 v_ex; out float v_w;
 void main() {
@@ -132,13 +132,14 @@ void main() {
   // The bump is drawn out to where it falls below what the picture can store, and no further.
   float s = sqrt(max(0.0, -2.0 * log(${(1 / 255 / 16).toFixed(8)} / max(v_w * u_intensity * 0.3989422804, 1e-9)))) / 3.0;
   v_ex = s * a_corner * u_corner;
+  float r = u_radius + a_radius; // a radius for each feature is a_radius, and u_radius is then 0
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
 #ifdef GLOBE
-  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): u_radius is in pixels at the center of the view.
-  vec4 c = toClipTurn(a_pos, v_ex * u_radius / u_scale, 0.0);
+  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): r is in pixels at the center of the view.
+  vec4 c = toClipTurn(a_pos, v_ex * r / u_scale, 0.0);
 #else
   vec4 c = toClip(a_pos);
-  c.xy += v_ex * u_radius * vec2(2.0, -2.0) / u_view * c.w;
+  c.xy += v_ex * r * vec2(2.0, -2.0) / u_view * c.w;
 #endif
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
@@ -1694,7 +1695,7 @@ export class GLRenderer {
         let u = this.use('heat', tr);
         gl.uniform1f(u.u_weight, L.p.weight.dd ? 1 : L.p.weight.eval(zoom));
         gl.uniform1f(u.u_intensity, L.p.intensity.eval(zoom));
-        gl.uniform1f(u.u_radius, L.p.radius.dd ? 30 : L.p.radius.eval(zoom));
+        gl.uniform1f(u.u_radius, L.p.radius.dd ? 0 : L.p.radius.eval(zoom));
         for (const it of items) {
             const b = it.tile.batches[L.id];
             if (!b) continue;
@@ -1704,6 +1705,7 @@ export class GLRenderer {
             gl.uniform1f(u.u_corner, b.grid ? 1 / 7 : 1);
             gl.bindVertexArray(b.vao);
             if (!b.scalar) gl.vertexAttrib1f(3, 1);
+            if (!b.stroke) gl.vertexAttrib1f(6, 0);
             gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, back);

@@ -1,6 +1,6 @@
 // The properties that the map accepts and does not read give one warning in the development build (#648): the layout
-// properties that MapLibre GL JS reads and this library does not, `heatmap-radius` that is different for each feature,
-// and `volatile` of a source, which MapLibre GL JS 6.17 does not read either.
+// properties that MapLibre GL JS reads and this library does not, and `volatile` of a source, which MapLibre GL JS 6.17
+// does not read either.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {check, type Checked} from '../../src/mistakes.ts';
@@ -24,13 +24,11 @@ test('unread properties: each warns once for each layer or source that sets it t
     }, layers: [
         {id: 'a', type: 'symbol', source: 'v', layout: {'text-field': 'A', 'symbol-height-offset': 10, 'symbol-height-anchor': 'absolute', 'text-writing-mode': ['vertical', 'horizontal']}},
         {id: 'b', type: 'fill-extrusion', source: 'v', layout: {'fill-extrusion-rounded-corner-distance': 2}},
-        {id: 'h', type: 'heatmap', source: 'v', paint: {'heatmap-radius': ['get', 'r']}},
-        // (The defaults, and a radius that only the zoom decides, draw the same as in MapLibre GL JS: no warning.)
+        // (The defaults draw the same as in MapLibre GL JS: no warning.)
         {id: 'c', type: 'symbol', source: 'v', layout: {'text-field': 'C', 'symbol-height-offset': 0, 'symbol-height-anchor': 'ground', 'text-writing-mode': ['horizontal']}},
         {id: 'd', type: 'fill-extrusion', source: 'v', layout: {'fill-extrusion-rounded-corner-distance': 0}},
         // (MapLibre GL JS reads these symbol properties only at a point, so a layer along a line gives no warning.)
         {id: 'l', type: 'symbol', source: 'v', layout: {'text-field': 'L', 'symbol-placement': 'line', 'symbol-height-offset': 10, 'text-writing-mode': ['vertical']}},
-        {id: 'i', type: 'heatmap', source: 'v', paint: {'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 2, 9, 20]}},
     ]};
     const description = {sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}, volatile: true}}, layers: []};
     assert.deepEqual(run(style, description), [
@@ -38,7 +36,6 @@ test('unread properties: each warns once for each layer or source that sets it t
         noEffect('the symbol layer "a"', 'symbol-height-anchor'),
         noEffect('the symbol layer "a"', 'text-writing-mode'),
         noEffect('the fill-extrusion layer "b"', 'fill-extrusion-rounded-corner-distance'),
-        '[map-jr-gl] the heatmap layer "h": "heatmap-radius" is different for each feature. The map draws every point with the radius of 30 pixels. Write a number, or an expression of ["zoom"] only.',
         '[map-jr-gl] the source "v": "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
         '[map-jr-gl] the source "g": "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
     ]);
