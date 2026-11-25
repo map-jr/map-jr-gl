@@ -58,7 +58,12 @@ export interface QuerySet {
      * without it the set's `radius` is used.
      */
     circle?: {radius: unknown; stroke: unknown; zoom: number; scale?: number};
+    /** A circle layer with `circle-translate`: how far its circles are drawn from their features, in pixels of the screen. */
+    translate?: [number, number];
 }
+
+/** The rectangle of the screen that a set is tested with: moved back by its translation, as MapLibre GL JS does. */
+export const setBox = (box: number[], s: QuerySet) => s.translate ? [box[0] - s.translate[0], box[1] - s.translate[1], box[2] - s.translate[0], box[3] - s.translate[1]] : box;
 
 function outside(c: number[]) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
