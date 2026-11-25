@@ -56,9 +56,10 @@ export interface QuerySet {
      * A circle or line layer whose size depends on the feature, which each feature is tested with at the zoom of the
      * map, as in MapLibre GL JS: for a circle `a` is `circle-radius` and `b` is `circle-stroke-width`; for a line (`line`)
      * `a` is `line-width` and `b` is `line-gap-width`, all in pixels. `scale` is the tile units of one pixel; without
-     * it the set's `radius` is used.
+     * it the set's `radius` is used. For a line `o` is `line-offset` in pixels: the line is tested where it is drawn,
+     * moved to the right of its direction, as MapLibre GL JS does (`offsetLine`).
      */
-    size?: {line?: boolean; a: unknown; b: unknown; zoom: number; scale?: number};
+    size?: {line?: boolean; a: unknown; b: unknown; o?: unknown; zoom: number; scale?: number};
     /** A circle, fill, line or fill-extrusion layer with `*-translate`: how far it is drawn from its features, in pixels of the screen. */
     translate?: [number, number];
 }
@@ -119,6 +120,24 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
  */
 export const sizeOf = (line: boolean | undefined, a: number, b: number) => line ? Math.max(3, (b > 0 ? b + 2 * a : a) / 2) : a + b;
 
+/** The lines of `c` (rings that end at `ends`) moved by `d` to the right of their direction, as `offsetLine` of MapLibre GL JS does. */
+function offsetLine(c: number[], ends: number[], d: number) {
+    const out = c.slice(), unit = (x: number, y: number) => { const l = Math.hypot(x, y); return l ? [x / l, y / l] : [0, 0]; };
+    let start = 0;
+    for (const end of ends) {
+        for (let i = start; i < end; i++) {
+            const x = c[i * 2], y = c[i * 2 + 1];
+            // (The normal of a segment of zero length is zero, so a repeated point takes the normal of the other segment.)
+            const ab = i > start ? unit(x - c[i * 2 - 2], y - c[i * 2 - 1]) : [0, 0], bc = i < end - 1 ? unit(c[i * 2 + 2] - x, c[i * 2 + 3] - y) : [0, 0];
+            const n1 = [-ab[1], ab[0]], n2 = [-bc[1], bc[0]], [bx, by] = unit(n1[0] + n2[0], n1[1] + n2[1]), cos = bx * n2[0] + by * n2[1];
+            out[i * 2] = x + bx * d / (cos || 1);
+            out[i * 2 + 1] = y + by * d / (cos || 1);
+        }
+        start = end;
+    }
+    return out;
+}
+
 /** Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. */
 export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFeature[] {
     const out: FoundFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
@@ -127,7 +146,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
     // each feature is read one time and tested for each set.
     const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius}])
         .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also),
-            size: 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0)} : null}));
+            size: 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0), o: compileProp(s.size.o, 'number', 0)} : null}));
     for (const name in layers) {
         if (q.sourceLayers && !q.sourceLayers.includes(name)) continue;
         const mine = q.sets ? sets.filter(s => s.sourceLayer ? s.sourceLayer === name : name === GEOJSON_LAYER || !s.layer) : sets;
@@ -144,7 +163,8 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
                 const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
-                if (!touches(f.type, c, ends, q.px, q.py, radius, q.box)) continue;
+                const offset = size && f.type === 2 ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
+                if (!touches(f.type, offset ? offsetLine(c, ends, offset) : c, ends, q.px, q.py, radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
                 if (q.box && f.index !== undefined) feature.index = f.index;

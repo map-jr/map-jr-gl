@@ -2012,8 +2012,9 @@ export class Map {
         // A circle or line layer whose size is not a number (an expression or a function) is tested with the size of
         // each feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.size`).
         const size = (l: any): QuerySet['size'] => {
-            const line = l.type === 'line', ab = line ? [l.paint?.['line-width'], l.paint?.['line-gap-width']] : l.type === 'circle' ? [l.paint?.['circle-radius'], l.paint?.['circle-stroke-width']] : [];
-            return ab.some(v => v !== undefined && typeof v !== 'number') ? {line, a: ab[0], b: ab[1], zoom: z} : undefined;
+            // (A line with `line-offset` is moved by the worker too: the size carries the offset.)
+            const line = l.type === 'line', o = line ? l.paint?.['line-offset'] : undefined, ab = line ? [l.paint?.['line-width'], l.paint?.['line-gap-width']] : l.type === 'circle' ? [l.paint?.['circle-radius'], l.paint?.['circle-stroke-width']] : [];
+            return o || ab.some(v => v !== undefined && typeof v !== 'number') ? {line, a: ab[0], b: ab[1], o, zoom: z} : undefined;
         };
         // A circle, fill, line or fill extrusion is drawn moved by its `*-translate` (pixels; with the anchor `map` they turn
         // with the bearing), and is found where it is drawn, as in MapLibre GL JS.
