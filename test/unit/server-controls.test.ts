@@ -25,10 +25,10 @@ test('the scale has the value of the first view', () => {
     // At zoom 10 on the equator a pixel is 76.3 m with the earth radius of MapLibre GL JS (6,371,008.8 m, #1039): 100
     // pixels are 7.6 km, and the bar is the 5 km that fit.
     const html = controlsMarkup(base({controls: [scale()]}));
-    assert.match(html, />5 km<\/div>/);
+    assert.match(html, />5\u00a0km<\/div>/);
     const width = 5000 / (2 * Math.PI * 6371008.8 / (512 * 2 ** 10));
     assert.ok(html.includes(`--map-jr-scale:${width}px`), `the bar is ${width}px`);
-    assert.match(controlsMarkup(base({controls: [scale({unit: 'imperial'})], zoom: 14, lat: 60})), />(\d+) (ft|mi)<\/div>/);
+    assert.match(controlsMarkup(base({controls: [scale({unit: 'imperial'})], zoom: 14, lat: 60})), />(\d+)\u00a0(ft|mi)<\/div>/);
     assert.match(controlsMarkup(base({controls: [scale({unit: 'nautical'})]})), /nm<\/div>/);
 });
 
