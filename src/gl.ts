@@ -28,18 +28,28 @@ vec3 toSphere(vec2 t) {
   float e = exp(GLOBE_PI - m.y * 2.0 * GLOBE_PI), a = (m.x - 0.5) * 2.0 * GLOBE_PI, c = 2.0 * e / (e * e + 1.0);
   return vec3(sin(a) * c, (e * e - 1.0) / (e * e + 1.0), cos(a) * c);
 }
-vec4 toClip3(vec2 t, float h) {
-  vec4 f = u_matrix * vec4(isPole(t) ? vec2(t.x, t.y < 0.0 ? 0.0 : ${EXTENT}.0) : t, h, 1.0);
-  vec3 s = toSphere(t) * (1.0 + h / 6371008.8);
+// f is the Mercator position in clip space, s the point on the sphere (a radius of 1 is the ground).
+vec4 mixClip(vec4 f, vec3 s, bool pole) {
   vec4 g = u_globe * vec4(s, 1.0);
   g.z = (1.0 - dot(s, u_horizon.xyz) - u_horizon.w) * g.w;
   if (u_globeness >= 1.0) return g;
   vec4 r = vec4(mix(f.xy, g.xy, u_globeness), mix(0.0, g.z, clamp((u_globeness - 0.2) / 0.8, 0.0, 1.0)), mix(f.w, g.w, u_globeness));
   // The caps at the poles show only in the last 2 percent of the change to the globe.
-  if (isPole(t) && u_globeness < 0.98) r.z = 2.0 * r.w;
+  if (pole && u_globeness < 0.98) r.z = 2.0 * r.w;
   return r;
 }
+vec4 toClip3(vec2 t, float h) {
+  return mixClip(u_matrix * vec4(isPole(t) ? vec2(t.x, t.y < 0.0 ? 0.0 : ${EXTENT}.0) : t, h, 1.0), toSphere(t) * (1.0 + h / 6371008.8), isPole(t));
+}
 vec4 toClip(vec2 t) { return toClip3(t, 0.0); }
+// The point t moved by o tile units in the plane that touches the sphere at t, as a circle with circle-pitch-alignment
+// 'map' is drawn (MapLibre's globeRotateVector): the offset is an angle, the same at every latitude, and the quad
+// lies flat on the sphere, so that it is foreshortened toward the edge of the globe.
+vec4 toClipTurn(vec2 t, vec2 o, float h) {
+  vec3 v = toSphere(t), r = normalize(vec3(v.z, 0.0, -v.x)), d = normalize(cross(r, v));
+  vec2 a = tan(o * u_tileMerc.zw * 2.0 * GLOBE_PI * u_cosLat);
+  return mixClip(u_matrix * vec4(t + o, h, 1.0), normalize(v + r * a.x + d * a.y) * (1.0 + h / 6371008.8), false);
+}
 // Buildings get a depth, so that their walls and roofs hide each other (MapLibre's projectTileFor3D). u_globe gives
 // every point the same depth; here the depth grows with the distance w (in pixels) as in a projection with no far
 // plane, whose near plane is at 0.0005 of the distance to the center of the sphere (below zoom 12 that is nearer than
@@ -64,6 +74,7 @@ ${GLOBE_GLSL}
 vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 #define toClip3(t, h) (u_matrix * vec4(t, h, 1.0))
 #define toClip3D(t, h) (u_matrix * vec4(t, h, 1.0))
+#define toClipTurn(t, o, h) (u_matrix * vec4((t) + (o), h, 1.0))
 #define horizonSide(t) 1.0
 #define lineScale(t) 1.0
 #define unpole(t) (t)
@@ -328,7 +339,7 @@ void main() {
   // With 'viewport' every circle has the size that it has at the center of the view (as in MapLibre).
   float w = c.w;
   vec2 px = u_translate;
-  if (u_pitch.x > 0.0) c = toClip3(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos), h);
+  if (u_pitch.x > 0.0) c = toClipTurn(a_pos, v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale, h);
   else px += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0);
   c.xy += px * vec2(2.0, -2.0) / u_view * c.w;
   // With 3D terrain a circle is hidden when the ground in front covers its center (lifted by u_lift), as in MapLibre GL
