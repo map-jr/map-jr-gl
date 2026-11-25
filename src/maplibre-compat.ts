@@ -178,6 +178,33 @@ export const config = {
     get WORKER_URL() { return workerUrl; },
     set WORKER_URL(url: string) { setWorkerUrl(url); },
 };
+import type * as T from './compat-types.ts';
+/**
+ * A name that exists for `instanceof` only: `x instanceof Name` is true when `x.type` is `type`, as for the object
+ * of `map.getSource(id)`. The class cannot make a source.
+ */
+const named = <V>(type: string) => class { static [Symbol.hasInstance](x: any) { return x?.type === type; } } as unknown as abstract new () => V;
+export type GeoJSONSource = T.GeoJSONSource;
+export type VectorTileSource = T.VectorTileSource;
+export type RasterTileSource = T.RasterTileSource;
+export type RasterDEMTileSource = T.RasterDEMTileSource;
+export type ImageSource = T.ImageSource;
+export type VideoSource = T.VideoSource;
+export type CanvasSource = T.CanvasSource;
+/** `map.getSource(id) instanceof GeoJSONSource` is true for a source of type `geojson`, and likewise for the other names. */
+export const GeoJSONSource = named<GeoJSONSource>('geojson');
+export const VectorTileSource = named<VectorTileSource>('vector');
+export const RasterTileSource = named<RasterTileSource>('raster');
+export const RasterDEMTileSource = named<RasterDEMTileSource>('raster-dem');
+export const ImageSource = named<ImageSource>('image');
+export const VideoSource = named<VideoSource>('video');
+export const CanvasSource = named<CanvasSource>('canvas');
+export type Event = T.Event;
+/**
+ * `new Event(type, data)` makes an event to pass to `fire`, as in MapLibre GL JS: an object with the members of
+ * `data` and `type`. The events that the map fires are plain objects, not instances of this class.
+ */
+export const Event = class { constructor(type: string, data: object = {}) { Object.assign(this, data, {type}); } } as unknown as new (type: string, data?: object) => Event;
 /** The size of a tile in tile units, as in MapLibre GL JS. */
 export const EXTENT = 8192;
 /**

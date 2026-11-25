@@ -403,8 +403,16 @@ code of these sources has loaded, which the map requests when a style with such 
 | The default export | An object with the same names, for code that writes `import maplibregl from 'maplibre-gl'`. |
 
 The entry also exports the types of MapLibre GL JS under their names, such as `MapOptions`, `StyleSpecification`
-and `MapMouseEvent`. An event type or a source type, such as `MapMouseEvent` or `GeoJSONSource`, is a type only, so
-`new` and `instanceof` do not work with it. `Event`, `CanvasSource` and `VideoSource` are types for the same reason.
+and `MapMouseEvent`. An event type such as `MapMouseEvent` is a type only, so `new` and `instanceof` do not work with
+it.
+
+The source names `GeoJSONSource`, `VectorTileSource`, `RasterTileSource`, `RasterDEMTileSource`, `ImageSource`,
+`VideoSource` and `CanvasSource` are also values for `instanceof`: `map.getSource(id) instanceof GeoJSONSource` is
+true when the source has the type `geojson`, and likewise for `vector`, `raster`, `raster-dem`, `image`, `video` and
+`canvas`. The test reads only `type`. `new` does not make a source; add a source with `map.addSource`.
+
+`new Event(type, data)` makes an object with the members of `data` and `type`, to pass to `fire`, as in MapLibre GL
+JS. The events that the map fires are plain objects, so `instanceof Event` is false for them.
 
 `map.style.projection.subdivisionGranularity` has the granularities of MapLibre GL JS 6.17 for the projection of the
 style (`fill`, `line`, `tile`, `stencil` with `getGranularityForZoomLevel(zoom)`, and `circle`), for custom layers that
@@ -427,7 +435,7 @@ An import of a name in this list fails when the application is built, and `mapli
 time. The last table of [Types](maplibre-differences.md#types) says why each group of names is missing.
 
 <!-- exports:start -->
-**A type here, not a value** (20): `CanvasSource`, `ErrorEvent`, `Event`, `GeoJSONSource`, `ImageSource`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource`.
+**A type here, not a value** (12): `ErrorEvent`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`.
 
 **Not exported** (34): `AJAXError`, `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `EdgeInsets`, `FullscreenEvent`, `GeolocateErrorEvent`, `GeolocateEvent`, `GeolocatePositionEvent`, `KeyboardHandler`, `MapStyleLoadEvent`, `MapTerrainEvent`, `MarkerClickEvent`, `MarkerDragEvent`, `PopupEvent`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addProjection`, `addSourceType`, `clearPrewarmedResources`, `getGlobalDispatcher`, `importScriptInWorkers`, `isTimeFrozen`, `now`, `prewarm`, `removeProjection`, `restoreNow`, `setNow`.
 

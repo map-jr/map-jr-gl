@@ -55,3 +55,18 @@ test('config lists the protocols and holds the two settings', () => {
     assert.equal(EXTENT, 8192);
     assert.equal(new Evented().on('a', () => {}) instanceof Evented, true);
 });
+
+test('the source names answer instanceof by the type of the source, and Event takes its data (#1717)', async () => {
+    const m = await import('../../src/maplibre-compat.ts') as any;
+    const names: Record<string, string> = {GeoJSONSource: 'geojson', VectorTileSource: 'vector', RasterTileSource: 'raster', RasterDEMTileSource: 'raster-dem', ImageSource: 'image', VideoSource: 'video', CanvasSource: 'canvas'};
+    for (const [name, type] of Object.entries(names)) {
+        assert.equal({id: 's', type} instanceof m[name], true, name);
+        for (const other of Object.values(names)) if (other !== type) assert.equal({type: other} instanceof m[name], false, `${name} ${other}`);
+        assert.equal(undefined instanceof m[name], false);
+    }
+    const e = new m.Event('custom', {a: 1, type: 'other'});
+    assert.equal(e.type, 'custom');
+    assert.equal(e.a, 1);
+    assert.equal(e instanceof m.Event, true);
+    assert.equal(new m.Event('x').type, 'x');
+});
