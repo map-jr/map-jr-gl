@@ -125,7 +125,6 @@ table names the causes that this triage found. "label" names a label of
 | `regressions/mapbox-gl-js#2762` | near 3.2% | The transition of `text-translate` is not drawn: the label is at its final position. | #972 |
 | `regressions/mapbox-gl-js#3426` | near 2.2% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
 | `regressions/mapbox-gl-js#4172` | near 1.4% | A circle whose `circle-radius` expression divides by zero is not drawn. | #1811 |
-| `regressions/mapbox-gl-js#4235` | near 3.4% | The filter `["has", "$id"]` reads a property named `$id` instead of the feature id, so the two colors are swapped. | #1812 |
 | `regressions/mapbox-gl-js#4647` | near 2.8% | The collision box of the debug drawing is not drawn. | label (debug drawing, wontfix) |
 | `regressions/mapbox-gl-js#4928` | near 1.7% | The colors of an icon at `pixelRatio` 1.1 differ from MapLibre (seen); the cause is not known. | none yet |
 | `regressions/mapbox-gl-js#5546` | near 2.6% | The glyphs of the CJK labels along the lines are a pixel off (seen). | none yet |
@@ -197,7 +196,6 @@ table names the causes that this triage found. "label" names a label of
 | #1809 | `line-gradient`: joins of segments are drawn twice, so they are darker. | 2 |
 | #1810 | `line-pattern` is sampled sharper than in MapLibre and scaled differently on narrow lines. | 13 |
 | #1811 | A circle whose `circle-radius` expression divides by zero is not drawn. | 1 |
-| #1812 | Filter `["has", "$id"]` reads a property named `$id` instead of the feature id. | 1 |
 | #1813 | A `line-center` label that MapLibre hides for lack of collision boxes is drawn. | 1 |
 | #1814 | After `setLayoutProperty` of `icon-offset`, the icon of the second layer is missing. | 1 |
 | #1815 | A legacy zoom-and-property function with stops at zoom 0 and 0.5 draws no circle at zoom 0.999. | 1 |
