@@ -1991,9 +1991,9 @@ export class Engine {
     /**
      * Whether a feature of a symbol layer that a question found is drawn in the rectangle of the question (in pixels
      * of the screen): its own icon, with its image, size, anchor, offset and turn, is in the rectangle, or the box of
-     * its shown text (see `textBoxes`) is in the rectangle, or, when no text of it is
-     * shown at the point, the feature has text and its point is within `radius` pixels of the rectangle. (A feature with no point, and an icon whose image the map
-     * does not have, is found within `radius` pixels of its geometry as before.)
+     * its shown text (see `textBoxes`) is in the rectangle. A feature whose text is hidden is not found by its text.
+     * (A feature with no point, and a feature with no text and an icon whose image the map does not have, is found
+     * within `radius` pixels of its geometry as before.)
      */
     private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
@@ -2005,7 +2005,8 @@ export class Engine {
         // with an icon is found within `radius` pixels of its geometry as before.)
         if (!points) return image || !String(L.p.field.eval(z, f) ?? '') || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
             : this.textOnLine(g, box, texts);
-        const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
+        // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
+        const near = !image && !String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
             const [x, y] = tr.project(lng, lat);
             // A label that is shown at the point is found on the box of its text, and only there.
