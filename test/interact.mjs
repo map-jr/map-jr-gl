@@ -2955,6 +2955,45 @@ for (const mode of renderers) {
         check(`[${mode}] compat: the attribution follows a visibility expression of the global state, as in MapLibre GL JS, and drops the source when the state hides it again (#1032)`,
             JSON.stringify(ours) === JSON.stringify([...ml.slice(0, 2), false]) && JSON.stringify(ml.slice(0, 2)) === '[false,true]', JSON.stringify({ours, maplibre: ml}));
     }
+    // A source of the compat entry is an `Evented`, as in MapLibre GL JS 6.17: `getSource(id).on` gets the `dataloading`
+    // and `data` events of that source after `setData` (one `data` for each `sourcedata` of the map with its ID), `off`
+    // removes a listener, and a failed tile or GeoJSON URL fires `error` on its source (#1720).
+    {
+        await page.route(/\/no-such-1720\//, r => r.fulfill({status: 500, body: ''}));
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = x => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [x, 0]}}]});
+            const m = new mod.Map({container: el, style: {version: 8, sources: {g: {type: 'geojson', data: point(0)}}, layers: [{id: 'c', type: 'circle', source: 'g'}]}, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 1});
+            await new Promise(r => m.once('load', r));
+            const g = m.getSource('g'), seen = new Set(), removed = [];
+            const methods = ['on', 'once', 'off', 'fire'].every(k => typeof g[k] === 'function');
+            if (!methods) { m.remove(); el.remove(); return {methods}; }
+            let own = 0, onMap = 0;
+            g.on('data', () => { own++; seen.add('data'); });
+            g.on('dataloading', () => seen.add('dataloading'));
+            const gone = () => removed.push(1);
+            g.on('data', gone); g.off('data', gone);
+            m.on('sourcedata', e => { if (e.sourceId === 'g') onMap++; });
+            g.setData(point(10));
+            await wait(1000);
+            const errors = {r: 0, u: 0};
+            m.addSource('r', {type: 'raster', tiles: [location.origin + '/no-such-1720/{z}/{x}/{y}.png'], tileSize: 256});
+            m.getSource('r').on('error', e => { if (e.error) errors.r++; });
+            m.addLayer({id: 'r', type: 'raster', source: 'r'});
+            m.addSource('u', {type: 'geojson', data: location.origin + '/no-such-1720/u.json'});
+            m.getSource('u').on('error', e => { if (e.error) errors.u++; });
+            m.addLayer({id: 'u', type: 'circle', source: 'u'});
+            m.on('error', () => {});
+            await wait(2000);
+            m.remove(); el.remove();
+            return {methods, seen: [...seen].sort(), removed: removed.length, same: own > 0 && own === onMap, errors: {r: errors.r > 0, u: errors.u > 0}};
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = await run('ml', mode);
+        check(`[${mode}] compat: a source has on, once, off and fire, and gets its own dataloading, data and error events, as in MapLibre GL JS (#1720)`,
+            JSON.stringify(ours) === JSON.stringify(ml) && ours.methods && ours.same && ours.seen.length === 2 && ours.errors.r && ours.errors.u, JSON.stringify({ours, maplibre: ml}));
+    }
     // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
     // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.
     // A second map with the same style object gets its own `error` (#809). MapLibre GL JS in WebKit requests the

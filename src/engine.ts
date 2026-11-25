@@ -121,7 +121,7 @@ export type EngineEvent =
     | {type: 'resized'; width: number; height: number; dpr: number; /** The size of the drawing buffer, which the browser can clamp (#950). */ buffer: [number, number]}
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
-    | {type: 'error'; message: string}
+    | {type: 'error'; message: string; source?: string}
     /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`, `rebuild`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
     | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string}
     /** After `tileLoads`: the tile `key` (`source|z/x/y`) has loaded. */
@@ -530,7 +530,7 @@ export class Engine {
                 const image = (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
                 image.close();
-            }).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { state.loading = false; this.invalidate(); });
+            }).catch(err => this.emit({type: 'error', message: String(err.message), source})).finally(() => { state.loading = false; this.invalidate(); });
         }
         if (!st.gl) return [];
         const z = clamp(Math.floor(tr.zoom), 0, 22), n = 2 ** z, cx = mercX(tr.lng) * n, w = Math.floor(cx / n);
@@ -687,7 +687,7 @@ export class Engine {
             const parts = partsFor(style).filter(n => !this.partsSent.has(n));
             if (parts.length) { for (const n of parts) this.partsSent.add(n); for (const b of this.backends) b.need(parts); if (parts.includes('pmtiles')) part('pmtiles').catch(() => {}); }
             // Only the GeoJSON sources whose data or options changed are indexed again (#8).
-            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) Promise.resolve(b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed)).catch(err => this.emit({type: 'error', message: String(err.message)})); } }
+            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) Promise.resolve(b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed)).catch(err => this.emit({type: 'error', message: String(err.message), source: name})); } }
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
             for (const {head} of Object.values(style.sources)) if (head && !heads.has(head.url)) { heads.set(head.url, head.bytes); for (const b of this.backends) b.setHead(head.url, head.bytes); }
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), ids = promoteIds(style), text = JSON.stringify([contours, ids]);
@@ -1359,7 +1359,7 @@ export class Engine {
             t.rev = ++this.tilesVersion;
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
             // (The tile reported its failure with its first four requests, as MapLibre GL JS fires one `error`.)
-            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message});
+            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message, source});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).

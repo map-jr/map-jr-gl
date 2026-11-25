@@ -6,6 +6,7 @@ import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, 
 import type {QueriedFeature} from './query.ts';
 import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
+import {Evented} from './evented.ts';
 import {zoomCurveErrors} from './mistakes.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
@@ -666,7 +667,7 @@ export class Map extends CoreMap {
     /** Removes a source from the style, as in MapLibre GL JS. */
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l?.source === id);
-        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.sourceEvents.delete(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
     /**
@@ -835,7 +836,12 @@ export class Map extends CoreMap {
      */
     getSource(id: string): any {
         const spec = super.getSource(id), type = spec?.type;
-        const more = {loaded: () => this.isSourceLoaded(id), serialize: () => this.getStyle()?.sources[id]};
+        if (!spec) return spec;
+        // As in MapLibre GL JS, a source is an `Evented`: it gets `data`, `dataloading` and `error` of its own (see `dispatch`).
+        // (One object per source and map keeps the listeners, because each call of getSource returns a new object.)
+        let ev = this.sourceEvents.get(id);
+        if (!ev) this.sourceEvents.set(id, ev = new Evented());
+        const more = {loaded: () => this.isSourceLoaded(id), serialize: () => this.getStyle()?.sources[id], on: ev.on.bind(ev), once: ev.once.bind(ev), off: ev.off.bind(ev), fire: ev.fire.bind(ev)};
         if (type === 'geojson') return {
             ...spec, ...more,
             getClusterOptions: () => ({cluster: !!spec.cluster, clusterMaxZoom: spec.clusterMaxZoom ?? (spec.maxzoom ?? 18) - 1, clusterRadius: spec.clusterRadius ?? 50}),
@@ -854,7 +860,7 @@ export class Map extends CoreMap {
                 return bounds;
             },
         };
-        if (!/^(vector|raster)/.test(type)) return spec;
+        if (!/^(vector|raster)/.test(type)) return spec === this.rawStyle?.sources[id] ? {...spec, ...more} : Object.assign(spec, more);
         const set = (k: string, v: unknown, ok: boolean) => {
             if (!ok) throw new Error(`[map-jr-gl] getSource("${id}").${k === 'url' ? 'setUrl(url): "url" must be a string' : 'setTiles(tiles): "tiles" must be an array of URL strings'}.`);
             this.editStyle(s => { const src = s.sources[id]; if (src) delete src.url, delete src.tiles, src[k] = Array.isArray(v) ? [...v] : v; });
@@ -1026,6 +1032,7 @@ export class Map extends CoreMap {
     private answers = new globalThis.Map<string, {found: QueriedFeature[]}>();
     private again = false;
     private refired = new Set<string>();
+    private sourceEvents = new globalThis.Map<string, Evented>();
     private questionKey(box: number[], sets?: {layer: string; also?: unknown}[]) {
         const t = this.tr;
         return JSON.stringify([t.lng, t.lat, t.zoom, t.bearing, t.pitch, t.width, t.height, box, sets ? sets.map(s => [s.layer, s.also]) : 0]);
@@ -1063,6 +1070,9 @@ export class Map extends CoreMap {
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
+        // The events of a source also go to the listeners on `getSource(id)`, with MapLibre's names on a source.
+        const own = {sourcedata: 'data', sourcedataloading: 'dataloading', error: 'error'}[type], ev = this.sourceEvents.get(data.sourceId as string);
+        if (own && ev) ev.fire(own, {...data});
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
         const e = data.error as Error | undefined;
         if (type === 'error' && e?.message?.startsWith('[map-jr-gl] The map cannot be shown:') && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};
