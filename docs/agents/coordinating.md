@@ -64,6 +64,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   worker with no report is usually still testing.
 - **A worker that reports the same number of steps in several notices is stuck** on a test run of its own. Give the
   issue to a new worker with what is known, and tell the first one to stop its servers.
+- **A message to a worker whose worktree is gone may never run.** On 2026-11-25 the worker of #2068 ended with no
+  change, so its worktree was removed; a later message to it was accepted, but the worker never ran again, and two
+  hours passed before the coordinator saw that its output file had not changed since. After such a message, check that
+  the output file of the task changes within a few minutes (`stat -c %y` of the file the notice names), or give the
+  task to a new worker at once.
 - **Watch the checks** with `node scripts/agents/prs.mjs --watch` in a `Monitor` (it prints one line when the checks
   of a head finish, also for CI on `main`, which sends no event), or with `subscribe_pr_activity` when the repository
   is in the session. The script uses only `gh api` REST, so it also runs in a cloud session. A Monitor
@@ -141,6 +146,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **A cloud session cannot delete merged branches** (`git push origin --delete` gives 403).
 - **A pull request with no CI after 5 minutes** (`prs.mjs --watch` says so) missed its event: close it and open it
   again.
+- **A pull request that conflicts with `main` gets no CI at all,** and closing and opening it again does not help
+  (#1985 on 2026-11-25): read `mergeable_state` (`gh api repos/map-jr/map-jr-gl/pulls/N -q .mergeable_state`); for
+  `dirty`, let the worker or the reviewer merge `main` with `node scripts/agents/merge-main.mjs`.
+- **`prs.mjs` can call a head green when only the check `site` has run,** right after `update-branch` and before the
+  jobs of `CI` are queued (#2083 on 2026-11-25). Before a merge, list the checks of the head
+  (`gh api repos/map-jr/map-jr-gl/commits/<sha>/check-runs -q '.check_runs[] | "\(.name)=\(.conclusion)"'`) and see
+  `checks`, the four `browser-*` jobs and `render` among them.
 - **A run of merges cancels CI on `main`,** because each push cancels the run before it. After several merges, let
   one run on `main` finish before you merge more, and before a change that alters how every map starts.
 - **The `Browsers` workflow keeps one waiting run for each group,** and a newer run in the group replaces the waiting
@@ -161,6 +173,15 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 
 ## Independent review
 
+- **The brief of a reviewer that may fix docs names the limit of docs-lint** (a paragraph has at most 90 words): two
+  docs commits of reviewers failed `checks` on 2026-11-25 (#2083). Tell a reviewer to run `pnpm test:consistency`
+  before it pushes.
+- **Tell each reviewer to stop its demo server by its process id only.** A reviewer of 2026-11-25 stopped its server
+  by matching `demo/serve.mjs`, which would also have stopped the servers of other worktrees.
+- **A check that reads the canvas against a fixed timeout fails under the load of CI.** Two image checks raced
+  `toBlob()` against 5 s and failed in some runs (#2091, #2092), and a terrain drag let go inside the window of
+  inertia (#2079). Before you call two such failures a regression, run both checks on the commit before the suspected
+  merges and on `main`: on 2026-11-25 every pixel was right on both, and the cause was the timeout.
 - **Let the reviewer fix what it found** when the author is past about 140,000 tokens, and ask it first to run each
   finding that it only read: on 2026-11-24 the read findings of #1892 reproduced, and the one of #1909 did not.
 - **Measure again after a rework.** The bytes and the time to idle of a pull request change when a reviewer or a
