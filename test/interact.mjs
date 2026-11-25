@@ -3441,6 +3441,45 @@ for (const mode of renderers) {
         });
         check(`[${mode}] raster tiles that arrive together are sent to the GPU over several frames, at most 24 ms of uploads a frame (#2068)`,
             r.idle && r.total >= 16 && r.max <= 6, JSON.stringify(r));
+        // remove() while raster tiles wait for their turn: the waiting images are closed and none is sent to the GPU later.
+        const gone = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), name = 'gone2068';
+            let release, held = new Promise(r => release = r), asked = 0;
+            const made = new Set(), closed = new Set(), close = ImageBitmap.prototype.close;
+            ImageBitmap.prototype.close = function () { closed.add(this); return close.call(this); };
+            mod.addProtocol(name, async request => {
+                const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64});
+                if (z > 1) { asked++; await held; }
+                c.getContext('2d').fillRect(0, 0, 64, 64);
+                const data = await createImageBitmap(c);
+                if (z > 1) made.add(data);
+                return {data};
+            });
+            const proto = WebGL2RenderingContext.prototype, original = proto.texImage2D;
+            let uploads = 0;
+            proto.texImage2D = function (...a) {
+                if (a[a.length - 1] instanceof ImageBitmap) { uploads++; const t = performance.now(); while (performance.now() - t < 5); }
+                return original.apply(this, a);
+            };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:384px'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [10, 10], zoom: 1, pixelRatio: 1,
+                style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 128}}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            m.jumpTo({zoom: 3});
+            for (let i = 0, last = -1; i < 400 && (!asked || asked !== last); i++) { last = asked; await new Promise(r => setTimeout(r, 50)); }
+            release();
+            for (let i = 0; i < 200 && made.size < asked; i++) await new Promise(r => setTimeout(r, 5));
+            await new Promise(r => setTimeout(r, 20)); // (the images reach the queue)
+            const before = uploads;
+            m.remove();
+            await new Promise(r => setTimeout(r, 300));
+            const after = uploads - before;
+            proto.texImage2D = original; ImageBitmap.prototype.close = close;
+            el.remove(); mod.removeProtocol(name);
+            return {asked, made: made.size, sent: before, open: [...made].filter(b => !closed.has(b)).length, after};
+        });
+        check(`[${mode}] remove() while raster tiles wait for the GPU closes their images and sends none later (#2068)`,
+            gone.made >= 16 && gone.sent < gone.made && gone.open === 0 && gone.after === 0, JSON.stringify(gone));
     }
     // setAnisotropicFilterPitch: above that pitch (20 by default) raster tiles are filtered anisotropically, as in MapLibre
     // GL JS (#1713). The tiles have vertical stripes 4 px wide. At a pitch of 75 the far ground is squeezed from top to
