@@ -32,6 +32,8 @@ export interface Batch {
     offset?: Float32Array;
     /** `line-blur` for each feature (pixels), present only when it is data-driven. */
     blur?: Float32Array;
+    /** `line-gap-width` for each feature (pixels), present only when it is data-driven. */
+    gap?: Float32Array;
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
     cap?: string;
@@ -119,7 +121,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
-    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array}
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array; /** `line-gap-width` for each vertex, present only when it is data-driven. */ gap?: Float32Array}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
@@ -311,7 +313,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
             const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
-            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [];
+            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [], gap: number[] = [];
             let grows = false;
             const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
             const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
@@ -346,6 +348,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 }
                 if (L.type === 'line' && p.offset.dd) offset.push(p.offset.eval(zs, f));
                 if (L.type === 'line' && p.blur.dd) blur.push(Math.max(0, p.blur.eval(zs, f)));
+                if (L.type === 'line' && p.gap.dd) gap.push(Math.max(0, p.gap.eval(zs, f)));
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
                 if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
@@ -361,6 +364,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (offset.length) batch.offset = Float32Array.from(offset);
             if (blur.length) batch.blur = Float32Array.from(blur);
+            if (gap.length) batch.gap = Float32Array.from(gap);
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
             if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
             if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
@@ -679,7 +683,7 @@ export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
 
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
-    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [];
+    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [], gaps: number[] = [];
     const round = b.join === 'round';
     // As in MapLibre GL JS: a corner whose miter is longer than the limit (1 / cos of half the turn, in line widths)
     // gets a bevel or a round join; a bevel join keeps sharp the corners whose miter is shorter than 1.05.
@@ -700,6 +704,7 @@ function tessellateLine(b: Batch): GLBatch | null {
         if (b.width1) width1.push(b.width1[f]);
         if (b.offset) offsets.push(b.offset[f]);
         if (b.blur) blurs.push(b.blur[f]);
+        if (b.gap) gaps.push(b.gap[f]);
         return count++;
     };
     /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
@@ -777,6 +782,7 @@ function tessellateLine(b: Batch): GLBatch | null {
     if (b.width) out.width = Float32Array.from(width);
     if (b.width1) out.width1 = Float32Array.from(width1);
     if (b.blur) out.blur = Float32Array.from(blurs);
+    if (b.gap) out.gap = Float32Array.from(gaps);
     return out;
 }
 
