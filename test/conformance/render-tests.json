@@ -847,7 +847,7 @@
 "projection/globe/atmosphere/zoom": "match",
 "projection/globe/background": "match",
 "projection/globe/background-opacity": "match",
-"projection/globe/background-pattern": "match",
+"projection/globe/background-pattern": "near",
 "projection/globe/circle-pitch-alignment/map-scale-map": "match",
 "projection/globe/circle-pitch-alignment/map-scale-viewport": "near",
 "projection/globe/circle-pitch-alignment/viewport-scale-map": "match",

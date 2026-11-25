@@ -8,7 +8,7 @@
  * the horizon hides the far side, and between zoom 11 and 12 the position mixes with the Mercator position in clip
  * space. The code is new.
  */
-import {EXTENT, TILE_SIZE, clamp, lodZoom, keepSize as sizeZoom, latFromMerc, lngFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
+import {EXTENT, TILE_SIZE, clamp, keepSize as sizeZoom, latFromMerc, lngFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 
 type V3 = [number, number, number];
 const PI = Math.PI, RAD = PI / 180;
@@ -313,26 +313,24 @@ function cull(v: {points: V3[]; planes: Plane[]}, tile: {points: V3[]; planes: P
 }
 
 /**
- * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when a convex
- * volume around it is outside the view or behind the plane of the horizon, as in MapLibre GL JS 6.17 (#1922). The
- * level of a tile is the level that MapLibre GL JS 6.17 gives it on the globe.
+ * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when all its
+ * sample points are behind the horizon or outside the view, or when a convex volume around it is outside the view or
+ * behind the plane of the horizon, as in MapLibre GL JS 6.17 (#1922). The level that a tile gets falls with the
+ * distance from the camera to its nearest sample point, as with 3D terrain (geo.ts); below zoom 5 it is usually one level lower
+ * than MapLibre GL JS's, on purpose (#1828).
  */
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];
-    // The level of a tile is MapLibre GL JS's (#1828): up to tiles of zoom 4 every tile has the level of the map (its
-    // zoom, rounded down); above it, the rule of a pitched view (lodZoom), with the camera above the center of a flat
-    // Mercator world at the distance of the camera, and the distance to the nearest point of a tile in that world.
-    const fixed = Math.floor(exact) <= 4 ? Math.min(maxzoom, Math.max(0, (round ? Math.round : Math.floor)(exact))) : -1;
-    const d3 = tr.cameraDistance / tr.worldSize, pitch = tr.pitch * RAD, bearing = tr.bearing * RAD;
-    const cx = mercX(tr.lng), cy = mercY(clamp(tr.lat, -85.051129, 85.051129));
-    const camX = cx - d3 * Math.sin(pitch) * Math.sin(bearing), camY = cy + d3 * Math.sin(pitch) * Math.cos(bearing), camZ = Math.max(1e-9, d3 * Math.cos(pitch));
-    // The distance on the ground to a tile, with the world repeated across the antimeridian and mirrored at the poles.
-    const flat = (x0: number, y0: number, s: number) => Math.max(Math.abs(camY - clamp(camY, y0, y0 + s)), Math.min(...[-1, 0, 1].map(k => Math.abs(camX - clamp(camX, x0 + k, x0 + k + s)))));
-    const ground = (x: number, y: number, n: number) => Math.min(flat(x / n, y / n, 1 / n), flat(x / n + 0.5, -(y + 1) / n, 1 / n), flat(x / n + 0.5, 2 - (y + 1) / n, 1 / n));
+    // The camera distance in radii, at which the tile of the zoom of the map is wanted.
+    const unit = tr.cameraDistance / f.radius, margin = 0.15;
     // The point of the sphere under the camera, in Mercator units: the nearest point of a tile is its point nearest to this one.
     const cl = Math.hypot(...f.cam), under = [mercX(Math.atan2(f.cam[0], f.cam[2]) / RAD), mercY(clamp(Math.asin(f.cam[1] / cl) / RAD, -85.051129, 85.051129))];
+    // The places under nine points of the screen: a tile that has one of them is in view, however large it is.
+    const seen: number[][] = [];
+    for (const sx of [0, 0.5, 1]) for (const sy of [0, 0.5, 1]) seen.push(toMerc(tr, sx * tr.width, sy * tr.height));
+    const has = (x: number, y: number, n: number, p: number[]) => { const px = (p[0] - Math.floor(p[0])) * n, py = p[1] * n; return px >= x && px <= x + 1 && py >= y && py <= y + 1; };
     const vol = viewVolume(tr, f);
-    // (A tile inside a tile that is all in view is in view too: it is not tested, as in MapLibre.)
+    // (A tile inside a tile whose volume is all in view is not tested against the volume again, as in MapLibre.)
     const visit = (z: number, x: number, y: number, inside: boolean) => {
         const n = 2 ** z, pts: number[][] = [];
         if (!inside) {
@@ -340,13 +338,24 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
             if (!c) return;
             inside = c === 2;
         }
-        // Sample points of the tile (5 x 5, and the pole for a tile at the edge of the world), for the distance to the camera.
+        // Sample points of the tile (5 x 5, and the pole for a tile at the edge of the world). The tile is also left out
+        // unless one of them is on the near side of the horizon and on the screen, or it has a place under the screen,
+        // so that the volume adds no tile to this test (#1922).
         for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) pts.push(sphere((x + i / 4) / n, (y + j / 4) / n));
         if (y === 0) pts.push([0, 1, 0]);
         if (y === n - 1) pts.push([0, -1, 0]);
+        const inView = seen.some(p => has(x, y, n, p)) || pts.some(p => {
+            if (dot(p, f.horizon) + f.horizon[3] < -1e-3) return false;
+            const c = clipOf(f, p);
+            return c[2] > 1e-6 && Math.abs(c[0] / c[2]) <= 1 + margin && Math.abs(c[1] / c[2]) <= 1 + margin;
+        });
+        if (!inView) return;
         const ux = under[0] - Math.floor(under[0] - x / n + 0.5 - 0.5 / n), nearest = sphere(clamp(ux, x / n, (x + 1) / n), clamp(under[1], y / n, (y + 1) / n));
         const near = Math.min(...[...pts, nearest].map(p => Math.hypot(p[0] - f.cam[0], p[1] - f.cam[1], p[2] - f.cam[2])));
-        const wanted = fixed >= 0 ? fixed : Math.min(maxzoom, (round ? Math.round : Math.floor)(lodZoom([9.314, 3], exact, ground(x, y, n), camZ, d3, tr.fov)));
+        // A tile far from the latitude of the center has other pixels on the sphere: Mercator tiles get smaller toward
+        // the poles, by the cosine of the latitude (pts[12] is the middle of the tile).
+        const cos = Math.max(1e-3, Math.sqrt(1 - pts[12][1] ** 2)) / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD);
+        const wanted = Math.min(maxzoom, (round ? Math.round : Math.floor)(exact + Math.log2(unit / Math.max(near, 1e-9) * cos)));
         if (z >= maxzoom || z >= wanted) { if (z >= minzoom) out.push({z, x, y, w: 0, key: `${z}/${x}/${y}`, near}); return; }
         for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1), inside);
     };

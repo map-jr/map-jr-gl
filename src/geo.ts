@@ -624,7 +624,7 @@ export class Transform {
  * the tiles of an unpitched view. `d2` is the distance on the ground, `dz` the height of the camera and `d3` the
  * distance to the center, all in the same unit.
  */
-export function lodZoom([levels, ratio]: number[], zoom: number, d2: number, dz: number, d3: number, f: number) {
+function lodZoom([levels, ratio]: number[], zoom: number, d2: number, dz: number, d3: number, f: number) {
     const H = 89.25 * Math.PI / 180, b = 2 * ((levels - 1) / Math.log2(Math.cos(H - f) / Math.cos(H)) - 1);
     const sum = (a: number, c: number) => { let s = 0; for (let i = 0; i < 10; i++) s += Math.cos(a + (i + 0.5) / 10 * (c - a)) ** (b - 1); return s * (c - a) / 10; };
     const pitch = Math.acos(dz / d3), hi = Math.min(H, pitch + f / 2), lo = Math.min(hi, pitch - f / 2), d = Math.hypot(d2, dz);
