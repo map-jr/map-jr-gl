@@ -47,7 +47,10 @@ writing); this brief has the steps.
    percentage), and take its line from the `BETTER:` or `WORSE:` lines of CI when the two differ. `--write` does not
    write a line that is worse (match to near or differ, near to differ, any to error or skipped) unless
    `--lower=<id,id>` names the test. A pull request that commits a worse line lowers the floor: give the reason in it,
-   leave it open, and write "Needs owner" in your report.
+   leave it open, and write "Needs owner" in your report. The one exception is a line from `near` to `differ` that
+   meets every condition of "A worse line of a render test that needs no owner" in `CLAUDE.md`: list it with its
+   percentages on `main` and on the branch (three runs each) and the issue of the fault under it, and write
+   "Needs owner: no (worse line within 0.5 points)".
    Run render tests and pixel checks on the Chromium build that CI uses, which is the build that the installed
    Playwright pins. The cloud VM has an older build in `/opt/pw-browsers`, which `test/launch.mjs` takes when the
    pinned build is missing, and that build counts some tests differently (`text-local-glyphs/cjk` is a match there
