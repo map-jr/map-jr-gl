@@ -58,10 +58,9 @@ texts[1692] = layer => `${layer}: "symbol-avoid-edges" has no effect, as in MapL
 texts[645] = (layer, set) => `${layer}: "color-relief-color" ${set ? 'is not an "interpolate" expression' : 'is missing'}, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].`;
 texts[10645] = (layer, stops) => `${layer}: "color-relief-color" has ${stops} stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.`;
 texts[1712] = () => 'style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.';
-texts[648] = (where, property) => property === 'volatile'
-    ? `${where}: "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`
-    : `${where}: "${property}" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.`;
-texts[10648] = layer => `${layer}: "heatmap-radius" is different for each feature, which the map does not do, so every point has the radius 30. Write a number, or an expression of ["zoom"] only.`;
+texts[648] = (where, property) => `${where}: "${property}" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.`;
+texts[10648] = layer => `${layer}: "heatmap-radius" is different for each feature. The map draws every point with the radius of 30 pixels. Write a number, or an expression of ["zoom"] only.`;
+texts[20648] = source => `${source}: "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`;
 texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
 texts[40] = scheme => `colorScheme: ${scheme} is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
@@ -306,7 +305,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const l of Array.isArray(layers) ? layers : []) if (l?.type === 'symbol' && l.layout?.['symbol-avoid-edges'] != null) warn(1692, `the symbol layer "${l.id}"`);
         // (Accepted, and not read here, while MapLibre GL JS reads them: #648. A value equal to the default draws the same.)
         for (const l of Array.isArray(layers) ? layers : []) {
-            for (const k in noEffect[l?.type]) { const v = l.layout?.[k]; if (v != null && differ(v, noEffect[l.type][k])) warn(648, `the ${l.type} layer "${l.id}"`, k); }
+            // (MapLibre GL JS reads the symbol properties only at a point: `symbol-placement` "point", the default.)
+            if (l?.type !== 'symbol' || (l.layout?.['symbol-placement'] ?? 'point') === 'point') for (const k in noEffect[l?.type]) { const v = l.layout?.[k]; if (v != null && differ(v, noEffect[l.type][k])) warn(648, `the ${l.type} layer "${l.id}"`, k); }
             if (l?.type === 'heatmap' && l.paint?.['heatmap-radius'] != null && compileProp(l.paint['heatmap-radius'], 'number', 30).dd) warn(10648, `the heatmap layer "${l.id}"`);
         }
         // (A color-relief layer draws an `interpolate` expression of the elevation, with at most 2048 stops, as src/style.ts reads it: #645.)
@@ -374,7 +374,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         // (Accepted, and read neither here nor by MapLibre GL JS 6.17: #1712.)
         if (a.centerAltitude != null) warn(1712);
         // (`volatile` of a source is read neither here nor by MapLibre GL JS 6.17: #648.)
-        for (const [id, x] of Object.entries({...a.sources, ...b?.sources} as Record<string, {volatile?: unknown} | null>)) if (x?.volatile) warn(648, `the source "${id}"`, 'volatile');
+        for (const [id, x] of Object.entries({...a.sources, ...b?.sources} as Record<string, {volatile?: unknown} | null>)) if (x?.volatile) warn(20648, `the source "${id}"`);
         if (!b) return;
         const extend = b as Pick<MapDescription, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {
