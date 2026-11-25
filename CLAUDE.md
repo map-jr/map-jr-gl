@@ -55,7 +55,8 @@ to protect those qualities.
   request that says what changed and why, and names the issue (`Fixes #12`).
 - **The `CI` workflow must pass:** `checks`, the four `browser-*` jobs (or their skip, which the job `changes`
   decides) and `render`. The summary job `browser` only checks that these passed, and it often waits ten minutes for a
-  runner, so a merge does not wait for it. Do not merge on red, and do not lower a floor or skip a test to get green:
+  runner, so a merge does not wait for it. Do not merge on red, and do not lower a floor, commit a worse line of
+  `test/conformance/render-tests.json` or skip a test to get green:
   fix the cause, or say in the pull request why the floor moves.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
@@ -64,7 +65,8 @@ to protect those qualities.
   - adds a dependency to the built files, or takes code or a method from a project whose license is not on the list
     in "Code and methods from other projects";
   - changes this file or the release process (the workflow `Release` included);
-  - changes what the CI workflows check: removes or skips a job or a test, lowers a floor, or makes a job pass when
+  - changes what the CI workflows check: removes or skips a job or a test, lowers a floor (a worse line of
+    `test/conformance/render-tests.json` is a lower floor), or makes a job pass when
     a check fails. A change of how a workflow runs needs no owner: a retry, a cache, a timeout, a version of a tool
     or of an action, or the order of steps. Its pull request says why the change is needed;
   - is labeled `needs: owner`.
@@ -254,7 +256,7 @@ See `docs/development.md`. In short:
 | `pnpm test:browser` | The map and the compat entry (`test/interact.mjs`), the main API (`test/host.mjs`) | `pnpm demo` running |
 | `pnpm test:vue`, `pnpm test:react` | The adapters | a build |
 | `pnpm test:loading`, `pnpm test:cloudflare` | Ways to load the library; the server renderer on Workers | `pnpm demo` running |
-| `pnpm test:render` | MapLibre's render tests against a floor (about ten minutes) | a build |
+| `pnpm test:render` | MapLibre's render tests against the committed status of each test (about ten minutes) | a build |
 | `pnpm status` | Rewrites the status table in the README | results of the above |
 
 CI runs all of these except `test:cloudflare`. Run locally what your change can affect before you push.
