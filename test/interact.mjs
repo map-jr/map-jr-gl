@@ -1458,10 +1458,19 @@ for (const mode of renderers) {
         // The array that the call gives at once (from the GeoJSON on the page) uses the same radius.
         const now = [...m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']})];
         const near = await m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']});
+        // The same on a map with pitch 45, where a circle is tested on the screen (#1942).
+        const pitch = m.getPitch();
+        m.jumpTo({pitch: 45});
+        const q = m.project(c), tiltedNow = [...m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['by-data', 'by-zoom']})];
+        const tilted = await m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['by-data', 'by-zoom']});
+        m.jumpTo({pitch});
         m.removeLayer('by-data'); m.removeLayer('by-zoom'); m.removeSource('sized');
-        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort()};
+        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort(),
+            tilted: tilted.map(f => `${f.layer.id}:${f.id}`).sort(), tiltedNow: tiltedNow.map(f => `${f.layer.id}:${f.id}`).sort()};
     });
     check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
+    check(`[${mode}] queryRenderedFeatures: on a tilted map a circle-radius from a property or the zoom is the radius of the query, also in the array at once (#1942)`,
+        sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
     // A line whose `line-width` is an expression is found within half of its own width, as in MapLibre (#1941): a width
     // of 20 pixels from a property, one of 20 pixels by zoom, and a gap of 16 pixels between two lines of 2 pixels are

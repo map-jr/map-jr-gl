@@ -10,7 +10,7 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
@@ -1105,13 +1105,14 @@ export class Engine {
                 const circle = circles.get(s.layer) === s;
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), key = box.join();
                 const group = boxes.get(key) ?? {box, sets: [], exact: !!reach || circle};
-                group.sets.push(reach || circle ? {...s, radius: 0} : s);
+                // (A tilted circle whose size depends on the feature is asked with its size grown as `pitchedCircles` grows the rectangle.)
+                group.sets.push(circle && s.size ? {...s, radius: 0, size: {...s.size, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
                 boxes.set(key, group);
             }
             for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
-                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && s.radius ? {...s.size, scale: t.scale} : undefined})),
+                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
                 }));
             }
         }
@@ -1121,7 +1122,7 @@ export class Engine {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
-            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circle.radius, circle.pitch!))) return false;
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));
