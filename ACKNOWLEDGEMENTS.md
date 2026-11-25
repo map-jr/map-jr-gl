@@ -103,7 +103,8 @@ BSD-3-Clause.
   6.17 (`src/geo/projection/vertical_perspective_transform.ts`, `globe_utils.ts`, `_projection_globe.vertex.glsl`,
   BSD-3-Clause): the radius that keeps the scale of Mercator at the center, the matrix from the unit sphere to clip
   space, the plane of the horizon as clip-space z, the mix with Mercator between zoom 11 and 12, the formula with
-  `exp` for the sphere, the width of lines toward the poles, and the change of zoom with the latitude during a drag.
+  `exp` for the sphere, the width of lines toward the poles, `*-translate` in tile units that move the point before
+  it is put on the sphere (`translatePosition`), and the change of zoom with the latitude during a drag.
   A drag on the globe (`drag` in `src/globe.ts`) follows `versorSetLocationAtPoint` and `panSurfaceLocation` in
   `globe_utils.ts`: the rotation from the last pointer to the new one, the eased curve near the edge of the globe, and
   the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the center
