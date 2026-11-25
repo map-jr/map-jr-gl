@@ -176,7 +176,7 @@ export function boxAround(x: number, y: number, w: number, h: number, angle: num
     const c = Math.cos(angle), s = Math.sin(angle), ox = (r - l) / 2, oy = (b - t) / 2;
     // `turn` is the part of `angle` that comes from the bearing of a symbol that is aligned with the map. As in MapLibre
     // GL JS, the box of the symbol at its own rotation is taken first, and that box is turned by the bearing (#2037).
-    const c1 = Math.abs(Math.cos(angle - turn)), s1 = Math.abs(Math.sin(angle - turn)), ct = Math.abs(Math.cos(turn)), st = Math.abs(Math.sin(turn));
+    const c1 = Math.abs(turn ? Math.cos(angle - turn) : c), s1 = Math.abs(turn ? Math.sin(angle - turn) : s), ct = turn ? Math.abs(Math.cos(turn)) : 1, st = turn ? Math.abs(Math.sin(turn)) : 0;
     const w1 = (w + l + r) * c1 + (h + t + b) * s1, h1 = (w + l + r) * s1 + (h + t + b) * c1;
     const hw = (w1 * ct + h1 * st) / 2, hh = (w1 * st + h1 * ct) / 2;
     x += ox * c - oy * s; y += ox * s + oy * c;
