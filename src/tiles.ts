@@ -1,7 +1,6 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {compileFor, geo, warnOnce, type MapStates} from './expr.ts';
-import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
-import type {GlobeBuild} from './subdivide.ts';
+import {buildTile, packLabels, toGL, unpackLabels, type GlobeBuild, type GlobeCut, type TileGL, type TileIR} from './tile.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
@@ -12,12 +11,25 @@ import type {ContourConfig, DEM} from './contour.ts';
 import {decodePixels, type ImageDecoder} from './exact-pixels.ts';
 import {part, type PartName, type Parts} from './parts.ts';
 
+/**
+ * Builds a tile, cut for the globe with the code of the part `subdivide`, which loads on demand. When the part does not
+ * load, the tile is built without the cut, so that the globe still draws it, and `fault` carries the message, which the
+ * map reports once (`oncePerPart`).
+ */
+async function finish(ir: TileIR, req: TileRequest) {
+    let fault: string | undefined;
+    const cut: GlobeCut | undefined = req.globe && await part('subdivide').then(m => ({...req.globe!, ...m}), (err: Error) => void (fault = err.message));
+    const out = toGL(ir, cut);
+    out.tile.fault = fault;
+    return out;
+}
+
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
 export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number; /** When the tile is out of date (see `TileFetchState`). */ expires?: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** The tile: zoom, x and y, for `within` and `distance`. */ at?: [number, number, number]; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
-    /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). No map sends it yet (#463). */ globe?: GlobeBuild }
+    /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). */ globe?: GlobeBuild }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
 export class TileBuilder {
@@ -55,7 +67,7 @@ export class TileBuilder {
         const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
         if (!cfg) return {};
         const c = await part('dem');
-        return c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c));
+        return c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c), m[1]);
     }
 
     /**
@@ -244,7 +256,7 @@ export class LocalBackend implements TileBackend {
     setContours(sources: Record<string, ContourConfig>, ids?: Record<string, string | Record<string, string>>) { this.builder.setContours(sources, ids); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
     need(names: PartName[]) { this.builder.need(names); }
-    async load(req: TileRequest) { return toGL(await this.builder.loadIR(req), req.globe).tile; }
+    async load(req: TileRequest) { return (await finish(await this.builder.loadIR(req), req)).tile; }
     cancel(id: number) { this.builder.cancel(id); }
     forget(source?: string) { this.builder.forget(source); }
     query(url: string, q: TileQuery) { return this.builder.query(url, q); }
@@ -273,7 +285,7 @@ export class PortBackend implements TileBackend {
             if (!p) return;
             this.pending.delete(e.data.id);
             if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final}));
-            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires});
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, fault: e.data.tile.fault});
             else p.resolve(e.data.result);
         };
     }
@@ -344,8 +356,8 @@ export function serveTiles(port: Port) {
                 err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final}));
         } else if (m.type === 'load') {
             try {
-                const {tile, transfer} = toGL(await builder.loadIR(m.req), m.req.globe);
-                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires}}, transfer);
+                const {tile, transfer} = await finish(await builder.loadIR(m.req), m.req);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, fault: tile.fault}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final});
             }
