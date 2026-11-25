@@ -108,10 +108,8 @@ import {Point} from './compat-map.ts';
 import {LogoControl as Empty, GlobeControl} from './controls-more.ts';
 export {GlobeControl};
 export {GPUInitializationError} from './gpu-error.ts';
-import {mercX, mercY, lngFromMerc, latFromMerc} from './geo.ts';
+import {mercX, mercY, lngFromMerc, latFromMerc, EARTH_CIRCUMFERENCE as EARTH} from './geo.ts';
 import {LngLat as Position} from './lnglat.ts';
-/** The circumference of the earth in meters at the equator, from the radius that MapLibre GL JS uses (6,371,008.8 m). */
-const EARTH = 2 * Math.PI * 6371008.8;
 /**
  * A position in the coordinates of Web Mercator, as in MapLibre GL JS: x and y run from 0 to 1 from the north-west
  * corner of the world to the south-east corner, and z is a height in the same units. Custom layers use it.

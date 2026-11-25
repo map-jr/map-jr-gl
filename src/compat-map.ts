@@ -10,7 +10,7 @@ import {zoomCurveErrors} from './mistakes.ts';
 import {httpError} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
-import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, FOV, type LngLatLike} from './geo.ts';
+import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, FOV, EARTH_CIRCUMFERENCE, type LngLatLike} from './geo.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification, Subscription} from './compat-types.ts';
 
@@ -1133,7 +1133,7 @@ export class Map extends CoreMap {
 }
 
 /** Meters in one mercator unit at a latitude, with the earth of MapLibre GL JS. */
-const mercMetres = (lat: number) => 2 * Math.PI * 6371008.8 * Math.cos(lat * Math.PI / 180);
+const mercMetres = (lat: number) => EARTH_CIRCUMFERENCE * Math.cos(lat * Math.PI / 180);
 /** What `setTransformCameraUpdate` gives its function, as in MapLibre GL JS (a part of the transform). */
 type CameraLike = {center: {lng: number; lat: number}; zoom: number; bearing: number; pitch: number; padding: unknown; elevation: number};
 /** What the function of `setTransformCameraUpdate` returns: the parts of the camera to change. */

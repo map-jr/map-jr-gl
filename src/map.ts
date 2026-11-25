@@ -1998,10 +1998,14 @@ export class Map {
         else { box = [0, 0, this.tr.width, this.tr.height]; if (geometry) options = geometry as RenderedQueryOptions; }
         const only = options.layers ? new Set(options.layers) : null, z = this.tr.zoom, layers: any[] = this.rawStyle?.layers ?? [];
         const number = (v: unknown, fallback: number) => typeof v === 'number' ? v : fallback;
-        // A circle layer whose size is not a number (an expression or a function) is tested with the size of each
-        // feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.circle`).
-        const size = (l: any): QuerySet['circle'] => l.type === 'circle' && [l.paint?.['circle-radius'], l.paint?.['circle-stroke-width']].some(v => v !== undefined && typeof v !== 'number')
-            ? {radius: l.paint['circle-radius'], stroke: l.paint['circle-stroke-width'], zoom: z} : undefined;
+        // (As `sizeOf` of `src/query.ts`, which the page script does not load: half of the width, or of the gap and two widths.)
+        const lineReach = (w: number, gap: number) => Math.max(3, (gap > 0 ? gap + 2 * w : w) / 2);
+        // A circle or line layer whose size is not a number (an expression or a function) is tested with the size of
+        // each feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.size`).
+        const size = (l: any): QuerySet['size'] => {
+            const line = l.type === 'line', ab = line ? [l.paint?.['line-width'], l.paint?.['line-gap-width']] : l.type === 'circle' ? [l.paint?.['circle-radius'], l.paint?.['circle-stroke-width']] : [];
+            return ab.some(v => v !== undefined && typeof v !== 'number') ? {line, a: ab[0], b: ab[1], zoom: z} : undefined;
+        };
         // A circle is drawn moved by `circle-translate` (pixels; with the anchor `map` they turn with the bearing), and is
         // found where it is drawn, as in MapLibre GL JS.
         const shift = (t: unknown, anchor: unknown): [number, number] | undefined => {
@@ -2014,8 +2018,8 @@ export class Map {
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
             layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
-            radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
-            circle: size(l),
+            radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 4), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+            size: size(l),
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
             translate: l.type === 'circle' ? shift(l.paint?.['circle-translate'], l.paint?.['circle-translate-anchor']) : undefined,

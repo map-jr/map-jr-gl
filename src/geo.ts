@@ -1,5 +1,8 @@
 export const EXTENT = 4096;
 export const TILE_SIZE = 512;
+/** The circumference of the earth in meters, from the mean radius that MapLibre GL JS uses (6,371,008.8 m) for camera
+ * heights, terrain and the scale bar. Tile coordinates use the EPSG:3857 radius instead (`src/resolve.ts`). */
+export const EARTH_CIRCUMFERENCE = 2 * Math.PI * 6371008.8;
 const MAX_LAT = 85.051129;
 /** The highest pitch that the camera takes (degrees), as in MapLibre GL JS. Above 90 the camera looks up. */
 export const MAX_PITCH = 180;
@@ -260,7 +263,7 @@ export class Transform {
     /** Distance from the camera to the map center in pixels, from the vertical field of view. */
     get cameraDistance() { return 0.5 / Math.tan(this.fov / 2) * this.height; }
     /** Pixels per meter of height at the map center. */
-    get pixelsPerMetre() { return this.worldSize / (40075016.686 * Math.cos(this.lat * Math.PI / 180)); }
+    get pixelsPerMetre() { return this.worldSize / (EARTH_CIRCUMFERENCE * Math.cos(this.lat * Math.PI / 180)); }
 
     /**
      * The camera model, shared by every projection below. A point (dx, dy) pixels from the center on the map plane
@@ -498,7 +501,7 @@ export class Transform {
         if (Math.abs(z) < 0.25 || dist < d * 0.05) return false;
         const lat = latFromMerc(clamp(my, 0, 1));
         // The same distance in meters must come out as `d` pixels at the new zoom and latitude.
-        const zoom = Math.log2(d / (dist / ppm) * 40075016.686 * Math.cos(lat * Math.PI / 180) / TILE_SIZE);
+        const zoom = Math.log2(d / (dist / ppm) * EARTH_CIRCUMFERENCE * Math.cos(lat * Math.PI / 180) / TILE_SIZE);
         this.lng = lngFromMerc(mx); this.lat = clamp(lat, -MAX_LAT, MAX_LAT);
         this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
         this.elevation = h;
