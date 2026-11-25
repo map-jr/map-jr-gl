@@ -298,7 +298,8 @@ void main() {
     float gap = min(min(outside(t, 0.0, u_dash.x), outside(t, period, period + u_dash.x)),
                     min(outside(t, second, second + u_dash.z), outside(t, second - period, second - period + u_dash.z))) * px;
     // Each dash has the cap of the line: a round or square cap makes it longer by half the line width.
-    if (u_cap == 1) a *= clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0);
+    // (The round cap takes the smaller coverage, not the product, so that the sides of a dash are not softened twice.)
+    if (u_cap == 1) a = min(a, c.a * clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0));
     else if (u_cap == 2) a *= clamp(0.5 + w * 0.5 - gap, 0.0, 1.0);
     else {
       // Butt caps: the signed distance to the dash end, so that the end is smooth over one pixel.
