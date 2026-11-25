@@ -55,7 +55,7 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }
-    assert.equal(h.digest('hex'), '829a59021736a96e0ddc600828229d219bbe97edb6cf8703f905d412e7c30125');
+    assert.equal(h.digest('hex'), 'a28009428933bf04958a394d8436b04dafd21435c665e18a7f08df56e64f16b6');
 });
 
 test('globe: the fills and lines of a real tile get the vertices that were measured', () => {
@@ -66,7 +66,7 @@ test('globe: the fills and lines of a real tile get the vertices that were measu
     assert.deepEqual(g20.water, [3739, 4058]);
     assert.deepEqual(g40.water, [6290, 8390]);
     assert.deepEqual(g40.land, [1720, 1316]);
-    assert.deepEqual([flat.roads[1], g20.roads[1], g40.roads[1]], [35044, 42546, 49744]); // (corners sharper than 75 degrees get one more pair of vertices on each segment, #1706, #1981)
+    assert.deepEqual([flat.roads[1], g20.roads[1], g40.roads[1]], [35024, 42546, 49744]); // (corners of 75 to 120 degrees get one more pair of vertices on each segment, #1706)
     assert.deepEqual([flat.buildings[1], g40.buildings[1]], [40998, 65906]); // buildings: roofs and walls are cut too (#1442)
 });
 

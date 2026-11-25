@@ -160,7 +160,4 @@ test('line joins: a miter join that turns more than 120 degrees is a flipbevel, 
     const len = Math.hypot(atCorner[0].nx, atCorner[0].ny);
     for (const v of atCorner) assert.ok(Math.abs(Math.hypot(v.nx, v.ny) - len) < 0.01, 'all the same length');
     assert.ok(len > 1 && len < 1.2, `the length is about 1 / sin of half the turn (${len})`);
-    // The pairs 15 pixels from the corner are there for this join too.
-    const sharp = vs.filter(v => Math.abs(Math.hypot(v.x - 2048, v.y - 2048) - 120) < 2);
-    assert.equal(sharp.length, 4, 'a pair of vertices on each segment 15 pixels from the corner');
 });

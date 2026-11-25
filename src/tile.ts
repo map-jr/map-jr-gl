@@ -865,7 +865,8 @@ function tessellateLine(b: Batch): GLBatch | null {
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
                     // As in MapLibre GL JS, a corner sharper than 75 degrees has one more pair of vertices on each
                     // segment, 15 pixels from the corner, so that the join bends the dashes only near the corner.
-                    const sharp = cos < COS_SHARP && b.sharp ? b.sharp : 0;
+                    // (A miter or bevel join past 120 degrees does not have them yet: see #2118.)
+                    const sharp = cos < COS_SHARP && (cos >= 0.5 || round) && b.sharp ? b.sharp : 0;
                     if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - pdx * sharp, y - pdy * sharp, pnx, pny); dist += sharp; }
                     if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
                     else if (!round && cos < 0.5) {
