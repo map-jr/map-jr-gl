@@ -1289,14 +1289,14 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_highlight, h.highlight);
                     const c = p.accent.eval(zoom); gl.uniform4f(u.u_accent, c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]);
                 }
-                // A map at rest, seen from above: the image moves by less than a pixel, so that its pixels are on the pixels of
+                // A map at rest, seen from above: the image (raster, hillshade or color-relief) moves by less than a pixel, so that its pixels are on the pixels of
                 // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the center of the
                 // map goes to a whole pixel of the world (to a half pixel when the size of the map is odd).
                 let snap: number[] | undefined;
                 for (const it of items) {
                     if (!it.tile.tex) continue;
                     let m = it.matrix4;
-                    if (pass === 'all' && L.type === 'raster' && !s.moving && !tr.pitch && !this.globe) {
+                    if (pass === 'all' && !s.moving && !tr.pitch && !this.globe) {
                         const a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a), xs = tr.width % 2 / 2, ys = tr.height % 2 / 2;
                         snap ??= [mercX(tr.lng) * tr.worldSize + cos * xs + sin * ys, mercY(tr.lat) * tr.worldSize + cos * ys + sin * xs].map(v => (v -= Math.round(v)) > 0.5 ? v - 1 : v);
                         const x = snap[0] / it.scale, y = snap[1] / it.scale;
