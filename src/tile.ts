@@ -166,8 +166,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
     const out: TileIR = {layers: {}, labels: {}, z: zs};
     // The over-scaling of MapLibre GL JS: a tile shown deeper than its own zoom has its pixels that many times smaller.
     const ov = zs > tz ? 2 ** Math.max(0, Math.floor(zs) - tz) : 1;
-    // A filter, each property and the `maxzoom` of a layer see the zoom that the sizes are found at, as in MapLibre GL JS
-    // (the over-zoomed zoom of the tile, #994).
+    // A filter and each property see the zoom that the sizes are found at, as in MapLibre GL JS (the over-zoomed zoom of
+    // the tile, #994).
     const ctx = {zoom: zs, f: null as Feature | null};
 
     for (const L of layers) {
@@ -175,7 +175,9 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         // A tile is drawn from its own zoom up to the next one. A tile of the source's deepest level is drawn further: it has
         // all the shapes, and the labels of the layers that show up to one level above the zoom of the map.
         if (L.minzoom >= (overscaled === false || under ? z + 1 : L.type === 'symbol' ? overscaled + 2 : 99)) continue;
-        if (L.maxzoom <= zs) continue;
+        // (The `maxzoom` of a layer is checked at the zoom of the tile, not at the over-zoomed zoom: the map hides the layer
+        // by its own zoom, and a tile built at zoom 16 is shown at 15.5 until it is built again, #994.)
+        if (L.maxzoom <= z) continue;
         const vl = vt[L.sourceLayer ?? GEOJSON_LAYER];
         if (!vl) continue;
         const p = L.p;
