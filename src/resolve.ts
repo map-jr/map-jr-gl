@@ -124,13 +124,14 @@ export function fontKey(names: unknown): string {
  * A layer with `ref` (a legacy form) takes `type`, `source`, `source-layer`, `minzoom`, `maxzoom`, `filter` and
  * `layout` from the layer that it names, and loses `ref`, as in MapLibre GL JS (`derefLayers`, #1814). The layer gets
  * its own copy of `layout`, so that `setLayoutProperty` of one layer does not change the other. A layer whose `ref`
- * names no layer keeps `ref`. The input is not changed.
+ * names no layer, or a layer that has `ref` itself (a chain or a cycle, which MapLibre GL JS rejects), keeps `ref`.
+ * The input is not changed.
  */
 export function derefLayers(layers: any[]) {
     const byId = new Map(layers.map(l => [l?.id, l]));
     return layers.map(l => {
         const parent = l?.ref !== undefined && byId.get(l.ref);
-        if (!parent) return l;
+        if (!parent || parent.ref !== undefined) return l;
         const {ref, ...r} = l;
         for (const k of ['type', 'source', 'source-layer', 'minzoom', 'maxzoom', 'filter', 'layout']) if (k in parent) r[k] = k === 'layout' ? {...parent[k]} : parent[k];
         return r;
@@ -292,9 +293,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         };
     }
     const unsupported = new Set<string>();
-    // (A layer whose `ref` names no layer is left out with a message, one time for each map and layer object, #1814.)
+    // (A layer whose `ref` names no layer, or a layer with `ref`, is left out with a message, one time for each map and layer object, #1814.)
     const layers: LayerJSON[] = derefLayers(style.layers).filter(l => {
-        if (l.ref !== undefined) return badOnce(l, () => new Error(`[map-jr-gl] The layer "${l.id}" has "ref": "${l.ref}", but no layer has that id. Name an existing layer in "ref", or give the layer "type" and "source".`)), false;
+        if (l.ref !== undefined) return badOnce(l, () => new Error(`[map-jr-gl] The layer "${l.id}": "ref" names "${l.ref}", which is no layer without "ref". Name such a layer, or give "type" and "source".`)), false;
         const ok = !!l.implementation || LAYER_TYPES.has(l.type) && (l.type === 'background' || !!sources[l.source!]);
         if (!ok && !LAYER_TYPES.has(l.type)) unsupported.add(l.type);
         return ok;

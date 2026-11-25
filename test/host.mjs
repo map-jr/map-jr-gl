@@ -474,6 +474,27 @@ for (const renderer of renderers) {
         check(`[${renderer}] update with a new minzoom of a layer of layers and of the style object: the map draws the layer only at the new zooms and loads no style (#871)`,
             range.before.layers > 0 && range.before.style > 0 && range.after.layers === 0 && range.after.style === 0 && range.after.min === range.above && range.after.styleMin === range.above
             && range.back.layers > 0 && range.back.style > 0 && range.loads === 0, JSON.stringify(range));
+        // A new filter of a layer that another layer names in `ref` reaches that layer too, as in MapLibre GL JS (#1814).
+        const refEdit = await page.evaluate(async () => {
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), box = [{x: 0, y: 0}, {x: 900, y: 600}], style = t.spec.style;
+            const withRef = filter => ({...style, layers: [...style.layers, {id: 'ref-p', type: 'fill', source: 'omt', 'source-layer': 'water', ...(filter ? {filter} : {}), layout: {visibility: 'visible'}, paint: {'fill-color': '#f0f'}}, {id: 'ref-c', ref: 'ref-p', paint: {'fill-color': '#0ff'}}]});
+            const found = async () => (await t.host.queryFeatures(box, {layers: ['ref-c']})).length;
+            t.host.update(t.spec = {...t.spec, style: withRef()});
+            await wait(1500);
+            const before = await found();
+            let loads = 0;
+            const count = () => loads++;
+            map.on('style.load', count);
+            t.host.update(t.spec = {...t.spec, style: withRef(['==', ['get', 'class'], 'no-such-class'])});
+            await wait(1500);
+            const after = {found: await found(), filter: JSON.stringify(map.getLayer('ref-c')?.filter), loads};
+            map.off('style.load', count);
+            t.host.update(t.spec = {...t.spec, style});
+            await wait(1000);
+            return {before, after};
+        });
+        check(`[${renderer}] update with a new filter of a layer that a layer with ref names: both layers get the filter, and the map loads no style (#1814)`,
+            refEdit.before > 0 && refEdit.after.found === 0 && refEdit.after.filter?.includes('no-such-class') && refEdit.after.loads === 0, JSON.stringify(refEdit));
         check(`[${renderer}] update with a style object that changes one filter and one paint value of a layer: the map edits the layer and loads no style (#858)`,
             style.inPlace.loads === 0 && style.inPlace.filtered === 0 && style.inPlace.color === '#00f' && style.inPlace.filter.includes('no-such-class'), JSON.stringify(style.inPlace));
         check(`[${renderer}] update with a style object whose layers have a new order, and a new layer before one that stays: the map draws the new order and loads no style (#875)`,
