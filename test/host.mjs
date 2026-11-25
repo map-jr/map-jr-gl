@@ -3596,6 +3596,43 @@ for (const renderer of ['worker', 'main']) {
                 check(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`,
                     failed.length === 1 && failed[0].includes('[map-jr-gl] The worker could not load') && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
             } finally { await other.close(); }
+            // The globe (#2075): the tile workers cut its tiles with the part `subdivide`. When that part does not load, the
+            // map reports it once and draws its vector tiles without the cut. After setProjection to the globe, the page
+            // fetches the part once for all tile workers.
+            const globe = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                const asked = [];
+                globe.context().on('request', r => { if (/map-jr-gl-worker-subdivide\.js/.test(r.url())) asked.push(r.url()); });
+                await globe.goto(origin + '/bench');
+                const run = (projection) => globe.evaluate(async ({renderer, projection}) => {
+                    const lib = await import('/dist/map-jr-gl.js'), omt = (await (await fetch('/style.json')).json()).sources.omt, errors = [];
+                    const style = {version: 8, ...projection === 'globe' ? {projection: {type: 'globe'}} : {}, sources: {omt},
+                        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: {'fill-color': '#00f'}}]};
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                    const host = lib.createMap(el, {style, initialView: {center: [-74, 40.7], zoom: 3}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    const until = async (f, ms) => { for (let t = 0; t < ms && !f(); t += 50) await new Promise(r => setTimeout(r, 50)); return f(); };
+                    let ok = await until(() => host.state.get().idle, 15000);
+                    // (The map is busy with the tiles of the globe, and then idle again.)
+                    if (projection === 'later') { host._map.setProjection({type: 'globe'}); await until(() => !host.state.get().idle, 3000); ok = await until(() => host.state.get().idle, 15000); }
+                    // (The pixels of the water layer: a query finds the features of a tile that failed to build, a picture does not.)
+                    const bmp = await createImageBitmap(await host.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                    g.drawImage(bmp, 0, 0);
+                    const px = g.getImageData(0, 0, bmp.width, bmp.height).data;
+                    let water = 0;
+                    for (let i = 0; i < px.length; i += 4) if (px[i + 2] > 200 && px[i] < 50) water++;
+                    host.destroy(); el.remove();
+                    return {idle: ok, water, errors};
+                }, {renderer, projection});
+                const later = await run('later'), laterAsked = asked.splice(0);
+                await globe.context().route(/map-jr-gl-worker-subdivide\.js/, route => route.fulfill({status: 404, body: ''}));
+                // (A new page: its workers have not loaded the part.)
+                await globe.goto(origin + '/bench');
+                const missing = await run('globe');
+                check(`[${renderer}] the part subdivide does not load: the globe reports one error that names the file, draws its vector tiles and is idle (#2075)`,
+                    missing.idle && missing.water > 0 && missing.errors.length === 1 && missing.errors[0].includes('map-jr-gl-worker-subdivide.js'), JSON.stringify(missing));
+                check(`[${renderer}] setProjection to the globe: the page fetches the part subdivide once for all tile workers, and the globe draws its vector tiles (#2075)`,
+                    later.idle && later.water > 0 && !later.errors.length && laterAsked.length === 1, JSON.stringify({later, laterAsked}));
+            } finally { await globe.close(); }
             // 3D terrain whose part comes late (#1849): the tiles of the flat layers are requested while the part loads,
             // and do not wait for it (they did, behind the elevation tiles, by more than 3 s).
             if (renderer === 'worker') {
