@@ -530,8 +530,8 @@ export class Map extends CoreMap {
             console.warn(message);
         }
         this.unsupported('The option logoPosition', !o.logoPosition);
-        // (Development build) `validate: false` skips the check of the required fields of the style (#1748).
-        if (__DEV__) this.noValidate = o.validate === false;
+        // (Development build) `validate: false` skips the check of the style (#1748). `setStyle` can override it for one style.
+        if (__DEV__) this.noValidate = this.noValidateMap = o.validate === false;
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
@@ -677,6 +677,8 @@ export class Map extends CoreMap {
      */
     setStyle(style: unknown, options: StyleSwapOptions = {}) {
         this.styleUrl = typeof style === 'string' ? style : null;
+        // (Development build) As in MapLibre GL JS, `validate` of this call wins over the option of `new Map()` (#1748).
+        if (__DEV__) this.noValidate = options.validate === undefined ? this.noValidateMap : !options.validate;
         const own = options.transformStyle, diff = options.diff !== false;
         return super.setStyle(style, !this.customs?.size ? {transformStyle: own, diff} : {diff, transformStyle: (previous: any, next: any) => {
             next = own ? own(previous, next) : next;
@@ -1109,6 +1111,7 @@ export class Map extends CoreMap {
         super.loadedEvents(id);
     }
     private noValidate = false;
+    private noValidateMap = false;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
