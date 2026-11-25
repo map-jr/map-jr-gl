@@ -1,7 +1,0 @@
-{
-  "label": "line-gap-width for each feature",
-  "decision": "later",
-  "issue": 1704,
-  "reason": "line-gap-width that is different for each feature is not applied: the line is drawn without a gap.",
-  "pattern": "^line-gap-width/property-function$"
-}

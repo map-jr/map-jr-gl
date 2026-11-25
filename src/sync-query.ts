@@ -14,7 +14,7 @@ export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: objec
     if (!data) prepared.set(spec.data, data = prepareSource(spec.data, spec, spec.maxzoom ?? 18));
     const out: QueriedFeature[] = [], seen = new Set<string>(), pitched = pitchedCircles(tr, box, sets);
     for (const t of tilesUnderBox(tr, pitched?.box ?? box, 0, spec.maxzoom ?? 18)) {
-        for (const f of queryTile(sliceGeoJSON(data, t.z, t.x, t.y), {source, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: true, sets: sets.map(s => ({...s, radius: pitched?.circles.has(s) ? 0 : s.radius * t.scale}))})) {
+        for (const f of queryTile(sliceGeoJSON(data, t.z, t.x, t.y), {source, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: true, sets: sets.map(s => pitched?.circles.has(s) ? {...s, radius: 0, circle: undefined} : {...s, radius: s.radius * t.scale, circle: s.circle && s.radius ? {...s.circle, scale: t.scale} : undefined})})) {
             const set = pitched && sets.find(s => s.layer === f.layer && pitched.circles.has(s));
             if (set && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(tr, mercX(lng), mercY(lat), box, set.radius, set.pitch!))) continue;
             const key = featureKey(f);

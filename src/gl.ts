@@ -259,16 +259,16 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in v
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur;
+layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur; layout(location=8) in float a_gap;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
 uniform float u_cam;
-out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur;
+out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap;
 void main() {
   vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
   v_blur = a_blur; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
-  // With a gap the line is two strokes of width w either side of an empty middle.
-  v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
+  // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
+  v_gap = u_gap + a_gap; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
@@ -277,8 +277,8 @@ void main() {
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;
 }`, `
-uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
-in float v_blur;
+uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
+in float v_blur; in float v_gap;
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
 uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
@@ -289,7 +289,7 @@ void main() {
   vec4 c = v_color * u_color;
   if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
   float a = c.a * clamp((v_hw - abs(v_d)) / (v_persp * (1.0 + u_blur + v_blur)), 0.0, 1.0); // line-blur widens the soft edge
-  if (u_gap > 0.0) a *= clamp((abs(v_d) - u_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
+  if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
     // Dash lengths are in multiples of the line width. The gap is how far this point is outside the nearest dash.
@@ -620,7 +620,7 @@ interface IconBuffers {
     seen?: number; fresh?: boolean;
 }
 interface GLBuffers {
-    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
+    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; /** The same for `line-gap-width`. */ gap?: boolean; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
 }
 export interface GLTile {
@@ -902,6 +902,7 @@ export class GLRenderer {
                 if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; if (b.width1) attr(5, b.width1, 1, gl.FLOAT); else attr(5, b.width, 1, gl.FLOAT, false, 0, 0, false, true); }
                 // line-blur for each feature; without it the attribute is off and reads 0, and the uniform u_blur has the blur.
                 if (b.blur) attr(7, b.blur, 1, gl.FLOAT);
+                if (b.gap) attr(8, b.gap, 1, gl.FLOAT); // line-gap-width for each feature, as line-blur
                 index(b.idx);
                 count = b.idx.length;
             } else {
@@ -915,7 +916,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, gap: b.type === 'line' && !!b.gap, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1404,7 +1405,7 @@ export class GLRenderer {
                         gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));
                         gl.uniform1f(u.u_floorWidth, L.p.width.dd ? 1 : L.p.width.eval(Math.floor(zoom)));
                         gl.uniform1f(u.u_zf, 2 ** (zoom - Math.floor(zoom)));
-                        gl.uniform1f(u.u_gap, L.p.gap.eval(zoom));
+                        gl.uniform1f(u.u_gap, L.p.gap.dd ? 0 : L.p.gap.eval(zoom));
                         gl.uniform1f(u.u_offset, L.p.offset.dd ? 0 : L.p.offset.eval(zoom));
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
@@ -1454,6 +1455,7 @@ export class GLRenderer {
                 if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
                 if (b.type === 'line' && !b.blur) gl.vertexAttrib1f(7, 0); // a custom layer can leave another value at location 7
                 if (b.type === 'circle') { if (!(b.stroke! & 1)) gl.vertexAttrib4f(4, 1, 1, 1, 1); if (!(b.stroke! & 2)) gl.vertexAttrib2f(6, 0, 0); }
+                if (b.type === 'line' && !b.gap) gl.vertexAttrib1f(8, 0);
                 if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 if (b.type === 'line' || b.type === 'circle') {
                     gl.uniform1f(u.u_scale, it.scale);
