@@ -526,9 +526,11 @@ export class Map {
         this.queue = [];
         this.send({type: 'repaint'});
         // (An engine in a worker must show for 5 seconds that it draws, at the first start too: a worker can hang with no
-        // event (#119). After a restart, an engine on this thread must show it for 15 seconds.)
-        this.watch(this.renderer === 'worker' ? 5 : this.restarting ? 15 : 0);
-        this.styleEvents(true);
+        // event (#119). After a restart for a lost context, an engine on this thread must show it for 15 seconds. A move
+        // to this thread for a custom layer is a first start there: the code of the layer can take long for its first frame.)
+        this.watch(this.renderer === 'worker' ? 5 : this.restarting && !this.movingToMain ? 15 : 0);
+        // (The style of a move to this thread is not new: a `style.load` listener that adds the custom layer would add it twice.)
+        if (!this.movingToMain) this.styleEvents(true);
 
         this.observer = new ResizeObserver(() => { this.styles(); this.resize(); });
         this.observer.observe(this.container);
@@ -544,18 +546,21 @@ export class Map {
 
     private restarted = false;
     private restarting = false;
+    /** The restart moves the engine to this thread for a custom layer (see `toMainThread`). */
+    private movingToMain = false;
     /** What addImage was given, by name: a restart sends the images again. */
     protected imageInputs = new globalThis.Map<string, [Parameters<Map['addImage']>[1], ImageOptions]>();
     /**
      * Starts the engine again on a new canvas, with the camera, style, images, markers and state that the map has now.
      * This is how the map recovers when the browser takes the WebGL context away, which phones do to save memory.
      */
-    private async restart(main?: boolean) {
+    private async restart(main?: boolean, quiet?: boolean) {
         if (this.restarting || this.removed) return;
         this.restarting = this.restarted = true;
-        if (__DEV__) this.note('restart()', {main: !!main, renderer: this.renderer});
+        this.movingToMain = !!quiet;
+        if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
         this.watchTurn++;
-        this.fire('webglcontextlost');
+        if (!quiet) this.fire('webglcontextlost');
         this.drop('lost its WebGL context. Ask again');
         try {
             // (An engine on the main thread does not end with a worker. It must stop: it can still have a context when
@@ -580,9 +585,21 @@ export class Map {
             this.resumeEase();
             this.templates.clear(); // (as after a fall back; #882)
             for (const [name, [source, options]] of this.imageInputs) await this.putImage(name, source, options);
-            this.fire('webglcontextrestored');
+            if (!quiet) this.fire('webglcontextrestored');
             if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
         } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
+    }
+
+    /**
+     * @internal Moves the engine of a map that draws in a worker to this thread, as `restart` does after a lost context
+     * but without the events of a lost context. The compat entry calls it for its first custom layer (#1730). It
+     * waits for the start or a restart that runs, and does nothing when the engine is on this thread already.
+     */
+    protected async toMainThread() {
+        // (The restart copies the style: it waits for a task, so that the custom layer and the other changes of the
+        // task of the caller are in the copy.)
+        do await new Promise(r => setTimeout(r, 50)); while (!this.removed && (!this.ready || this.restarting));
+        if (this.renderer === 'worker') await this.restart(true, true);
     }
 
     /** A new engine (after a fall back or a restart) runs the last `easeTo` for the time that is left; #777, #807. */
