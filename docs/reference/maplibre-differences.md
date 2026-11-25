@@ -123,11 +123,6 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** Each character follows the line. The style sets the largest angle.
 - **This library:** Each character follows the line. A label does not show where the line turns more than about 35 degrees between characters.
 
-### `fill-sort-key` and `line-sort-key` with a pattern for each feature
-
-- **MapLibre GL JS:** The sort key orders all features of the layer.
-- **This library:** The sort key orders the features that have the same image. The features of each image are drawn together.
-
 ### Order of symbol layers
 
 - **MapLibre GL JS:** A symbol layer draws at its position in the layer list.

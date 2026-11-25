@@ -315,12 +315,16 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         }
         // fill-pattern, line-pattern and fill-extrusion-pattern with a value for each feature: the features of each image
         // are a batch of their own, drawn with that image (a feature with no image is not drawn, as in MapLibre GL JS).
-        const groups = new Map<string, typeof features>();
+        // With a sort key, each run of features with the same image is a batch, so that the batches keep the order of the key.
+        const groups: [string, typeof features][] = [], byName = new Map<string, typeof features>();
         if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) for (const f of features) {
             ctx.f = f;
-            const name = String(p.pattern.eval(zs, f) ?? '');
-            if (name) groups.get(name)?.push(f) ?? groups.set(name, [f]);
-        } else groups.set('', features);
+            const name = String(p.pattern.eval(zs, f) ?? ''), last = groups[groups.length - 1];
+            if (!name) continue;
+            let fs = sortKey ? last?.[0] === name && last[1] : byName.get(name);
+            if (!fs) { groups.push([name, fs = []]); byName.set(name, fs); }
+            fs.push(f);
+        } else groups.push(['', features]);
         let k = 0;
         for (const [pat, fs] of groups) {
             const heights: number[] = [], bases: number[] = [];

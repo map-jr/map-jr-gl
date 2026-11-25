@@ -27,3 +27,16 @@ test('a pattern that is the same for every feature keeps one batch', () => {
     assert.deepEqual(Object.keys(tile.layers), ['p']);
     assert.equal(tile.layers.p.pat, undefined);
 });
+
+// With a sort key, the batches follow the order of the key (#1445): brick/1, wave/2, brick/3 and wave/4 are four batches,
+// so key 3 is drawn above key 2, as in MapLibre GL JS, which sorts all features of a bucket.
+const keyed = (dx: number, kind: string, key: number) => ({...square(dx, kind), properties: {kind, key}});
+const interleaved = sliceGeoJSON(prepareGeoJSON({type: 'FeatureCollection', features: [keyed(0.04, 'brick', 3), keyed(0, 'brick', 1), keyed(0.02, 'wave', 2), keyed(0.06, 'wave', 4)]} as any), z, tx, ty);
+for (const [type, prop, key] of [['fill', 'fill-pattern', 'fill-sort-key'], ['line', 'line-pattern', 'line-sort-key']]) {
+    test(`${prop} with ${key}: the batches are in the order of the key`, () => {
+        const L = compileLayer({id: 'p', type, source: 'g', paint: {[prop]: ['get', 'kind']}, layout: {[key]: ['get', 'key']}} as any)!;
+        const {tile} = toGL(buildTile(interleaved, z, [L], false));
+        const batches = [0, 1, 2, 3, 4].map(k => tile.layers[patternKey('p', k)]);
+        assert.deepEqual(batches.map(b => b?.pat), ['brick', 'wave', 'brick', 'wave', undefined]);
+    });
+}
