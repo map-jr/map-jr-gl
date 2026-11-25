@@ -1915,11 +1915,23 @@ for (const mode of renderers) {
                 const ask = async lng => (await m.queryRenderedFeatures(m.project([lng, 0]), {layers: ['t']})).map(f => f.properties.name).sort().join('/');
                 out[renderer] = [await ask(0), await ask(10)];
                 m.remove(); el.remove();
+                // (A second label B at the point of A, with its text hidden and its icon shown, is still found on its icon,
+                // 60 pixels right of the point: the shown text there is A's.)
+                const el2 = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m2 = new mod.Map({container: el2, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(0, 'A'), point(0, 'B')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': ['get', 'name'], 'text-size': 16,
+                        'icon-image': ['case', ['==', ['get', 'name'], 'B'], 'bar', ''], 'text-optional': true, 'icon-allow-overlap': true}}]}});
+                m2.addImage('bar', {width: 160, height: 16, data: new Uint8Array(160 * 16 * 4).fill(255)});
+                await new Promise(r => { m2.once('idle', r); setTimeout(r, 8000); });
+                const c = m2.project([0, 0]);
+                out[renderer].push((await m2.queryRenderedFeatures([c.x + 60, c.y], {layers: ['t']})).map(f => f.properties.name).sort().join('/'));
+                m2.remove(); el2.remove();
             }
             return out;
         });
-        check('[main] queryRenderedFeatures does not find a label on its icon that collision hid with icon-optional, with both renderers (#2089)',
-            ['main', 'worker'].every(r => hiddenIcon[r][0] === 'A' && hiddenIcon[r][1] === 'B'), JSON.stringify(hiddenIcon));
+        check('[main] queryRenderedFeatures does not find a label on its icon that collision hid with icon-optional, and finds a shown icon under the text of another label, with both renderers (#2089)',
+            ['main', 'worker'].every(r => hiddenIcon[r].join() === 'A,B,B'), JSON.stringify(hiddenIcon));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
