@@ -4,7 +4,7 @@ import {globeBuild} from './subdivide.ts';
 import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
-import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -45,7 +45,7 @@ export type Command =
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number; bearing?: number}
     | {type: 'stop'}
-    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null; worldCopies?: boolean; keep?: boolean; /** See `Transform.aniso`. */ aniso: number}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources; an empty `lod` drops them (removeSource). */
@@ -913,7 +913,7 @@ export class Engine {
                 break;
             }
             case 'stop': this.stop(); break;
-            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true});
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null, worldCopies: c.worldCopies ?? true, aniso: c.aniso});
                 // (`keep`: setRenderWorldCopies does not move the view, as in MapLibre GL JS; the next camera change does.)
                 if (c.keep) { this.viewCovers.clear(); this.invalidate(); } else tr.set(undefined, tr.zoom, undefined, tr.pitch);
                 break;
@@ -1480,7 +1480,7 @@ export class Engine {
     private async imageTile(bytes: Uint8Array | ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
         if (!bytes) return {labels: {}, batches: {}};
         const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
-        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id) : {labels: {}, batches: {}};
+        const tile = wanted() ? this.renderer.createImageTile(image, undefined, id, undefined, true) : {labels: {}, batches: {}};
         image.close();
         return tile;
     }
@@ -1918,11 +1918,24 @@ export class Engine {
      * half of the width and of the height of the box around it. `w` and `h` are the size of the image, and `turn` is
      * `icon-rotate` in radians. (The same rules as for an icon that is placed with the labels: see `placeLabels`.)
      */
-    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature): [number, number, number, number] {
-        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), this.tr.bearing);
+    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature, move = screenTranslate(L.p.iconTranslate.eval(this.tr.zoom), L.p.iconTranslateAnchor.eval(this.tr.zoom), this.tr.bearing)): [number, number, number, number] {
+        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[];
         const angle = (L.p.iconAlign.eval(z, f) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
         return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + move[0], (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + move[1],
             (w * cos + h * sin) / 2 * size, (w * sin + h * cos) / 2 * size];
+    }
+
+    /**
+     * `icon-translate` as an offset on the screen from the point (ax, ay) at Mercator x, y (0 to 1). On the globe the
+     * point is moved in tile units and projected again, as the GPU draws it (see `drawIcons`); in Mercator the offset is in pixels.
+     */
+    private iconMove(L: CompiledLayer, x: number, y: number, ax: number, ay: number): [number, number] {
+        const tr = this.tr, t = L.p.iconTranslate.eval(tr.zoom), a = L.p.iconTranslateAnchor.eval(tr.zoom);
+        if (!tr.globeness) return screenTranslate(t, a, tr.bearing);
+        const [mx, my] = mapTranslate(t, a, tr.bearing), ws = tr.worldSize;
+        if (!mx && !my) return [0, 0];
+        const [px, py] = tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, (x + mx / ws) * EXTENT, (y + my / ws) * EXTENT);
+        return [px - ax, py - ay];
     }
 
     /** The image with a name, or (for the name of a template) one of its variants: they all have one size. */
@@ -1990,7 +2003,7 @@ export class Engine {
             // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
             const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
             const size = L.p.iconSize.eval(z, f) * (depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
-            const [cx, cy, hw, hh] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, f);
+            const [cx, cy, hw, hh] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, f, this.iconMove(L, mercX(lng), mercY(lat), x, y));
             return x + cx - hw <= box[2] && x + cx + hw >= box[0] && y + cy - hh <= box[3] && y + cy + hh >= box[1];
         });
     }
@@ -2038,9 +2051,12 @@ export class Engine {
             // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
             // feature, an icon can reach as far as its corner and its offset in each direction.)
             size *= tr.pitch ? 4 : 1;
-            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180);
-            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) + 64 * size;
-            reach = each ? [-far, -far, far, far] : [cx - hw, cy - hh, cx + hw, cy + hh];
+            // (On the globe icon-translate moves each icon by its own amount on the screen (see `iconMove`): the reach
+            // covers twice the move in pixels, and no move.)
+            const move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), tr.bearing).map(v => tr.globeness ? 2 * v : v) as [number, number];
+            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180, undefined, move);
+            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) + 64 * size, [mx, my] = tr.globeness ? move : [0, 0];
+            reach = each ? [-far, -far, far, far] : [Math.min(cx, cx - mx) - hw, Math.min(cy, cy - my) - hh, Math.max(cx, cx - mx) + hw, Math.max(cy, cy - my) + hh];
         }
         this.reaches.set(L.id, {at, reach});
         return reach;
@@ -2091,7 +2107,7 @@ export class Engine {
                     const [ax, ay, depth] = tr.projectTile(it.id, x, y);
                     if (ax < -100 || ay < -100 || ax > tr.width + 100 || ay > tr.height + 100) continue;
                     const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * (tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
-                    const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn);
+                    const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn, undefined, this.iconMove(L, (it.id.x + it.id.w * 2 ** it.id.z + x / EXTENT) / 2 ** it.id.z, (it.id.y + y / EXTENT) / 2 ** it.id.z, ax, ay));
                     grid.insert(ax + cx - hw - pad[3], ay + cy - hh - pad[0], ax + cx + hw + pad[1], ay + cy + hh + pad[2]);
                 }
             }

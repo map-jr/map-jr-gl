@@ -199,7 +199,9 @@ alone cannot.
 - **The render job fails when a test is worse than its line** (`WORSE:`; match to near or differ, near to differ, any
   to error or skipped) or when fewer tests match than the file has lines `match`. It prints `BETTER:` for each test that is better
   than its line; the author commits those lines. A pull request that commits a worse line lowers the floor and waits
-  for the owner. On `main`, a `BETTER:` line means that a pull request left a line
+  for the owner, except a line from `near` to `differ` that moves by at most 0.5 points and meets the other conditions
+  of "A worse line of a render test that needs no owner" in `CLAUDE.md` (the case of #1966 on 2026-11-25). Check
+  each condition yourself before the merge. On `main`, a `BETTER:` line means that a pull request left a line
   out: take it in the next pull request that moves render tests.
 - **Only a run with `--write` on the pinned Chromium writes `render-tests.json`.** With `--filter` it writes only the
   lines of the tests of the run, and it never writes a worse line unless `--lower=<id,id>` names the test.

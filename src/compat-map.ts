@@ -308,10 +308,6 @@ export class Map extends CoreMap {
         if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
         return this;
     }
-    /** Has no effect. */
-    setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
-    /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
-    getAnisotropicFilterPitch() { return 20; }
     /**
      * As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the
      * map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does not apply what the
@@ -389,6 +385,19 @@ export class Map extends CoreMap {
     private debugDraw: Record<string, boolean> = {};
     private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
 
+    /**
+     * Sets the pitch in degrees above which raster tiles are filtered anisotropically, as in MapLibre GL JS: the far part
+     * of a pitched raster map is then sharper. `null` or `undefined` sets the default, 20. A value outside 0 to 180 throws.
+     */
+    setAnisotropicFilterPitch(pitch?: number | null) {
+        pitch ??= 20;
+        if (!(pitch >= 0 && pitch <= 180)) throw new Error(`[map-jr-gl] setAnisotropicFilterPitch(${pitch}): the pitch is not from 0 to 180. Pass degrees from 0 to 180, or null for the default (20).`);
+        this.tr.aniso = pitch;
+        // (This sends the limits of the camera again, and with them the pitch, to the engine.)
+        return this.setRenderWorldCopies(this.tr.worldCopies);
+    }
+    /** Returns the pitch in degrees above which raster tiles are filtered anisotropically (20 by default). */
+    getAnisotropicFilterPitch() { return this.tr.aniso; }
     /**
      * Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS.
      * A value below 1 counts as 1.
@@ -528,6 +537,7 @@ export class Map extends CoreMap {
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
         this.keepExpired = o.refreshExpiredTiles === false;
+        if (o.anisotropicFilterPitch != null) this.setAnisotropicFilterPitch(o.anisotropicFilterPitch);
         // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
         const dragOptions = (name: string, used: boolean, todo: string) => {
             if (!used || this.warned.has(name)) return;

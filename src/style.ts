@@ -237,6 +237,18 @@ export const LIGHTS = 8;
 const LIGHT_PROPS = ['direction', 'altitude', 'shadow', 'highlight'], HILLSHADE_METHODS = ['standard', 'combined', 'igor', 'multidirectional', 'basic'];
 
 /**
+ * A `*-translate` in pixels along the axes of the map (x east, y south), as MapLibre GL JS's translatePosition has it
+ * before it divides by the size of a tile unit. With the anchor `viewport` the direction turns against the bearing, so
+ * that it stays fixed on the screen. The globe moves the point by this many tile units before it projects it.
+ */
+export function mapTranslate(t: unknown, anchor: unknown, bearing: number): [number, number] {
+    const [x = 0, y = 0] = (Array.isArray(t) ? t : []) as number[];
+    if (anchor !== 'viewport' || !bearing || !(x || y)) return [x, y];
+    const a = bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    return [x * c - y * s, x * s + y * c];
+}
+
+/**
  * A `*-translate` in pixels of the screen. With the anchor `map` (the default) the direction turns with the bearing of
  * the map, and with `viewport` it stays fixed on the screen. A pitch does not change the result.
  */
@@ -276,14 +288,15 @@ export function hillshadeLights(p: Record<string, Prop>, zoom: number, bearing: 
 }
 
 /**
- * Draws with the filter `filter` on the bound texture, and gives the texture back its usual filter (linear) after: the
- * textures of tiles are shared with other layers and with 3D terrain, which must not see `nearest` (#1013).
+ * Draws with the filter `filter` on the bound texture, and gives the texture back its usual filter after (linear, and
+ * `min` when the texture is made smaller): the textures of tiles are shared with other layers and with 3D terrain,
+ * which must not see `nearest` (#1013).
  */
-export function withFilter(gl: Pick<WebGL2RenderingContext, 'texParameteri' | 'TEXTURE_2D' | 'TEXTURE_MIN_FILTER' | 'TEXTURE_MAG_FILTER' | 'LINEAR'>, filter: number, draw: () => void) {
-    const set = (f: number) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f); };
-    if (filter !== gl.LINEAR) set(filter);
+export function withFilter(gl: Pick<WebGL2RenderingContext, 'texParameteri' | 'TEXTURE_2D' | 'TEXTURE_MIN_FILTER' | 'TEXTURE_MAG_FILTER' | 'LINEAR'>, filter: number, draw: () => void, min: number = gl.LINEAR) {
+    const set = (f: number, m: number) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, m); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f); };
+    if (filter !== gl.LINEAR) set(filter, filter);
     draw();
-    if (filter !== gl.LINEAR) set(gl.LINEAR);
+    if (filter !== gl.LINEAR) set(gl.LINEAR, min);
 }
 
 export function compileLayer(l: LayerJSON): CompiledLayer | null {

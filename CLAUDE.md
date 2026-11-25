@@ -66,10 +66,21 @@ to protect those qualities.
     in "Code and methods from other projects";
   - changes this file or the release process (the workflow `Release` included);
   - changes what the CI workflows check: removes or skips a job or a test, lowers a floor (a worse line of
-    `test/conformance/render-tests.json` is a lower floor), or makes a job pass when
+    `test/conformance/render-tests.json` is a lower floor, except the case in the next item), or makes a job pass when
     a check fails. A change of how a workflow runs needs no owner: a retry, a cache, a timeout, a version of a tool
     or of an action, or the order of steps. Its pull request says why the change is needed;
   - is labeled `needs: owner`.
+- **A worse line of a render test that needs no owner.** A pull request may commit a worse line of
+  `test/conformance/render-tests.json` without the owner when all of these are true:
+  - the line goes from `near` to `differ`, so the count of `match` lines does not change;
+  - the percentage of the test moves by at most 0.5 points (for example 4.9% on `main` and 5.0% on the branch), the
+    same in three runs on the pinned Chromium on each side;
+  - the change brings the library closer to MapLibre GL JS in what it is for, and the pull request names why this
+    test moves;
+  - the fault under the worse line has an issue, which the pull request names.
+
+  The pull request lists each such line with its percentages before and after. Every other worse line still needs the
+  owner: a line from `match`, a line to `error` or `skipped`, and a move of more than 0.5 points.
 - **Before version 1.0, a correction does not need the owner.** A change that makes the types stricter, or that
   corrects a result, so that an entry agrees with its documentation or with MapLibre GL JS can be merged on green CI,
   even when code that compiled or ran before can break. The pull request lists what can break.
