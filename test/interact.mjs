@@ -6960,7 +6960,12 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         await open('plateau');
         await page.evaluate(() => window.liftMap.jumpTo({pitch: 72, bearing: 120})); await settle();
         await page.mouse.move(100, 300); await page.mouse.down({button: 'right'});
+        await page.evaluate(() => addEventListener('pointermove', () => { window.lastMove1489 = performance.now(); }, true));
         for (let i = 1; i <= 30; i++) { await page.mouse.move(100 + i * 20, 300); await page.waitForTimeout(40); }
+        // The release comes after the page has seen no move for 200 ms, longer than the 160 ms of samples that inertia
+        // reads, so the bearing is that of the drag alone. A release soon after the page handles the last move turns the
+        // map further by inertia, and on a loaded runner the moves reach the page late: it ended at -117.8 (#2079).
+        await page.waitForFunction(() => performance.now() - window.lastMove1489 > 200);
         await page.mouse.up({button: 'right'}); await settle();
         const turned = await snap(), turnedTo = await page.evaluate(() => +window.liftMap.getBearing().toFixed(1));
         check('[main] 3D terrain: a rotate drag over a plateau keeps the pitch and the zoom, as in MapLibre GL JS (#1480)', turned[0] === 13 && turned[1] === 72, JSON.stringify(turned));
