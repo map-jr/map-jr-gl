@@ -400,6 +400,8 @@ export class Map extends CoreMap {
     }
     cameraForBounds(...args: Parameters<CoreMap['cameraForBounds']>) { return this.snapped(super.cameraForBounds(...args), true); }
     /** @internal (A turn of a mouse wheel ends at a multiple of zoomSnap, as in MapLibre GL JS.) */
+    /** @internal As in MapLibre GL JS, the inertia of a rotate drag that ends closer to north than bearingSnap ends at bearing 0 (#1834). */
+    protected override spinBearing(bearing: number) { const b = (bearing % 360 + 540) % 360 - 180; return b !== 0 && Math.abs(b) < this.bearingSnap ? 0 : bearing; }
     protected override post(c: Command, transfer?: Transferable[]) {
         if (c.type === 'wheel' && this.zoomSnap > 0) c.snap = this.zoomSnap;
         // As in MapLibre GL JS, the inertia of a pan that ends closer to north than bearingSnap ends at bearing 0 (#1834).
@@ -501,8 +503,8 @@ export class Map extends CoreMap {
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
         // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
-        // closer to north than bearingSnap turns the map north. The inertia of a pan turns north as it glides (see `post`);
-        // after a gesture without it, the snap follows the gesture.
+        // closer to north than bearingSnap turns the map north. The inertia of a pan or of a rotate drag ends at north (see
+        // `post` and `spinBearing`); after a gesture without inertia, the snap follows the gesture.
         let byHand = false;
         const handlers = [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch];
         const held = () => handlers.some(h => h.isActive());
