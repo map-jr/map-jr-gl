@@ -376,6 +376,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - MapLibre GL JS checks the types.
 - This library does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale` that is not text, or with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, a second one in the same expression, and a `["zoom"]` that is not the input of one (for example `["/", ["zoom"], 10]`) are drawn as they read, where MapLibre GL JS rejects the style, or the call of `addLayer`, `setPaintProperty` or `setLayoutProperty`. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property. The development build of `@map-jr/map-jr-gl/maplibre-compat` fires `error` with the text of MapLibre GL JS (for example `layers.roads.paint.line-width: "zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.`), once for each layer, property and value, and keeps the style. The production builds of both entries say nothing.
+- `within` and `distance` give the results of MapLibre GL JS (the 58 fixtures of the style specification pass). Their code is a part of the worker, `map-jr-gl-worker-within.js`, which each tile worker loads once when the style of a map uses one of them; the tiles of that map wait for it. When the part does not load, the map writes one warning that names the file, and draws on with `false` for `within` and `NaN` for `distance`. A filter of `querySourceFeatures` or `queryRenderedFeatures` that uses one also loads the part.
 
 ### Style validation
 
@@ -532,10 +533,6 @@ Properties:
 - The source property `volatile` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each source that has `volatile: true`.
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
 - `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
-
-Expressions:
-
-- `within` and `distance`. Each writes one warning (`[map-jr-gl] Unsupported expression "within"`) and gives `null`, so a property takes its default value, and a filter that is `["within", ...]` alone lets no feature through.
 
 Layers that the server renderer does not draw:
 
