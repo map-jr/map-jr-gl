@@ -243,7 +243,11 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
  * sample points are behind the horizon (with the bulge of a large tile), or outside the view, or when a hull around it
  * is more than 60 pixels outside one edge of the view, as MapLibre GL JS 6.17 culls a volume around the tile (#1922).
  * The level that a tile gets falls with the distance from the camera to its nearest sample point, as with 3D terrain
- * (geo.ts); below zoom 5 it is usually one level lower than MapLibre GL JS's, on purpose (#1828).
+ * (geo.ts). Below zoom 5 it is often lower than in MapLibre GL JS 6.17, on purpose (#1828, #2061). Measured at latitude 0
+ * and pitch 0 on a map of 497x509 pixels, with the same result at DPR 1 and 2: a vector source (512 px, `round` false)
+ * gets the level of MapLibre GL JS at zoom 0.5, 1 and 1.5 and one level lower at zoom 2.5 (z1 for z2). A raster source
+ * (256 px, `round` true) gets one level lower at zoom 0.5, 1 and 2.5 (z1 for z2, z3 for z4) and two levels lower at
+ * zoom 1.5 (z1 for z3).
  */
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];
