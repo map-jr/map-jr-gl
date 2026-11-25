@@ -59,8 +59,6 @@ const OTHER = [
     ['source geojson', 'lineMetrics', [], 'tiles.ts', /l\.type === 'line' && l\.ramp/],
     ['transition', 'duration', [], 'style.ts', /duration: 300/],
     ['transition', 'delay', [], 'style.ts', /delay: 0/],
-    // (Accepted with no effect: the name is in src/ only for its warning, so the inputs are `null` and it counts as not read.)
-    ['raster', 'raster-fade-duration', null, 'style.ts', /raster-fade-duration: the property has no effect/],
     // (Not read here, as in MapLibre GL JS 6.17, which declares it and does not read it: the development build says so, #1692.)
     ['symbol', 'symbol-avoid-edges', [], 'mistakes.ts', /"symbol-avoid-edges" has no effect, as in MapLibre GL JS/],
     // (Not read here, as in MapLibre GL JS 6.17, which declares it and does not read it: the development build says so, #1712.)

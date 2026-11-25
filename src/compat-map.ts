@@ -602,6 +602,8 @@ export class Map extends CoreMap {
     }
     /** As in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels around each tile (the main entry keeps 16). */
     protected geojsonBuffer() { return 128; }
+    /** As in MapLibre GL JS, a raster layer without `raster-fade-duration` fades a tile in over 300 ms (the main entry shows it at once). */
+    protected rasterFade() { return 300; }
     /** Removes a style layer, as in MapLibre GL JS. */
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;
