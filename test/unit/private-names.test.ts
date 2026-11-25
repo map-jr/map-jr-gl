@@ -11,6 +11,11 @@ test('private-names: an internal name that is also an export stops the build and
     assert.throws(() => privateNames(fixtures, ['setLocationAt']), /internal member "setLocationAt" has the name of the export "setLocationAt" of src\/b\.ts/);
 });
 
+test('private-names: an internal name that src/ also reads from the WebGL context stops the build (#1948)', () => {
+    // (The name `depthRange` of the transform would be renamed in `gl.depthRange(0, 1)` of the custom layers too.)
+    assert.throws(() => privateNames(fixtures, ['depthRange']), /internal member "depthRange" is also read from the WebGL context/);
+});
+
 test('private-names: the names of src/ pass the check', () => {
     assert.ok(privateNames().size > 0);
 });
