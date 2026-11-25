@@ -144,14 +144,15 @@ of the tests that ran, with one decimal place.
 
 The run compares the status of each test with its line in `test/conformance/render-tests.json` (#1915). It prints a
 line that starts with `WORSE:` for a test that is worse than its line (match to near or differ, near to differ, any
-status to error) and fails. It prints a line that starts with `BETTER:` for a test that is better than its line. A run
+status to error or skipped) and fails. It prints a line that starts with `BETTER:` for a test that is better than its line. A run
 without `--filter` and `--limit` also fails when fewer tests match than the file has lines `match`; that count is the
-floor of the render job of CI. A test that changes from or to `skipped`, or that the file does not have, is printed
-and does not fail the run.
+floor of the render job of CI. A test that the file does not have is printed and does not fail the run.
 
-A run without `--filter` and `--limit` writes `render-tests.json`. After a change that affects how the map is drawn,
-commit only the lines of the tests that the change moves, and say in the pull request why a test is worse when that is
-accepted. The totals are not committed, so two pull requests that move different tests do not conflict in them.
+Only a run with `--write` writes `render-tests.json`, and only on the Chromium that Playwright pins. A run with
+`--filter` and `--write` writes the lines of the tests of that run and leaves the others. A line is the status that the
+render job of CI gives; a run on another machine can differ for a test near a limit. `--write` does not write a line
+that is worse than the committed one unless `--lower=<id,id>` names that test. A pull request that commits a worse line
+lowers the floor of the render job, so it stays open for the owner and says why the test is worse. The totals are not committed, so two pull requests that move different tests do not conflict in them.
 
 | File | Content |
 |---|---|

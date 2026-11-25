@@ -63,16 +63,18 @@ export function resolveBlocks(text) {
 
 /**
  * Merges three versions of render-tests.json (the texts of the base, of this branch and of main) test by test, and
- * returns the text in the format that render.mjs writes, or null when a test has a different new status on each side.
+ * returns the text in the format that render.mjs writes, or {conflicts} (one line for each test that has a different new
+ * status on each side) when it cannot.
  */
 export function mergeRenderTests(base, ours, theirs) {
     const [b, o, t] = [base, ours, theirs].map(text => JSON.parse(text));
-    const out = {};
+    const out = {}, conflicts = [];
     for (const id of new Set([...Object.keys(b), ...Object.keys(o), ...Object.keys(t)])) {
         const v = o[id] === b[id] ? t[id] : t[id] === b[id] || t[id] === o[id] ? o[id] : null;
-        if (v === null) return null;
-        if (v !== undefined) out[id] = v;
+        if (v === null) conflicts.push(`${id}: this branch has ${o[id] ?? 'no line'}, main has ${t[id] ?? 'no line'} (was ${b[id] ?? 'no line'})`);
+        else if (v !== undefined) out[id] = v;
     }
+    if (conflicts.length) return {conflicts};
     const ids = Object.keys(out).sort((x, y) => x < y ? -1 : x > y ? 1 : 0);
     return '{\n' + ids.map(id => `${JSON.stringify(id)}: ${JSON.stringify(out[id])}`).join(',\n') + '\n}\n';
 }
@@ -94,7 +96,10 @@ async function main() {
         else if (file === 'test/conformance/render-result.json') { git('rm', '-q', '--', file); console.log(`[merge-main] Removed ${file}, which main no longer has.`); continue; }
         else if (file === 'test/conformance/render-tests.json') {
             const merged = mergeRenderTests(...[1, 2, 3].map(stage => git('show', `:${stage}:${file}`)));
-            if (!merged) { left.push(file); continue; }
+            if (typeof merged !== 'string') {
+                console.error(`[merge-main] ${file}: these tests have a different new status on each side. Keep the status that CI gives:\n${merged.conflicts.map(c => '  ' + c).join('\n')}`);
+                left.push(file); continue;
+            }
             writeFileSync(root + file, merged);
         }
         else if (file.endsWith('.md')) {

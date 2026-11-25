@@ -137,12 +137,12 @@ export function changes(before, tests) {
         .concat(Object.keys(tests).filter(id => before[id] === undefined).map(id => `NEW: ${id} is ${tests[id]}`));
 }
 
-/** The order of the statuses from best to worst. A test that is skipped is not compared. */
-const rank = {match: 0, near: 1, differ: 2, error: 3};
+/** The order of the statuses from best to worst. A test that is skipped or errors no longer draws, so both are below differ. */
+const rank = {match: 0, near: 1, differ: 2, error: 3, skipped: 3};
 
 /**
  * Compares a run with the tracked file (render-tests.json), test by test (#1915). The render job of CI fails when a
- * test is `worse` than its line (match to near or differ, near to differ, any to error), or when fewer tests match than
+ * test is `worse` than its line (match to near or differ, near to differ, any to error or skipped), or when fewer tests match than
  * the file has `match` lines (`floor`). The tests that are `better` are printed, so that the author commits their lines.
  * @param before the tracked file: the status of each test.
  * @param tests the status of each test of the run.
@@ -164,4 +164,18 @@ export function compareWithTracked(before, tests, full = true) {
     if (belowFloor) lines.push(`FAIL: ${match} tests match, and render-tests.json has ${floor} lines "match".`);
     if (worse.length) lines.push(`FAIL: ${worse.length} test${worse.length === 1 ? ' is' : 's are'} worse than ${worse.length === 1 ? 'its line' : 'their lines'} in render-tests.json: ${worse.map(t => t.id).join(', ')}. Fix the cause, or, when the change is accepted, commit the new line${worse.length === 1 ? '' : 's'} and say why in the pull request.`);
     return {worse, better, floor, match, fail: belowFloor || worse.length > 0, lines};
+}
+
+/**
+ * The new text of render-tests.json for a run with --write, or the reason not to write it (#1915). A run with --filter
+ * writes only the lines of its tests. A test that is worse than its line is written only when --lower names it.
+ * @param verdict the result of compareWithTracked.
+ * @param lower the ids that --lower names.
+ */
+export function linesToWrite(before, tests, verdict, lower = []) {
+    const refused = verdict.worse.filter(t => !lower.includes(t.id)).map(t => t.id);
+    if (refused.length) return {error: `[render] Not writing render-tests.json: ${refused.join(', ')} ${refused.length === 1 ? 'is' : 'are'} worse than ${refused.length === 1 ? 'its line' : 'their lines'}. Fix the cause, or name ${refused.length === 1 ? 'it' : 'them'} in --lower=<id,id> and leave the pull request open for the owner.`};
+    const out = {...before, ...tests};
+    const ids = Object.keys(out).sort((x, y) => x < y ? -1 : x > y ? 1 : 0);
+    return {text: '{\n' + ids.map(id => `${JSON.stringify(id)}: ${JSON.stringify(out[id])}`).join(',\n') + '\n}\n'};
 }

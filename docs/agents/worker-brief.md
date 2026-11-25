@@ -36,12 +36,15 @@ writing); this brief has the steps.
    the render tests of the groups that it touches with and without the change
    (`node test/conformance/render.mjs --filter='<regex>'`), and give the counts of match, near and differ. The run
    prints `WORSE:` for a test that is worse than its line in `test/conformance/render-tests.json` and `BETTER:` for a
-   test that is better, and it fails when a test is worse. Commit only the lines of `render-tests.json` of the tests
-   that your change moves, and restore the others: a full run is not needed for that, and no total or floor is
-   committed (the floor is the count of lines `match`; #1915). A line that you commit gives the status of CI, so check
-   a test near a limit alone (`--filter='^<id>$' --list` prints its percentage), and take its line from the `BETTER:`
-   or `WORSE:` lines of the render job of CI when the two differ. A test that your change makes worse on purpose
-   gets its new line and a sentence in the pull request.
+   test that is better, and it fails when a test is worse. To record the tests that your change moves, run the same
+   command with `--write`: it rewrites the lines of the tests of that run in `render-tests.json` and leaves the other
+   lines as they are. Commit that file; a full run is not needed, and no total or floor is committed (the floor is the
+   count of lines `match`; #1915). A line gives the status that the render job of CI gives, and a run on another
+   machine can differ for a test near a limit: check such a test alone (`--filter='^<id>$' --list` prints its
+   percentage), and take its line from the `BETTER:` or `WORSE:` lines of CI when the two differ. `--write` does not
+   write a line that is worse (match to near or differ, near to differ, any to error or skipped) unless
+   `--lower=<id,id>` names the test. A pull request that commits a worse line lowers the floor: give the reason in it,
+   leave it open, and write "Needs owner" in your report.
    Run render tests and pixel checks on the Chromium build that CI uses, which is the build that the installed
    Playwright pins. The cloud VM has an older build in `/opt/pw-browsers`, which `test/launch.mjs` takes when the
    pinned build is missing, and that build counts some tests differently (`text-local-glyphs/cjk` is a match there
@@ -84,8 +87,8 @@ writing); this brief has the steps.
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
   takes WebGL away from workers, as in WebKit on Linux and Windows.
 - `node test/conformance/render.mjs --help` prints its options. An argument that it does not know, or `--list`
-  without `--filter`, stops it with that text. Only a full run (no `--filter` and no `--limit`) on the pinned Chromium
-  rewrites `test/conformance/render-tests.json`; a run with `--filter` leaves it as it is.
+  without `--filter`, stops it with that text. Only a run with `--write` on the pinned Chromium writes
+  `test/conformance/render-tests.json`, and with `--filter` it writes only the lines of the tests of that run.
 - `gh pr edit` fails on this repository; change the body of your pull request with
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`. In cloud sessions GraphQL is blocked, so
   `gh issue view`, `gh pr view` and `gh pr list` fail too: use `gh api` REST for everything.

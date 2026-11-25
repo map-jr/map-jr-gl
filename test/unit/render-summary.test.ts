@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync, readFileSync} from 'node:fs';
 // @ts-expect-error (a plain module of the conformance tools, without types)
-import {summarize, readExpectations, report, changes, percent, skipReason, operationsNotDone, trackedSummary, compareWithTracked} from '../../test/conformance/render-summary.mjs';
+import {summarize, readExpectations, report, changes, percent, skipReason, operationsNotDone, trackedSummary, compareWithTracked, linesToWrite} from '../../test/conformance/render-summary.mjs';
 
 const dir = new URL('../conformance/', import.meta.url);
 const results = [
@@ -101,7 +101,7 @@ test('render summary: a test worse than its line fails the run, and one better i
     const before = {'a/m': 'match', 'a/n': 'near', 'a/d': 'differ', 'a/s': 'skipped', 'a/k': 'match'};
     const v = compareWithTracked(before, {'a/m': 'near', 'a/n': 'match', 'a/d': 'differ', 'a/s': 'match', 'a/k': 'match', 'a/new': 'match'});
     assert.deepEqual(v.worse, [{id: 'a/m', was: 'match', now: 'near'}]);
-    assert.deepEqual(v.better, [{id: 'a/n', was: 'near', now: 'match'}]);
+    assert.deepEqual(v.better, [{id: 'a/n', was: 'near', now: 'match'}, {id: 'a/s', was: 'skipped', now: 'match'}]);
     assert.ok(v.fail);
     assert.ok(v.lines.some((l: string) => l.startsWith('FAIL:') && l.includes('a/m')));
     assert.ok(v.lines.includes('BETTER: a/n is match, and its line in render-tests.json is near. Commit the line "a/n": "match".'));
@@ -111,6 +111,22 @@ test('render summary: a test worse than its line fails the run, and one better i
     const floor = compareWithTracked(before, {'a/m': 'match'});
     assert.deepEqual([floor.floor, floor.match, floor.fail], [2, 1, true]);
     assert.equal(compareWithTracked(before, {'a/m': 'match'}, false).fail, false, 'a run with a filter has no floor');
+});
+
+test('render summary: a test that becomes skipped is worse, also with a filter (#1915)', () => {
+    const before = {'a/m': 'match', 'a/n': 'near', 'a/s': 'skipped'};
+    assert.equal(compareWithTracked(before, {'a/m': 'skipped'}, false).fail, true);
+    assert.equal(compareWithTracked(before, {'a/n': 'skipped'}).fail, true);
+    assert.equal(compareWithTracked(before, {'a/s': 'match'}, false).fail, false);
+});
+
+test('render summary: --write writes no worse line unless --lower names it (#1915)', () => {
+    const before = {'a/m': 'match', 'a/n': 'near'}, run = {'a/m': 'near'};
+    const v = compareWithTracked(before, run, false);
+    assert.ok(linesToWrite(before, run, v).error?.includes('a/m'));
+    assert.equal(linesToWrite(before, run, v, ['a/m']).text, '{\n"a/m": "near",\n"a/n": "near"\n}\n');
+    // A run with a filter writes only the lines of its tests.
+    assert.equal(linesToWrite(before, {'a/n': 'match'}, compareWithTracked(before, {'a/n': 'match'}, false)).text, '{\n"a/m": "match",\n"a/n": "match"\n}\n');
 });
 
 test('render summary: the tests whose status is not the one in the tracked file are listed', () => {

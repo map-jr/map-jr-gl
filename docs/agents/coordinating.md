@@ -167,11 +167,12 @@ alone cannot.
   conflict; `node scripts/agents/merge-main.mjs` resolves it test by test, and stops only when both changed the same
   test.
 - **The render job fails when a test is worse than its line** (`WORSE:`; match to near or differ, near to differ, any
-  to error) or when fewer tests match than the file has lines `match`. It prints `BETTER:` for each test that is better
-  than its line; the author commits those lines. On `main`, a `BETTER:` line means that a pull request left a line
+  to error or skipped) or when fewer tests match than the file has lines `match`. It prints `BETTER:` for each test that is better
+  than its line; the author commits those lines. A pull request that commits a worse line lowers the floor and waits
+  for the owner. On `main`, a `BETTER:` line means that a pull request left a line
   out: take it in the next pull request that moves render tests.
-- **Only a full run on the pinned Chromium rewrites `render-tests.json`.** A run with `--filter` or `--limit` leaves
-  it as it is.
+- **Only a run with `--write` on the pinned Chromium writes `render-tests.json`.** With `--filter` it writes only the
+  lines of the tests of the run, and it never writes a worse line unless `--lower=<id,id>` names the test.
 - **The committed lines come from CI or from a run whose changed tests were checked.** The run runs each
   test whose status is not the one in `render-tests.json` again alone, and the second result counts (it prints
   `AGAIN:` when the two differ). A test near a limit can still have another status on another machine

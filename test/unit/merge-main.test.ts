@@ -19,5 +19,5 @@ test('merge-main: render-tests.json takes the line that each side changed, also 
     const base = {'a/1': 'near', 'a/2': 'near', 'a/3': 'differ'};
     assert.equal(mergeRenderTests(text(base), text({...base, 'a/1': 'match'}), text({...base, 'a/2': 'match', 'a/0': 'match'})),
         text({'a/0': 'match', 'a/1': 'match', 'a/2': 'match', 'a/3': 'differ'}));
-    assert.equal(mergeRenderTests(text(base), text({...base, 'a/1': 'match'}), text({...base, 'a/1': 'differ'})), null, 'a test that both sides moved differently is left for a person');
+    assert.deepEqual(mergeRenderTests(text(base), text({...base, 'a/1': 'match'}), text({...base, 'a/1': 'differ'})), {conflicts: ['a/1: this branch has match, main has differ (was near)']}, 'a test that both sides moved differently is left for a person');
 });
