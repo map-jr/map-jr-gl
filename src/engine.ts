@@ -13,7 +13,7 @@ import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCente
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import {globeBuild, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
-import {oncePerPart, part, type PartName} from './parts.ts';
+import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
 
 export interface CameraOptions {
@@ -265,6 +265,12 @@ function packGeoJSON(data: unknown): () => Uint8Array | null {
     let bytes: Uint8Array | null | undefined;
     return () => bytes !== undefined ? bytes : (bytes = data && typeof data === 'object' ? new TextEncoder().encode(JSON.stringify(data)) : null);
 }
+
+/**
+ * The message of a tile that failed names its source, after the prefix (#2099). A part of the worker that did not load
+ * is not a fault of the source, and its message stays the same for each source, so that the map reports it once (#79).
+ */
+const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] The source "${source}": `);
 
 export class Engine {
     tr = new Transform();
@@ -1365,7 +1371,7 @@ export class Engine {
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
             // A tile reports its failure once, at its first failed request, as MapLibre GL JS 6.17 fires one `error` for
             // each failed tile (and makes no request again). The retries below are silent (#2007).
-            if (!t.tries) this.emit({type: 'error', message: err.message, source});
+            if (!t.tries) this.emit({type: 'error', message: tileMessage(source, err), source});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
@@ -1467,7 +1473,7 @@ export class Engine {
             // A failed reload of an expired tile fires one `error`, with its source, as in MapLibre GL JS 6.17. The
             // reloads after it (1 s, 2 s, 4 s and so on, see `expire`) fire none until one succeeds (#2072).
             if (fresh) { this.expire(t, 0); if (t.reloadFailed) return; t.reloadFailed = true; }
-            this.emit({type: 'error', message: err.message, source});
+            this.emit({type: 'error', message: tileMessage(source, err), source});
         });
     }
 

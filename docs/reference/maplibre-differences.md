@@ -252,8 +252,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - After the fourth failure, the map is idle without the tile, and the tile is requested again every 15 s while the
   view or the overview needs it. These later requests run in the background: they do not make the map leave `idle`,
   they fire no `error` when they fail, and a tile that one of them loads is drawn.
-- A status 4xx other than 404, a rejection by a custom protocol and an error of `transformRequest` are final, as in
-  MapLibre GL JS.
+- A status 4xx other than 404, a rejection by a custom protocol, an error of `transformRequest` and a raster tile
+  whose image cannot be decoded are final, as in MapLibre GL JS.
 
 ### A tile that expires
 

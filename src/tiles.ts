@@ -3,7 +3,7 @@ import {compileFor, geo, warnOnce, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type GlobeBuild, type GlobeCut, type TileGL, type TileIR} from './tile.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
-import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
+import {fetchWith, requestError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {fetchTile, heads, type TileFetchState} from './tile-fetch.ts';
 import {GEOJSON_PREFIX, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {decodeVectorTile} from './mvt.ts';
@@ -116,7 +116,11 @@ export class TileBuilder {
         this.aborts.set(req.id, ac);
         try {
             const st: TileFetchState = {}, got = await fetchTile(req.url, this.fetchFn, ac.signal, st, true);
-            return {...st, image: got && 'length' in got ? await createImageBitmap(new Blob([got as BlobPart])) : got};
+            // An image that cannot be decoded would fail again, so it is final: it is not requested again, as in MapLibre GL JS (#2099).
+            const image = got && 'length' in got ? await createImageBitmap(new Blob([got as BlobPart])).catch(e => {
+                throw Object.assign(requestError('tile', req.url, 'the response is not an image that the browser can decode. Check that the tile URLs of the source give PNG, JPEG or WebP images.', e), {final: true});
+            }) : got;
+            return {...st, image};
         } finally { this.aborts.delete(req.id); }
     }
 
