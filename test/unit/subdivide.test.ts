@@ -6,8 +6,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {compileLayer} from '../../src/style.ts';
-import {LINE_VERTEX, buildTile, tessellate, toGL, type Batch, type GLBatch} from '../../src/tile.ts';
-import {NORTH_POLE, SOUTH_POLE, cutLine, globeBuild, globeGrid, type GlobeBuild} from '../../src/subdivide.ts';
+import {LINE_VERTEX, buildTile, globeBuild, globeGrid, tessellate as tessellateCut, toGL as toGLCut, type Batch, type GLBatch, type GlobeBuild} from '../../src/tile.ts';
+import {NORTH_POLE, SOUTH_POLE, cutFill, cutLine} from '../../src/subdivide.ts';
 import {sphere} from '../../src/globe.ts';
 
 const bytes = new Uint8Array(readFileSync(new URL('../fixtures/14-4823-6160.pbf', import.meta.url)));
@@ -17,6 +17,10 @@ const layers = [
     {id: 'roads', type: 'line', source: 's', 'source-layer': 'transportation', paint: {'line-width': 2}},
     {id: 'buildings', type: 'fill-extrusion', source: 's', 'source-layer': 'building', paint: {'fill-extrusion-height': ['get', 'render_height']}},
 ].map(l => compileLayer(l)!);
+// (The tile workers give the code of the cut with the build, from the part `subdivide` of the worker: see `globeCut` in tiles.ts.)
+const cut = (globe?: GlobeBuild) => globe && {...globe, cutFill, cutLine};
+const tessellate = (b: Batch, globe?: GlobeBuild) => tessellateCut(b, cut(globe));
+const toGL = (ir: Parameters<typeof toGLCut>[0], globe?: GlobeBuild) => toGLCut(ir, cut(globe));
 const tile = (globe?: GlobeBuild) => toGL(buildTile(bytes, 14, layers, false), globe).tile as any;
 const square = (x0: number, y0: number, x1: number, y1: number, hole?: number[]): Batch => ({type: 'fill', antialias: false,
     geom: {coords: Int16Array.from([x0, y0, x1, y0, x1, y1, x0, y1, ...hole ?? []]), ringEnds: Uint32Array.from(hole ? [4, 8] : [4]), featEnds: Uint32Array.from([hole ? 2 : 1])}});

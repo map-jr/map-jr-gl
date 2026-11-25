@@ -385,3 +385,40 @@ void main() {
   c = pow(c, vec4(1.0 / 2.2));
   o = vec4(c.rgb, 1.0 - c.a) * u_halo.x;
 }`];
+
+/**
+ * The direction to the sun for `HALO`, in the space of the unit sphere with the rays of the screen (`rays`; the ray
+ * through x, y is A x + B y + C). `az` and `polar` are those of the light in degrees, and `onMap` is true for a light
+ * with the anchor `map`.
+ */
+export function haloSun(tr: Transform, rays: number[], az: number, polar: number, onMap: boolean): number[] {
+    const a = (az + 90) * PI / 180, p = polar * PI / 180, R = PI / 180;
+    // The sun in view space (x right, y up, z toward the camera), as MapLibre's getSunPos.
+    const sun = [-Math.cos(a) * Math.sin(p), -Math.sin(a) * Math.sin(p), -Math.cos(p)];
+    const turn = (i: number, j: number, t: number) => { const c = Math.cos(t), n = Math.sin(t), u = sun[i], w = sun[j]; sun[i] = c * u - n * w; sun[j] = n * u + c * w; };
+    if (onMap) { turn(2, 0, -tr.lng * R); turn(1, 2, tr.lat * R); turn(0, 1, tr.bearing * R); turn(1, 2, -tr.pitch * R); }
+    const r = rays, d = tr.cameraDistance, ax = [0, 1, 2].map(i => r[i] * d), ay = [0, 1, 2].map(i => -r[3 + i] * d), az2 = [0, 1, 2].map(i => -r[6 + i] - tr.cx * r[i] - tr.cy * r[3 + i]);
+    return [0, 1, 2].map(i => ax[i] * sun[0] + ay[i] * sun[1] + az2[i] * sun[2]);
+}
+
+/**
+ * The grid that raster, hillshade and background tiles are drawn on with the globe, in tile units: 32 cells a side,
+ * and a row of triangles to each pole (y -32768 and 32767). The indices of the grid come first, then those of the
+ * north row, then those of the south row.
+ */
+export function globeMesh(gl: WebGL2RenderingContext): {vao: WebGLVertexArrayObject; main: number; pole: number} {
+    const N = 32, pos: number[] = [], idx: number[] = [];
+    for (let y = -1; y <= N + 1; y++) for (let x = 0; x <= N; x++) pos.push(x * EXTENT / N, y < 0 ? -32768 : y > N ? 32767 : y * EXTENT / N);
+    const quad = (y: number) => { for (let x = 0; x < N; x++) { const i = y * (N + 1) + x; idx.push(i, i + 1, i + N + 1, i + 1, i + N + 2, i + N + 1); } };
+    for (let y = 1; y <= N; y++) quad(y);
+    quad(0); quad(N + 1);
+    const vao = gl.createVertexArray()!;
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
+    return {vao, main: N * N * 6, pole: N * 6};
+}

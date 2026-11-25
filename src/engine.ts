@@ -1,6 +1,5 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {globeBuild} from './subdivide.ts';
 import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
@@ -12,7 +11,7 @@ import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
-import type {TileGL} from './tile.ts';
+import {globeBuild, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
@@ -139,6 +138,7 @@ function partsFor(style: ResolvedStyle): PartName[] {
         if (s.contour) out.add('dem');
         if (s.tiles?.some(t => t.startsWith('pmtiles://'))) out.add('pmtiles');
     }
+    if (globeStops(style.projection?.type)) out.add('subdivide');
     return [...out];
 }
 

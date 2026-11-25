@@ -1502,26 +1502,9 @@ export class GLRenderer {
         }
     }
 
-    /**
-     * The grid of the globe: 32 cells a side in tile units, and a row of triangles to each pole (y -32768 and 32767,
-     * see subdivide.ts). The indices of the grid come first, then those of the north row, then those of the south row.
-     */
+    /** The grid of the globe (`globeMesh` in globe.ts), made at its first use. */
     private globeGrid() {
-        if (this.globeMesh) return this.globeMesh;
-        const gl = this.gl, N = 32, pos: number[] = [], idx: number[] = [];
-        for (let y = -1; y <= N + 1; y++) for (let x = 0; x <= N; x++) pos.push(x * EXTENT / N, y < 0 ? -32768 : y > N ? 32767 : y * EXTENT / N);
-        const quad = (y: number) => { for (let x = 0; x < N; x++) { const i = y * (N + 1) + x; idx.push(i, i + 1, i + N + 1, i + 1, i + N + 2, i + N + 1); } };
-        for (let y = 1; y <= N; y++) quad(y);
-        quad(0); quad(N + 1);
-        const vao = gl.createVertexArray()!;
-        gl.bindVertexArray(vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
-        return this.globeMesh = {vao, main: N * N * 6, pole: N * 6};
+        return this.globeMesh ??= this.globeCode!.globeMesh(this.gl);
     }
 
     /**
@@ -1794,15 +1777,7 @@ export class GLRenderer {
         const blend = v.atmosphere * g.t * x * x * (3 - 2 * x), gl = this.gl;
         if (!(blend > 0)) return;
         const light = s.light ?? {}, [, az, polar] = compileProp(light.position, 'string', [1.15, 210, 30]).eval(tr.zoom) as number[];
-        const a = (az + 90) * Math.PI / 180, p = polar * Math.PI / 180, R = Math.PI / 180;
-        // The sun in view space (x right, y up, z toward the camera), as MapLibre's getSunPos.
-        let sun = [-Math.cos(a) * Math.sin(p), -Math.sin(a) * Math.sin(p), -Math.cos(p)];
-        const turn = (i: number, j: number, t: number) => { const c = Math.cos(t), n = Math.sin(t), u = sun[i], w = sun[j]; sun[i] = c * u - n * w; sun[j] = n * u + c * w; };
-        if (lightOnMap(light, tr.zoom)) { turn(2, 0, -tr.lng * R); turn(1, 2, tr.lat * R); turn(0, 1, tr.bearing * R); turn(1, 2, -tr.pitch * R); }
-        // To the space of the sphere with the rays of the screen: the ray through x, y is A x + B y + C (see `rays`).
-        const r = g.rays, d = tr.cameraDistance, ax = [0, 1, 2].map(i => r[i] * d), ay = [0, 1, 2].map(i => -r[3 + i] * d), az2 = [0, 1, 2].map(i => -r[6 + i] - tr.cx * r[i] - tr.cy * r[3 + i]);
-        sun = [0, 1, 2].map(i => ax[i] * sun[0] + ay[i] * sun[1] + az2[i] * sun[2]);
-        const u = this.use('halo', tr);
+        const sun = this.globeCode!.haloSun(tr, g.rays, az, polar, lightOnMap(light, tr.zoom)), u = this.use('halo', tr);
         gl.uniformMatrix3fv(u.u_rays, false, g.rays);
         gl.uniform3fv(u.u_cam, g.cam);
         gl.uniform3fv(u.u_sun, sun);

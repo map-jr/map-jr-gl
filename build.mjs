@@ -246,14 +246,14 @@ await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: fal
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM). It draws without WebGL, so of the
 // part `dem` it takes the contour lines and not 3D terrain, which would bring the renderer of WebGL with it (#1849).
-// The part `globe` is for the WebGL engine only, and the server renderer does not contain it (#2006).
+// The parts `globe` and `subdivide` are for the WebGL engine and its tiles only, and the server renderer does not contain them (#2006, #2075).
 const contourOnly = {
     name: 'server-dem',
     enforce: 'pre',
     transform(code, id) {
         if (!id.endsWith('/src/parts.ts')) return null;
         const edited = new MagicString(code);
-        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"]]) {
+        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"], ["subdivide: () => import('./subdivide.ts')", "subdivide: () => Promise.reject(Error('subdivide'))"]]) {
             const at = code.indexOf(from);
             if (at < 0) throw new Error(`build.mjs: src/parts.ts has no line "${from}".`);
             edited.overwrite(at, at + from.length, to);

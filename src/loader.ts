@@ -99,6 +99,7 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
         pmtiles: at('pmtiles', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
         within: at('within', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-within.js?no-inline', import.meta.url)),
         globe: at('globe', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-globe.js?no-inline', import.meta.url)),
+        subdivide: at('subdivide', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-subdivide.js?no-inline', import.meta.url)),
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;
@@ -117,6 +118,7 @@ const partCode = new globalThis.Map<string, Promise<string | null>>();
 /**
  * Starts to fetch the parts that a style (as written) needs: see `partsFor` in engine.ts. 3D terrain needs the part
  * `dem` too, and a globe the part `globe`, in the engine worker (`engineWorker`; #1849, #2006). An engine on the page loads the chunk of that part instead.
+ * A globe also needs the part `subdivide` in the tile workers (#2075).
  */
 export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>; terrain?: unknown; projection?: {type?: unknown}}, engineWorker: boolean) {
     const urls = partUrls(o);
@@ -124,7 +126,8 @@ export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {
     const names: string[] = Object.values(style?.sources ?? {}).map(s => s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'dem'
         : [s?.url, ...(Array.isArray(s?.tiles) ? s.tiles : [])].some(u => typeof u === 'string' && u.startsWith('pmtiles://')) ? 'pmtiles' : '');
     if (style?.terrain && engineWorker) names.push('dem');
-    if (engineWorker && globeStops(style?.projection?.type)) names.push('globe');
+    // (The tile workers cut the tiles of a globe with the part `subdivide`, also when the engine is on the page.)
+    if (globeStops(style?.projection?.type)) names.push('subdivide', ...engineWorker ? ['globe'] : []);
     for (const name of names) {
         const url = urls[name];
         if (!url || partCode.has(url)) continue;

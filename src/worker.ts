@@ -14,6 +14,7 @@ export {compileExpr, compileFilter} from './expr.ts';
 export {decodeElevation} from './query.ts';
 export {decodePixels} from './exact-pixels.ts';
 export {heads} from './tile-fetch.ts';
+export {earcut} from './tile.ts';
 
 /** One worker script, two roles: a tile parser, or the host of the whole rendering engine. */
 const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null; postMessage(m: unknown): void; importScripts(url: string): void; MapJrPart?: unknown};

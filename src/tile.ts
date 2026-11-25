@@ -1,6 +1,6 @@
 import earcut from 'earcut';
+export {earcut};
 import {EXTENT} from './geo.ts';
-import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {fontKey, type CompiledLayer} from './style.ts';
@@ -530,11 +530,39 @@ export function justification(justify: string, anchor: string): number {
 }
 
 /**
+ * How a tile is built for the globe: cells a side, whether the tile touches the north or south edge of the world, and
+ * whether a point of a heatmap is a grid of corners (see `tessellate`).
+ */
+export interface GlobeBuild { grid: number; north?: boolean; south?: boolean; heat?: boolean }
+/** A `GlobeBuild` with the code of the cut, the part `subdivide` of the worker (see `toGL`). */
+export type GlobeCut = GlobeBuild & Pick<typeof import('./subdivide.ts'), 'cutFill' | 'cutLine'>;
+
+/**
+ * Cells a side for a tile of zoom `tileZ` that is built for the zoom `zoom` (higher for an overzoomed tile), and 0 from
+ * zoom 12, where the globe has turned into Mercator. One cell then spans 360° / (40 · √2^zoom), so its chord lies about
+ * half a pixel under the sphere one zoom level past `zoom`: 40, 20, 10, 5, 3 and 1 cells at zoom 0, 2, 4, 6, 8 and 10.
+ */
+export function globeGrid(tileZ: number, zoom = tileZ): number {
+    return zoom >= 12 ? 0 : Math.min(128, Math.max(1, Math.round(40 * 2 ** (zoom / 2 - tileZ))));
+}
+
+/**
+ * The field `globe` of the request for a tile (`id`, built for `zoom`), or undefined when the tile needs no cut. A point
+ * of a heatmap is a grid of corners below zoom 6 only: from there, the chord of one quad of the default radius (30
+ * pixels) lies less than 0.15 pixel under the sphere, and the grid would cost 6 times the buffers for nothing (#1824).
+ */
+export function globeBuild(id: {z: number; y: number}, zoom = id.z): GlobeBuild | undefined {
+    const grid = globeGrid(id.z, zoom), north = id.y === 0, south = id.y === 2 ** id.z - 1;
+    // (A tile with one cell is still cut at its border: see `BORDER`.)
+    return grid ? {grid, north, south, heat: zoom < 6} : undefined;
+}
+
+/**
  * Expands a neutral batch into vertex and index buffers for the GPU. With `globe` (a map that can show the globe),
  * fills and lines are cut along a grid first (see subdivide.ts); without it the result is what it always was.
  */
-export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
-    if (globe && b.type !== 'circle' && !b.height) return b.type === 'fill' ? tessellateGlobeFill(b, globe) : tessellateLine({...b, geom: cutRings(b.geom, globe.grid, false)});
+export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
+    if (globe && b.type !== 'circle' && !b.height) return b.type === 'fill' ? tessellateGlobeFill(b, globe) : tessellateLine({...b, geom: cutRings(b.geom, globe, false)});
     const {coords, ringEnds, featEnds} = b.geom;
     if (b.type === 'circle') {
         // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
@@ -587,7 +615,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
 }
 
 /** The rings of a geometry with a point added where they cross a line of the grid. `closed`: each ring is a polygon ring. */
-function cutRings(g: Geom, grid: number, closed: boolean): Geom {
+function cutRings(g: Geom, {grid, cutLine}: GlobeCut, closed: boolean): Geom {
     if (grid <= 1 && !closed) return g;
     const out: number[] = [], ringEnds = new Uint32Array(g.ringEnds.length);
     for (let r = 0; r < g.ringEnds.length; r++) {
@@ -601,16 +629,16 @@ function cutRings(g: Geom, grid: number, closed: boolean): Geom {
  * A fill for the globe: the triangles of the cut, and the edges for smoothing and outlines from the rings with the
  * points of the grid added (they keep the edges of the polygon, not those of the cut).
  */
-function tessellateGlobeFill(b: Batch, globe: GlobeBuild): GLBatch | null {
+function tessellateGlobeFill(b: Batch, globe: GlobeCut): GLBatch | null {
     const g = b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
     for (let f = 0; f < g.featEnds.length; f++) {
         const polygons: {coords: Int16Array; holes: number[]}[] = [];
         eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: g.coords.subarray(p0 * 2, p1 * 2), holes}));
         features.push(polygons);
     }
-    const cut = cutFill(features, globe);
+    const cut = globe.cutFill(features, globe);
     if (!cut.idx.length) return null;
-    const rings = b.antialias !== false || b.outline ? cutRings(g, globe.grid, true) : undefined, base = cut.pos.length / 2;
+    const rings = b.antialias !== false || b.outline ? cutRings(g, globe, true) : undefined, base = cut.pos.length / 2;
     const pos = new Int16Array(cut.pos.length + (rings?.coords.length ?? 0));
     pos.set(cut.pos);
     let edges: Uint32Array | undefined;
@@ -668,7 +696,7 @@ export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
  * the light. With `globe`, the roof is cut as a fill is (without the caps at the poles) and each wall is cut where its
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
  */
-function tessellateExtrusion(b: Batch, globe?: GlobeBuild): GLBatch | null {
+function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
     const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
@@ -681,14 +709,14 @@ function tessellateExtrusion(b: Batch, globe?: GlobeBuild): GLBatch | null {
         };
         eachPolygon(b.geom, f, (p0, p1, holes) => {
             let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
-            const roof = count, cut = globe && cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
+            const roof = count, cut = globe && globe.cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
             for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
             if (top <= bottom) return;
             if (globe) {
                 // (cutLine repeats the first point of a ring at its end: it is dropped.)
                 const out: number[] = [], ends = [0];
-                for (let r = 0; r + 1 < bounds.length; r++) { cutLine(coords, bounds[r], bounds[r + 1], Math.max(1, globe.grid), out, true); out.length -= 2; ends.push(out.length / 2); }
+                for (let r = 0; r + 1 < bounds.length; r++) { globe.cutLine(coords, bounds[r], bounds[r + 1], Math.max(1, globe.grid), out, true); out.length -= 2; ends.push(out.length / 2); }
                 coords = out; bounds = ends;
             }
             p0 = 0;
@@ -866,8 +894,8 @@ function tessellateLine(b: Batch): GLBatch | null {
     return {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx), color: b.progress ? Uint8Array.from(color) : each(b.color), width: each(b.width), width1: each(b.width1), feat: each(b.feat), featMask: b.featMask};
 }
 
-/** `globe`: the tile is built for a map that can show the globe (see `tessellate`). */
-export function toGL(ir: TileIR, globe?: GlobeBuild): {tile: TileGL; transfer: ArrayBuffer[]} {
+/** `globe`: the tile is built for a map that can show the globe (see `tessellate`), with the code of the cut. */
+export function toGL(ir: TileIR, globe?: GlobeCut): {tile: TileGL; transfer: ArrayBuffer[]} {
     const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z, expires: ir.expires}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
