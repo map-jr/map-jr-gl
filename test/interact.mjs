@@ -1952,7 +1952,7 @@ for (const mode of renderers) {
                 new mod.Marker({element: dot()}),
                 new mod.Marker({element: dot()}).setPitchAlignment('map'),
             ].map(k => k.setLngLat([5, 5]).addTo(m));
-            const matrix = k => (getComputedStyle(k.getElement()).transform.match(/-?[\d.e-]+/g) ?? []).slice(1).map(Number);
+            const matrix = k => (getComputedStyle(k.getElement()).transform.replace(/^\w+\(/, '').match(/-?[\d.e-]+/g) ?? []).map(Number);
             const out = {align: marks.map(k => k.getPitchAlignment()), matrices: marks.map(matrix)};
             m.remove(); el.remove();
             return out;
