@@ -3586,10 +3586,14 @@ for (const mode of renderers) {
         const gone = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), name = 'gone2068';
             let release, held = new Promise(r => release = r), asked = 0;
-            // (The library copies an image that a protocol gives: the copies are the images that wait.)
-            const made = new Set(), copies = new Set(), closed = new Set(), close = ImageBitmap.prototype.close, copy = window.createImageBitmap;
+            // (The library copies an image that a protocol gives, and the copy goes to a tile worker, which sends it back to
+            // the engine (#2068): the images that come back are the images that wait. A copy that went to a worker is detached.)
+            const made = new Set(), copies = new Set(), back = new Set(), closed = new Set(), close = ImageBitmap.prototype.close, copy = window.createImageBitmap;
             ImageBitmap.prototype.close = function () { closed.add(this); return close.call(this); };
             window.createImageBitmap = async function (from, ...rest) { const b = await copy.call(this, from, ...rest); if (made.has(from)) copies.add(b); return b; };
+            const onmessage = Object.getOwnPropertyDescriptor(MessagePort.prototype, 'onmessage');
+            Object.defineProperty(MessagePort.prototype, 'onmessage', {configurable: true, get() { return onmessage.get.call(this); },
+                set(fn) { onmessage.set.call(this, fn && (e => { const b = e.data?.result?.image; if (b instanceof ImageBitmap) back.add(b); return fn(e); })); }});
             mod.addProtocol(name, async request => {
                 const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64});
                 asked++; await held;
@@ -3609,15 +3613,16 @@ for (const mode of renderers) {
                 style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 128}}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
             for (let i = 0, last = -1; i < 400 && (!asked || asked !== last); i++) { last = asked; await new Promise(r => setTimeout(r, 50)); }
             release();
-            for (let i = 0; i < 200 && copies.size < asked; i++) await new Promise(r => setTimeout(r, 5));
+            for (let i = 0; i < 200 && Math.max(copies.size, back.size) < asked; i++) await new Promise(r => setTimeout(r, 5));
             await new Promise(r => setTimeout(r, 20)); // (the images reach the queue)
             const before = uploads;
             m.remove();
             await new Promise(r => setTimeout(r, 300));
             const after = uploads - before;
-            proto.texImage2D = original; ImageBitmap.prototype.close = close; window.createImageBitmap = copy;
+            proto.texImage2D = original; ImageBitmap.prototype.close = close; window.createImageBitmap = copy; Object.defineProperty(MessagePort.prototype, 'onmessage', onmessage);
             el.remove(); mod.removeProtocol(name);
-            return {asked, made: copies.size, sent: before, open: [...copies].filter(b => !closed.has(b)).length, after};
+            // (An image is open when it was neither closed nor sent to a worker: both leave it with a width of 0.)
+            return {asked, made: Math.max(copies.size, back.size), sent: before, open: [...copies, ...back].filter(b => !closed.has(b) && b.width).length, after};
         });
         check(`[${mode}] remove() while raster tiles wait for the GPU closes their images and sends none later (#2068)`,
             gone.made >= 16 && gone.sent < gone.made && gone.open === 0 && gone.after === 0, JSON.stringify(gone));
