@@ -141,6 +141,10 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   fault of the pull request. File the check at once and give it to one worker with a narrow brief; the CI logs were
   enough to fix the three of 2026-11-16, which did not fail on the Mac even with the CPU throttled 40 times. Do not
   start a failed job again in the hope of a lucky run.
+- **A check that reads the canvas against a fixed timeout fails under the load of CI.** Two image checks raced
+  `toBlob()` against 5 s and failed in some runs (#2091, #2092), and a terrain drag ended inside the window of inertia
+  (#2079). Before you call two such failures a regression, run both checks on the commit before the suspected merges
+  and on `main`. On 2026-11-25 every pixel was right on both, and the cause was the timeout.
 - **The `browser` summary job reports a canceled run as failed** until it is changed, so each re-push sends a false
   failure event for the old head. Read whether the head is current before you act on a failure event.
 - **A cloud session cannot delete merged branches** (`git push origin --delete` gives 403).
@@ -178,10 +182,6 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   before it pushes.
 - **Tell each reviewer to stop its demo server by its process id only.** A reviewer of 2026-11-25 stopped its server
   by matching `demo/serve.mjs`, which would also have stopped the servers of other worktrees.
-- **A check that reads the canvas against a fixed timeout fails under the load of CI.** Two image checks raced
-  `toBlob()` against 5 s and failed in some runs (#2091, #2092), and a terrain drag let go inside the window of
-  inertia (#2079). Before you call two such failures a regression, run both checks on the commit before the suspected
-  merges and on `main`: on 2026-11-25 every pixel was right on both, and the cause was the timeout.
 - **Let the reviewer fix what it found** when the author is past about 140,000 tokens, and ask it first to run each
   finding that it only read: on 2026-11-24 the read findings of #1892 reproduced, and the one of #1909 did not.
 - **Measure again after a rework.** The bytes and the time to idle of a pull request change when a reviewer or a
