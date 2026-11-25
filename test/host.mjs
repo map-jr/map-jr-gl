@@ -2164,10 +2164,10 @@ for (const renderer of renderers) {
                 t.host.update(t.spec = {...t.spec, style: t.spot({'icon-anchor': 'bottom', 'icon-ignore-placement': true, ...icon}, false), images: {square: t.square('#f0f')}});
                 await wait(300); await t.settle();
                 const out = [];
-                for (const [dx, dy] of places) out.push((await t.host.queryFeatures({x: 450 + dx, y: 300 + dy}, {layers: ['spot-icon']})).length);
+                for (const [dx, dy] of places) out.push((await t.host.queryFeatures({x: 450 + dx, y: 300 + dy}, {layers: ['spot-icon'], radius: 0})).length);
                 return out.join('');
             };
-            // (The default padding is 2 pixels; a padding of 10 on each side; 20 on the left only; 30 from an expression.)
+            // (A question at a point with no radius. The default padding is 2 pixels; a padding of 10 on each side; 20 on the left only; 30 from an expression.)
             return {default: await found({}, [[21, -20], [23, -20]]), ten: await found({'icon-padding': 10}, [[28, -20], [32, -20], [0, -48], [0, 8], [0, 12]]),
                 left: await found({'icon-padding': [0, 0, 0, 20]}, [[-38, -20], [-42, -20], [21, -20]]),
                 expression: await found({'icon-padding': ['coalesce', ['get', 'none'], 30]}, [[48, -20], [52, -20]])};
