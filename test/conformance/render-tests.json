@@ -726,7 +726,7 @@
 "line-join/miter": "match",
 "line-join/miter-transparent": "match",
 "line-join/property-function": "match",
-"line-join/property-function-dasharray": "differ",
+"line-join/property-function-dasharray": "near",
 "line-join/round": "match",
 "line-join/round-transparent": "match",
 "line-layer-blend/color": "match",

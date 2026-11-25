@@ -865,12 +865,17 @@ function tessellateLine(b: Batch): GLBatch | null {
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
                     // As in MapLibre GL JS, a corner sharper than 75 degrees has one more pair of vertices on each
                     // segment, 15 pixels from the corner, so that the join bends the dashes only near the corner.
-                    // (A turn of more than 120 degrees has them only with a round join: MapLibre draws the other joins
-                    // there in another way, which this does not follow.)
-                    const sharp = cos < COS_SHARP && (cos >= 0.5 || round) && b.sharp ? b.sharp : 0;
+                    const sharp = cos < COS_SHARP && b.sharp ? b.sharp : 0;
                     if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - pdx * sharp, y - pdy * sharp, pnx, pny); dist += sharp; }
                     if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
-                    else {
+                    else if (!round && cos < 0.5) {
+                        // A miter or bevel join that turns more than 120 degrees is a "flipbevel", as in MapLibre GL JS:
+                        // two pairs at the corner across the bisector, 1 / sin of half the turn long, in opposite order.
+                        const s = pnx * ny - pny * nx > 0 ? -1 : 1, l = s / Math.sqrt(Math.max(1e-4, 1 - cos * cos));
+                        const fx = cos < 0.01 ? -nx : -my / ml * l, fy = cos < 0.01 ? -ny : mx / ml * l;
+                        pair(x, y, fx, fy);
+                        pair(x, y, -fx, -fy);
+                    } else {
                         // Two pairs at the corner give a bevel; a fan on the outer side rounds it off. As in MapLibre GL
                         // JS, a corner of up to 120 degrees moves the inner vertices to where the inner edges meet, so
                         // that the two segments do not overlap and dashes fall where MapLibre draws them.
