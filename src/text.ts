@@ -11,6 +11,7 @@ export const BASELINE = 0.38;
 
 import {cssFamilies, fontKey, splitFontKey} from './resolve.ts';
 import {Pbf} from './mvt.ts';
+import {pickImage} from './expr.ts';
 
 export const EM = 24;
 export {DEFAULT_FONT} from './resolve.ts';
@@ -185,7 +186,7 @@ abstract class BaseShaper implements Shaper {
     protected imageGlyph(part: string): Glyph | null {
         const i = part.charCodeAt(0) - IMAGE_CHAR;
         if (part.length !== 1 || i < 0 || i >= this.inline.length) return null;
-        const name = this.inline[i], img = this.images?.(name);
+        const name = this.inline[i] = pickImage(this.inline[i], n => this.images?.(n)), img = this.images?.(name);
         if (!img) { this.missingImage = true; return {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: EM, image: name, imageHeight: EM}; }
         const k = this.imageScale / img.pixelRatio;
         return {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: img.width * k, image: name, imageHeight: img.height * k};

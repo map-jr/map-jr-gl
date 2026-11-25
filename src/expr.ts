@@ -439,11 +439,12 @@ export function compileExpr(e: any, flags: Flags): Fn {
         }
         case 'format': {
             // Rich text is flattened to plain text, except for images, which stay in the string as markers (see
-            // IMAGE_OPEN) and are drawn in line with the text.
+            // IMAGE_OPEN) and are drawn in line with the text. A `coalesce` with an `image` is an image too: its names
+            // (see IMAGE_OR) go into the marker, and the shaper draws the first one that the map has.
             const parts: Fn[] = [];
             for (let i = 1; i < e.length; i++) {
                 const part = e[i];
-                if (Array.isArray(part) && part[0] === 'image') { const name = compileExpr(part, flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
+                if (Array.isArray(part) && (part[0] === 'image' || part[0] === 'coalesce' && part.some((x: unknown) => Array.isArray(x) && x[0] === 'image'))) { const name = compileExpr(part, flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
                 else if (typeof part !== 'object' || Array.isArray(part)) {
                     // The options after a section change its size, font or color. They go in the string as a marker
                     // before the section (see STYLE_OPEN); an empty marker after the section ends them.
