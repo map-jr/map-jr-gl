@@ -17,6 +17,10 @@ export interface RenderItem<T> {
     /** Visible sub-rectangle in tile units; smaller than the full tile when a parent stands in for a missing child. */
     clip: [number, number, number, number];
     tile: T;
+    /** A raster tile that fades in (`raster-fade-duration`): when it arrived (`performance.now()`). */
+    born?: number;
+    /** A tile that stands in below a raster tile that fades in: drawn only by a raster layer whose fade is not 0. */
+    under?: boolean;
 }
 
 export interface PlacedIcon {

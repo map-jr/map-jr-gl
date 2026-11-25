@@ -53,7 +53,7 @@ test('config lists the protocols and holds the two settings', () => {
     config.MAX_PARALLEL_IMAGE_REQUESTS = 5;
     assert.equal(config.MAX_PARALLEL_IMAGE_REQUESTS, 5);
     assert.equal(EXTENT, 8192);
-    assert.equal(new Evented().on('a', () => {}) instanceof Evented, true);
+    assert.equal(typeof new Evented().on('a', () => {}).unsubscribe, 'function');
 });
 
 test('the source names answer instanceof by the type of the source, and Event takes its data (#1717)', async () => {

@@ -3023,6 +3023,48 @@ for (const mode of renderers) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // raster-fade-duration: a raster tile that arrives over its loaded parent fades in over it, and `idle` waits for the
+    // fade, drawing frames meanwhile, as in MapLibre GL JS 6.17; with 0 it shows at once, and a layer that gives none fades over 300 ms in this entry (#1694). (`toBlob` waits for
+    // `idle`, so the frames of the fade are counted, not read.) The parent (tile zoom 1, map zoom 0 with tiles of 256 px) is red, its children blue.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            const middle = async m => { const blob = await Promise.race([m.toBlob(), new Promise(r => setTimeout(r, 8000))]); if (!blob) return ['no image']; const bmp = await createImageBitmap(blob), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data]; };
+            for (const fade of [2000, 0, undefined]) {
+                let release, held = new Promise(r => release = r);
+                const name = 'fade1694x' + (fade ?? 'none');
+                mod.addProtocol(name, async request => {
+                    const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
+                    if (z > 1) await held;
+                    g.fillStyle = z > 1 ? '#0000ff' : '#ff0000'; g.fillRect(0, 0, 64, 64);
+                    return {data: await createImageBitmap(c)};
+                });
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [10, 10], zoom: 0,
+                    style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r', ...(fade !== undefined && {paint: {'raster-fade-duration': fade}})}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+                const before = await middle(m);
+                m.jumpTo({zoom: 1});
+                await new Promise(r => setTimeout(r, 200));
+                let idleAt = 0;
+                m.once('idle', () => idleAt = performance.now());
+                const t0 = performance.now();
+                release();
+                let frames = 0;
+                const count = () => frames++;
+                m.on('render', count);
+                for (let i = 0; i < 80 && !idleAt; i++) await new Promise(r => setTimeout(r, 100));
+                m.off('render', count);
+                const after = await middle(m);
+                out[fade ?? 'none'] = {before: before.slice(0, 3).join(), after: after.slice(0, 3).join(), ms: Math.round(idleAt - t0), frames};
+                m.remove(); el.remove(); mod.removeProtocol(name);
+            }
+            return out;
+        }, mode);
+        check(`[${mode}] raster-fade-duration: a raster tile fades in over its parent and idle waits for the fade; with 0 it shows at once; the default of the compat entry is 300 ms (#1694)`,
+            r[2000].before === '255,0,0' && r[2000].after === '0,0,255' && r[2000].ms >= 1900 && r[2000].frames > 10 && r[0].after === '0,0,255' && r[0].ms > 0 && r[0].ms < 1900
+            && r.none.after === '0,0,255' && r.none.ms >= 280, JSON.stringify(r));
+    }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
     {
@@ -4341,6 +4383,32 @@ for (const mode of renderers) {
         }, lib);
         check('[main] maplibre-compat: GeolocateControl fits an accuracy of 5000 m to the zoom of MapLibre GL JS',
             acc.ml.zoom < 15 && Math.abs(acc.jr.zoom - acc.ml.zoom) < 0.01 && Math.abs(acc.jr.lng - acc.ml.lng) < 1e-4 && Math.abs(acc.jr.lat - acc.ml.lat) < 1e-4, JSON.stringify(acc));
+        // zoomToUserAccuracy: false keeps the zoom and moves to the position with easeTo (linear) or flyTo, as MapLibre GL JS 6.17 does (#1893).
+        const keep = {};
+        for (const lib of ['ml', 'jr']) for (const linear of [true, false]) keep[lib + linear] = await page.evaluate(async ([lib, linear]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition: ok => setTimeout(() => ok({coords: {longitude: 3, latitude: 50, accuracy: 5000}, timestamp: 1}), 0)}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, ...(lib === 'jr' ? {renderer: 'main'} : {}), center: [0, 0], zoom: 4, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const warnings = [], warn = console.warn, called = [];
+            console.warn = (...a) => warnings.push(String(a[0]));
+            for (const k of ['easeTo', 'flyTo', 'fitBounds']) { const f = m[k]; m[k] = function (...a) { called.push(k); return f.apply(this, a); }; }
+            const gc = new mod.GeolocateControl({zoomToUserAccuracy: false, fitBoundsOptions: {linear, duration: 50}});
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            gc.trigger();
+            await new Promise(r => m.once('moveend', r));
+            console.warn = warn;
+            const zoom = m.getZoom(), c = m.getCenter();
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return {zoom, lng: c.lng, lat: c.lat, first: called[0], warnings: warnings.filter(w => w.includes('map-jr-gl'))};
+        }, [lib, linear]);
+        check('[main] maplibre-compat: GeolocateControl with zoomToUserAccuracy false keeps the zoom and moves with easeTo or flyTo as MapLibre GL JS does',
+            [true, false].every(l => keep['ml' + l].first === keep['jr' + l].first && Math.abs(keep['jr' + l].zoom - keep['ml' + l].zoom) < 1e-6 && Math.abs(keep['jr' + l].zoom - 4) < 1e-6
+                && Math.abs(keep['jr' + l].lng - 3) < 1e-4 && Math.abs(keep['jr' + l].lat - 50) < 1e-4 && keep['jr' + l].warnings.length === 0), JSON.stringify(keep));
         // The accuracy circle of trackUserLocation (#1721): an accuracy of 500 m at latitude 50 gives the diameter of MapLibre GL JS 6.17 at two zooms.
         const circle = {};
         for (const lib of ['ml', 'jr']) circle[lib] = await page.evaluate(async lib => {
@@ -4423,7 +4491,7 @@ for (const mode of renderers) {
             marker.addTo(m);
             const fc = new mod.FullscreenControl(), nav = new mod.NavigationControl(), events = [];
             m.addControl(fc); m.addControl(nav); m.removeControl(nav);
-            fc.on('fullscreenstart', e => events.push('start:' + (e.target === fc))).on('fullscreenend', () => events.push('end'));
+            fc.on('fullscreenstart', e => events.push('start:' + (e.target === fc))); fc.on('fullscreenend', () => events.push('end'));
             const set = v => { Object.defineProperty(document, 'fullscreenElement', {configurable: true, get: () => v}); document.dispatchEvent(new Event('fullscreenchange')); };
             set(el); set(null); delete document.fullscreenElement;
             const p = mod.Point.convert([3, 4]);
@@ -4454,7 +4522,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer: 'main', locale, cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const nav = new mod.NavigationControl(), scale = new mod.ScaleControl(), fc = new mod.FullscreenControl(), events = [];
             m.addControl(nav); m.addControl(scale); m.addControl(fc);
-            fc.on('fullscreenstart', () => events.push('start')).on('fullscreenend', () => events.push('end'));
+            fc.on('fullscreenstart', () => events.push('start')); fc.on('fullscreenend', () => events.push('end'));
             await new Promise(res => m.once('load', res));
             await wait(100);
             const q = s => el.querySelector(s), fb = q('.maplibregl-ctrl-fullscreen');
@@ -4515,7 +4583,7 @@ for (const mode of renderers) {
             outer.requestFullscreen = function () { requested.push(this === outer ? 'outer' : 'other'); return Promise.resolve(); };
             el.requestFullscreen = () => { requested.push('map'); return Promise.resolve(); };
             const fc = new mod.FullscreenControl({container: outer}), events = [];
-            fc.on('fullscreenstart', () => events.push('start')).on('fullscreenend', () => events.push('end'));
+            fc.on('fullscreenstart', () => events.push('start')); fc.on('fullscreenend', () => events.push('end'));
             m.addControl(fc);
             const fb = el.querySelector('.map-jr-ctrl-fullscreen');
             fb.click();
@@ -5096,6 +5164,35 @@ for (const mode of renderers) {
         // Both throws glide past the end of the drag and end at bearing 0 with one `moveend`.
         check('[main] maplibre-compat: the inertia of a pan that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
             ['ml', 'compat'].every(l => m1834[l].glide > 0.05 && m1834[l].ends.length === 1 && m1834[l].ends[0] === 0 && m1834[l].bearing === 0), JSON.stringify(m1834));
+        // #1834: a rotate drag from bearing -24 that turns by 16 degrees (-8 at the release, outside bearingSnap) and
+        // turns on with inertia toward -2 ends at bearing 0 in one movement (one `moveend`), as MapLibre GL JS sets the
+        // bearing of its inertia to 0 (`HandlerManager._onMoveEnd`). The events are synthetic and 10 ms apart in one
+        // task, because the moves of Playwright on a loaded machine come hundreds of ms apart and give no inertia here or
+        // in MapLibre GL JS (which also needs frames between the moves, so it is not compared here). A throw that gave no
+        // inertia (the map stays at -8) is thrown again, up to three times.
+        let m1834r;
+        for (let i = 0; i < 3 && !(m1834r && Math.abs(m1834r.bearing + 8) > 0.5); i++) m1834r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: -24});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            const ends = [];
+            m.on('moveend', () => ends.push(+m.getBearing().toFixed(1)));
+            const canvas = m.getCanvas();
+            const fire = (type, x, buttons) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: 250, button: 2, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true};
+                canvas.dispatchEvent(new PointerEvent('pointer' + type, o)); canvas.dispatchEvent(new MouseEvent('mouse' + type, o));
+            };
+            fire('down', 250, 2);
+            for (let k = 1; k <= 8; k++) { const t0 = performance.now(); while (performance.now() - t0 < 10); fire('move', 250 + k * 2.5, 2); }
+            fire('up', 270, 0);
+            await new Promise(r => setTimeout(r, 2500));
+            const out = {ends, bearing: +m.getBearing().toFixed(1)};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: the inertia of a rotate drag that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
+            m1834r.ends.length === 1 && m1834r.ends[0] === 0 && m1834r.bearing === 0, JSON.stringify(m1834r));
         // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
         // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
         const m479 = {};
@@ -5561,7 +5658,7 @@ for (const mode of renderers) {
         const faults = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
             let closes = 0;
-            const p = new mod.Popup().setLngLat([0, 0]).setText('Again').on('close', () => closes++).addTo(m);
+            const p = new mod.Popup().setLngLat([0, 0]).setText('Again'); p.on('close', () => closes++); p.addTo(m);
             await wait(300);
             p.remove(); p.remove(); p.addTo(m);
             await wait(500);
@@ -5591,7 +5688,7 @@ for (const mode of renderers) {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
             const key = el => { const e = new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}); el.dispatchEvent(e); return e.defaultPrevented; };
             let closes = 0;
-            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Escape').on('close', () => closes++)).addTo(m);
+            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Escape')).addTo(m); mk.getPopup().on('close', () => closes++);
             mk.getElement().focus();
             mk.getElement().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
             const p = mk.getPopup(), inPopup = p.getElement().contains(document.activeElement);
@@ -5647,7 +5744,7 @@ for (const mode of renderers) {
             const displayNone = on(none);
             el.style.display = '';
             let closes = 0;
-            const open = popup('Open').on('close', () => closes++), fading = popup('Fading').on('close', () => closes++);
+            const open = popup('Open'), fading = popup('Fading'); open.on('close', () => closes++); fading.on('close', () => closes++);
             const marker = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Of the marker')).addTo(m).togglePopup();
             await wait(300);
             fading.remove();

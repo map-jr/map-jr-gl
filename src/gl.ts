@@ -940,6 +940,8 @@ export class GLRenderer {
     iconOf?: IconOf;
     /** Icons of a buffer kept their old order in the last frame, because the map turned: the next frame sorts them (see `drawIcons`). */
     iconsBehind = false;
+    /** A raster tile was drawn while it fades in (`raster-fade-duration`): the frame after it is wanted. */
+    private fading = false;
     /** The icons of a tile again, after the images of the map changed: an image came, went or has another place in its texture. */
     refreshIcons(t: GLTile, all: boolean) { for (const b of Object.values(t.icons ?? {})) if (all || b.waits) this.fillIcons(b); this.gl.bindVertexArray(null); }
     /** Writes the corners of each icon for the images that the map has now. An icon whose image is not there is not drawn. */
@@ -1269,9 +1271,13 @@ export class GLRenderer {
                 gl.bindVertexArray(this.globe ? this.globeGrid().vao : this.quad);
                 // `raster-resampling` (or `resampling`): the filter of the texture, set before each tile is drawn.
                 const filter = (p.resampling.eval(zoom) ?? p.rasterResampling?.eval(zoom)) === 'nearest' ? gl.NEAREST : gl.LINEAR;
+                // `raster-fade-duration`: a tile that has just arrived fades in over the tiles that stand in below it (see `fadeIn` in engine.ts).
+                const fadeMs = L.type === 'raster' ? p.fadeDuration.eval(zoom) : 0, now = fadeMs > 0 ? performance.now() : 0;
+                let adjust: ((o: number) => void) | undefined, last = 1;
                 if (L.type === 'raster') {
-                    const sat = p.saturation.eval(zoom), con = p.contrast.eval(zoom);
-                    gl.uniform3f(u.u_adjust, p.opacity.eval(zoom), sat > 0 ? 1 - 1 / (1.001 - sat) : -sat, con > 0 ? 1 / (1 - con) : 1 + con);
+                    const sat = p.saturation.eval(zoom), con = p.contrast.eval(zoom), op = p.opacity.eval(zoom);
+                    adjust = o => gl.uniform3f(u.u_adjust, op * o, sat > 0 ? 1 - 1 / (1.001 - sat) : -sat, con > 0 ? 1 / (1 - con) : 1 + con);
+                    adjust(1);
                     gl.uniform2f(u.u_bright, p.brightnessMin.eval(zoom), p.brightnessMax.eval(zoom));
                     const h = p.hueRotate.eval(zoom) * Math.PI / 180, sn = Math.sin(h), cs = Math.cos(h);
                     gl.uniform3f(u.u_spin, (2 * cs + 1) / 3, (-Math.sqrt(3) * sn - cs + 1) / 3, (Math.sqrt(3) * sn - cs + 1) / 3);
@@ -1289,14 +1295,17 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_highlight, h.highlight);
                     const c = p.accent.eval(zoom); gl.uniform4f(u.u_accent, c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]);
                 }
-                // A map at rest, seen from above: the image moves by less than a pixel, so that its pixels are on the pixels of
+                // A map at rest, seen from above: the image (raster, hillshade or color-relief) moves by less than a pixel, so that its pixels are on the pixels of
                 // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the center of the
                 // map goes to a whole pixel of the world (to a half pixel when the size of the map is odd).
                 let snap: number[] | undefined;
                 for (const it of items) {
-                    if (!it.tile.tex) continue;
+                    if (!it.tile.tex || it.under && !(fadeMs > 0)) continue;
+                    const o = it.born !== undefined && fadeMs > 0 ? Math.min(1, Math.max(0, (now - it.born) / fadeMs)) : 1;
+                    if (o < 1) this.fading = true;
+                    if (o !== last) { adjust!(o); last = o; }
                     let m = it.matrix4;
-                    if (pass === 'all' && L.type === 'raster' && !s.moving && !tr.pitch && !this.globe) {
+                    if (pass === 'all' && !s.moving && !tr.pitch && !this.globe) {
                         const a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a), xs = tr.width % 2 / 2, ys = tr.height % 2 / 2;
                         snap ??= [mercX(tr.lng) * tr.worldSize + cos * xs + sin * ys, mercY(tr.lat) * tr.worldSize + cos * ys + sin * xs].map(v => (v -= Math.round(v)) > 0.5 ? v - 1 : v);
                         const x = snap[0] / it.scale, y = snap[1] / it.scale;
@@ -1736,7 +1745,7 @@ export class GLRenderer {
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
 
-    /** Draws a frame. Returns true if some terrain pictures are still out of date, so another frame is wanted. */
+    /** Draws a frame. Returns true if some terrain pictures are still out of date or a raster tile fades in, so another frame is wanted. */
     render(s: Scene): boolean {
         this.iconsBehind = false;
         const gl = this.gl, tr = s.tr;
@@ -1795,7 +1804,8 @@ export class GLRenderer {
 
         this.drawHalo(s);
         gl.bindVertexArray(null);
-        return behind;
+        const fading = this.fading; this.fading = false;
+        return behind || fading;
     }
 
     /**

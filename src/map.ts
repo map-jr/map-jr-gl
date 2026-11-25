@@ -453,7 +453,7 @@ export class Map {
         this.checkProjection();
         const tr = this.tr;
         const engineOptions = {
-            style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
+            style: {...this.resolved, rasterFade: this.rasterFade()}, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, worldCopies: tr.worldCopies, antialias: o.antialias,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
@@ -486,7 +486,7 @@ export class Map {
                 this.watchTurn++; // (the watch of the worker must not count while the engine chunk loads; #146)
                 w.terminate();
                 // (The ports went to the worker and end with it. New ones keep the tiles in the tile workers; #812.)
-                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, this.tilePool?.connect() ?? []).then(() => {
+                this.startMainEngine(fresh, {...engineOptions, style: {...this.resolved, rasterFade: this.rasterFade()}, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, this.tilePool?.connect() ?? []).then(() => {
                     if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
@@ -1316,6 +1316,8 @@ export class Map {
     }
     /** After `reportTiles()`: a tile of the source has loaded (for a class that extends this one). */
     protected tileLoaded(_source: string, _z: number, _x: number, _y: number) {}
+    /** @internal The bearing at which the inertia of a rotate drag ends (the compat entry snaps it north, #1834). */
+    protected spinBearing(bearing: number) { return bearing; }
     private wantsTiles = false;
     /** Asks the engine to report each tile that loads (one message for each tile), for `tileLoaded`. */
     protected reportTiles() { if (!this.wantsTiles) { this.wantsTiles = true; this.post({type: 'tileLoads', on: true}); } }
@@ -1323,6 +1325,8 @@ export class Map {
     protected styleChanged() {}
     /** The buffer of a GeoJSON source that gives none, in pixels; `undefined` keeps the default of the tiles (16). */
     protected geojsonBuffer(): number | undefined { return undefined; }
+    /** The `raster-fade-duration` of a raster layer that gives none, in ms: 0 here, so that a tile shows at once. */
+    protected rasterFade() { return 0; }
     private reloadPending = false;
     /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
     private reuse = false;
@@ -1394,7 +1398,7 @@ export class Map {
             this.restyled = turn;
             this.checkProjection();
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
-            this.post({type: 'style', style: {...style, sources}, reload, versions, data, instant: this.newStyle && this.instant});
+            this.post({type: 'style', style: {...style, sources, rasterFade: this.rasterFade()}, reload, versions, data, instant: this.newStyle && this.instant});
             this.sendGeo();
             this.styleEvents(this.newStyle);
             this.newStyle = false;
@@ -2281,7 +2285,7 @@ export class Map {
             // that the drag asked for, because the view of a worker renderer can be a frame behind.
             const spin = rotating && this.dragRotate.isEnabled() && turnInertia(samples, now);
             if (rotating) samples = [];
-            if (spin) this.easeTo({bearing: last.x + spin.bearing, pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
+            if (spin) this.easeTo({bearing: this.spinBearing(last.x + spin.bearing), pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
             // A rotate drag released after a pause ends here; one released while the engine still turns ends at its next report.
             else if (rotating && this.moving && !this.engineMoving && !this.dragging) this.settle();
             if (wasDragging && !rotating) {

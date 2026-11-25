@@ -138,6 +138,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A heatmap is drawn over an opaque fill or background layer that is above it in the style.
 - **This library:** The layers draw in the order of the style, so the opaque layer covers the heatmap. This is a decision and will stay.
 
+### The fade of raster tiles
+
+- **MapLibre GL JS:** `raster-fade-duration` (default 300 ms) fades a new raster tile in: over its loaded parent or children, or over nothing at the edge of the view. It mixes the two images in one draw.
+- **This library:** In the compat entry (`@map-jr/map-jr-gl/maplibre-compat`) the default is 300 ms, as in MapLibre GL JS. In the main entry (`@map-jr/map-jr-gl`) the default is 0, so a raster tile shows at once when it has loaded, unless the style sets `raster-fade-duration` on the layer. The fade is the same as in MapLibre GL JS, and `idle` waits for it. The tile below is drawn at full opacity and the new tile over it with the fading opacity, so a translucent image looks slightly different during the fade. With 3D terrain a tile shows at once, as in MapLibre GL JS. The server renderer draws no fade.
+
 ### Label placement
 
 - **MapLibre GL JS:** Changes gradually, tile by tile.
@@ -254,8 +259,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### `Point`
 
-- MapLibre GL JS re-exports `Point` of `@mapbox/point-geometry`, with about 30 methods.
-- This library exports a smaller `Point` with `convert`, `clone`, `add`, `sub`, `mult`, `div`, `round`, `mag`, `dist` and `equals`. The other methods (for example `rotate`, `unit`, `angle`, `matMult`) do not exist.
+- MapLibre GL JS re-exports `Point` of `@mapbox/point-geometry`.
+- This library does the same: its `Point` has every method of `@mapbox/point-geometry` with the same results, including the methods that start with `_` and change the point.
 
 ### Private members that wrappers read
 
@@ -346,11 +351,6 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - MapLibre GL JS returns the decoded RGBA pixels.
 - This library returns `{width, height, data: Uint8Array}` RGBA pixels for an image added as pixels, a canvas, an image element or a bitmap. For an image added as a URL or as SVG text, `data` is the string that `addImage` was given, because decoding it again is asynchronous.
-
-### The option `bearingSnap` after a rotate drag with inertia
-
-- MapLibre GL JS sets the bearing of the inertia to 0 when a rotate drag ends closer to north than `bearingSnap`, so the map turns north while it keeps turning.
-- The entry `@map-jr/map-jr-gl/maplibre-compat` lets the inertia of a rotate drag end first and then turns the map north with `resetNorth`. The inertia of a pan turns north as in MapLibre GL JS.
 
 ### `setStyle`
 
@@ -456,7 +456,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `GeolocateControl`
 
 - MapLibre GL JS can track the position, shows a dot at it, and draws an accuracy circle.
-- **This library:** Without `trackUserLocation`, moves the map to the position once per click or `trigger()` call. With `trackUserLocation`, the button turns tracking on and off as in MapLibre GL JS: the map follows the position until it moves for another reason, and a click returns to the position. The button gets the classes `maplibregl-ctrl-geolocate-waiting`, `-active`, `-active-error`, `-background` and `-background-error`, and `showUserLocation` (default `true`) shows the element `maplibregl-user-location-dot` while tracking is on. `showAccuracyCircle` (default `true`) also shows the element `maplibregl-user-location-accuracy-circle`, whose diameter is twice `coords.accuracy` in meters at the current zoom and latitude, as in MapLibre GL JS. As in MapLibre GL JS, the circle is never shown when `showUserLocation` is `false`. The circle stays round when the map is pitched, where MapLibre GL JS lays it flat on the map. The control fires `geolocate`, `error`, `outofmaxbounds`, `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and `userlocationlostfocus` on itself (`on`, `off`, `once`), and `geolocate` and `error` also on the map. A position outside `maxBounds` fires `outofmaxbounds` and does not move the map. The code of tracking loads on demand at the first click or `trigger()` call, so the first step of tracking happens once that file has loaded. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds` and `fitBoundsOptions`, as in MapLibre GL JS. The default of `fitBoundsOptions` is `{maxZoom: 15}`, and a `fitBoundsOptions` that you pass replaces it as a whole, so `{padding: 10}` fits with no limit of the zoom.
+- **This library:** Without `trackUserLocation`, moves the map to the position once per click or `trigger()` call. With `trackUserLocation`, the button turns tracking on and off as in MapLibre GL JS: the map follows the position until it moves for another reason, and a click returns to the position. The button gets the classes `maplibregl-ctrl-geolocate-waiting`, `-active`, `-active-error`, `-background` and `-background-error`, and `showUserLocation` (default `true`) shows the element `maplibregl-user-location-dot` while tracking is on. `showAccuracyCircle` (default `true`) also shows the element `maplibregl-user-location-accuracy-circle`, whose diameter is twice `coords.accuracy` in meters at the current zoom and latitude, as in MapLibre GL JS. As in MapLibre GL JS, the circle is never shown when `showUserLocation` is `false`. The circle stays round when the map is pitched, where MapLibre GL JS lays it flat on the map. The control fires `geolocate`, `error`, `outofmaxbounds`, `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and `userlocationlostfocus` on itself (`on`, `off`, `once`), and `geolocate` and `error` also on the map. A position outside `maxBounds` fires `outofmaxbounds` and does not move the map. The code of tracking loads on demand at the first click or `trigger()` call, so the first step of tracking happens once that file has loaded. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds` and `fitBoundsOptions`, as in MapLibre GL JS. The default of `fitBoundsOptions` is `{maxZoom: 15}`, and a `fitBoundsOptions` that you pass replaces it as a whole, so `{padding: 10}` fits with no limit of the zoom. With `zoomToUserAccuracy: false` (default `true`), the map keeps its zoom and moves to the position with `flyTo`, or with `easeTo` when `fitBoundsOptions.linear` is set, as in MapLibre GL JS.
 
 ### Plugins
 
@@ -491,7 +491,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### The layer type `color-relief`
 
 - **MapLibre GL JS:** `color-relief-color` is an `interpolate` expression of `["elevation"]`. The color between two stops is a linear mix, also when the expression names another interpolation.
-- This library does the same, with up to 2048 stops. The stops after these are not used. A `color-relief-color` that is not an `interpolate` expression draws nothing, as in MapLibre GL JS. A `raster-dem` source with `encoding: 'custom'` uses `redFactor`, `greenFactor`, `blueFactor` (default 1) and `baseShift` (default 0) for every layer of the source; when one of them is not a finite number, the library warns and reads the source as `mapbox`. The server renderer does not draw the layer.
+- This library does the same, with up to 2048 stops. The stops after these are not used. MapLibre GL JS keeps stops at even steps when there are more stops than the largest texture of the GPU holds, and warns. A `color-relief-color` that is not an `interpolate` expression, or that is missing, draws nothing, as in MapLibre GL JS. The development build of the main API (`@map-jr/map-jr-gl`) warns once for each layer in both cases. A `raster-dem` source with `encoding: 'custom'` uses `redFactor`, `greenFactor`, `blueFactor` (default 1) and `baseShift` (default 0) for every layer of the source; when one of them is not a finite number, the library warns and reads the source as `mapbox`. The server renderer does not draw the layer.
 
 ### `hillshade-method` `multidirectional`
 
@@ -528,7 +528,6 @@ Properties:
 - The root property `centerAltitude` of a style has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each map whose style has it.
 - `symbol-height-offset`. The property is not read, and nothing warns.
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and nothing warns: the corners of an extrusion are sharp.
-- `raster-fade-duration`. A raster tile shows at once when it has loaded. A value other than 0 has no effect and writes one warning. (`raster-resampling`, `resampling` and `raster-layer-blend` are read as in MapLibre GL JS; the SVG output of the server renderer gives `nearest` to the browser as `image-rendering: pixelated`.)
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
 - An icon together with text that follows a curved line. The text is drawn without the icon.
 - `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
