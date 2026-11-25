@@ -1,6 +1,6 @@
 import earcut from 'earcut';
+export {earcut};
 import {EXTENT} from './geo.ts';
-import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {fontKey, type CompiledLayer} from './style.ts';
@@ -30,8 +30,6 @@ export interface Batch {
     radius1?: Float32Array;
     /** `line-offset` for each feature (pixels), present only when it is data-driven. */
     offset?: Float32Array;
-    /** `line-blur` for each feature (pixels), present only when it is data-driven. */
-    blur?: Float32Array;
     /** Circles: straight-alpha RGBA of `circle-stroke-color` times `circle-stroke-opacity` for each feature, present only when one of them is data-driven. */
     stroke?: Uint8Array;
     /**
@@ -39,18 +37,17 @@ export interface Batch {
      * the one that is not). Heatmaps: `heatmap-radius` and its change to the next zoom, present only when it is data-driven.
      */
     sb?: Float32Array;
-    /** `line-gap-width` for each feature (pixels), present only when it is data-driven. */
-    gap?: Float32Array;
     /**
-     * How much the properties that depend on the zoom and the feature change from the zoom of the tile to the next, for
-     * each feature, present when one of them changes: `line-offset`, `line-blur` and `line-gap-width` for a line
-     * (bits 1, 2 and 4 of `nextMask`), `circle-stroke-width` and `circle-blur` for a circle (bits 1 and 2). Each
-     * feature has one number for each bit of `nextMask`, in the order of the bits, so that a property that does not
-     * change takes no memory. The shader adds `u_zt` times this, as `width1` does for `line-width`.
+     * Numbers of each feature that only some layers need, present when one of them is not 0 for some feature. For a line:
+     * `line-blur` and `line-gap-width` in pixels (bits 1 and 2 of `featMask`), and how much `line-offset`, `line-blur`
+     * and `line-gap-width` change from the zoom of the tile to the next (bits 4, 8 and 16). For a circle: how much
+     * `circle-stroke-width` and `circle-blur` change to the next zoom (bits 1 and 2). Each feature has one number for
+     * each bit of `featMask`, in the order of the bits, so that a property that is not needed takes no memory. The
+     * shader adds `u_zt` times a change, as `width1` does for `line-width`, and a number that is not here reads 0.
      */
-    next?: Float32Array;
-    /** See `next`. */
-    nextMask?: number;
+    feat?: Float32Array;
+    /** See `feat`. */
+    featMask?: number;
     /** Circles: `stroke` at the next zoom, present only when it changes; the shader mixes the two by `u_zt`. */
     stroke1?: Uint8Array;
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
@@ -146,9 +143,10 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
-    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** `line-blur` for each vertex, present only when it is data-driven. */ blur?: Float32Array; /** `line-gap-width` for each vertex, present only when it is data-driven. */ gap?: Float32Array; /** See `Batch.next`, for each vertex. */ next?: Float32Array; nextMask?: number}
-    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.next` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; next?: Float32Array; nextMask?: number; stroke1?: Uint8Array});
-export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number }
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number}
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
+export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number;
+    /** A part that the tile could not use (the cut for the globe): the message of its failure. */ fault?: string }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
 
@@ -351,16 +349,18 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
             const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
-            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], blur: number[] = [], gap: number[] = [], stroke: number[] = [], sb: number[] = [];
+            const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], stroke: number[] = [], sb: number[] = [];
             const circle = L.type === 'circle', ddStroke = circle && (p.strokeColor.dd || p.strokeOpacity.dd), ddSb = circle ? p.strokeWidth.dd || p.blur.dd : heat && p.radius.dd;
-            // Properties that depend on the zoom and the feature: their change to the next zoom, for each feature (see `Batch.next`).
-            const moves = (q: Prop) => z1 > zs && q.dd && q.zoom;
-            const nextProps = L.type === 'line' ? [p.offset, p.blur, p.gap] : circle ? [p.strokeWidth, p.blur] : [], deltas = nextProps.map(q => moves(q) ? [] as number[] : null);
+            // The numbers of `Batch.feat`: `line-blur` and `line-gap-width` of each feature, and the change to the next zoom
+            // of the properties that depend on the zoom and the feature.
+            const moves = (q: Prop) => z1 > zs && q.dd && q.zoom, line = L.type === 'line';
+            const nextProps = line ? [p.offset, p.blur, p.gap] : circle ? [p.strokeWidth, p.blur] : [], deltas = nextProps.map(q => moves(q) ? [] as number[] : null);
+            const feats = line ? [p.blur.dd ? [] as number[] : null, p.gap.dd ? [] as number[] : null, ...deltas] : deltas;
             const dz = (i: number, now: number, lo = -Infinity) => deltas[i]?.push(Math.max(lo, nextProps[i].eval(z1, ctx.f)) - now);
             const stroke1: number[] | null = ddStroke && (moves(p.strokeColor) || moves(p.strokeOpacity)) ? [] : null;
             let grows = false;
-            const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
-            const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
+            const progress: number[] | null = line && L.ramp ? [] : null;
+            const scalarProp = line ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
             for (const f of fs) {
                 // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
                 if (kind === 'circle' ? false : want ? f.type !== want : f.type === 1) continue;
@@ -379,7 +379,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     }
                     for (let i = start * 2; i < end * 2; i++) coords.push(g.coords[i]);
                     // Polygon rings drawn as lines need an explicit closing point.
-                    if (L.type === 'line' && f.type === 3) coords.push(g.coords[start * 2], g.coords[start * 2 + 1]);
+                    if (line && f.type === 3) coords.push(g.coords[start * 2], g.coords[start * 2 + 1]);
                     ringEnds.push(coords.length / 2);
                     start = end;
                 }
@@ -390,11 +390,10 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     scalar.push(now); scalar1.push(then);
                     if (then !== now) grows = true;
                 }
-                if (L.type === 'line') {
+                if (line) {
                     const o = p.offset.dd ? p.offset.eval(zs, f) : 0, bl = p.blur.dd ? Math.max(0, p.blur.eval(zs, f)) : 0, g = p.gap.dd ? Math.max(0, p.gap.eval(zs, f)) : 0;
                     if (p.offset.dd) offset.push(o);
-                    if (p.blur.dd) blur.push(bl);
-                    if (p.gap.dd) gap.push(g);
+                    feats[0]?.push(bl); feats[1]?.push(g);
                     dz(0, o); dz(1, bl, 0); dz(2, g, 0);
                 }
                 if (ddStroke) pushColor(stroke, p.strokeColor.dd ? p.strokeColor.eval(zs, f) : WHITE, p.strokeOpacity.dd ? p.strokeOpacity.eval(zs, f) : 1);
@@ -414,17 +413,15 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             };
             if (ddColor && !progress) batch.color = Uint8Array.from(color);
             if (progress) batch.progress = Float32Array.from(progress);
-            if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
-            if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
+            if (scalarProp?.dd) batch[line ? 'width' : 'radius'] = Float32Array.from(scalar);
+            if (scalarProp?.dd && grows) batch[line ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (offset.length) batch.offset = Float32Array.from(offset);
-            if (blur.length) batch.blur = Float32Array.from(blur);
-            if (gap.length) batch.gap = Float32Array.from(gap);
             if (ddStroke) batch.stroke = Uint8Array.from(stroke);
             if (ddSb) batch.sb = Float32Array.from(sb);
             if (stroke1?.some((c, i) => c !== stroke[i])) batch.stroke1 = Uint8Array.from(stroke1);
-            interleaveNext(batch, deltas);
+            interleaveFeat(batch, feats);
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
-            if (L.type === 'line') { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
+            if (line) { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
             if (pat) batch.pat = pat;
             if (heat) batch.heat = true;
@@ -534,11 +531,39 @@ export function justification(justify: string, anchor: string): number {
 }
 
 /**
+ * How a tile is built for the globe: cells a side, whether the tile touches the north or south edge of the world, and
+ * whether a point of a heatmap is a grid of corners (see `tessellate`).
+ */
+export interface GlobeBuild { grid: number; north?: boolean; south?: boolean; heat?: boolean }
+/** A `GlobeBuild` with the code of the cut, the part `subdivide` of the worker (see `toGL`). */
+export type GlobeCut = GlobeBuild & Pick<typeof import('./subdivide.ts'), 'cutFill' | 'cutLine'>;
+
+/**
+ * Cells a side for a tile of zoom `tileZ` that is built for the zoom `zoom` (higher for an overzoomed tile), and 0 from
+ * zoom 12, where the globe has turned into Mercator. One cell then spans 360° / (40 · √2^zoom), so its chord lies about
+ * half a pixel under the sphere one zoom level past `zoom`: 40, 20, 10, 5, 3 and 1 cells at zoom 0, 2, 4, 6, 8 and 10.
+ */
+export function globeGrid(tileZ: number, zoom = tileZ): number {
+    return zoom >= 12 ? 0 : Math.min(128, Math.max(1, Math.round(40 * 2 ** (zoom / 2 - tileZ))));
+}
+
+/**
+ * The field `globe` of the request for a tile (`id`, built for `zoom`), or undefined when the tile needs no cut. A point
+ * of a heatmap is a grid of corners below zoom 6 only: from there, the chord of one quad of the default radius (30
+ * pixels) lies less than 0.15 pixel under the sphere, and the grid would cost 6 times the buffers for nothing (#1824).
+ */
+export function globeBuild(id: {z: number; y: number}, zoom = id.z): GlobeBuild | undefined {
+    const grid = globeGrid(id.z, zoom), north = id.y === 0, south = id.y === 2 ** id.z - 1;
+    // (A tile with one cell is still cut at its border: see `BORDER`.)
+    return grid ? {grid, north, south, heat: zoom < 6} : undefined;
+}
+
+/**
  * Expands a neutral batch into vertex and index buffers for the GPU. With `globe` (a map that can show the globe),
  * fills and lines are cut along a grid first (see subdivide.ts); without it the result is what it always was.
  */
-export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
-    if (globe && b.type !== 'circle' && !b.height) return b.type === 'fill' ? tessellateGlobeFill(b, globe) : tessellateLine({...b, geom: cutRings(b.geom, globe.grid, false)});
+export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
+    if (globe && b.type !== 'circle' && !b.height) return b.type === 'fill' ? tessellateGlobeFill(b, globe) : tessellateLine({...b, geom: cutRings(b.geom, globe, false)});
     const {coords, ringEnds, featEnds} = b.geom;
     if (b.type === 'circle') {
         // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
@@ -548,28 +573,18 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
         // under it, which moves the bump toward the center of the globe. Its corners are in sevenths. (A grid of 3 × 3
         // is 1.3 % off the render test projection/globe/heatmap.)
         const grid = !!globe?.heat && b.heat, g = grid ? 4 : 2, v = g * g, e = grid ? [-7, -3, 3, 7] : [-1, 1];
-        const n = ringEnds.length, pos = new Int16Array(n * v * 4), idx = new Uint32Array(n * (g - 1) ** 2 * 6);
-        const color = b.color ? new Uint8Array(n * v * 4) : undefined, radius = b.radius ? new Float32Array(n * v) : undefined, radius1 = b.radius1 ? new Float32Array(n * v) : undefined;
-        const stroke = b.stroke ? new Uint8Array(n * v * 4) : undefined, sb = b.sb ? new Float32Array(n * v * 2) : undefined, nk = b.next ? b.next.length / featEnds.length : 0, next = b.next ? new Float32Array(n * v * nk) : undefined;
-        const stroke1 = b.stroke1 ? new Uint8Array(n * v * 4) : undefined;
+        const n = ringEnds.length, pos = new Int16Array(n * v * 4), idx = new Uint32Array(n * (g - 1) ** 2 * 6), feats = new Uint32Array(n * v);
         for (let f = 0, r = 0; f < featEnds.length; f++) {
             for (; r < featEnds[f]; r++) {
                 const i = ringEnds[r] - 1, o = r * v;
-                for (let k = 0; k < v; k++) {
-                    pos.set([coords[i * 2], coords[i * 2 + 1], e[k % g], e[k / g | 0]], (o + k) * 4);
-                    if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (o + k) * 4);
-                    if (radius) radius[o + k] = b.radius![f];
-                    if (radius1) radius1[o + k] = b.radius1![f];
-                    if (stroke) stroke.set(b.stroke!.subarray(f * 4, f * 4 + 4), (o + k) * 4);
-                    if (sb) sb.set(b.sb!.subarray(f * 2, f * 2 + 2), (o + k) * 2);
-                    if (next) next.set(b.next!.subarray(f * nk, f * nk + nk), (o + k) * nk);
-                    if (stroke1) stroke1.set(b.stroke1!.subarray(f * 4, f * 4 + 4), (o + k) * 4);
-                }
+                feats.fill(f, o, o + v);
+                for (let k = 0; k < v; k++) pos.set([coords[i * 2], coords[i * 2 + 1], e[k % g], e[k / g | 0]], (o + k) * 4);
                 if (!grid) idx.set([o, o + 1, o + 2, o + 1, o + 3, o + 2], r * 6);
                 else for (let c = 0; c < 9; c++) { const q = o + (c / 3 | 0) * 4 + c % 3; idx.set([q, q + 5, q + 1, q, q + 4, q + 5], (r * 9 + c) * 6); }
             }
         }
-        return {type: 'circle', pos, idx, color, radius, radius1, stroke, sb, next, nextMask: b.nextMask, stroke1, ...grid && {grid}};
+        const each = <T extends Uint8Array | Float32Array>(a?: T) => perVertex(a, feats, featEnds.length);
+        return {type: 'circle', pos, idx, color: each(b.color), radius: each(b.radius), radius1: each(b.radius1), stroke: each(b.stroke), sb: each(b.sb), feat: each(b.feat), featMask: b.featMask, stroke1: each(b.stroke1), ...grid && {grid}};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
@@ -601,7 +616,7 @@ export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
 }
 
 /** The rings of a geometry with a point added where they cross a line of the grid. `closed`: each ring is a polygon ring. */
-function cutRings(g: Geom, grid: number, closed: boolean): Geom {
+function cutRings(g: Geom, {grid, cutLine}: GlobeCut, closed: boolean): Geom {
     if (grid <= 1 && !closed) return g;
     const out: number[] = [], ringEnds = new Uint32Array(g.ringEnds.length);
     for (let r = 0; r < g.ringEnds.length; r++) {
@@ -615,16 +630,16 @@ function cutRings(g: Geom, grid: number, closed: boolean): Geom {
  * A fill for the globe: the triangles of the cut, and the edges for smoothing and outlines from the rings with the
  * points of the grid added (they keep the edges of the polygon, not those of the cut).
  */
-function tessellateGlobeFill(b: Batch, globe: GlobeBuild): GLBatch | null {
+function tessellateGlobeFill(b: Batch, globe: GlobeCut): GLBatch | null {
     const g = b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
     for (let f = 0; f < g.featEnds.length; f++) {
         const polygons: {coords: Int16Array; holes: number[]}[] = [];
         eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: g.coords.subarray(p0 * 2, p1 * 2), holes}));
         features.push(polygons);
     }
-    const cut = cutFill(features, globe);
+    const cut = globe.cutFill(features, globe);
     if (!cut.idx.length) return null;
-    const rings = b.antialias !== false || b.outline ? cutRings(g, globe.grid, true) : undefined, base = cut.pos.length / 2;
+    const rings = b.antialias !== false || b.outline ? cutRings(g, globe, true) : undefined, base = cut.pos.length / 2;
     const pos = new Int16Array(cut.pos.length + (rings?.coords.length ?? 0));
     pos.set(cut.pos);
     let edges: Uint32Array | undefined;
@@ -682,27 +697,27 @@ export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
  * the light. With `globe`, the roof is cut as a fill is (without the caps at the poles) and each wall is cut where its
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
  */
-function tessellateExtrusion(b: Batch, globe?: GlobeBuild): GLBatch | null {
-    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], color: number[] = [], ed: number[] = [];
+function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
+    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
         const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
         const vert = (x: number, y: number, z: number, light: number, d = 0) => {
             v.push(x, y, z, light);
             if (b.ed) ed.push(d);
-            if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
+            feats.push(f);
             return count++;
         };
         eachPolygon(b.geom, f, (p0, p1, holes) => {
             let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
-            const roof = count, cut = globe && cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
+            const roof = count, cut = globe && globe.cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
             for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
             if (top <= bottom) return;
             if (globe) {
                 // (cutLine repeats the first point of a ring at its end: it is dropped.)
                 const out: number[] = [], ends = [0];
-                for (let r = 0; r + 1 < bounds.length; r++) { cutLine(coords, bounds[r], bounds[r + 1], Math.max(1, globe.grid), out, true); out.length -= 2; ends.push(out.length / 2); }
+                for (let r = 0; r + 1 < bounds.length; r++) { globe.cutLine(coords, bounds[r], bounds[r + 1], Math.max(1, globe.grid), out, true); out.length -= 2; ends.push(out.length / 2); }
                 coords = out; bounds = ends;
             }
             p0 = 0;
@@ -733,10 +748,7 @@ function tessellateExtrusion(b: Batch, globe?: GlobeBuild): GLBatch | null {
         });
     }
     if (!idx.length) return null;
-    const out: GLBatch = {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx)};
-    if (b.color) out.color = Uint8Array.from(color);
-    if (b.ed) out.ed = Float32Array.from(ed);
-    return out;
+    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined};
 }
 
 const ARC_STEP = Math.PI / 5;
@@ -751,22 +763,31 @@ const ARC_STEP = Math.PI / 5;
  * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
  */
 export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
-/** The cosine of half the turn above which a corner is sharp: a turn of 75 degrees, as in MapLibre GL JS. */
-/** Keeps in `Batch.next` the changes to the next zoom of the properties that change for some feature. */
-function interleaveNext(batch: Batch, deltas: (number[] | null)[]) {
-    const kept = deltas.filter(d => d?.some(x => x)) as number[][], k = kept.length;
+/** Keeps in `Batch.feat` the numbers of each feature of the lists that are not 0 for some feature. */
+function interleaveFeat(batch: Batch, lists: (number[] | null)[]) {
+    const kept = lists.filter(d => d?.some(x => x)) as number[][], k = kept.length;
     if (!k) return;
-    const next = batch.next = new Float32Array(kept[0].length * k);
-    for (let j = 0; j < k; j++) for (let f = 0; f < kept[j].length; f++) next[f * k + j] = kept[j][f];
-    batch.nextMask = deltas.reduce((m, d, i) => d?.some(x => x) ? m | 1 << i : m, 0);
+    const feat = batch.feat = new Float32Array(kept[0].length * k);
+    for (let j = 0; j < k; j++) for (let f = 0; f < kept[j].length; f++) feat[f * k + j] = kept[j][f];
+    batch.featMask = lists.reduce((m, d, i) => d?.some(x => x) ? m | 1 << i : m, 0);
 }
 
+/** The numbers of each feature in `a` (the same count for each of `features`), once for each vertex, whose feature is in `feats`. */
+function perVertex<T extends Uint8Array | Float32Array>(a: T | undefined, feats: ArrayLike<number>, features: number): T | undefined {
+    if (!a) return;
+    const k = a.length / features, out = new (a.constructor as new (length: number) => T)(feats.length * k);
+    for (let i = 0, o = 0; i < feats.length; i++) for (let j = feats[i] * k, end = j + k; j < end; j++) out[o++] = a[j];
+    return out;
+}
+
+/** The cosine of half the turn above which a corner is sharp: a turn of 75 degrees, as in MapLibre GL JS. */
 const COS_SHARP = Math.cos(75 / 2 * Math.PI / 180);
 
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
-    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [], offsets: number[] = [], blurs: number[] = [], gaps: number[] = [], next: number[] = [];
-    const round = b.join === 'round', nk = b.next ? b.next.length / featEnds.length : 0;
+    // (`feats`: the feature of each vertex, for the numbers of each feature; see `perVertex`.)
+    const v: number[] = [], idx: number[] = [], color: number[] = [], feats: number[] = [];
+    const round = b.join === 'round';
     // As in MapLibre GL JS: a corner whose miter is longer than the limit (1 / cos of half the turn, in line widths)
     // gets a bevel or a round join; a bevel join keeps sharp the corners whose miter is shorter than 1.05.
     const limit = round ? b.roundLimit ?? 1.05 : b.join === 'bevel' ? 1.05 : b.miterLimit ?? 2, minCos = 1 / Math.max(1, limit);
@@ -781,13 +802,7 @@ function tessellateLine(b: Batch): GLBatch | null {
             dist = part * 16383.5;
         }
         v.push(x, y, nx, ny, side, dist);
-        if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
-        if (b.width) width.push(b.width[f]);
-        if (b.width1) width1.push(b.width1[f]);
-        if (b.offset) offsets.push(b.offset[f]);
-        if (b.blur) blurs.push(b.blur[f]);
-        if (b.gap) gaps.push(b.gap[f]);
-        for (let i = f * nk; i < f * nk + nk; i++) next.push(b.next![i]);
+        feats.push(f);
         return count++;
     };
     /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
@@ -873,21 +888,15 @@ function tessellateLine(b: Batch): GLBatch | null {
         view.setInt16(o, Math.round(v[i * 6]), true); view.setInt16(o + 2, Math.round(v[i * 6 + 1]), true);
         view.setInt16(o + 4, Math.round(v[i * 6 + 2] * LINE_NORMAL), true); view.setInt16(o + 6, Math.round(v[i * 6 + 3] * LINE_NORMAL), true);
         view.setInt16(o + 8, v[i * 6 + 4], true);
-        if (b.offset) view.setInt16(o + 10, Math.max(-32768, Math.min(32767, Math.round(offsets[i] * 8))), true);
+        if (b.offset) view.setInt16(o + 10, Math.max(-32768, Math.min(32767, Math.round(b.offset[feats[i]] * 8))), true);
         view.setFloat32(o + 12, v[i * 6 + 5], true);
     }
-    const out: GLBatch = {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx)};
-    if (b.color || b.progress) out.color = Uint8Array.from(color);
-    if (b.width) out.width = Float32Array.from(width);
-    if (b.width1) out.width1 = Float32Array.from(width1);
-    if (b.blur) out.blur = Float32Array.from(blurs);
-    if (b.gap) out.gap = Float32Array.from(gaps);
-    if (b.next) { out.next = Float32Array.from(next); out.nextMask = b.nextMask; }
-    return out;
+    const each = <T extends Uint8Array | Float32Array>(a?: T) => perVertex(a, feats, featEnds.length);
+    return {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx), color: b.progress ? Uint8Array.from(color) : each(b.color), width: each(b.width), width1: each(b.width1), feat: each(b.feat), featMask: b.featMask};
 }
 
-/** `globe`: the tile is built for a map that can show the globe (see `tessellate`). */
-export function toGL(ir: TileIR, globe?: GlobeBuild): {tile: TileGL; transfer: ArrayBuffer[]} {
+/** `globe`: the tile is built for a map that can show the globe (see `tessellate`), with the code of the cut. */
+export function toGL(ir: TileIR, globe?: GlobeCut): {tile: TileGL; transfer: ArrayBuffer[]} {
     const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z, expires: ir.expires}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {

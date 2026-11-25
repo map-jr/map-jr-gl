@@ -10,10 +10,11 @@ import {setPartLoader, type PartName} from './parts.ts';
 export {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, touches} from './geo.ts';
 export {SHADERS, VS_COMMON, opaque, skyValues} from './gl.ts';
 export {renderItems} from './placement.ts';
-export {compileExpr, compileFilter} from './expr.ts';
+export {compileExpr, compileFilter, warnOnce} from './expr.ts';
 export {decodeElevation} from './query.ts';
 export {decodePixels} from './exact-pixels.ts';
 export {heads} from './tile-fetch.ts';
+export {earcut} from './tile.ts';
 
 /** One worker script, two roles: a tile parser, or the host of the whole rendering engine. */
 const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null; postMessage(m: unknown): void; importScripts(url: string): void; MapJrPart?: unknown};

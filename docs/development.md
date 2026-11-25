@@ -292,7 +292,7 @@ zone `map-jr.org` in that account. Without the secrets, the step writes a notice
 | `src/maplibre-compat.ts`, `src/compat-map.ts`, `src/compat-types.ts` | The entry `@map-jr/map-jr-gl/maplibre-compat`: the map with the rest of the API of MapLibre GL JS, the functions of the module, the types |
 | `src/map.ts` | The core map class, which the two entries use. It sends commands to the engine. |
 | `src/engine.ts` | The work for each frame: camera, tiles, labels. It does not use the DOM, so it can run in a worker. |
-| `src/gl.ts` | The WebGL2 renderer |
+| `src/gl.ts` | The WebGL2 renderer. The GLSL of the globe (`GLOBE_GLSL`, `HALO`) is in `src/globe.ts`, which loads on demand as the part `globe`, and its names get the same short names (`SHADER_FILES` in `scripts/private-names.mjs`). |
 | `src/terrain.ts`, `src/dem.ts` | 3D terrain, which loads on demand with the contour lines as the part `dem` (#1849). Its functions run as methods of the engine and the renderer. The shaders of `terrain.ts` get the same short names as those of `gl.ts` (`SHADER_FILES` in `scripts/private-names.mjs`). |
 | `src/svg.ts`, `src/server.ts` | The SVG renderer and the server functions |
 | `src/geo.ts` | Camera and projection calculations |

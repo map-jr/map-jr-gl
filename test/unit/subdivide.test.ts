@@ -6,8 +6,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {compileLayer} from '../../src/style.ts';
-import {LINE_VERTEX, buildTile, tessellate, toGL, type Batch, type GLBatch} from '../../src/tile.ts';
-import {NORTH_POLE, SOUTH_POLE, cutLine, globeBuild, globeGrid, type GlobeBuild} from '../../src/subdivide.ts';
+import {LINE_VERTEX, buildTile, globeBuild, globeGrid, tessellate as tessellateCut, toGL as toGLCut, type Batch, type GLBatch, type GlobeBuild} from '../../src/tile.ts';
+import {NORTH_POLE, SOUTH_POLE, cutFill, cutLine} from '../../src/subdivide.ts';
 import {sphere} from '../../src/globe.ts';
 
 const bytes = new Uint8Array(readFileSync(new URL('../fixtures/14-4823-6160.pbf', import.meta.url)));
@@ -17,6 +17,10 @@ const layers = [
     {id: 'roads', type: 'line', source: 's', 'source-layer': 'transportation', paint: {'line-width': 2}},
     {id: 'buildings', type: 'fill-extrusion', source: 's', 'source-layer': 'building', paint: {'fill-extrusion-height': ['get', 'render_height']}},
 ].map(l => compileLayer(l)!);
+// (The tile workers give the code of the cut with the build, from the part `subdivide` of the worker: see `globeCut` in tiles.ts.)
+const cut = (globe?: GlobeBuild) => globe && {...globe, cutFill, cutLine};
+const tessellate = (b: Batch, globe?: GlobeBuild) => tessellateCut(b, cut(globe));
+const toGL = (ir: Parameters<typeof toGLCut>[0], globe?: GlobeBuild) => toGLCut(ir, cut(globe));
 const tile = (globe?: GlobeBuild) => toGL(buildTile(bytes, 14, layers, false), globe).tile as any;
 const square = (x0: number, y0: number, x1: number, y1: number, hole?: number[]): Batch => ({type: 'fill', antialias: false,
     geom: {coords: Int16Array.from([x0, y0, x1, y0, x1, y1, x0, y1, ...hole ?? []]), ringEnds: Uint32Array.from(hole ? [4, 8] : [4]), featEnds: Uint32Array.from([hole ? 2 : 1])}});
@@ -44,11 +48,14 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
     // The hash of the tile of the fixture as main built it before #463 PR 2 (fills, data-driven colours, lines, buildings).
     // (Updated by #1706, which changed the joins of lines.)
     const h = createHash('sha256'), flat = tile();
+    // (A field that is undefined carries no data, and is left out: #2075 gave a line and a building such fields. The
+    // code of main before #2075 gives the same hash.)
     for (const id of Object.keys(flat.layers).sort()) for (const [k, v] of Object.entries(flat.layers[id]).sort()) {
+        if (v === undefined) continue;
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }
-    assert.equal(h.digest('hex'), 'bae806f0fcad3a8e57eee324bd7f83287f9e8c1c1b404a26589345abcb97c9f6');
+    assert.equal(h.digest('hex'), '86bf050ada0dcb1a1a644bb441550c49a2fc39280c5eb496035ea72683dd6f17');
 });
 
 test('globe: the fills and lines of a real tile get the vertices that were measured', () => {

@@ -3127,6 +3127,28 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a source has on, once, off and fire, and gets its own dataloading, data and error events, as in MapLibre GL JS (#1720)`,
             JSON.stringify(ours) === JSON.stringify(ml) && ours.methods && ours.same && ours.seen.length === 2 && ours.errors.r && ours.errors.u, JSON.stringify({ours, maplibre: ml}));
     }
+    // A tile server that answers 500 for every tile: the map fires one `error` for each tile, as MapLibre GL JS 6.17
+    // does, and the retries of this library add none (#2007). A vector and a raster source.
+    {
+        const hits = {};
+        await page.route(/\/no-such-2007\//, r => { const u = new URL(r.request().url()); hits[u.searchParams.get('lib')] ??= new Set(); hits[u.searchParams.get('lib')].add(u.pathname); r.fulfill({status: 500, body: ''}); });
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const url = kind => location.origin + '/no-such-2007/' + kind + '/{z}/{x}/{y}?lib=' + lib + mode;
+            const m = new mod.Map({container: el, style: {version: 8, sources: {v: {type: 'vector', tiles: [url('v')]}, r: {type: 'raster', tiles: [url('r')], tileSize: 256}},
+                layers: [{id: 'r', type: 'raster', source: 'r'}, {id: 'v', type: 'fill', source: 'v', 'source-layer': 'x'}]}, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 2});
+            let errors = 0;
+            m.on('error', () => errors++);
+            await new Promise(r => setTimeout(r, 5000));
+            m.remove(); el.remove();
+            return errors;
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = await run('ml', mode), tiles = hits['ours' + mode]?.size ?? 0, mlTiles = hits['ml' + mode]?.size ?? 0;
+        check(`[${mode}] compat: a tile server that answers 500 gives one error event for each tile, as in MapLibre GL JS (#2007)`,
+            tiles > 4 && ours === tiles && ml === mlTiles, JSON.stringify({ours, tiles, maplibre: ml, mlTiles}));
+    }
     // After `setData`, the compat map and the source fire `sourcedata`/`data` with `sourceDataType: 'metadata'`
     // (`isSourceLoaded: true`) and then `'content'` (`isSourceLoaded: false`), as MapLibre GL JS 6.17 does. The event
     // on the source has no `sourceId`, and `sourcedataloading` has `isSourceLoaded: false` (#2005).
@@ -6994,7 +7016,12 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         await open('plateau');
         await page.evaluate(() => window.liftMap.jumpTo({pitch: 72, bearing: 120})); await settle();
         await page.mouse.move(100, 300); await page.mouse.down({button: 'right'});
+        await page.evaluate(() => addEventListener('pointermove', () => { window.lastMove1489 = performance.now(); }, true));
         for (let i = 1; i <= 30; i++) { await page.mouse.move(100 + i * 20, 300); await page.waitForTimeout(40); }
+        // The release comes after the page has seen no move for 200 ms, longer than the 160 ms of samples that inertia
+        // reads, so the bearing is that of the drag alone. A release soon after the page handles the last move turns the
+        // map further by inertia, and on a loaded runner the moves reach the page late: it ended at -117.8 (#2079).
+        await page.waitForFunction(() => performance.now() - window.lastMove1489 > 200);
         await page.mouse.up({button: 'right'}); await settle();
         const turned = await snap(), turnedTo = await page.evaluate(() => +window.liftMap.getBearing().toFixed(1));
         check('[main] 3D terrain: a rotate drag over a plateau keeps the pitch and the zoom, as in MapLibre GL JS (#1480)', turned[0] === 13 && turned[1] === 72, JSON.stringify(turned));
