@@ -2593,23 +2593,29 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
             await new Promise(res => m.once('load', res));
             const square = (n, r, g, b) => { const data = new Uint8Array(n * n * 4); for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i); return {width: n, height: n, data}; };
-            const centre = async () => {
-                await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
-                const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
-                if (!url) return null;
-                const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
-                g.drawImage(bmp, 0, 0);
-                return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            // (The pixel at the center, taken until it has the expected color or 30 s pass. `toBlob` waits for `idle`
+            // itself; on a loaded runner one image can take more than 5 s, which a fixed race read as null; #2091.)
+            const centre = async want => {
+                let px = null;
+                for (const t0 = performance.now(); performance.now() - t0 < 30000;) {
+                    const bmp = await createImageBitmap(await m.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                    g.drawImage(bmp, 0, 0);
+                    px = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+                    if (want(px)) break;
+                    await new Promise(res => setTimeout(res, 100));
+                }
+                return px;
             };
+            const red = px => px[0] > 200 && px[2] < 60, blue = px => px[2] > 200 && px[0] < 60, green = px => px[1] > 200 && px[0] < 60;
             await m.addImage('sq', square(16, 255, 0, 0));
             await m.addImage('dot', square(16, 255, 255, 255), {sdf: true});
             m.addSource('p', {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}});
             m.addLayer({id: 'p', type: 'symbol', source: 'p', layout: {'icon-image': 'sq'}});
-            const before = await centre();
+            const before = await centre(red);
             await m.updateImage('sq', square(16, 0, 0, 255));
-            const after = await centre();
+            const after = await centre(blue);
             await m.updateImage('sq', square(24, 0, 255, 0));
-            const resized = await centre();
+            const resized = await centre(green);
             await m.updateImage('dot', square(16, 255, 255, 255));
             const sdf = m.getImage('dot')?.sdf;
             m.remove(); el.remove();
