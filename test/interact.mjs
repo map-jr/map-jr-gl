@@ -4341,6 +4341,32 @@ for (const mode of renderers) {
         }, lib);
         check('[main] maplibre-compat: GeolocateControl fits an accuracy of 5000 m to the zoom of MapLibre GL JS',
             acc.ml.zoom < 15 && Math.abs(acc.jr.zoom - acc.ml.zoom) < 0.01 && Math.abs(acc.jr.lng - acc.ml.lng) < 1e-4 && Math.abs(acc.jr.lat - acc.ml.lat) < 1e-4, JSON.stringify(acc));
+        // zoomToUserAccuracy: false keeps the zoom and moves to the position with easeTo (linear) or flyTo, as MapLibre GL JS 6.17 does (#1893).
+        const keep = {};
+        for (const lib of ['ml', 'jr']) for (const linear of [true, false]) keep[lib + linear] = await page.evaluate(async ([lib, linear]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition: ok => setTimeout(() => ok({coords: {longitude: 3, latitude: 50, accuracy: 5000}, timestamp: 1}), 0)}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, ...(lib === 'jr' ? {renderer: 'main'} : {}), center: [0, 0], zoom: 4, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const warnings = [], warn = console.warn, called = [];
+            console.warn = (...a) => warnings.push(String(a[0]));
+            for (const k of ['easeTo', 'flyTo', 'fitBounds']) { const f = m[k]; m[k] = function (...a) { called.push(k); return f.apply(this, a); }; }
+            const gc = new mod.GeolocateControl({zoomToUserAccuracy: false, fitBoundsOptions: {linear, duration: 50}});
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            gc.trigger();
+            await new Promise(r => m.once('moveend', r));
+            console.warn = warn;
+            const zoom = m.getZoom(), c = m.getCenter();
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return {zoom, lng: c.lng, lat: c.lat, first: called[0], warnings: warnings.filter(w => w.includes('map-jr-gl'))};
+        }, [lib, linear]);
+        check('[main] maplibre-compat: GeolocateControl with zoomToUserAccuracy false keeps the zoom and moves with easeTo or flyTo as MapLibre GL JS does',
+            [true, false].every(l => keep['ml' + l].first === keep['jr' + l].first && Math.abs(keep['jr' + l].zoom - keep['ml' + l].zoom) < 1e-6 && Math.abs(keep['jr' + l].zoom - 4) < 1e-6
+                && Math.abs(keep['jr' + l].lng - 3) < 1e-4 && Math.abs(keep['jr' + l].lat - 50) < 1e-4 && keep['jr' + l].warnings.length === 0), JSON.stringify(keep));
         // The accuracy circle of trackUserLocation (#1721): an accuracy of 500 m at latitude 50 gives the diameter of MapLibre GL JS 6.17 at two zooms.
         const circle = {};
         for (const lib of ['ml', 'jr']) circle[lib] = await page.evaluate(async lib => {
