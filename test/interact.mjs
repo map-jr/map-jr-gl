@@ -1463,6 +1463,25 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A circle with `circle-translate` is found where it is drawn and not at its feature, as in MapLibre (#1910). With
+    // the anchor `map` the translation turns with the bearing: [60, 0] at a bearing of 90 is 60 pixels up.
+    const translated = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter(), bearing = m.getBearing();
+        m.addSource('moved', {type: 'geojson', data: {type: 'FeatureCollection', features: [{type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}]}});
+        m.addLayer({id: 'moved-view', type: 'circle', source: 'moved', paint: {'circle-radius': 5, 'circle-translate': [60, 0], 'circle-translate-anchor': 'viewport'}});
+        m.addLayer({id: 'moved-map', type: 'circle', source: 'moved', paint: {'circle-radius': 5, 'circle-translate': [60, 0]}});
+        m.jumpTo({bearing: 90});
+        const p = m.project(c), layers = ['moved-view', 'moved-map'], ids = fs => fs.map(f => f.layer.id).sort().join();
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures([p.x + 60, p.y], {layers}); }
+        const out = {right: ids(ready), up: ids(await m.queryRenderedFeatures([p.x, p.y - 60], {layers})), at: ids(await m.queryRenderedFeatures(p, {layers})),
+            nowRight: ids([...m.queryRenderedFeatures([p.x + 60, p.y], {layers})]), nowUp: ids([...m.queryRenderedFeatures([p.x, p.y - 60], {layers})]), nowAt: ids([...m.queryRenderedFeatures(p, {layers})])};
+        m.removeLayer('moved-view'); m.removeLayer('moved-map'); m.removeSource('moved'); m.jumpTo({bearing});
+        return out;
+    });
+    check(`[${mode}] queryRenderedFeatures: a circle with circle-translate is found where it is drawn, also in the array at once`,
+        translated.right === 'moved-view' && translated.up === 'moved-map' && translated.at === '' && translated.nowRight === 'moved-view' && translated.nowUp === 'moved-map' && translated.nowAt === '', JSON.stringify(translated));
+
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
     // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
