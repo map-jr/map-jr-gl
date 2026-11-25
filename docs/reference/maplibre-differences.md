@@ -592,7 +592,7 @@ In the compat entry, the object of each source type has the event methods `on`, 
 | Event on the source | Event on the map | When |
 |---|---|---|
 | `dataloading` | `sourcedataloading`, `dataloading` | `setData` or `updateData` of a GeoJSON source starts. |
-| `data` | `sourcedata`, `data` | The source has loaded, its data has changed (`sourceDataType: 'content'`), or a tile of it has loaded (`tile`). |
+| `data` | `sourcedata`, `data` | The source has loaded, its data has changed, or a tile of it has loaded (`tile`). The source gets one `data` for each `sourcedata` of the map with its ID. |
 | `error` | `error` | A tile, a TileJSON, a GeoJSON URL, a PMTiles archive or an image of an image source fails to load. |
 
 The events differ from MapLibre GL JS in these ways:
