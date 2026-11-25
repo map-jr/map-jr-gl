@@ -4077,6 +4077,31 @@ for (const mode of renderers) {
             dev.length === 2 && dev[0].startsWith('[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
             && dev[1].startsWith('[map-jr-gl] layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
     }
+    // A line layer with `line-gradient` on a GeoJSON source without `lineMetrics: true` warns once in the development build
+    // and names `lineMetrics`; MapLibre GL JS rejects such a style (#1829). The production build does not warn.
+    if (mode === 'main') {
+        const gradient = await page.evaluate(async () => {
+            const out = {};
+            for (const file of ['map-jr-gl-maplibre-compat.dev.js', 'map-jr-gl-maplibre-compat.js']) {
+                const mod = await import('/dist/' + file);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const warnings = [], warn = console.warn;
+                console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+                const line = {type: 'LineString', coordinates: [[0, 0], [10, 10]]}, paint = {'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, 'blue', 1, 'red']};
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8,
+                    sources: {s: {type: 'geojson', data: line}, ok: {type: 'geojson', lineMetrics: true, data: line}},
+                    layers: [{id: 'g', type: 'line', source: 's', paint}, {id: 'g2', type: 'line', source: 'ok', paint}]}});
+                await new Promise(r => m.once('idle', r));
+                console.warn = warn;
+                out[file] = warnings.filter(w => w.includes('line-gradient'));
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        const dev = gradient['map-jr-gl-maplibre-compat.dev.js'], prod = gradient['map-jr-gl-maplibre-compat.js'];
+        check('[main] maplibre-compat: line-gradient on a GeoJSON source without lineMetrics warns once in the development build and names lineMetrics; the production build does not warn',
+            dev.length === 1 && dev[0].startsWith('[map-jr-gl] layers.g.paint.line-gradient:') && dev[0].includes('"lineMetrics: true"') && prod.length === 0, JSON.stringify(gradient));
+    }
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {
         const logo = await page.evaluate(async () => {

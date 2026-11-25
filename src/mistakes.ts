@@ -78,6 +78,7 @@ texts[1647] = (option, call) => `${call}: "${option}" is not an option of an ove
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.`;
 texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map draws the layer without it, but MapLibre GL JS rejects the style. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
+texts[1829] = (layer, source) => `layers.${layer}.paint.line-gradient: the GeoJSON source "${source}" does not have "lineMetrics: true". The map draws the gradient, but MapLibre GL JS rejects the style and draws nothing. Add "lineMetrics: true" to the source "${source}".`;
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -146,6 +147,11 @@ export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: 
     for (const l of style?.layers ?? []) for (const g of ['paint', 'layout']) for (const k in l?.[g]) {
         const why = zoomCurveError(l[g][k]), key = `${l.id} ${g} ${k} ${JSON.stringify(l[g][k])}`;
         if (why && !reported.has(key)) { reported.add(key); report(new Error(mistake(1057, `layers.${l.id}.${g}.${k}`, why))); }
+    }
+    // (MapLibre GL JS rejects a line-gradient without lineMetrics; the map draws it, so this warns once for each layer: #1829.)
+    if (!noValidate) for (const l of style?.layers ?? []) {
+        const src = style?.sources?.[l?.source], key = '1829 ' + l?.id;
+        if (l?.type === 'line' && l.paint?.['line-gradient'] && src?.type === 'geojson' && !src.lineMetrics && !reported.has(key)) { reported.add(key); console.warn(mistake(1829, l.id, l.source)); }
     }
     unknownProperties(style?.layers, (l, g, k, near) => { const key = `${l.id} ${g} ${k}`; if (!reported.has(key)) { reported.add(key); report(new Error(mistake(11139, `layers.${l.id}.${g}.${k}`, near))); } });
 }

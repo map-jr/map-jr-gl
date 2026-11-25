@@ -181,7 +181,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `line-gradient` and the GeoJSON option `lineMetrics`
 
 - **MapLibre GL JS:** A line layer with `line-gradient` needs a GeoJSON source with `lineMetrics: true`. Without it, the style fails to load with the error "layer specifies a line-gradient, which requires a GeoJSON source with `lineMetrics` enabled", and the map draws nothing.
-- This library measures the lines of each GeoJSON source that a `line-gradient` layer uses, so the gradient is drawn whether `lineMetrics` is `true`, `false` or missing. It does not read `lineMetrics` and does not warn when it is missing.
+- This library measures the lines of each GeoJSON source that a `line-gradient` layer uses, so the gradient is drawn whether `lineMetrics` is `true`, `false` or missing. It does not read `lineMetrics`. The development build of `@map-jr/map-jr-gl/maplibre-compat` warns once for each such layer when the GeoJSON source does not have `lineMetrics: true`, unless the option `validate` is `false`.
 
 ### The pixel ratio
 
