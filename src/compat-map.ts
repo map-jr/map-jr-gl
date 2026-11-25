@@ -195,7 +195,7 @@ export class Map extends CoreMap {
     private warned = new Set<string>();
     /** `strict: true`: what gives a warning or an `error` event for code written for MapLibre GL JS throws an error. */
     private strict = false;
-    /** The map was made with `renderer: 'main'`, which custom layers need. */
+    /** The map draws on the main thread, which custom layers need: it was made with `renderer: 'main'`, or a custom layer moved it there. */
     private mainThread = false;
     /** The custom layers of the map start when their file has loaded. */
     private custom?: Promise<unknown>;
@@ -506,6 +506,7 @@ export class Map extends CoreMap {
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
         this.unsupported('The option crossSourceCollisions: false', o.crossSourceCollisions !== false);
+        this.keepExpired = o.refreshExpiredTiles === false;
         // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
         const dragOptions = (name: string, used: boolean, todo: string) => {
             if (!used || this.warned.has(name)) return;
@@ -592,7 +593,7 @@ export class Map extends CoreMap {
     private warnedTypes?: Set<string>;
     /**
      * Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS.
-     * A custom layer needs the map to draw on the main thread (`renderer: 'main'`); otherwise the map does not add it. The map draws a custom layer only while the projection is Mercator.
+     * A custom layer needs the map to draw on the main thread. A map that draws in a worker starts again on the main thread at its first custom layer, with its camera, style, sources, images and state. The map draws a custom layer only while the projection is Mercator.
      * A layer type that the library does not draw writes the warning of a loaded style, once for each type added with `addLayer`, for each map.
      */
     addLayer(layer: AddLayerObject, beforeId?: string) {
@@ -601,9 +602,12 @@ export class Map extends CoreMap {
             // A custom layer draws with the WebGL context of the map, which only the engine on this thread shares. Its
             // code loads with the first one (custom-layers.ts). The style gets a layer with the id and the type, so that
             // the order and the visibility work as for other layers; the object of the user is its `implementation`.
-            if (!this.mainThread) return this.refused(`addLayer: the custom layer "${layer.id}" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().`);
             if (typeof (layer as CustomLayerInterface).render != 'function') return this.refused(`addLayer: the custom layer "${layer.id}" has no method render. Add render(gl, args).`);
-            this.custom ??= import('./custom-layers.ts').then(m => { this.customLayers = m.customLayers(this, draw => this.ask(id => ({type: 'custom', id, draw}))); }, error => this.fire('error', {error}));
+            // (A map that draws in a worker moves its engine to this thread first, as after a lost context; #1730. The
+            // layers start after that, so that `onAdd` gets the context of the new engine once.)
+            const moved = this.mainThread || this.toMainThread();
+            this.mainThread = true;
+            this.custom ??= Promise.resolve(moved).then(() => import('./custom-layers.ts')).then(m => { this.customLayers = m.customLayers(this, draw => this.ask(id => ({type: 'custom', id, draw}))); }, error => this.fire('error', {error}));
             one = Object.defineProperty({id: layer.id, type: 'custom'}, 'implementation', {value: layer});
         }
         const {id, source} = one;
@@ -625,6 +629,9 @@ export class Map extends CoreMap {
     protected geojsonBuffer() { return 128; }
     /** As in MapLibre GL JS, a raster layer without `raster-fade-duration` fades a tile in over 300 ms (the main entry shows it at once). */
     protected rasterFade() { return 300; }
+    private keepExpired = false;
+    /** As in MapLibre GL JS, `refreshExpiredTiles: false` keeps a tile when it expires. */
+    protected override noExpiry() { return this.keepExpired; }
     /** Removes a style layer, as in MapLibre GL JS. */
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;

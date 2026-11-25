@@ -42,12 +42,13 @@ test('globe: the grid has 40, 20, 10, 5, 3 and 1 cells at zoom 0 to 10, more for
 
 test('globe: a tile without globe is byte for byte what it was before the cut existed', () => {
     // The hash of the tile of the fixture as main built it before #463 PR 2 (fills, data-driven colours, lines, buildings).
+    // (Updated by #1706, which changed the joins of lines.)
     const h = createHash('sha256'), flat = tile();
     for (const id of Object.keys(flat.layers).sort()) for (const [k, v] of Object.entries(flat.layers[id]).sort()) {
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }
-    assert.equal(h.digest('hex'), '99a3356f038343851a838c44e12838728a70c12ac21711f09577c1a9cf1e1d66');
+    assert.equal(h.digest('hex'), 'bae806f0fcad3a8e57eee324bd7f83287f9e8c1c1b404a26589345abcb97c9f6');
 });
 
 test('globe: the fills and lines of a real tile get the vertices that were measured', () => {
@@ -58,7 +59,7 @@ test('globe: the fills and lines of a real tile get the vertices that were measu
     assert.deepEqual(g20.water, [3739, 4058]);
     assert.deepEqual(g40.water, [6290, 8390]);
     assert.deepEqual(g40.land, [1720, 1316]);
-    assert.deepEqual([flat.roads[1], g20.roads[1], g40.roads[1]], [34942, 42546, 49744]);
+    assert.deepEqual([flat.roads[1], g20.roads[1], g40.roads[1]], [35024, 42546, 49744]); // (corners of 75 to 120 degrees get one more pair of vertices on each segment, #1706)
     assert.deepEqual([flat.buildings[1], g40.buildings[1]], [40998, 65906]); // buildings: roofs and walls are cut too (#1442)
 });
 

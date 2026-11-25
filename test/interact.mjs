@@ -5946,6 +5946,12 @@ for (const mode of renderers) {
                 await wait(50);
                 const again = p.getLngLat() ? m.project(p.getLngLat()) : {x: NaN, y: NaN};
                 out.trackAgain = Math.abs(again.x - 60) < 1 && Math.abs(again.y - 70) < 1;
+                // #1737: as in MapLibre GL JS, a touch move does not move it (MapLibre's "drag" event has no point).
+                const touch = (type, x, y) => m.getCanvas().dispatchEvent(new PointerEvent(type, {bubbles: true, pointerType: 'touch', pointerId: 7, isPrimary: true, clientX: c.left + x, clientY: c.top + y}));
+                touch('pointerdown', 150, 150); touch('pointermove', 170, 160); touch('pointermove', 190, 170); touch('pointerup', 190, 170);
+                await wait(50);
+                const afterTouch = p.getLngLat() ? m.project(p.getLngLat()) : {x: NaN, y: NaN};
+                out.touchStays = Math.abs(afterTouch.x - 60) < 1 && Math.abs(afterTouch.y - 70) < 1;
                 p.remove();
                 const frac = m.unproject([100.4, 80.3]);
                 const t = q => (q.getElement().style.transform.match(/translate\(([^p]+)px/) || [])[1];
@@ -5958,8 +5964,8 @@ for (const mode of renderers) {
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
         });
-        check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat, and places itself on fractions of a pixel with subpixelPositioning (#42)',
-            options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.subpixel && !options.warns.length, JSON.stringify(options));
+        check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
+            options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
@@ -6773,6 +6779,28 @@ for (const mode of renderers) {
     await page.close();
 }
 
+// `refreshExpiredTiles: false` of the compat entry keeps a tile when it expires, as in MapLibre GL JS 6.17, and warns
+// nothing (#687). The other map on the same page has the default and requests its tile with `max-age=1` again.
+if (renderers.includes('main')) {
+    const page = await browser.newPage({viewport: {width: 900, height: 400}});
+    const seen = {off: 0, on: 0}, warnings = [], png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    page.on('console', m => { if (m.type() === 'warning' && /refreshExpiredTiles/.test(m.text())) warnings.push(m.text()); });
+    await page.route(/\/exp687(off|on)\//, route => { seen[/off/.test(route.request().url()) ? 'off' : 'on']++; return route.fulfill({status: 200, contentType: 'image/png', body: png, headers: {'access-control-allow-origin': '*', 'cache-control': 'max-age=1'}}).catch(() => {}); });
+    await page.goto(`${origin}/bench`);
+    await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const make = (left, name, refresh) => new mod.Map({renderer: 'main', attributionControl: false, refreshExpiredTiles: refresh, center: [0, 0], zoom: 0,
+            container: document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:${left}px;top:0;width:256px;height:256px;z-index:99`})),
+            style: {version: 8, sources: {r: {type: 'raster', tiles: [`${location.origin}/exp687${name}/{z}/{x}/{y}.png`], tileSize: 256, maxzoom: 0}}, layers: [{id: 'r', type: 'raster', source: 'r'}]}});
+        window.exp687 = [make(0, 'off', false), make(300, 'on', undefined)];
+    });
+    await page.waitForTimeout(5000);
+    await page.evaluate(() => window.exp687.forEach(m => m.remove()));
+    check('[main] refreshExpiredTiles: false keeps an expired tile without a warning, and the other map on the page requests its tile again (#687)',
+        seen.off === 1 && seen.on >= 3 && !warnings.length, JSON.stringify({seen, warnings}));
+    await page.close();
+}
+
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.
 const page = await browser.newPage({viewport: {width: 1000, height: 700}});
 await page.route('**/dist/map-jr-gl-maplibre-compat.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
@@ -6786,6 +6814,6 @@ await page.screenshot({path: `${out}/ssr-after.png`});
 const preloads = await page.evaluate(() => document.querySelectorAll('link[rel=preload]').length);
 check('[ssr] tile preload links emitted', preloads > 0, `${preloads} links`);
 // (Chromium on 2026-11-19 printed 218 results with RENDERER=main and 160 with RENDERER=worker.)
-tally((renderers.includes('main') ? 196 : 0) + (renderers.includes('worker') ? 146 : 0));
+tally((renderers.includes('main') ? 197 : 0) + (renderers.includes('worker') ? 146 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);

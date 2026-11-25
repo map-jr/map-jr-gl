@@ -8,7 +8,7 @@ import type {Given} from './unset.ts';
 import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 import {SPEC} from './style.ts';
-import {compileProp, parseColor} from './expr.ts';
+import {parseColor} from './expr.ts';
 import {layerTypes, layoutExpressions, layoutValues, operators, paintExpressions, paintValues} from './style-spec-values.ts';
 import {expressionErrors} from './expr-check.ts';
 
@@ -59,7 +59,6 @@ texts[645] = (layer, set) => `${layer}: "color-relief-color" ${set ? 'is not an 
 texts[10645] = (layer, stops) => `${layer}: "color-relief-color" has ${stops} stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.`;
 texts[1712] = () => 'style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.';
 texts[648] = (where, property) => `${where}: "${property}" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.`;
-texts[10648] = layer => `${layer}: "heatmap-radius" is different for each feature. The map draws every point with the radius of 30 pixels. Write a number, or an expression of ["zoom"] only.`;
 texts[20648] = source => `${source}: "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`;
 texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
 texts[40] = scheme => `colorScheme: ${scheme} is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.`;
@@ -307,7 +306,6 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const l of Array.isArray(layers) ? layers : []) {
             // (MapLibre GL JS reads the symbol properties only at a point: `symbol-placement` "point", the default.)
             if (l?.type !== 'symbol' || (l.layout?.['symbol-placement'] ?? 'point') === 'point') for (const k in noEffect[l?.type]) { const v = l.layout?.[k]; if (v != null && differ(v, noEffect[l.type][k])) warn(648, `the ${l.type} layer "${l.id}"`, k); }
-            if (l?.type === 'heatmap' && l.paint?.['heatmap-radius'] != null && compileProp(l.paint['heatmap-radius'], 'number', 30).dd) warn(10648, `the heatmap layer "${l.id}"`);
         }
         // (A color-relief layer draws an `interpolate` expression of the elevation, with at most 2048 stops, as src/style.ts reads it: #645.)
         for (const l of Array.isArray(layers) ? layers : []) if (l?.type === 'color-relief') {
