@@ -5096,6 +5096,35 @@ for (const mode of renderers) {
         // Both throws glide past the end of the drag and end at bearing 0 with one `moveend`.
         check('[main] maplibre-compat: the inertia of a pan that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
             ['ml', 'compat'].every(l => m1834[l].glide > 0.05 && m1834[l].ends.length === 1 && m1834[l].ends[0] === 0 && m1834[l].bearing === 0), JSON.stringify(m1834));
+        // #1834: a rotate drag from bearing -24 that turns by 16 degrees (-8 at the release, outside bearingSnap) and
+        // turns on with inertia toward -2 ends at bearing 0 in one movement (one `moveend`), as MapLibre GL JS sets the
+        // bearing of its inertia to 0 (`HandlerManager._onMoveEnd`). The events are synthetic and 10 ms apart in one
+        // task, because the moves of Playwright on a loaded machine come hundreds of ms apart and give no inertia here or
+        // in MapLibre GL JS (which also needs frames between the moves, so it is not compared here). A throw that gave no
+        // inertia (the map stays at -8) is thrown again, up to three times.
+        let m1834r;
+        for (let i = 0; i < 3 && !(m1834r && Math.abs(m1834r.bearing + 8) > 0.5); i++) m1834r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: -24});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            const ends = [];
+            m.on('moveend', () => ends.push(+m.getBearing().toFixed(1)));
+            const canvas = m.getCanvas();
+            const fire = (type, x, buttons) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: 250, button: 2, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true};
+                canvas.dispatchEvent(new PointerEvent('pointer' + type, o)); canvas.dispatchEvent(new MouseEvent('mouse' + type, o));
+            };
+            fire('down', 250, 2);
+            for (let k = 1; k <= 8; k++) { const t0 = performance.now(); while (performance.now() - t0 < 10); fire('move', 250 + k * 2.5, 2); }
+            fire('up', 270, 0);
+            await new Promise(r => setTimeout(r, 2500));
+            const out = {ends, bearing: +m.getBearing().toFixed(1)};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: the inertia of a rotate drag that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
+            m1834r.ends.length === 1 && m1834r.ends[0] === 0 && m1834r.bearing === 0, JSON.stringify(m1834r));
         // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
         // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
         const m479 = {};
