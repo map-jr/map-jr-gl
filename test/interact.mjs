@@ -2536,14 +2536,16 @@ for (const mode of renderers) {
             m.addSource('r', {type: 'geojson', data: box(0, 170, '')});
             m.addLayer({id: 'l', type: 'fill', source: 'l', paint: {'fill-pattern': 'sdf', 'fill-color': ['get', 'c']}});
             m.addLayer({id: 'r', type: 'fill', source: 'r', paint: {'fill-pattern': 'sdf', 'fill-color': '#f00'}});
-            await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
-            const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
+            // (The image is taken until both halves have the expected color or 30 s pass. `toBlob` waits for `idle` itself;
+            // on a loaded runner one image can take more than 5 s, which a fixed race read as null; #2092.)
             let left = null, right = null;
-            if (url) {
-                const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+            for (const t0 = performance.now(); performance.now() - t0 < 30000;) {
+                const bmp = await createImageBitmap(await m.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
                 g.drawImage(bmp, 0, 0);
                 left = Array.from(g.getImageData(bmp.width >> 2, bmp.height >> 1, 1, 1).data);
                 right = Array.from(g.getImageData(bmp.width * 3 >> 2, bmp.height >> 1, 1, 1).data);
+                if (left[1] > 200 && left[0] < 60 && left[2] < 60 && right[0] > 200 && right[1] < 60 && right[2] < 60) break;
+                await new Promise(res => setTimeout(res, 100));
             }
             m.remove(); el.remove();
             return {left, right};
