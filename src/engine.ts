@@ -1351,8 +1351,9 @@ export class Engine {
             t.state = 'error';
             t.rev = ++this.tilesVersion;
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
-            // (The tile reported its failure with its first four requests, as MapLibre GL JS fires one `error`.)
-            if (t.tries! <= TILE_RETRIES) this.emit({type: 'error', message: err.message, source});
+            // A tile reports its failure once, at its first failed request, as MapLibre GL JS 6.17 fires one `error` for
+            // each failed tile (and makes no request again). The retries below are silent (#2007).
+            if (!t.tries) this.emit({type: 'error', message: err.message, source});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
