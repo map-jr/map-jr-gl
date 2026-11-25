@@ -34,6 +34,7 @@ BSD-3-Clause.
 - The reload of expired tiles follows `setExpiryData`, `getExpiryTimeout` and `_setTileReloadTimer` of MapLibre GL JS 6.17 (BSD-3-Clause): `max-age` of `Cache-Control` before `Expires`, and a delay of 1 s, 2 s, 4 s and so on for a response that is out of date when it arrives. The code in `src/tile-fetch.ts` and `src/engine.ts` is new.
 - `fill-extrusion-pattern` follows the method of the shader `fill_extrusion_pattern` and of `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): the image lies on the roof by tile position and on the walls by the distance along the ring and the height, and the light of a patterned wall is computed with a gray of 0.5. The code is new.
 - The level of detail of a pitched view (`lodZoom` in `src/geo.ts`, used with 3D terrain and by `setSourceTileLodParams`) follows the formula of `createCalculateTileZoomFunction` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
+- The globe leaves out a tile (`covering` in `src/globe.ts`) when a hull around it is more than 60 pixels outside one edge of the view, as `coveringTiles` of MapLibre GL JS 6.17 (BSD-3-Clause) leaves out a tile whose volume is outside the view. The hull and the code are new.
 - The zoom of the scroll wheel (`src/engine.ts`), and its snap to `zoomSnap` in the compat entry, follow the method of `ScrollZoomHandler` and `evaluateZoomSnap` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
 - glsl-atmosphere (github.com/wwwtyro/glsl-atmosphere, Unlicense): the atmosphere shader of MapLibre GL JS, which the shader of the atmosphere on the globe copies, follows its scattering method.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
@@ -60,7 +61,8 @@ BSD-3-Clause.
 - `calculateCameraOptionsFromTo`, `calculateCameraOptionsFromCameraLngLatAltRotation` and
   `calculateAnchoredCameraOptions` of the compat entry follow the Mercator camera math of MapLibre GL JS 6.17
   (BSD-3-Clause; `mercator_transform.ts`, `mercator_camera_helper.ts` and `camera.ts`), including its earth radius and its search
-  for the center along the view. The code in `src/compat-map.ts` is new.
+  for the center along the view, and on a globe the camera math of its globe transform and globe camera helper
+  (`calculateCameraOptionsFromTo`, and a zoom then a drag for `calculateAnchoredCameraOptions`). The code in `src/compat-map.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
@@ -103,7 +105,8 @@ BSD-3-Clause.
   6.17 (`src/geo/projection/vertical_perspective_transform.ts`, `globe_utils.ts`, `_projection_globe.vertex.glsl`,
   BSD-3-Clause): the radius that keeps the scale of Mercator at the center, the matrix from the unit sphere to clip
   space, the plane of the horizon as clip-space z, the mix with Mercator between zoom 11 and 12, the formula with
-  `exp` for the sphere, the width of lines toward the poles, and the change of zoom with the latitude during a drag.
+  `exp` for the sphere, the width of lines toward the poles, `*-translate` in tile units that move the point before
+  it is put on the sphere (`translatePosition`), and the change of zoom with the latitude during a drag.
   A drag on the globe (`drag` in `src/globe.ts`) follows `versorSetLocationAtPoint` and `panSurfaceLocation` in
   `globe_utils.ts`: the rotation from the last pointer to the new one, the eased curve near the edge of the globe, and
   the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the center

@@ -33,7 +33,7 @@ test('raster: raster-fade-duration is read, with the default 0 of the layer (the
     } finally { console.warn = warn; }
 });
 
-test('withFilter: a draw with nearest leaves the texture linear, and a linear draw changes nothing', () => {
+test('withFilter: a draw with nearest gives the texture back its usual filters, and a linear draw changes nothing', () => {
     const filter: Record<number, number> = {}, gl = {TEXTURE_2D: 1, TEXTURE_MIN_FILTER: 2, TEXTURE_MAG_FILTER: 3, LINEAR: 4, texParameteri: (_: number, k: number, v: number) => { filter[k] = v; }};
     let during: number[] = [];
     withFilter(gl as any, 5, () => { during = [filter[2], filter[3]]; });
@@ -42,4 +42,7 @@ test('withFilter: a draw with nearest leaves the texture linear, and a linear dr
     delete filter[2]; delete filter[3];
     withFilter(gl as any, 4, () => {});
     assert.deepEqual(filter, {});
+    // A raster tile with mipmaps gets back its filter for a smaller image (LINEAR_MIPMAP_NEAREST, #1713).
+    withFilter(gl as any, 5, () => {}, 9985);
+    assert.deepEqual([filter[2], filter[3]], [9985, 4]);
 });

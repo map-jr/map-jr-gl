@@ -912,7 +912,7 @@ export class Map {
                 if (!this.imageNames.has(e.name)) this.fire('styleimagemissing', {id: e.name});
             });
         }
-        else if (e.type === 'error') this.fire('error', {error: new Error(e.message)});
+        else if (e.type === 'error') this.fire('error', {error: new Error(e.message), ...e.source && {sourceId: e.source}});
     }
 
     // ---- events ----
@@ -1188,7 +1188,7 @@ export class Map {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
     }
 
-    private limits(keep?: boolean) { this.post({type: 'limits', keep, minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds, worldCopies: this.tr.worldCopies}); return this; }
+    private limits(keep?: boolean) { this.post({type: 'limits', keep, minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds, worldCopies: this.tr.worldCopies, aniso: this.tr.aniso}); return this; }
     /**
      * Sets whether copies of the world are drawn beside it, as in MapLibre GL JS. With `false`, the view stays inside
      * -180 to 180 degrees of longitude, no tiles of other copies are loaded or drawn, and markers and popups stay at the
@@ -1543,7 +1543,7 @@ export class Map {
     /** The `sky` of the style: `undefined` when the style has none, and `null` after `setSky(null)` removed it. */
     getSky(): Record<string, unknown> | null | undefined { return this.rawStyle?.sky; }
     /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
-    private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
+    private sourceFailed = (error: unknown) => { const sourceId = (error as {sourceId?: string})?.sourceId; this.fire('error', {error, ...sourceId && {sourceId}}); };
     /**
      * The JSON of a style: a copy of an object, or the answer of a URL. A style comes from another party: one without a
      * list of layers is an error here, before the map and the engine read the layers (#539).
