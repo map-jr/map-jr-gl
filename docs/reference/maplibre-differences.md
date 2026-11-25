@@ -254,8 +254,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### `Point`
 
-- MapLibre GL JS re-exports `Point` of `@mapbox/point-geometry`, with about 30 methods.
-- This library exports a smaller `Point` with `convert`, `clone`, `add`, `sub`, `mult`, `div`, `round`, `mag`, `dist` and `equals`. The other methods (for example `rotate`, `unit`, `angle`, `matMult`) do not exist.
+- MapLibre GL JS re-exports `Point` of `@mapbox/point-geometry`.
+- This library does the same: its `Point` has every method of `@mapbox/point-geometry` with the same results, including the methods that start with `_` and change the point.
 
 ### Private members that wrappers read
 
