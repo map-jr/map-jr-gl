@@ -138,9 +138,10 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   again.
 - **A run of merges cancels CI on `main`,** because each push cancels the run before it. After several merges, let
   one run on `main` finish before you merge more, and before a change that alters how every map starts.
-- **The `Browsers` workflow keeps one waiting run,** so a start by hand or a merge while another run waits cancels
-  the waiting one. Start the Safari run after the last merge of a series, once the run of that merge has started its
-  jobs, and merge nothing until it has finished (about 15 minutes).
+- **The `Browsers` workflow keeps one waiting run for each group,** and a newer run in the group replaces the waiting
+  one. Pushes to `main` and starts by hand with `safari` share one group, because they write `bench-results`. A start
+  by hand with `safari_only` has a group of its own (#1929), so merges go on while it runs, and no hold is needed.
+  Start it with `safari` only when you want the results of Safari in `bench-results`, after the last merge of a series.
 - **When a merged pull request did only a part of its issue,** edit the title and the body of the issue to what is
   left (the line "Left of the issue" of the report), or close it and file what is left, before the next worker starts.
 - **Do not send a worker to fight for bytes.** If a budget is reached, ask the owner at once.
@@ -260,8 +261,8 @@ alone cannot.
 - The log of one job: `gh api --allow-escape-sequences repos/map-jr/map-jr-gl/actions/jobs/<id>/logs >| file`. Without
   the option `gh` writes nothing, and the log of a run that is still in progress is not there yet.
 - `gh api -X PUT …/pulls/N/merge -f sha=` needs the full SHA of 40 characters.
-- A dispatch of the workflow `Browsers` cancels a run of it that waits, a push run of a merge included. Start it with
-  `-f safari=true` (all jobs and Safari), not with `safari_only`, when the results of the last merge are still wanted.
+- A dispatch of the workflow `Browsers` with `safari` (not `safari_only`) replaces a push run of it that waits, a push
+  run of a merge included. A dispatch with `safari_only` does not (#1929).
 - A branch that is checked out in the worktree of a worker that has ended is pushed from another worktree with
   `git push origin HEAD:<branch>`.
 - A command that writes the body of an issue into a file must succeed before `gh issue edit --body-file` reads it;
