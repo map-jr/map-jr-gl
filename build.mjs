@@ -47,7 +47,8 @@ mkdirSync('dist', {recursive: true});
 
 /**
  * Makes the shader programs smaller: the GLSL in src/gl.ts keeps its comments and layout in the source, but the built
- * files do not need them. Only whitespace and comments change, so the programs stay the same (scripts/minify-shaders.mjs).
+ * files do not need them. Whitespace and comments go, and a number loses the zeros it does not need (`1.0` is `1.`), so
+ * the programs stay the same (scripts/minify-shaders.mjs).
  */
 const shaders = {
     name: 'minify-shaders',
