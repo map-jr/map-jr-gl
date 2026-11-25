@@ -4289,9 +4289,9 @@ for (const mode of renderers) {
             if (real) delete navigator.geolocation;
             return {notAdded, triggered, events, onMap, warnings};
         });
-        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for showAccuracyCircle',
+        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and does not warn for showAccuracyCircle (#1721)',
             geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
-            && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option showAccuracyCircle'), JSON.stringify(geo));
+            && geo.warnings.length === 0, JSON.stringify(geo));
         // Without `zoom`, the control fits the position with fitBounds and all of fitBoundsOptions: maxZoom and padding (#677, #1722).
         const fit = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -4336,6 +4336,37 @@ for (const mode of renderers) {
         }, lib);
         check('[main] maplibre-compat: GeolocateControl fits an accuracy of 5000 m to the zoom of MapLibre GL JS',
             acc.ml.zoom < 15 && Math.abs(acc.jr.zoom - acc.ml.zoom) < 0.01 && Math.abs(acc.jr.lng - acc.ml.lng) < 1e-4 && Math.abs(acc.jr.lat - acc.ml.lat) < 1e-4, JSON.stringify(acc));
+        // The accuracy circle of trackUserLocation (#1721): an accuracy of 500 m at latitude 50 gives the diameter of MapLibre GL JS 6.17 at two zooms.
+        const circle = {};
+        for (const lib of ['ml', 'jr']) circle[lib] = await page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            let ok;
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition() {}, watchPosition: a => { ok = a; return 3; }, clearWatch() {}}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, ...(lib === 'jr' ? {renderer: 'main'} : {}), center: [3, 50], zoom: 12, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const gc = new mod.GeolocateControl({trackUserLocation: true, fitBoundsOptions: {maxZoom: 12, linear: true, duration: 0}});
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            const b = el.querySelector('button.maplibregl-ctrl-geolocate');
+            // One click: the tracking code loads on demand, and a second click before it has loaded turns tracking off again.
+            b.click();
+            for (let i = 0; i < 100 && !ok; i++) await new Promise(r => setTimeout(r, 20));
+            ok?.({coords: {longitude: 3, latitude: 50, accuracy: 500}, timestamp: 1});
+            const size = async z => {
+                m.jumpTo({center: [3, 50], zoom: z});
+                await new Promise(r => setTimeout(r, 50));
+                const c = el.querySelector('.maplibregl-user-location-accuracy-circle');
+                return c ? parseFloat(c.style.width) : 0;
+            };
+            const out = {called: !!ok, z12: await size(12), z14: await size(14), jrClass: !!el.querySelector('.map-jr-user-location-accuracy-circle')};
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return out;
+        }, lib);
+        check('[main] maplibre-compat: GeolocateControl with trackUserLocation draws the accuracy circle at the size of MapLibre GL JS at zooms 12 and 14 (#1721)',
+            circle.ml.z12 > 10 && Math.abs(circle.jr.z12 - circle.ml.z12) < 0.5 && Math.abs(circle.jr.z14 - circle.ml.z14) < 0.5 && circle.jr.z14 > 3 * circle.jr.z12 && circle.jr.jrClass, JSON.stringify(circle));
         // trackUserLocation (#42): the states and events of MapLibre GL JS 6.17, the dot, and clearWatch, with a mocked watchPosition.
         const track = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
