@@ -376,6 +376,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - MapLibre GL JS checks the types.
 - This library does not check the types. An expression that is not correct can give no error. This difference is a decision and will stay in the production build. Checks in the development build are possible later. `number-format` with a `locale` that is not text, or with a `locale`, a `currency`, a `unit` or a number of fraction digits that `Intl.NumberFormat` of the browser does not accept gives the number as plain text (`1234.5`), and each such expression writes one warning. A zoom-based `step` or `interpolate` that is nested in another expression, a second one in the same expression, and a `["zoom"]` that is not the input of one (for example `["/", ["zoom"], 10]`) are drawn as they read, where MapLibre GL JS rejects the style, or the call of `addLayer`, `setPaintProperty` or `setLayoutProperty`. The development build of `@map-jr/map-jr-gl` writes one warning for each such property, with the layer and the property. The development build of `@map-jr/map-jr-gl/maplibre-compat` fires `error` with the text of MapLibre GL JS (for example `layers.roads.paint.line-width: "zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.`), once for each layer, property and value, and keeps the style. The production builds of both entries say nothing.
+- `within` and `distance` give the results of MapLibre GL JS (the 58 fixtures of the style specification pass). Their code is a part of the worker, `map-jr-gl-worker-within.js`, which each tile worker loads once when the style of a map uses one of them; the tiles of that map wait for it. When the part does not load, the map writes one warning that names the file, and draws on with `false` for `within` and `NaN` for `distance`. A filter of `querySourceFeatures` or `queryRenderedFeatures` that uses one also loads the part.
 
 ### Style validation
 
@@ -516,24 +517,21 @@ Layers:
 
 Properties:
 
-- Circle stroke and blur that are different for each feature
 - `line-gap-width` that is different for each feature in the server renderer. Its SVG draws such a line as one solid stroke without a gap, and nothing warns. (A line with a constant gap is left out of the SVG.)
+- Circle stroke and blur in the server renderer. Its SVG (`renderToSVG`) gives every circle of a layer one `circle-stroke-color` and one `circle-stroke-width`: a data expression is evaluated for a feature without properties. The SVG does not apply `circle-stroke-opacity` or `circle-blur`, and it applies `circle-opacity` to the stroke, which MapLibre GL JS does not.
 - `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
-- `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
-- `text-writing-mode`
+- `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels. The development build of the main API warns one time for each layer that has it.
+- `text-writing-mode`. Text is always horizontal. The development build of the main API warns one time for each layer with `symbol-placement` `point` that has a value other than `["horizontal"]`, because MapLibre GL JS reads the property only at a point.
 - `text-pitch-alignment` and `icon-pitch-alignment` with `map` at a point are approximations. The symbol lies on the ground with the slant of the ground at its anchor, so a large symbol near the horizon is not as wide at its far edge as MapLibre GL JS draws it. Images inside text lie on the ground with their text. An icon with `icon-text-fit` faces the screen. The SVG output of the server renderer (`renderToSVG`) draws point text, icons and images inside text with `map` on the ground in the same way, and it draws images inside text. In the SVG, text along a line keeps its characters upright to the screen, and an icon with `icon-text-fit` faces the screen.
 - On a rotated icon, the four sides of `icon-padding` are added to the screen-aligned box of the rotated icon, and not before the rotation as in MapLibre GL JS. With no rotation, the box is the same as in MapLibre GL JS.
 - `symbol-z-order` sorts the symbols within each tile by the y of their anchor in the tile, turned with the map, as MapLibre GL JS does. The order is found at each placement (about four times a second while the map moves), so it can lag behind a map that rotates. Icons without text that always show (`icon-allow-overlap` with no `text-field`, at a point) keep their order while the map turns, and are sorted again in the first frame after the turn.
 - `symbol-avoid-edges` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each layer that has it.
 - The root property `centerAltitude` of a style has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each map whose style has it.
-- `symbol-height-offset`. The property is not read, and nothing warns.
-- `fill-extrusion-rounded-corner-distance`. The property is not read, and nothing warns: the corners of an extrusion are sharp.
+- `symbol-height-offset` and `symbol-height-anchor`. The properties are not read, so a symbol is placed on the ground. The development build of the main API warns one time for each layer with `symbol-placement` `point` and each property that has a value other than the default, because MapLibre GL JS reads the properties only at a point.
+- `fill-extrusion-rounded-corner-distance`. The property is not read, and the corners of an extrusion are sharp. The development build of the main API warns one time for each layer that has a value other than 0.
+- The source property `volatile` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each source that has `volatile: true`.
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
 - `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
-
-Expressions:
-
-- `within` and `distance`. Each writes one warning (`[map-jr-gl] Unsupported expression "within"`) and gives `null`, so a property takes its default value, and a filter that is `["within", ...]` alone lets no feature through.
 
 Layers that the server renderer does not draw:
 

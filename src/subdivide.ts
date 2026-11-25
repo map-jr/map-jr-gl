@@ -12,8 +12,11 @@
 import earcut from 'earcut';
 import {EXTENT} from './geo.ts';
 
-/** How a tile is built for the globe: cells a side, and whether the tile touches the north or south edge of the world. */
-export interface GlobeBuild { grid: number; north?: boolean; south?: boolean }
+/**
+ * How a tile is built for the globe: cells a side, whether the tile touches the north or south edge of the world, and
+ * whether a point of a heatmap is a grid of corners (see `tessellate`).
+ */
+export interface GlobeBuild { grid: number; north?: boolean; south?: boolean; heat?: boolean }
 
 /** The y values that stand for the poles. No other vertex of a cut fill has them: the cut keeps fills inside the tile. */
 export const NORTH_POLE = -32768, SOUTH_POLE = 32767;
@@ -27,11 +30,15 @@ export function globeGrid(tileZ: number, zoom = tileZ): number {
     return zoom >= 12 ? 0 : Math.min(128, Math.max(1, Math.round(40 * 2 ** (zoom / 2 - tileZ))));
 }
 
-/** The field `globe` of the request for a tile (`id`, built for `zoom`), or undefined when the tile needs no cut. */
+/**
+ * The field `globe` of the request for a tile (`id`, built for `zoom`), or undefined when the tile needs no cut. A point
+ * of a heatmap is a grid of corners below zoom 6 only: from there, the chord of one quad of the default radius (30
+ * pixels) lies less than 0.15 pixel under the sphere, and the grid would cost 6 times the buffers for nothing (#1824).
+ */
 export function globeBuild(id: {z: number; y: number}, zoom = id.z): GlobeBuild | undefined {
     const grid = globeGrid(id.z, zoom), north = id.y === 0, south = id.y === 2 ** id.z - 1;
     // (A tile with one cell is still cut at its border: see `BORDER`.)
-    return grid ? {grid, north, south} : undefined;
+    return grid ? {grid, north, south, heat: zoom < 6} : undefined;
 }
 
 /**

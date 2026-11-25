@@ -96,6 +96,7 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
         geojson: at('geojson', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-geojson.js?no-inline', import.meta.url)),
         dem: at('dem', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-dem.js?no-inline', import.meta.url)),
         pmtiles: at('pmtiles', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-pmtiles.js?no-inline', import.meta.url)),
+        within: at('within', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-within.js?no-inline', import.meta.url)),
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;
