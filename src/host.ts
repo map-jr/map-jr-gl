@@ -714,7 +714,8 @@ export interface MapInstance {
      * Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. The position is
      * where the line of sight through the point meets the ground (with 3D terrain, the nearest ground). Above the
      * horizon, the line of sight meets the plane of the map center behind the camera, and the result is that point, as
-     * in MapLibre GL JS.
+     * in MapLibre GL JS. With 3D terrain and a pitch above 90, a point above the horizon gives a position on the ground
+     * in view instead.
      * @param point The point, `{x, y}`.
      * @returns The position as `[lng, lat]`.
      */
