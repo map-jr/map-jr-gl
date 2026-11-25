@@ -173,7 +173,7 @@ THIS SOFTWARE.
 
 ## MapLibre style specification (@maplibre/maplibre-gl-style-spec)
 
-The type check of expressions of the development build (`src/expr-check.ts`) is a close translation of the type check of expressions of `@maplibre/maplibre-gl-style-spec` 26.6.0 (`checkSubtype` of `types.ts`, `parsing_context.ts` and the `parse` steps of the definitions of the expressions), changed: the names are shortened, the classes are functions, and it leaves out the evaluation. The part of the worker for `within` and `distance` (`src/within.ts`) is a close translation of the geometry tests of `geometry_util.ts`, `within.ts` and `distance.ts` of the same project, changed: the search by boxes of `distance` is left out, and the functions are shorter. Its license text is here for these reasons.
+The type check of expressions of the development build (`src/expr-check.ts`) is a close translation of the type check of expressions of `@maplibre/maplibre-gl-style-spec` 26.6.0 (`checkSubtype` of `types.ts`, `parsing_context.ts` and the `parse` steps of the definitions of the expressions), changed: the names are shortened, the classes are functions, and it leaves out the evaluation. The part of the worker for `within` and `distance` (`src/within.ts`) is a close translation of the geometry tests of `geometry_util.ts`, `within.ts` and `distance.ts` of the same project, changed: the search by boxes of `distance` is simpler (pieces of 32 segments), and the functions are shorter. Its license text is here for these reasons.
 
 ```
 Copyright (c) 2020, MapLibre contributors

@@ -1,9 +1,9 @@
 /**
  * The expressions `within` and `distance`: a part of the worker that loads on demand (parts.ts, #1707). It follows
  * MapLibre GL JS so that its results agree: it is a close translation, changed, of `within.ts`, `distance.ts` and
- * `geometry_util.ts` of maplibre-style-spec and of cheap-ruler for the distances (see ACKNOWLEDGEMENTS.md). The search of MapLibre GL JS that skips
- * parts of a long geometry by their boxes is left out: each pair of points and segments is compared, which gives the
- * same nearest distance.
+ * `geometry_util.ts` of maplibre-style-spec and of cheap-ruler for the distances (see ACKNOWLEDGEMENTS.md). Like the search by boxes of
+ * MapLibre GL JS, `distance` skips the pieces of two geometries whose boxes are farther apart than the nearest distance
+ * so far, which gives the same nearest distance.
  */
 import type {Feature} from './expr.ts';
 
@@ -114,7 +114,7 @@ export function within(g: unknown, f: GeoFeature | null, tile: TileId | undefine
 
 /** The distances of cheap-ruler, in meters, near one latitude. */
 class Ruler {
-    private kx: number; private ky: number;
+    kx: number; ky: number;
     constructor(lat: number) {
         const e2 = 1 / 298.257223563 * (2 - 1 / 298.257223563), m = Math.PI / 180 * 6378137, cos = Math.cos(lat * Math.PI / 180);
         const w2 = 1 / (1 - e2 * (1 - cos * cos)), w = Math.sqrt(w2);
@@ -141,19 +141,47 @@ class Ruler {
 
 const segToSeg = (p1: P, p2: P, q1: P, q2: P, r: Ruler) =>
     Math.min(r.toLine(p1, [q1, q2]), r.toLine(p2, [q1, q2]), r.toLine(q1, [p1, p2]), r.toLine(q2, [p1, p2]));
-/** The segments of a polygon, each ring closed. */
-function* edges(polygon: Ring[]): Generator<[P, P]> { for (const r of polygon) for (let j = 0, k = r.length - 1; j < r.length; k = j++) yield [r[k], r[j]]; }
 
 function pointsToPoints(a: Ring, b: Ring, r: Ruler) { let d = Infinity; for (const p of a) for (const q of b) d = Math.min(d, r.dist(p, q)); return d; }
 function pointsToLine(points: Ring, line: Ring, r: Ruler) { let d = Infinity; for (const p of points) d = Math.min(d, r.toLine(p, line)); return d; }
-function lineToLine(a: Ring, b: Ring, r: Ruler) {
+/**
+ * The nearest distance between the segments of two sets of lines (`closed`: each line is a ring, closed). The lines
+ * are cut into pieces of 32 segments with a box each, and a pair of pieces whose boxes are farther apart than the
+ * nearest distance so far is skipped, so that a long geometry does not compare every pair of segments.
+ */
+function linesToLines(a: Ring[], ac: boolean, b: Ring[], bc: boolean, r: Ruler) {
     let d = Infinity;
-    for (let i = 0; i < a.length - 1; i++) for (let j = 0; j < b.length - 1; j++) {
-        if (crosses(a[i], a[i + 1], b[j], b[j + 1])) return 0;
-        d = Math.min(d, segToSeg(a[i], a[i + 1], b[j], b[j + 1], r));
+    const pa = a.flatMap(l => pieces(l, ac)), pb = b.flatMap(l => pieces(l, bc));
+    for (const [la, sa, ea, ba] of pa) for (const [lb, sb, eb, bb] of pb) {
+        // (A gap of more than 180° can be shorter across the antimeridian: it skips nothing.)
+        const gx = Math.max(0, ba[0] - bb[2], bb[0] - ba[2]), dx = (gx > 180 ? 0 : gx) * r.kx, dy = Math.max(0, ba[1] - bb[3], bb[1] - ba[3]) * r.ky;
+        if (dx * dx + dy * dy >= d * d) continue;
+        for (let i = sa; i < ea; i++) for (let j = sb; j < eb; j++) {
+            const p1 = la[i], p2 = la[(i + 1) % la.length], q1 = lb[j], q2 = lb[(j + 1) % lb.length];
+            if (crosses(p1, p2, q1, q2)) return 0;
+            d = Math.min(d, segToSeg(p1, p2, q1, q2, r));
+        }
     }
     return d;
 }
+type Piece = [Ring, number, number, Box];
+const pieceCache = [new WeakMap<Ring, Piece[]>(), new WeakMap<Ring, Piece[]>()];
+/** The pieces of 32 segments of a line: the line, the first and the end segment, and the box. */
+function pieces(l: Ring, closed: boolean): Piece[] {
+    const cache = pieceCache[+closed];
+    let out = cache.get(l);
+    if (out) return out;
+    out = [];
+    const n = closed ? l.length : l.length - 1;
+    for (let s = 0; s < n; s += 32) {
+        const e = Math.min(s + 32, n), b = box();
+        for (let i = s; i <= e; i++) grow(b, l[i % l.length]);
+        out.push([l, s, e, b]);
+    }
+    cache.set(l, out);
+    return out;
+}
+const lineToLine = (a: Ring, b: Ring, r: Ruler) => linesToLines([a], false, [b], false, r);
 function pointToPolygon(p: P, polygon: Ring[], r: Ruler) {
     if (inPolygon(p, polygon, true)) return 0;
     let d = Infinity;
@@ -165,13 +193,10 @@ function pointToPolygon(p: P, polygon: Ring[], r: Ruler) {
     return d;
 }
 function lineToPolygon(line: Ring, polygon: Ring[], r: Ruler) {
-    for (const p of line) if (inPolygon(p, polygon, true)) return 0;
-    let d = Infinity;
-    for (let i = 0; i < line.length - 1; i++) for (const [q1, q2] of edges(polygon)) {
-        if (crosses(line[i], line[i + 1], q1, q2)) return 0;
-        d = Math.min(d, segToSeg(line[i], line[i + 1], q1, q2, r));
-    }
-    return d;
+    const b = box();
+    for (const ring of polygon) for (const p of ring) grow(b, p);
+    for (const p of line) if (p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3] && inPolygon(p, polygon, true)) return 0;
+    return linesToLines([line], false, polygon, true, r);
 }
 const someIn = (a: Ring[], b: Ring[]) => a.some(ring => ring.some(p => inPolygon(p, b, true)));
 function polygonToPolygon(a: Ring[], b: Ring[], r: Ruler) {
@@ -179,12 +204,7 @@ function polygonToPolygon(a: Ring[], b: Ring[], r: Ruler) {
     for (const ring of a) for (const p of ring) grow(ba, p);
     for (const ring of b) for (const p of ring) grow(bb, p);
     if (boxInBox(ba, bb) ? someIn(a, b) : someIn(b, a)) return 0;
-    let d = Infinity;
-    for (const [p1, p2] of edges(a)) for (const [q1, q2] of edges(b)) {
-        if (crosses(p1, p2, q1, q2)) return 0;
-        d = Math.min(d, segToSeg(p1, p2, q1, q2, r));
-    }
-    return d;
+    return linesToLines(a, true, b, true, r);
 }
 
 type Simple = {type: 'Point'; c: Ring} | {type: 'LineString'; c: Ring} | {type: 'Polygon'; c: Ring[]};
@@ -243,11 +263,19 @@ export function distance(g: unknown, f: GeoFeature | null, tile: TileId | undefi
         }
         return d;
     }
-    const pts = raw.flat().map(([x, y]) => toLngLat(x, y, tile)), r = new Ruler(pts[0][1]), line = f.type === 2;
+    if (f.type === 2) {
+        // Each line of a multi-line feature on its own: the end of one does not join the start of the next.
+        const lines = raw.map(ll), r = new Ruler(lines[0][0][1]);
+        for (const s of geoms) for (const l of lines) {
+            d = Math.min(d, s.type === 'Point' ? pointsToLine(s.c, l, r) : s.type === 'LineString' ? lineToLine(l, s.c, r) : lineToPolygon(l, s.c, r));
+            if (d === 0) return 0;
+        }
+        return d;
+    }
+    const pts = raw.flat().map(([x, y]) => toLngLat(x, y, tile)), r = new Ruler(pts[0][1]);
     for (const s of geoms) {
-        if (s.type === 'Point') d = Math.min(d, line ? pointsToLine(s.c, pts, r) : pointsToPoints(pts, s.c, r));
-        else if (s.type === 'LineString') d = Math.min(d, line ? lineToLine(pts, s.c, r) : pointsToLine(pts, s.c, r));
-        else if (line) d = Math.min(d, lineToPolygon(pts, s.c, r));
+        if (s.type === 'Point') d = Math.min(d, pointsToPoints(pts, s.c, r));
+        else if (s.type === 'LineString') d = Math.min(d, pointsToLine(pts, s.c, r));
         else for (const p of pts) d = Math.min(d, pointToPolygon(p, s.c, r));
         if (d === 0) return 0;
     }
