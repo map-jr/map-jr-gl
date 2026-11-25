@@ -6293,6 +6293,49 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     } catch (e) { check('[main] 3D terrain: the checks of the camera above the ground ran (#1480)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// 3D terrain: getBounds at a high pitch has the far ground at the top of the screen, as in MapLibre GL JS 6.17 (served at
+// /ml/), which takes the top edge at the horizon on the plane of the map center (#898). Both maps look over a mountain.
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const bounds = lib => page.evaluate(async ([lib]) => {
+        const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+        if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+        // A mountain 3000 m high with a radius of 8 km, 2 km north of the center.
+        const heightAt = (lng, lat) => Math.max(0, 3000 * (1 - Math.hypot(lng * 111320, (lat - 0.018) * 110540) / 8000));
+        try { mod.removeProtocol('dem898'); } catch { /* not added yet */ }
+        mod.addProtocol('dem898', async request => {
+            const [z, x, y] = request.url.slice(9).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(256, 256), g = c.getContext('2d'), img = g.createImageData(256, 256);
+            for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+                const mx = (x + (i + 0.5) / 256) / n, my = (y + (j + 0.5) / 256) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                const v = heightAt(mx * 360 - 180, lat) + 32768, k = (j * 256 + i) * 4;
+                img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+            }
+            g.putImageData(img, 0, 0);
+            return {data: await (await c.convertToBlob()).arrayBuffer()};
+        });
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9'}));
+        const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem898://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: 14}},
+            layers: [{id: 'bg', type: 'background', paint: {'background-color': '#9c9'}}], terrain: {source: 'dem', exaggeration: 1}};
+        const m = new mod.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 13, pitch: 0, maxPitch: 85, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const out = [];
+        for (const pitch of [60, 85]) {
+            m.jumpTo({pitch});
+            await new Promise(r => { const t = setTimeout(r, 4000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
+            out.push(m.getBounds().toArray().flat().map(v => +v.toFixed(4)));
+        }
+        m.remove(); el.remove();
+        return out;
+    }, [lib]);
+    try {
+        const ours = await bounds('ours'), ml = await bounds('ml');
+        const off = Math.max(...ours.flat().map((v, i) => Math.abs(v - ml.flat()[i])));
+        check('[main] 3D terrain: getBounds at pitch 60 and 85 over a mountain gives the box of MapLibre GL JS 6.17 within 0.01° (#898)', off < 0.01, JSON.stringify({ours, ml}));
+    } catch (e) { check('[main] 3D terrain: the check of getBounds at a high pitch ran (#898)', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer
 // after 1.5 s, which is more than the half second for which an incomplete picture held `idle` back before. One tile
 // fails, and `idle` still comes.
