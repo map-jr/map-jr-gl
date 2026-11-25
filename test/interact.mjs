@@ -244,6 +244,26 @@ for (const mode of renderers) {
             return {front, back, said: said.filter(w => w.includes('globe'))};
         }, mode);
         check(`[${mode}] the globe: a fill-extrusion layer draws at zoom 4 without a warning, and not on the far side (#1429)`, towers.front > 2000 && towers.back === 0 && towers.said.length === 0, JSON.stringify(towers));
+        // On the globe at a pitch, queryRenderedFeatures finds an icon moved by `icon-translate` where it is drawn: the point
+        // moved in tile units, as in MapLibre GL JS (#1822). The place of a move in screen pixels is 27 pixels further down.
+        const moved = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60'}));
+            const style = {version: 8, projection: {type: 'globe'}, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 45]}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}, {id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'sq', 'icon-allow-overlap': true}, paint: {'icon-translate': [0, 60]}}]};
+            const map = new mod.Map({container: el, style, center: [10, 45], zoom: 5, pitch: 60, renderer, attributionControl: false});
+            map.addImage('sq', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).map((_, i) => i % 4 === 0 ? 0 : 255)});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const bmp = await createImageBitmap(await map.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data, k = bmp.width / 400;
+            let sx = 0, sy = 0, n = 0;
+            for (let i = 0; i < d.length; i += 4) if (d[i] < 60 && d[i + 2] > 200) { sx += (i / 4) % bmp.width; sy += Math.floor(i / 4 / bmp.width); n++; }
+            const x = sx / n / k, y = sy / n / k, found = async (px, py) => (await map.queryRenderedFeatures([[px - 2, py - 2], [px + 2, py + 2]], {layers: ['i']})).length;
+            const result = {drawn: [Math.round(x), Math.round(y)], atDrawn: await found(x, y), atScreen: await found(200, 260)};
+            map.remove(); el.remove();
+            return result;
+        }, mode);
+        check(`[${mode}] the globe: queryRenderedFeatures finds an icon moved by icon-translate where it is drawn (#1822)`, moved.drawn[1] > 220 && moved.drawn[1] < 245 && moved.atDrawn === 1 && moved.atScreen === 0, JSON.stringify(moved));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();

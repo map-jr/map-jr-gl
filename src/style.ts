@@ -237,6 +237,18 @@ export const LIGHTS = 8;
 const LIGHT_PROPS = ['direction', 'altitude', 'shadow', 'highlight'], HILLSHADE_METHODS = ['standard', 'combined', 'igor', 'multidirectional', 'basic'];
 
 /**
+ * A `*-translate` in pixels along the axes of the map (x east, y south), as MapLibre GL JS's translatePosition has it
+ * before it divides by the size of a tile unit. With the anchor `viewport` the direction turns against the bearing, so
+ * that it stays fixed on the screen. The globe moves the point by this many tile units before it projects it.
+ */
+export function mapTranslate(t: unknown, anchor: unknown, bearing: number): [number, number] {
+    const [x = 0, y = 0] = (Array.isArray(t) ? t : []) as number[];
+    if (anchor !== 'viewport' || !bearing || !(x || y)) return [x, y];
+    const a = bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    return [x * c - y * s, x * s + y * c];
+}
+
+/**
  * A `*-translate` in pixels of the screen. With the anchor `map` (the default) the direction turns with the bearing of
  * the map, and with `viewport` it stays fixed on the screen. A pitch does not change the result.
  */
