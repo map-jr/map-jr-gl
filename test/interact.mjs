@@ -3480,8 +3480,9 @@ for (const mode of renderers) {
             if (proto) proto.texImage2D = function (...a) { if (a[a.length - 1] instanceof ImageBitmap) g.count2068.sent++; return tex.apply(this, a); };
             g.undo2068 = () => { g.createImageBitmap = cib; if (proto) proto.texImage2D = tex; };
         };
-        const threads = [page, ...page.workers()];
-        await Promise.all(threads.map(t => t.evaluate(hook)));
+        // (`page.workers()` still lists the workers of maps that earlier checks removed, and one can close before or while
+        // it is hooked: a thread that cannot be hooked is left out, and the page and the workers of this map remain.)
+        const threads = (await Promise.all([page, ...page.workers()].map(t => t.evaluate(hook).then(() => t, () => null)))).filter(Boolean);
         const idle2068 = await page.evaluate(() => new Promise(r => { const m = window.m2068; m.once('idle', () => r(true)); setTimeout(() => r(false), 10000); m.jumpTo({zoom: 3}); }));
         const counts = await Promise.all(threads.map(t => t.evaluate(() => { const c = globalThis.count2068; globalThis.undo2068(); return c; }).catch(() => null)));
         await page.evaluate(() => { const m = window.m2068; m.getContainer().remove(); m.remove(); });
