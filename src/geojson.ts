@@ -19,6 +19,8 @@ interface Prepared {
      * after the last vertex the length of the line or the area of the ring.
      */
     keep?: Float64Array[];
+    /** For a line, made when a tile first needs `line-progress`: the distance along the full line at each vertex, as geojson-vt measures it. */
+    dist?: Float64Array[];
 }
 export interface SlicedFeature {
     type: number; id?: number | string; properties: Record<string, any>;
@@ -230,6 +232,13 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
     return out;
 }
 
+/** The distance from the start of a line to each of its vertices. */
+function lengths(r: Float64Array): Float64Array {
+    const out = new Float64Array(r.length / 2);
+    for (let i = 2; i < r.length; i += 2) out[i / 2] = out[i / 2 - 1] + Math.hypot(r[i] - r[i - 2], r[i + 1] - r[i - 1]);
+    return out;
+}
+
 /** Clips a polygon ring to a rectangle (Sutherland-Hodgman). */
 function clipRing(pts: number[], lo: number, hi: number): number[] {
     for (const [axis, bound, keepBelow] of [[0, lo, false], [0, hi, true], [1, lo, false], [1, hi, true]] as const) {
@@ -249,19 +258,23 @@ function clipRing(pts: number[], lo: number, hi: number): number[] {
     return pts;
 }
 
-/** Clips a line to a rectangle, returning the pieces that fall inside. */
-function clipLine(pts: number[], lo: number, hi: number, ranges?: number[]): number[][] {
+/**
+ * Clips a line to a rectangle, returning the pieces that fall inside. With `skip`, a vertex that it marks is left out
+ * after the clip, unless a piece starts there: the line is clipped before it is simplified, as in geojson-vt.
+ */
+function clipLine(pts: number[], lo: number, hi: number, ranges?: number[], dist?: Float64Array, skip?: boolean[]): number[][] {
     const pieces: number[][] = [];
-    let cur: number[] = [], from = 0, to = 0, done = 0;
-    /** Ends a piece; `ranges` receives the distances along the whole line where it starts and ends. */
+    let cur: number[] = [], from = 0, to = 0;
+    /** Ends a piece; `ranges` receives the distances along the full line (`dist` at each point) where it starts and ends. */
     const push = () => { pieces.push(cur); ranges?.push(from, to); cur = []; };
     for (let i = 0; i + 3 < pts.length; i += 2) {
         let x0 = pts[i], y0 = pts[i + 1], x1 = pts[i + 2], y1 = pts[i + 3], t0 = 0, t1 = 1;
-        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy), before = done;
-        done += len;
-        let visible = true;
+        const dx = x1 - x0, dy = y1 - y0, before = dist ? dist[i / 2] : 0, len = dist ? dist[i / 2 + 1] - before : 0;
+        // (A segment that lies past one edge is left out at once: a long line has many of them in each tile.)
+        let visible = !(x0 < lo && x1 < lo || x0 > hi && x1 > hi || y0 < lo && y1 < lo || y0 > hi && y1 > hi);
         // Liang-Barsky: narrow the visible parameter range against each edge.
-        for (const [p, q] of [[-dx, x0 - lo], [dx, hi - x0], [-dy, y0 - lo], [dy, hi - y0]]) {
+        if (visible) for (let e = 0; e < 4; e++) {
+            const v = e & 2 ? y0 : x0, p = (e & 2 ? dy : dx) * (e & 1 ? 1 : -1), q = e & 1 ? hi - v : v - lo;
             if (p === 0) { if (q < 0) visible = false; } else {
                 const r = q / p;
                 if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
@@ -270,7 +283,8 @@ function clipLine(pts: number[], lo: number, hi: number, ranges?: number[]): num
         if (!visible || t0 > t1) { if (cur.length) push(); continue; }
         const ax = x0 + dx * t0, ay = y0 + dy * t0, bx = x0 + dx * t1, by = y0 + dy * t1;
         if (!cur.length || t0 > 0) { if (cur.length) push(); cur = [ax, ay]; from = before + len * t0; }
-        cur.push(bx, by);
+        const m = cur.length;
+        if (t1 < 1 || !skip?.[i / 2 + 1] && (bx !== cur[m - 2] || by !== cur[m - 1])) cur.push(bx, by);
         to = before + len * t1;
         if (t1 < 1) push();
     }
@@ -303,16 +317,19 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
             const r = f.rings[ri], keep = f.keep?.[ri];
             if (keep && keep[r.length / 2] < (f.type === 3 ? sqTol : Math.sqrt(sqTol))) continue;
             let pts: number[] = [];
+            // With `lineMetrics`, the distance along the full line at each vertex, so that `line-progress` does not
+            // depend on simplification (#1890). Such a line keeps every vertex until it is clipped.
+            const d = f.type === 2 && metrics ? (f.dist ??= [])[ri] ??= lengths(r) : null, skip: boolean[] = [];
             for (let i = 0; i < r.length; i += 2) {
-                if (keep && keep[i / 2] <= sqTol) continue;
+                const drop = !!keep && keep[i / 2] <= sqTol;
+                if (drop && !d) continue;
                 const tx = Math.round(((r[i] + w) * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
-                if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
+                if (d) pts.push(tx, ty), skip.push(drop);
+                else if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
             }
-            if (f.type === 2 && metrics) {
+            if (d) {
                 // Each piece is a feature of its own that knows which part of the line it is, as in MapLibre.
-                const ranges: number[] = [], pieces = clipLine(pts, -BUFFER, EXTENT + BUFFER, ranges);
-                let total = 0;
-                for (let i = 0; i + 3 < pts.length; i += 2) total += Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1]);
+                const ranges: number[] = [], pieces = clipLine(pts, -BUFFER, EXTENT + BUFFER, ranges, d, skip), total = d[d.length - 1];
                 pieces.forEach((p, i) => feature([p], {...f.properties, mapbox_clip_start: ranges[i * 2] / total, mapbox_clip_end: ranges[i * 2 + 1] / total}));
                 continue;
             }
