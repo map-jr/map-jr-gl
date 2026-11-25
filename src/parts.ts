@@ -1,5 +1,5 @@
 /**
- * The parts of the tile code that only some maps need (#79). In the worker file they are files of their own
+ * The parts of the worker code that only some maps need (#79; the globe, #2006). In the worker file they are files of their own
  * (`map-jr-gl-worker-<name>.js`), which the worker loads when a map needs one (see `fromUrl` in worker.ts). On the
  * page they are chunks that load on demand, and the built files that contain everything (the server renderer, the
  * worker inside the standalone build) import them (the plugin `all-in-one` of build.mjs).
@@ -12,6 +12,7 @@ export interface Parts {
     dem: typeof import('./dem.ts');
     pmtiles: typeof import('./pmtiles.ts');
     within: typeof import('./within.ts');
+    globe: typeof import('./globe.ts');
 }
 export type PartName = keyof Parts;
 
@@ -20,6 +21,7 @@ const loaders: {[K in PartName]: () => Promise<Parts[K]>} = {
     dem: () => import('./dem.ts'),
     pmtiles: () => import('./pmtiles.ts'),
     within: () => import('./within.ts'),
+    globe: () => import('./globe.ts'),
 };
 
 /** How this thread loads a part. The worker file replaces it with a loader from URLs. */
