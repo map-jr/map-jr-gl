@@ -7,7 +7,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleTouches, pitchedCircles, type QueriedFeature, type QuerySet} from './query.ts';
@@ -87,7 +87,9 @@ export type Command =
     | {type: 'tileLoads'; on: boolean}
     /** The compat entry, with the engine on the main thread: draws its custom layers (custom-layers.ts). The answer is the WebGL context. */
     | {type: 'custom'; id: number; draw: GLRenderer['custom']}
-    | {type: 'bound'; id: number; fn: ((tr: Transform) => void) | null};
+    | {type: 'bound'; id: number; fn: ((tr: Transform) => void) | null}
+    /** A function that changes the camera before each frame (`setTransformCameraUpdate` of the compat entry; main thread only). */
+    | {type: 'cameraUpdate'; fn: ((tr: Transform) => void) | null};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the center with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean;
         /** During a drag: the ground that it grabbed, and the number of the command that grabbed it (#38). */
@@ -158,7 +160,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -650,7 +652,8 @@ export class Engine {
         this.states.g = style.state ?? {};
         compileFor(this.states);
         const olds = new Map(this.layers.map(l => [l.id, l])), at = performance.now();
-        this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
+        // (`rasterFade`: the `raster-fade-duration` of a raster layer that gives none, 300 ms in the compat entry and 0 in the main entry.)
+        this.layers = style.layers.map(l => compileLayer(style.rasterFade && l.type === 'raster' && l.paint?.['raster-fade-duration'] === undefined ? {...l, paint: {...l.paint, 'raster-fade-duration': style.rasterFade}} : l)).filter((l): l is CompiledLayer => !!l);
         // (The page names in the attribution only the sources that a visible layer uses, #1032.)
         this.emit({type: 'hidden', layers: this.layers.filter(l => !l.visible).map(l => l.id)});
         // (A changed paint value of a layer that stays moves to the new value over its transition, #960.)
@@ -995,6 +998,7 @@ export class Engine {
             case 'tileReport': this.tap = c.on; return;
             case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;
+            case 'cameraUpdate': this.cameraUpdate = c.fn; break;
             case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
         this.repaint();
@@ -1091,6 +1095,9 @@ export class Engine {
                     const d = [t.box[0] - t.x, t.box[1] - t.y, t.box[2] - t.x, t.box[3] - t.y];
                     reach = reach ? [Math.min(reach[0], d[0]), Math.min(reach[1], d[1]), Math.max(reach[2], d[2]), Math.max(reach[3], d[3])] : [d[0], d[1], d[2], d[3]];
                 }
+                // (A symbol layer with no icon and no shown text is still tested with `underIcon`, so that a line whose
+                // label is hidden is not found along its geometry: #1916.)
+                if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
                 if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
                 const circle = circles.get(s.layer) === s;
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : c.box, key = box.join();
@@ -1101,7 +1108,7 @@ export class Engine {
             for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
-                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale})),
+                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, circle: s.circle && s.radius ? {...s.circle, scale: t.scale} : undefined})),
                 }));
             }
         }
@@ -1344,6 +1351,7 @@ export class Engine {
             if (this.tellLoads) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
+            t.at = performance.now();
             t.rev = ++this.tilesVersion;
             this.freshTiles.set(id.key, performance.now());
             // (A tile of the overview that no frame has drawn yet changes nothing in the image. From now on it ages like any other tile.)
@@ -1445,6 +1453,7 @@ export class Engine {
 
     private stats = {since: 0, frames: 0, cpu: 0};
 
+    private cameraUpdate: ((tr: Transform) => void) | null = null;
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
@@ -1469,6 +1478,8 @@ export class Engine {
         this.frameTime = began;
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), animating = cameraAnimating;
+        // (As in MapLibre GL JS, the camera that the function returns is the one that the frame draws, #1711.)
+        if (this.cameraUpdate) try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
         this.flushUploads(this.wentIdle && (cameraAnimating || began - this.cameraMovedAt < 200));
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
@@ -1666,7 +1677,7 @@ export class Engine {
                     if (!t) { this.request(source, id, key); const made = this.tiles.get(key); if (made) { made.used = -1; this.early.add(key); } } else if (t.state !== 'loading') t.used = frameNo;
                 }
             }
-            const list = renderItems(tr, ideal, k => {
+            const get = (k: string) => {
                 const t = this.tiles.get(source + '|' + k);
                 if (t?.state !== 'ok' || t.missing) return undefined;
                 t.used = frameNo;
@@ -1677,7 +1688,11 @@ export class Engine {
                     this.rebuild(source, {z, x, y, w: 0, key: k}, source + '|' + k, t);
                 }
                 return t.gl;
-            });
+            };
+            let list = renderItems(tr, ideal, get);
+            let fade = 0;
+            for (const l of this.layers) if (l.type === 'raster' && l.source === source && l.visible) fade = Math.max(fade, l.p.fadeDuration.eval(tr.zoom));
+            if (fade > 0) list = this.fadeIn(tr, source, ideal, list, get, fade);
             items.set(source, list);
             all.push(...list);
         }
@@ -2003,6 +2018,31 @@ export class Engine {
      * before the labels of that layer and of the layers below it, and after the labels of the layers above it, as for
      * an icon that is placed.
      */
+    /**
+     * Marks the raster tiles of the view that arrived less than `fade` ms ago, as MapLibre GL JS 6.17 does with
+     * `raster-fade-duration`: a tile with a loaded parent or loaded children fades in over them (they are drawn below it
+     * with `under`), and a tile at the edge of the view with none fades in over nothing. Another tile shows at once.
+     */
+    private fadeIn(tr: Transform, source: string, ideal: TileID[], list: RenderItem<GLTile>[], get: (k: string) => GLTile | undefined, fade: number) {
+        const keys = new Set(ideal.map(id => id.key)), now = performance.now(), out: RenderItem<GLTile>[] = [];
+        // The edge: the tiles in the first or last row or column of the view, measured at the deepest level (MapLibre's getEdgeTiles).
+        const z = Math.max(...ideal.map(id => id.z)), at = (id: TileID) => [(id.x + id.w * 2 ** id.z) * 2 ** (z - id.z), id.y * 2 ** (z - id.z)];
+        const xs = ideal.map(id => at(id)[0]), ys = ideal.map(id => at(id)[1]);
+        const edge = (id: TileID) => { const [x, y] = at(id); return x === Math.min(...xs) || x === Math.max(...xs) || y === Math.min(...ys) || y === Math.max(...ys); };
+        for (const it of list) {
+            const t = keys.has(it.id.key) && it.clip === FULL_CLIP ? this.tiles.get(source + '|' + it.id.key) : undefined;
+            if (t?.at && now - t.at < fade) {
+                const below = renderItems(tr, [it.id], k => k === it.id.key ? undefined : get(k));
+                if (below.length || edge(it.id)) {
+                    for (const b of below) { b.under = true; out.push(b); }
+                    it.born = t.at;
+                }
+            }
+            out.push(it);
+        }
+        return out;
+    }
+
     private reserve(grid: CollisionGrid, items: Map<string, RenderItem<GLTile>[]>, only: CompiledLayer) {
         const tr = this.tr;
         const zoom = tr.zoom;

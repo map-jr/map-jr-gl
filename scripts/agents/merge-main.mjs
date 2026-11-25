@@ -15,10 +15,20 @@
 //   - test/conformance/render-tests.json takes, for each test, the line that one side changed (#1915). Two branches that
 //     move tests on adjacent lines conflict in git, but not here. A test that both sides changed to different statuses
 //     is left for a person;
-//   - test/conformance/render-result.json, which main no longer has, is removed.
+//   - test/conformance/render-result.json, which main no longer has, is removed;
+//   - in package.json, a conflict of only the line of the script "test:render" takes the line of main: a branch from
+//     before #1915 raised the floor `--min=N` there, which main no longer has.
 // When that resolves every conflict, it commits the merge. Any other conflict stops it with a list of the files, and
 // the merge stays in progress for you to finish by hand (`git merge --abort` undoes it).
-import {execFileSync} from 'node:child_process';
+//
+// It merges with the logic of main (#1928): after the fetch, when the copy of this script on main differs from the copy
+// that runs, it runs the copy of main instead (from its standard input, in this checkout). A branch whose copy is older
+// than that runs the copy of main in the same way by hand:
+//
+//   git fetch origin main && git show origin/main:scripts/agents/merge-main.mjs | MERGE_MAIN_RUN=1 node --input-type=module -
+//
+// For that reason the script imports only modules of Node.js, and it finds the checkout by the working directory.
+import {execFileSync, spawnSync} from 'node:child_process';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
@@ -79,13 +89,47 @@ export function mergeRenderTests(base, ours, theirs) {
     return '{\n' + ids.map(id => `${JSON.stringify(id)}: ${JSON.stringify(out[id])}`).join(',\n') + '\n}\n';
 }
 
+/**
+ * Resolves the conflicts of package.json that are only the line of the script "test:render", by taking the line of main.
+ * It returns the text, or null when another conflict is left.
+ */
+export function resolvePackageJson(text) {
+    const lines = text.split('\n'), out = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].startsWith('<<<<<<< ')) { out.push(lines[i]); continue; }
+        const sides = {ours: [], base: [], theirs: []};
+        let j = i + 1, part = 'ours';
+        for (; j < lines.length && !lines[j].startsWith('>>>>>>> '); j++) {
+            if (lines[j].startsWith('||||||| ')) part = 'base';
+            else if (lines[j] === '=======') part = 'theirs';
+            else sides[part].push(lines[j]);
+        }
+        const only = side => side.length === 1 && /^\s*"test:render": /.test(side[0]);
+        if (j === lines.length || !only(sides.ours) || !only(sides.theirs)) return null;
+        out.push(sides.theirs[0]);
+        i = j;
+    }
+    return out.join('\n');
+}
+
 async function main() {
-    const root = fileURLToPath(new URL('../../', import.meta.url));
+    if (process.argv.includes('--help')) { console.log('node scripts/agents/merge-main.mjs [--from=<branch>]'); return; }
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {encoding: 'utf8'}).trim() + '/';
     const git = (...args) => execFileSync('git', args, {cwd: root, encoding: 'utf8'});
     const tryGit = (...args) => { try { git(...args); return true; } catch { return false; } };
     if (git('status', '--porcelain', '--untracked-files=no').trim()) { console.error('[merge-main] The working tree has changes. Commit them first.'); process.exit(2); }
     const from = process.argv.find(a => a.startsWith('--from='))?.slice(7) ?? 'origin/main';
     if (from === 'origin/main') git('fetch', 'origin', 'main');
+    // The copy of main merges (#1928). It runs from its standard input, so that it is the same code whatever this branch has.
+    if (!process.env.MERGE_MAIN_RUN) {
+        let copy = '';
+        try { copy = git('show', `${from}:scripts/agents/merge-main.mjs`); } catch { /* main has no copy */ }
+        if (copy && copy !== readFileSync(fileURLToPath(import.meta.url), 'utf8')) {
+            console.log(`[merge-main] Running the copy of this script that ${from} has.`);
+            const r = spawnSync(process.execPath, ['--input-type=module', '-', ...process.argv.slice(2)], {cwd: root, input: copy, stdio: ['pipe', 'inherit', 'inherit'], env: {...process.env, MERGE_MAIN_RUN: '1'}});
+            process.exit(r.status ?? 1);
+        }
+    }
     const head = git('rev-parse', 'HEAD');
     if (tryGit('merge', '--no-edit', from)) { console.log(`[merge-main] ${git('rev-parse', 'HEAD') === head ? 'Already up to date with' : 'Merged with no conflict:'} ${from}.`); return; }
     const conflicts = git('diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
@@ -102,6 +146,11 @@ async function main() {
             }
             writeFileSync(root + file, merged);
         }
+        else if (file === 'package.json') {
+            const text = resolvePackageJson(readFileSync(root + file, 'utf8'));
+            if (text === null) { left.push(file); continue; }
+            writeFileSync(root + file, text);
+        }
         else if (file.endsWith('.md')) {
             const r = resolveBlocks(readFileSync(root + file, 'utf8'));
             if (!r) { left.push(file); continue; }
@@ -113,7 +162,7 @@ async function main() {
             }
         } else { left.push(file); continue; }
         git('add', '--', file);
-        console.log(`[merge-main] Resolved the generated file ${file}.`);
+        console.log(`[merge-main] Resolved the conflicts of ${file}.`);
     }
     if (left.length) {
         console.error(`[merge-main] These files have conflicts outside generated blocks. Resolve them, then \`git add\` them and \`git commit --no-edit\` (or \`git merge --abort\`):\n${left.map(f => '  ' + f).join('\n')}`);
@@ -132,4 +181,5 @@ async function main() {
     console.log('[merge-main] Check that `git diff origin/main...HEAD -- src` has only your lines.');
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
+// MERGE_MAIN_RUN: the code comes from standard input, where `process.argv[1]` is not a file.
+if (process.env.MERGE_MAIN_RUN || process.argv[1] === fileURLToPath(import.meta.url)) await main();

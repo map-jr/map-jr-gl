@@ -85,22 +85,56 @@ declare const __VERSION__: string; // the version of package.json, set by the bu
 declare const __DEV__: boolean;
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
 type EventData = Record<string, unknown>;
+type XY = {x: number; y: number};
 /**
- * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports. It has the methods that
- * applications use most; see docs/reference/maplibre-differences.md for the list.
+ * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports, with all of its methods.
+ * A method whose name starts with `_` changes the point and returns it; the others return a new point.
  */
 export class Point {
     constructor(public x: number, public y: number) {}
-    static convert(p: Point | [number, number] | {x: number; y: number}) { return p instanceof Point ? p : Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.x, p.y); }
+    static convert(p: Point | [number, number] | XY) {
+        if (p instanceof Point) return p;
+        if (Array.isArray(p)) return new Point(+p[0], +p[1]);
+        if (p.x !== undefined && p.y !== undefined) return new Point(+p.x, +p.y);
+        throw new Error('Expected [x, y] or {x, y} point format');
+    }
     clone() { return new Point(this.x, this.y); }
-    add(p: {x: number; y: number}) { return new Point(this.x + p.x, this.y + p.y); }
-    sub(p: {x: number; y: number}) { return new Point(this.x - p.x, this.y - p.y); }
-    mult(k: number) { return new Point(this.x * k, this.y * k); }
-    div(k: number) { return new Point(this.x / k, this.y / k); }
-    round() { return new Point(Math.round(this.x), Math.round(this.y)); }
-    mag() { return Math.hypot(this.x, this.y); }
-    dist(p: {x: number; y: number}) { return Math.hypot(this.x - p.x, this.y - p.y); }
-    equals(p: {x: number; y: number}) { return this.x === p.x && this.y === p.y; }
+    add(p: XY) { return this.clone()._add(p); }
+    sub(p: XY) { return this.clone()._sub(p); }
+    multByPoint(p: XY) { return this.clone()._multByPoint(p); }
+    divByPoint(p: XY) { return this.clone()._divByPoint(p); }
+    mult(k: number) { return this.clone()._mult(k); }
+    div(k: number) { return this.clone()._div(k); }
+    rotate(a: number) { return this.clone()._rotate(a); }
+    rotateAround(a: number, p: XY) { return this.clone()._rotateAround(a, p); }
+    matMult(m: number[]) { return this.clone()._matMult(m); }
+    unit() { return this.clone()._unit(); }
+    perp() { return this.clone()._perp(); }
+    round() { return this.clone()._round(); }
+    mag() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+    equals(p: XY) { return this.x === p.x && this.y === p.y; }
+    dist(p: XY) { return Math.sqrt(this.distSqr(p)); }
+    distSqr(p: XY) { const dx = p.x - this.x, dy = p.y - this.y; return dx * dx + dy * dy; }
+    angle() { return Math.atan2(this.y, this.x); }
+    angleTo(b: XY) { return Math.atan2(this.y - b.y, this.x - b.x); }
+    angleWith(b: XY) { return this.angleWithSep(b.x, b.y); }
+    angleWithSep(x: number, y: number) { return Math.atan2(this.x * y - this.y * x, this.x * x + this.y * y); }
+    private set(x: number, y: number) { this.x = x; this.y = y; return this; }
+    _matMult(m: number[]) { return this.set(m[0] * this.x + m[1] * this.y, m[2] * this.x + m[3] * this.y); }
+    _add(p: XY) { return this.set(this.x + p.x, this.y + p.y); }
+    _sub(p: XY) { return this.set(this.x - p.x, this.y - p.y); }
+    _mult(k: number) { return this.set(this.x * k, this.y * k); }
+    _div(k: number) { return this.set(this.x / k, this.y / k); }
+    _multByPoint(p: XY) { return this.set(this.x * p.x, this.y * p.y); }
+    _divByPoint(p: XY) { return this.set(this.x / p.x, this.y / p.y); }
+    _unit() { return this._div(this.mag()); }
+    _perp() { return this.set(-this.y, this.x); }
+    _rotate(a: number) { const c = Math.cos(a), s = Math.sin(a); return this.set(c * this.x - s * this.y, s * this.x + c * this.y); }
+    _rotateAround(a: number, p: XY) {
+        const c = Math.cos(a), s = Math.sin(a), dx = this.x - p.x, dy = this.y - p.y;
+        return this.set(p.x + c * dx - s * dy, p.y + s * dx + c * dy);
+    }
+    _round() { return this.set(Math.round(this.x), Math.round(this.y)); }
 }
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
@@ -258,17 +292,34 @@ export class Map extends CoreMap {
     /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
     getAnisotropicFilterPitch() { return 20; }
     /**
-     * Has no effect: the map does not draw the camera that the function returns. MapLibre GL JS calls this function
-     * before each frame and draws the camera that it returns.
+     * As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the
+     * map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does not apply what the
+     * function returns, and it warns once when the function changes the camera.
      */
     setTransformCameraUpdate(fn?: ((tr: CameraLike) => CameraChanges | undefined) | null) {
         this.cameraUpdate = typeof fn == 'function' ? fn : undefined;
+        if (this.mainThread) this.post({type: 'cameraUpdate', fn: this.cameraFrame()});
+        // (The function also runs before each move event, as in MapLibre GL JS, where it runs before the camera of a
+        // move event is set: react-map-gl reads the camera of the event from what its function was given last.)
         if (this.cameraUpdate && !this.recent) {
             this.recent = [];
             this.on('move', () => this.checkCameraUpdate());
         }
         return this;
     }
+    /** The function that the engine calls before each frame: it applies the camera that the function of `setTransformCameraUpdate` returns. */
+    private cameraFrame() {
+        const fn = this.cameraUpdate;
+        return fn ? (t: typeof this.tr) => {
+            const r = fn({center: new LngLat(t.lng, t.lat), zoom: t.zoom, bearing: t.bearing, pitch: t.pitch, padding: this.getPadding(), elevation: t.elevation});
+            if (!r || typeof r != 'object') return;
+            const c = r.center as LngLatLike | undefined;
+            t.set(c ? toLngLat(c) : undefined, r.zoom, r.bearing, r.pitch);
+            this.drawn = [t.lng, t.lat, t.zoom, t.bearing, t.pitch];
+        } : null;
+    }
+    /** The camera that the last frame drew after the function of `setTransformCameraUpdate` changed it. */
+    declare private drawn?: number[];
     declare private cameraUpdate?: (tr: CameraLike) => CameraChanges | undefined;
     /** The last cameras of the map: a controlled map's state can be a few `move` events behind, and that is no change. */
     declare private recent?: {lng: number; lat: number; zoom: number; bearing: number; pitch: number}[];
@@ -276,10 +327,13 @@ export class Map extends CoreMap {
         const fn = this.cameraUpdate, recent = this.recent!;
         if (!fn) return;
         const center = this.getCenter(), now = {lng: center.lng, lat: center.lat, zoom: this.getZoom(), bearing: this.getBearing(), pitch: this.getPitch()};
+        // (On the main thread the function already saw the camera of a frame before it changed it, and a second call
+        // with the changed camera would replace that camera in react-map-gl.)
+        if (this.mainThread && this.drawn?.every((v, i) => v === [now.lng, now.lat, now.zoom, now.bearing, now.pitch][i])) return;
         recent.unshift(now); recent.length = Math.min(recent.length, 8);
         let r: CameraChanges | undefined;
         try { r = fn({center, zoom: now.zoom, bearing: now.bearing, pitch: now.pitch, padding: this.getPadding(), elevation: 0}); } catch { return; }
-        if (!r || typeof r != 'object' || this.warned.has('setTransformCameraUpdate')) return;
+        if (this.mainThread || !r || typeof r != 'object' || this.warned.has('setTransformCameraUpdate')) return;
         const c = r.center as {lng?: number; lat?: number} | number[] | undefined, lng = Array.isArray(c) ? c[0] : c?.lng, lat = Array.isArray(c) ? c[1] : c?.lat;
         const same = (a: number | undefined, b: number) => typeof a != 'number' || Math.abs(a - b) < 1e-9;
         if (recent.some(k => same(lng, k.lng) && same(lat, k.lat) && same(r.zoom, k.zoom) && same(r.bearing, k.bearing) && same(r.pitch, k.pitch))) return;
@@ -333,6 +387,7 @@ export class Map extends CoreMap {
         if (this.tr.fov !== FOV) this.post({type: 'jump', fov: this.tr.fov});
         const fn = this.tr.customConstrain;
         if (fn) void this.ask(id => ({type: 'bound', id, fn}));
+        if (this.mainThread && this.cameraUpdate) this.post({type: 'cameraUpdate', fn: this.cameraFrame()});
         for (const [id, lod] of Object.entries(this.lods)) this.post({type: 'lod', sources: [id], lod});
     }
     /** As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. */
@@ -366,6 +421,8 @@ export class Map extends CoreMap {
     }
     cameraForBounds(...args: Parameters<CoreMap['cameraForBounds']>) { return this.snapped(super.cameraForBounds(...args), true); }
     /** @internal (A turn of a mouse wheel ends at a multiple of zoomSnap, as in MapLibre GL JS.) */
+    /** @internal As in MapLibre GL JS, the inertia of a rotate drag that ends closer to north than bearingSnap ends at bearing 0 (#1834). */
+    protected override spinBearing(bearing: number) { const b = (bearing % 360 + 540) % 360 - 180; return b !== 0 && Math.abs(b) < this.bearingSnap ? 0 : bearing; }
     protected override post(c: Command, transfer?: Transferable[]) {
         if (c.type === 'wheel' && this.zoomSnap > 0) c.snap = this.zoomSnap;
         // As in MapLibre GL JS, the inertia of a pan that ends closer to north than bearingSnap ends at bearing 0 (#1834).
@@ -467,8 +524,8 @@ export class Map extends CoreMap {
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
         // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
-        // closer to north than bearingSnap turns the map north. The inertia of a pan turns north as it glides (see `post`);
-        // after a gesture without it, the snap follows the gesture.
+        // closer to north than bearingSnap turns the map north. The inertia of a pan or of a rotate drag ends at north (see
+        // `post` and `spinBearing`); after a gesture without inertia, the snap follows the gesture.
         let byHand = false;
         const handlers = [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch];
         const held = () => handlers.some(h => h.isActive());
@@ -566,6 +623,8 @@ export class Map extends CoreMap {
     }
     /** As in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels around each tile (the main entry keeps 16). */
     protected geojsonBuffer() { return 128; }
+    /** As in MapLibre GL JS, a raster layer without `raster-fade-duration` fades a tile in over 300 ms (the main entry shows it at once). */
+    protected rasterFade() { return 300; }
     /** Removes a style layer, as in MapLibre GL JS. */
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;

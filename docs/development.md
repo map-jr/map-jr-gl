@@ -308,7 +308,7 @@ Run `node scripts/private-names.mjs` to see the names that the build shortens.
 Some members cannot be private, because other files use them (`tr.worldSize`). The list `INTERNAL` in the script
 has such names, and the build shortens them too. Add a name to the list only when the class is not part of the API,
 and no browser object has a property with that name. The build fails if the name is also a key of an object
-literal, a field of a type, or a string.
+literal, a field of a type, a string, or a member that `src/` reads from the WebGL context (`gl.depthRange`).
 
 Each built file has a source map beside it (`dist/<file>.js.map`), and its last line names the map. A browser fetches
 a source map only when its developer tools are open, and `pnpm test:size` does not count the maps. The map contains
@@ -331,6 +331,12 @@ The plugin `gl-constants` of `build.mjs` replaces each read of a WebGL constant 
 number (`scripts/gl-constants.mjs`). It changes only reads from a variable named `gl`. When `src/` reads a constant
 that the table does not have, the build stops and names it: add its value from the WebGL specification.
 
+The plugin `global-names` of `build.mjs` replaces each read of a member of `Math` and of `Array.isArray` in the
+worker file with a name that one module exports (`Math.floor` becomes `Math_floor`), so that the minifier can shorten
+it (`scripts/global-names.mjs`). The page scripts keep `Math.floor`, because they read few such members. The build
+stops when a file of the worker reads `Math.floor` and also has the name `Math_floor`, and when a file assigns to a
+member of `Math`. Do not give a variable a name that starts with `Math_` or `Array_`.
+
 ## Other browsers and operating systems
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
@@ -346,7 +352,7 @@ choice of the renderer, the workers or the canvas, and after a new version of Sa
 | Input of a start by hand | Effect |
 |---|---|
 | `safari` | The usual jobs and the job `safari`; the results of Safari go to `bench-results` with the others. |
-| `safari_only` | Only the job `safari`, and the branch is not written. For trying a change of the job. |
+| `safari_only` | Only the job `safari`, and the branch is not written. For trying a change of the job. The run has a concurrency group of its own, so a push to `main` does not cancel it and it does not cancel a push run. |
 | `simulator` | The job `safari` also tries Safari of the iOS Simulator. On the hosted runner the session started in one run of two, and no run finished the benchmark (2026-11-12). |
 
 Two things are known about these machines (2026-11-12). In Safari 27.2 on the macOS runner, the WebGL context of a

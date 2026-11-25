@@ -47,6 +47,12 @@ map.on('click', onClick).on('load', onLoad);
 // `once` with a listener returns the map, and without one a promise, as in MapLibre GL JS.
 map.once('click', onClick).once('load', onLoad);
 map.once('click', 'water', onClick).getZoom();
+// The `on` of `Marker`, `Popup` and the evented controls also returns a `Subscription`, as in MapLibre GL JS (#1901).
+const overlaySubscriptions: Subscription[] = [new Marker().on('drag', () => {}), new Popup().on('close', () => {}),
+    new GeolocateControl({}).on('geolocate', () => {}), new FullscreenControl({}).on('fullscreenstart', () => {})];
+overlaySubscriptions[0].unsubscribe();
+// @ts-expect-error `on` of a marker cannot be chained: it returns a `Subscription`.
+new Marker().on('drag', () => {}).on('dragend', () => {});
 const loaded: Promise<unknown> = map.once('load');
 const events: EventTypeMap = {load: {type: 'load', target: map}};
 const onError = (e: ErrorEventType['error']) => e.error.message;

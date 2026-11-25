@@ -17,6 +17,10 @@ export interface RenderItem<T> {
     /** Visible sub-rectangle in tile units; smaller than the full tile when a parent stands in for a missing child. */
     clip: [number, number, number, number];
     tile: T;
+    /** A raster tile that fades in (`raster-fade-duration`): when it arrived (`performance.now()`). */
+    born?: number;
+    /** A tile that stands in below a raster tile that fades in: drawn only by a raster layer whose fade is not 0. */
+    under?: boolean;
 }
 
 export interface PlacedIcon {
@@ -346,7 +350,7 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
                 if (made >= MAX_LINE_ANCHORS) break;
                 const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
                 if (!ds.length) continue;
-                for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds)) {
+                for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds, k)) {
                     if (cells) {
                         const cx = Math.floor(a[0] / repeat), cy = Math.floor(a[1] / repeat);
                         let close = false;

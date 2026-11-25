@@ -111,7 +111,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setCenterElevation` | `(elevation: number, eventData?: EventData \| undefined) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. |
 | `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
-| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect: the map does not draw the camera that the function returns. |
+| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the map draws on the main thread (`renderer: 'main'`). |
 | `showTileBoundaries` | `boolean` | Has no effect: the map does not draw tile borders. |
 | `showPadding` | `boolean` | Has no effect: the map does not draw the padding. |
 | `showCollisionBoxes` | `boolean` | Has no effect: the map does not draw collision boxes. |
@@ -395,7 +395,7 @@ code of these sources has loaded, which the map requests when a style with such 
 | `getVersion()` | Returns the version of this library. |
 | `Hash` | Keeps the camera in the fragment of the URL, like the `hash` option. See [Hash](#hash-and-config). |
 | `config` | The settings object of MapLibre GL JS, with three fields. See [Hash](#hash-and-config). |
-| `Evented`, `EXTENT` | The class with `on`, `off`, `once` and `fire` that `Marker`, `Popup` and `FullscreenControl` use for their own events, and the tile size 8192. |
+| `Evented`, `EXTENT` | The class of the events of `Marker`, `Popup`, `FullscreenControl` and `GeolocateControl`, whose `on` returns a `Subscription` as in MapLibre GL JS, and the tile size 8192. |
 | `createTileMesh(options, forceIndicesSize?)` | Returns the vertices and indices of a mesh that covers a tile, as in MapLibre GL JS 6.17. It throws when `forceIndicesSize` is `'16bit'` and the mesh needs 32-bit indices. |
 | `AJAXError`, `EdgeInsets`, `GeolocateEvent` | Classes of MapLibre GL JS 6.17 for `new` and `instanceof`. See [AJAXError, EdgeInsets and GeolocateEvent](#ajaxerror-edgeinsets-and-geolocateevent). |
 | `prewarm()`, `clearPrewarmedResources()` | They do nothing, because this library starts its workers with the first map. |

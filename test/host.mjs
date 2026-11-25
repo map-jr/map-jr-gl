@@ -94,6 +94,37 @@ for (const renderer of renderers) {
             return out;
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] a map in a display:none container fires idle, and draws once shown (#964)`, hidden.idle && hidden.shown && hidden.width === hidden.want, JSON.stringify(hidden));
+        // raster-fade-duration in the main entry: a raster layer that gives none shows its tiles at once (the compat entry
+        // fades them in over 300 ms, as MapLibre GL JS does), and a style that sets it fades them in (#1694). The check
+        // counts the frames from the answer of the held tile to `idle`: a tile that shows at once takes a few (5 on 2026-11-24), and
+        // a fade draws a frame for each step. (A time to `idle` alone says little on the worker renderer, where a loaded
+        // CI runner needs more than a second also without a fade.) A tile at the edge of the view fades in over nothing.
+        const fades = await page.evaluate(async renderer => {
+            const t = window.t, out = {};
+            for (const fade of [undefined, 1500]) {
+                let release; const held = new Promise(r => release = r), name = 'fade1694h' + (fade ?? 'none');
+                t.lib.addProtocol(name, async () => {
+                    await held;
+                    const c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}); c.getContext('2d').fillRect(0, 0, 64, 64);
+                    return {data: await createImageBitmap(c)};
+                });
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const layer = {id: 'r', type: 'raster', source: 'r', ...(fade !== undefined && {paint: {'raster-fade-duration': fade}})};
+                const h = t.lib.createMap(el, {style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 256}}, layers: [layer]}, initialView: {center: [10, 10], zoom: 0}, renderer, attribution: false});
+                await new Promise(r => setTimeout(r, 500)); // (`load` waits for the held tile)
+                let frames = 0;
+                const stop = h.listen('render', () => frames++);
+                const idle = Promise.race([h.once('idle'), new Promise(r => setTimeout(r, 8000))]), t0 = performance.now();
+                release();
+                await idle;
+                stop();
+                out[fade ?? 'none'] = {frames, ms: Math.round(performance.now() - t0)};
+                h.destroy(); el.remove(); t.lib.removeProtocol(name);
+            }
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] raster-fade-duration: in the main entry a raster layer that gives none shows a tile at once, and one that sets it fades the tile in (#1694)`,
+            fades.none?.frames <= 10 && fades[1500]?.frames >= 20 && fades[1500].ms >= 1400, JSON.stringify(fades));
 
         // 1c. The events of `listen` and `once` (#500): positions as `[lng, lat]`, a box as `[[west, south], [east, north]]`,
         // the host as `target`, and `preventDefault()` still stops what the map does.
