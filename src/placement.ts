@@ -171,10 +171,14 @@ type Box = [number, number, number, number];
  * `pad` is one number for every side, or [top, right, bottom, left] (`icon-padding`). As in MapLibre GL JS, the padding
  * is added before the box is turned by `angle`.
  */
-export function boxAround(x: number, y: number, w: number, h: number, angle: number, pad: number | readonly number[]): Box {
+export function boxAround(x: number, y: number, w: number, h: number, angle: number, pad: number | readonly number[], turn = 0): Box {
     const [t, r, b, l] = typeof pad === 'number' ? [pad, pad, pad, pad] : pad;
     const c = Math.cos(angle), s = Math.sin(angle), ox = (r - l) / 2, oy = (b - t) / 2;
-    const hw = ((w + l + r) * Math.abs(c) + (h + t + b) * Math.abs(s)) / 2, hh = ((w + l + r) * Math.abs(s) + (h + t + b) * Math.abs(c)) / 2;
+    // `turn` is the part of `angle` that comes from the bearing of a symbol that is aligned with the map. As in MapLibre
+    // GL JS, the box of the symbol at its own rotation is taken first, and that box is turned by the bearing (#2037).
+    const c1 = Math.abs(Math.cos(angle - turn)), s1 = Math.abs(Math.sin(angle - turn)), ct = Math.abs(Math.cos(turn)), st = Math.abs(Math.sin(turn));
+    const w1 = (w + l + r) * c1 + (h + t + b) * s1, h1 = (w + l + r) * s1 + (h + t + b) * c1;
+    const hw = (w1 * ct + h1 * st) / 2, hh = (w1 * st + h1 * ct) / 2;
     x += ox * c - oy * s; y += ox * s + oy * c;
     return [x - hw, y - hh, x + hw, y + hh];
 }
@@ -608,11 +612,11 @@ export function placeLabels(
                     if (l.overlap) for (let i = 0; i < candidates.length; i++) tries.push(i + candidates.length);
                     for (const k of tries) {
                         const i = k % candidates.length, overlap = k >= candidates.length;
-                        const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
+                        const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, flat || line || l.upright ? 0 : north);
                         if (!overlap && grid.hits(...box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);
-                            if (grid.hits(...boxAround(f.ix, f.iy, f.iw, f.ih, (ic.upright ? 0 : north) + ic.rotate * Math.PI / 180, ic.padding))) continue;
+                            if (grid.hits(...boxAround(f.ix, f.iy, f.iw, f.ih, (ic.upright ? 0 : north) + ic.rotate * Math.PI / 180, ic.padding, ic.upright ? 0 : north))) continue;
                         }
                         textBox = box; tx = ax + dx; ty = ay + dy;
                         anchor = anchors[i];
@@ -645,7 +649,7 @@ export function placeLabels(
                         }
                         bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1);
                     }
-                    const box = boxAround(bx, by, bw, bh, angle, ic.padding);
+                    const box = boxAround(bx, by, bw, bh, angle, ic.padding, ic.upright || line || iflat ? 0 : north);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
