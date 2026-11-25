@@ -840,7 +840,7 @@ export class Map {
             if (!e.loaded) this.loadedSources.delete(e.source);
             else if (e.v === this.sourceRules.get(e.source)?.v) {
                 this.loadedSources.add(e.source);
-                for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: e.source, isSourceLoaded: true, source: this.rawStyle.sources[e.source]});
+                this.loadedEvents(e.source);
             }
         } else if (e.type === 'idle') {
             // (A report from before the last command: the engine sends another after that command.)
@@ -879,7 +879,7 @@ export class Map {
             // The data of each source is complete now. As in MapLibre, `sourcedata` and `data` tell listeners so.
             {
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedSources.add(sourceId);
-                for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, isSourceLoaded: true, source: this.rawStyle.sources[sourceId]});
+                for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedEvents(sourceId);
             }
             // (As in MapLibre GL JS, a video that plays, or a canvas source that plays, keeps the map from `idle`. A pause sends a frame, and then `idle` fires.)
             if (!this.videos || !this.videos.playing()) this.fire('idle');
@@ -1660,6 +1660,10 @@ export class Map {
     private dataAborts = new globalThis.Map<string, AbortController>();
     /** The source objects that the map copied from the description and may change (#857). */
     private ownSources = new WeakSet<object>();
+    /** Fires `sourcedata` and `data` when a source has loaded. (The compat entry fires MapLibre's `sourceDataType` events before them.) */
+    protected loadedEvents(id: string) {
+        for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: id, isSourceLoaded: true, source: this.rawStyle.sources[id]});
+    }
     private async setGeoJSON(id: string, data: unknown) {
         const call = (this.dataCalls.get(id) ?? 0) + 1;
         this.dataCalls.set(id, call);
@@ -1669,7 +1673,7 @@ export class Map {
         if (!this.ownSources.has(src)) this.ownSources.add(src = this.rawStyle.sources[id] = {...src});
         src.data = data;
         this.unloaded(id);
-        for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
+        for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id, isSourceLoaded: false, source: src});
         // A request of an older call is no longer wanted: it is aborted.
         this.dataAborts.get(id)?.abort();
         this.dataAborts.delete(id);

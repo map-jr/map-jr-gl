@@ -3023,6 +3023,31 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a source has on, once, off and fire, and gets its own dataloading, data and error events, as in MapLibre GL JS (#1720)`,
             JSON.stringify(ours) === JSON.stringify(ml) && ours.methods && ours.same && ours.seen.length === 2 && ours.errors.r && ours.errors.u, JSON.stringify({ours, maplibre: ml}));
     }
+    // After `setData`, the compat map and the source fire `sourcedata`/`data` with `sourceDataType: 'metadata'`
+    // (`isSourceLoaded: true`) and then `'content'` (`isSourceLoaded: false`), as MapLibre GL JS 6.17 does. The event
+    // on the source has no `sourceId`, and `sourcedataloading` has `isSourceLoaded: false` (#2005).
+    {
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = x => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [x, 0]}}]});
+            const m = new mod.Map({container: el, style: {version: 8, sources: {g: {type: 'geojson', data: point(0)}}, layers: [{id: 'c', type: 'circle', source: 'g'}]}, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 1});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => m.once('idle', r));
+            const log = [];
+            for (const t of ['sourcedataloading', 'sourcedata', 'data']) m.on(t, e => { if (e.sourceId === 'g' && !e.tile) log.push(['map', t, e.sourceDataType ?? null, e.isSourceLoaded]); });
+            m.getSource('g').on('data', e => { if (!e.tile) log.push(['source', 'data', e.sourceDataType ?? null, 'sourceId' in e]); });
+            m.getSource('g').setData(point(10));
+            // (Waits for the event that it compares: `content` on the map's `data`.)
+            await Promise.race([new Promise(r => m.on('data', e => { if (e.sourceDataType === 'content') r(); })), new Promise(r => setTimeout(r, 5000))]);
+            m.remove(); el.remove();
+            return log.filter(l => l[1] === 'sourcedataloading' || l[2]);
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = await run('ml', mode);
+        check(`[${mode}] compat: after setData, sourcedata fires with sourceDataType metadata and then content, on the map and on the source, as in MapLibre GL JS (#2005)`,
+            ours.length === 7 && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
+    }
     // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
     // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.
     // A second map with the same style object gets its own `error` (#809). MapLibre GL JS in WebKit requests the

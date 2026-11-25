@@ -697,7 +697,7 @@ export class Map extends CoreMap {
     /** Removes a source from the style, as in MapLibre GL JS. */
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l?.source === id);
-        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.sourceEvents.delete(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.sourceEvents.delete(id), this.dataPending.delete(id), delete this.lods[id], this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
     /**
@@ -1096,13 +1096,27 @@ export class Map extends CoreMap {
      * for it for at most 300 ms. Listeners for a layer get their features from the core map.)
      */
     private zoomErrors?: Set<string>;
+    /** The sources whose new data (`setData`, `updateData`) has not loaded yet. */
+    private dataPending = new Set<string>();
+    /**
+     * After new data of a source, MapLibre GL JS 6.17 fires `sourcedata` and `data` with `sourceDataType: 'metadata'`
+     * (`isSourceLoaded: true`) and then with `sourceDataType: 'content'` (`isSourceLoaded: false`), before its tiles load.
+     */
+    protected loadedEvents(id: string) {
+        if (this.dataPending.delete(id)) for (const [sourceDataType, isSourceLoaded] of [['metadata', true], ['content', false]] as const) {
+            for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: id, isSourceLoaded, sourceDataType, source: this.rawStyle.sources[id]});
+        }
+        super.loadedEvents(id);
+    }
     private noValidate = false;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
         // The events of a source also go to the listeners on `getSource(id)`, with MapLibre's names on a source.
         const own = {sourcedata: 'data', sourcedataloading: 'dataloading', error: 'error'}[type], ev = this.sourceEvents.get(data.sourceId as string);
-        if (own && ev) ev.fire(own, {...data});
+        if (type === 'sourcedataloading' && !data.tile) this.dataPending.add(data.sourceId as string);
+        // (As in MapLibre GL JS, an event of the data on the source has no `sourceId`, `isSourceLoaded` or `source`.)
+        if (own && ev) { const {sourceId, isSourceLoaded, source, ...rest} = data; ev.fire(own, own === 'error' ? {...data} : rest); }
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
         const e = data.error as Error | undefined;
         if (type === 'error' && e?.message?.startsWith('[map-jr-gl] The map cannot be shown:') && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};
