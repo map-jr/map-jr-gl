@@ -308,6 +308,34 @@ export class Map extends CoreMap {
         if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
         return this;
     }
+    // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
+    /**
+     * Has no effect: the map does not draw tile borders. Reading it returns the value that was set.
+     * @default false
+     */
+    get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
+    set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
+    /**
+     * Has no effect: the map does not draw the padding. Reading it returns the value that was set.
+     * @default false
+     */
+    get showPadding() { return !!this.debugDraw.showPadding; }
+    set showPadding(v: boolean) { this.setDebug('showPadding', v); }
+    /**
+     * Has no effect: the map does not draw collision boxes. Reading it returns the value that was set.
+     * @default false
+     */
+    get showCollisionBoxes() { return !!this.debugDraw.showCollisionBoxes; }
+    set showCollisionBoxes(v: boolean) { this.setDebug('showCollisionBoxes', v); }
+    /**
+     * Has no effect: the map has no overdraw view. Reading it returns the value that was set.
+     * @default false
+     */
+    get showOverdrawInspector() { return !!this.debugDraw.showOverdrawInspector; }
+    set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
+    private debugDraw: Record<string, boolean> = {};
+    private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
+
     /**
      * As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the
      * map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does not apply what the
@@ -357,34 +385,6 @@ export class Map extends CoreMap {
         this.warned.add('setTransformCameraUpdate');
         console.warn('[map-jr-gl] setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.');
     }
-    // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
-    /**
-     * Has no effect: the map does not draw tile borders. Reading it returns the value that was set.
-     * @default false
-     */
-    get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
-    set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
-    /**
-     * Has no effect: the map does not draw the padding. Reading it returns the value that was set.
-     * @default false
-     */
-    get showPadding() { return !!this.debugDraw.showPadding; }
-    set showPadding(v: boolean) { this.setDebug('showPadding', v); }
-    /**
-     * Has no effect: the map does not draw collision boxes. Reading it returns the value that was set.
-     * @default false
-     */
-    get showCollisionBoxes() { return !!this.debugDraw.showCollisionBoxes; }
-    set showCollisionBoxes(v: boolean) { this.setDebug('showCollisionBoxes', v); }
-    /**
-     * Has no effect: the map has no overdraw view. Reading it returns the value that was set.
-     * @default false
-     */
-    get showOverdrawInspector() { return !!this.debugDraw.showOverdrawInspector; }
-    set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
-    private debugDraw: Record<string, boolean> = {};
-    private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
-
     /**
      * Sets the pitch in degrees above which raster tiles are filtered anisotropically, as in MapLibre GL JS: the far part
      * of a pitched raster map is then sharper. `null` or `undefined` sets the default, 20. A value outside 0 to 180 throws.

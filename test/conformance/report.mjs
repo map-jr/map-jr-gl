@@ -23,8 +23,13 @@ export const share = (part, whole) => whole ? (100 * part / whole).toFixed(1) + 
 
 const code = names => names.map(n => '`' + n + '`').join(', ');
 
+/** Notes after the name of a method in the list "Available" of the block of api.mjs. */
+const apiNotes = {setTransformCameraUpdate: "(with `renderer: 'main'`)"};
+
 /** The block of api.mjs in docs/reference/maplibre-differences.md. Each argument is a sorted list of names of methods. */
 export function apiBlock({have, accepted, extra, missing, notCounted}) {
+    // A method that is available with one renderer only gets its note after its name.
+    const noted = names => names.map(n => '`' + n + '`' + (apiNotes[n] ? ' ' + apiNotes[n] : '')).join(', ');
     const total = have.length + accepted.length + missing.length;
     return ['<!-- api:start -->',
         `The table counts the ${total} public methods of the MapLibre \`Map\` class in the entry \`@map-jr/map-jr-gl/maplibre-compat\`. The lists below it have the names.`, '',
@@ -35,7 +40,7 @@ export function apiBlock({have, accepted, extra, missing, notCounted}) {
             ['Only in this library', extra.length, ''],
             ['Internal to MapLibre GL JS, not counted', notCounted.length, ''],
         ], [1, 2]), '',
-        `- **Available:** ${code(have)}`,
+        `- **Available:** ${noted(have)}`,
         `- **Accepted, with no effect** (a value that the library cannot do gives one warning): ${code(accepted)}`,
         `- **Only in this library:** ${code(extra)}`,
         `- **Not available:** ${missing.length ? code(missing) : 'none'}`,

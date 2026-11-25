@@ -129,9 +129,15 @@ export function rays(tr: Transform): number[] {
 
 /** Screen pixels to the Mercator position of the globe there; off the globe, the nearest point of the horizon (as in MapLibre). */
 export function toMerc(tr: Transform, px: number, py: number, metres = tr.elevation): [number, number] {
-    const p = surface(tr, px, py, 1 + metres / 6371008.8), lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
-    // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
+    const [lng, lat] = toLngLat(tr, px, py, metres);
     return [mercX(lng), mercY(clamp(lat, -85.051129, 85.051129))];
+}
+
+/** Screen pixels to the position on the globe there, with the latitude up to ±90° (as MapLibre's unprojectScreenPoint). */
+export function toLngLat(tr: Transform, px: number, py: number, metres = tr.elevation): [number, number] {
+    const p = surface(tr, px, py, 1 + metres / 6371008.8);
+    // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
+    return [Math.atan2(p[0], p[2]) / RAD, Math.asin(clamp(p[1], -1, 1)) / RAD];
 }
 
 /** Screen pixels to the point of the sphere of radius `r` there, scaled to the unit sphere, also past 85.05° (off the globe, the nearest point of the horizon). */
