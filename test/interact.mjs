@@ -1707,6 +1707,29 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
             onLine.runs.length === 2 && onLine.runs.every(n => n >= 15 && n <= 21) && onLine.found < onLine.points - 2 && onLine.hidden === '', JSON.stringify(onLine));
+        // A line too short for its label shows no text, and a query does not find it anywhere along the line. With a
+        // `symbol-spacing` that leaves one label, the line is found only on the glyphs of that label. (The lines lie inside one
+        // tile, and the spacing is shorter than the line: see the Found lines of #1916.)
+        const fewLabels = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) for (const [name, x0, spacing] of [['short', 25, 250], ['spacing', 40, 600]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:200px'}));
+                const line = (y, text) => ({type: 'Feature', properties: {name: text}, geometry: {type: 'LineString', coordinates: [[45 - x0, y], [45 + x0, y]]}});
+                const m = new mod.Map({container: el, renderer, center: [45, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line(0, name === 'short' ? 'This label is far too long to fit on its short line at all, ever' : 'A long label along the line')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': spacing, 'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const a = m.project([45 - x0, 0]), b = m.project([45 + x0, 0]);
+                let found = 0, points = 0;
+                for (let x = a.x + 5; x < b.x; x += 10, points++) if ((await m.queryRenderedFeatures([x, a.y], {layers: ['t']})).length) found++;
+                out[`${renderer}-${name}`] = {found, points};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures does not find a line whose label does not fit on it, and finds a line with one label only on its glyphs, with both renderers (#1916)',
+            ['main', 'worker'].every(r => fewLabels[`${r}-short`].found === 0 && fewLabels[`${r}-spacing`].found >= 12 && fewLabels[`${r}-spacing`].found <= 24), JSON.stringify(fewLabels));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
