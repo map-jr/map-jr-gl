@@ -2650,6 +2650,38 @@ for (const mode of renderers) {
         check(`[${mode}] compat: fill-antialias draws the edges of a fill-pattern in the pattern, and false draws none, also with fill-outline-color (#1469)`,
             r.on?.[0] > 200 && r.on[1] < 230 && Math.abs(r.on[1] - r.on[2]) < 20 && r.off?.every(v => v > 245), JSON.stringify(r));
     }
+    // #2045: the edges of a fill-pattern layer are drawn after the fills of all its batches, as in MapLibre GL JS
+    // (drawFill). With fill-sort-key and two images, the red square (key 1) and the blue one (key 2) are two batches.
+    // The left edge of the red square runs through the column left of the middle, inside the blue square, so that
+    // column is a mix of red and blue. With the edges drawn after each batch, the blue fill covered it.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const solid = c => { const data = new Uint8Array(16 * 16 * 4); for (let i = 0; i < data.length; i += 4) data.set(c, i); return {width: 16, height: 16, data}; };
+            await m.addImage('red', solid([255, 0, 0, 255]));
+            await m.addImage('blue', solid([0, 0, 255, 255]));
+            const box = (x0, x1, img, k) => ({type: 'Feature', properties: {img, k}, geometry: {type: 'Polygon', coordinates: [[[x0, -60], [x1, -60], [x1, 60], [x0, 60], [x0, -60]]]}});
+            m.addSource('s', {type: 'geojson', data: {type: 'FeatureCollection', features: [box(-0.1, 170, 'red', 1), box(-100, 60, 'blue', 2)]}});
+            m.addLayer({id: 'p', type: 'fill', source: 's', layout: {'fill-sort-key': ['get', 'k']}, paint: {'fill-pattern': ['get', 'img']}});
+            // (The image is taken until both fills are drawn or 30 s pass; the edge is in the same image.)
+            let edge = null, blue = null, red = null;
+            for (const t0 = performance.now(); performance.now() - t0 < 30000;) {
+                const bmp = await createImageBitmap(await m.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                const at = x => Array.from(g.getImageData(x, bmp.height >> 1, 1, 1).data);
+                edge = at((bmp.width >> 1) - 1); blue = at(bmp.width * 5 >> 3); red = at(bmp.width * 7 >> 3);
+                if (blue[2] > 200 && blue[0] < 30 && red[0] > 200 && red[2] < 30) break;
+                await new Promise(res => setTimeout(res, 100));
+            }
+            m.remove(); el.remove();
+            return {edge, blue, red};
+        }, mode);
+        check(`[${mode}] compat: the edges of a fill-pattern layer are drawn after the fills of all its batches (#2045)`,
+            r.blue?.[2] > 200 && r.red?.[0] > 200 && r.edge?.[0] > 120 && r.edge[1] < 60, JSON.stringify(r));
+    }
     // #949: updateImage replaces the pixels in place and keeps the options of the image (here `sdf`), as in MapLibre
     // GL JS. The icon is drawn with the new pixels, and an image of another size replaces the old one.
     {
