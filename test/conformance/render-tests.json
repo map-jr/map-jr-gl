@@ -1458,7 +1458,7 @@
 "text-color/translucent": "match",
 "text-color/transparent": "differ",
 "text-field/formatted": "near",
-"text-field/formatted-arabic": "differ",
+"text-field/formatted-arabic": "near",
 "text-field/formatted-grapheme-sections": "differ",
 "text-field/formatted-images": "near",
 "text-field/formatted-images-constant-size": "near",
