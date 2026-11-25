@@ -294,6 +294,15 @@ export class Transform {
         return p > 90 && d * Math.cos(p * R) < this.apart(z) ? d * Math.min(0.85 * Math.tan((p - 90) * R), Math.tan((p - 90.75) * R)) : null;
     }
 
+    /**
+     * How much larger a thing at the mercator position is drawn than the same thing at the map center: the camera
+     * distance over the depth of the point (MapLibre's `cameraToCenterDistance / signedDistanceFromCamera`).
+     */
+    perspectiveAt(mx: number, my: number): number {
+        const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : this.flatZ, ws = this.worldSize;
+        return this.cameraDistance / this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws, z)[2];
+    }
+
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
     mercToScreen(mx: number, my: number): [number, number] {
         const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : this.flatZ;
