@@ -1,13 +1,14 @@
 // Builds the library with Vite. Run with: pnpm build   (add --sizes for a size report of partial imports)
-import {build} from 'vite';
+import {build, parseAst} from 'vite';
 import {gzipSync, brotliCompressSync} from 'node:zlib';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import MagicString from 'magic-string';
-import {shortenPrivateNames} from './scripts/private-names.mjs';
+import {privateNames, shortenPrivateNames} from './scripts/private-names.mjs';
 import {minifyShaders} from './scripts/minify-shaders.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
+import {removedReads} from './scripts/server-reads.mjs';
 import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
@@ -259,7 +260,58 @@ const contourOnly = {
         return withMap(edited, id);
     },
 };
-await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [contourOnly, allInOne, globalNames]);
+// The methods of shared classes that only the browser map calls: the camera of the map (3D terrain, the globe,
+// gestures), the queries of features and of 3D terrain of the tile builder, and the cluster queries of the map. The
+// minifier keeps every method of a class, so the server build removes these (#2041). The build stops when the built
+// server.js still reads a removed name (`x.name`, `x['name']` or a destructuring key; `this.name` for a private method;
+// see scripts/server-reads.mjs), so that a method that the server renderer comes to call cannot go missing: remove its
+// name here then.
+// Of src/exact-pixels.ts, the server renderer needs only `decodePixels` with a decoder: it always has one (`decodeImage`,
+// with a default), and it has no browser that could decode an image or an `ImageBitmap` to decode.
+const serverDrops = {
+    'geo.ts': {Transform: ['perspectiveAt', 'mercToScreen', 'screenToGround', 'fogRange', 'project', 'unproject', 'panned', 'unprojectFlat', 'recenterOnGround', 'setLocationAt']},
+    'tiles.ts': {TileBuilder: ['loadElevation', 'find', 'query']},
+    'geojson.ts': {ClusterIndex: ['expansionZoom']},
+};
+const browserOnly = () => {
+    const dropped = new Map(), short = privateNames();
+    const walk = (node, fn) => {
+        if (!node || typeof node.type !== 'string') return;
+        fn(node);
+        for (const key in node) { const v = node[key]; if (Array.isArray(v)) for (const c of v) walk(c, fn); else if (v && typeof v === 'object') walk(v, fn); }
+    };
+    return {
+        name: 'server-browser-only',
+        load: id => id.endsWith('/src/exact-pixels.ts') ? 'export const decodePixels = async (bytes, decode) => decode(bytes);' : null,
+        // (Before the private names are shortened, so that the names here are those of src/.)
+        transform: {order: 'pre', handler(code, id) {
+            const file = /\/src\/([\w-]+\.ts)$/.exec(id)?.[1], drops = serverDrops[file];
+            if (!drops) return null;
+            const edited = new MagicString(code);
+            walk(parseAst(code, {lang: 'ts'}), n => {
+                const names = n.type === 'ClassDeclaration' ? drops[n.id.name] : null;
+                for (const member of names ? n.body.body : []) {
+                    if (member.type !== 'MethodDefinition' || !names.includes(member.key.name)) continue;
+                    edited.remove(member.start, member.end);
+                    dropped.set(member.key.name, member.accessibility === 'private');
+                }
+            });
+            return withMap(edited, id);
+        }},
+        generateBundle(_, bundle) {
+            const methods = new Map(), files = new Map();
+            for (const [file, classes] of Object.entries(serverDrops)) for (const name of Object.values(classes).flat()) {
+                if (!dropped.has(name)) throw new Error(`build.mjs: src/${file} has no method "${name}" to leave out of the server renderer.`);
+                for (const built of new Set([name, short.get(name) ?? name])) methods.set(built, {name, private: dropped.get(name)});
+                files.set(name, file);
+            }
+            for (const chunk of Object.values(bundle)) for (const name of chunk.type === 'chunk' ? removedReads(chunk.code, methods) : []) {
+                throw new Error(`build.mjs: dist/server.js reads "${name}" of src/${files.get(name)}, which serverDrops leaves out of the server renderer. Remove "${name}" from serverDrops.`);
+            }
+        },
+    };
+};
+await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [contourOnly, allInOne, globalNames, browserOnly()]);
 
 // The name, the version and the licence go in the first line of each built file that package.json names. The chunks
 // that these files share do not get the line, because each line counts against the size budgets. (The minifier of
