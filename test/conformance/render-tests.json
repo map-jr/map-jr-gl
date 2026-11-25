@@ -977,7 +977,7 @@
 "raster-masking/overlapping": "match",
 "raster-masking/overlapping-vector": "match",
 "raster-masking/overlapping-zoom": "match",
-"raster-npot-mipmap/pitch-60": "differ",
+"raster-npot-mipmap/pitch-60": "match",
 "raster-opacity/default": "match",
 "raster-opacity/function": "match",
 "raster-opacity/literal": "match",
