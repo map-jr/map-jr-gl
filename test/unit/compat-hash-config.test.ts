@@ -63,7 +63,9 @@ test('the source names answer instanceof by the type of the source, and Event ta
         assert.equal({id: 's', type} instanceof m[name], true, name);
         for (const other of Object.values(names)) if (other !== type) assert.equal({type: other} instanceof m[name], false, `${name} ${other}`);
         assert.equal(undefined instanceof m[name], false);
+        assert.equal(m.default[name], m[name], `default.${name}`);
     }
+    assert.equal(m.default.Event, m.Event);
     const e = new m.Event('custom', {a: 1, type: 'other'});
     assert.equal(e.type, 'custom');
     assert.equal(e.a, 1);

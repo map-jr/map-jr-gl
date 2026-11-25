@@ -248,6 +248,7 @@ import {GPUInitializationError} from './gpu-error.ts';
 export default {
     GPUInitializationError,
     Map, MapLibreMap: Map, Point, MercatorCoordinate, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set, Hash, config, Evented, EXTENT,
+    GeoJSONSource, VectorTileSource, RasterTileSource, RasterDEMTileSource, ImageSource, VideoSource, CanvasSource, Event,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };
