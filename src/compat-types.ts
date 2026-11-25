@@ -249,7 +249,7 @@ export type NavigationControlOptions = OptionsOf<typeof NavigationControl>;
  * sets it, and the default is 14. The other members of `fitBoundsOptions` have no effect and warn once.
  */
 export type GeolocateControlOptions = OptionsOf<typeof GeolocateControl>;
-/** The options of `new FullscreenControl(options)`. `container` has no effect: the container of the map goes fullscreen. */
+/** The options of `new FullscreenControl(options)`. `container` is the element that goes fullscreen (default: the container of the map). */
 export type FullscreenControlOptions = OptionsOf<typeof FullscreenControl>;
 /** The options of `new ScaleControl(options)`: `maxWidth` in pixels and `unit`. */
 export type ScaleControlOptions = OptionsOf<typeof ScaleControl>;
