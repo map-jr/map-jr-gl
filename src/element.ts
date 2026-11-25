@@ -164,7 +164,7 @@ export class MapJrElement extends Base {
         return {...out, onViewChange: v => { this.emit('viewchange', v); }, onColorSchemeChange: v => { this.emit('colorschemechange', v); }, onClick: e => { this.emit('click', e); },
             // (An error goes to the console unless a listener of `map-error` calls `preventDefault()`, as for the event
             // `error` of `window`. The listeners cannot be counted: `{once: true}` and `removeEventListener` are not seen.)
-            onError: e => { if (this.emit('error', e)) logError(e); }} as MapDescription;
+            onError: (e: Error, _info: unknown) => { if (this.emit('error', e)) logError(e); }} as MapDescription;
     }
 
     /** (Development build) a warning of src/mistakes.ts, once for each element and text. */

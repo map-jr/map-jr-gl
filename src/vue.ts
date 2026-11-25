@@ -8,7 +8,7 @@
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import {earlyMethod, mistake} from './mistakes.ts';
-import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapState, View, ViewInput, InitialView} from './host.ts';
+import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
 import {FORWARDED, type Forwarded} from './map-events.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
@@ -387,7 +387,7 @@ const MapJrComponent = defineComponent({
         /** Emitted with the map when the style and the first tiles have loaded. */
         load: (_map: MapInstance) => true,
         idle: () => true,
-        error: (_error: Error) => true,
+        error: (_error: Error, _info: MapErrorInfo) => true,
         ...forwarded,
     },
     setup(props, {emit, slots, expose}) {
@@ -434,7 +434,7 @@ const MapJrComponent = defineComponent({
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onColorSchemeChange: scheme => emit('update:colorScheme', scheme), onClick: event => emit('click', event),
                 // (Without a listener for `error`, the map writes each error to the console.)
-                onError: listensForError ? error => emit('error', error) : undefined,
+                onError: listensForError ? (error, info) => emit('error', error, info) : undefined,
             };
             for (const k in out) if ((out as any)[k] === undefined) delete (out as any)[k];
             return out;
@@ -493,7 +493,7 @@ const MapJrComponent = defineComponent({
             } catch (cause) {
                 const error = new Error(`[map-jr-gl] <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
                 console.error(error.message);
-                if (listensForError) emit('error', error);
+                if (listensForError) emit('error', error, {});
             }
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [

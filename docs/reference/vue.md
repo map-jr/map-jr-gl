@@ -236,7 +236,7 @@ in the browser.
 | `hover` | `RenderedFeature[]` | When the features of `interactiveLayers` under the pointer change. |
 | `load` | `MapInstance` | Once, when the style and the first tiles have loaded. The map is not yet idle then. |
 | `idle` | none | Each time the map has drawn everything and nothing moves. |
-| `error` | `Error` | At each error of the map. Without a listener for `error`, the map writes each error to the console. |
+| `error` | `Error`, [`MapErrorInfo`](events.md#maperrorinfo) | At each error of the map. The second value has `sourceId` when the error belongs to a source. Without a listener for `error`, the map writes each error to the console. |
 
 The component also emits each other event of [`listen`](map.md#listen) of the main API, with the same value:
 `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. The event `style.load` is `@styleload`,

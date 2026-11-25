@@ -316,13 +316,18 @@ try {
             await wait(1200);
             app.unmount(); el.remove();
         };
-        const got = [];
-        await run({onError: e => got.push(e.message)});
+        const got = [], infos = [];
+        await run({onError: (e, info) => { got.push(e.message); infos.push(info); }});
         const loggedWithListener = logged.length;
         await run({});
+        // A source that fails: the second value has its `sourceId` (#2008).
+        const sourceInfos = [];
+        await run({mapStyle: {version: 8, sources: {broken: {type: 'geojson', data: '/no-such-data-2008.geojson'}}, layers: [{id: 'b', type: 'circle', source: 'broken'}]}, onError: (e, info) => sourceInfos.push(info)});
         console.error = log;
-        return {got, loggedWithListener, logged};
+        return {got, loggedWithListener, logged, infos: JSON.stringify(infos), sourceInfos: JSON.stringify(sourceInfos)};
     });
+    check('browser: the event error has {sourceId} as its second value for a source that fails, and {} for the style (#2008)',
+        failing.infos === '[{}]' && failing.sourceInfos === '[{"sourceId":"broken"}]', JSON.stringify(failing));
     check('browser: the event error gets each error, and without a listener the error is written to the console',
         failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithListener === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
     // The warning for a container of height 0 names what the user wrote: `<MapJr>` or `useMapJr()`, not `createMap()` (#268).

@@ -1155,10 +1155,15 @@ for (const renderer of renderers) {
             out.left = el.childElementCount;
             const logged = [], log = console.error;
             console.error = (...a) => logged.push(a.map(x => x?.message ?? String(x)).join(' '));
-            const got = [], withHook = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false, onError: e => got.push(e.message)});
+            const got = [], infos = [], withHook = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false, onError: (e, info) => { got.push(e.message); infos.push(info); }});
             await wait(1200);
-            out.hook = got.join(); out.loggedWithHook = logged.length;
+            out.hook = got.join(); out.loggedWithHook = logged.length; out.styleInfo = JSON.stringify(infos);
             withHook.destroy();
+            // A source that fails: the second argument has its `sourceId` (#2008).
+            const sourceInfos = [], withSource = t.lib.createMap(el, {style: {version: 8, sources: {broken: {type: 'geojson', data: '/no-such-data-2008.geojson'}}, layers: [{id: 'b', type: 'circle', source: 'broken'}]}, attribution: false, onError: (e, info) => sourceInfos.push(info)});
+            await wait(1200);
+            out.sourceInfo = JSON.stringify(sourceInfos);
+            withSource.destroy();
             const without = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false});
             await wait(1200);
             out.logged = logged.join();
@@ -1169,6 +1174,8 @@ for (const renderer of renderers) {
             mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.left === 0, JSON.stringify(mistakes));
         check(`[${renderer}] onError gets each error, and without it the error is written to the console`,
             /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged), JSON.stringify(mistakes));
+        check(`[${renderer}] onError gets {sourceId} as its second argument for a source that fails, and {} for the style (#2008)`,
+            mistakes.styleInfo === '[{}]' && mistakes.sourceInfo === '[{"sourceId":"broken"}]', JSON.stringify(mistakes));
 
         // 3d. Two maps with one `extend` object whose source has its data at a URL: both load it.
         const sharedExtend = await page.evaluate(async () => {
