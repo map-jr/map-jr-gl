@@ -2156,6 +2156,25 @@ for (const renderer of renderers) {
         check(`[${renderer}] a question for drawn features finds a feature of a symbol layer where its icon is drawn: for each anchor, for an icon from a buffer and a placed icon, and for a larger icon`,
             reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110' && reach.own === '3,1|3,1|||2|', JSON.stringify(reach));
 
+        // An icon is found on its collision box, which has `icon-padding` around the picture, as in MapLibre GL JS (#2038).
+        // The square of 40 pixels stands on its point: its sides are 20 pixels left and right of the point.
+        const padded = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const found = async (icon, places) => {
+                t.host.update(t.spec = {...t.spec, style: t.spot({'icon-anchor': 'bottom', 'icon-ignore-placement': true, ...icon}, false), images: {square: t.square('#f0f')}});
+                await wait(300); await t.settle();
+                const out = [];
+                for (const [dx, dy] of places) out.push((await t.host.queryFeatures({x: 450 + dx, y: 300 + dy}, {layers: ['spot-icon']})).length);
+                return out.join('');
+            };
+            // (The default padding is 2 pixels; a padding of 10 on each side; 20 on the left only; 30 from an expression.)
+            return {default: await found({}, [[21, -20], [23, -20]]), ten: await found({'icon-padding': 10}, [[28, -20], [32, -20], [0, -48], [0, 8], [0, 12]]),
+                left: await found({'icon-padding': [0, 0, 0, 20]}, [[-38, -20], [-42, -20], [21, -20]]),
+                expression: await found({'icon-padding': ['coalesce', ['get', 'none'], 30]}, [[48, -20], [52, -20]])};
+        });
+        check(`[${renderer}] a question for drawn features finds an icon in its icon-padding, as MapLibre GL JS does: the default of 2 pixels, one number, four sides and an expression (#2038)`,
+            padded.default === '10' && padded.ten === '10110' && padded.left === '100' && padded.expression === '10', JSON.stringify(padded));
+
         // A feature of a symbol layer with text only is found on the box of its text, as in MapLibre GL JS, and not near
         // its point outside that box (#199). The text starts at the point (`text-anchor: left`) and is about 200 pixels long.
         const onText = await page.evaluate(async () => {
