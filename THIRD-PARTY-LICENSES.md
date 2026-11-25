@@ -28,7 +28,7 @@ THIS SOFTWARE.
 ## MapLibre GL JS
 
 Map Jr. GL contains no files of MapLibre GL JS. Some methods and formulas follow MapLibre GL JS, and the built
-files contain one copied CSS rule of MapLibre GL JS 6.17.0, the rule for pseudo fullscreen (see `ACKNOWLEDGEMENTS.md`). The shader of the atmosphere on the globe (`halo` in `src/gl.ts`) is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS 6.17, changed: the ray and the camera are in the space of the unit sphere, and the code is shortened. The prelude that custom layers get on the globe (`GLOBE` in `src/custom-layers.ts`) is a close translation of `_projection_globe.vertex.glsl` of MapLibre GL JS 6.17, changed: it is shortened and leaves out the antimeridian varying and the animation of the poles. Its licence text is here for these reasons.
+files contain one copied CSS rule of MapLibre GL JS 6.17.0, the rule for pseudo fullscreen (see `ACKNOWLEDGEMENTS.md`). The shader of the atmosphere on the globe (`halo` in `src/gl.ts`) is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS 6.17, changed: the ray and the camera are in the space of the unit sphere, and the code is shortened. The prelude that custom layers get on the globe (`GLOBE` in `src/custom-layers.ts`) is a close translation of `_projection_globe.vertex.glsl` of MapLibre GL JS 6.17, changed: it is shortened and leaves out the antimeridian varying and the animation of the poles. Its license text is here for these reasons.
 
 ```
 Copyright (c) 2023, MapLibre contributors
@@ -149,9 +149,31 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+## cheap-ruler
+
+The distances of `distance` (`Ruler` in `src/within.ts`) are a close translation, shortened, of `distance` and `pointOnLine` of [cheap-ruler](https://github.com/mapbox/cheap-ruler), by way of the copy in the MapLibre style specification.
+
+```
+ISC License
+
+Copyright (c) 2026, Mapbox
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+```
+
 ## MapLibre style specification (@maplibre/maplibre-gl-style-spec)
 
-The type check of expressions of the development build (`src/expr-check.ts`) is a close translation of the type check of expressions of `@maplibre/maplibre-gl-style-spec` 26.6.0 (`checkSubtype` of `types.ts`, `parsing_context.ts` and the `parse` steps of the definitions of the expressions), changed: the names are shortened, the classes are functions, and it leaves out the evaluation. Its licence text is here for this reason.
+The type check of expressions of the development build (`src/expr-check.ts`) is a close translation of the type check of expressions of `@maplibre/maplibre-gl-style-spec` 26.6.0 (`checkSubtype` of `types.ts`, `parsing_context.ts` and the `parse` steps of the definitions of the expressions), changed: the names are shortened, the classes are functions, and it leaves out the evaluation. The part of the worker for `within` and `distance` (`src/within.ts`) is a close translation of the geometry tests of `geometry_util.ts`, `within.ts` and `distance.ts` of the same project, changed: the search by boxes of `distance` is left out, and the functions are shorter. Its license text is here for these reasons.
 
 ```
 Copyright (c) 2020, MapLibre contributors

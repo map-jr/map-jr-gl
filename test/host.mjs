@@ -3382,6 +3382,8 @@ for (const renderer of ['worker', 'main']) {
             const spec = what === 'vector' ? {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}}
                 : what === 'terrain' ? {style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: [dc.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10}}, terrain: {source: 'dem'},
                     layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}]}, initialView: {center: [7.7, 46], zoom: 10, pitch: 50}}
+                : what === 'within' ? {style: {version: 8, sources: {pt: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}},
+                    {id: 'pt', type: 'circle', source: 'pt', paint: {'circle-radius': 60, 'circle-color': ['case', ['within', square.geometry], '#00f', '#0f0']}}]}, initialView: {center: [0, 0], zoom: 1}}
                 : {style: {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]}, initialView: {center: [0, 0], zoom: 1}};
             const made = [0, 1].map(() => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
@@ -3399,6 +3401,7 @@ for (const renderer of ['worker', 'main']) {
         const vector = await run('vector'), afterVector = parts.splice(0);
         const geojson = await run('geojson'), afterGeoJSON = parts.splice(0);
         const terrain = await run('terrain'), afterTerrain = parts.splice(0);
+        const within = await run('within'), afterWithin = parts.splice(0);
         const seen = browserName === 'chromium';
         // 3D terrain (#1849): the engine loads the part for elevation data. In an engine worker that is the file of the part,
         // which the page fetches once with the style; an engine on the page imports the chunk of the same part instead.
@@ -3408,7 +3411,32 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
             vector.idle.every(Boolean) && !vector.errors.length && geojson.idle.every(Boolean) && !geojson.errors.length && geojson.centre[2] > 200 && geojson.centre[0] < 50 &&
             (!seen || (afterVector.length === 0 && afterGeoJSON.length >= 1 && afterGeoJSON.length <= 4 && afterGeoJSON.every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
+        // `within` and `distance` (#1707): a style that uses one loads their part, and its tiles wait for it.
+        check(`[${renderer}] the parts of the worker: two maps whose style uses "within" load the part within and draw its result (#1707)`,
+            within.idle.every(Boolean) && !within.errors.length && within.centre[2] > 200 && within.centre[1] < 50 && (!seen || afterWithin.includes('within')), JSON.stringify({within, afterWithin}));
         if (seen) {
+            // The part of `within` does not load: one warning names the file, and the map is idle with the result false.
+            const noPart = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                const warnings = [];
+                noPart.on('console', m => { if (m.type() === 'warning' && m.text().includes('within')) warnings.push(m.text()); });
+                await noPart.route(/map-jr-gl-worker-within\.js/, route => route.abort());
+                await noPart.goto(origin + '/bench');
+                const got = await noPart.evaluate(async renderer => {
+                    const lib = await import('/dist/map-jr-gl.js'), errors = [], square = {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]};
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                    const host = lib.createMap(el, {style: {version: 8, sources: {pt: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'pt', type: 'circle', source: 'pt', paint: {'circle-radius': 60, 'circle-color': ['case', ['within', square], '#00f', '#0f0']}}]},
+                        initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    const idle = await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 10000); });
+                    const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                    g.drawImage(bmp, 0, 0);
+                    const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+                    host.destroy(); el.remove();
+                    return {idle, centre, errors};
+                }, renderer);
+                check(`[${renderer}] the part of "within" does not load: one warning names the file, and the map is idle and draws "within" as false (#1707)`,
+                    got.idle && !got.errors.length && got.centre[1] > 200 && warnings.length === 1 && warnings[0].startsWith('[map-jr-gl]') && warnings[0].includes('map-jr-gl-worker-within.js'), JSON.stringify({got, warnings}));
+            } finally { await noPart.close(); }
             // (A new page: its workers have not loaded the part.)
             const other = await browser.newPage({viewport: {width: 900, height: 600}});
             try {

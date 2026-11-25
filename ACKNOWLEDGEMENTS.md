@@ -16,6 +16,10 @@ BSD-3-Clause.
   repeat the short texts of that validation, such as `missing required property "source"`. The type check of expressions
   (`src/expr-check.ts`) is a close translation, changed, of the type check of expressions of that project (`checkSubtype` of `types.ts`, `ParsingContext` and the `parse` of each expression); `THIRD-PARTY-LICENSES.md` has its licence text. The rest of the code is new; `scripts/style-spec-values.mjs` writes the types, enum values and
   limits of the paint and layout properties from the specification file of that project.
+- The expressions `within` and `distance` (`src/within.ts`, a part of the worker) are a close translation, changed, of
+  `within.ts`, `distance.ts` and `geometry_util.ts` of the MapLibre style specification (BSD-3-Clause), and their
+  distances of `cheap_ruler.ts` there, which comes from [cheap-ruler](https://github.com/mapbox/cheap-ruler) (ISC,
+  Mapbox). `THIRD-PARTY-LICENSES.md` has both license texts.
 - Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
   (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
   and which values move. The code is new.

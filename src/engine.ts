@@ -1385,7 +1385,7 @@ export class Engine {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
         t.rules = this.sourceSigs.get(source)?.[1];
         // (A map that can show the globe cuts the fills and lines of a tile along a grid: see subdivide.ts.)
-        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.globeWait || this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), at: [id.z, id.x, id.y], z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.globeWait || this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
     }
     private zoomBuilt = new Set<string | undefined>();
     /**
