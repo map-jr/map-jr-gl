@@ -617,7 +617,7 @@ interface IconBuffers {
     seen?: number; fresh?: boolean;
 }
 interface GLBuffers {
-    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
+    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A line with a buffer of `line-blur` for each feature. */ blur?: boolean; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
 }
 export interface GLTile {
@@ -910,7 +910,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, blur: b.type === 'line' && !!b.blur, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1437,6 +1437,7 @@ export class GLRenderer {
                 // Attributes without a buffer read these constants, so shaders need no variants.
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                 if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
+                if (b.type === 'line' && !b.blur) gl.vertexAttrib1f(7, 0); // a custom layer can leave another value at location 7
                 if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 if (b.type === 'line' || b.type === 'circle') {
                     gl.uniform1f(u.u_scale, it.scale);
