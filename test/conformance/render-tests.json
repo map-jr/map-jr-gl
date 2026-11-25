@@ -1105,7 +1105,7 @@
 "regressions/mapbox-gl-native#7792": "match",
 "regressions/mapbox-gl-native#8078": "match",
 "regressions/mapbox-gl-native#8303": "match",
-"regressions/mapbox-gl-native#8460": "differ",
+"regressions/mapbox-gl-native#8460": "match",
 "regressions/mapbox-gl-native#8505": "match",
 "regressions/mapbox-gl-native#8871": "match",
 "regressions/mapbox-gl-native#8952": "match",
