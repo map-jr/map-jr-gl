@@ -654,6 +654,8 @@ export interface GLTile {
     z?: number;
     /** Raster tiles: the image. Elevation tiles: slopes derived from it. */
     tex?: WebGLTexture;
+    /** Raster tiles of a tile source: `tex` has mipmaps, and is filtered anisotropically on a pitched map (see `Transform.aniso`). */
+    mip?: boolean;
     /** Latitude of the tile's top and bottom edges, for hillshade. */
     lat?: [number, number];
     /** Elevation tiles: the encoded heights as downloaded, their size in pixels and how to decode them. */
@@ -762,11 +764,15 @@ export class GLRenderer {
     private newTexture: () => WebGLTexture;
     private fbo: WebGLFramebuffer;
     private dpr = 1;
+    /** The largest anisotropy of a texture filter (EXT_texture_filter_anisotropic), or 0 without the extension. */
+    private aniso: number;
 
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas, antialias = false) {
         const gl = canvas.getContext('webgl2', {antialias, alpha: true, premultipliedAlpha: true, stencil: true, depth: true}) as WebGL2RenderingContext | null;
         if (!gl) throw new Error('WebGL2 is not available');
         this.gl = gl;
+        // (0x84FF is MAX_TEXTURE_MAX_ANISOTROPY_EXT.)
+        this.aniso = gl.getExtension('EXT_texture_filter_anisotropic') ? gl.getParameter(0x84FF) : 0;
         const buf = (data: BufferSource | null, usage: number = gl.STATIC_DRAW) => {
             const b = gl.createBuffer()!;
             gl.bindBuffer(gl.ARRAY_BUFFER, b);
@@ -1095,9 +1101,10 @@ export class GLRenderer {
 
     /**
      * Wraps a decoded raster or elevation tile image as a drawable tile. With `into` (a tile of a video or canvas source),
-     * the image is a new frame that replaces the picture of that tile in its own texture.
+     * the image is a new frame that replaces the picture of that tile in its own texture. With `mip` (the tiles of a raster
+     * source, as in MapLibre GL JS) the texture gets mipmaps.
      */
-    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: DemEncoding | undefined, id: TileID, into?: GLTile): GLTile {
+    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: DemEncoding | undefined, id: TileID, into?: GLTile, mip?: boolean): GLTile {
         const dem = !!encoding;
         const gl = this.gl, tex = into ? into.tex! : this.newTexture();
         if (into) gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -1107,7 +1114,8 @@ export class GLRenderer {
         else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         if (into) return into;
-        const tile: GLTile = {uid: ++this.uids, labels: {}, batches: {}, tex};
+        if (mip) { gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST); }
+        const tile: GLTile = {uid: ++this.uids, labels: {}, batches: {}, tex, mip};
         if (dem) {
             const n = 2 ** id.z, slopes = this.newTexture(), u = this.ready('demPrepare');
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -1346,7 +1354,10 @@ export class GLRenderer {
                     if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
                     if (L.relief) gl.uniform4fv(u.u_unpack, it.tile.unpack!);
                     gl.bindTexture(gl.TEXTURE_2D, L.relief ? it.tile.raw! : it.tile.tex);
-                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id, !it.corners) : gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4));
+                    // Above the pitch of `setAnisotropicFilterPitch` (20 by default), a tile of a raster source is filtered
+                    // anisotropically, as in MapLibre GL JS: the far part of the map is sharper. (0x84FE is TEXTURE_MAX_ANISOTROPY_EXT.)
+                    if (it.tile.mip && this.aniso) gl.texParameterf(gl.TEXTURE_2D, 0x84FE, tr.pitch > tr.aniso ? this.aniso : 1);
+                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id, !it.corners) : gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4), it.tile.mip ? gl.LINEAR_MIPMAP_NEAREST : gl.LINEAR);
                 }
                 continue;
             }

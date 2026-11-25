@@ -3278,6 +3278,50 @@ for (const mode of renderers) {
             && r[0].after === '0,0,255' && waited(r[0]) && r[0].frames < r[2000].frames
             && r.none.after === '0,0,255' && waited(r.none) && r.none.ms >= 280, JSON.stringify(r));
     }
+    // setAnisotropicFilterPitch: above that pitch (20 by default) raster tiles are filtered anisotropically, as in MapLibre
+    // GL JS (#1713). The tiles have vertical stripes 4 px wide. At a pitch of 75 the far ground is squeezed from top to
+    // bottom: anisotropic filtering keeps the stripes there, and filtering with mipmaps alone (a pitch of 80 set) blurs
+    // them to gray. The check compares the contrast across rows of the far ground; the browsers of the tests have the extension.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            const name = 'aniso1713' + mode;
+            mod.addProtocol(name, async () => {
+                const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+                g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#000';
+                for (let x = 0; x < 256; x += 8) g.fillRect(x, 0, 4, 256);
+                return {data: await createImageBitmap(c)};
+            });
+            const contrast = async m => {
+                const blob = await Promise.race([m.toBlob(), new Promise(r => setTimeout(r, 8000))]);
+                if (!blob) return -1;
+                const bmp = await createImageBitmap(blob), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                let sum = 0, n = 0;
+                for (const f of [0.3, 0.35, 0.4]) {
+                    const row = g.getImageData(0, Math.round(bmp.height * f), bmp.width, 1).data, v = [];
+                    for (let i = 0; i < row.length; i += 4) v.push(row[i]);
+                    const mean = v.reduce((a, b) => a + b, 0) / v.length;
+                    sum += Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length); n++;
+                }
+                return Math.round(sum / n);
+            };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 3, pitch: 75, maxPitch: 85,
+                style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            out.pitch = m.getAnisotropicFilterPitch();
+            out.on = await contrast(m);
+            out.set = m.setAnisotropicFilterPitch(80) === m && m.getAnisotropicFilterPitch();
+            out.off = await contrast(m);
+            out.reset = m.setAnisotropicFilterPitch(null).getAnisotropicFilterPitch();
+            try { m.setAnisotropicFilterPitch(200); } catch (e) { out.error = e.message; }
+            m.remove(); el.remove(); mod.removeProtocol(name);
+            return out;
+        }, mode);
+        check(`[${mode}] setAnisotropicFilterPitch: raster tiles are filtered anisotropically above the pitch (20 by default), and a pitch above 180 throws (#1713)`,
+            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && /^\[map-jr-gl\] setAnisotropicFilterPitch\(200\)/.test(r.error), JSON.stringify(r));
+    }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
     {
