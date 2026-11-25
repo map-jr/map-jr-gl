@@ -451,7 +451,7 @@ export class Map {
         this.checkProjection();
         const tr = this.tr;
         const engineOptions = {
-            style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
+            style: {...this.resolved, rasterFade: this.rasterFade()}, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, worldCopies: tr.worldCopies, antialias: o.antialias,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
@@ -484,7 +484,7 @@ export class Map {
                 this.watchTurn++; // (the watch of the worker must not count while the engine chunk loads; #146)
                 w.terminate();
                 // (The ports went to the worker and end with it. New ones keep the tiles in the tile workers; #812.)
-                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, this.tilePool?.connect() ?? []).then(() => {
+                this.startMainEngine(fresh, {...engineOptions, style: {...this.resolved, rasterFade: this.rasterFade()}, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, this.tilePool?.connect() ?? []).then(() => {
                     if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
