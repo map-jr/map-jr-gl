@@ -8,6 +8,9 @@ writing); this brief has the steps.
 1. Read the issue: `gh api repos/map-jr/map-jr-gl/issues/N` (and `…/N/comments`), or `mcp__github__issue_read`
    where `gh` is missing. Start at the files and lines that your prompt names; do not survey the repository. Check
    that the fault is still on `origin/main`. If it is fixed, change nothing and report the commit.
+   For an issue with the label `unverified`, reproduce the fault before you build, and read what MapLibre GL JS does
+   in `node_modules/maplibre-gl/dist/maplibre-gl-dev.mjs`: an issue can name a property that MapLibre GL JS declares
+   and never reads (#1692, #1695), or the reverse of the fault (#1735). Report another cause; do not build to the text.
 2. `git fetch origin main && git checkout -b <branch> origin/main && pnpm install --frozen-lockfile &&
    pnpm install --frozen-lockfile --dir website`. The packages of `website/` take about 5 s, and without them
    `pnpm test` fails in `comment-reflow.test.ts` and `pnpm test:consistency` checks less than CI does (#1296).
@@ -113,7 +116,10 @@ writing); this brief has the steps.
 ## On the owner's Mac (`uname` prints Darwin)
 
 - The shell sets `BROWSER=open` (`test/launch.mjs` and `suite.mjs` use `chromium` then), aliases
-  `cp` to `cp -i` (write `command cp`), and sets `noclobber` (write `>|` to replace a file).
+  `cp` to `cp -i` (write `command cp`), and sets `noclobber` (write `>|` to replace a file, and `2>|` for the error
+  output).
+- Run each suite with `SUITE_SLOTS=4`. A suite takes 13 to 30 minutes while other workers build, so start it in the
+  background and go on with what does not need its result.
 - Headless Chromium draws WebGL in software. Playwright's WebKit draws on the GPU.
 - An iOS Simulator can open a page of your server: `xcrun simctl openurl booted http://localhost:<port>/…`.
 

@@ -14,16 +14,25 @@ export interface TrackHost {
 }
 
 /** Returns `click()` (one step of the button) and `remove()`. */
-export function tracker(host: TrackHost, map: Map, b: HTMLButtonElement, positionOptions: PositionOptions | undefined, showDot: boolean) {
-    let state: WatchState = 'OFF', watch: number | undefined, last: GeolocationPosition | undefined, own = false, dot: HTMLElement | undefined;
-    // The dot is an element over the map that follows the position at every `move`. It shows while tracking is on.
+export function tracker(host: TrackHost, map: Map, b: HTMLButtonElement, positionOptions: PositionOptions | undefined, showDot: boolean, showCircle: boolean) {
+    let state: WatchState = 'OFF', watch: number | undefined, last: GeolocationPosition | undefined, own = false, dot: HTMLElement | undefined, circle: HTMLElement | undefined;
+    // The dot and the accuracy circle are elements over the map that follow the position at every `move` (which a zoom
+    // fires too). They show while tracking is on.
     const place = () => {
-        if (!last || state === 'OFF' || !showDot) { dot?.remove(); return; }
+        if (!last || state === 'OFF' || !showDot) { dot?.remove(); circle?.remove(); return; }
+        const container = map.getContainer(), ll = [last.coords.longitude, last.coords.latitude] as [number, number], {x, y} = map.project(ll), at = `translate(${x}px,${y}px) translate(-50%,-50%)`;
+        // As in MapLibre GL JS 6.17: the diameter is twice the accuracy (meters) over the meters of one pixel, measured over 100 px at the position.
+        const accuracy = last.coords.accuracy;
+        if (showCircle && accuracy) {
+            circle ??= Object.assign(document.createElement('div'), {className: cls('user-location-accuracy-circle')});
+            if (!circle.parentNode) container.appendChild(circle);
+            const d = (2 * accuracy * 100 / map.unproject([x, y]).distanceTo(map.unproject([x + 100, y]))).toFixed(2) + 'px';
+            Object.assign(circle.style, {width: d, height: d, transform: at});
+        } else circle?.remove();
         dot ??= Object.assign(document.createElement('div'), {className: cls('user-location-dot')});
-        if (!dot.parentNode) map.getContainer().appendChild(dot);
+        if (!dot.parentNode) container.appendChild(dot);
         toggleClass(dot, 'user-location-dot-stale', state.endsWith('ERROR'));
-        const {x, y} = map.project([last.coords.longitude, last.coords.latitude]);
-        dot.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
+        dot.style.transform = at;
     };
     // The class names of the button are those of MapLibre GL JS (`maplibregl-ctrl-geolocate-active` and others).
     const set = (s: WatchState) => {
@@ -78,7 +87,7 @@ export function tracker(host: TrackHost, map: Map, b: HTMLButtonElement, positio
             if (watch !== undefined) navigator.geolocation.clearWatch(watch);
             watch = undefined; state = 'OFF';
             map.off('movestart', onMoveStart).off('dragstart', onUserMove).off('moveend', onMoveEnd).off('move', place);
-            dot?.remove();
+            dot?.remove(); circle?.remove();
         },
     };
 }

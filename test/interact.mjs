@@ -1674,15 +1674,20 @@ for (const mode of renderers) {
                 layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
             await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
             const ask = async (x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).map(f => f.properties.name[0]).join();
-            // The points of the line every 10 pixels, from one end to the other: the text covers a run of about 175 pixels.
+            // The points of the line every 10 pixels, from one end to the other. Since #1095 the line of about 455 pixels
+            // carries two labels, one every `symbol-spacing` (250 pixels) as in MapLibre GL JS, and the text of each covers
+            // a run of about 175 pixels.
             const a = m.project([-40, 0]), b = m.project([40, 0]), hidden = m.project([0, -10]), found = [];
             for (let x = a.x + 5; x < b.x; x += 10) if (await ask(x, a.y) === 'A') found.push(x);
-            const out = {found: found.length, run: found.length && found.at(-1) - found[0], points: Math.floor((b.x - a.x) / 10), hidden: await ask(hidden.x, hidden.y) + await ask(hidden.x + 60, hidden.y)};
+            // The runs of points where text is found, one for each label, as their numbers of points.
+            const runs = [];
+            for (let i = 0; i < found.length; i++) if (i && found[i] - found[i - 1] === 10) runs[runs.length - 1]++; else runs.push(1);
+            const out = {found: found.length, runs, points: Math.floor((b.x - a.x) / 10), hidden: await ask(hidden.x, hidden.y) + await ask(hidden.x + 60, hidden.y)};
             m.remove(); el.remove();
             return out;
         });
         check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
-            onLine.found >= 15 && onLine.run === (onLine.found - 1) * 10 && onLine.found < onLine.points - 10 && onLine.hidden === '', JSON.stringify(onLine));
+            onLine.runs.length === 2 && onLine.runs.every(n => n >= 15 && n <= 21) && onLine.found < onLine.points - 2 && onLine.hidden === '', JSON.stringify(onLine));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
@@ -4289,9 +4294,9 @@ for (const mode of renderers) {
             if (real) delete navigator.geolocation;
             return {notAdded, triggered, events, onMap, warnings};
         });
-        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for showAccuracyCircle',
+        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and does not warn for showAccuracyCircle (#1721)',
             geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
-            && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option showAccuracyCircle'), JSON.stringify(geo));
+            && geo.warnings.length === 0, JSON.stringify(geo));
         // Without `zoom`, the control fits the position with fitBounds and all of fitBoundsOptions: maxZoom and padding (#677, #1722).
         const fit = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -4336,6 +4341,37 @@ for (const mode of renderers) {
         }, lib);
         check('[main] maplibre-compat: GeolocateControl fits an accuracy of 5000 m to the zoom of MapLibre GL JS',
             acc.ml.zoom < 15 && Math.abs(acc.jr.zoom - acc.ml.zoom) < 0.01 && Math.abs(acc.jr.lng - acc.ml.lng) < 1e-4 && Math.abs(acc.jr.lat - acc.ml.lat) < 1e-4, JSON.stringify(acc));
+        // The accuracy circle of trackUserLocation (#1721): an accuracy of 500 m at latitude 50 gives the diameter of MapLibre GL JS 6.17 at two zooms.
+        const circle = {};
+        for (const lib of ['ml', 'jr']) circle[lib] = await page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            let ok;
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition() {}, watchPosition: a => { ok = a; return 3; }, clearWatch() {}}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, ...(lib === 'jr' ? {renderer: 'main'} : {}), center: [3, 50], zoom: 12, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const gc = new mod.GeolocateControl({trackUserLocation: true, fitBoundsOptions: {maxZoom: 12, linear: true, duration: 0}});
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            const b = el.querySelector('button.maplibregl-ctrl-geolocate');
+            // One click: the tracking code loads on demand, and a second click before it has loaded turns tracking off again.
+            b.click();
+            for (let i = 0; i < 100 && !ok; i++) await new Promise(r => setTimeout(r, 20));
+            ok?.({coords: {longitude: 3, latitude: 50, accuracy: 500}, timestamp: 1});
+            const size = async z => {
+                m.jumpTo({center: [3, 50], zoom: z});
+                await new Promise(r => setTimeout(r, 50));
+                const c = el.querySelector('.maplibregl-user-location-accuracy-circle');
+                return c ? parseFloat(c.style.width) : 0;
+            };
+            const out = {called: !!ok, z12: await size(12), z14: await size(14), jrClass: !!el.querySelector('.map-jr-user-location-accuracy-circle')};
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return out;
+        }, lib);
+        check('[main] maplibre-compat: GeolocateControl with trackUserLocation draws the accuracy circle at the size of MapLibre GL JS at zooms 12 and 14 (#1721)',
+            circle.ml.z12 > 10 && Math.abs(circle.jr.z12 - circle.ml.z12) < 0.5 && Math.abs(circle.jr.z14 - circle.ml.z14) < 0.5 && circle.jr.z14 > 3 * circle.jr.z12 && circle.jr.jrClass, JSON.stringify(circle));
         // trackUserLocation (#42): the states and events of MapLibre GL JS 6.17, the dot, and clearWatch, with a mocked watchPosition.
         const track = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');

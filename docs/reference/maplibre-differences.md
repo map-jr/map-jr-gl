@@ -456,7 +456,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `GeolocateControl`
 
 - MapLibre GL JS can track the position, shows a dot at it, and draws an accuracy circle.
-- **This library:** Without `trackUserLocation`, moves the map to the position once per click or `trigger()` call. With `trackUserLocation`, the button turns tracking on and off as in MapLibre GL JS: the map follows the position until it moves for another reason, and a click returns to the position. The button gets the classes `maplibregl-ctrl-geolocate-waiting`, `-active`, `-active-error`, `-background` and `-background-error`, and `showUserLocation` (default `true`) shows the element `maplibregl-user-location-dot` while tracking is on. The control fires `geolocate`, `error`, `outofmaxbounds`, `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and `userlocationlostfocus` on itself (`on`, `off`, `once`), and `geolocate` and `error` also on the map. A position outside `maxBounds` fires `outofmaxbounds` and does not move the map. The code of tracking loads on demand at the first click or `trigger()` call, so the first step of tracking happens once that file has loaded. The accuracy circle is not drawn: `showAccuracyCircle: true` warns once. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds` and `fitBoundsOptions`, as in MapLibre GL JS. The default of `fitBoundsOptions` is `{maxZoom: 15}`, and a `fitBoundsOptions` that you pass replaces it as a whole, so `{padding: 10}` fits with no limit of the zoom.
+- **This library:** Without `trackUserLocation`, moves the map to the position once per click or `trigger()` call. With `trackUserLocation`, the button turns tracking on and off as in MapLibre GL JS: the map follows the position until it moves for another reason, and a click returns to the position. The button gets the classes `maplibregl-ctrl-geolocate-waiting`, `-active`, `-active-error`, `-background` and `-background-error`, and `showUserLocation` (default `true`) shows the element `maplibregl-user-location-dot` while tracking is on. `showAccuracyCircle` (default `true`) also shows the element `maplibregl-user-location-accuracy-circle`, whose diameter is twice `coords.accuracy` in meters at the current zoom and latitude, as in MapLibre GL JS. As in MapLibre GL JS, the circle is never shown when `showUserLocation` is `false`. The circle stays round when the map is pitched, where MapLibre GL JS lays it flat on the map. The control fires `geolocate`, `error`, `outofmaxbounds`, `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and `userlocationlostfocus` on itself (`on`, `off`, `once`), and `geolocate` and `error` also on the map. A position outside `maxBounds` fires `outofmaxbounds` and does not move the map. The code of tracking loads on demand at the first click or `trigger()` call, so the first step of tracking happens once that file has loaded. With `zoom`, the map zooms in to it. Without it, the map fits the accuracy circle with `fitBounds` and `fitBoundsOptions`, as in MapLibre GL JS. The default of `fitBoundsOptions` is `{maxZoom: 15}`, and a `fitBoundsOptions` that you pass replaces it as a whole, so `{padding: 10}` fits with no limit of the zoom.
 
 ### Plugins
 
@@ -516,7 +516,6 @@ Layers:
 Properties:
 
 - `line-gradient` together with `line-dasharray`
-- `line-blur` that is different for each feature
 - Circle stroke and blur that are different for each feature
 - `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
 - `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
@@ -625,7 +624,7 @@ These types differ from MapLibre GL JS:
 | Type | In this library |
 |---|---|
 | `NavigationControlOptions` | It has no `visualizeRoll`. |
-| `GeolocateControlOptions` | It has `zoom`. `showAccuracyCircle` has no effect. |
+| `GeolocateControlOptions` | It has `zoom`. |
 | `LogoControlOptions` | `compact` has no effect and writes one warning, because this library has no logo. This is a decision and will stay. |
 | `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |
 | `Listener` | Its type parameter is the type of the event, and the default is `MapLibreEvent`. |
