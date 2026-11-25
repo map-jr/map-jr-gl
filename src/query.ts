@@ -130,7 +130,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
                     // tile gives it only when its bounding box touches the tile, so that a query gives it one time.
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
-                const size = set.size, radius = size ? (size.r.eval(size.zoom, f) + size.w.eval(size.zoom, f)) * size.scale! : set.radius;
+                const size = set.size, radius = size ? Math.min(Math.max(size.r.eval(size.zoom, f) + size.w.eval(size.zoom, f), 0), 1e4) * size.scale! : set.radius;
                 if (!touches(f.type, c, ends, q.px, q.py, radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;

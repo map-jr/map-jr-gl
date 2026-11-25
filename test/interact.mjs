@@ -1455,11 +1455,13 @@ for (const mode of renderers) {
         m.addLayer({id: 'by-zoom', type: 'circle', source: 'sized', filter: ['==', ['id'], 1], paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 30, 24, 30]}});
         let ready = [];
         for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers: ['by-data']}); }
+        // The array that the call gives at once (from the GeoJSON on the page) uses the same radius.
+        const now = [...m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']})];
         const near = await m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']});
         m.removeLayer('by-data'); m.removeLayer('by-zoom'); m.removeSource('sized');
-        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort()};
+        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort()};
     });
-    check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query`, sized.near.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
+    check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
