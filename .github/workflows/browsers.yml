@@ -23,8 +23,12 @@ on:
 permissions:
   contents: write
 # A run takes longer than the time between pushes, so a run that has started is left to finish. A newer push waits.
+# GitHub keeps one waiting run for each group, and a newer one replaces it. A run with safari_only does not write the
+# branch bench-results, so it has a group of its own: a push neither cancels it nor is cancelled by it (#1929). Every
+# run that writes bench-results (a push, a start by hand without safari_only) stays in the group "browsers", so two of
+# them never write the branch at the same time. For a push, "inputs" is empty and the group is "browsers".
 concurrency:
-  group: browsers
+  group: ${{ inputs.safari_only && 'browsers-safari-only' || 'browsers' }}
   cancel-in-progress: false
 jobs:
   run:
