@@ -111,7 +111,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setCenterElevation` | `(elevation: number, eventData?: EventData \| undefined) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. |
 | `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Has no effect. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
-| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | Has no effect: the map does not draw the camera that the function returns. |
+| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the map draws on the main thread (`renderer: 'main'`). |
 | `showTileBoundaries` | `boolean` | Has no effect: the map does not draw tile borders. |
 | `showPadding` | `boolean` | Has no effect: the map does not draw the padding. |
 | `showCollisionBoxes` | `boolean` | Has no effect: the map does not draw collision boxes. |

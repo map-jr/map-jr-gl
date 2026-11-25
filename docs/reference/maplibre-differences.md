@@ -138,6 +138,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A heatmap is drawn over an opaque fill or background layer that is above it in the style.
 - **This library:** The layers draw in the order of the style, so the opaque layer covers the heatmap. This is a decision and will stay.
 
+### The fade of raster tiles
+
+- **MapLibre GL JS:** `raster-fade-duration` (default 300 ms) fades a new raster tile in: over its loaded parent or children, or over nothing at the edge of the view. It mixes the two images in one draw.
+- **This library:** In the compat entry (`@map-jr/map-jr-gl/maplibre-compat`) the default is 300 ms, as in MapLibre GL JS. In the main entry (`@map-jr/map-jr-gl`) the default is 0, so a raster tile shows at once when it has loaded, unless the style sets `raster-fade-duration` on the layer. The fade is the same as in MapLibre GL JS, and `idle` waits for it. The tile below is drawn at full opacity and the new tile over it with the fading opacity, so a translucent image looks slightly different during the fade. With 3D terrain a tile shows at once, as in MapLibre GL JS. The server renderer draws no fade.
+
 ### Label placement
 
 - **MapLibre GL JS:** Changes gradually, tile by tile.
@@ -391,7 +396,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `setTransformCameraUpdate`
 
 - MapLibre GL JS calls the function before each frame and draws the camera that it returns. react-map-gl 8 gives every map such a function, so that a controlled map (`viewState` with `onMove`) never draws a camera that differs from `viewState`.
-- This library calls the function after each `move` event and does not apply what it returns. A controlled react-map-gl map works when `onMove` sets `viewState` to `e.viewState`, and a change of `viewState` from outside moves the map. When `onMove` changes the camera (for example when it limits the latitude), the map draws the camera of the gesture, and goes to the camera of `viewState` when the movement ends. The map writes one warning the first time the function changes the camera, and no warning for a map where it does not. To keep the map in a region, use the option `maxBounds`.
+- This library does the same when the map draws on the main thread (`renderer: 'main'`): it calls the function before each frame and draws the camera that it returns, so a controlled react-map-gl map whose `onMove` limits the latitude never draws a camera past the limit.
+- With the worker renderer (the default), the camera is in the worker, and this library calls the function after each `move` event and does not apply what it returns. A controlled react-map-gl map works when `onMove` sets `viewState` to `e.viewState`, and a change of `viewState` from outside moves the map. When `onMove` changes the camera (for example when it limits the latitude), the map draws the camera of the gesture, and goes to the camera of `viewState` when the movement ends. The map writes one warning the first time the function changes the camera, and no warning for a map where it does not. Pass `renderer: 'main'`, or use the option `maxBounds` to keep the map in a region.
 
 ### A listener that throws
 
@@ -512,7 +518,7 @@ Properties:
 
 - `line-gradient` together with `line-dasharray`
 - Circle stroke and blur that are different for each feature
-- `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
+- `line-gap-width` that is different for each feature in the server renderer. Its SVG draws such a line as one solid stroke without a gap, and nothing warns. (A line with a constant gap is left out of the SVG.)
 - `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
 - `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
 - `text-writing-mode`
@@ -523,7 +529,6 @@ Properties:
 - The root property `centerAltitude` of a style has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each map whose style has it.
 - `symbol-height-offset`. The property is not read, and nothing warns.
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and nothing warns: the corners of an extrusion are sharp.
-- `raster-fade-duration`. A raster tile shows at once when it has loaded. A value other than 0 has no effect and writes one warning. (`raster-resampling`, `resampling` and `raster-layer-blend` are read as in MapLibre GL JS; the SVG output of the server renderer gives `nearest` to the browser as `image-rendering: pixelated`.)
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
 - An icon together with text that follows a curved line. The text is drawn without the icon.
 - `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
@@ -577,7 +582,7 @@ The table counts the 138 public methods of the MapLibre `Map` class in the entry
 | Internal to MapLibre GL JS, not counted | 15 |  |
 
 - **Available:** `addControl`, `addImage`, `addLayer`, `addSource`, `addSprite`, `areTilesLoaded`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `cameraForBounds`, `coveringTiles`, `easeTo`, `fire`, `fitBounds`, `fitScreenCoordinates`, `flyTo`, `getAnisotropicFilterPitch`, `getBearing`, `getBounds`, `getCameraTargetElevation`, `getCanvas`, `getCanvasContainer`, `getCenter`, `getCenterClampedToGround`, `getCenterElevation`, `getContainer`, `getFeatureState`, `getFilter`, `getFontFaces`, `getGlobalState`, `getGlyphs`, `getImage`, `getLayer`, `getLayersOrder`, `getLayoutProperty`, `getLight`, `getMaxBounds`, `getMaxPitch`, `getMaxZoom`, `getMinPitch`, `getMinZoom`, `getPadding`, `getPaintProperty`, `getPitch`, `getPixelRatio`, `getProjection`, `getRenderWorldCopies`, `getRoll`, `getSky`, `getSource`, `getSprite`, `getStyle`, `getStyleUrl`, `getTerrain`, `getVerticalFieldOfView`, `getZoom`, `getZoomSnap`, `hasControl`, `hasImage`, `isMoving`, `isRotating`, `isSourceLoaded`, `isStyleLoaded`, `isZooming`, `jumpTo`, `listImages`, `listens`, `loadImage`, `loaded`, `moveLayer`, `off`, `on`, `once`, `panBy`, `panTo`, `project`, `queryRenderedFeatures`, `querySourceFeatures`, `queryTerrainElevation`, `redraw`, `refreshTiles`, `remove`, `removeControl`, `removeFeatureState`, `removeImage`, `removeLayer`, `removeSource`, `removeSprite`, `resetNorth`, `resetNorthPitch`, `resize`, `rotateTo`, `setBearing`, `setCenter`, `setEventedParent`, `setFeatureState`, `setFilter`, `setFontFaces`, `setGlobalStateProperty`, `setGlyphs`, `setLayerZoomRange`, `setLayoutProperty`, `setLight`, `setMaxBounds`, `setMaxPitch`, `setMaxZoom`, `setMinPitch`, `setMinZoom`, `setMissingStyleImageResolver`, `setPadding`, `setPaintProperty`, `setPitch`, `setPixelRatio`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setSourceTileLodParams`, `setSprite`, `setStyle`, `setTerrain`, `setTransformConstrain`, `setTransformRequest`, `setZoom`, `setZoomSnap`, `snapToNorth`, `stop`, `triggerRepaint`, `unproject`, `updateImage`, `zoomIn`, `zoomOut`, `zoomTo`
-- **Accepted, with no effect** (a value that the library cannot do gives one warning, except for `setAnisotropicFilterPitch`, which gives none): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setRoll`, `setTransformCameraUpdate`, `setVerticalFieldOfView`
+- **Accepted, with no effect** (a value that the library cannot do gives one warning, except for `setAnisotropicFilterPitch`, which gives none): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setRoll`, `setTransformCameraUpdate` (with the worker renderer), `setVerticalFieldOfView`
 - **Only in this library:** `addFonts`, `getAttributions`, `getTransformForUpdate`, `isLocationOccluded`, `isPitching`, `isRolling`, `queryElevation`, `queryFeatures`, `querySource`, `setCursor`, `toBlob`
 - **Not available:** none
 - **Internal to MapLibre GL JS, not counted** (the declaration tags the method `@internal`, or only the class `Camera` has it, which the package does not export): `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `captureRotationPivot`, `clampCenterToGround`, `getTransformForUpdate`, `holdElevation`, `isPitching`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`

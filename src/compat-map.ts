@@ -292,17 +292,34 @@ export class Map extends CoreMap {
     /** Returns 20, the default of MapLibre GL JS. `setAnisotropicFilterPitch` does not change it. */
     getAnisotropicFilterPitch() { return 20; }
     /**
-     * Has no effect: the map does not draw the camera that the function returns. MapLibre GL JS calls this function
-     * before each frame and draws the camera that it returns.
+     * As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the
+     * map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does not apply what the
+     * function returns, and it warns once when the function changes the camera.
      */
     setTransformCameraUpdate(fn?: ((tr: CameraLike) => CameraChanges | undefined) | null) {
         this.cameraUpdate = typeof fn == 'function' ? fn : undefined;
+        if (this.mainThread) this.post({type: 'cameraUpdate', fn: this.cameraFrame()});
+        // (The function also runs before each move event, as in MapLibre GL JS, where it runs before the camera of a
+        // move event is set: react-map-gl reads the camera of the event from what its function was given last.)
         if (this.cameraUpdate && !this.recent) {
             this.recent = [];
             this.on('move', () => this.checkCameraUpdate());
         }
         return this;
     }
+    /** The function that the engine calls before each frame: it applies the camera that the function of `setTransformCameraUpdate` returns. */
+    private cameraFrame() {
+        const fn = this.cameraUpdate;
+        return fn ? (t: typeof this.tr) => {
+            const r = fn({center: new LngLat(t.lng, t.lat), zoom: t.zoom, bearing: t.bearing, pitch: t.pitch, padding: this.getPadding(), elevation: t.elevation});
+            if (!r || typeof r != 'object') return;
+            const c = r.center as LngLatLike | undefined;
+            t.set(c ? toLngLat(c) : undefined, r.zoom, r.bearing, r.pitch);
+            this.drawn = [t.lng, t.lat, t.zoom, t.bearing, t.pitch];
+        } : null;
+    }
+    /** The camera that the last frame drew after the function of `setTransformCameraUpdate` changed it. */
+    declare private drawn?: number[];
     declare private cameraUpdate?: (tr: CameraLike) => CameraChanges | undefined;
     /** The last cameras of the map: a controlled map's state can be a few `move` events behind, and that is no change. */
     declare private recent?: {lng: number; lat: number; zoom: number; bearing: number; pitch: number}[];
@@ -310,10 +327,13 @@ export class Map extends CoreMap {
         const fn = this.cameraUpdate, recent = this.recent!;
         if (!fn) return;
         const center = this.getCenter(), now = {lng: center.lng, lat: center.lat, zoom: this.getZoom(), bearing: this.getBearing(), pitch: this.getPitch()};
+        // (On the main thread the function already saw the camera of a frame before it changed it, and a second call
+        // with the changed camera would replace that camera in react-map-gl.)
+        if (this.mainThread && this.drawn?.every((v, i) => v === [now.lng, now.lat, now.zoom, now.bearing, now.pitch][i])) return;
         recent.unshift(now); recent.length = Math.min(recent.length, 8);
         let r: CameraChanges | undefined;
         try { r = fn({center, zoom: now.zoom, bearing: now.bearing, pitch: now.pitch, padding: this.getPadding(), elevation: 0}); } catch { return; }
-        if (!r || typeof r != 'object' || this.warned.has('setTransformCameraUpdate')) return;
+        if (this.mainThread || !r || typeof r != 'object' || this.warned.has('setTransformCameraUpdate')) return;
         const c = r.center as {lng?: number; lat?: number} | number[] | undefined, lng = Array.isArray(c) ? c[0] : c?.lng, lat = Array.isArray(c) ? c[1] : c?.lat;
         const same = (a: number | undefined, b: number) => typeof a != 'number' || Math.abs(a - b) < 1e-9;
         if (recent.some(k => same(lng, k.lng) && same(lat, k.lat) && same(r.zoom, k.zoom) && same(r.bearing, k.bearing) && same(r.pitch, k.pitch))) return;
@@ -367,6 +387,7 @@ export class Map extends CoreMap {
         if (this.tr.fov !== FOV) this.post({type: 'jump', fov: this.tr.fov});
         const fn = this.tr.customConstrain;
         if (fn) void this.ask(id => ({type: 'bound', id, fn}));
+        if (this.mainThread && this.cameraUpdate) this.post({type: 'cameraUpdate', fn: this.cameraFrame()});
         for (const [id, lod] of Object.entries(this.lods)) this.post({type: 'lod', sources: [id], lod});
     }
     /** As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. */
@@ -602,6 +623,8 @@ export class Map extends CoreMap {
     }
     /** As in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels around each tile (the main entry keeps 16). */
     protected geojsonBuffer() { return 128; }
+    /** As in MapLibre GL JS, a raster layer without `raster-fade-duration` fades a tile in over 300 ms (the main entry shows it at once). */
+    protected rasterFade() { return 300; }
     /** Removes a style layer, as in MapLibre GL JS. */
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;

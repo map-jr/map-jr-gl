@@ -7,7 +7,7 @@ import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
-import type {QueriedFeature} from './query.ts';
+import type {QueriedFeature, QuerySet} from './query.ts';
 import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
 import type {GeoJSONGeometry} from './host.ts';
@@ -453,7 +453,7 @@ export class Map {
         this.checkProjection();
         const tr = this.tr;
         const engineOptions = {
-            style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
+            style: {...this.resolved, rasterFade: this.rasterFade()}, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, worldCopies: tr.worldCopies, antialias: o.antialias,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
@@ -486,7 +486,7 @@ export class Map {
                 this.watchTurn++; // (the watch of the worker must not count while the engine chunk loads; #146)
                 w.terminate();
                 // (The ports went to the worker and end with it. New ones keep the tiles in the tile workers; #812.)
-                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, this.tilePool?.connect() ?? []).then(() => {
+                this.startMainEngine(fresh, {...engineOptions, style: {...this.resolved, rasterFade: this.rasterFade()}, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, this.tilePool?.connect() ?? []).then(() => {
                     if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
@@ -1325,6 +1325,8 @@ export class Map {
     protected styleChanged() {}
     /** The buffer of a GeoJSON source that gives none, in pixels; `undefined` keeps the default of the tiles (16). */
     protected geojsonBuffer(): number | undefined { return undefined; }
+    /** The `raster-fade-duration` of a raster layer that gives none, in ms: 0 here, so that a tile shows at once. */
+    protected rasterFade() { return 0; }
     private reloadPending = false;
     /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
     private reuse = false;
@@ -1396,7 +1398,7 @@ export class Map {
             this.restyled = turn;
             this.checkProjection();
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
-            this.post({type: 'style', style: {...style, sources}, reload, versions, data, instant: this.newStyle && this.instant});
+            this.post({type: 'style', style: {...style, sources, rasterFade: this.rasterFade()}, reload, versions, data, instant: this.newStyle && this.instant});
             this.sendGeo();
             this.styleEvents(this.newStyle);
             this.newStyle = false;
@@ -1977,11 +1979,16 @@ export class Map {
         else { box = [0, 0, this.tr.width, this.tr.height]; if (geometry) options = geometry as RenderedQueryOptions; }
         const only = options.layers ? new Set(options.layers) : null, z = this.tr.zoom, layers: any[] = this.rawStyle?.layers ?? [];
         const number = (v: unknown, fallback: number) => typeof v === 'number' ? v : fallback;
+        // A circle layer whose size is not a number (an expression or a function) is tested with the size of each
+        // feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.circle`).
+        const size = (l: any): QuerySet['circle'] => l.type === 'circle' && [l.paint?.['circle-radius'], l.paint?.['circle-stroke-width']].some(v => v !== undefined && typeof v !== 'number')
+            ? {radius: l.paint['circle-radius'], stroke: l.paint['circle-stroke-width'], zoom: z} : undefined;
         const sets = layers.filter(l => l.source && (!only || only.has(l.id)) && l.layout?.visibility !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
             layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+            circle: size(l),
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
         }));

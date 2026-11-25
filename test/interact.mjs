@@ -1444,6 +1444,25 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures; a layer removed during a query`,
         rendered.removed === 0 && rendered.noLayer === 0 && rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
 
+    // A circle whose `circle-radius` is an expression is found within its own radius, as in MapLibre (#1911): a
+    // radius of 30 pixels from a property, and one of 30 pixels by zoom, are found at 20 pixels from the center.
+    const sized = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter(), p = m.project(c), z = m.getZoom();
+        m.addSource('sized', {type: 'geojson', data: {type: 'FeatureCollection', features: [
+            {type: 'Feature', id: 1, properties: {r: 30}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}},
+            {type: 'Feature', id: 2, properties: {r: 4}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}]}});
+        m.addLayer({id: 'by-data', type: 'circle', source: 'sized', paint: {'circle-radius': ['get', 'r']}});
+        m.addLayer({id: 'by-zoom', type: 'circle', source: 'sized', filter: ['==', ['id'], 1], paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 30, 24, 30]}});
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers: ['by-data']}); }
+        // The array that the call gives at once (from the GeoJSON on the page) uses the same radius.
+        const now = [...m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']})];
+        const near = await m.queryRenderedFeatures([p.x + 20, p.y], {layers: ['by-data', 'by-zoom']});
+        m.removeLayer('by-data'); m.removeLayer('by-zoom'); m.removeSource('sized');
+        return {zoom: z, near: near.map(f => `${f.layer.id}:${f.id}`).sort(), now: now.map(f => `${f.layer.id}:${f.id}`).sort()};
+    });
+    check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
+
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
     // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
@@ -1688,6 +1707,29 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
             onLine.runs.length === 2 && onLine.runs.every(n => n >= 15 && n <= 21) && onLine.found < onLine.points - 2 && onLine.hidden === '', JSON.stringify(onLine));
+        // A line too short for its label shows no text, and a query does not find it anywhere along the line. With a
+        // `symbol-spacing` that leaves one label, the line is found only on the glyphs of that label. (The lines lie inside one
+        // tile, and the spacing is shorter than the line: see the Found lines of #1916.)
+        const fewLabels = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) for (const [name, x0, spacing] of [['short', 25, 250], ['spacing', 40, 600]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:200px'}));
+                const line = (y, text) => ({type: 'Feature', properties: {name: text}, geometry: {type: 'LineString', coordinates: [[45 - x0, y], [45 + x0, y]]}});
+                const m = new mod.Map({container: el, renderer, center: [45, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line(0, name === 'short' ? 'This label is far too long to fit on its short line at all, ever' : 'A long label along the line')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': spacing, 'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const a = m.project([45 - x0, 0]), b = m.project([45 + x0, 0]);
+                let found = 0, points = 0;
+                for (let x = a.x + 5; x < b.x; x += 10, points++) if ((await m.queryRenderedFeatures([x, a.y], {layers: ['t']})).length) found++;
+                out[`${renderer}-${name}`] = {found, points};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures does not find a line whose label does not fit on it, and finds a line with one label only on its glyphs, with both renderers (#1916)',
+            ['main', 'worker'].every(r => fewLabels[`${r}-short`].found === 0 && fewLabels[`${r}-spacing`].found >= 12 && fewLabels[`${r}-spacing`].found <= 24), JSON.stringify(fewLabels));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
@@ -3023,6 +3065,48 @@ for (const mode of renderers) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // raster-fade-duration: a raster tile that arrives over its loaded parent fades in over it, and `idle` waits for the
+    // fade, drawing frames meanwhile, as in MapLibre GL JS 6.17; with 0 it shows at once, and a layer that gives none fades over 300 ms in this entry (#1694). (`toBlob` waits for
+    // `idle`, so the frames of the fade are counted, not read.) The parent (tile zoom 1, map zoom 0 with tiles of 256 px) is red, its children blue.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            const middle = async m => { const blob = await Promise.race([m.toBlob(), new Promise(r => setTimeout(r, 8000))]); if (!blob) return ['no image']; const bmp = await createImageBitmap(blob), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data]; };
+            for (const fade of [2000, 0, undefined]) {
+                let release, held = new Promise(r => release = r);
+                const name = 'fade1694x' + (fade ?? 'none');
+                mod.addProtocol(name, async request => {
+                    const z = +request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
+                    if (z > 1) await held;
+                    g.fillStyle = z > 1 ? '#0000ff' : '#ff0000'; g.fillRect(0, 0, 64, 64);
+                    return {data: await createImageBitmap(c)};
+                });
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [10, 10], zoom: 0,
+                    style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r', ...(fade !== undefined && {paint: {'raster-fade-duration': fade}})}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+                const before = await middle(m);
+                m.jumpTo({zoom: 1});
+                await new Promise(r => setTimeout(r, 200));
+                let idleAt = 0;
+                m.once('idle', () => idleAt = performance.now());
+                const t0 = performance.now();
+                release();
+                let frames = 0;
+                const count = () => frames++;
+                m.on('render', count);
+                for (let i = 0; i < 80 && !idleAt; i++) await new Promise(r => setTimeout(r, 100));
+                m.off('render', count);
+                const after = await middle(m);
+                out[fade ?? 'none'] = {before: before.slice(0, 3).join(), after: after.slice(0, 3).join(), ms: Math.round(idleAt - t0), frames};
+                m.remove(); el.remove(); mod.removeProtocol(name);
+            }
+            return out;
+        }, mode);
+        check(`[${mode}] raster-fade-duration: a raster tile fades in over its parent and idle waits for the fade; with 0 it shows at once; the default of the compat entry is 300 ms (#1694)`,
+            r[2000].before === '255,0,0' && r[2000].after === '0,0,255' && r[2000].ms >= 1900 && r[2000].frames > 10 && r[0].after === '0,0,255' && r[0].ms > 0 && r[0].ms < 1900
+            && r.none.after === '0,0,255' && r.none.ms >= 280, JSON.stringify(r));
+    }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
     {
@@ -4225,33 +4309,48 @@ for (const mode of renderers) {
         }).catch(e => [String(e)]);
         check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000 nm', '1000 mi', '1000 km', '1000 nm']), JSON.stringify(texts));
     }
-    // react-map-gl 8 gives every map a function with setTransformCameraUpdate (#210). The map warns only when the
-    // function changes the camera, which is the one case that this library does not draw as MapLibre GL JS does.
-    if (mode === 'main') {
-        const hook = await page.evaluate(async () => {
+    // react-map-gl 8 gives every map a function with setTransformCameraUpdate (#210). With the worker renderer the map
+    // warns only when the function changes the camera; on the main thread it draws the camera that the function returns,
+    // as MapLibre GL JS does (#1711): no move event, and so no frame, has a latitude past the limit.
+    {
+        const hook = await page.evaluate(async renderer => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
-            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const warnings = [], warn = console.warn, out = {};
             console.warn = (...a) => warnings.push(String(a[0]));
             try {
                 await new Promise(r => m.once('load', r));
                 const moved = () => new Promise(r => m.once('moveend', () => setTimeout(r, 50)));
-                // A controlled map whose state is one move behind: the function returns the camera before.
-                let last = null, calls = 0;
-                m.setTransformCameraUpdate(tr => { calls++; const r = last ?? {}; last = {center: tr.center, zoom: tr.zoom}; return r; });
-                let done = moved(); m.jumpTo({center: [10, 5], zoom: 3}); await done;
-                done = moved(); m.jumpTo({center: [20, 5], zoom: 4}); await done;
-                out.lagging = {calls, warnings: warnings.length};
-                // A function that changes the zoom.
-                m.setTransformCameraUpdate(() => ({zoom: 1}));
-                done = moved(); m.jumpTo({zoom: 5}); await done;
-                done = moved(); m.jumpTo({zoom: 6}); await done;
-                out.changing = warnings.filter(w => w.startsWith('[map-jr-gl] setTransformCameraUpdate')).length;
+                if (renderer === 'main') {
+                    // A controlled map that limits the latitude to 30 and the zoom to 5.
+                    let maxLat = -90;
+                    m.on('move', () => { maxLat = Math.max(maxLat, m.getCenter().lat); });
+                    m.setTransformCameraUpdate(tr => ({center: {lng: tr.center.lng, lat: Math.min(tr.center.lat, 30)}, zoom: Math.min(tr.zoom, 5)}));
+                    let done = moved(); m.easeTo({center: [10, 60], zoom: 7, duration: 300}); await done;
+                    out.applied = {lat: m.getCenter().lat, zoom: m.getZoom(), maxLat};
+                    m.setTransformCameraUpdate(null);
+                    done = moved(); m.jumpTo({center: [0, 50]}); await done;
+                    out.cleared = m.getCenter().lat;
+                } else {
+                    // A controlled map whose state is one move behind: the function returns the camera before.
+                    let last = null, calls = 0;
+                    m.setTransformCameraUpdate(tr => { calls++; const r = last ?? {}; last = {center: tr.center, zoom: tr.zoom}; return r; });
+                    let done = moved(); m.jumpTo({center: [10, 5], zoom: 3}); await done;
+                    done = moved(); m.jumpTo({center: [20, 5], zoom: 4}); await done;
+                    out.lagging = {calls, warnings: warnings.length};
+                    // A function that changes the zoom.
+                    m.setTransformCameraUpdate(() => ({zoom: 1}));
+                    done = moved(); m.jumpTo({zoom: 5}); await done;
+                    done = moved(); m.jumpTo({zoom: 6}); await done;
+                }
+                out.warnings = warnings.filter(w => w.startsWith('[map-jr-gl] setTransformCameraUpdate')).length;
             } finally { console.warn = warn; m.remove(); el.remove(); }
             return out;
-        }).catch(e => ({error: String(e)}));
-        check('[main] maplibre-compat: setTransformCameraUpdate warns once when its function changes the camera, and not when it returns an earlier camera', hook.lagging?.calls > 0 && hook.lagging.warnings === 0 && hook.changing === 1, JSON.stringify(hook));
+        }, mode).catch(e => ({error: String(e)}));
+        if (mode === 'main') check('[main] maplibre-compat: setTransformCameraUpdate draws the camera that its function returns before each frame, and null removes the function (#1711)',
+            Math.abs(hook.applied?.lat - 30) < 1e-6 && hook.applied.zoom === 5 && hook.applied.maxLat <= 30 + 1e-9 && Math.abs(hook.cleared - 50) < 1e-6 && hook.warnings === 0, JSON.stringify(hook));
+        else check(`[${mode}] maplibre-compat: setTransformCameraUpdate warns once when its function changes the camera, and not when it returns an earlier camera`, hook.lagging?.calls > 0 && hook.lagging.warnings === 0 && hook.warnings === 1, JSON.stringify(hook));
     }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
     if (mode === 'main') {
