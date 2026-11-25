@@ -2025,7 +2025,7 @@ export class Map {
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
             layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
-            radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 4), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+            radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 1), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
             size: size(l),
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,

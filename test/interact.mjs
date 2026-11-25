@@ -1512,6 +1512,28 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
 
+    // A line layer without `line-width` is queried with the default of the style specification, 1 pixel, as in MapLibre
+    // GL JS 6.17 (#2002). With a `line-gap-width` of 4 the line reaches 3 pixels from its center line, so a point 4.5
+    // pixels away misses it (a width of 4 reached 6). (Without a gap the 3-pixel minimum of #2003 hides the default.)
+    if (mode === 'main') {
+        const run = lib => page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const coordinates = [[-20, 0], [20, 0]];
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}}}},
+                layers: [{id: 'gap', type: 'line', source: 'l', paint: {'line-gap-width': 4}}]}});
+            await new Promise(r => m.once('idle', r));
+            const p = m.project([0, 0]), hit = async dy => (await m.queryRenderedFeatures([p.x, p.y + dy], {layers: ['gap']})).length > 0;
+            const out = {at2: await hit(2), at4_5: await hit(4.5)};
+            m.remove(); el.remove();
+            return out;
+        }, lib);
+        const ours = await run('ours'), ml = await run('ml');
+        check('maplibre-compat: a line without line-width is queried with the width of 1 pixel of the style specification, as MapLibre GL JS (#2002)',
+            ours.at2 && !ours.at4_5 && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // A circle with `circle-translate` is found where it is drawn and not at its feature, as in MapLibre (#1910). With
     // the anchor `map` the translation turns with the bearing: [60, 0] at a bearing of 90 is 60 pixels up.
     const translated = await page.evaluate(async () => {
