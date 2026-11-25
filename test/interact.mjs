@@ -6949,6 +6949,23 @@ for (const mode of renderers) {
     });
     check('compat: setVerticalFieldOfView changes the camera, clamps to 150 and fires the move events',
         fov.start === 36.87 && fov.set === 90 && fov.top[1] > fov.top[0] + 0.01 && fov.events.join() === 'movestart!,move!,moveend!' && fov.back.join() === '123,87' && Math.abs(fov.clamped - 150) < 1e-9, JSON.stringify(fov));
+    // setVerticalFieldOfView during an easeTo keeps the animation, as in MapLibre GL JS, which changes the field of view
+    // without stopping the camera (#1858).
+    const fovEase = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [0, 0], zoom: 3, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const end = new Promise(r => m.once('moveend', r));
+        m.easeTo({center: [20, 10], zoom: 5, duration: 300});
+        await new Promise(r => setTimeout(r, 60));
+        m.setVerticalFieldOfView(50);
+        await end; await new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+        const c = m.getCenter(), out = [+c.lng.toFixed(3), +c.lat.toFixed(3), +m.getZoom().toFixed(3), Math.round(m.getVerticalFieldOfView())];
+        m.remove(); el.remove();
+        return out;
+    });
+    check('compat: setVerticalFieldOfView during easeTo keeps the animation, which ends at its target',
+        fovEase.join() === '20,10,5,50', JSON.stringify(fovEase));
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
