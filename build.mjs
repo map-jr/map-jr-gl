@@ -244,18 +244,22 @@ await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: fal
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM). It draws without WebGL, so of the
 // part `dem` it takes the contour lines and not 3D terrain, which would bring the renderer of WebGL with it (#1849).
+// The part `globe` is for the WebGL engine only, and the server renderer does not contain it (#2006).
 const contourOnly = {
     name: 'server-dem',
     enforce: 'pre',
     transform(code, id) {
         if (!id.endsWith('/src/parts.ts')) return null;
-        const edited = new MagicString(code), at = code.indexOf("dem: () => import('./dem.ts')");
-        if (at < 0) throw new Error('build.mjs: src/parts.ts has no part dem.');
-        edited.overwrite(at, at + 29, "dem: () => import('./contour.ts')");
+        const edited = new MagicString(code);
+        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"]]) {
+            const at = code.indexOf(from);
+            if (at < 0) throw new Error(`build.mjs: src/parts.ts has no line "${from}".`);
+            edited.overwrite(at, at + from.length, to);
+        }
         return withMap(edited, id);
     },
 };
-await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [contourOnly, allInOne]);
+await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [contourOnly, allInOne, globalNames]);
 
 // The name, the version and the licence go in the first line of each built file that package.json names. The chunks
 // that these files share do not get the line, because each line counts against the size budgets. (The minifier of
