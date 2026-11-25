@@ -1320,7 +1320,11 @@ export class GLRenderer {
             const shift = (it: RenderItem<GLTile>) => tx || ty ? [tx / it.scale, ty / it.scale] : undefined;
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {
-                for (const it of items) for (const b of parts(it, L.id)) {
+                // The fills of all batches first, then the edges in the pattern, unless the style has an outline color
+                // (drawn by the edge pass below). As in MapLibre GL JS, a later batch does not cover the edges of an earlier one.
+                const own = L.p.outline.eval(zoom)[3] <= 0;
+                for (const edges of own ? [false, true] : [false]) for (const it of items) for (const b of parts(it, L.id)) {
+                    if (edges && !b.edgeVao) continue;
                     // (fill-opacity is in u_fade.y; fill-color colors a distance-field image.)
                     const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
                     const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom), c);
@@ -1328,16 +1332,11 @@ export class GLRenderer {
                     const u = place(tilePixels(it.id));
                     this.placeTile(u, it.id, moved(it), shift(it));
                     gl.uniform4fv(u.u_clip, it.clip);
-                    gl.bindVertexArray(b.vao);
-                    gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
-                    // Edge pass in the pattern, unless the style has an outline color (drawn by the edge pass below).
-                    if (b.edgeVao && L.p.outline.eval(zoom)[3] <= 0) {
-                        gl.uniform2f(u.u_world, target[0], target[1]);
-                        gl.bindVertexArray(b.edgeVao);
-                        gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
-                    }
+                    if (edges) gl.uniform2f(u.u_world, target[0], target[1]);
+                    gl.bindVertexArray(edges ? b.edgeVao! : b.vao);
+                    gl.drawElements(edges ? gl.LINES : gl.TRIANGLES, edges ? b.edgeCount! : b.count, b.indexType, 0);
                 }
-                if (L.p.outline.eval(zoom)[3] <= 0) continue;
+                if (own) continue;
             }
             let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
