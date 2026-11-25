@@ -151,7 +151,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## cheap-ruler
 
-The distances of `distance` (`Ruler` in `src/within.ts`) are a close translation, shortened, of `distance` and `pointOnLine` of [cheap-ruler](https://github.com/mapbox/cheap-ruler), by way of the copy in the MapLibre style specification.
+The distances of `distance` (`Ruler` in `src/within.ts`) are a close translation, shortened, of `distance` and `pointOnLine` of [cheap-ruler](https://github.com/mapbox/cheap-ruler) 4.1.1, by way of the copy in the MapLibre style specification.
 
 ```
 ISC License
