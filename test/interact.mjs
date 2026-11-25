@@ -3034,7 +3034,8 @@ for (const mode of renderers) {
             const point = x => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [x, 0]}}]});
             const m = new mod.Map({container: el, style: {version: 8, sources: {g: {type: 'geojson', data: point(0)}}, layers: [{id: 'c', type: 'circle', source: 'g'}]}, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 1});
             await new Promise(r => m.once('load', r));
-            await new Promise(r => m.once('idle', r));
+            // (The events of the first load are over: `idle` can come before `load` here, so a short wait.)
+            await new Promise(r => setTimeout(r, 500));
             const log = [];
             for (const t of ['sourcedataloading', 'sourcedata', 'data']) m.on(t, e => { if (e.sourceId === 'g' && !e.tile) log.push(['map', t, e.sourceDataType ?? null, e.isSourceLoaded]); });
             m.getSource('g').on('data', e => { if (!e.tile) log.push(['source', 'data', e.sourceDataType ?? null, 'sourceId' in e]); });
