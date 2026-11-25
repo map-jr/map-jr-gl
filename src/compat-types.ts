@@ -216,7 +216,7 @@ export type StyleImageMetadata = {pixelRatio?: number; sdf?: boolean; stretchX?:
 
 /**
  * What `map.getSource(id)` returns: the description of the source with its `id`. Which methods exist depends on the
- * type of the source. These names are types only: a source of another type does not have the methods of the name.
+ * type of the source. The entry also exports each name as a value for `instanceof`, which tests the `type`.
  */
 export type Source = {id: string; type: string; [key: string]: any};
 export type GeoJSONSource = Source & {
@@ -232,7 +232,7 @@ export type RasterDEMTileSource = Source;
 export type CanvasSource = Source & {getCanvas(): HTMLCanvasElement | undefined; play(): void; pause(): void; setCoordinates(coordinates: unknown): unknown};
 /** A video source: its `<video>` element (`undefined` until the code of video sources has loaded) and the methods of MapLibre GL JS. */
 export type VideoSource = Source & {getVideo(): HTMLVideoElement | undefined; play(): void; pause(): void; seek(seconds: number): void; setCoordinates(coordinates: unknown): unknown};
-/** The base of an event. An event is a plain object here, and not an instance of the class `Event` of MapLibre GL JS. */
+/** The base of an event. The events that the map fires are plain objects, not instances of the class `Event`. */
 export type Event = MapEvent;
 export type ImageSource = Source & {updateImage(options: {url?: string; coordinates?: unknown}): unknown; setCoordinates(coordinates: unknown): unknown};
 
