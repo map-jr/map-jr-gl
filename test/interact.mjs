@@ -2664,7 +2664,7 @@ for (const mode of renderers) {
             await m.addImage('red', solid([255, 0, 0, 255]));
             await m.addImage('blue', solid([0, 0, 255, 255]));
             const box = (x0, x1, img, k) => ({type: 'Feature', properties: {img, k}, geometry: {type: 'Polygon', coordinates: [[[x0, -60], [x1, -60], [x1, 60], [x0, 60], [x0, -60]]]}});
-            m.addSource('s', {type: 'geojson', data: {type: 'FeatureCollection', features: [box(-0.1, 170, 'red', 1), box(-100, 60, 'blue', 2)]}});
+            m.addSource('s', {type: 'geojson', data: {type: 'FeatureCollection', features: [box(-0.1, 170, 'red', 1), box(-100, 15, 'blue', 2)]}});
             m.addLayer({id: 'p', type: 'fill', source: 's', layout: {'fill-sort-key': ['get', 'k']}, paint: {'fill-pattern': ['get', 'img']}});
             // (The image is taken until both fills are drawn or 30 s pass; the edge is in the same image.)
             let edge = null, blue = null, red = null;
