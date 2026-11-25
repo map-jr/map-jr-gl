@@ -257,9 +257,13 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A vector, raster or elevation tile whose response has `max-age` in `Cache-Control`, or else an
   `Expires` header, is requested again when that time has passed, while the tile is in the view. The old tile stays
   drawn until the new one has loaded. A response that is out of date when it arrives is requested again after 1 s,
-  2 s, 4 s and so on. The map option `refreshExpiredTiles: false` turns this off.
+  2 s, 4 s and so on. The map option `refreshExpiredTiles: false` turns this off. A failed request of an expired tile
+  fires one `error` with `sourceId` and `source`, and the tile is not requested again.
 - **This library:** The same, for vector, raster and elevation tiles of both entries. A failed request of an expired tile keeps the
-  old tile and is made again after 1 s, 2 s, 4 s and so on. `idle` waits for each new tile, as `idle` of MapLibre GL JS
+  old tile and is made again after 1 s, 2 s, 4 s and so on. The first failure fires one `error` with `sourceId` (and
+  `source` in the compat entry), and the failures after it fire none until a request succeeds.
+
+  `idle` waits for each new tile, as `idle` of MapLibre GL JS
   comes after it. GeoJSON sources, tiles of PMTiles archives and the elevation tiles that contour lines are made from are
   not requested again.
   The option `refreshExpiredTiles: false` of `@map-jr/map-jr-gl/maplibre-compat` turns this off, as in MapLibre GL JS.
