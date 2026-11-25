@@ -68,10 +68,11 @@ function cornerWeights(c: number[]): number[] | undefined {
  * picture over are not drawn (back faces are culled, with the turn of the corners 0, 1, 2 as the front). The turn at a
  * point (u, v) of the picture is the determinant of the stretch there, j0 + j1 u + j2 v, which is linear in u and v;
  * this gives j0, j1 and j2 with the sign of the front, scaled to at most 1. The fragment shader discards where it is negative.
+ * Corners 0, 1, 2 on one line count as not turned over, as in `hasWrongWindingOrder`.
  */
 function foldOf(c: number[]): number[] {
     const [x0, y0, x1, y1, x2, y2, x3, y3] = c, bx = x1 - x0, by = y1 - y0, cx = x3 - x0, cy = y3 - y0, dx = x0 - x1 + x2 - x3, dy = y0 - y1 + y2 - y3;
-    const j = [bx * cy - by * cx, bx * dy - by * dx, dx * cy - dy * cx], k = Math.sign(bx * (y2 - y0) - by * (x2 - x0)) / Math.max(...j.map(Math.abs));
+    const j = [bx * cy - by * cx, bx * dy - by * dx, dx * cy - dy * cx], k = (bx * (y2 - y0) - by * (x2 - x0) < 0 ? -1 : 1) / Math.max(...j.map(Math.abs));
     return j.map(v => v * k);
 }
 const FLAT = [1, 0, 0];
