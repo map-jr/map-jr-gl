@@ -340,6 +340,12 @@ because they read few such members. The build
 stops when a file of the worker reads `Math.floor` and also has the name `Math_floor`, and when a file assigns to a
 member of `Math`. Do not give a variable a name that starts with `Math_` or `Array_`.
 
+The plugin `server-browser-only` of `build.mjs` leaves out of `server.js` the methods of shared classes that only the
+browser map calls, such as `project` of `Transform` and `query` of `TileBuilder` (the list `serverDrops`), and the
+decoding of images by a browser in `src/exact-pixels.ts` (#2041). The minifier keeps every method of a class, so
+these would otherwise be in the file. The build stops when `server.js` still reads a method of the list: when the
+server renderer comes to call one, remove its name from `serverDrops`.
+
 ## Other browsers and operating systems
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
