@@ -8,7 +8,7 @@
  * the horizon hides the far side, and between zoom 11 and 12 the position mixes with the Mercator position in clip
  * space. The code is new.
  */
-import {EXTENT, TILE_SIZE, clamp, keepSize as sizeZoom, latFromMerc, lngFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
+import {EXTENT, TILE_SIZE, clamp, lodZoom, keepSize as sizeZoom, latFromMerc, lngFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 
 type V3 = [number, number, number];
 const PI = Math.PI, RAD = PI / 180;
@@ -234,15 +234,21 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
 
 /**
  * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when all its
- * sample points are behind the horizon (with the bulge of a large tile), or outside the view. The level that a tile
- * gets falls with the distance from the camera to its nearest sample point, as with 3D terrain (geo.ts).
+ * sample points are behind the horizon (with the bulge of a large tile), or outside the view. The level of a tile is
+ * the level that MapLibre GL JS 6.17 gives it on the globe.
  */
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];
-    // The camera distance in radii, at which the tile of the zoom of the map is wanted.
-    // As in MapLibre GL JS, a tile at the distance of the center counts as a little nearer (by the cosine of half the
-    // field of view), so that a zoom just below a whole level already takes the tiles of that level (#1828).
-    const unit = tr.cameraDistance / f.radius / Math.max(0.5, Math.cos(tr.fov / 2)), margin = 0.15;
+    // The level of a tile is MapLibre GL JS's (#1828): up to tiles of zoom 4 every tile has the level of the map (its
+    // zoom, rounded down); above it, the rule of a pitched view (lodZoom), with the camera above the center of a flat
+    // Mercator world at the distance of the camera, and the distance to the nearest point of a tile in that world.
+    const fixed = Math.floor(exact) <= 4 ? Math.min(maxzoom, Math.max(0, (round ? Math.round : Math.floor)(exact))) : -1;
+    const d3 = tr.cameraDistance / tr.worldSize, pitch = tr.pitch * RAD, bearing = tr.bearing * RAD, margin = 0.15;
+    const cx = mercX(tr.lng), cy = mercY(clamp(tr.lat, -85.051129, 85.051129));
+    const camX = cx - d3 * Math.sin(pitch) * Math.sin(bearing), camY = cy + d3 * Math.sin(pitch) * Math.cos(bearing), camZ = Math.max(1e-9, d3 * Math.cos(pitch));
+    // The distance on the ground to a tile, with the world repeated across the antimeridian and mirrored at the poles.
+    const flat = (x0: number, y0: number, s: number) => Math.max(Math.abs(camY - clamp(camY, y0, y0 + s)), Math.min(...[-1, 0, 1].map(k => Math.abs(camX - clamp(camX, x0 + k, x0 + k + s)))));
+    const ground = (x: number, y: number, n: number) => Math.min(flat(x / n, y / n, 1 / n), flat(x / n + 0.5, -(y + 1) / n, 1 / n), flat(x / n + 0.5, 2 - (y + 1) / n, 1 / n));
     // The point of the sphere under the camera, in Mercator units: the nearest point of a tile is its point nearest to this one.
     const cl = Math.hypot(...f.cam), under = [mercX(Math.atan2(f.cam[0], f.cam[2]) / RAD), mercY(clamp(Math.asin(f.cam[1] / cl) / RAD, -85.051129, 85.051129))];
     // The places under nine points of the screen: a tile that has one of them is in view, however large it is.
@@ -264,10 +270,7 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
         if (!inView) return;
         const ux = under[0] - Math.floor(under[0] - x / n + 0.5 - 0.5 / n), nearest = sphere(clamp(ux, x / n, (x + 1) / n), clamp(under[1], y / n, (y + 1) / n));
         const near = Math.min(...[...pts, nearest].map(p => Math.hypot(p[0] - f.cam[0], p[1] - f.cam[1], p[2] - f.cam[2])));
-        // A tile far from the latitude of the center has other pixels on the sphere: Mercator tiles get smaller toward
-        // the poles, by the cosine of the latitude, taken at the point of the tile nearest to the place under the camera.
-        const cos = Math.max(1e-3, Math.sqrt(1 - nearest[1] ** 2)) / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD);
-        const wanted = Math.min(maxzoom, (round ? Math.round : Math.floor)(exact + Math.log2(unit / Math.max(near, 1e-9) * cos)));
+        const wanted = fixed >= 0 ? fixed : Math.min(maxzoom, (round ? Math.round : Math.floor)(lodZoom([9.314, 3], exact, ground(x, y, n), camZ, d3, tr.fov)));
         if (z >= maxzoom || z >= wanted) { if (z >= minzoom) out.push({z, x, y, w: 0, key: `${z}/${x}/${y}`, near}); return; }
         for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1));
     };

@@ -79,6 +79,22 @@ test('globe: the tile level switches a little below a whole zoom, as in MapLibre
     assert.deepEqual(at(7.95), [8]);
 });
 
+test('globe: the tiles of a 1000x700 map are those of MapLibre GL JS 6.17 (#1828)', () => {
+    // The lists are `map.coveringTiles({tileSize: 512})` of MapLibre GL JS 6.17 on the globe, center at longitude 10.
+    const views: [number, number, number, string][] = [
+        [1, 0, 60, '1/0/0 1/0/1 1/1/0 1/1/1'],
+        [1, 75, 60, '1/0/0 1/1/0'],
+        [4, 45, 60, '4/10/4 4/10/5 4/6/4 4/6/5 4/7/3 4/7/4 4/7/5 4/7/6 4/8/3 4/8/4 4/8/5 4/8/6 4/9/3 4/9/4 4/9/5 4/9/6'],
+        [5.5, 0, 60, '5/15/14 5/15/15 5/16/14 5/16/15 5/17/14 5/17/15 5/18/14 5/18/15 6/32/32 6/32/33 6/33/32 6/33/33 6/34/32 6/34/33 6/35/32'],
+        [5.5, 75, 0, '5/16/5 5/16/6 5/17/5 5/17/6'],
+    ];
+    for (const [zoom, lat, pitch, list] of views) {
+        const tr = make([10, lat], zoom, 0, pitch);
+        tr.width = 1000; tr.height = 700;
+        assert.deepEqual(tr.tileCover(0, 22, 512).map(t => t.key).sort(), list.split(' '), `${zoom}/${lat}/${pitch}`);
+    }
+});
+
 test('globe: a drag turns the globe so that the place stays under the pointer, and keeps the size of the planet', () => {
     const tr = make([0, 0], 2);
     const [lng, lat] = tr.unproject(500, 350);
