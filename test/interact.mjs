@@ -3127,6 +3127,29 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a filter with ["zoom"] on an over-zoomed tile sees the over-zoomed zoom, as in MapLibre GL JS (#991)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
     }
+    // A layer with maxzoom 16 on a tile that was built over-zoomed at 16 shows in the first frame after a zoom-out to 15.5,
+    // while the tile waits to be built again for the new zoom (#994). (The main renderer only: the canvas is read in the
+    // frame itself, and `toBlob` would wait for the map to be idle.)
+    if (mode === 'main') {
+        const shown = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-0.01, -0.01], [0.01, -0.01], [0.01, 0.01], [-0.01, 0.01], [-0.01, -0.01]]]}};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            // (The layer "under" keeps the tile in use at zoom 16, so that it is built there.)
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 16, style: {version: 8, sources: {g: {type: 'geojson', data: square, maxzoom: 14}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'under', type: 'fill', source: 'g', paint: {'fill-color': '#00f'}}, {id: 'f', type: 'fill', source: 'g', maxzoom: 16, paint: {'fill-color': '#f00'}}]}});
+            const pad = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d', {willReadFrequently: true});
+            const middle = () => { const c = m.getCanvas(); pad.drawImage(c, c.width / 2, c.height / 2, 1, 1, 0, 0, 1, 1); return [...pad.getImageData(0, 0, 1, 1).data].slice(0, 3).join(); };
+            const at16 = await new Promise(r => { m.once('idle', () => r(middle())); setTimeout(() => r('no idle'), 8000); });
+            const frame = new Promise(r => { m.once('render', () => r({zoom: m.getZoom(), px: middle()})); setTimeout(() => r('no frame'), 4000); });
+            m.jumpTo({zoom: 15.5});
+            const after = await frame;
+            m.remove(); el.remove();
+            return {at16, after};
+        });
+        check('[main] compat: a layer with maxzoom 16 shows in the first frame of a zoom-out from 16 to 15.5 on an over-zoomed tile (#994)',
+            shown.at16 === '0,0,255' && shown.after.zoom === 15.5 && shown.after.px === '255,0,0', JSON.stringify(shown));
+    }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
     // that are given the same source object both load it.
     {
