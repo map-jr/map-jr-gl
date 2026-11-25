@@ -1587,6 +1587,37 @@ for (const mode of renderers) {
             ours.right === 'fill' && ours.up === 'line' && ours.down === 'extrusion' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
 
+    // A `*-translate` that is an expression or a function of the zoom is evaluated at the zoom of the map, as in
+    // MapLibre GL JS (#1976). At zoom 2 the circle's interpolation gives [60, 0] (60 pixels right) and the line's
+    // function with stops gives [0, 60] (60 pixels down).
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}};
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-2, 0], [2, 0]]}};
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: point}, l: {type: 'geojson', data: line}},
+                layers: [
+                    {id: 'circle', type: 'circle', source: 'p', paint: {'circle-radius': 5, 'circle-translate': ['interpolate', ['linear'], ['zoom'], 0, ['literal', [0, 0]], 4, ['literal', [120, 0]]]}},
+                    {id: 'line', type: 'line', source: 'l', paint: {'line-width': 4, 'line-translate': {stops: [[0, [0, 0]], [4, [0, 120]]]}}},
+                ]}});
+            await new Promise(r => m.once('idle', r));
+            const p = m.project([0, 0]), ids = fs => [...new Set([...fs].map(f => f.layer.id))].sort().join();
+            const out = {};
+            for (const [name, pt] of Object.entries({right: [p.x + 60, p.y], down: [p.x, p.y + 60], at: [p.x, p.y]})) {
+                out[name] = ids(await m.queryRenderedFeatures(pt));
+                out[`now-${name}`] = ids(m.queryRenderedFeatures(pt));
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a circle-translate and a line-translate that depend on the zoom are evaluated at the zoom of the map, as MapLibre GL JS (#1976)`,
+            ours.right === 'circle' && ours.down === 'line' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // A line with `line-offset` is found where it is drawn and not at its geometry, as in MapLibre GL JS 6.17 (#2001). A
     // positive offset moves a line to the right of its direction: a line drawn east with an offset of 20 is 20 pixels
     // down, and one with an offset of -20 from a property is 20 pixels up.
