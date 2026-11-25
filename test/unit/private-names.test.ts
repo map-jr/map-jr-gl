@@ -3,6 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import {readFileSync} from 'node:fs';
 import {privateNames} from '../../scripts/private-names.mjs';
 
 const fixtures = path.join(import.meta.dirname, 'fixtures/private-names-export');
@@ -18,4 +19,15 @@ test('private-names: an internal name that src/ also reads from the WebGL contex
 
 test('private-names: the names of src/ pass the check', () => {
     assert.ok(privateNames().size > 0);
+});
+
+test('private-names: a protected method that another file overrides gets the same name in each file (#2049)', async () => {
+    // (The engine has a private member with the same name. Each file is renamed on its own, by one table of names.)
+    const {shortenPrivateNames} = await import('../../scripts/private-names.mjs');
+    const dir = path.join(import.meta.dirname, 'fixtures/private-names-protected'), [plugin] = shortenPrivateNames(dir, []);
+    const built = Object.fromEntries(['map.ts', 'compat-map.ts', 'engine.ts'].map(f => [f, plugin.transform(readFileSync(path.join(dir, f), 'utf8'), path.join(dir, f)).code]));
+    const base = /protected (\w+)\(id: string\) \{ return id; \}/.exec(built['map.ts'])?.[1];
+    assert.ok(base, built['map.ts']);
+    assert.match(built['map.ts'], new RegExp(`this\\.${base}\\(id\\)`));
+    assert.match(built['compat-map.ts'], new RegExp(`protected override ${base}\\(id: string\\)`));
 });
