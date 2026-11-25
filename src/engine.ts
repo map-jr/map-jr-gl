@@ -1509,13 +1509,12 @@ export class Engine {
     }
 
     /**
-     * A raster tile from the bytes of its image (or a decoded image from a custom protocol), in its turn (see `paced`),
+     * A raster tile from the image that a tile worker decoded (see `loadImage`; none for a tile that does not exist or is empty), in its turn (see `paced`),
      * unless `wanted` says no more. (WebKit takes 1.4 to 5 ms to send one image to the GPU, and a fast zoom brought
      * dozens of them in one frame, #2068. A tile that leaves the view while it waits is dropped, and its turn sends nothing.)
      */
-    private async imageTile(bytes: Uint8Array | ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
-        if (!bytes) return {labels: {}, batches: {}};
-        const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
+    private async imageTile(image: ImageBitmap | null, id: TileID, wanted: () => boolean): Promise<GLTile> {
+        if (!image) return {labels: {}, batches: {}};
         if (!wanted()) return image.close(), {labels: {}, batches: {}};
         return this.paced(image.width * image.height * 4, () => {
             const tile = wanted() ? this.renderer.createImageTile(image, undefined, id, undefined, true) : {labels: {}, batches: {}};
