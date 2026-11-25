@@ -205,6 +205,49 @@ export type Event = T.Event;
  * `data` and `type`. The events that the map fires are plain objects, not instances of this class.
  */
 export const Event = class { constructor(type: string, data: object = {}) { Object.assign(this, data, {type}); } } as unknown as new (type: string, data?: object) => Event;
+/**
+ * The event of `GeolocateControl` for `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` and
+ * `userlocationlostfocus`. `new GeolocateEvent(type)` makes one to pass to `fire`, and `e instanceof GeolocateEvent` is
+ * true for an event of one of these four types, also for the plain objects that the control fires.
+ */
+export class GeolocateEvent extends Event {
+    static [Symbol.hasInstance](x: any) { return /^(trackuserlocation(start|end)|userlocation(lost)?focus)$/.test(x?.type); }
+}
+/**
+ * The error class of MapLibre GL JS for a failed request, for `new` and `instanceof`. The requests of this library
+ * fail with an `Error`, not with an `AJAXError`.
+ */
+export class AJAXError extends Error {
+    declare status: number; declare statusText: string; declare url: string; declare body: Blob;
+    constructor(status: number, statusText: string, url: string, body: Blob) {
+        super(`AJAXError: ${statusText} (${status}): ${url}`);
+        Object.assign(this, {status, statusText, url, body});
+    }
+}
+type Padding = {top?: number; bottom?: number; left?: number; right?: number};
+/** Padding in pixels on each side, as the class of MapLibre GL JS with its methods. */
+export class EdgeInsets {
+    declare top: number; declare bottom: number; declare left: number; declare right: number;
+    constructor(top = 0, bottom = 0, left = 0, right = 0) {
+        Object.assign(this, {top, bottom, left, right});
+        if (![top, bottom, left, right].every(v => v >= 0)) throw new Error('[map-jr-gl] new EdgeInsets(): each value must be a number of 0 or more.');
+    }
+    interpolate(start: Padding, target: Padding, t: number) {
+        for (const k of ['top', 'bottom', 'left', 'right'] as const) if (target[k] != null && start[k] != null) this[k] = start[k] + (target[k] - start[k]) * t;
+        return this;
+    }
+    getCenter(width: number, height: number) {
+        const c = (v: number, max: number) => Math.min(max, Math.max(0, v / 2));
+        return new Point(c(this.left + width - this.right, width), c(this.top + height - this.bottom, height));
+    }
+    equals(o: Padding) { return this.top === o.top && this.bottom === o.bottom && this.left === o.left && this.right === o.right; }
+    clone() { return new EdgeInsets(this.top, this.bottom, this.left, this.right); }
+    toJSON() { return {top: this.top, bottom: this.bottom, left: this.left, right: this.right}; }
+}
+/** MapLibre GL JS starts its workers ahead of the first map. This library starts them with the first map, so this does nothing. */
+export const prewarm = () => {};
+/** Does nothing, as `prewarm` does nothing. */
+export const clearPrewarmedResources = () => {};
 /** The size of a tile in tile units, as in MapLibre GL JS. */
 export const EXTENT = 8192;
 /**
@@ -249,6 +292,7 @@ export default {
     GPUInitializationError,
     Map, MapLibreMap: Map, Point, MercatorCoordinate, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set, Hash, config, Evented, EXTENT,
     GeoJSONSource, VectorTileSource, RasterTileSource, RasterDEMTileSource, ImageSource, VideoSource, CanvasSource, Event,
+    GeolocateEvent, AJAXError, EdgeInsets, prewarm, clearPrewarmedResources,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };

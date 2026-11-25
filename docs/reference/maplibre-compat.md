@@ -397,6 +397,8 @@ code of these sources has loaded, which the map requests when a style with such 
 | `config` | The settings object of MapLibre GL JS, with three fields. See [Hash](#hash-and-config). |
 | `Evented`, `EXTENT` | The class with `on`, `off`, `once` and `fire` that `Marker`, `Popup` and `FullscreenControl` use for their own events, and the tile size 8192. |
 | `createTileMesh(options, forceIndicesSize?)` | Returns the vertices and indices of a mesh that covers a tile, as in MapLibre GL JS 6.17. It throws when `forceIndicesSize` is `'16bit'` and the mesh needs 32-bit indices. |
+| `AJAXError`, `EdgeInsets`, `GeolocateEvent` | Classes of MapLibre GL JS 6.17 for `new` and `instanceof`. See [AJAXError, EdgeInsets and GeolocateEvent](#ajaxerror-edgeinsets-and-geolocateevent). |
+| `prewarm()`, `clearPrewarmedResources()` | They do nothing, because this library starts its workers with the first map. |
 | `GPUInitializationError` | The error of the `error` event when the map cannot start. The constructor does not throw it. |
 | `MapLibreMap` | Another name of `Map`. |
 | `InteractionHandler` | Only in this library: the class of `map.dragPan` and the other handlers. |
@@ -413,6 +415,15 @@ true when the source has the type `geojson`, and likewise for `vector`, `raster`
 
 `new Event(type, data)` makes an object with the members of `data` and `type`, to pass to `fire`, as in MapLibre GL
 JS. The events that the map fires are plain objects, so `instanceof Event` is false for them.
+
+### AJAXError, EdgeInsets and GeolocateEvent
+
+- `new AJAXError(status, statusText, url, body)` has these four fields and the message of MapLibre GL JS. A failed
+  request of this library rejects with an `Error`, not with an `AJAXError`.
+- `new EdgeInsets(top, bottom, left, right)` takes pixels, each 0 by default, and has `interpolate`, `getCenter`,
+  `equals`, `clone` and `toJSON`. It throws for a negative value or a value that is not a number.
+- `new GeolocateEvent(type)` makes an event to pass to `fire`. `e instanceof GeolocateEvent` is true for an event of
+  the type `trackuserlocationstart`, `trackuserlocationend`, `userlocationfocus` or `userlocationlostfocus`.
 
 `map.style.projection.subdivisionGranularity` has the granularities of MapLibre GL JS 6.17 for the projection of the
 style (`fill`, `line`, `tile`, `stencil` with `getGranularityForZoomLevel(zoom)`, and `circle`), for custom layers that
@@ -437,7 +448,7 @@ time. The last table of [Types](maplibre-differences.md#types) says why each gro
 <!-- exports:start -->
 **A type here, not a value** (12): `ErrorEvent`, `MapBoxZoomEvent`, `MapContextEvent`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapProjectionEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapStyleImageMissingEvent`, `MapTouchEvent`, `MapWheelEvent`.
 
-**Not exported** (34): `AJAXError`, `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `EdgeInsets`, `FullscreenEvent`, `GeolocateErrorEvent`, `GeolocateEvent`, `GeolocatePositionEvent`, `KeyboardHandler`, `MapStyleLoadEvent`, `MapTerrainEvent`, `MarkerClickEvent`, `MarkerDragEvent`, `PopupEvent`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addProjection`, `addSourceType`, `clearPrewarmedResources`, `getGlobalDispatcher`, `importScriptInWorkers`, `isTimeFrozen`, `now`, `prewarm`, `removeProjection`, `restoreNow`, `setNow`.
+**Not exported** (29): `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `FullscreenEvent`, `GeolocateErrorEvent`, `GeolocatePositionEvent`, `KeyboardHandler`, `MapStyleLoadEvent`, `MapTerrainEvent`, `MarkerClickEvent`, `MarkerDragEvent`, `PopupEvent`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addProjection`, `addSourceType`, `getGlobalDispatcher`, `importScriptInWorkers`, `isTimeFrozen`, `now`, `removeProjection`, `restoreNow`, `setNow`.
 
 <!-- exports:end -->
 
