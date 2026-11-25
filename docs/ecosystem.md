@@ -196,31 +196,19 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 | Missing | Kind | Packages | Names of the packages |
 |---|---|---:|---|
 | `addSourceType` | export | 1 | @maptiler/sdk |
-| `AJAXError` | export | 1 | @maptiler/sdk |
 | `BoxZoomHandler` | export | 1 | @maptiler/sdk |
-| `CanvasSource` | export | 1 | svelte-maplibre-gl |
-| `clearPrewarmedResources` | export | 1 | @maptiler/sdk |
 | `CooperativeGesturesHandler` | export | 1 | @maptiler/sdk |
 | `DoubleClickZoomHandler` | export | 1 | @maptiler/sdk |
 | `DragPanHandler` | export | 1 | @maptiler/sdk |
 | `DragRotateHandler` | export | 1 | @maptiler/sdk |
-| `EdgeInsets` | export | 1 | @maptiler/sdk |
-| `GeoJSONSource` | export | 1 | svelte-maplibre-gl |
-| `GeolocateEvent` | export | 1 | @maptiler/sdk |
-| `ImageSource` | export | 1 | svelte-maplibre-gl |
 | `importScriptInWorkers` | export | 1 | @maptiler/sdk |
 | `KeyboardHandler` | export | 1 | @maptiler/sdk |
-| `prewarm` | export | 1 | @maptiler/sdk |
-| `RasterDEMTileSource` | export | 1 | svelte-maplibre-gl |
-| `RasterTileSource` | export | 1 | svelte-maplibre-gl |
 | `ScrollZoomHandler` | export | 1 | @maptiler/sdk |
 | `Style` | export | 1 | @maptiler/sdk |
 | `TwoFingersTouchPitchHandler` | export | 1 | @maptiler/sdk |
 | `TwoFingersTouchRotateHandler` | export | 1 | @maptiler/sdk |
 | `TwoFingersTouchZoomHandler` | export | 1 | @maptiler/sdk |
 | `TwoFingersTouchZoomRotateHandler` | export | 1 | @maptiler/sdk |
-| `VectorTileSource` | export | 1 | svelte-maplibre-gl |
-| `VideoSource` | export | 1 | svelte-maplibre-gl |
 | `Marker.setSubpixelPositioning` | method of an instance | 2 | @indoorequal/vue-maplibre-gl, svelte-maplibre-gl |
 | `Popup.setPadding` | method of an instance | 2 | svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
 
@@ -228,7 +216,6 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 
 | Method of `Map` | Packages | Names of the packages |
 |---|---:|---|
-| `setRenderWorldCopies` | 4 | vue-maplibre-gl, @indoorequal/vue-maplibre-gl, svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
 | `setTransformCameraUpdate` | 3 | react-map-gl, @vis.gl/react-maplibre, svelte-maplibre-gl |
 | `setAnisotropicFilterPitch` | 2 | svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
 | `setCenterClampedToGround` | 1 | svelte-maplibre-gl |
@@ -283,9 +270,9 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 |---|---|---:|---:|---:|---|---|---|---|---|
 | react-map-gl | 8.1.3 | 54 | 20 | 8 | none | `setTransformCameraUpdate` | none | none | none |
 | @vis.gl/react-maplibre | 8.1.3 | 48 | 15 | 6 | none | `setTransformCameraUpdate` | none | none | none |
-| vue-maplibre-gl | 5.6.1 | 40 | 6 | 17 | none | `setRenderWorldCopies` | none | none | none |
-| @indoorequal/vue-maplibre-gl | 9.0.1 | 39 | 9 | 5 | none | `setRenderWorldCopies` | none | none | `Marker.setSubpixelPositioning` |
-| svelte-maplibre-gl | 2.2.1 | 55 | 26 | 5 | none | `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setRenderWorldCopies`, `setTransformCameraUpdate`, `setVerticalFieldOfView` | `CanvasSource`, `GeoJSONSource`, `ImageSource`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none | `Marker.setSubpixelPositioning`, `Popup.setPadding` |
+| vue-maplibre-gl | 5.6.1 | 40 | 6 | 17 | none | none | none | none | none |
+| @indoorequal/vue-maplibre-gl | 9.0.1 | 39 | 9 | 5 | none | none | none | none | `Marker.setSubpixelPositioning` |
+| svelte-maplibre-gl | 2.2.1 | 55 | 26 | 5 | none | `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setTransformCameraUpdate`, `setVerticalFieldOfView` | none | none | `Marker.setSubpixelPositioning`, `Popup.setPadding` |
 | svelte-maplibre | 2.0.1 | 37 | 19 | 26 | none | none | none | none | none |
-| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 | 11 | 46 | none | `setAnisotropicFilterPitch`, `setCenterElevation`, `setRenderWorldCopies` | none | none | `Popup.setPadding` |
-| @maptiler/sdk | 5.0.0 | 71 | 57 | 20 | none | `setRoll` | `AJAXError`, `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `EdgeInsets`, `GeolocateEvent`, `KeyboardHandler`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addSourceType`, `clearPrewarmedResources`, `importScriptInWorkers`, `prewarm` | none | none |
+| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 | 11 | 46 | none | `setAnisotropicFilterPitch`, `setCenterElevation` | none | none | `Popup.setPadding` |
+| @maptiler/sdk | 5.0.0 | 71 | 57 | 20 | none | `setRoll` | `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `KeyboardHandler`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addSourceType`, `importScriptInWorkers` | none | none |

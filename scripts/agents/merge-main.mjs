@@ -12,7 +12,10 @@
 //     other blocks (the status table of `pnpm status`, the sections of docs/ecosystem.md) keep the text of main, and
 //     the script prints the command that writes them, which the coordinator runs once for a batch;
 //   - docs/status.json takes the file of main, for the same reason;
-//   - test/conformance/render-result.json is computed from the merged render-tests.json.
+//   - test/conformance/render-tests.json takes, for each test, the line that one side changed (#1915). Two branches that
+//     move tests on adjacent lines conflict in git, but not here. A test that both sides changed to different statuses
+//     is left for a person;
+//   - test/conformance/render-result.json, which main no longer has, is removed.
 // When that resolves every conflict, it commits the merge. Any other conflict stops it with a list of the files, and
 // the merge stays in progress for you to finish by hand (`git merge --abort` undoes it).
 import {execFileSync} from 'node:child_process';
@@ -58,11 +61,22 @@ export function resolveBlocks(text) {
     return {text: out.join('\n'), blocks};
 }
 
-/** The text of render-result.json for the status of each test in render-tests.json. */
-async function renderResult(root) {
-    const {summarize, committedTotals} = await import('../../test/conformance/render-summary.mjs');
-    const tests = JSON.parse(readFileSync(root + 'test/conformance/render-tests.json', 'utf8'));
-    return JSON.stringify(committedTotals(summarize(Object.keys(tests).map(id => ({id, status: tests[id]}))).totals), null, 2) + '\n';
+/**
+ * Merges three versions of render-tests.json (the texts of the base, of this branch and of main) test by test, and
+ * returns the text in the format that render.mjs writes, or {conflicts} (one line for each test that has a different new
+ * status on each side) when it cannot.
+ */
+export function mergeRenderTests(base, ours, theirs) {
+    const [b, o, t] = [base, ours, theirs].map(text => JSON.parse(text));
+    const out = {}, conflicts = [];
+    for (const id of new Set([...Object.keys(b), ...Object.keys(o), ...Object.keys(t)])) {
+        const v = o[id] === b[id] ? t[id] : t[id] === b[id] || t[id] === o[id] ? o[id] : null;
+        if (v === null) conflicts.push(`${id}: this branch has ${o[id] ?? 'no line'}, main has ${t[id] ?? 'no line'} (was ${b[id] ?? 'no line'})`);
+        else if (v !== undefined) out[id] = v;
+    }
+    if (conflicts.length) return {conflicts};
+    const ids = Object.keys(out).sort((x, y) => x < y ? -1 : x > y ? 1 : 0);
+    return '{\n' + ids.map(id => `${JSON.stringify(id)}: ${JSON.stringify(out[id])}`).join(',\n') + '\n}\n';
 }
 
 async function main() {
@@ -78,7 +92,16 @@ async function main() {
     const left = [], run = new Map(), notes = new Set();
     for (const file of conflicts) {
         if (file === 'docs/status.json') { git('checkout', '--theirs', '--', file); notes.add('pnpm status'); }
-        else if (file === 'test/conformance/render-result.json' && !conflicts.includes('test/conformance/render-tests.json')) writeFileSync(root + file, await renderResult(root));
+        // The totals are no longer committed (#1915): a branch from before that still changes the file loses it.
+        else if (file === 'test/conformance/render-result.json') { git('rm', '-q', '--', file); console.log(`[merge-main] Removed ${file}, which main no longer has.`); continue; }
+        else if (file === 'test/conformance/render-tests.json') {
+            const merged = mergeRenderTests(...[1, 2, 3].map(stage => git('show', `:${stage}:${file}`)));
+            if (typeof merged !== 'string') {
+                console.error(`[merge-main] ${file}: these tests have a different new status on each side. Keep the status that CI gives:\n${merged.conflicts.map(c => '  ' + c).join('\n')}`);
+                left.push(file); continue;
+            }
+            writeFileSync(root + file, merged);
+        }
         else if (file.endsWith('.md')) {
             const r = resolveBlocks(readFileSync(root + file, 'utf8'));
             if (!r) { left.push(file); continue; }
