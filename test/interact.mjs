@@ -1553,6 +1553,40 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a circle with circle-translate is found where it is drawn, also in the array at once`,
         translated.right === 'moved-view' && translated.up === 'moved-map' && translated.at === '' && translated.nowRight === 'moved-view' && translated.nowUp === 'moved-map' && translated.nowAt === '', JSON.stringify(translated));
 
+    // A fill, a line and a fill extrusion are found where `fill-translate`, `line-translate` and
+    // `fill-extrusion-translate` draw them and not at their features, as in MapLibre GL JS 6.17 (#1975). At a bearing of
+    // 90 the fill ([60, 0], viewport) is 60 pixels right, the line ([60, 0], anchor map) 60 pixels up and the extrusion
+    // ([0, 60], viewport) 60 pixels down.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-2, -2], [2, -2], [2, 2], [-2, 2], [-2, -2]]]}};
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-2, 0], [2, 0]]}};
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 2, bearing: 90, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {a: {type: 'geojson', data: square}, l: {type: 'geojson', data: line}},
+                layers: [
+                    {id: 'fill', type: 'fill', source: 'a', paint: {'fill-translate': [60, 0], 'fill-translate-anchor': 'viewport'}},
+                    {id: 'line', type: 'line', source: 'l', paint: {'line-width': 4, 'line-translate': [60, 0]}},
+                    {id: 'extrusion', type: 'fill-extrusion', source: 'a', paint: {'fill-extrusion-translate': [0, 60], 'fill-extrusion-translate-anchor': 'viewport'}},
+                ]}});
+            await new Promise(r => m.once('idle', r));
+            // (MapLibre GL JS gives a feature without an id once per tile: the check compares the names of the layers.)
+            const p = m.project([0, 0]), ids = fs => [...new Set([...fs].map(f => f.layer.id))].sort().join();
+            const out = {};
+            for (const [name, pt] of Object.entries({right: [p.x + 60, p.y], up: [p.x, p.y - 60], down: [p.x, p.y + 60], at: [p.x, p.y]})) {
+                out[name] = ids(await m.queryRenderedFeatures(pt));
+                out[`now-${name}`] = ids(m.queryRenderedFeatures(pt));
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a fill, line and fill extrusion with *-translate are found where they are drawn, as MapLibre GL JS, also in the array at once (#1975)`,
+            ours.right === 'fill' && ours.up === 'line' && ours.down === 'extrusion' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
     // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
