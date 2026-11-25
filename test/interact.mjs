@@ -1883,6 +1883,39 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
             lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
+        // On the globe a query finds text on a line where its glyphs are drawn, as MapLibre GL JS does: the line between
+        // two of its points is a curve on the screen, and the glyphs lie on that curve (#1995). The map is cut into cells
+        // of 25 pixels; each cell with dark pixels of the text must be found by a query of the cell, at zoom 2.5 and across
+        // the antimeridian.
+        const globeText = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const [name, center, coordinates] of [['zoom', [0, 5], [[-40, 35], [0, 35], [40, 35]]], ['antimeridian', [180, 5], [[150, 35], [180, 35], [210, 35]]]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:400px'}));
+                const m = new mod.Map({container: el, renderer: 'main', center, zoom: 2.5, attributionControl: false, fadeDuration: 0, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': 1000, 'text-field': 'A label that follows the curve of the globe', 'text-size': 16}, paint: {'text-color': '#000'}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await m.toBlob()), k = bmp.width / 600, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, dark = new Map();
+                for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i + 3] > 200 && d[i] < 80 && d[i + 1] < 80 && d[i + 2] < 80) { const key = Math.floor(x / k / 25) + ',' + Math.floor(y / k / 25); dark.set(key, (dark.get(key) ?? 0) + 1); }
+                }
+                let text = 0, found = 0, others = 0;
+                for (let x = 0; x < 600; x += 25) for (let y = 0; y < 400; y += 25) {
+                    const hit = (await m.queryRenderedFeatures([[x, y], [x + 25, y + 25]], {layers: ['t']})).length > 0;
+                    if ((dark.get(x / 25 + ',' + y / 25) ?? 0) > 3 * k * k) { text++; if (hit) found++; } else if (hit) others++;
+                }
+                out[name] = {text, found, others};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures on the globe finds text on a line in each cell where its glyphs are drawn, at zoom 2.5 and across the antimeridian (#1995)',
+            Object.values(globeText).every(r => r.text >= 15 && r.found === r.text && r.others <= r.text), JSON.stringify(globeText));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.

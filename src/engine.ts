@@ -2027,9 +2027,26 @@ export class Engine {
     private textOnLine(g: NonNullable<QueriedFeature['geometry']>, box: number[], texts: {x: number; y: number; box: number[]; line?: boolean}[]): boolean {
         const hit = texts.filter(t => t.line && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]);
         if (!hit.length) return false;
-        const lines = (g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' || g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? (g.coordinates as number[][][][]).flat() : []) as number[][][];
+        const tr = this.tr, lines = (g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' || g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? (g.coordinates as number[][][][]).flat() : []) as number[][][];
         for (const line of lines) {
-            const pts = line.map(([lng, lat]) => this.tr.project(lng, lat));
+            const pts = line.map(([lng, lat]) => tr.project(lng, lat));
+            // On the globe a piece of the line is straight in Mercator and curved on the screen, and text that lies on the
+            // ground has its glyphs on that curve (see `followLine`). The piece is cut into steps that are straight within
+            // a tenth of a pixel (the arc of a step of length s on a sphere of radius R strays s² / 8R from its chord).
+            // Text that faces the screen has its glyphs on the straight segments between the points, so both are tested.
+            // (The steps go back from the last point to the first, after the points, so that the path stays joined.)
+            if (tr.globeness) {
+                const ws = tr.worldSize, step = Math.sqrt(0.8 * ws / (2 * Math.PI)) / ws;
+                for (let i = line.length - 1; i > 0; i--) {
+                    const ax = mercX(line[i - 1][0]), ay = mercY(line[i - 1][1]), by = mercY(line[i][1]);
+                    // (The shorter way around: a segment across the antimeridian can have longitudes such as 179 and -179.)
+                    let bx = mercX(line[i][0]);
+                    bx += Math.round(ax - bx);
+                    const n = Math.min(4096, Math.ceil(Math.hypot(bx - ax, by - ay) / step));
+                    for (let j = n - 1; j > 0; j--) pts.push(tr.mercToScreen(ax + (bx - ax) * j / n, ay + (by - ay) * j / n));
+                    pts.push(pts[i - 1]);
+                }
+            }
             for (let i = 1; i < pts.length; i++) {
                 const [ax, ay] = pts[i - 1], [bx, by] = pts[i], dx = bx - ax, dy = by - ay, d2 = dx * dx + dy * dy;
                 for (const t of hit) {
