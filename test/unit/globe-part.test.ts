@@ -11,6 +11,15 @@ test('the worker file has no globe code, and the part of the globe has it', () =
     assert.match(readFileSync('dist/map-jr-gl-worker-globe.js', 'utf8'), /^var MapJrPart=/m);
 });
 
+test('the cut of tiles for the globe is the part subdivide, and the worker file and server.js do not have it (#2075)', () => {
+    const sources = (file: string) => JSON.parse(readFileSync(`dist/${file}.map`, 'utf8')).sources.map((s: string) => s.replace(/^.*\/src\//, 'src/'));
+    assert.ok(!sources('map-jr-gl-worker.js').includes('src/subdivide.ts'));
+    assert.ok(!sources('server.js').includes('src/subdivide.ts'));
+    assert.ok(sources('map-jr-gl-worker-subdivide.js').includes('src/subdivide.ts'));
+    // (earcut is read from the worker file, and not copied into the part.)
+    assert.ok(!sources('map-jr-gl-worker-subdivide.js').some((s: string) => s.includes('earcut')));
+});
+
 test('the GLSL of the globe and of its atmosphere is in the part of the globe, and not in the worker file (#2075)', () => {
     // (32766.5 is the test for a pole of `GLOBE_GLSL`, 6471e3 the radius of the atmosphere of `HALO`.)
     const worker = readFileSync('dist/map-jr-gl-worker.js', 'utf8'), part = readFileSync('dist/map-jr-gl-worker-globe.js', 'utf8');
