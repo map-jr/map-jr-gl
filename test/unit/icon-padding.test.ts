@@ -19,3 +19,12 @@ test('icon-padding takes the padding type of one to four values, as in MapLibre 
     assert.deepEqual(pad('wrong').eval(0), [2, 2, 2, 2]);
     assert.deepEqual(boxAround(100, 100, 20, 10, 0, [1, 2, 3, 4]), [86, 94, 112, 108]);
 });
+
+test('icon-padding and text-padding are added before the box is turned, as in MapLibre GL JS (#1734)', () => {
+    const near = (a: number[], b: number[]) => a.forEach((v, i) => assert.ok(Math.abs(v - b[i]) < 1e-9, `${a} is not ${b}`));
+    // (The boxes of MapLibre GL JS 6.17 for an icon of 20 by 10 pixels.)
+    near(boxAround(0, 0, 20, 10, Math.PI / 2, [1, 2, 3, 4]), [-8, -14, 6, 12]);
+    const box = boxAround(0, 0, 20, 10, Math.PI / 4, 3);
+    near(box, [-box[2], -box[3], box[2], box[3]]);
+    assert.ok(Math.abs(box[2] - 42 * Math.SQRT1_2 / 2) < 1e-9 && Math.abs(box[2] - 14.85) < 0.01);
+});

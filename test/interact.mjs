@@ -1775,6 +1775,30 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures finds text on a line along all of its glyphs and not on the rest of the line, and does not find a label that is not shown (#1735)',
             onLine.runs.length === 2 && onLine.runs.every(n => n >= 15 && n <= 21) && onLine.found < onLine.points - 2 && onLine.hidden === '', JSON.stringify(onLine));
+        // A query finds turned text on the box of placement: `text-padding` is added before the box is turned, as in
+        // MapLibre GL JS. At 45 degrees, a padding of 10 widens the box by 10 * (cos + sin), about 14 pixels, and not by 10 (#1734).
+        const turned = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+            const point = (x, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [x, 0]}});
+            const layer = (id, padding) => ({id, type: 'symbol', source: 'p', filter: ['==', ['get', 'name'], id], layout: {'text-field': 'Turned', 'text-size': 16, 'text-rotate': 45, 'text-padding': padding, 'text-allow-overlap': true}});
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(-30, 'a'), point(30, 'b')]}}},
+                layers: [layer('a', 0), layer('b', 10)]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            // The half width of the box that a query finds, from the point of the label to the right, in pixels.
+            const reach = async (lng, id) => {
+                const c = m.project([lng, 0]);
+                let x = 0;
+                while (x < 150 && (await m.queryRenderedFeatures([c.x + x + 1, c.y], {layers: [id]})).length) x++;
+                return x;
+            };
+            const out = {plain: await reach(-30, 'a'), padded: await reach(30, 'b')};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds turned text on its box with text-padding added before the turn (#1734)',
+            turned.plain > 10 && turned.padded - turned.plain >= 13 && turned.padded - turned.plain <= 15.5, JSON.stringify(turned));
         // A line too short for its label shows no text, and a query does not find it anywhere along the line. With a
         // `symbol-spacing` that leaves one label, the line is found only on the glyphs of that label. (The lines lie inside one
         // tile, and the spacing is shorter than the line: see the Found lines of #1916.)

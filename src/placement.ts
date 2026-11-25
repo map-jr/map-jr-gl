@@ -164,12 +164,16 @@ export {CollisionGrid};
 
 
 type Box = [number, number, number, number];
-/** `pad` is one number for every side, or [top, right, bottom, left] (`icon-padding`). */
+/**
+ * `pad` is one number for every side, or [top, right, bottom, left] (`icon-padding`). As in MapLibre GL JS, the padding
+ * is added before the box is turned by `angle`.
+ */
 export function boxAround(x: number, y: number, w: number, h: number, angle: number, pad: number | readonly number[]): Box {
-    const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
-    const hw = (w * cos + h * sin) / 2, hh = (w * sin + h * cos) / 2;
     const [t, r, b, l] = typeof pad === 'number' ? [pad, pad, pad, pad] : pad;
-    return [x - hw - l, y - hh - t, x + hw + r, y + hh + b];
+    const c = Math.cos(angle), s = Math.sin(angle), ox = (r - l) / 2, oy = (b - t) / 2;
+    const hw = ((w + l + r) * Math.abs(c) + (h + t + b) * Math.abs(s)) / 2, hh = ((w + l + r) * Math.abs(s) + (h + t + b) * Math.abs(c)) / 2;
+    x += ox * c - oy * s; y += ox * s + oy * c;
+    return [x - hw, y - hh, x + hw, y + hh];
 }
 
 /**

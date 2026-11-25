@@ -7,7 +7,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {boxAround, CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet} from './query.ts';
@@ -1968,9 +1968,8 @@ export class Engine {
                 }
                 continue;
             }
-            const cos = Math.abs(Math.cos(p.angle)), sin = Math.abs(Math.sin(p.angle)), hw = (w * cos + h * sin) / 2 + p.src.padding, hh = (w * sin + h * cos) / 2 + p.src.padding;
-            const cx = p.x + x - p.ax, cy = p.y + y - p.ay;
-            out.push({x, y, line: p.src.angle !== null, box: [cx - hw, cy - hh, cx + hw, cy + hh]});
+            // (The box of placement: `text-padding` is added before the box is turned, as in MapLibre GL JS.)
+            out.push({x, y, line: p.src.angle !== null, box: boxAround(p.x + x - p.ax, p.y + y - p.ay, w, h, p.angle, p.src.padding)});
         }
         return out;
     }
