@@ -2036,9 +2036,7 @@ export class Engine {
         // (The answer is kept while the tiles, the images and the view are the same: a question comes with each move of the pointer.)
         const tr = this.tr, z = tr.zoom, at = `${this.tilesVersion}|${this.tiles.size}|${this.styleVersion}|${this.iconsRev}|${z}|${tr.bearing}|${tr.pitch}`, kept = this.reaches.get(L.id);
         if (kept?.at === at) return kept.reach;
-        // (On the globe icon-translate moves each icon by its own amount on the screen: see `iconMove`.)
-        const globeMove = !!tr.globeness && screenTranslate(L.p.iconTranslate.eval(z), 'map', 0).some(v => v);
-        const names = new Set<string>(), each = L.p.iconAnchor.dd || L.p.iconOffset.dd || L.p.iconRotate.dd || L.p.iconAlign.dd || globeMove;
+        const names = new Set<string>(), each = L.p.iconAnchor.dd || L.p.iconOffset.dd || L.p.iconRotate.dd || L.p.iconAlign.dd;
         let size = L.p.iconSize.dd ? 0 : L.p.iconSize.eval(z);
         for (const [key, t] of this.tiles) {
             if (!t.gl || !key.startsWith(L.source + '|')) continue;
@@ -2052,9 +2050,12 @@ export class Engine {
             // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
             // feature, an icon can reach as far as its corner and its offset in each direction.)
             size *= tr.pitch ? 4 : 1;
-            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180);
-            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) * (globeMove ? 4 : 1) + 64 * size;
-            reach = each ? [-far, -far, far, far] : [cx - hw, cy - hh, cx + hw, cy + hh];
+            // (On the globe icon-translate moves each icon by its own amount on the screen (see `iconMove`): the reach
+            // covers twice the move in pixels, and no move.)
+            const move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), tr.bearing).map(v => tr.globeness ? 2 * v : v) as [number, number];
+            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180, undefined, move);
+            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) + 64 * size, [mx, my] = tr.globeness ? move : [0, 0];
+            reach = each ? [-far, -far, far, far] : [Math.min(cx, cx - mx) - hw, Math.min(cy, cy - my) - hh, Math.max(cx, cx - mx) + hw, Math.max(cy, cy - my) + hh];
         }
         this.reaches.set(L.id, {at, reach});
         return reach;
