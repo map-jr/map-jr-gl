@@ -11,8 +11,13 @@ prints in quotes, and a number without. The section of each code gives the names
 in both builds. The server renderer (`@map-jr/map-jr-gl/server`) and the standalone files print the full
 text.
 
-An error of the library that has a code in its message carries the code in the field `code`, such as
-`error.code === 'E63'`, when it is thrown, when a promise rejects with it, and in `event.error` of an `error` event, in both builds and in both entries (`@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/maplibre-compat`). The `name` stays `Error`. An error with no code, such as one from the browser, has no `code`. Test the field and not the text, because the text differs between the builds.
+An error of the library that has a code in its message also carries the code in its field `code`, such as
+`error.code === 'E63'`. The field is set when the error is thrown, when a promise rejects with it, and in the
+`event.error` of an `error` event.
+
+The field is set in both builds and in both entries (`@map-jr/map-jr-gl` and
+`@map-jr/map-jr-gl/maplibre-compat`), and `name` stays `Error`. An error with no code, such as one from the browser,
+has no `code`. Test the field and not the text, because the text differs between the builds.
 
 A code stays the same in later versions. When a message is removed, its section stays here with the version after which
 it was removed, and the code is not used again.
