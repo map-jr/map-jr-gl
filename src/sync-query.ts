@@ -9,7 +9,7 @@ import {circleCenters, circleRadius, circleTouches, featureKey, pitchedCircles, 
 const prepared = new WeakMap<object, PreparedSource>();
 
 /** The features of one GeoJSON source that the given style layers draw in a rectangle of the screen. */
-export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: object; maxzoom?: number}, tr: Transform, box: number[], sets: QuerySet[]): QueriedFeature[] {
+export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: object; maxzoom?: number}, tr: Transform, box: number[], sets: QuerySet[], /** The feature state of the source, by "sourceLayer|id". */ states?: Record<string, Record<string, unknown>>): QueriedFeature[] {
     let data = prepared.get(spec.data);
     if (!data) prepared.set(spec.data, data = prepareSource(spec.data, spec, spec.maxzoom ?? 18));
     const out: QueriedFeature[] = [], seen = new Set<string>(), pitched = pitchedCircles(tr, box, sets);
@@ -20,9 +20,9 @@ export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: objec
         groups.set(key, {box: b, sets: [...groups.get(key)?.sets ?? [], s]});
     }
     for (const g of groups.values()) for (const t of tilesUnderBox(tr, g.box, 0, spec.maxzoom ?? 18)) {
-        for (const f of queryTile(sliceGeoJSON(data, t.z, t.x, t.y), {source, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: true, sets: g.sets.map(s => pitched?.circles.has(s) ? {...s, radius: 0, size: s.size && {...s.size, scale: t.scale * pitched.k}} : {...s, radius: s.radius * t.scale, size: s.size && s.radius ? {...s.size, scale: t.scale} : undefined})})) {
+        for (const f of queryTile(sliceGeoJSON(data, t.z, t.x, t.y), {source, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: true, sets: g.sets.map(s => pitched?.circles.has(s) ? {...s, radius: 0, size: s.size && {...s.size, scale: t.scale * pitched.k}} : {...s, radius: s.radius * t.scale, size: s.size && s.radius ? {...s.size, scale: t.scale} : undefined})}, states)) {
             const set = pitched && sets.find(s => s.layer === f.layer && pitched.circles.has(s));
-            if (set && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(tr, mercX(lng), mercY(lat), setBox(box, set), circleRadius(set, f), set.pitch!))) continue;
+            if (set && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(tr, mercX(lng), mercY(lat), setBox(box, set), circleRadius(set, f, states), set.pitch!))) continue;
             const key = featureKey(f);
             if (key && seen.has(key)) continue;
             seen.add(key);

@@ -94,6 +94,11 @@ export interface MapStates {
     /** Feature state by source, then by "sourceLayer|id" (`setFeatureState`). Tiles are rebuilt when it changes. */
     f: Record<string, Record<string, Record<string, unknown>>>;
 }
+/** Applies a change of the feature state of one source ("sourceLayer|id" -> state, `null` removes it); `replace` drops the other states. */
+export function mergeFeatureState(f: MapStates['f'], source: string, states: Record<string, Record<string, unknown> | null>, replace?: boolean) {
+    const own = replace || !f[source] ? (f[source] = {}) : f[source];
+    for (const k in states) { const v = states[k]; if (v) own[k] = v; else delete own[k]; }
+}
 /** The states that expressions are compiled for. An expression keeps the object, and reads it when it is evaluated. */
 let compiling: MapStates = {g: {}, f: {}};
 /** Sets the map that the expressions compiled from now on (in this turn of the thread) belong to. */
