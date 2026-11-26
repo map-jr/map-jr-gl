@@ -782,6 +782,8 @@ export class Map {
      * `move` of the frame that applies the move, once for the moves of one frame (or at the release).
      */
     private dragMove?: PointerEvent;
+    /** The `seq` of the `pan` of `dragMove`: an older camera report fires `move` without it (#2157). */
+    private dragSeq = 0;
     /**
      * A drag with one pointer and the worker renderer (#38): the number of its first `pan`, the ground that the engine
      * grabbed (known from its first report), and the pointer positions that the page has placed (`x`, `y`, at the time
@@ -830,7 +832,7 @@ export class Map {
             if (!this.moving) this.fire('movestart');
             this.moving = true;
             this.fire('move');
-            if (this.dragMove) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
+            if (this.dragMove && (e.seq ?? this.dragSeq) >= this.dragSeq) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
             if (zoomed) { if (!this.zooming) this.fire('zoomstart'); this.zooming = true; this.fire('zoom'); }
             if (turned) { if (!this.rotating) this.fire('rotatestart'); this.rotating = true; this.fire('rotate'); }
             if (tilted) { if (!this.pitching) this.fire('pitchstart'); this.pitching = true; this.fire('pitch'); }
@@ -2339,6 +2341,7 @@ export class Map {
                 }
                 // (`drag` follows the `move` of the camera that this move gives: see `dragMove`.)
                 this.dragMove = e;
+                this.dragSeq = seq ?? 0;
                 // (Not on the globe: there each move turns the globe from the last pointer, and the page waits for the engine's camera.)
                 const h = seq === undefined || this.tr.heightAt || this.renderer !== 'worker' ? null : this.held ??= {from: seq, t: 0, start: this.tr.unproject(p.x - dx, p.y - dy)};
                 if (h) {
@@ -2405,7 +2408,8 @@ export class Map {
             if (pointers.size) return;
             const wasDragging = this.dragging;
             this.dragging = false;
-            if (this.dragMove) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
+            // (A move that the engine has not reported yet gets its `move` here, so that `drag` follows a `move`, #2157.)
+            if (this.dragMove) { const ev = this.dragMove; this.dragMove = undefined; if (this.moving) this.fire('move'); this.fire('drag', {originalEvent: ev}); }
             if (wasDragging) this.fire('dragend', {originalEvent: e});
             if (tapDrag) {
                 if (!tapDrag.zoomed) {
