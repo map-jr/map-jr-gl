@@ -683,14 +683,13 @@ export function placeLabels(
                 // the drawn text, its offset from the anchor and the fitted icon shrink toward the anchor by the ratio (#2057).
                 let fixed = false;
                 if (L.fixedSize && textBox && !line && !twin) {
+                    // (A fitted icon faces the screen, also around text on the ground, so it drops the ratio of the screen.)
                     const r = flat ? flatSize(tr, depth) : persp;
                     fixed = true;
-                    if (r !== 1) {
-                        size /= r; tx = ax + (tx - ax) / r; ty = ay + (ty - ay) / r;
-                        if (icon && ic && ic.fit !== 'none') {
-                            icon.x = ax + (icon.x - ax) / r; icon.y = ay + (icon.y - ay) / r; icon.w /= r; icon.h /= r;
-                            for (const g of [icon.gx, icon.gy]) if (g) for (let i = 1; i < g.length; i += 2) g[i] /= r;
-                        }
+                    if (r !== 1) { size /= r; tx = ax + (tx - ax) / r; ty = ay + (ty - ay) / r; }
+                    if (persp !== 1 && icon && ic && ic.fit !== 'none') {
+                        icon.x = ax + (icon.x - ax) / persp; icon.y = ay + (icon.y - ay) / persp; icon.w /= persp; icon.h /= persp;
+                        for (const g of [icon.gx, icon.gy]) if (g) for (let i = 1; i < g.length; i += 2) g[i] /= persp;
                     }
                 }
                 if (bent) { bent.icon = icon; for (const b of bentBoxes) grid.insert(...b); if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }

@@ -9,7 +9,7 @@ import {prepareGeoJSON, sliceGeoJSON} from '../../src/geojson.ts';
 import * as placement from '../../src/placement.ts';
 import {EstimateShaper} from '../../src/text.ts';
 
-const {CollisionGrid, placeLabels, renderItems} = placement;
+const {CollisionGrid, perspective, placeLabels, renderItems} = placement;
 const z = 14, tx = 8000, ty = 5000, n = 2 ** z;
 const lngOf = (x: number) => x / n * 360 - 180, latOf = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
 const id = {z, x: tx, y: ty, w: 0, key: `${z}/${tx}/${ty}`};
@@ -128,7 +128,7 @@ for (const align of ['viewport', 'map'] as const) test(`placeLabels: text of a l
         grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
         const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
         const [p] = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
-        return {p, boxes};
+        return {p, boxes, tr};
     };
     const plain = run({}), off = run({'icon-offset': [0, 0]});
     assert.ok(plain.p?.icon && off.p?.icon, 'the labels are placed');
@@ -136,6 +136,9 @@ for (const align of ['viewport', 'map'] as const) test(`placeLabels: text of a l
     assert.ok(Math.abs(r - 1) > 0.05, `the ratio changes the size of the text (${plain.p.size} px)`);
     assert.ok(Math.abs(off.p.size - 16) < 0.01, `the text with icon-offset is ${off.p.size} px, not 16`);
     assert.ok(Math.abs((off.p.y - off.p.ay) * r - (plain.p.y - plain.p.ay)) < 0.01, 'the offset of the text from the anchor has no ratio');
-    assert.ok(Math.abs(off.p.icon.w * r - plain.p.icon.w) < 0.01, `the fitted icon is ${off.p.icon.w} px wide, ${plain.p.icon.w} px with the ratio`);
+    // (The fitted icon faces the screen also around text on the ground, so it drops the ratio of the screen.)
+    const ri = perspective(off.tr, off.p.depth);
+    assert.ok(Math.abs(ri - 1) > 0.05, `the ratio of the screen is ${ri}`);
+    assert.ok(Math.abs(off.p.icon.w * ri - plain.p.icon.w) < 0.01 && Math.abs(off.p.icon.h * ri - plain.p.icon.h) < 0.01, `the fitted icon is ${off.p.icon.w}x${off.p.icon.h} px, ${plain.p.icon.w}x${plain.p.icon.h} px with the ratio ${ri}`);
     for (let b = 0; b < 2; b++) for (let i = 0; i < 4; i++) assert.ok(Math.abs(off.boxes[b][i] - plain.boxes[b][i]) < 0.01, `box ${b} with icon-offset is ${off.boxes[b].map(v => v.toFixed(2))}, without it ${plain.boxes[b].map(v => v.toFixed(2))}`);
 });
