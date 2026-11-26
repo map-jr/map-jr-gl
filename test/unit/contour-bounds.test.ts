@@ -37,7 +37,7 @@ test('contours: a terrarium tile read as mapbox gives no lines, one warning, and
     const grown = process.memoryUsage().heapUsed - before;
     assert.deepEqual([a, b], [{}, {}]);
     assert.equal(warned.length, 1, warned.join('\n'));
-    assert.match(warned[0]!, /^\[map-jr-gl\] The contour source "hills" has a tile whose lines cross .* more than 1000000 times.*"encoding"/);
+    assert.match(warned[0]!, /^\[map-jr-gl\] E12047 The contour source "hills" has a tile whose lines cross .* more than 1000000 times.*"encoding"/);
     // (Without the bound, the lines of the two tiles took several hundred MB.)
     assert.ok(grown < 100e6, `the heap grew by ${Math.round(grown / 1e6)} MB`);
 });
@@ -51,5 +51,5 @@ test('contours: the same tile read as terrarium has its lines', async () => {
 test('contours: an interval that is not greater than 0 draws no lines and warns', async t => {
     const warned = warnings(t), right = dem('terrarium');
     assert.deepEqual(await contourTile(config('terrarium', -10), 12, 100, 100, async () => right, 'steps'), {});
-    assert.match(warned.join('\n'), /^\[map-jr-gl\] The contour source "steps" has the interval -10 in "thresholds".*greater than 0/);
+    assert.match(warned.join('\n'), /^\[map-jr-gl\] E2047 The contour source "steps" has the interval -10 in "thresholds".*greater than 0/);
 });

@@ -203,9 +203,9 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
     onMounted(() => {
         mounted.value = true;
         changes!.observe(el!, {subtree: true, childList: true, attributes: true, characterData: true});
-        if (__DEV__ && !give) console.warn(`[map-jr-gl] MapImage "${props.name}" is not inside MapJr, so no map gets the image. Put it into the content of MapJr.`);
+        if (__DEV__ && !give) console.warn(`[map-jr-gl] E20129 MapImage "${props.name}" is not inside MapJr, so no map gets the image. Put it into the content of MapJr.`);
         // (The value of a parameter in the SVG is the text of a slot of a template: `{{color}}`.)
-        if (__DEV__) setTimeout(() => { if (!props.src && !svg.value && mounted.value) console.warn(`[map-jr-gl] MapImage "${props.name}" has no image: its content has no <svg> element. Write an <svg> in its slot, or give the URL of an image as "src".`); }, 1000);
+        if (__DEV__) setTimeout(() => { if (!props.src && !svg.value && mounted.value) console.warn(`[map-jr-gl] E30129 MapImage "${props.name}" has no image: its content has no <svg> element. Write an <svg> in its slot, or give the URL of an image as "src".`); }, 1000);
     });
     watch(() => [props.name, props.src ?? svg.value, number(props.width), number(props.height), number(props.pixelRatio)] as const, ([name, image, width, height, pixelRatio]) =>
         give?.(owner, image ? [name, JSON.parse(JSON.stringify({image, width, height, pixelRatio}))] : null), {immediate: true});
@@ -491,7 +491,7 @@ const MapJrComponent = defineComponent({
                 controls: controls.value ?? [], locale: props.locale && toRaw(props.locale), nonce: props.nonce, minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection && toRaw(props.projection),
                 attributionOptions: typeof props.attribution === 'object' ? toRaw(props.attribution) : undefined});
             } catch (cause) {
-                const error = new Error(`[map-jr-gl] <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
+                const error = new Error(`[map-jr-gl] E706 <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
                 console.error(error.message);
                 if (listensForError) emit('error', error, {});
             }

@@ -66,6 +66,6 @@ test('hillshade: a value that is not valid gives the default, and too many light
         assert.deepEqual(h.shadow, [0, 0, 0, 1, 0, 0, 0, 1]);
     } finally { console.warn = warn; }
     assert.equal(said.length, 2, said.join('\n'));
-    assert.match(said[0], /^\[map-jr-gl\] hillshade: a layer has 11 lights, and the layer draws the first 8\./);
-    assert.match(said[1], /^\[map-jr-gl\] hillshade-method: "soft" is not a method, and the layer uses "standard"\./);
+    assert.match(said[0], /^\[map-jr-gl\] E10569 hillshade: a layer has 11 lights, and the layer draws the first 8\./);
+    assert.match(said[1], /^\[map-jr-gl\] E569 hillshade-method: "soft" is not a method, and the layer uses "standard"\./);
 });

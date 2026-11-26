@@ -32,9 +32,9 @@ test('the main API warns once for each layer and unknown property, with the near
         check(c, 4, style);
         check(c, 4, style, {layers: [style.layers[0]]});
         assert.deepEqual(warnings.filter(w => w.includes(' property "')), [
-            '[map-jr-gl] the circle layer "c", paint property "circle-colour": a layer of this type has no such property in the style specification, so the map ignores it. Write "circle-color".',
-            '[map-jr-gl] the circle layer "c", paint property "zzz-unknown": a layer of this type has no such property in the style specification, so the map ignores it. Check the name in the style specification, or remove it.',
-            '[map-jr-gl] the line layer "l", layout property "lineCap": a layer of this type has no such property in the style specification, so the map ignores it. Write "line-cap".',
+            '[map-jr-gl] E1139 the circle layer "c", paint property "circle-colour": a layer of this type has no such property in the style specification, so the map ignores it. Write "circle-color".',
+            '[map-jr-gl] E1139 the circle layer "c", paint property "zzz-unknown": a layer of this type has no such property in the style specification, so the map ignores it. Check the name in the style specification, or remove it.',
+            '[map-jr-gl] E1139 the line layer "l", layout property "lineCap": a layer of this type has no such property in the style specification, so the map ignores it. Write "line-cap".',
         ]);
     } finally { console.warn = warn; }
 });
@@ -45,8 +45,8 @@ test('the compat entry reports the error text of MapLibre GL JS once for each la
     zoomCurveErrors(style, reported, e => errors.push(e.message));
     // (The first is the type check of expressions of #1748: "line-gradient" takes no data expression in MapLibre GL JS.)
     assert.equal(errors.length, 4, JSON.stringify(errors));
-    assert.ok(errors[0].startsWith('[map-jr-gl] layers[1].paint.line-gradient: data expressions not supported.'), errors[0]);
+    assert.ok(errors[0].startsWith('[map-jr-gl] E1748 layers[1].paint.line-gradient: data expressions not supported.'), errors[0]);
     errors.shift();
-    assert.equal(errors[0], '[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "circle-color".');
-    assert.ok(errors[2].startsWith('[map-jr-gl] layers.l.layout.lineCap: unknown property "lineCap".'), errors[2]);
+    assert.equal(errors[0], '[map-jr-gl] E11139 layers.c.paint.circle-colour: unknown property "circle-colour". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "circle-color".');
+    assert.ok(errors[2].startsWith('[map-jr-gl] E11139 layers.l.layout.lineCap: unknown property "lineCap".'), errors[2]);
 });

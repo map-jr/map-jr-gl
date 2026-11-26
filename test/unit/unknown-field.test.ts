@@ -14,7 +14,7 @@ test('an unknown field of the description warns once with its name, and "extend"
         check(c, 2, first);
         check(c, 2, {...first}, first);
         assert.equal(warnings.length, 2, JSON.stringify(warnings));
-        assert.ok(warnings.some(w => w.startsWith('[map-jr-gl] the description has no field "intialView"')), JSON.stringify(warnings));
+        assert.ok(warnings.some(w => w.startsWith('[map-jr-gl] E524 the description has no field "intialView"')), JSON.stringify(warnings));
         assert.ok(warnings.some(w => w.includes('"extend"') && w.includes('"sources", "layers" and "terrain"')), JSON.stringify(warnings));
     } finally { console.warn = warn; }
 });

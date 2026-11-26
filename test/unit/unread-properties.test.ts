@@ -15,7 +15,7 @@ const run = (style: object, description?: object) => {
     } finally { console.warn = warn; }
     return warnings;
 };
-const noEffect = (where: string, property: string) => `[map-jr-gl] ${where}: "${property}" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.`;
+const noEffect = (where: string, property: string) => `[map-jr-gl] E648 ${where}: "${property}" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.`;
 
 test('unread properties: each warns once for each layer or source that sets it to a value other than the default', () => {
     const style = {version: 8, sources: {
@@ -36,7 +36,7 @@ test('unread properties: each warns once for each layer or source that sets it t
         noEffect('the symbol layer "a"', 'symbol-height-anchor'),
         noEffect('the symbol layer "a"', 'text-writing-mode'),
         noEffect('the fill-extrusion layer "b"', 'fill-extrusion-rounded-corner-distance'),
-        '[map-jr-gl] the source "v": "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
-        '[map-jr-gl] the source "g": "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
+        '[map-jr-gl] E20648 the source "v": "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
+        '[map-jr-gl] E20648 the source "g": "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
     ]);
 });

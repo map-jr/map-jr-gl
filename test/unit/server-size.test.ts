@@ -17,7 +17,7 @@ for (const [name, call] of calls) {
         for (const side of ['width', 'height'] as const) {
             for (const bad of ['200" onload="alert(1)', '200', NaN, 0, -10, Infinity, undefined]) {
                 await assert.rejects(call({...view, width: 100, height: 100, [side]: bad}),
-                    {message: new RegExp(`^\\[map-jr-gl\\] server render: "${side}" is .*\\. Pass the ${side} in CSS pixels as a number greater than 0`)}, `${side}: ${String(bad)}`);
+                    {message: new RegExp(`^\\[map-jr-gl\\] E1670 server render: "${side}" is .*\\. Pass the ${side} in CSS pixels as a number greater than 0`)}, `${side}: ${String(bad)}`);
             }
         }
     });

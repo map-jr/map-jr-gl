@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {oncePerPart, setPartLoader} from '../../src/parts.ts';
 import {serveTiles} from '../../src/tiles.ts';
 
-const failure = '[map-jr-gl] The worker could not load http://x/map-jr-gl-worker-geojson.js, the part of the worker for geojson. Serve it.';
+const failure = '[map-jr-gl] E31846 The worker could not load http://x/map-jr-gl-worker-geojson.js, the part of the worker for geojson. Serve it.';
 
 test('a GeoJSON part that fails in a tile worker answers the message with its error, and leaves no unhandled rejection', async () => {
     const unhandled: unknown[] = [], onUnhandled = (e: unknown) => unhandled.push(e);

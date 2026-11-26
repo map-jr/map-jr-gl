@@ -13,7 +13,7 @@ test('null source and null layer: each is reported and left out', async () => {
     assert.ok(r.sources.b);
     assert.equal(r.sources.a, undefined);
     assert.deepEqual(errors, [
-        '[map-jr-gl] The source "a" is not an object. Give it an object with "type", or remove it from "sources".',
-        '[map-jr-gl] The layer at index 1 of "layers" is not an object. Give it an object with "id" and "type", or remove it.',
+        '[map-jr-gl] E1613 The source "a" is not an object. Give it an object with "type", or remove it from "sources".',
+        '[map-jr-gl] E11613 The layer at index 1 of "layers" is not an object. Give it an object with "id" and "type", or remove it.',
     ]);
 });

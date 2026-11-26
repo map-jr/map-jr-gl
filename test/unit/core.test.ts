@@ -170,7 +170,7 @@ test('expressions: number-format with an option that Intl.NumberFormat rejects g
     try {
         assert.equal(run(['number-format', 1234.5, {currency: 'not a currency'}]), '1234.5');
         assert.equal(warnings.length, 1);
-        assert.match(warnings[0], /^\[map-jr-gl\] number-format: .*"not a currency"/);
+        assert.match(warnings[0], /^\[map-jr-gl\] E583 number-format: .*"not a currency"/);
         assert.equal(run(['number-format', 1234.5, {locale: 'en-US', unit: 'furlong'}]), '1234.5');
         assert.equal(run(['number-format', 1234.5, {locale: 'not_a_locale!'}]), '1234.5');
         assert.equal(run(['number-format', 1234.5, {'min-fraction-digits': 500}]), '1234.5');
@@ -538,7 +538,7 @@ test('pmtiles: a server that ignores Range is read once, and a file above 64 MB 
     assert.equal(calls, 1, 'the whole file is downloaded once');
     let read = false;
     const big = (async () => new Response(new ReadableStream({pull(c) { read = true; c.close(); }}, {highWaterMark: 0}), {status: 200, headers: {'content-length': String(100 << 20)}})) as any;
-    await assert.rejects(new PMTiles('https://tiles.test/big.pmtiles', big).info(), /^Error: \[map-jr-gl\] PMTiles https:\/\/tiles.test\/big.pmtiles: the server ignores Range requests, .*\(100 MB\)/);
+    await assert.rejects(new PMTiles('https://tiles.test/big.pmtiles', big).info(), /^Error: \[map-jr-gl\] E277 PMTiles https:\/\/tiles.test\/big.pmtiles: the server ignores Range requests, .*\(100 MB\)/);
     assert.equal(read, false, 'the body of a file above the limit is not read');
     // Without Content-Length, the stream is read only until it passes the limit. One 1 MB chunk is sent repeatedly.
     const chunk = new Uint8Array(1 << 20);
@@ -582,7 +582,7 @@ test('geojson: sources are cut into tiles, clipped, and render and query like ve
     const view = {center: [lng(TILE.x + 0.5), lat(TILE.y + 0.5)] as [number, number], zoom: 14, width: 300, height: 300, fetch: (async () => { throw new Error('no network expected'); }) as any};
     const made = await renderToSVG({...view, style: {version: 8, sources: {}, layers: [style.layers[0]]}, data: {g: data}});
     assert.match(made.svg, /fill="#ff0000"/);
-    await assert.rejects(renderToSVG({...view, style: {version: 8, sources: {g: {type: 'vector', tiles: []}}, layers: []}, data: {g: data}}), /\[map-jr-gl\] data: the source "g" has the type "vector"/);
+    await assert.rejects(renderToSVG({...view, style: {version: 8, sources: {g: {type: 'vector', tiles: []}}, layers: []}, data: {g: data}}), /\[map-jr-gl\] E487 data: the source "g" has the type "vector"/);
     // A pair {light, dark} in `style`: 'dark' uses dark, 'light' and no value use light (#491).
     const pair = {light: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}]}, dark: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000000'}}]}};
     for (const [scheme, colour] of [['dark', '#000000'], ['light', '#ffffff'], [undefined, '#ffffff']] as const) {

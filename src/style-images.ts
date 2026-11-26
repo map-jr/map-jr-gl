@@ -17,7 +17,7 @@ const MAX_STYLE_IMAGES = 500, MAX_STYLE_IMAGE = 200_000;
 export function styleImages(style: any, fault: (message: string) => void, now?: Set<string>): Record<string, string | {image: string; width?: number; height?: number}> {
     const given = style?.metadata?.[STYLE_IMAGES], out: Record<string, any> = {};
     if (given == null) return out;
-    if (typeof given !== 'object' || Array.isArray(given)) { fault(`[map-jr-gl] the style: metadata["${STYLE_IMAGES}"] is not an object of images by name, and the map uses none of them. Write {"name": "<svg ...>"}.`); return out; }
+    if (typeof given !== 'object' || Array.isArray(given)) { fault(`[map-jr-gl] E10495 the style: metadata["${STYLE_IMAGES}"] is not an object of images by name, and the map uses none of them. Write {"name": "<svg ...>"}.`); return out; }
     let n = 0;
     for (const name in given) {
         const v = given[name], text = typeof v === 'string' ? v : v && typeof v === 'object' ? v.image : undefined;
@@ -25,7 +25,7 @@ export function styleImages(style: any, fault: (message: string) => void, now?: 
             : typeof text !== 'string' ? 'the value is not a text, or an object with a text as "image"'
             : text.length > MAX_STYLE_IMAGE ? `the text is longer than ${MAX_STYLE_IMAGE} characters`
             : text.trimStart().startsWith('<') && /(\bhref\s*=|\burl\()(?![\s"']*(#|data:))/i.test(text) ? 'the SVG refers to another file' : '';
-        if (why) fault(`[map-jr-gl] the style: the image "${name}" of metadata["${STYLE_IMAGES}"] is left out, because ${why}. Give an SVG document without references to other files, or the URL of an image.`);
+        if (why) fault(`[map-jr-gl] E20495 the style: the image "${name}" of metadata["${STYLE_IMAGES}"] is left out, because ${why}. Give an SVG document without references to other files, or the URL of an image.`);
         else {
             out[name] = typeof v === 'string' ? v : {...v};
             // (A template must be known before the tiles are built, because a tile names the variants that it needs. It is not drawn here.)

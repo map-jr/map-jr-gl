@@ -83,7 +83,7 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
   is handled as follows:
   - It is requested again after 0.5 s, 1 s and 2 s. The first failure fires `error`, and the retries fire none. The
     message names the source and starts, for example, with
-    `[map-jr-gl] The source "osm": the request for the tile <URL> failed: HTTP 500.`
+    `[map-jr-gl] E2106 The source "osm": E1163 the request for the tile <URL> failed: HTTP 500.`
   - After the fourth failure, the map is idle without the tile. The tile is requested again every 15 s while the view
     needs it. These later requests run in the background: the map stays idle while they load, a failure fires no
     `error`, and a tile that arrives is drawn.
