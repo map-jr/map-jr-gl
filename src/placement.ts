@@ -127,6 +127,31 @@ function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: numbe
     f.push((fx + bx - 2 * ax) / 2 / e2, (fy + by - 2 * ay) / 2 / e2, (dx - fx - qx + ax) / e2, (dy - fy - qy + ay) / e2, (qx + vx - 2 * ax) / 2 / e2, (qy + vy - 2 * ay) / 2 / e2);
     return f;
 }
+/**
+ * The frame `f` of a symbol moved to the point (u, v) of the symbol, in its pixels from the anchor: the frame whose
+ * first order is that of `f` at (u, v), and where (u, v) goes on the screen from the anchor. A frame without a second
+ * order (`groundFrame` off the globe) is the same at every point.
+ */
+const frameAt = (f: number[], u: number, v: number): [number[], number, number] => {
+    const x = u * f[0] + v * f[2], y = u * f[1] + v * f[3];
+    if (f.length < 10) return [f, x, y];
+    return [[f[0] + 2 * f[4] * u + f[6] * v, f[1] + 2 * f[5] * u + f[7] * v, f[2] + f[6] * u + 2 * f[8] * v, f[3] + f[7] * u + 2 * f[9] * v, ...f.slice(4)],
+        x + f[4] * u * u + f[6] * u * v + f[8] * v * v, y + f[5] * u * u + f[7] * u * v + f[9] * v * v];
+};
+/**
+ * The bound on the screen of a symbol on the ground of `w` by `h` pixels that is centered at (x, y) with the frame `f`
+ * there, with the padding `pad`, as in MapLibre GL JS's `_projectCollisionBox`. With a second order (on the globe) the
+ * bound has the corners and the middles of the sides where they are drawn.
+ */
+export function quadBox(f: number[], x: number, y: number, w: number, h: number, pad: number | readonly number[]): Box {
+    const [t, r, b, l] = typeof pad === 'number' ? [pad, pad, pad, pad] : pad;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [u, v] of [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]) {
+        const [, px, py] = frameAt(f, u * w / 2, v * h / 2);
+        x0 = Math.min(x0, px); y0 = Math.min(y0, py); x1 = Math.max(x1, px); y1 = Math.max(y1, py);
+    }
+    return [x + x0 - l, y + y0 - t, x + x1 + r, y + y1 + b];
+}
 /** Turns the pairs of a frame by `turn` radians on the screen. */
 const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (let i = 0; i < f.length; i += 2) { const x = f[i], y = f[i + 1]; to[i] = x * c - y * s; to[i + 1] = x * s + y * c; } };
 
@@ -498,7 +523,7 @@ export function placeLabels(
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
-                let flatBox: number[] | undefined, textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
+                let flatFrames: number[][] | undefined, flatSizes: number[] = [], textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
                 let bent: Placed | undefined, bentBoxes: Box[] = [];
                 const anchors: string[] = [];
@@ -555,13 +580,16 @@ export function placeLabels(
                     if (flat) {
                         // Text on the ground: its offsets and its glyphs go through the ground at the anchor. Text that
                         // is aligned with the viewport is turned on the ground so that it reads along the screen's x axis.
+                        // On the globe each candidate has the frame at its own center (#2194): its glyphs go through the
+                        // sphere from there.
                         frame = groundFrame(tr, it, l.x, l.y, ax, ay, turned - north);
-                        const [a, b, c, d] = frame;
+                        const [a, b, c, d] = frame, at = candidates.map(([dx, dy]) => frameAt(frame!, dx, dy));
                         textAngle = Math.atan2(b, a);
-                        candidates = candidates.map(([dx, dy]) => [dx * a + dy * c, dx * b + dy * d]);
+                        flatFrames = at.map(g => g[0]);
+                        candidates = at.map(g => [g[1], g[2]]);
                         // (The box for collisions is the bound on the screen of the text on the ground, as in MapLibre GL JS's
                         // `_projectCollisionBox`, and not the bound of a turned box, which is taller where the frame is skewed.)
-                        flatBox = [Math.abs(a) * w + Math.abs(c) * h, Math.abs(b) * w + Math.abs(d) * h];
+                        flatSizes = [w, h];
                         w *= Math.hypot(a, b); h *= Math.hypot(c, d);
                     } else if (!line && turned) {
                         // text-rotate turns the label about its anchor point, so the offset from the anchor turns with it.
@@ -634,13 +662,14 @@ export function placeLabels(
                     if (l.overlap) for (let i = 0; i < candidates.length; i++) tries.push(i + candidates.length);
                     for (const k of tries) {
                         const i = k % candidates.length, overlap = k >= candidates.length;
-                        const [dx, dy] = candidates[i], box = flatBox ? boxAround(ax + dx, ay + dy, flatBox[0], flatBox[1], 0, l.padding) : boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
+                        const [dx, dy] = candidates[i], box = flatFrames ? quadBox(flatFrames[i], ax + dx, ay + dy, flatSizes[0], flatSizes[1], l.padding) : boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
                         if (!overlap && grid.hits(...box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);
                             if (grid.hits(...boxAround(f.ix, f.iy, f.iw, f.ih, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn))) continue;
                         }
                         textBox = box; tx = ax + dx; ty = ay + dy;
+                        if (flatFrames) { frame = flatFrames[i]; textAngle = Math.atan2(frame[1], frame[0]); }
                         anchor = anchors[i];
                         if (anchor && l.justifyAuto) justify = justification('auto', anchors[i]);
                         break;
@@ -666,10 +695,12 @@ export function placeLabels(
                         let a = Math.cos(angle), b = Math.sin(angle), c = -b, d = a;
                         if (iflat) {
                             // Along a line, the angle from the line on the screen becomes the angle from the line on the ground.
-                            iframe = [a, b, c, d] = groundFrame(tr, it, l.x, l.y, ax, ay, angle - (line && !ic.upright ? lineAngle - l.angle! : north));
+                            // (On the globe the frame is the one at the center of the icon: see `frameAt`.)
+                            const [g, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, angle - (line && !ic.upright ? lineAngle - l.angle! : north)), ox, oy);
+                            iframe = [a, b, c, d] = g;
                             angle = Math.atan2(b, a); bw = iw * Math.hypot(a, b); bh = ih * Math.hypot(c, d);
-                        }
-                        bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1);
+                            bx = ix - ox + px; by = iy - oy + py;
+                        } else { bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1); }
                     }
                     // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
                     // (`L.fixedSize`, a layer with `icon-offset`): the box and its offset from the anchor grow with it. An icon

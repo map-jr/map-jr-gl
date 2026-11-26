@@ -2607,6 +2607,37 @@ for (const mode of renderers) {
         check('[main] queryRenderedFeatures on the globe without pitch finds point text with text-pitch-alignment map where it is drawn, with both renderers (#2012)',
             Object.values(globePoint).every(r => r.drawn[2] - r.drawn[0] > 30 && r.drawn[2] - r.drawn[0] < 200 && r.x[0] >= r.drawn[0] - 10 && r.x[1] <= r.drawn[2] + 10 && r.y[0] >= r.drawn[1] - 10 && r.y[1] <= r.drawn[3] + 10 && r.x[1] - r.x[0] > 30),
             JSON.stringify(globePoint));
+        // On the globe each corner of an icon on the ground goes through the sphere at its own place, as in MapLibre GL JS
+        // 6.17 (served at /ml/): a red icon of 40 pixels off the center has the width and the height of MapLibre's within
+        // 1.5 pixels (2 and 3 pixels more with one frame at the anchor, #2194). (`icon-offset` takes the perspective ratio
+        // away in both, as MapLibre's `u_is_offset` does: this library has none at pitch 0 on the globe yet, #2201.)
+        const globeIcon = await page.evaluate(async () => {
+            const out = {};
+            for (const lib of ['ml', 'mjr']) for (const at of [[60, 45], [-50, 50]]) {
+                const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:512px'}));
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, canvasContextAttributes: {preserveDrawingBuffer: true}, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', 'icon-offset': [0, 0], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map'}}]}});
+                const red = new Uint8Array(40 * 40 * 4);
+                for (let i = 0; i < red.length; i += 4) red.set([255, 0, 0, 255], i);
+                m.addImage('red', {width: 40, height: 40, data: red});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await new Promise(r => m.getCanvas().toBlob(r))), k = bmp.width / 512, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, box = [Infinity, Infinity, -Infinity, -Infinity];
+                for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i] > 200 && d[i + 1] < 100 && d[i + 2] < 100) box.splice(0, 4, Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x + 1), Math.max(box[3], y + 1));
+                }
+                out[`${lib} ${at}`] = [(box[2] - box[0]) / k, (box[3] - box[1]) / k];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] on the globe an icon on the ground off the center has the width and the height of MapLibre GL JS within 1.5 pixels (#2194)',
+            ['60,45', '-50,50'].every(at => globeIcon['ml ' + at].every((v, i) => v > 10 && Math.abs(v - globeIcon['mjr ' + at][i]) <= 1.5)), JSON.stringify(globeIcon));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
