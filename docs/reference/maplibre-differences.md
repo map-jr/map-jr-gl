@@ -318,7 +318,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### `addImage` with pixels of the wrong length
 
-- **MapLibre GL JS:** `addImage` throws a `RangeError` at once when `data` does not have `width × height × 4` values (`mismatched image size`), and it calls nothing of the image. A `Uint8ClampedArray` or an `ImageData` is not checked.
+- **MapLibre GL JS:** `addImage` throws a `RangeError` at once when `data` does not have `width × height × 4` values (`mismatched image size`), and it does not call `onAdd` or `render()`. A `Uint8ClampedArray` or an `ImageData` is not checked.
 - **This library (`@map-jr/map-jr-gl/maplibre-compat`):** `addImage` throws an `Error` with the message `[map-jr-gl] E2233 addImage("name"): the data has 3 values, but an image of 1×1 needs 4 …` at once, before `onAdd` and `render()`, and it changes nothing. It also checks a `Uint8ClampedArray` and an `ImageData`.
 - **This library (`@map-jr/map-jr-gl`):** `addImage` returns a promise that rejects with the same message.
 
