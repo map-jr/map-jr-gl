@@ -4652,6 +4652,36 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A raster-dem tile that cannot be decoded is final, as in MapLibre GL JS 6.17 (#2109): it is requested once in 6 s,
+// gives one error with the prefix and the source, and the map reaches idle without it.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = new Map();
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/dem-2109\//, route => {
+            const u = new URL(route.request().url()).pathname;
+            seen.set(u, (seen.get(u) ?? 0) + 1);
+            return route.fulfill({status: 200, contentType: 'image/png', body: 'not a png'});
+        });
+        const got = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), errors = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = lib.createMap(el, {style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: [`${location.origin}/dem-2109/{z}/{x}/{y}.png`], tileSize: 256}}, layers: [{id: 'h', type: 'hillshade', source: 'dem'}]},
+                view: {center: [0, 0], zoom: 2}, attribution: false, onError: (e, info) => errors.push({source: info.sourceId, message: e.message})});
+            await new Promise(r => setTimeout(r, 6000));
+            const idle = m.state.get().idle;
+            m.destroy();
+            return {errors, idle};
+        });
+        const most = seen.size ? Math.max(...seen.values()) : 0;
+        check('a raster-dem tile that cannot be decoded is requested once and gives one error with the source, and the map is idle (#2109)',
+            seen.size > 0 && most === 1 && got.errors.length === seen.size && got.idle
+            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] The source "dem": the request for the tile http') && e.message.includes('PNG or WebP')),
+            JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
+    } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A tile that a custom protocol rejects is asked for once (#652): the loader is called once for each tile in 6 s.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});

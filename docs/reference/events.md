@@ -87,8 +87,8 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
   - After the fourth failure, the map is idle without the tile. The tile is requested again every 15 s while the view
     needs it. These later requests run in the background: the map stays idle while they load, a failure fires no
     `error`, and a tile that arrives is drawn.
-  - A status 4xx other than 404, a rejection by a custom protocol, an error of `transformRequest` and a raster tile
-    whose image cannot be decoded are final: the tile is not requested again. A 404 is a tile that the server does
+  - A status 4xx other than 404, a rejection by a custom protocol, an error of `transformRequest` and a raster or
+    raster-dem tile whose image cannot be decoded are final: the tile is not requested again. A 404 is a tile that the server does
     not have, and it is not an error.
 - `data` fires with each `styledata` and `sourcedata`, and `dataloading` with each `styledataloading` and
   `sourcedataloading`. `styledata` has `dataType: 'style'`.
