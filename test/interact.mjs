@@ -348,6 +348,33 @@ for (const mode of renderers) {
         const edgeOurs = await edgeDrag('ours'), edgeMl = await edgeDrag('ml');
         check(`[${mode}] the globe: the pointer moves of one frame turn the globe once, and a drag near its edge ends where MapLibre GL JS ends (#479)`,
             edgeOurs.length === 2 && edgeMl.length === 2 && Math.hypot(edgeOurs[0] - edgeMl[0], edgeOurs[1] - edgeMl[1]) < 0.1, JSON.stringify({edgeOurs, edgeMl}));
+        // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
+        // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
+        const flatDrag = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = []; for (const t of ['movestart', 'move', 'moveend', 'dragstart', 'drag', 'dragend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            const marker = new mod.Marker().setLngLat([10, 45]).addTo(m).getElement();
+            const c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
+            const send = (type, [x, y]) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true}));
+            const x0 = marker.getBoundingClientRect().left, lag = [];
+            send('pointerdown', [200, 200]); await frame();
+            for (let i = 1; i <= 10; i++) { send('pointermove', [200 + i * 6 - 3, 200]); send('pointermove', [200 + i * 6, 200]); await frame(); lag.push(Math.round(marker.getBoundingClientRect().left - x0 - i * 6)); }
+            const before = marker.getBoundingClientRect().left;
+            send('pointerup', [260, 200]);
+            await new Promise(r => { m.once('moveend', r); setTimeout(r, 2000); });
+            const jump = Math.round(marker.getBoundingClientRect().left - before);
+            m.remove(); el.remove();
+            return {lag, jump, order: log.join(' ')};
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] a drag pan: the events come as in MapLibre GL JS (movestart, dragstart, move before each drag) (#479)`,
+            // (The worker renderer can report the last move after the release, when its frame comes later.)
+            (mode === 'main' ? /^movestart dragstart (move drag )+dragend moveend$/ : /^movestart dragstart move drag (move |drag )*dragend (move )?moveend$/).test(flatDrag.order ?? ''), JSON.stringify(flatDrag));
+        if (mode === 'main') check(`[${mode}] a drag pan: a marker stays on its point in every frame and does not jump at the release (#479)`,
+            // (The first 3 px of a drag do not pan, so the marker stays that far behind the pointer from the start.)
+            flatDrag.lag?.every(v => Math.abs(v - flatDrag.lag[0]) <= 1) && Math.abs(flatDrag.jump) <= 3, JSON.stringify(flatDrag));
     }
 
     // Drag pan: the point under the cursor should follow it.
