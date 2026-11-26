@@ -20,6 +20,7 @@ import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
 import type {BackgroundLayerSpecification, CircleLayerSpecification, ColorReliefLayerSpecification, FillExtrusionLayerSpecification, FillLayerSpecification, HeatmapLayerSpecification, HillshadeLayerSpecification, LineLayerSpecification, ProjectionSpecification, RasterLayerSpecification, SourceSpecification, StyleSpecification, SymbolLayerSpecification, TerrainSpecification} from './compat-types.ts';
 import {unset, type Given} from './unset.ts';
+import {withCode} from './requests.ts';
 
 /**
  * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`
@@ -1225,7 +1226,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     };
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
     /** Rejects with the message of the mistake `code`, or with `short` when the checks do not load. */
-    const reject = (code: number, a: string, short: string) => checks().then(m => m.mistake(code, a), () => '[map-jr-gl] E' + code + ' ' + short).then(text => { throw new Error(text); });
+    const reject = (code: number, a: string, short: string) => checks().then(m => m.mistake(code, a), () => '[map-jr-gl] E' + code + ' ' + short).then(text => { throw withCode(new Error(text)); });
     const queryFeatures = (at?: FeaturePlace | FeatureOptions, o: FeatureOptions = {}): Promise<RenderedFeature[]> => {
         if (isOptions(at)) { o = at as FeatureOptions; at = undefined; }
         check(3, at, o);
@@ -1267,7 +1268,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         const source = map.getSource(id) as any;
         if (!source?.getClusterLeaves) throw new Error(`E217 "${id}" is not a GeoJSON source of the style.`);
         return run(source);
-    }).catch(e => { throw new Error(`[map-jr-gl] ${name}(): ${(e as Error)?.message?.replace(/^\[map-jr-gl\] /, '')}`); });
+    }).catch(e => { throw withCode(new Error(`[map-jr-gl] ${name}(): ${(e as Error)?.message?.replace(/^\[map-jr-gl\] /, '')}`)); });
     // An event of the core map as the `MapInstance` gives it: positions as `[lng, lat]`, and the `MapInstance` as `target`. The
     // descriptors are copied, so that `preventDefault()` and the getter `defaultPrevented` still act on the event of the map.
     const pair = (p: {lng: number; lat: number}): [number, number] => [p.lng, p.lat];

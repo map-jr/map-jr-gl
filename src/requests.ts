@@ -68,3 +68,14 @@ export function withTimeout(f: typeof fetch, ms = 30000): typeof fetch {
         }, e => { done(); throw e; });
     };
 }
+
+/**
+ * Puts the code of the message in the field `code` of the error (`error.code === 'E63'`, #2148). `name` stays `Error`. An
+ * error with no code in its message is not changed. The build wraps each `new Error(text)` of src/ whose text has a code
+ * (scripts/message-codes.mjs, `errorCodes`), and `fire('error')` of the map does the same for the errors that it passes on.
+ */
+export function withCode<T extends Error>(error: T): T {
+    const code = /^(?:\[map-jr-gl\] )?(?:\w+\(\): )?(E\d+) /.exec(error.message)?.[1];
+    if (code) (error as T & {code?: string}).code = code;
+    return error;
+}
