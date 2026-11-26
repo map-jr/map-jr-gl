@@ -214,10 +214,11 @@ export function terrainGrid(this: any) {
     const count = idx.length;
     // On the globe, a row of triangles from the top edge to the north pole and from the bottom edge to the south pole
     // (y -32768 and 32767 in tile units, see GLOBE_GLSL), drawn for a tile at the edge of the world. A pole vertex
-    // takes the height and the color of the edge vertex under it.
+    // takes the color of the edge vertex under it and the height 0, as in MapLibre GL JS (its get_elevation), so that
+    // all of them meet at one point.
     for (const [row, y] of [[0, -32768], [N, 32767]]) for (let k = 0; k <= N; k++) {
         const i = row * (N + 1) + k, j = pos.length / 3;
-        skirt.push(i);
+        skirt.push(-1);
         pos.push(k / N, y / EXTENT, 0);
         if (k < N) idx.push(i, i + 1, j, i + 1, j + 1, j);
     }
@@ -357,7 +358,7 @@ export function drawTerrain(this: any, s: Scene) {
         if (mh.version !== t.heightsVersion) {
             const all = new Float32Array(t.heights.length + grid.skirt.length);
             all.set(t.heights);
-            grid.skirt.forEach((from: number, k: number) => { all[t.heights.length + k] = t.heights[from]; });
+            grid.skirt.forEach((from: number, k: number) => { all[t.heights.length + k] = from < 0 ? 0 : t.heights[from]; });
             gl.bufferData(gl.ARRAY_BUFFER, all, gl.DYNAMIC_DRAW);
             mh.version = t.heightsVersion;
         }

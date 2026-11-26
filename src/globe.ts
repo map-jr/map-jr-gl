@@ -350,7 +350,11 @@ vec4 toClipTurn(vec2 t, vec2 o, float h) {
 vec4 toClip3D(vec2 t, float h) {
   vec4 g = u_globe * vec4(toSphere(t) * (1.0 + h / 6371008.8), 1.0);
   g.z = g.w - 0.0005 * u_globe[3].w;
-  return u_globeness >= 1.0 ? g : mix(u_matrix * vec4(unpole(t), h, 1.0), g, u_globeness);
+  if (u_globeness >= 1.0) return g;
+  vec4 r = mix(u_matrix * vec4(unpole(t), h, 1.0), g, u_globeness);
+  // The cap of 3D terrain at a pole shows only in the last 2 percent of the change to the globe, as in mixClip.
+  if (isPole(t) && u_globeness < 0.98) r.z = 2.0 * r.w;
+  return r;
 }
 float horizonSide(vec2 t) { return dot(toSphere(t), u_horizon.xyz) + u_horizon.w; }
 // A tile unit is shorter toward the poles on the sphere: lines are made wider by as much (MapLibre's projectLineThickness).
