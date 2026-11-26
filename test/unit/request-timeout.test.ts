@@ -23,7 +23,7 @@ const neverFetch = (asked: string[], answers: Record<string, () => Response> = {
 /** Lets the promises that are ready run (a request starts after a few of them). */
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
 // (The message of a tile names its source after the prefix, #2099.)
-const timedOut = (url: string) => new RegExp(`\\[map-jr-gl\\] (E2106 The source "\\w+": )?E415 the request to ${url.replace(/[.?/]/g, '\\$&')} did not finish within 30000 ms`);
+const timedOut = (url: string) => new RegExp(`\\[map-jr-gl\\] (E2106 The source "\\w+": |E10494 The labels use the next font of their "text-font" instead of "\\w+"\\. )?E415 the request to ${url.replace(/[.?/]/g, '\\$&')} did not finish within 30000 ms`);
 
 test('request timeout: a request that never answers rejects and is aborted', async () => {
     let signal: AbortSignal | undefined;

@@ -3994,7 +3994,7 @@ for (const renderer of renderers) {
         await page.evaluate(async () => { window.host.update({...window.spec, fonts: {'Test Square Regular': '/test-fonts/square.ttf', 'Test Gone Regular': '/test-fonts/missing.ttf'}}); await new Promise(r => setTimeout(r, 200)); await window.settle(); });
         const after = await dark(), errors = await page.evaluate(() => window.errors);
         await page.evaluate(() => window.host.destroy());
-        const failed = errors.some(m => /^\[map-jr-gl\] E1163 https:\/\/map-jr\.org\/e\/1163 font http:\/\/[^ ]+\/test-fonts\/missing\.ttf HTTP 404\. The labels use the next font of their "text-font" instead of "Test Gone Regular"\.$/.test(m));
+        const failed = errors.some(m => /^\[map-jr-gl\] E10494 https:\/\/map-jr\.org\/e\/10494 font="Test Gone Regular" E1163 https:\/\/map-jr\.org\/e\/1163 what="font" url="http:\/\/[^ "]+\/test-fonts\/missing\.ttf" reason="HTTP 404"$/.test(m));
         // (The squares of the font fill much more of the label than the letters of a font of the device.)
         check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name and the HTTP status (#1193)',
             asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));

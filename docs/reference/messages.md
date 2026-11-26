@@ -782,7 +782,7 @@ The production build prints this:
 ```
 
 ```text
-fonts: the font "<font name>" did not load from <src> (<m>). The labels use the next font of their "text-font".
+fonts: the font "<font>" did not load from <src> (<m>). The labels use the next font of their "text-font".
 ```
 
 ## E495
@@ -1837,6 +1837,20 @@ The production build prints this:
 
 ```text
 Vite's dependency cache does not contain the worker file. Add optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']} to vite.config and restart the dev server.
+```
+
+## E10494
+
+An error of both entries.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E10494 https://map-jr.org/e/10494 font=…
+```
+
+```text
+The labels use the next font of their "text-font" instead of "<font>".
 ```
 
 ## E10495
