@@ -46,6 +46,8 @@ export class Popup extends CorePopup {
         if (options.trackPointer) this.trackPointer();
     }
     setSubpixelPositioning(value: boolean) { this.options.subpixelPositioning = value; this.round = value ? Number : Math.round; this.update(); }
+    /** Sets the distance in pixels from the edges of the map inside which the popup changes its anchor to stay in view. */
+    setPadding(padding?: PopupOptions['padding']) { this.options.padding = padding; this.update(); }
     /**
      * Puts the popup at the mouse pointer and moves it with the pointer, until `setLngLat` is called. The popup is hidden
      * until the first mouse move and while the pointer is outside the map. It does not catch clicks, and a touch does not move it.

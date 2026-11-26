@@ -790,7 +790,7 @@ export class Map {
      * camera that the engine reports, they trailed the map by a frame. (The page does not grab the ground itself: its
      * camera can be behind the engine's, for example when a drag stops an `easeTo`.)
      */
-    private held: {from: number; at?: [number, number]; x?: number; y?: number; t: number; pend?: [number, number]; next?: [number, number]; loop?: boolean} | null = null;
+    private held: {from: number; at?: [number, number]; start?: [number, number]; x?: number; y?: number; t: number; pend?: [number, number]; next?: [number, number]; loop?: boolean} | null = null;
     /** @internal What places the HTML markers and popups of this map (see `held`). */
     readonly overlays = new Set<() => void>();
     /** The `idle` report of the worker that waited for the page to show its frame (see `onEngineEvent`). */
@@ -2334,7 +2334,7 @@ export class Map {
                 // (`drag` follows the `move` of the camera that this move gives: see `dragMove`.)
                 this.dragMove = e;
                 // (Not on the globe: there each move turns the globe from the last pointer, and the page waits for the engine's camera.)
-                const h = seq === undefined || this.tr.heightAt || this.renderer !== 'worker' ? null : this.held ??= {from: seq, t: 0};
+                const h = seq === undefined || this.tr.heightAt || this.renderer !== 'worker' ? null : this.held ??= {from: seq, t: 0, start: this.tr.unproject(p.x - dx, p.y - dy)};
                 if (h) {
                     // The worker draws a move in the frame after the one in which the page receives it: the page places
                     // the markers for each move one frame later too.
@@ -2361,6 +2361,16 @@ export class Map {
             if (!pointers.has(e.pointerId)) return;
             // (The pan of the moves of this frame comes before the end of the drag, as in MapLibre GL JS.)
             flushPan();
+            // With the worker renderer the camera of the page is a frame or two behind the drag. At `dragend` it is where
+            // the last move put the map, as in MapLibre GL JS, and older reports of the engine do not move it back: the
+            // inertia then starts from there (#2151).
+            // (Before the first report of the engine, the point under the pointer is the one where the drag began.)
+            const h = this.held, at = pointers.get(e.pointerId), grab = h?.at ?? h?.start;
+            if (grab && at && !this.tr.heightAt && !this.tr.globeness) {
+                this.tr.setLocationAt(grab[0], grab[1], at.x, at.y);
+                this.jumped = this.seq;
+                for (const place of this.overlays) place();
+            }
             this.held = null;
             rest();
             if (e.type !== 'blur') pointerEvent(e.type === 'pointerup' ? 'end' : 'cancel', e);

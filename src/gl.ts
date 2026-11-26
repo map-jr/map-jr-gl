@@ -47,20 +47,23 @@ void main() { v_uv = clamp(unpole(a_pos) / ${EXTENT}.0, 0.0, 1.0); v_tile = v_uv
 void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }
 #endif`;
 
-const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1];
+const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1, 0];
 /** Heatmap densities are accumulated at this fraction of the screen's resolution: the result is smooth anyway. */
 const HEAT_SCALE = 4;
 /**
  * Perspective weights for a quadrilateral's corners, from where its diagonals cross (all equal for a parallelogram).
  * A quadrilateral that is not convex (concave, or crossing itself) has none, because no perspective view gives it.
+ * The fifth number is how far the picture is blended toward the bilinear stretch, as in MapLibre GL JS
+ * (`calculateImageWarp`): 0 up to a foreshortening (the largest weight over the smallest) of 4, rising to 1 at 512.
  */
-function cornerWeights(c: number[]): number[] | undefined {
+export function cornerWeights(c: number[]): number[] | undefined {
     const [x0, y0, x1, y1, x2, y2, x3, y3] = c, den = (x2 - x0) * (y3 - y1) - (y2 - y0) * (x3 - x1);
     // t and s are where the diagonals cross, on the diagonal 0-2 and on the diagonal 1-3: the shape is convex when both are inside.
     const t = ((x1 - x0) * (y3 - y1) - (y1 - y0) * (x3 - x1)) / den, s = ((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0)) / den;
     if (Math.abs(den) < 1e-9 || !(t > 0 && t < 1 && s > 0 && s < 1)) return;
     const ix = x0 + (x2 - x0) * t, iy = y0 + (y2 - y0) * t, d = [0, 1, 2, 3].map(i => Math.hypot(c[i * 2] - ix, c[i * 2 + 1] - iy));
-    return [(d[0] + d[2]) / d[2], (d[1] + d[3]) / d[3], (d[0] + d[2]) / d[0], (d[1] + d[3]) / d[1]];
+    const q = [(d[0] + d[2]) / d[2], (d[1] + d[3]) / d[3], (d[0] + d[2]) / d[0], (d[1] + d[3]) / d[1]];
+    return [...q, Math.min(1, Math.max(0, (1 - 4 * Math.min(...q) / Math.max(...q)) / (1 - 4 / 512)))];
 }
 /**
  * A quadrilateral that is not convex is drawn as MapLibre GL JS 6.17 draws it (`calculateImageWarp`): the picture is
@@ -193,7 +196,7 @@ uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float
 uniform float u_cam; uniform float u_dpr;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap; out float v_aa;
 void main() {
-  vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
+  vec4 a_v = vec4(a_packed.xy * 0.5, a_packed.zw / 8192.0); /* positions in halves of a tile unit: see tessellateLine */ vec2 a_sd = vec2(a_side, a_dist);
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
   v_blur = a_blur + u_zt * a_blur1; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
@@ -381,7 +384,7 @@ uniform vec4 u_clip; uniform float u_pattern; in vec4 v_color; in vec2 v_tile; i
 void main() { ${FS_CLIP} if (v_side < 0.0) discard; o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
 
     raster: [`${VS_COMMON}
-layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; uniform vec3 u_fold; out vec3 v_uvq; out vec2 v_tile; out float v_fold;
+layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; uniform float u_blend; uniform vec3 u_fold; out vec3 v_uvq; out vec2 v_tile; out float v_fold;
 // A tile fills its square; an image source's picture is stretched between four given corners instead. For a shape
 // that is not a parallelogram the picture must be foreshortened as if seen in perspective: each corner carries a
 // weight q, and dividing by the interpolated weight in the fragment shader gives the right texture position.
@@ -394,10 +397,13 @@ void main() {
 #endif
   // A point of the picture is the mix of the corners divided by their weights, so that the grid of the globe follows the
   // perspective too: a straight line of the picture stays straight in Mercator, as in MapLibre GL JS.
-  vec4 b = vec4((1.0 - ap.x) * (1.0 - ap.y), ap.x * (1.0 - ap.y), ap.x * ap.y, (1.0 - ap.x) * ap.y) / u_q;
-  float q = 1.0 / (b.x + b.y + b.z + b.w);
-  v_uvq = vec3(ap * q, q);
-  v_tile = (b.x * u_corners[0] + b.y * u_corners[1] + b.z * u_corners[2] + b.w * u_corners[3]) * q;
+  // A strongly foreshortened picture is blended toward the bilinear stretch (u_blend, see cornerWeights). The weight is
+  // mixed with the constant u_q.x, the weight of the first corner, so that an unblended picture keeps the exact weight q.
+  vec4 w = vec4((1.0 - ap.x) * (1.0 - ap.y), ap.x * (1.0 - ap.y), ap.x * ap.y, (1.0 - ap.x) * ap.y), b = w / u_q;
+  float q = 1.0 / (b.x + b.y + b.z + b.w), r = mix(q, u_q.x, u_blend);
+  v_uvq = vec3(ap * r, r);
+  v_tile = mix((b.x * u_corners[0] + b.y * u_corners[1] + b.z * u_corners[2] + b.w * u_corners[3]) * q,
+    w.x * u_corners[0] + w.y * u_corners[1] + w.z * u_corners[2] + w.w * u_corners[3], u_blend);
   v_fold = dot(u_fold, vec3(1.0, ap)); // (see foldOf)
 #ifdef GLOBE
   gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile);
@@ -1305,13 +1311,13 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_clip, it.clip);
                     if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
                     const q = it.corners ? cornerWeights(it.corners) : ONES;
-                    if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, q ?? ONES); gl.uniform3fv(u.u_fold, q ? FLAT : foldOf(it.corners!)); }
+                    if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, (q ?? ONES).slice(0, 4)); gl.uniform1f(u.u_blend, (q ?? ONES)[4]); gl.uniform3fv(u.u_fold, q ? FLAT : foldOf(it.corners!)); }
                     if (L.relief) gl.uniform4fv(u.u_unpack, it.tile.unpack!);
                     gl.bindTexture(gl.TEXTURE_2D, L.relief ? it.tile.raw! : it.tile.tex);
                     // Above the pitch of `setAnisotropicFilterPitch` (20 by default), a tile of a raster source is filtered
                     // anisotropically, as in MapLibre GL JS: the far part of the map is sharper. (0x84FE is TEXTURE_MAX_ANISOTROPY_EXT.)
                     if (it.tile.mip && this.aniso) gl.texParameterf(gl.TEXTURE_2D, 0x84FE, tr.pitch > tr.aniso ? this.aniso : 1);
-                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id, !it.corners) : q ? gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4) : this.drawSheet(), it.tile.mip ? gl.LINEAR_MIPMAP_NEAREST : gl.LINEAR);
+                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id, !it.corners) : q && !q[4] ? gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4) : this.drawSheet(), it.tile.mip ? gl.LINEAR_MIPMAP_NEAREST : gl.LINEAR);
                 }
                 continue;
             }
@@ -1535,7 +1541,7 @@ export class GLRenderer {
         return this.globeMesh ??= this.globeCode!.globeMesh(this.gl);
     }
 
-    /** Draws a picture that is not convex in Mercator on a grid of 16 x 16 cells (see foldOf), made at its first use. */
+    /** Draws a picture that is not convex, or is blended toward bilinear, in Mercator on a grid of 16 x 16 cells (see foldOf), made at its first use. */
     private drawSheet() {
         const gl = this.gl;
         if (!this.sheet) {

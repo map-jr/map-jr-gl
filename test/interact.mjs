@@ -6482,38 +6482,6 @@ for (const mode of renderers) {
         }, renderer);
         check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
             Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3), JSON.stringify(m1954));
-        // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
-        // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
-        const m479 = {};
-        for (let run = 0; run < 3; run++) for (const lib of ['ml', 'compat']) for (const [gap, step] of [[16, 30], [80, 40]]) {
-            await page.evaluate(async lib => {
-                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
-                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
-                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
-                const m = window.m479 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
-                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
-                await new Promise(r => setTimeout(r, 300));
-                m.once('dragend', () => { window.at479 = m.project([10, 45]).x; });
-            }, lib);
-            await page.mouse.move(20, 150); await page.mouse.down();
-            for (let i = 1; i <= 8; i++) { if (i > 1) await page.waitForTimeout(gap); await page.mouse.move(20 + i * step, 150); }
-            await page.mouse.up();
-            const d = await page.evaluate(async () => {
-                const m = window.m479;
-                await new Promise(r => setTimeout(r, 2000));
-                const d = Math.round(m.project([10, 45]).x - window.at479);
-                const el = m.getContainer(); m.remove(); el.remove();
-                return d;
-            });
-            m479[lib + gap] = Math.max(m479[lib + gap] ?? -Infinity, d);
-        }
-        // (A loaded machine delays frames and shortens the inertia of a drag: each drag runs three times, and the longest
-        // inertia counts. After the fast drag the distances agree within a fifth or 3 px. After the slow drag the inertia
-        // is a few pixels and depends on where the frames fall, so it only has to be within a factor of 2. Before #479 the
-        // fast one went about 1.7 times as far here, and the slow one had none.)
-        const near479 = g => g === 16 ? Math.abs(m479['compat' + g] - m479['ml' + g]) <= Math.max(3, m479['ml' + g] / 5) : m479['compat' + g] >= m479['ml' + g] / 2 && m479['compat' + g] <= m479['ml' + g] * 2;
-        check('[main] maplibre-compat: the inertia of a fast and of a slow pan goes as far as in MapLibre GL JS (#479)',
-            [16, 80].every(g => m479['ml' + g] > 3 && near479(g)), JSON.stringify(m479));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -6874,6 +6842,42 @@ for (const mode of renderers) {
             ['fitBounds', 'flyTo', 'jumpTo', 'setCenter'].every(k => tagged[k].includes('moveend:true') && tags(tagged[k]) === 'true')
             && tagged.fitBounds.includes('zoomend:true') && tags(tagged.plain) === 'undefined' && tagged.drag.includes('moveend:undefined') && tags(tagged.drag) === 'undefined', JSON.stringify(tagged));
     }
+    {
+        // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
+        // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.) With the
+        // worker renderer, the camera of the page at `dragend` was a frame or two behind the drag, and the map seemed to
+        // glide twice as far (#2151).
+        const m479 = {};
+        for (let run = 0; run < 3; run++) for (const lib of ['ml', 'compat']) for (const [gap, step] of [[16, 30], [80, 40]]) {
+            await page.evaluate(async ([lib, renderer]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m479 = new mod.Map({container: el, renderer, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => setTimeout(r, 300));
+                m.once('dragend', () => { window.at479 = m.project([10, 45]).x; });
+            }, [lib, mode]);
+            await page.mouse.move(20, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { if (i > 1) await page.waitForTimeout(gap); await page.mouse.move(20 + i * step, 150); }
+            await page.mouse.up();
+            const d = await page.evaluate(async () => {
+                const m = window.m479;
+                await new Promise(r => setTimeout(r, 2000));
+                const d = Math.round(m.project([10, 45]).x - window.at479);
+                const el = m.getContainer(); m.remove(); el.remove();
+                return d;
+            });
+            m479[lib + gap] = Math.max(m479[lib + gap] ?? -Infinity, d);
+        }
+        // (A loaded machine delays frames and shortens the inertia of a drag: each drag runs three times, and the longest
+        // inertia counts. After the fast drag the distances agree within a fifth or 3 px. After the slow drag the inertia
+        // is a few pixels and depends on where the frames fall, so it only has to be within a factor of 2. Before #479 the
+        // fast one went about 1.7 times as far here, and the slow one had none.)
+        const near479 = g => g === 16 ? Math.abs(m479['compat' + g] - m479['ml' + g]) <= Math.max(3, m479['ml' + g] / 5) : m479['compat' + g] >= m479['ml' + g] / 2 && m479['compat' + g] <= m479['ml' + g] * 2;
+        check(`[${mode}] maplibre-compat: the inertia of a fast and of a slow pan goes as far as in MapLibre GL JS (#479, #2151)`,
+            [16, 80].every(g => m479['ml' + g] > 3 && near479(g)), JSON.stringify(m479));
+    }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
     if (mode === 'main') {
@@ -7121,6 +7125,16 @@ for (const mode of renderers) {
                 out.markerSet = t(pin.setSubpixelPositioning(true)); out.markerBack = t(pin.setSubpixelPositioning(false));
                 out.markerSubpixel = out.markerRound === '100' && Math.abs(out.markerOption - 100.4) < 0.01 && Math.abs(out.markerSet - 100.4) < 0.01 && out.markerBack === '100';
                 pin.remove(); pinned.remove();
+                // #1783: Popup.setPadding and the option padding move the anchor away from the padded edges, as in MapLibre GL JS.
+                const box = m.getContainer(), W = box.clientWidth, H = box.clientHeight, mid2 = m.unproject([W / 2, H / 2]);
+                const pad = new mod.Popup({animate: false}).setLngLat(mid2).setText('pad').addTo(m), anchors = [pad.getAnchor()];
+                pad.setPadding({top: H, left: W}); anchors.push(pad.getAnchor());
+                pad.setPadding({right: W}); anchors.push(pad.getAnchor());
+                pad.setPadding(); anchors.push(pad.getAnchor());
+                pad.remove();
+                const opt = new mod.Popup({animate: false, padding: {top: H}}).setLngLat(mid2).setText('pad').addTo(m);
+                anchors.push(opt.getAnchor()); opt.remove();
+                out.padding = anchors.join();
             } finally { console.warn = warn; }
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
@@ -7128,6 +7142,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
             options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
         check('[main] maplibre-compat: Marker places itself on fractions of a pixel with the option subpixelPositioning and setSubpixelPositioning(true), and on whole pixels by default (#1782)', options.markerSubpixel, JSON.stringify(options));
+        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,bottom-right,bottom,top', JSON.stringify(options.padding));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};

@@ -575,7 +575,7 @@ export function placeLabels(
                 }
                 const n = 2 ** it.id.z, q = 2 ** 22;
                 const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                const ic = meta && l.icon, iflat = !!tr.pitch && !!ic && ic.flat && ic.fit === 'none';
+                const ic = meta && l.icon, iflat = (!!tr.pitch || tr.globeness > 0) && !!ic && ic.flat && ic.fit === 'none';
                 const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (L.fixedSize ? 1 : iflat ? flatSize(tr, depth) : persp) : 0;
                 // Where the icon goes and its size, for text centered at (tx, ty).
                 const sprite = meta, move = ic ? translateAt(it, l.x, l.y, ax, ay, L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom)) : [0, 0];
@@ -669,7 +669,9 @@ export function placeLabels(
                     const r = L.fixedSize && fit === 'none' ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
                     const qx = cx + (bx - cx) * r, qy = cy + (by - cy) * r;
                     bw *= r; bh *= r;
-                    const box = line || iflat ? boxAround(qx, qy, bw, bh, angle, ic.padding) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
+                    // (On the globe without pitch, the box lies on the ground only with text on the ground (`flat`): as in
+                    // MapLibre GL JS, `text-pitch-alignment` decides it, so a box does not change at the switch to Mercator.)
+                    const box = line || (iflat && (!!tr.pitch || flat)) ? boxAround(qx, qy, bw, bh, angle, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
