@@ -74,7 +74,7 @@ export function withData(style: any, data: Record<string, unknown> | undefined, 
 export const isStylePair = (s: unknown): s is {light?: unknown; dark?: unknown} => !!s && typeof s === 'object' && !('layers' in s) && ('light' in s || 'dark' in s);
 /** The style for the color scheme: of a pair the value of the scheme (or the other one when it is missing), else `style` itself. */
 export const styleFor = (s: unknown, dark: boolean): unknown => isStylePair(s) ? (dark ? s.dark ?? s.light : s.light ?? s.dark) : s;
-export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl] data: the source "${id}" has the type "${type}", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`);
+export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl] E487 data: the source "${id}" has the type "${type}", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`);
 
 /**
  * A style with the `sources`, `layers`, `terrain` and `sprite` of the description. A `terrain` of `null` removes that of

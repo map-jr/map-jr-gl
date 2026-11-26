@@ -23,7 +23,7 @@ export function createTileMesh(options: CreateTileMeshOptions, forceIndicesSize?
     const g = Math.max(options.granularity ?? 1, 1);
     const x0 = b ? -1 : 0, y0 = b || n ? -1 : 0, x1 = g + (b ? 1 : 0), y1 = g + (b || s ? 1 : 0);
     const w = x1 - x0 + 1, h = y1 - y0 + 1, big = w * h > 65536;
-    if (big && forceIndicesSize === '16bit') throw new Error('[map-jr-gl] createTileMesh(): the granularity is too large for 16-bit indices. Pass a smaller granularity, or "32bit".');
+    if (big && forceIndicesSize === '16bit') throw new Error('[map-jr-gl] E1465 createTileMesh(): the granularity is too large for 16-bit indices. Pass a smaller granularity, or "32bit".');
     const wide = big || forceIndicesSize === '32bit';
     const vertices = new Int16Array(w * h * 2), indices = new (wide ? Uint32Array : Uint16Array)((w - 1) * (h - 1) * 6);
     let i = 0;

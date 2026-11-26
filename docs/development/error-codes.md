@@ -61,9 +61,9 @@ The class of each warning here follows the words of its text; the pull request o
   placeholders, for example `[map-jr-gl] E123 https://map-jr.org/e/123 source="roads"`. The values stay, because the
   user needs to know which source or layer is meant, and they cost no text in the built file. An `Error` thrown in
   production has the same text as its `message`, so code that catches it can still read the code.
-- **The page.** `scripts/messages.mjs --write` generates `docs/reference/messages.md` from `src/`: one row per code
-  with the full text, the kind (error or warning) and the entry. The docs site serves each code at `/e/<number>`,
-  which redirects to the row. The page is a reference page in the sense of `docs/style-guide.md`.
+- **The page.** `scripts/messages.mjs --write` generates `docs/reference/messages.md` from `src/`: one section per code
+  (a table cell would pass the limit of 200 characters of `scripts/docs-lint.mjs`) with the full text, the kind (error
+  or warning) and the entry. The docs site serves each code at `/e/<number>`, which redirects to the section. The page is a reference page in the sense of `docs/style-guide.md`.
 - **The development build** prints the full text and the code, so that a developer can search for either.
 
 ## What users lose
@@ -129,8 +129,11 @@ The plan starts after #2145 and the pull request of #2133 that moves the shared 
 pull request.
 
 1. Extend `scripts/messages.mjs`: `--write` generates `docs/reference/messages.md` and `dist/messages.json`, and
-   `--check` checks the codes. Add a code to every message of `src/` (no change of behavior). The configuration
-   warnings of the map chunk that #2133 keeps in production get a code too.
+   `--check` checks the codes. Add a code to every message of `src/`. The configuration warnings of the map chunk that
+   #2133 keeps in production get a code too. Done in the pull request of step 1: every message prints its code after
+   the prefix and keeps its full text in every build (`[map-jr-gl] E1846 workerUrl: ...`), so production gains about
+   0.2 KB gzip until step 2 drops the texts. A message that came before the history of the repository (two warnings of
+   expressions) takes the number of #2148.
 2. Add the production form: the build replaces the text with the code in production files except `server.js` and the
    standalone bundles (a define or a small
    plugin of `build.mjs` keyed on the helper calls), and the helper adds the link. The pull request gives

@@ -729,7 +729,7 @@ for (const renderer of renderers) {
             return message;
         }, renderer);
         check(`[${renderer}] queryElevation without a raster-dem source rejects with a [map-jr-gl] message that says to add one (#1214)`,
-            noDem.startsWith('[map-jr-gl] queryElevation()') && noDem.includes('raster-dem'), noDem);
+            noDem.startsWith('[map-jr-gl] E11214 queryElevation()') && noDem.includes('raster-dem'), noDem);
 
         // #1213: the option `source` of queryElevation reads the named raster-dem source, and an unknown one rejects.
         const named = await page.evaluate(async renderer => {
@@ -1110,7 +1110,7 @@ for (const renderer of renderers) {
             return out;
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] patch keeps the other fields, undefined removes a field, and description is the last description`,
-            JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true, pitch: [180, 1, 60], elevation: [10000, 0]}), JSON.stringify(patched));
+            JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] E57 patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true, pitch: [180, 1, 60], elevation: [10000, 0]}), JSON.stringify(patched));
 
         // 3b4. `null` in an optional field means "not set" (#1146): a description from JSON with `null` in every optional
         // field except `terrain` draws the same map as one without those keys, in createMap and in update, and warns nothing.
@@ -1201,7 +1201,7 @@ for (const renderer of renderers) {
         });
         await page.unroute(/\/no-such-2007\//);
         check(`[${renderer}] mistakes have a message: a container that is not there`,
-            mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.left === 0, JSON.stringify(mistakes));
+            mistakes.noId === '[map-jr-gl] E10065 createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] E65 createMap(): the container is null.') && mistakes.left === 0, JSON.stringify(mistakes));
         check(`[${renderer}] onError gets each error, and without it the error is written to the console`,
             /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged), JSON.stringify(mistakes));
         check(`[${renderer}] a tile server that answers 500 gives one error for each tile, with its sourceId, also after the retries (#2007)`,
@@ -1358,7 +1358,7 @@ for (const renderer of renderers) {
             return {initial, initialOld, moved, fitted, movedOld, padded, warned: warned.filter(w => w.includes('is not an option of a fit'))};
         }, renderer);
         {
-            const F = fitNames, said = (where, name) => F.warned.some(w => w.startsWith(`[map-jr-gl] ${where}: "${name}"`) && w.includes(`"fit${name[0].toUpperCase() + name.slice(1)}"`));
+            const F = fitNames, said = (where, name) => F.warned.some(w => w.startsWith(`[map-jr-gl] E1147 ${where}: "${name}"`) && w.includes(`"fit${name[0].toUpperCase() + name.slice(1)}"`));
             check(`[${renderer}] fitMaxZoom limits the fit in initialView, moveTo and fitBounds (#1147)`,
                 F.initial === 4 && F.moved === 5 && F.fitted === 6, JSON.stringify(F));
             check(`[${renderer}] padding and maxZoom of initialView, moveTo and fitBounds warn with the new name and have no effect (#1147)`,
@@ -1382,7 +1382,7 @@ for (const renderer of renderers) {
             return {zoom, warned: warned.filter(w => w.includes('"initialView.bounds"'))};
         }, renderer);
         check(`[${renderer}] view with initialView.bounds does not fit the bounds and warns once that view wins (#1148)`,
-            viewWins.zoom === 3 && viewWins.warned.length === 1 && viewWins.warned[0].startsWith('[map-jr-gl] createMap(): ') && viewWins.warned[0].includes('"view" wins, so the map does not fit'), JSON.stringify(viewWins));
+            viewWins.zoom === 3 && viewWins.warned.length === 1 && viewWins.warned[0].startsWith('[map-jr-gl] E1148 createMap(): ') && viewWins.warned[0].includes('"view" wins, so the map does not fit'), JSON.stringify(viewWins));
 
         check(`[${renderer}] a pending toBlob leaves loaded() true for the idle listeners after its own (#1454)`, blob.loadedAtIdle === true, JSON.stringify(blob));
         check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
@@ -1563,8 +1563,8 @@ for (const renderer of renderers) {
             return {first, added, restyled, removed, errors, said: said.filter(w => w.includes('"b-fill"'))};
         }, renderer);
         check(`[${renderer}] a key of data with no source makes a GeoJSON source, also as a new key and after a new style; a removed key removes it, and a key of a source of another type is an error`,
-            madeData.first === 1 && madeData.added === 1 && madeData.restyled + '' === '1,1' && madeData.removed && madeData.errors.length === 1 && madeData.errors[0].startsWith('[map-jr-gl] data: the source ')
-            && madeData.said.length === 1 && madeData.said[0].startsWith('[map-jr-gl] the layer "b-fill" uses the source "b"'), JSON.stringify(madeData));
+            madeData.first === 1 && madeData.added === 1 && madeData.restyled + '' === '1,1' && madeData.removed && madeData.errors.length === 1 && madeData.errors[0].startsWith('[map-jr-gl] E487 data: the source ')
+            && madeData.said.length === 1 && madeData.said[0].startsWith('[map-jr-gl] E2 the layer "b-fill" uses the source "b"'), JSON.stringify(madeData));
 
         // 3d. A paint or layout property that the style specification does not have for the type of the layer warns once
         // for each layer and property in the development build, with the nearest name: in the first description and in a
@@ -1587,8 +1587,8 @@ for (const renderer of renderers) {
             return said.filter(w => / property "/.test(w));
         }, renderer);
         check(`[${renderer}] an unknown paint or layout property warns once for each layer and property with the nearest name in the development build (#1139)`,
-            unknownProps.length === 2 && unknownProps[0].startsWith('[map-jr-gl] the circle layer "p-circle", paint property "circle-colour":') && unknownProps[0].endsWith('Write "circle-color".')
-            && unknownProps[1].startsWith('[map-jr-gl] the line layer "p-line", layout property "line-capp":') && unknownProps[1].endsWith('Write "line-cap".'), JSON.stringify(unknownProps));
+            unknownProps.length === 2 && unknownProps[0].startsWith('[map-jr-gl] E1139 the circle layer "p-circle", paint property "circle-colour":') && unknownProps[0].endsWith('Write "circle-color".')
+            && unknownProps[1].startsWith('[map-jr-gl] E1139 the line layer "p-line", layout property "line-capp":') && unknownProps[1].endsWith('Write "line-cap".'), JSON.stringify(unknownProps));
 
         // 3d. A layer that an update() adds as an edit is checked at the update() call, before the map is next idle: its
         // unknown property (#1139) and its zoom curve (#1087) warn then, once each (#1684).
@@ -1614,8 +1614,8 @@ for (const renderer of renderers) {
             return {before, all: said.filter(w => /"p-dot"/.test(w))};
         }, renderer);
         check(`[${renderer}] a layer that update() adds as an edit warns for its unknown property and zoom curve before the next idle, once each, in the development build (#1684)`,
-            editChecked.before?.length === 2 && editChecked.all.length === 2 && editChecked.all.some(w => w.startsWith('[map-jr-gl] the circle layer "p-dot", paint property "circle-colr":'))
-            && editChecked.all.some(w => w.startsWith('[map-jr-gl] the layer "p-dot", paint property "circle-radius":')), JSON.stringify(editChecked));
+            editChecked.before?.length === 2 && editChecked.all.length === 2 && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1139 the circle layer "p-dot", paint property "circle-colr":'))
+            && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1057 the layer "p-dot", paint property "circle-radius":')), JSON.stringify(editChecked));
 
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
@@ -1702,7 +1702,7 @@ for (const renderer of renderers) {
         const warnings = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = [], log = console.warn;
             // (The fallback of renderer 'worker' to the main thread warns where a worker cannot render, #792: not a mistake, #813.)
-            console.warn = (...a) => { const m = a.join(' '); if (!m.startsWith('[map-jr-gl] Worker rendering unavailable')) said.push(m); };
+            console.warn = (...a) => { const m = a.join(' '); if (!m.startsWith('[map-jr-gl] E798 Worker rendering unavailable')) said.push(m); };
             const div = style => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;' + style}));
             const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); });
             const empty = {type: 'FeatureCollection', features: []}, dot = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>';
@@ -1751,13 +1751,13 @@ for (const renderer of renderers) {
             console.warn = log;
             return {correct, said, place};
         }, renderer);
-        const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'queryFeatures(): the style has no layer "nope"',
-            'querySource(): the style has no source "nope"', 'layers: the layer "lost" has before: "nonexistent"', 'layers: the layer "lost" uses the source "missing"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"',
-            'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" is not an option', 'queryFeatures(): "sources" is not an option', 'queryFeatures(): "radius" has an effect only in a query at a point or a position',
-            'querySource(): "radius" has an effect only', 'querySource(): "zoom" has an effect only', 'querySource(): "layers" is not an option'];
+        const expected = ['E0 createMap(): the container has height 0', 'E1 interactiveLayers: the style has no layer "nope"', 'E3 queryFeatures(): the style has no layer "nope"',
+            'E4 querySource(): the style has no source "nope"', 'E5 layers: the layer "lost" has before: "nonexistent"', 'E6 layers: the layer "lost" uses the source "missing"', 'E14 images: a layer gives the parameter "colour" to the image "dot"', 'E14 images: a layer gives the parameter "size" to the image "dot"', 'E14 images: a layer gives the parameter "fill" to the image "dot"',
+            'E8 update(): "interactive" changed', 'E8 update(): "initialView" changed', 'E12 queryFeatures(): "sourceLayers" is not an option', 'E12 queryFeatures(): "sources" is not an option', 'E13 queryFeatures(): "radius" has an effect only in a query at a point or a position',
+            'E13 querySource(): "radius" has an effect only', 'E11 querySource(): "zoom" has an effect only', 'E12 querySource(): "layers" is not an option'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
-            && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
+            && warnings.place.startsWith('[map-jr-gl] E9 queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
 
         // 3f. A style whose root names a projection that the library does not draw: one warning per map, also after setStyle;
         // mercator gives none (#238). The globe gives none for itself (#463), nor for its buildings, which it draws (#1429).
@@ -1784,7 +1784,7 @@ for (const renderer of renderers) {
             return {mercSaid, otherSaid, globeSaid: said};
         }, renderer);
         check(`[${renderer}] a style with the projection "identity" writes one warning, "mercator" none, and "globe" none, also for its buildings`,
-            proj.mercSaid === 0 && proj.otherSaid.length === 1 && proj.otherSaid[0] === '[map-jr-gl] The style has the projection "identity", which is not supported, so the map uses "mercator".'
+            proj.mercSaid === 0 && proj.otherSaid.length === 1 && proj.otherSaid[0] === '[map-jr-gl] E238 The style has the projection "identity", which is not supported, so the map uses "mercator".'
             && proj.globeSaid.length === 0, JSON.stringify(proj));
 
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
@@ -1796,8 +1796,8 @@ for (const renderer of renderers) {
             return {update, none, create, drawn: (await t.host.queryFeatures([{x: 0, y: 0}, {x: 900, y: 600}])).length};
         });
         check(`[${renderer}] a description with no style: update and createMap throw and say what to write, and the map still draws`,
-            partial.update.startsWith('[map-jr-gl] update(): the description has no "style".') && partial.update.includes('map.patch({cursor: ') && partial.none.startsWith('[map-jr-gl] update()')
-            && partial.create.startsWith('[map-jr-gl] createMap(): the description has no "style".') && partial.drawn > 0 && !errors.length, JSON.stringify({...partial, errors}));
+            partial.update.startsWith('[map-jr-gl] E57 update(): the description has no "style".') && partial.update.includes('map.patch({cursor: ') && partial.none.startsWith('[map-jr-gl] E57 update()')
+            && partial.create.startsWith('[map-jr-gl] E57 createMap(): the description has no "style".') && partial.drawn > 0 && !errors.length, JSON.stringify({...partial, errors}));
 
         // 4. Points for a symbol layer (#499): a key of `data` with `points()` and a layer of `layers`. New data is no new
         // style, and data that comes with a change of the layer is not lost.
@@ -1904,7 +1904,7 @@ for (const renderer of renderers) {
         const after = await colourAt(), late = await page.evaluate(() => window.t.host._map.hasImage('late'));
         await page.evaluate(() => { const t = window.t; delete t.host._map.addImage; t.host.update(t.spec = {...t.spec, style: t.style}); });
         check(`[${renderer}] images follow the description: added, the same content is not added again, replaced, the last of two changes stays, removed, and an image that does not load is an error`,
-            first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] images: the image "lost" did not load.'),
+            first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] E20121 images: the image "lost" did not load.'),
             JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
 
         // Images of the style in metadata["map-jr:images"] (#495): drawn, replaced by an image of `images` with the same
@@ -1936,7 +1936,7 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] images of the style in metadata["map-jr:images"]: drawn, replaced by images of the description, removed with the style, an SVG with a reference to another file is left out, and a URL goes through transformRequest as Image`,
             ofStyle === '#f80' && onDemand[0] && !onDemand[1] && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
-            && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "far" did not load')),
+            && styleGone.errors.some(e => e.startsWith('[map-jr-gl] E20495 the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] E20121 the style: the image "far" did not load')),
             JSON.stringify({ofStyle, onDemand, overridden, back, styleGone}));
 
         // A sprite of the description (#495): added to the sprite of the style, its images named `id:name` in icon-image,
@@ -2076,8 +2076,8 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] an image that is an SVG template: slots get the properties of each feature or the params of the image expression (also with feature-state), another template draws the variants again, a value is not markup, and too many variants give one error`,
             fromProperties === '#f0f #f0f #0ff #0ff' && fromParams === '#ff0 #ff0 #00f #00f' && otherTemplate === '#000 #ff0 #000 #00f' && stateOff === '#000 #0f0 #000 #0f0' && stateOn === '#000 #0f0 #000 #f00'
-            && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] The image "tiny" has more than 1000 different sets of values')
-            && replaced30.full === 0 && replaced30.asked === 0 && replaced30.broken.length === 1 && replaced30.broken[0].startsWith('[map-jr-gl] The image "tile" cannot be drawn with the values of its slots'),
+            && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] E30121 The image "tiny" has more than 1000 different sets of values')
+            && replaced30.full === 0 && replaced30.asked === 0 && replaced30.broken.length === 1 && replaced30.broken[0].startsWith('[map-jr-gl] E40121 The image "tile" cannot be drawn with the values of its slots'),
             JSON.stringify({fromProperties, fromParams, otherTemplate, stateOff, stateOn, unsafe, many, replaced30}));
 
         // Icons that need no place among the labels are drawn from buffers of the tiles. The picture is the same as for
@@ -2344,7 +2344,7 @@ for (const renderer of renderers) {
                 const spec = () => [navigation(), scale(), navigation(), custom({key: 'own', element: document.createElement('div')}), custom({key: 'own', element: document.createElement('div')})];
                 t.host.update(t.spec = {...t.spec, controls: spec()});
                 t.host.update(t.spec = {...t.spec, controls: spec()}); // the same list again: no second warning
-                const said = () => warned.filter(w => w.startsWith('[map-jr-gl] controls:'));
+                const said = () => warned.filter(w => w.startsWith('[map-jr-gl] E1195 controls:'));
                 const count = () => document.querySelectorAll('#host .map-jr-ctrl-compass').length;
                 for (let i = 0; i < 40 && (said().length < 2 || !count()); i++) await new Promise(r => setTimeout(r, 50));
                 await new Promise(r => setTimeout(r, 100));
@@ -2513,7 +2513,7 @@ for (const renderer of renderers) {
         const onB = await states();
         // (A feature with no id gets no state, and the development build warns once for the layer.)
         for (const x of [170, 175, 130, 170]) { await page.mouse.move(x, 75); await page.waitForTimeout(300); }
-        const noId = await page.evaluate(() => { const t = window.t; console.warn = t.litLog; return t.litSaid.filter(w => w.startsWith('[map-jr-gl] hoverState: a feature of the layer "sq" has no id')).length; });
+        const noId = await page.evaluate(() => { const t = window.t; console.warn = t.litLog; return t.litSaid.filter(w => w.startsWith('[map-jr-gl] E30 hoverState: a feature of the layer "sq" has no id')).length; });
         await page.mouse.move(450, 300); await page.waitForTimeout(400);
         const litGone = await states();
         // A sweep of the pointer for 1 s (#694): the map asks the engine at most once in a frame, and the answer is the
@@ -2603,9 +2603,9 @@ for (const renderer of renderers) {
             } finally { console.warn = log; }
             return said; });
         check(`[${renderer}] an unknown option of overlay(), update() and patch() gives one warning for each option, which names the option and the known options`,
-            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, draggable, onDragStart, onDrag, onDragEnd.'
-            && overlayUnknown[1].startsWith('[map-jr-gl] update(): "colour" is not an option of an overlay, so it has no effect. The options are')
-            && overlayUnknown[2].startsWith('[map-jr-gl] patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
+            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, draggable, onDragStart, onDrag, onDragEnd.'
+            && overlayUnknown[1].startsWith('[map-jr-gl] E1647 update(): "colour" is not an option of an overlay, so it has no effect. The options are')
+            && overlayUnknown[2].startsWith('[map-jr-gl] E1647 patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
         // the callbacks get [lng, lat]. A render with the same lngLat leaves it where it was dropped.
         await page.evaluate(() => { const t = window.t, el = t.dragPin = t.lib.defaultPin({color: 'rgb(200, 0, 0)'}); t.dragged = []; el.addEventListener('click', () => t.dragged.push('click'));
@@ -3052,7 +3052,7 @@ for (const renderer of renderers) {
             half.destroy();
             el.remove();
             console.warn = warn;
-            const mine = warns.filter(w => w.startsWith('[map-jr-gl] styles():'));
+            const mine = warns.filter(w => /^\[map-jr-gl\] E\d+ styles\(\):/.test(w));
             out.labels = mine.filter(w => w.includes('no picture')).map(w => w.match(/"([^"]+)"/)[1]).join(',');
             out.text = mine.join(' | ');
             out.half = mine.some(w => w.includes('preview has "center" without "zoom"'));
@@ -3288,7 +3288,7 @@ for (const renderer of renderers) {
             host.update(spec = {...spec, style: {sources: {}, layers: [{id: 'L', type: 'background'}]}});
             await new Promise(r => setTimeout(r, 300));
             console.warn = log;
-            out.warned = [said.some(w => w.startsWith('[map-jr-gl] style: the pair has no "dark", so the map uses "light"')), said.some(w => w.startsWith('[map-jr-gl] style: the object is not a style'))].join();
+            out.warned = [said.some(w => w.startsWith('[map-jr-gl] E46 style: the pair has no "dark", so the map uses "light"')), said.some(w => w.startsWith('[map-jr-gl] E45 style: the object is not a style'))].join();
             host.update(spec = {...spec, style: {light: make('L'), dark: make('D')}});
             await wait(() => ids() === 'L,dots' && host.state.get().idle);
             window.pairHost = host;
@@ -3388,7 +3388,7 @@ for (const renderer of renderers) {
         check(`[${renderer}] clusterExpansionZoom, clusterChildren and clusterLeaves({limit, offset}) answer for a cluster, and reject with a message otherwise; the host has _map and no map (#503)`,
             typeof clusters.id === 'number' && clusters.zoom > 10 && clusters.children >= 1 && clusters.all === 12 && clusters.two === 2 && clusters.point === 'Point'
             && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): ')
-            && clusters.ten === 10 && clusters.errors[3].startsWith('[map-jr-gl] clusterLeaves(): the third argument is 2. Pass {limit, offset}') && clusters.members.join() === 'false,true', JSON.stringify(clusters));
+            && clusters.ten === 10 && clusters.errors[3].startsWith('[map-jr-gl] clusterLeaves(): E503 the third argument is 2. Pass {limit, offset}') && clusters.members.join() === 'false,true', JSON.stringify(clusters));
 
         // 5d2. A GeoJSON source of `sources` whose id is a key of `data` needs no `data` of its own, at the start and when it is added by an update;
         // one with no `data` and no key warns in the development build (#1189).
@@ -3445,9 +3445,9 @@ for (const renderer of renderers) {
             return {...out, clicks, watched, forgotten};
         });
         check(`[${renderer}] destroy removes the map`, !end.canvas);
-        const gone = '[map-jr-gl] The query has no answer: the map was removed.';
+        const gone = '[map-jr-gl] E10022 The query has no answer: the map was removed.';
         check(`[${renderer}] destroy rejects a once() that waits and a once() after it`,
-            end.waits === '[map-jr-gl] once("dragend"): the map was removed.' && end.onceLater === '[map-jr-gl] once("idle"): the map was removed.', JSON.stringify(end));
+            end.waits === '[map-jr-gl] E484 once("dragend"): the map was removed.' && end.onceLater === '[map-jr-gl] E484 once("idle"): the map was removed.', JSON.stringify(end));
         check(`[${renderer}] destroy rejects the queries that wait and a query after it, and onClick and a watchFeatures listener do not run after it`,
             end.pending === gone && end.height === gone && end.later === gone && end.clicks === 0 && end.watched === 0, JSON.stringify(end));
         check(`[${renderer}] destroy with queries that nobody awaits gives no unhandled rejection (#787)`, end.forgotten.length === 0, end.forgotten.join(' | '));
@@ -3507,7 +3507,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
             return errors;
         });
         check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
-            got.length === 1 && got[0].startsWith('[map-jr-gl] the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
+            got.length === 1 && got[0].startsWith('[map-jr-gl] E495 the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -3601,7 +3601,7 @@ for (const renderer of ['worker', 'main']) {
                     return errors;
                 }, renderer);
                 check(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`,
-                    failed.length === 1 && failed[0].includes('[map-jr-gl] The worker could not load') && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
+                    failed.length === 1 && /\[map-jr-gl\] E(21846|31846) The worker could not load/.test(failed[0]) && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
             } finally { await other.close(); }
             // The globe (#2075): the tile workers cut its tiles with the part `subdivide`. When that part does not load, the
             // map reports it once and draws its vector tiles without the cut. After setProjection to the globe, the page
@@ -3705,7 +3705,7 @@ for (const renderer of ['main', 'worker']) {
             await run('noSources', {version: 8, layers: good.layers});
             return {results, unhandled};
         }, renderer);
-        const said = /^\[map-jr-gl\] The style has no list "layers"/;
+        const said = /^\[map-jr-gl\] E539 The style has no list "layers"/;
         for (const [name, r] of Object.entries(out.results)) {
             if (name === 'noSources') check(`[${renderer}] a style with no "sources" is drawn without an error`, r.first === '' && r.idle && r.second === '', JSON.stringify(r));
             else check(`[${renderer}] a style that is not a style (${name}): one error of the map that names "layers", and update() with a good style draws`,
@@ -3847,8 +3847,8 @@ for (const renderer of renderers) {
             el.remove();
             return left;
         });
-        const said = warnings.filter(w => w.startsWith('[map-jr-gl] The container already has a map.')).length, mark = warnings.indexOf('mark');
-        check('a second map in one element gets a warning, and a map after destroy() does not', said === 1 && mark >= 0 && warnings.findIndex(w => w.startsWith('[map-jr-gl] The container already has a map.')) > mark && twice === 0, JSON.stringify({warnings, twice}));
+        const said = warnings.filter(w => w.startsWith('[map-jr-gl] E97 The container already has a map.')).length, mark = warnings.indexOf('mark');
+        check('a second map in one element gets a warning, and a map after destroy() does not', said === 1 && mark >= 0 && warnings.findIndex(w => w.startsWith('[map-jr-gl] E97 The container already has a map.')) > mark && twice === 0, JSON.stringify({warnings, twice}));
     } catch (e) { check('removed while loading: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -3906,7 +3906,7 @@ for (const renderer of renderers) {
         }, how);
         const withFiles = await run(), count = asked.length, without = await run('none'), none = asked.length === count;
         const before = asked.length, fonts = await run('fonts'), withFonts = asked.length > before;
-        const mid = asked.length, removed = await run('removed'), stillAsked = asked.length > mid, warning = warned.length === 1 && warned[0].startsWith('[map-jr-gl] The description has "glyphs".');
+        const mid = asked.length, removed = await run('removed'), stillAsked = asked.length > mid, warning = warned.length === 1 && warned[0].startsWith('[map-jr-gl] E20 The description has "glyphs".');
         // A server that answers each URL with a page (200, HTML), and one that sends bytes that are not a glyph file:
         // the map must still load, with the fonts of the device.
         answer = {status: 200, contentType: 'text/html', body: '<!doctype html><html><body>not found</body></html>'};
@@ -3993,7 +3993,7 @@ for (const renderer of renderers) {
         await page.evaluate(async () => { window.host.update({...window.spec, fonts: {'Test Square Regular': '/test-fonts/square.ttf', 'Test Gone Regular': '/test-fonts/missing.ttf'}}); await new Promise(r => setTimeout(r, 200)); await window.settle(); });
         const after = await dark(), errors = await page.evaluate(() => window.errors);
         await page.evaluate(() => window.host.destroy());
-        const failed = errors.some(m => /^\[map-jr-gl\] the request for the font http:\/\/[^ ]+\/test-fonts\/missing\.ttf failed: HTTP 404\. The labels use the next font of their "text-font" instead of "Test Gone Regular"\.$/.test(m));
+        const failed = errors.some(m => /^\[map-jr-gl\] E1163 the request for the font http:\/\/[^ ]+\/test-fonts\/missing\.ttf failed: HTTP 404\. The labels use the next font of their "text-font" instead of "Test Gone Regular"\.$/.test(m));
         // (The squares of the font fill much more of the label than the letters of a font of the device.)
         check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name and the HTTP status (#1193)',
             asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));
@@ -4051,7 +4051,7 @@ for (const [build, file] of [['the development build, and the file of the checks
         }, file);
         lost.asked = asked.length;
         check(`${build}: the map draws with no warning, a wrong place of a query is refused with a short message, no rejection is unhandled, and ${file === 'map-jr-gl.js' ? 'the file of the checks is not requested' : 'the file of the checks was requested'}`,
-            (file === 'map-jr-gl.js' ? asked.length === 0 : asked.length > 0) && lost.said.length === 0 && lost.drawn > 0 && lost.place === '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].' && !lost.unhandled.length, JSON.stringify(lost));
+            (file === 'map-jr-gl.js' ? asked.length === 0 : asked.length > 0) && lost.said.length === 0 && lost.drawn > 0 && lost.place === '[map-jr-gl] E9 queryFeatures(): the place is not {x, y} or [lng, lat].' && !lost.unhandled.length, JSON.stringify(lost));
     } catch (e) { check(`${build}: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -4125,7 +4125,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             console.warn = warn;
             return out;
         }, [entry, renderer]);
-        const text = '[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and show other content when it returns false.';
+        const text = '[map-jr-gl] E20017 The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and show other content when it returns false.';
         check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
             able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
             && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
@@ -4155,7 +4155,7 @@ for (const other of [true, false]) {
             console.warn = warn;
             return {said, loaded};
         });
-        const text = `[map-jr-gl] The worker file is version 0.0.1 and the page file is version ${version}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`;
+        const text = `[map-jr-gl] E10017 The worker file is version 0.0.1 and the page file is version ${version}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`;
         check(other ? 'a worker file of another version: two maps give one warning with both versions, and they load' : 'the worker file of the same version: no warning',
             two.loaded.join() === 'true,true' && (other ? changed > 0 && two.said.length === 1 && two.said[0] === text : two.said.length === 0), JSON.stringify({...two, changed}));
     } catch (e) { check(`the version of the worker file (${other ? 'another' : 'the same'}): the test run was completed`, false, String(e.message).split('\n')[0]); }
@@ -4651,7 +4651,7 @@ for (const status of [404, 403, 503]) {
             return errors;
         });
         const of = s => errors.filter(e => e.source === s), most = map => Math.max(...map.values());
-        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] The source "${s}": the request for the tile http`));
+        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 The source "${s}": E1163 the request for the tile http`));
         check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
             seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('failed: HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
@@ -4684,7 +4684,7 @@ for (const status of [404, 403, 503]) {
         const most = seen.size ? Math.max(...seen.values()) : 0;
         check('a raster-dem tile that cannot be decoded is requested once and gives one error with the source, and the map is idle (#2109)',
             seen.size > 0 && most === 1 && got.errors.length === seen.size && got.idle
-            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] The source "dem": the request for the tile http') && e.message.includes('PNG or WebP')),
+            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 The source "dem": E1163 the request for the tile http') && e.message.includes('PNG or WebP')),
             JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
@@ -5223,7 +5223,7 @@ for (const renderer of ['worker', 'main']) {
             lib.configure({tileWorkers: 3});
             console.warn = warn;
             host.destroy();
-            return {other, warns: warns.filter(w => w.startsWith('[map-jr-gl] configure(): tileWorkers'))};
+            return {other, warns: warns.filter(w => w.startsWith('[map-jr-gl] E1630 configure(): tileWorkers'))};
         });
         check('configure({tileWorkers}) with another count while tile workers exist warns once, the same count does not warn, and a call with another workerUrl does not warn (#1252)', r.warns.length === 1 && r.other === 0, JSON.stringify(r));
     } finally { await page.close(); }

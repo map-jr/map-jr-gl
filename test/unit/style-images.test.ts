@@ -43,7 +43,7 @@ test('style images: values that break a bound are left out with a message', () =
     }), m => faults.push(m));
     assert.deepEqual(Object.keys(out), ['ok', 'url', 'obj', 'local']);
     assert.equal(faults.length, 4);
-    assert.ok(faults.every(f => f.startsWith('[map-jr-gl] the style: the image "')));
+    assert.ok(faults.every(f => f.startsWith('[map-jr-gl] E20495 the style: the image "')));
     assert.deepEqual(styleImages({version: 8}, () => assert.fail()), {});
     styleImages(style([square('#000')]), m => faults.push(m));
     assert.match(faults.at(-1)!, /is not an object of images by name/);

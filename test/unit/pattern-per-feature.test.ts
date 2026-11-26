@@ -54,5 +54,5 @@ test(`fill-sort-key with more than ${MAX_RUNS} runs of images: one batch for eac
         assert.deepEqual(Object.values(tile.layers).map(b => b.pat), ['brick', 'wave']);
     }
     assert.equal(warn.mock.callCount(), 1);
-    assert.match(String(warn.mock.calls[0].arguments[0]), /^\[map-jr-gl\] layer "many": .*"fill-sort-key".* 64 runs/);
+    assert.match(String(warn.mock.calls[0].arguments[0]), /^\[map-jr-gl\] E2040 layer "many": .*"fill-sort-key".* 64 runs/);
 });

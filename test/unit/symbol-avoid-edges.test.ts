@@ -16,7 +16,7 @@ test('symbol-avoid-edges: the main API warns once for each layer that has it', (
         check(c, 4, style);
         check(c, 4, style);
         assert.deepEqual(warnings.filter(w => w.includes('avoid-edges')), [
-            '[map-jr-gl] the symbol layer "a": "symbol-avoid-edges" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
+            '[map-jr-gl] E1692 the symbol layer "a": "symbol-avoid-edges" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
         ]);
         // (The property is in the style specification, so it is not reported as an unknown property.)
         assert.equal(warnings.filter(w => w.includes('no such property')).length, 0);

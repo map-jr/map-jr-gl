@@ -345,7 +345,7 @@ export class GeolocateControl extends Evented implements Control {
                 follow: (p: GeolocationPosition) => this.follow(map, p),
             };
             (this.t ??= import('./geolocate-track.ts').then(m => m.tracker(host, map, b, o.positionOptions, o.showUserLocation !== false, o.showAccuracyCircle !== false)))
-                .then(t => { if (this.map === map) t.click(); }, e => console.error('[map-jr-gl] GeolocateControl: the code of trackUserLocation could not be loaded. Check that the files of the library are served.', e));
+                .then(t => { if (this.map === map) t.click(); }, e => console.error('[map-jr-gl] E10042 GeolocateControl: the code of trackUserLocation could not be loaded. Check that the files of the library are served.', e));
             return true;
         }
         b.disabled = true;
@@ -392,5 +392,5 @@ const warned: Record<string, 1> = {};
 function noEffect(control: string, option: string, instead = '') {
     if (warned[option]) return;
     warned[option] = 1;
-    console.warn(`[map-jr-gl] ${control}: the option ${option} has no effect.${instead}`);
+    console.warn(`[map-jr-gl] E10090 ${control}: the option ${option} has no effect.${instead}`);
 }

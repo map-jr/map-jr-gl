@@ -65,7 +65,7 @@ export function configure(options: LoadOptions) {
     const n = options.tileWorkers;
     if (__DEV__ && n !== undefined && pool && pool.key === poolKey({}) && pool.count !== n && !warnedCount) {
         warnedCount = true;
-        console.warn(`[map-jr-gl] configure(): tileWorkers: ${n} has no effect while a map uses the ${pool.count} tile workers that exist. Call configure() before the first map is created, or destroy every map first.`);
+        console.warn(`[map-jr-gl] E1630 configure(): tileWorkers: ${n} has no effect while a map uses the ${pool.count} tile workers that exist. Call configure() before the first map is created, or destroy every map first.`);
     }
 }
 
@@ -104,7 +104,7 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;
-        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain or with a globe cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
+        console.warn('[map-jr-gl] E1846 workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain or with a globe cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
     }
     return out as Record<string, string>;
 }
@@ -224,7 +224,7 @@ export function workerReady(w: Worker, timeout = 8000): Promise<Worker> {
             // The page file and the worker file can come from two versions of the package (a CDN, a cache, a copy that
             // was not replaced). Messages between them can then differ, so the page says it, once.
             const v = e.data.version;
-            if (v !== __VERSION__ && !mismatch) console.warn(mismatch = `[map-jr-gl] The worker file is version ${v ?? 'unknown'} and the page file is version ${__VERSION__}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`);
+            if (v !== __VERSION__ && !mismatch) console.warn(mismatch = `[map-jr-gl] E10017 The worker file is version ${v ?? 'unknown'} and the page file is version ${__VERSION__}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`);
             done();
         };
         const onError = (e: ErrorEvent) => done(new Error(e.message || 'the worker script could not be loaded'));

@@ -139,7 +139,7 @@ export async function contourTile(cfg: ContourConfig, z: number, x: number, y: n
     const levels = thresholdsAt(cfg.thresholds, z);
     if (!levels?.length) return {};
     const interval = levels[0];
-    if (!(interval > 0)) { warnOnce(`The contour source "${source}" has the interval ${interval} in "thresholds", so it draws no lines at the zooms of that interval. Give intervals greater than 0.`); return {}; }
+    if (!(interval > 0)) { warnOnce(`E2047 The contour source "${source}" has the interval ${interval} in "thresholds", so it draws no lines at the zooms of that interval. Give intervals greater than 0.`); return {}; }
     const dz = Math.max(cfg.demMinzoom, Math.min(cfg.demMaxzoom, z - cfg.overzoom)), k = z - dz;
     if (k < 0) return {};
     const url = (tx: number, ty: number) => {
@@ -176,7 +176,7 @@ export async function contourTile(cfg: ContourConfig, z: number, x: number, y: n
     }
     const features: TileLayers[string]['features'] = [], scale = EXTENT / G;
     if (!(crossings(heights, n, interval) <= MAX_CROSSINGS)) {
-        warnOnce(`The contour source "${source}" has a tile whose lines cross the cells of its grid more than ${MAX_CROSSINGS} times, so that tile has no lines. Check the "encoding" of the raster-dem source ("mapbox" or "terrarium") and the intervals of "thresholds".`);
+        warnOnce(`E12047 The contour source "${source}" has a tile whose lines cross the cells of its grid more than ${MAX_CROSSINGS} times, so that tile has no lines. Check the "encoding" of the raster-dem source ("mapbox" or "terrarium") and the intervals of "thresholds".`);
         return {};
     }
     for (const [ele, lines] of isolines(heights, n, interval)) {

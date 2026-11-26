@@ -18,6 +18,6 @@ test('contour source without thresholds: one warning that names "thresholds"', a
         await resolveStyle(style);
         assert.ok(a.sources.c);
         assert.equal(warnings.length, 1);
-        assert.match(warnings[0]!, /^\[map-jr-gl\] The contour source "c" has no "thresholds"/);
+        assert.match(warnings[0]!, /^\[map-jr-gl\] E1612 The contour source "c" has no "thresholds"/);
     } finally { console.warn = warn; }
 });

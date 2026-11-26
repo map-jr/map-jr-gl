@@ -14,7 +14,7 @@ test('centerAltitude: the main API warns once for each map whose style has it', 
         check(c, 4, style);
         check(c, 4, {version: 8, sources: {}, layers: []});
         assert.deepEqual(warnings, [
-            '[map-jr-gl] style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
+            '[map-jr-gl] E1712 style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.',
         ]);
     } finally { console.warn = warn; }
 });

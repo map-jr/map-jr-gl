@@ -43,7 +43,7 @@ The map requires WebGL2. In a browser without it, the map does not load, and it 
 [`onError`](events.md#mapevents) with this message:
 
 ```text
-[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported()
+[map-jr-gl] E20017 The map cannot be shown: WebGL2 is not available. Call supported()
 before you make a map, and show other content when it returns false.
 ```
 

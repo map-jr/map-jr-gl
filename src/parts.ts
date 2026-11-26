@@ -40,7 +40,7 @@ export function part<K extends PartName>(name: K): Promise<Parts[K]> {
     let p = loading.get(name);
     if (!p) {
         const partName = name;
-        p = load(name).catch((err: Error) => { throw isPartFailure(err.message) ? err : new Error(`[map-jr-gl] The page could not load the part of the library for ${partName} (${err.message}). Serve the chunks of the library from the same folder and version as its entry.`); });
+        p = load(name).catch((err: Error) => { throw isPartFailure(err.message) ? err : new Error(`[map-jr-gl] E11846 The page could not load the part of the library for ${partName} (${err.message}). Serve the chunks of the library from the same folder and version as its entry.`); });
         loading.set(name, p); p.catch(() => {});
     }
     return p as Promise<Parts[K]>;

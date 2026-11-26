@@ -40,7 +40,7 @@ const fromUrl = async (partName: PartName) => {
     const code = await fromPage.get(partName)?.code;
     if (code) try { scope.importScripts(code); return scope.MapJrPart; } catch { /* the fetch below */ }
     const url = partUrls[partName];
-    if (!url) throw new Error(`[map-jr-gl] The worker could not load map-jr-gl-worker-${partName}.js, the part of the worker for ${partName}: it has no URL. Set workerUrl to an http(s) URL of map-jr-gl-worker.js.`);
+    if (!url) throw new Error(`[map-jr-gl] E21846 The worker could not load map-jr-gl-worker-${partName}.js, the part of the worker for ${partName}: it has no URL. Set workerUrl to an http(s) URL of map-jr-gl-worker.js.`);
     let blob = '';
     try {
         const res = await fetch(url);
@@ -49,7 +49,7 @@ const fromUrl = async (partName: PartName) => {
     try {
         try { scope.importScripts(blob || url); } catch (err) { if (!blob) throw err; scope.importScripts(url); }
     } catch {
-        throw new Error(`[map-jr-gl] The worker could not load ${url}, the part of the worker for ${partName}. Serve map-jr-gl-worker-${partName}.js from the same folder and version as map-jr-gl-worker.js.`);
+        throw new Error(`[map-jr-gl] E31846 The worker could not load ${url}, the part of the worker for ${partName}. Serve map-jr-gl-worker-${partName}.js from the same folder and version as map-jr-gl-worker.js.`);
     } finally { if (blob) URL.revokeObjectURL(blob); }
     return scope.MapJrPart;
 };

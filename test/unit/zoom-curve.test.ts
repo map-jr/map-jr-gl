@@ -16,7 +16,7 @@ test('a nested or repeated zoom curve, or a bare zoom, warns with the layer and 
         const bad = [['*', curve, 2], ['interpolate', ['linear'], ['zoom'], 5, curve, 10, 4], ['case', true, curve, curve], ['coalesce', curve, curve], ['*', ['zoom'], 2]];
         check(c, 4, {layers: [...ok.map((v, i) => layer('ok' + i, v)), ...bad.map((v, i) => layer('bad' + i, v))]});
         assert.equal(warnings.length, bad.length, JSON.stringify(warnings));
-        assert.ok(warnings.every((w, i) => w.startsWith(`[map-jr-gl] the layer "bad${i}", paint property "line-width": `)), JSON.stringify(warnings));
+        assert.ok(warnings.every((w, i) => w.startsWith(`[map-jr-gl] E1057 the layer "bad${i}", paint property "line-width": `)), JSON.stringify(warnings));
     } finally { console.warn = warn; }
 });
 
