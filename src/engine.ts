@@ -79,6 +79,8 @@ export type Command =
     | ({type: 'resourceResult'; id: number} & RequestAnswer)
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
     | {type: 'frames'; on: boolean}
+    /** Asks for a `beforeFrame` event before each frame (images with `render()`, #2128). The frame does not wait for the page. */
+    | {type: 'beforeFrames'; on: boolean}
     /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
     | {type: 'ping'; n: number}
     /** In a worker: answers with the next frame that is drawn, encoded as an image (a Blob), taken in the same task as the frame (#965). */
@@ -109,6 +111,7 @@ export type EngineEvent =
     /** The layers that the last style hides, also by a `visibility` expression of the global state. */
     | {type: 'hidden'; layers: string[]}
     | {type: 'frame'}
+    | {type: 'beforeFrame'}
     /** The tile workers have indexed the data of the last `geojson` command for this source. The page sends the next data then. */
     | {type: 'geojsonDone'; source: string}
     /** The engine has drawn a frame to its end after the `ping` command with this number. */
@@ -323,6 +326,7 @@ export class Engine {
     private zoomSeen = NaN;
     private contourWait = false;
     private reportFrames = false;
+    private preFrames = false;
     private drew = false;
     private pinged = 0;
     /** The `snapshot` commands that wait for the next frame. */
@@ -503,21 +507,29 @@ export class Engine {
     /** The map was removed (`destroy`): nothing more is sent to the GPU. */
     private removed = false;
     private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void; drop?(): void}[] = [];
-    /** For each circle or line layer whose size depends on the feature: its largest sizes in the tiles that arrived (see `QuerySet.most`). */
-    private most = new Map<string, number[]>();
-    private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
-        let bytes = 0;
+    /**
+     * For each tile on the GPU, the largest sizes of each circle or line layer whose size depends on the feature (see
+     * `QuerySet.most`). A query takes the largest over the tiles held now, as MapLibre GL JS takes them from its buckets,
+     * so the reach follows the current paint and data (#2269).
+     */
+    private most = new WeakMap<GLTile, Record<string, number[]>>();
+    private sized(tile: TileGL, gl: GLTile) {
+        const r: Record<string, number[]> = {};
         for (const [k, b] of Object.entries(tile.layers)) {
-            for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
-            const id = k.split('\0')[0], m = this.most.get(id) ?? [0, 0, 0];
-            if (b.type === 'line' && b.most) { b.most.forEach((v, i) => m[i] = Math.max(m[i], v)); this.most.set(id, m); }
+            const m = r[k.split('\0')[0]] ??= [0, 0, 0];
+            if (b.type === 'line') b.most?.forEach((v, i) => m[i] = Math.max(m[i], v));
             if (b.type !== 'circle') continue;
             for (const a of [b.radius, b.radius1]) for (const v of a ?? []) m[0] = Math.max(m[0], v);
             for (let i = 0; i < (b.sb?.length ?? 0); i += 2) m[1] = Math.max(m[1], b.sb![i]);
-            this.most.set(id, m);
         }
+        this.most.set(gl, r);
+        return gl;
+    }
+    private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
+        let bytes = 0;
+        for (const b of Object.values(tile.layers)) for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
         // (A tile that is no longer wanted when its turn comes is not sent.)
-        return this.paced(bytes, () => wanted() ? this.renderer.createTile(tile) : {labels: {}, batches: {}});
+        return this.paced(bytes, () => wanted() ? this.sized(tile, this.renderer.createTile(tile)) : {labels: {}, batches: {}});
     }
     /**
      * Does a piece of GPU upload work in its turn, so that one frame never has too much of it. `drop` frees what the
@@ -1052,6 +1064,7 @@ export class Engine {
                 this.renderer.destroy();
                 return;
             case 'frames': this.reportFrames = c.on; break;
+            case 'beforeFrames': this.preFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'snapshot': this.shots.push(c); break;
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
@@ -1133,7 +1146,12 @@ export class Engine {
 
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
-        c = {...c, sets: c.sets.map(s => s.size ? {...s, most: this.most.get(s.layer)} : s)};
+        c = {...c, sets: c.sets.map(s => {
+            if (!s.size) return s;
+            const most = [0, 0, 0];
+            for (const t of this.tiles.values()) this.most.get(t.gl!)?.[s.layer]?.forEach((v, i) => most[i] = Math.max(most[i], v));
+            return {...s, most};
+        })};
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
         const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
@@ -1504,7 +1522,7 @@ export class Engine {
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
             ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.tiles.get(key) === t && (t.missing = r.missing), this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
-            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, st.etag = tile.etag, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
+            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, st.etag = tile.etag, this.tiles.get(key) === t ? this.sized(tile, this.renderer.createTile(tile)) : null))
         ).then(gl => {
             t.rebuilding = false;
             // A reload of an expired tile that the server answers with 304 (the same `ETag`) fires no event (#2136).
@@ -1614,6 +1632,9 @@ export class Engine {
             this.warmed = this.layers;
             this.atlas.warm(this.layers.filter(l => l.type === 'symbol' && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && !l.p.font.dd && (l.p.field.dd || l.p.field.eval(tr.zoom) !== '')).map(l => l.p.font.eval(tr.zoom)));
         }
+        // The page runs `render()` of its images before the frame (#2128). On the main renderer this is a call, and the new
+        // pixels are in this frame, as in MapLibre GL JS. A worker does not wait for the page: its pixels come a frame later.
+        if (this.preFrames) this.emit({type: 'beforeFrame'});
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;
