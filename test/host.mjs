@@ -5194,14 +5194,14 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check('a map in a shadow root was checked for focus and fullscreen (#828)', false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
-// #1252: configure({tileWorkers}) after the tile workers exist has no effect, and it warns once.
+// #1252: configure({tileWorkers}) after the tile workers exist has no effect, and the development build warns once (#2133).
 {
     const page = await browser.newPage();
     try {
         await page.route(`${origin}/blank-page`, r => r.fulfill({contentType: 'text/html', body: '<!doctype html><title>blank</title><body></body>'}));
         await page.goto(`${origin}/blank-page`);
         const r = await page.evaluate(async () => {
-            const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const lib = await import('/dist/map-jr-gl.dev.js'), wait = ms => new Promise(r => setTimeout(r, ms));
             const warns = [], warn = console.warn;
             console.warn = (...a) => { warns.push(String(a[0])); };
             lib.configure({tileWorkers: 1});

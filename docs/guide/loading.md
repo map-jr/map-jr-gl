@@ -366,8 +366,20 @@ the condition takes it in development and takes the production build otherwise.
 
 The development server of Vite takes the development build, and `vite build` takes the production build. Node.js
 takes it with `--conditions=development`. The production build makes no request for the checks
-and writes none of their warnings. Warnings about what the map does at run time, such as a failed request, a style
-that cannot load or a layer type that the library does not draw, are in both builds.
+and writes none of their warnings.
+
+Of the other warnings, these are in both builds:
+
+- A warning about what the map does at run time, such as a failed request, a style that cannot load or a layer type
+  that the library does not draw.
+- A warning about a logic error at run time, such as `setCenterElevation(NaN)` or `setFeatureState` with a text id on
+  a vector source.
+
+In both entries, four warnings for a mistake of configuration or for a call with no effect are in the development
+build only: a `maxPitch` above 180, a `pixelRatio` that is not a number above 0, `configure({tileWorkers})` after the
+tile workers exist, and `addProtocol('pmtiles')`. The warnings about how the files are served (`workerUrl`, a worker
+file of another version) and about a source (`"emptyResponse": "missing"`, a contour source with no `"thresholds"`)
+are in both builds.
 
 ## See also
 

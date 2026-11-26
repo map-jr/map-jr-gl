@@ -7,6 +7,8 @@
  */
 export type ProtocolFunction = (request: {url: string; type?: string; headers?: Record<string, string>}, abort: AbortController) => Promise<{data: unknown}>;
 
+declare const __DEV__: boolean;
+
 export const protocols = new Map<string, ProtocolFunction>();
 /** Called when the registry changes, so that each map can tell its threads. */
 export const protocolListeners = new Set<() => void>();
@@ -18,8 +20,8 @@ let warnedPmtiles = false;
  * @param fn The function that returns the data of a request.
  */
 export function addProtocol(name: string, fn: ProtocolFunction) {
-    // (Accepted with no effect for `pmtiles://` URLs, so it warns in every build, once per page: the registry is too.)
-    if (name == 'pmtiles' && !warnedPmtiles) { warnedPmtiles = true; console.warn('[map-jr-gl] addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.'); }
+    // (Accepted with no effect for `pmtiles://` URLs, so the development build warns, once per page: the registry is too.)
+    if (__DEV__ && name == 'pmtiles' && !warnedPmtiles) { warnedPmtiles = true; console.warn('[map-jr-gl] addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.'); }
     protocols.set(name, fn); for (const f of protocolListeners) f();
 }
 /**

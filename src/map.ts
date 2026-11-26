@@ -324,7 +324,7 @@ export class Map {
         this.tr.worldCopies = !!(options.renderWorldCopies ?? true);
         const ratio = options.pixelRatio;
         if (ratio! > 0 && ratio! < Infinity) this.pixelRatio = ratio;
-        else if (ratio !== undefined) console.warn(`[map-jr-gl] The option pixelRatio is ${ratio}. Give a number above 0, or leave it out to follow devicePixelRatio.`);
+        else if (ratio !== undefined && __DEV__) console.warn(`[map-jr-gl] The option pixelRatio is ${ratio}. Give a number above 0, or leave it out to follow devicePixelRatio.`);
         this.measure();
         this.canvas.width = Math.round(this.tr.width * this.dpr);
         this.canvas.height = Math.round(this.tr.height * this.dpr);
@@ -1236,7 +1236,7 @@ export class Map {
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
     private pitchCap(p?: number | null) {
         p ??= 60;
-        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}. Pass ${MAX_PITCH} or less.`);
+        if (p > MAX_PITCH && __DEV__ && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
     declare private centreHeld?: boolean;
