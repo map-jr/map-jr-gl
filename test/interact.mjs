@@ -942,6 +942,28 @@ for (const mode of renderers) {
         const ours = await run('ours'), ml = await run('ml');
         check(`[${mode}] maplibre-compat: only the tiles of the view fire sourcedata with a tile, not the overview tile, as MapLibre GL JS (#2135)`, ours !== '' && ours === ml, JSON.stringify({ours, ml}));
     }
+    // A reload of an expired vector tile that the server answers with 304 (not modified) fires no `sourcedata` with
+    // `tile`, as in MapLibre GL JS (#2136). (`?etag` of the demo server gives the tile `max-age=1` and an `ETag`, and
+    // answers the reload with 304; the browser gives that as a 200 with the same `ETag`. The check waits for two reloads.)
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:256px;height:256px'}));
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 0, renderWorldCopies: false, attributionControl: false, style: {version: 8,
+                sources: {v: {type: 'vector', tiles: [location.origin + '/tiles/{z}/{x}/{y}.pbf?etag'], maxzoom: 0}}, layers: [{id: 'w', type: 'fill', source: 'v', 'source-layer': 'water'}]}});
+            const tiles = [];
+            m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'v' && c) tiles.push(`${c.z}/${c.x}/${c.y}`); });
+            // (Bounded: a wait that never ends would stop the suite.)
+            const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), new Promise(r => setTimeout(() => r(false), 15000))]);
+            const first = tiles.length;
+            await new Promise(r => setTimeout(r, 3500));
+            m.remove(); el.remove();
+            return (idle && first ? '' : 'no first load: ') + tiles.slice(first).join();
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] maplibre-compat: a reload of an expired tile that answers 304 fires no sourcedata with a tile, as MapLibre GL JS (#2136)`, ours === '' && ours === ml, JSON.stringify({ours, ml}));
+    }
     // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
     const urlDiff = await page.evaluate(async () => {
         const m = window.map, source = m.getSource('zones'), point = (id, name) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
@@ -1753,6 +1775,24 @@ for (const mode of renderers) {
         neighbor.source.now === 1 && neighbor.source.later === 1, JSON.stringify(neighbor.source));
     check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
         [0, 45].every(p => neighbor[p].now === 'const,zoom' && neighbor[p].later === 'const,zoom'), JSON.stringify(neighbor));
+
+    // A circle with a radius far larger than the map is found on a tilted map, as in MapLibre (#2230): the rectangle
+    // that chooses the tiles is cut to the canvas and one tile. Ten circles, pitch 60, a point and a box.
+    const huge = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:300px'}));
+        const features = Array.from({length: 10}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [i * 0.005, Math.sin(i) * 0.02]}}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, pitch: 60, style: {version: 8,
+            sources: {s: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [{id: 'huge', type: 'circle', source: 's', paint: {'circle-radius': 100000}}]}});
+        await new Promise(r => m.once('idle', r));
+        const c = m.project([0, 0]), out = {};
+        out.point = {now: m.queryRenderedFeatures([c.x, c.y]).length, later: (await m.queryRenderedFeatures([c.x, c.y])).length};
+        out.box = {now: m.queryRenderedFeatures([[0, 0], [400, 300]]).length, later: (await m.queryRenderedFeatures([[0, 0], [400, 300]])).length};
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a circle-radius of 100000 on a map with pitch 60 finds every feature, by a point and by a box, also in the array at once (#2230)`,
+        [huge.point, huge.box].every(r => r.now === 10 && r.later === 10), JSON.stringify(huge));
 
     // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
     // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at

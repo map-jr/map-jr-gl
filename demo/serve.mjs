@@ -120,7 +120,12 @@ http.createServer(async (req, res) => {
     try {
         const t = /^\/tiles\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
         if (t) {
+            // ?etag serves the tile with an ETag that expires after 1 s, and answers a request that names it with
+            // 304, as a tile server does (a check of test/interact.mjs reloads an unchanged tile this way, #2136).
+            const etag = url.searchParams.has('etag') && `"${t.slice(1).join('-')}"`;
+            if (etag && req.headers['if-none-match'] === etag) { res.writeHead(304, {'access-control-allow-origin': '*', 'cache-control': 'max-age=1', etag}); return res.end(); }
             const buf = await tile(t[1], t[2], t[3]);
+            if (etag && buf) return send(200, 'application/x-protobuf', buf, {'cache-control': 'max-age=1', etag, 'access-control-expose-headers': 'etag'});
             return buf ? send(200, 'application/x-protobuf', buf, {'cache-control': 'max-age=3600'}) : send(204, 'text/plain', '');
         }
         // ?local labels places in their local script instead of English, to exercise non-Latin text.
