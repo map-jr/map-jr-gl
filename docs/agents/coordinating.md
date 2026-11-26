@@ -234,10 +234,19 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **Update a branch whose CI ran before a merge that adds checks.** A clean merge tree only says that the lines do not
   conflict. On 2026-11-26 #2240 added a message while its CI ran on a base without #2229, which made the build replace
   each message with its code and stop on a value without a name. `main` was red after the merge, in the build, in
-  `docs/reference/messages.md` and in a check of `test/interact.mjs` (fixed in #2247). When `main` has had a merge since
-  the CI of a branch ran, and that merge changed a script of the build or of the checks (`scripts/`, `build.mjs`,
-  `test/`) or the same kind of code (messages, the description, the reference), update the branch
-  (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/<n>/update-branch`) and merge on the new CI.
+  `docs/reference/messages.md` and in a check of `test/interact.mjs` (fixed in #2247).
+
+  When `main` has had a merge since the CI of a branch ran, and that merge changed one of the following, update the
+  branch (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/<n>/update-branch`) and merge on the new CI:
+  - the build or a script (`build.mjs`, `scripts/`);
+  - the messages, the description or the reference;
+  - a file of `src/` that the branch also changes;
+  - the harness of a suite (its helpers, its start or its options), or a check that the branch also changes.
+
+  A merge that only adds or changes a check of another feature in `test/interact.mjs` or `test/host.mjs` needs no
+  update (the owner, 2026-11-26, #2301). Before this decision, each such merge restarted the CI of every open branch.
+  From 21:35 to 23:10 UTC on 2026-11-26, five merges of one coordinator restarted the four runs of another
+  coordinator five times each.
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
   (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
