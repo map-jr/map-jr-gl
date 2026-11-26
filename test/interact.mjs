@@ -7121,6 +7121,16 @@ for (const mode of renderers) {
                 out.markerSet = t(pin.setSubpixelPositioning(true)); out.markerBack = t(pin.setSubpixelPositioning(false));
                 out.markerSubpixel = out.markerRound === '100' && Math.abs(out.markerOption - 100.4) < 0.01 && Math.abs(out.markerSet - 100.4) < 0.01 && out.markerBack === '100';
                 pin.remove(); pinned.remove();
+                // #1783: Popup.setPadding and the option padding move the anchor away from the padded edges, as in MapLibre GL JS.
+                const box = m.getContainer(), W = box.clientWidth, H = box.clientHeight, mid2 = m.unproject([W / 2, H / 2]);
+                const pad = new mod.Popup({animate: false}).setLngLat(mid2).setText('pad').addTo(m), anchors = [pad.getAnchor()];
+                pad.setPadding({top: H, left: W}); anchors.push(pad.getAnchor());
+                pad.setPadding({right: W}); anchors.push(pad.getAnchor());
+                pad.setPadding(); anchors.push(pad.getAnchor());
+                pad.remove();
+                const opt = new mod.Popup({animate: false, padding: {top: H}}).setLngLat(mid2).setText('pad').addTo(m);
+                anchors.push(opt.getAnchor()); opt.remove();
+                out.padding = anchors.join();
             } finally { console.warn = warn; }
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
@@ -7128,6 +7138,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
             options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
         check('[main] maplibre-compat: Marker places itself on fractions of a pixel with the option subpixelPositioning and setSubpixelPositioning(true), and on whole pixels by default (#1782)', options.markerSubpixel, JSON.stringify(options));
+        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,bottom-right,bottom,top', JSON.stringify(options.padding));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
