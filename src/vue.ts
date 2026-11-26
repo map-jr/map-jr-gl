@@ -509,3 +509,14 @@ const MapJrComponent = defineComponent({
 // (The type of `defineComponent` does not name the exposed members: the type adds them, so that
 // `InstanceType<typeof MapJr>['queryFeatures']` is the method of the map.)
 export const MapJr = MapJrComponent as typeof MapJrComponent & (new (...args: any[]) => InstanceType<typeof MapJrComponent> & MapJrExposed);
+
+/**
+ * Puts the code of the message in the field `code` of the error (`error.code === 'E63'`, #2148). `name` stays `Error`. An
+ * error with no code in its message is not changed. The build wraps each `new Error(text)` of src/ whose text has a code
+ * (a copy of src/requests.ts, which would make this file load the map chunk; scripts/message-codes.mjs, `errorCodes`), and `fire('error')` of the map does the same for the errors that it passes on.
+ */
+function withCode<T extends Error>(error: T): T {
+    const code = /^(?:\[map-jr-gl\] )?(?:\w+\(\): )?(E\d+) /.exec(error.message)?.[1];
+    if (code) (error as T & {code?: string}).code = code;
+    return error;
+}

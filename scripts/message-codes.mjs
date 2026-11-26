@@ -208,3 +208,29 @@ export function productionNames(code, id) {
 
 /** The plugin of build.mjs. */
 export const messageCodes = {name: 'message-codes', enforce: 'pre', transform: productionMessages};
+
+/**
+ * The plugin of build.mjs for both builds (#2148): `new Error(text)` and `new TypeError(text)` whose text has a code become
+ * `withCode(new Error(text))`, which sets the field `code` (src/requests.ts). It runs before `messageCodes`.
+ */
+export const errorCodes = {
+    name: 'error-codes', enforce: 'pre',
+    transform(code, id) {
+        id = id.replaceAll('\\', '/');
+        if (!/\/src\/[^/]+\.ts$/.test(id) || id.endsWith('/src/mistakes.ts') || !/E\d+ /.test(code)) return null;
+        const ast = parseAst(code, {lang: 'ts'}, id), edited = new MagicString(code);
+        let any = false;
+        walk(ast, n => {
+            if (n.type !== 'NewExpression' || n.callee.type !== 'Identifier' || !/^(Error|TypeError)$/.test(n.callee.name)) return;
+            let first = n.arguments[0];
+            while (first?.type === 'ParenthesizedExpression' || first?.type === 'BinaryExpression' && first.operator === '+') first = first.type === 'ParenthesizedExpression' ? first.expression : first.left;
+            if (!isText(first) || !CODED.test(textOf(first))) return;
+            edited.prependLeft(n.start, 'withCode(').appendRight(n.end, ')');
+            any = true;
+        });
+        if (!any) return null;
+        // (vue.js sets the code itself: an import of src/requests.ts would make it load the map chunk.)
+        if (!/\/src\/(requests|vue)\.ts$/.test(id) && !code.includes('withCode')) edited.prepend(`import {withCode} from ${JSON.stringify(new URL('../src/requests.ts', import.meta.url).pathname)};\n`);
+        return {code: edited.toString(), map: edited.generateMap({source: id, hires: true})};
+    },
+};
