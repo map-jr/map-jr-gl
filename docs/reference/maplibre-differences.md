@@ -351,6 +351,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** Event classes.
 - **This library:** Simple objects with `type`, `target`, `point` and `lngLat`. `point` (and each of `points` of touch events) is a `Point`, as is the result of `project()`.
 
+### `drag` events with the worker renderer
+
+- **MapLibre GL JS:** `drag` fires once in each frame in which the drag moved the camera.
+- **This library:** With the worker renderer, `drag` fires once for each camera report of the engine, after the `move` of that report. When frames are slow, several pointer moves can share one report, so the map fires fewer `drag` events than MapLibre GL JS (3 against 8 for 8 moves over 8 frames in one run). Each `drag` carries the camera of its report. With the main renderer, `drag` fires once for each frame, as in MapLibre GL JS.
+
 ### Data events of tiles
 
 - **MapLibre GL JS:** `data` and `sourcedata` fire with `dataType: 'source'` and `e.tile` for each tile that loads. `e.tile` is a `Tile` object.
