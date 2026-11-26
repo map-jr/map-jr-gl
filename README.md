@@ -245,7 +245,7 @@ These files are in the repository and not in the package:
 
 - [Plugins and frameworks](docs/ecosystem.md): which popular MapLibre plugins find the API that they use.
 - [Development](docs/development.md): how to build, test, measure and release the library.
-- [Similarity scan](docs/similarity-scan.md): how the source was compared with MapLibre GL JS and other projects, and
+- [Similarity scan](docs/development/similarity-scan.md): how the source was compared with MapLibre GL JS and other projects, and
   the result.
 - [Changelog](CHANGELOG.md): what each version contains, and what is known not to work. The package contains it.
 - [Security](SECURITY.md): how to report a vulnerability privately, and what is in scope.
@@ -262,6 +262,6 @@ more information, and run your own tests before you use the library for importan
 The license is MIT. See [LICENSE](LICENSE).
 
 The library follows [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause) but contains none of
-its files. A [similarity scan](docs/similarity-scan.md) of the source against MapLibre GL JS 6.17.0 and the other
+its files. A [similarity scan](docs/development/similarity-scan.md) of the source against MapLibre GL JS 6.17.0 and the other
 projects found no copied block. [Acknowledgements](ACKNOWLEDGEMENTS.md) lists the projects that this library uses or follows.
 [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) contains their license texts.
