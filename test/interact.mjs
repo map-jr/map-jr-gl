@@ -1676,7 +1676,7 @@ for (const mode of renderers) {
         sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
     // A circle whose center lies in the next tile is found at its edge, as in MapLibre (#2024): the choice of tiles grows
-    // by the largest radius of the layer, from a constant, the zoom or the data. Circles of 170 pixels 150 pixels east
+    // by the largest radius of the layer, from a constant or the zoom (a size from the data: #2190). Circles of 170 pixels 150 pixels east
     // of a tile edge are queried 15 pixels west of it, flat and with pitch 45.
     const neighbor = await page.evaluate(async renderer => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -1685,7 +1685,6 @@ for (const mode of renderers) {
         await new Promise(r => m.once('load', r));
         const b = m.project([0, 0]), pt = m.unproject([b.x + 150, b.y]);
         m.addSource('s', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {r: 170}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
-        m.addLayer({id: 'data', type: 'circle', source: 's', paint: {'circle-radius': ['get', 'r']}});
         m.addLayer({id: 'zoom', type: 'circle', source: 's', paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 170, 24, 170]}});
         m.addLayer({id: 'const', type: 'circle', source: 's', paint: {'circle-radius': 170}});
         await new Promise(r => m.once('idle', r));
@@ -1703,7 +1702,7 @@ for (const mode of renderers) {
     check(`[${mode}] querySourceFeatures finds the features of a source while the layers of the source have large circles (#2024)`,
         neighbor.source.now === 1 && neighbor.source.later === 1, JSON.stringify(neighbor.source));
     check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
-        [0, 45].every(p => neighbor[p].now === 'const,data,zoom' && neighbor[p].later === 'const,data,zoom'), JSON.stringify(neighbor));
+        [0, 45].every(p => neighbor[p].now === 'const,zoom' && neighbor[p].later === 'const,zoom'), JSON.stringify(neighbor));
 
     // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
     // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at

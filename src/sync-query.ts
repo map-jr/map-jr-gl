@@ -17,7 +17,7 @@ export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: objec
     // (The tiles are chosen under the rectangle grown by the reach of the set; see `setReach`.)
     const groups = new Map<string, {box: number[]; pad: number; sets: QuerySet[]}>();
     for (const s of sets) {
-        const tilted = pitched?.circles.has(s), b = tilted ? pitched!.box : setBox(pitched?.box ?? box, s), pad = tilted ? 0 : setReach(s, tr), key = b.join() + ',' + pad;
+        const tilted = pitched?.circles.has(s), b = tilted ? pitched!.box : setBox(pitched?.box ?? box, s), pad = tilted ? 0 : setReach(s), key = b.join() + ',' + pad;
         groups.set(key, {box: b, pad, sets: [...groups.get(key)?.sets ?? [], s]});
     }
     for (const g of groups.values()) for (const t of tilesUnderBox(tr, g.box, 0, spec.maxzoom ?? 18, g.pad)) {

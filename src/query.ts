@@ -68,28 +68,26 @@ export interface QuerySet {
 export const setBox = (box: number[], s: QuerySet) => s.translate ? [box[0] - s.translate[0], box[1] - s.translate[1], box[2] - s.translate[0], box[3] - s.translate[1]] : box;
 
 /**
- * A bound of the absolute value that a paint value can take, as MapLibre GL JS widens a query by the largest value
- * of a layer (`getMaximumPaintValue`): the largest output of a constant, a function with `stops`, `interpolate`,
- * `step`, `match`, `case` or `coalesce`, and sums and products of those. A value from the data (`get`,
- * `feature-state`) has no bound.
+ * The largest absolute value of a size that depends only on the zoom: a number, a function with `stops` on the zoom,
+ * or `interpolate` or `step` on `["zoom"]` with numbers as outputs. Any other size gives `Infinity`.
  */
 function bound(v: any): number {
+    const most = (o: unknown[]) => o.every(x => typeof x === 'number') ? Math.max(...o.map(x => Math.abs(x as number))) : Infinity;
     if (typeof v === 'number') return Math.abs(v);
-    if (!Array.isArray(v)) return v && Array.isArray(v.stops) ? Math.max(...v.stops.map((s: unknown[]) => bound(s[1])), v.default === undefined ? 0 : bound(v.default)) : Infinity;
-    const [op, ...a] = v, at = (i: number, step: number, last?: boolean) => Math.max(...a.filter((_, k) => (k >= i && (k - i) % step === 0) || (last && k === a.length - 1)).map(bound));
-    return op === 'literal' ? bound(a[0]) : /^interpolate/.test(op) ? at(3, 2) : op === 'step' ? at(1, 2) : op === 'match' ? at(2, 2, true) : op === 'case' ? at(1, 2, true)
-        : /^(coalesce|max|min|number|to-number|let)$/.test(op) ? at(op === 'let' ? a.length - 1 : 0, 1) : op === '+' || op === '-' ? a.reduce((t, x) => t + bound(x), 0) : op === '*' ? a.reduce((t, x) => t * bound(x), 1) : Infinity;
+    if (v && Array.isArray(v.stops) && v.property === undefined) return most(v.stops.map((s: unknown[]) => s[1]));
+    if (!Array.isArray(v) || !Array.isArray(v[v[0] === 'step' ? 1 : 2]) || v[v[0] === 'step' ? 1 : 2][0] !== 'zoom') return Infinity;
+    return /^interpolate/.test(v[0]) ? most(v.filter((_, k) => k > 3 && k % 2 === 0)) : v[0] === 'step' ? most(v.filter((_, k) => k > 1 && k % 2 === 0)) : Infinity;
 }
 
 /**
  * How far from its features a set draws in pixels of the screen, which the choice of tiles of a query grows by: its
- * `radius`, or for a size from an expression the bound of the expression. A size from the data reaches one tile.
+ * `radius`, or for a size that depends only on the zoom its largest value. Any other size keeps its `radius`.
  */
-export function setReach(s: QuerySet, tr: Transform): number {
+export function setReach(s: QuerySet): number {
     if (!s.size) return s.radius;
     const z = s.size, d = (v: unknown, x: number) => bound(v ?? x), w = d(z.a, z.line ? 1 : 5), b = d(z.b, 0);
     const r = (z.line ? (b > 0 ? b + 2 * w : w) / 2 : w + b) + (z.o === undefined ? 0 : bound(z.o));
-    return r < Infinity ? r : 512 * 2 ** (tr.zoom % 1);
+    return r < Infinity ? r : s.radius;
 }
 
 function outside(c: number[]) {
@@ -269,7 +267,7 @@ export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
     if (!circles.length) return null;
     // A circle is largest at the bottom of the screen, which is nearest to the camera.
     const k = Math.max(1, tr.perspectiveAt(...tr.screenToGround(tr.width / 2, Math.max(box[3], tr.height))));
-    const r = Math.max(...circles.map(s => setReach(s, tr))) * k;
+    const r = Math.max(...circles.map(s => setReach(s))) * k;
     // (A translated circle is drawn away from its feature: the rectangle also reaches back by each translation.)
     const [x0, y0, x1, y1] = circles.reduce((b, s) => { const t = setBox(box, s); return [Math.min(b[0], t[0]), Math.min(b[1], t[1]), Math.max(b[2], t[2]), Math.max(b[3], t[3])]; }, box);
     return {box: [x0 - r, y0 - r, x1 + r, y1 + r], circles: new Set(circles), k};
