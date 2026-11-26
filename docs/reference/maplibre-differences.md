@@ -436,8 +436,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### `setTransformCameraUpdate`
 
-- MapLibre GL JS calls the function before each frame and draws the camera that it returns. react-map-gl 8 gives every map such a function, so that a controlled map (`viewState` with `onMove`) never draws a camera that differs from `viewState`.
-- This library does the same when the map draws on the main thread (`renderer: 'main'`): it calls the function before each frame and draws the camera that it returns, so a controlled react-map-gl map whose `onMove` limits the latitude never draws a camera past the limit.
+- MapLibre GL JS calls the function when the camera changes and draws the camera that it returns. A function that always returns a different camera (for example `bearing + 1`) runs once for each change, so the map still goes idle. react-map-gl 8 gives every map such a function, so that a controlled map (`viewState` with `onMove`) never draws a camera that differs from `viewState`.
+- This library does the same when the map draws on the main thread (`renderer: 'main'`): it calls the function before a frame in which the camera changed and draws the camera that it returns, so a controlled react-map-gl map whose `onMove` limits the latitude never draws a camera past the limit.
 - With the worker renderer (the default), the camera is in the worker, and this library calls the function after each `move` event and does not apply what it returns. A controlled react-map-gl map works when `onMove` sets `viewState` to `e.viewState`, and a change of `viewState` from outside moves the map. When `onMove` changes the camera (for example when it limits the latitude), the map draws the camera of the gesture, and goes to the camera of `viewState` when the movement ends. The map writes one warning the first time the function changes the camera, and no warning for a map where it does not. Pass `renderer: 'main'`, or use the option `maxBounds` to keep the map in a region.
 
 ### A listener that throws
