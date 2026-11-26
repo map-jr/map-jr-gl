@@ -375,9 +375,11 @@ Of the other warnings, these are in both builds:
 - A warning about a logic error at run time, such as `setCenterElevation(NaN)` or `setFeatureState` with a text id on
   a vector source.
 
-A warning for a mistake of configuration or for a call with no effect is in the development build only. In both
-entries these are a `maxPitch` above 180, a `pixelRatio` that is not a number above 0, `configure({tileWorkers})` after
-the tile workers exist, and `addProtocol('pmtiles')`.
+In both entries, four warnings for a mistake of configuration or for a call with no effect are in the development
+build only: a `maxPitch` above 180, a `pixelRatio` that is not a number above 0, `configure({tileWorkers})` after the
+tile workers exist, and `addProtocol('pmtiles')`. The warnings about how the files are served (`workerUrl`, a worker
+file of another version) and about a source (`"emptyResponse": "missing"`, a contour source with no `"thresholds"`)
+are in both builds.
 
 ## See also
 
