@@ -421,6 +421,34 @@ for (const mode of renderers) {
         if (mode === 'main') check(`[${mode}] a drag pan: a marker stays on its point in every frame and does not jump at the release (#479)`,
             // (The first 3 px of a drag do not pan, so the marker stays that far behind the pointer from the start.)
             flatDrag.lag?.every(v => Math.abs(v - flatDrag.lag[0]) <= 1) && Math.abs(flatDrag.jump) <= 3, JSON.stringify(flatDrag));
+        // A `drag` listener that calls jumpTo: the drag goes on from the new camera, and the map ends where MapLibre GL JS
+        // (served at /ml/) ends. With the worker renderer the ground that the drag held before the jump put the camera
+        // back at the release (#2140).
+        const jump2140 = {};
+        for (const lib of ['ml', 'compat']) {
+            await page.evaluate(async ([lib, renderer]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m2140 = new mod.Map({container: el, renderer, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.on('drag', () => m.jumpTo({center: [10, 45]}));
+                m.once('dragend', () => { window.at2140 = +m.getCenter().lng.toFixed(3); });
+            }, [lib, mode]);
+            await page.mouse.move(100, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { await page.waitForTimeout(40); await page.mouse.move(100 + i * 10, 150); }
+            // (A pause before the release, so that the drag ends without inertia.)
+            await page.waitForTimeout(300); await page.mouse.up();
+            jump2140[lib] = await page.evaluate(async () => {
+                const m = window.m2140;
+                await new Promise(r => { m.once('moveend', r); setTimeout(r, 2000); });
+                const c = m.getCenter(), el = m.getContainer(); m.remove(); el.remove();
+                return [window.at2140, +c.lng.toFixed(3), +c.lat.toFixed(3)];
+            });
+        }
+        // (The longitude at `dragend`, and the center at the end.)
+        check(`[${mode}] a drag pan: a jumpTo from a drag listener moves the map as in MapLibre GL JS (#2140)`,
+            jump2140.ml && jump2140.compat && jump2140.ml.every((v, i) => Math.abs(v - jump2140.compat[i]) < 0.01), JSON.stringify(jump2140));
     }
 
     // Drag pan: the point under the cursor should follow it.
