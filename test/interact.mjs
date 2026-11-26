@@ -1891,6 +1891,39 @@ for (const mode of renderers) {
             ours.right === 'fill' && ours.up === 'line' && ours.down === 'extrusion' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
 
+    // A line of a vector source without an id that crosses the edge of two tiles is found once for each tile that holds a
+    // part of it, as in MapLibre GL JS 6.17 (#2088): two times in a box over both tiles, and one time in a box over one
+    // tile, although the buffer of the other tile reaches into it.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            // A vector tile with one layer "a" and one line without id at y = 2048, from x0 to x1.
+            const v = n => { const o = []; while (n > 127) { o.push(n & 127 | 128); n >>>= 7; } o.push(n); return o; };
+            const zz = n => (n << 1) ^ (n >> 31), len = a => [...v(a.length), ...a];
+            const tile = (x0, x1) => {
+                const feature = [0x18, 2, 0x22, ...len([9, ...v(zz(x0)), ...v(zz(2048)), 10, ...v(zz(x1 - x0)), 0])];
+                return new Uint8Array([0x1a, ...len([0x78, 2, 0x0a, 1, 0x61, 0x12, ...len(feature), 0x28, 0x80, 0x20])]).buffer;
+            };
+            const empty = new Uint8Array([0x1a, 5, 0x78, 2, 0x0a, 1, 0x61]).buffer, scheme = `edge${lib}${mode}`;
+            // Tile 1/0/0 holds the line from its middle to its right edge and 64 units of buffer; tile 1/1/0 the rest.
+            mod.addProtocol(scheme, async p => { const [, x, y] = p.url.split('://')[1].split('/').map(Number); return {data: y ? empty : x ? tile(-64, 2048) : tile(2048, 4160)}; });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 66.5], zoom: 1, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {v: {type: 'vector', tiles: [`${scheme}://{z}/{x}/{y}`], minzoom: 1, maxzoom: 1}},
+                layers: [{id: 'edge', type: 'line', source: 'v', 'source-layer': 'a', paint: {'line-width': 4}}]}});
+            await new Promise(r => m.once('idle', r));
+            const p = m.project([0, 66.51]), both = [[p.x - 60, p.y - 10], [p.x + 60, p.y + 10]], one = [[p.x - 60, p.y - 10], [p.x - 20, p.y + 10]];
+            const out = {both: (await m.queryRenderedFeatures(both)).length, one: (await m.queryRenderedFeatures(one)).length,
+                bothNow: [...m.queryRenderedFeatures(both)].length, oneNow: [...m.queryRenderedFeatures(one)].length};
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a vector line without id over a tile edge is found once per tile that holds a part of it, as MapLibre GL JS, also in the array at once (#2088)`,
+            ours.both === 2 && ours.one === 1 && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // A `*-translate` that is an expression or a function of the zoom is evaluated at the zoom of the map, as in
     // MapLibre GL JS (#1976). At zoom 2 the circle's interpolation gives [60, 0] (60 pixels right) and the line's
     // function with stops gives [0, 60] (60 pixels down).
