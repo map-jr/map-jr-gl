@@ -668,6 +668,19 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
+    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own; compat entry only).
+    if (mode === 'compat') {
+        const removed = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+            let calls = 0;
+            await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
+            m.remove(); el.remove();
+            return calls;
+        }, mode).catch(e => String(e));
+        check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
+    }
     // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
     // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
     const size = await page.evaluate(async () => {
