@@ -114,6 +114,9 @@ for (const file of [...packed].filter(f => /^dist\/[^/]+\.js$/.test(f))) {
             if (!sources.has(source)) sources.set(source, readFileSync(source, 'utf8').split('\n'));
             // (The minifier copies the value of a constant to where another file uses it. Such a string is not in the file.)
             if (!sources.get(source).some(l => l.includes(m[2]))) continue;
+            // (A standalone file has the worker file in one string, which the map puts where src/loader.ts uses
+            // __WORKER_SRC__. The strings in it are checked with the map of the worker file.)
+            if (sources.get(source)[entry.originalLine]?.includes('__WORKER_SRC__')) continue;
             messages++;
             if (!sources.get(source)[entry.originalLine]?.includes(m[2])) failures.push(`${mapFile} puts the string "${m[2]}" of ${file} at ${path.relative(root, source)}:${entry.originalLine + 1}, and it is not there`);
         }

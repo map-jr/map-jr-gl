@@ -77,7 +77,7 @@ const placeholderNames = [
     ['server.ts', 'name', /renderElement\(\): "/, 'attribute name'],
     ['server.ts', 'cause?.message', null, 'cause'],
     ['vue.ts', 'cause?.message', null, 'cause'],
-    ['style.ts', 'JSON.stringify(name)', /hillshade-method/, 'hillshade method'],
+    ['layers-more.ts', 'JSON.stringify(name)', /hillshade-method/, 'hillshade method'],
     ['style-images.ts', 'name', /the image "/, 'image name'],
 ];
 /** The placeholders that say nothing about what they stand for. A piece of a message that gets one of these fails the check. */
