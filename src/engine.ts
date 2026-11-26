@@ -1580,9 +1580,10 @@ export class Engine {
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), animating = cameraAnimating;
         // (As in MapLibre GL JS, the camera that the function returns is the one that the frame draws, #1711.)
-        if (this.cameraUpdate && !this.cameraUpdated?.every((v, i) => v === [tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch][i])) {
+        const cameraNow = () => [tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, ...tr.padding];
+        if (this.cameraUpdate && !this.cameraUpdated?.every((v, i) => v === cameraNow()[i])) {
             try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
-            this.cameraUpdated = [tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch];
+            this.cameraUpdated = cameraNow();
         }
         this.flushUploads(this.wentIdle && (cameraAnimating || began - this.cameraMovedAt < 200));
 

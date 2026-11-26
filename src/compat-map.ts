@@ -350,8 +350,8 @@ export class Map extends CoreMap {
 
     /**
      * As in MapLibre GL JS, the map calls the function before a frame in which the camera changed and draws the camera
-     * that it returns, when the map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does not apply what the
-     * function returns, and it warns once when the function changes the camera.
+     * that it returns, when the map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does
+     * not apply what the function returns, and it warns once when the function changes the camera.
      */
     setTransformCameraUpdate(fn?: ((tr: CameraLike) => CameraChanges | undefined) | null) {
         this.cameraUpdate = typeof fn == 'function' ? fn : undefined;

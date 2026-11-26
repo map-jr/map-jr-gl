@@ -5577,6 +5577,10 @@ for (const mode of renderers) {
                     m.jumpTo({center: [5, 5]});
                     out.idle = await Promise.race([idle, new Promise(r => setTimeout(() => r(false), 5000))]);
                     out.turns = turns;
+                    // A change of the padding alone calls the function too.
+                    const before = turns;
+                    done = moved(); m.easeTo({padding: {left: 100}, duration: 100}); await done;
+                    out.padded = turns - before;
                     m.setTransformCameraUpdate(null);
                 } else {
                     // A controlled map whose state is one move behind: the function returns the camera before.
@@ -5595,7 +5599,7 @@ for (const mode of renderers) {
             return out;
         }, mode).catch(e => ({error: String(e)}));
         if (mode === 'main') check('[main] maplibre-compat: setTransformCameraUpdate draws the camera that its function returns when the camera changed, goes idle, and null removes the function (#1711, #1970)',
-            Math.abs(hook.applied?.lat - 30) < 1e-6 && hook.applied.zoom === 5 && hook.applied.maxLat <= 30 + 1e-9 && Math.abs(hook.cleared - 50) < 1e-6 && hook.warnings === 0 && hook.idle === true && hook.turns < 10, JSON.stringify(hook));
+            Math.abs(hook.applied?.lat - 30) < 1e-6 && hook.applied.zoom === 5 && hook.applied.maxLat <= 30 + 1e-9 && Math.abs(hook.cleared - 50) < 1e-6 && hook.warnings === 0 && hook.idle === true && hook.turns < 10 && hook.padded > 0, JSON.stringify(hook));
         else check(`[${mode}] maplibre-compat: setTransformCameraUpdate warns once when its function changes the camera, and not when it returns an earlier camera`, hook.lagging?.calls > 0 && hook.lagging.warnings === 0 && hook.warnings === 1, JSON.stringify(hook));
     }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
