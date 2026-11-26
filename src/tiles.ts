@@ -83,7 +83,12 @@ export class TileBuilder {
         try {
             const st: TileFetchState = {}, bytes = await fetchTile(req.url, this.fetchFn, ac.signal, st, true);
             if (!bytes) return null;
-            const px = await decodePixels(bytes, this.decodeImage), {width: w, height: h} = px, grid = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
+            // An image that cannot be decoded would fail again, so it is final, as for a raster tile (#2109).
+            // (The error of a page without the means to decode stays as it is.)
+            const px = await decodePixels(bytes, this.decodeImage).catch((e: Error) => {
+                if (e.message?.startsWith('Elevation tiles need')) throw e;
+                throw Object.assign(requestError('tile', req.url, 'the response is not an image that the browser can decode. Check that the tile URLs of the source give PNG or WebP images.', e), {final: true});
+            }), {width: w, height: h} = px, grid = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
             let lo = Infinity, hi = -Infinity;
             // Each cell of the grid is the mean of the pixels that it covers (two by two for a tile of 512 pixels), so that
             // heights read from it agree with the full image, as MapLibre GL JS reads them. A cell that took one pixel in
