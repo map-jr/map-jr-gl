@@ -327,6 +327,8 @@ alone cannot.
    that is not merged. It also lists the worktrees of other sessions (`bridge-*`, `remote-control-*`) when their
    commit is merged; remove only the `agent-*` worktrees of your workers unless you know that no session uses the
    others.
+5. List the files of `docs/development/design/` and read the state of the issue in each name. A design whose issue
+   is closed gets an issue for its removal ("Where a document goes" in `docs/development.md`).
 
 ## Traps of the shell and of `gh`
 
