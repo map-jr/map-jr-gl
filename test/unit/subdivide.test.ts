@@ -46,7 +46,8 @@ test('globe: the grid has 40, 20, 10, 5, 3 and 1 cells at zoom 0 to 10, more for
 
 test('globe: a tile without globe is byte for byte what it was before the cut existed', () => {
     // The hash of the tile of the fixture as main built it before #463 PR 2 (fills, data-driven colours, lines, buildings).
-    // (Updated by #1706 and #1981, which changed the joins of lines, and by #2118, which packs line vertices in halves of a tile unit.)
+    // (Updated by #1706 and #1981, which changed the joins of lines, by #2118, which packs line vertices in halves of a tile
+    // unit, and by #2114, which stores how line-offset moves a flipbevel in the side of its vertices.)
     const h = createHash('sha256'), flat = tile();
     // (A field that is undefined carries no data, and is left out: #2075 gave a line and a building such fields. The
     // code of main before #2075 gives the same hash.)
@@ -56,7 +57,7 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }
-    assert.equal(h.digest('hex'), '0efd5b915716dd41daa39845245d335fb0aa303b590efa8244114283c672f3be');
+    assert.equal(h.digest('hex'), 'c494e118895fcd37cad67de481f18787d32f3b3d0b3f895e1a50e067931325eb');
 });
 
 test('globe: the fills and lines of a real tile get the vertices that were measured', () => {

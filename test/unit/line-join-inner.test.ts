@@ -154,9 +154,9 @@ test('line joins: a miter join that turns more than 120 degrees is a flipbevel, 
             ny: view.getInt16(o + 6, true) / LINE_NORMAL, side: view.getInt16(o + 8, true)});
     }
     const atCorner = vs.filter(v => v.x === 2048 && v.y === 2048);
-    // Two plain pairs across the bisector of the two normals, 1 / sin of half the turn long (about 1.035 here).
+    // Two pairs across the bisector of the two normals, 1 / sin of half the turn long (about 1.035 here).
     assert.equal(atCorner.length, 4, 'two pairs at the corner');
-    for (const v of atCorner) assert.equal(Math.abs(v.side), 1, 'a plain pair');
+    for (const v of atCorner) assert.ok(Math.abs(v.side) > 15360 && Math.abs(v.side) < 16384, 'a pair of a flipbevel (#2114)');
     const len = Math.hypot(atCorner[0].nx, atCorner[0].ny);
     for (const v of atCorner) assert.ok(Math.abs(Math.hypot(v.nx, v.ny) - len) < 0.01, 'all the same length');
     assert.ok(len > 1 && len < 1.2, `the length is about 1 / sin of half the turn (${len})`);
@@ -179,4 +179,45 @@ test('line joins: a GeoJSON line keeps halves of a tile unit, and a turn of 175 
     assert.ok(vs.some(v => v.x === 2048.5 && v.y === 2048), 'a vertex at the corner, half a unit east of the middle');
     const sharp = vs.filter(v => Math.abs(Math.hypot(v.x - 2048.5, v.y - 2048) - 120) < 1);
     assert.equal(sharp.length, 4, 'a pair of vertices on each segment 15 pixels from the corner');
+});
+
+test('line joins: line-offset moves a flipbevel corner along the bisector and eases it to the normal of the pair, as MapLibre GL JS does (#2114)', () => {
+    // A miter join past a turn of 120 degrees. MapLibre moves both pairs of the corner by twice the offset along the
+    // bisector, and as the miter grows from 3 to 8 eases that vector to the normal of each pair (offsetFallback). Before,
+    // each pair moved along its own normal, across the bisector.
+    const z = 10, tx = 300, ty = 380, n = 2 ** z;
+    const lng = (tx + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 0.5) / n))) * 180 / Math.PI, d = 0.02;
+    for (const turn of [130, 150, 165, -150]) {
+        const a = turn * Math.PI / 180, coords = [[lng - d, lat], [lng, lat], [lng + d * Math.cos(a), lat + d * Math.sin(a)]];
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: coords}} as any), z, tx, ty);
+        const out = tessellate(buildTile(data, z, [compileLayer({id: 'l', type: 'line', source: 'g', layout: {'line-join': 'miter'}})!], false).layers.l)!;
+        const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength);
+        // The position that the vertex shader of src/gl.ts gives a vertex for a half width hw and an offset off.
+        const at = (o: number, hw: number, off: number) => {
+            const x = view.getInt16(o, true) / 2, y = view.getInt16(o + 2, true) / 2, nx = view.getInt16(o + 4, true) / LINE_NORMAL, ny = view.getInt16(o + 6, true) / LINE_NORMAL;
+            const raw = view.getInt16(o + 8, true), sa = Math.abs(raw), side = Math.sign(raw), u = sa - 15872, flip = sa > 15360.5 && sa < 16383.5;
+            const k = flip ? (Math.abs(u) - 1) / 510 : 1;
+            const c = sa > 1.5 && sa < 15360.5 ? (sa - 2) / 4096 - 2 : flip ? Math.sign(u) * (1 - k) * 2 / Math.hypot(nx, ny) : 0;
+            return [x + nx * hw + (nx * side * k + c * ny) * off, y + ny * hw + (ny * side * k - c * nx) * off];
+        };
+        const pts = new Map<number, number[]>();
+        for (let o = 0; o < view.byteLength; o += LINE_VERTEX) pts.set(view.getFloat32(o + 12, true), [view.getInt16(o, true) / 2, view.getInt16(o + 2, true) / 2]);
+        const [p0, p1, p2] = [...pts.keys()].sort((a, b) => a - b).map(k => pts.get(k)!);
+        const unit = (x: number, y: number) => { const l = Math.hypot(x, y); return [x / l, y / l]; };
+        const [pdx, pdy] = unit(p1[0] - p0[0], p1[1] - p0[1]), [dx, dy] = unit(p2[0] - p1[0], p2[1] - p1[1]);
+        const pn = [-pdy, pdx], nn = [-dy, dx], miter = 2 / Math.hypot(pn[0] + nn[0], pn[1] + nn[1]);
+        const [bx, by] = unit(pn[0] + nn[0], pn[1] + nn[1]).map(v => v * 2), ease = Math.min(1, Math.max(0, (miter - 3) / 5));
+        let checked = 0;
+        for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
+            if (view.getInt16(o, true) / 2 !== p1[0] || view.getInt16(o + 2, true) / 2 !== p1[1]) continue;
+            // The normal of the pair of this vertex, as MapLibre stores it on the vertex of the left side.
+            const side = Math.sign(view.getInt16(o + 8, true)), jx = side * view.getInt16(o + 4, true) / LINE_NORMAL, jy = side * view.getInt16(o + 6, true) / LINE_NORMAL;
+            const want = [(bx + (jx - bx) * ease) * 12, (by + (jy - by) * ease) * 12];
+            const [x0, y0] = at(o, 10, 0), [x1, y1] = at(o, 10, 12);
+            assert.ok(Math.hypot(x1 - x0 - want[0], y1 - y0 - want[1]) < 0.1, `turn ${turn} (miter ${miter.toFixed(2)}): a vertex at the corner moves by ${[x1 - x0, y1 - y0]}, not by ${want}`);
+            assert.ok(Math.hypot(x0 - p1[0] - jx * side * 10, y0 - p1[1] - jy * side * 10) < 0.05, `turn ${turn}: without an offset the vertex stays where it was`);
+            checked++;
+        }
+        assert.equal(checked, 4, `turn ${turn}: two pairs at the corner`);
+    }
 });
