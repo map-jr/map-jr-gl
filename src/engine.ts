@@ -15,6 +15,7 @@ import {globeBuild, overlaps, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
+import {RARE_LAYERS} from './gl-names.ts';
 
 export interface CameraOptions {
     center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number];
@@ -610,6 +611,12 @@ export class Engine {
     private terrainLoad?: Promise<void>;
     private terrainFailed = false;
     /**
+     * The code of the layer types heatmap, hillshade and color-relief (layers-more.ts), which loads on demand with the
+     * first style that has such a layer (#2215). Until it is there, these layers are not drawn and the map is not idle.
+     */
+    private layerCode?: typeof import('./layers-more.ts');
+    private layerLoad?: Promise<void>;
+    /**
      * 3D terrain while its code loads: the elevation tiles of the view are requested now, in parallel with the code. The
      * frame asks for the nearest one (it places the camera) before the tiles of the flat layers, and for the others after
      * them, so that neither waits behind the other for a connection (#1849).
@@ -712,6 +719,13 @@ export class Engine {
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
+        // The layer types whose code loads on demand: it is part of the first complete picture, as the sprite is (#2215).
+        // When it arrives, the pictures of the 3D terrain that were drawn without these layers are stale.
+        if (!this.layerLoad && style.layers.some(l => RARE_LAYERS.test(l.type))) {
+            this.spritePending++;
+            this.layerLoad = part('layers').then(m => { this.layerCode = m; this.styleVersion++; }, err => { if (!this.lost) this.emit({type: 'error', message: String(err.message)}); })
+                .finally(() => { this.spritePending--; this.invalidate(); });
+        }
         // 3D terrain: its code starts to load with the style, in parallel with the first elevation tiles (#1849).
         if (style.terrain && !this.terrainLoad) this.terrainLoad = part('dem').then(m => { if (!this.lost) { this.terrainCode = m; this.invalidate(); } },
             err => { this.terrainFailed = true; if (!this.lost) { this.emit({type: 'error', message: String(err.message)}); this.invalidate(); } });
@@ -1956,7 +1970,7 @@ export class Engine {
             const f = tr.globe!.frame(tr);
             globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, cam: f.cam, rays: tr.globe!.rays(tr), t: globeness, cosLat: Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180), tiles: tr.tileCover(0, 5, TILE_SIZE)};
         }
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene,
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene, layerCode: this.layerCode,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef, code: this.terrainCode!} : undefined});
 

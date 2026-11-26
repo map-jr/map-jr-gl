@@ -50,11 +50,11 @@ BSD-3-Clause.
   on 3D terrain.
 - The layer type `color-relief` follows the method of MapLibre GL JS (BSD-3-Clause; `color_relief_style_layer.ts` and
   the shader `color_relief`): the stops of the `interpolate` expression go to the GPU, and the shader searches the two
-  stops around an elevation and mixes their colors. The code in `src/style.ts` and `src/gl.ts` is new.
+  stops around an elevation and mixes their colors. The code in `src/style.ts`, `src/gl.ts` and `src/layers-more.ts` is new.
 - The methods of `hillshade-method` (`basic`, `combined`, `igor`, `multidirectional`) and
   `hillshade-illumination-altitude` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shader `hillshade` and
   `hillshade_style_layer.ts`), which says that it bases them on `gdaldem` of GDAL (MIT). The code in `src/style.ts`
-  and `src/gl.ts` is new.
+  and `src/layers-more.ts` is new.
 - With `cooperativeGestures`, a move of two fingers cancels the default of `touchmove` on the canvas, which has
   `touch-action: pan-x pan-y`. This follows the method of MapLibre GL JS (BSD-3-Clause; the non-passive `touchmove`
   listener of `src/ui/handler_manager.ts` and `preventDefault` in `two_fingers_touch.ts`). The code in `src/map.ts` is new.

@@ -2,7 +2,8 @@
 // that take a list of values. Run with: pnpm test:unit
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {compileLayer, hillshadeLights, LIGHTS} from '../../src/style.ts';
+import {compileLayer} from '../../src/style.ts';
+import {hillshadeLights, LIGHTS} from '../../src/layers-more.ts';
 
 const lights = (paint: object, zoom = 0, bearing = 0) => hillshadeLights(compileLayer({id: 'h', type: 'hillshade', source: 'dem', paint} as any)!.p, zoom, bearing);
 const near = (a: number[], b: number[]) => { assert.equal(a.length, b.length); a.forEach((v, i) => assert.ok(Math.abs(v - b[i]) < 1e-6, `${a} is not ${b}`)); };

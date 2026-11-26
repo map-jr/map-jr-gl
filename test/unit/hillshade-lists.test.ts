@@ -1,7 +1,8 @@
 // Unit tests for the property types colorArray and numberArray of the hillshade lights (#656).
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {compileLayer, hillshadeLights, transition} from '../../src/style.ts';
+import {compileLayer, transition} from '../../src/style.ts';
+import {hillshadeLights} from '../../src/layers-more.ts';
 
 const layer = (paint: Record<string, unknown>) => ({id: 'h', type: 'hillshade', source: 's', paint});
 
