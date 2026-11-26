@@ -1,5 +1,5 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
-import {compileFor, geo, warnOnce, type MapStates} from './expr.ts';
+import {compileFor, geo, mergeFeatureState, warnOnce, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type GlobeBuild, type GlobeCut, type TileGL, type TileIR} from './tile.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
@@ -150,10 +150,7 @@ export class TileBuilder {
 
     /** The global state and the feature state of the map of this builder. */
     private states: MapStates = {g: {}, f: {}};
-    setFeatureState(source: string, states: FeatureStates, replace?: boolean) {
-        const own = replace || !this.states.f[source] ? (this.states.f[source] = {}) : this.states.f[source];
-        for (const k in states) { const v = states[k]; if (v) own[k] = v; else delete own[k]; }
-    }
+    setFeatureState(source: string, states: FeatureStates, replace?: boolean) { mergeFeatureState(this.states.f, source, states, replace); }
     /** The slots of each image that is an SVG template, by the name of the image. */
     private templates: Record<string, string[]> = {};
     setTemplates(templates: Record<string, string[]>) { this.templates = templates; }
@@ -223,7 +220,7 @@ export class TileBuilder {
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
     /** (The filters of a question are compiled when it is answered: for the states of this map.) */
-    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return queryTile(data, q); }
+    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return queryTile(data, q, this.states.f[q.source]); }
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
         // (A filter of the question can use them where the style does not.)
         if (!this.geo && /"(within|distance)"/.test(JSON.stringify(q.filter ?? null))) this.geo = this.loadGeo();

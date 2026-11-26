@@ -1,6 +1,6 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
+import {compileFor, IMAGE_OR, mergeFeatureState, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
@@ -618,7 +618,7 @@ export class Engine {
     /** What the tile workers last got from `setStyle` and `setContours`: they get it again only when it changes. */
     private sentRules?: string;
     private sentContours?: string;
-    /** The global state of this map (see `MapStates`). The tile builders have the feature state. */
+    /** The states of this map (see `MapStates`). The tile builders have the feature state too; the engine reads it for the size of a circle in a query. */
     private states: MapStates = {g: {}, f: {}};
 
     /**
@@ -992,6 +992,7 @@ export class Engine {
             }
             case 'featureState':
                 for (const b of this.backends) b.setFeatureState(c.source, c.states, c.replace);
+                mergeFeatureState(this.states.f, c.source, c.states, c.replace);
                 // The tile workers keep the state for a layer that reads it later. Tiles are built again only when a
                 // layer of the source reads feature state now. (A frame comes in each case: it reports `idle` to the page.)
                 if (this.sourceSigs.get(c.source)?.[1].includes('"feature-state"')) for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { t.stale = true; t.rev = ++this.tilesVersion; }
@@ -1142,7 +1143,7 @@ export class Engine {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
-            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f), circle.pitch!))) return false;
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));

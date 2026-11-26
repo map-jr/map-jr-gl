@@ -1625,6 +1625,32 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: on a tilted map a circle-radius from a property or the zoom is the radius of the query, also in the array at once (#1942)`,
         sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
+    // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at
+    // (20, 8) pixels from the center, flat and on a tilted map.
+    const stated = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter(), p = m.project(c), a = m.unproject([p.x - 100, p.y]), b = m.unproject([p.x + 100, p.y]), big = ['boolean', ['feature-state', 'big'], false];
+        m.addSource('st-p', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}});
+        m.addSource('st-l', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {}, geometry: {type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]]}}});
+        m.addLayer({id: 'st-r', type: 'circle', source: 'st-p', paint: {'circle-radius': ['case', big, 30, 4]}});
+        m.addLayer({id: 'st-s', type: 'circle', source: 'st-p', paint: {'circle-radius': 4, 'circle-stroke-width': ['case', big, 26, 0]}});
+        m.addLayer({id: 'st-w', type: 'line', source: 'st-l', paint: {'line-width': ['case', big, 20, 4]}});
+        m.setFeatureState({source: 'st-p', id: 1}, {big: true}); m.setFeatureState({source: 'st-l', id: 1}, {big: true});
+        const layers = ['st-r', 'st-s', 'st-w'], ids = found => found.map(f => f.layer.id).sort().join();
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers}); }
+        const now = ids([...m.queryRenderedFeatures([p.x + 20, p.y + 8], {layers})]), later = ids(await m.queryRenderedFeatures([p.x + 20, p.y + 8], {layers}));
+        const pitch = m.getPitch();
+        m.jumpTo({pitch: 45});
+        const q = m.project(c), tiltedNow = ids([...m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['st-r', 'st-s']})]), tilted = ids(await m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['st-r', 'st-s']}));
+        m.jumpTo({pitch});
+        for (const id of layers) m.removeLayer(id);
+        m.removeSource('st-p'); m.removeSource('st-l');
+        return {now, later, tiltedNow, tilted};
+    });
+    check(`[${mode}] queryRenderedFeatures: a circle-radius, circle-stroke-width or line-width from feature-state is the size of the query, flat and tilted, also in the array at once (#1959)`,
+        stated.now === 'st-r,st-s,st-w' && stated.later === 'st-r,st-s,st-w' && stated.tiltedNow === 'st-r,st-s' && stated.tilted === 'st-r,st-s', JSON.stringify(stated));
+
     // A line whose `line-width` is an expression is found within half of its own width, as in MapLibre (#1941): a width
     // of 20 pixels from a property, one of 20 pixels by zoom, and a gap of 16 pixels between two lines of 2 pixels are
     // found at 8 pixels from the center line; a line of 4 pixels from a property is not.
