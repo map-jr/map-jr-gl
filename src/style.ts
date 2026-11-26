@@ -232,7 +232,8 @@ export interface CompiledLayer {
     group?: string;
     /**
      * Symbol layers whose layout has `icon-offset` (any value, also `[0, 0]`): as in MapLibre GL JS (`u_is_offset` of its
-     * symbol shaders), their icons are drawn without the perspective ratio of a tilted map. Their text keeps the ratio
+     * symbol shaders), their icons are drawn without the perspective ratio of a tilted map. The collision box of such an
+     * icon keeps the ratio, as in MapLibre GL JS (#2058). Their text keeps the ratio
      * here, where MapLibre GL JS drops it for the text too (#2057).
      */
     fixedSize?: boolean;
