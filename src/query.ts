@@ -61,10 +61,11 @@ export interface QuerySet {
      */
     size?: {line?: boolean; a: unknown; b: unknown; o?: unknown; zoom: number; scale?: number};
     /**
-     * A circle layer whose size depends on the feature: the largest `circle-radius` and `circle-stroke-width` in pixels
-     * of its features in the data that the map has, as MapLibre GL JS takes from each bucket (`getMaximumPaintValue`).
+     * A circle or line layer whose size depends on the feature: the largest `circle-radius` and `circle-stroke-width`, or
+     * `line-width`, `line-gap-width` and `line-offset` (without its sign), in pixels of its features in the data that the
+     * map has, as MapLibre GL JS takes from each bucket (`getMaximumPaintValue`).
      */
-    most?: [number, number];
+    most?: number[];
     /** A circle, fill, line or fill-extrusion layer with `*-translate`: how far it is drawn from its features, in pixels of the screen. */
     translate?: [number, number];
 }
@@ -87,12 +88,12 @@ function bound(v: any): number {
 /**
  * How far from its features a set draws in pixels of the screen, which the choice of tiles of a query grows by: its
  * `radius`, or for a size that depends only on the zoom its largest value. A size of a circle that depends on the
- * feature takes the largest value in `most`. Any other size keeps its `radius`.
+ * feature, or a width, gap or offset of a line that does, takes the largest value in `most`. Any other size keeps its `radius`.
  */
 export function setReach(s: QuerySet): number {
     if (!s.size) return s.radius;
-    const z = s.size, d = (v: unknown, x: number, i: number) => { const n = bound(v ?? x); return n < Infinity || z.line ? n : s.most?.[i] ?? n; }, w = d(z.a, z.line ? 1 : 5, 0), b = d(z.b, 0, 1);
-    const r = (z.line ? (b > 0 ? b + 2 * w : w) / 2 : w + b) + (z.o === undefined ? 0 : bound(z.o));
+    const z = s.size, d = (v: unknown, x: number, i: number) => { const n = bound(v ?? x); return n < Infinity ? n : s.most?.[i] ?? n; }, w = d(z.a, z.line ? 1 : 5, 0), b = d(z.b, 0, 1);
+    const r = (z.line ? (b > 0 ? b + 2 * w : w) / 2 : w + b) + (z.o === undefined ? 0 : d(z.o, 0, 2));
     return r < Infinity ? r : s.radius;
 }
 

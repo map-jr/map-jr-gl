@@ -1,4 +1,4 @@
-import {fetchWith, httpError, withTimeout, type RequestAnswer} from './requests.ts';
+import {fetchWith, httpError, withCode, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
@@ -926,7 +926,7 @@ export class Map {
         } else if (e.type === 'result') {
             const p = this.pending.get(e.id);
             this.pending.delete(e.id);
-            if (e.error) p?.reject(new Error(e.error)); else p?.resolve(e.value);
+            if (e.error) p?.reject(withCode(new Error(e.error))); else p?.resolve(e.value);
         } else if (e.type === 'imagemissing') {
             // A variant of an SVG template: the name has the values of the slots (see `buildTile`).
             // (Such a name is not a name of the style: the page hears nothing of it, also when the template is gone.)
@@ -1049,6 +1049,7 @@ export class Map {
      */
     fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         const list = this.listeners[type];
+        if (type === 'error' && data.error instanceof Error) withCode(data.error);
         if (type === 'error' && !list?.length) logError(data.error);
         // A listener that throws does not stop the listeners after it: its error is an `error` event.
         if (list) for (const fn of [...list]) try { fn(Object.defineProperties({type, target: this}, Object.getOwnPropertyDescriptors(data))); } catch (error) { if (type === 'error') logError(error); else this.fire('error', {error}); }
