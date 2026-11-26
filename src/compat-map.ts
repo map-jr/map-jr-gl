@@ -530,8 +530,8 @@ export class Map extends CoreMap {
             console.warn(message);
         }
         this.unsupported('The option logoPosition', !o.logoPosition);
-        // (Development build) `validate: false` skips the check of the style (#1748). `setStyle` can override it for one style.
-        if (__DEV__) this.noValidate = this.noValidateMap = o.validate === false;
+        // (Development build) `validateStyle: false` skips the check of the style, as in MapLibre GL JS (#1748, #2121). `setStyle` can override it for one style.
+        if (__DEV__) this.noValidate = this.noValidateMap = o.validateStyle === false;
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
@@ -678,7 +678,7 @@ export class Map extends CoreMap {
      */
     setStyle(style: unknown, options: StyleSwapOptions = {}) {
         this.styleUrl = typeof style === 'string' ? style : null;
-        // (Development build) As in MapLibre GL JS, `validate` of this call wins over the option of `new Map()` (#1748).
+        // (Development build) As in MapLibre GL JS, `validate` of this call wins over the option `validateStyle` of `new Map()` (#1748).
         if (__DEV__) this.noValidate = options.validate === undefined ? this.noValidateMap : !options.validate;
         const own = options.transformStyle, diff = options.diff !== false;
         return super.setStyle(style, !this.customs?.size ? {transformStyle: own, diff} : {diff, transformStyle: (previous: any, next: any) => {

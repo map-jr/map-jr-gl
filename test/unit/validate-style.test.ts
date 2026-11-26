@@ -1,6 +1,6 @@
 // The development build of the compat entry fires `error` with the text of MapLibre GL JS for a required field that a
 // layer or a source of the style lacks, a value of the wrong type and an expression of the wrong type, and
-// `validate: false` skips that check (#1748).
+// the map option `validateStyle: false` skips that check (#1748).
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -78,7 +78,7 @@ test('an array whose first element is an operator, such as ["round"], is an expr
     assert.deepEqual(vars, ['layers[0].paint.line-width[1]: Unknown variable "constructor". Make sure "constructor" has been bound in an enclosing "let" expression before using it.']);
 });
 
-test('the compat entry fires each error once, with the place and the text, and validate: false skips it', () => {
+test('the compat entry fires each error once, with the place and the text, and validateStyle: false skips it', () => {
     const errors: string[] = [], reported = new Set<string>();
     zoomCurveErrors(styles[2], reported, e => errors.push(e.message));
     zoomCurveErrors(styles[2], reported, e => errors.push(e.message));

@@ -77,6 +77,8 @@ export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
     pitchSpeed?: number;
     /** No effect: `false` warns once. */
     aroundCenter?: boolean;
+    /** In the development build, `false` turns off the check of the style; the default is `true`. The production build checks no style. `validate` of `setStyle` wins for that style. */
+    validateStyle?: boolean;
     /** The angle in degrees from north within which `snapToNorth` and the end of a gesture turn the map north. The default is 7, and 0 turns the snap off. */
     bearingSnap?: number;
     /** No effect: labels show and hide without a fade. */
@@ -215,7 +217,7 @@ export type StyleSetterOptions = {validate?: boolean};
  * The options of `map.setStyle`. The map always replaces the whole style, so `diff` has no effect on the result.
  * `transformStyle` gets the style before and the new style, and returns the style to use. In the development build,
  * `validate: false` skips the check of this style, and `validate: true` checks it; without `validate`, the option
- * `validate` of `new Map()` applies. The production build checks no style.
+ * `validateStyle` of `new Map()` applies. The production build checks no style.
  */
 export type StyleSwapOptions = {diff?: boolean; validate?: boolean; transformStyle?: (previous: any, next: any) => any};
 export type StyleImageMetadata = {pixelRatio?: number; sdf?: boolean; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: string; textFitHeight?: string};

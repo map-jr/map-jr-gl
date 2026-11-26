@@ -2239,7 +2239,7 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
             let m;
             try {
-                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, fadeDuration: 0, pitchWithRotate: false, crossSourceCollisions: false, style: {version: 8, sources: {}, layers: []}});
+                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validateStyle: false, fadeDuration: 0, pitchWithRotate: false, crossSourceCollisions: false, style: {version: 8, sources: {}, layers: []}});
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.Popup({locationOccludedOpacity: 0.5});
@@ -2249,13 +2249,13 @@ for (const mode of renderers) {
                 new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, crossSourceCollisions: true, style: {version: 8, sources: {}, layers: []}}).remove();
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'fadeDuration', 'pitchWithRotate', 'crossSourceCollisions', 'locationOccludedOpacity', 'opacityWhenCovered'];
+            const names = ['logoPosition', 'validateStyle', 'visualizePitch', 'fadeDuration', 'pitchWithRotate', 'crossSourceCollisions', 'locationOccludedOpacity', 'opacityWhenCovered'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
         // visualizePitch of NavigationControl (#42) and opacityWhenCovered of Marker (the globe, #463) have an effect in
         // this entry, so they write no warning.
-        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions and locationOccludedOpacity of Popup) each warn once, and validate (#1748), visualizePitch and opacityWhenCovered do not warn',
-            Object.entries(r).every(([k, n]) => n === (k === 'validate' || k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
+        check('maplibre-compat: options with no effect (logoPosition, fadeDuration, pitchWithRotate, crossSourceCollisions and locationOccludedOpacity of Popup) each warn once, and validateStyle (#1748), visualizePitch and opacityWhenCovered do not warn',
+            Object.entries(r).every(([k, n]) => n === (k === 'validateStyle' || k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
     }
     // #675: `on` of maplibre-compat returns a Subscription whose `unsubscribe()` removes the listener, as in MapLibre GL JS
     // 6.17; `once` with a listener returns the map, also with a layer id.
@@ -4908,9 +4908,23 @@ for (const mode of renderers) {
                 await new Promise(r => m.once('idle', r));
                 out[id] = errors.filter(e => e.includes('missing required property')).length;
             }
-            m.remove(); el.remove();
+            m.remove();
+            // The map option is `validateStyle`, as in MapLibre GL JS (#2121); `validate` is not a map option.
+            for (const [id, options] of [['d', {validateStyle: false}], ['e', {validate: false}]]) {
+                const n = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, ...options, style: {version: 8, sources: {}, layers: []}});
+                n.on('error', e => errors.push(e.error.message));
+                await new Promise(r => n.once('load', r));
+                errors.length = 0;
+                n.setStyle(style(id));
+                await new Promise(r => n.once('idle', r));
+                out[id] = errors.filter(e => e.includes('missing required property')).length;
+                n.remove();
+            }
+            el.remove();
             return out;
         });
+        check('[main] maplibre-compat: new Map({validateStyle: false}) skips the check of each style and new Map({validate: false}) does not (#2121)',
+            v.d === 0 && v.e === 1, JSON.stringify(v));
         check('[main] maplibre-compat: setStyle(style, {validate: false}) skips the check of the style in the development build, and a later setStyle without it checks again',
             v.a === 0 && v.b === 1 && v.c === 0, JSON.stringify(v));
     }
