@@ -839,7 +839,9 @@ export class Map {
             if (e.moving) this.awaitingInertia = false;
             this.engineMoving = !!e.moving;
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
-            if (!e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active) this.settle();
+            // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
+            // of its last turn, with one `moveend`, #2163.)
+            if (!e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
@@ -2425,7 +2427,7 @@ export class Map {
             if (rotating) samples = [];
             if (spin) this.easeTo({bearing: this.spinBearing(last.x + spin.bearing), pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
             // A rotate drag released after a pause ends here; one released while the engine still turns ends at its next report.
-            else if (rotating && this.moving && !this.engineMoving && !this.dragging) this.settle();
+            else if (rotating && this.moving && !this.engineMoving && !this.dragging && !this.turnPending()) this.settle();
             if (wasDragging && !rotating) {
                 // Inertia as in MapLibre GL JS (see `inertiaSpan`): in the next frame, the movement of the last 60 ms of
                 // frames over the time up to that frame, so that a pointer that slowed or stopped before the release
