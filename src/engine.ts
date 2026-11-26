@@ -1981,7 +1981,9 @@ export class Engine {
         const angle = (L.p.iconAlign.eval(z, f) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, c = Math.cos(angle), s = Math.sin(angle);
         // (`icon-offset` and the shift of `icon-anchor` turn with the icon; `icon-translate` does not.)
         const ox = (offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size, oy = (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size;
-        return boxAround(ox * c - oy * s + move[0], ox * s + oy * c + move[1], w * size, h * size, angle, pad);
+        // (As in placement, `text-rotation-alignment` decides whether the box is turned by the bearing; #2037.)
+        const bt = L.p.placement.eval(z, f) === 'point' && L.p.textAlign.eval(z, f) === 'map' && (!this.tr.pitch || L.p.textPitch.eval(z, f) === 'viewport') ? -this.tr.bearing * Math.PI / 180 : 0;
+        return boxAround(ox * c - oy * s + move[0], ox * s + oy * c + move[1], w * size, h * size, turn + bt, pad, bt);
     }
 
     /**
@@ -2028,7 +2030,7 @@ export class Engine {
                 continue;
             }
             // (The box of placement: `text-padding` is added before the box is turned, as in MapLibre GL JS.)
-            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: boxAround(p.x + x - p.ax, p.y + y - p.ay, w, h, p.angle, p.src.padding)});
+            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: boxAround(p.x + x - p.ax, p.y + y - p.ay, w, h, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !(this.tr.pitch && p.src.flat) ? -this.tr.bearing * Math.PI / 180 : 0)});
         }
         return out;
     }
