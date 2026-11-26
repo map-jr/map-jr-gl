@@ -183,6 +183,7 @@ function shortenMessages(code, file, found = []) {
 
 /** The production form of one file of src/, with its source map, or null when the file has no message. */
 export function productionMessages(code, id) {
+    id = id.replaceAll('\\', '/'); // (A path of Windows, as scripts/messages.mjs gives it.)
     if (!/\/src\/[^/]+\.ts$/.test(id) || !/E\d+ |\[map-jr-gl\] E'/.test(code)) return null;
     const edits = shortenMessages(code, id);
     if (!edits.length) return null;
@@ -199,6 +200,7 @@ export function productionMessages(code, id) {
 /** The names of the values that each message with a code prints in production, as [code, names], for docs/reference/messages.md. */
 export function productionNames(code, id) {
     const found = [];
+    id = id.replaceAll('\\', '/');
     // (server.js keeps the full texts.)
     if (/E\d+ /.test(code) && !id.endsWith('/src/server.ts')) shortenMessages(code, id, found);
     return found;

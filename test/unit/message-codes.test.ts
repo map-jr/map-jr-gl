@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-expect-error (a module of the build, without types)
-import {productionMessages} from '../../scripts/message-codes.mjs';
+import {productionMessages, productionNames} from '../../scripts/message-codes.mjs';
 
 /** The source after the edits of the build. */
 const built = (code: string, file = '/x/src/a.ts'): string => productionMessages(code, file)?.code ?? code;
@@ -52,4 +52,12 @@ test('each value prints with the plain word of its expression as its name, a str
     assert.equal(run('`[map-jr-gl] E2040 layer "${layer.id}": ${list.join(", ")} more than ${MAX_RUNS} runs of "${layer.id}".`'),
         '[map-jr-gl] E2040 https://map-jr.org/e/2040 id="roads" list="a, b" maxRuns=64');
     assert.throws(() => built('`[map-jr-gl] E1 the value ${v} is wrong.`'), /has no clear name\. Add it to the list "valueNames"/);
+});
+
+test('a path of Windows finds the names of valueNames, as a path with slashes does', () => {
+    const code = '`[map-jr-gl] E2145 the member ${name} is not supported.`';
+    for (const file of ['/x/src/compat-map.ts', 'D:\\a\\map-jr-gl\\src\\compat-map.ts']) {
+        assert.deepEqual(productionNames(code, file), [[2145, ['member']]], file);
+        assert.match(productionMessages(code, file)?.code ?? '', /E2145 https:\/\/map-jr\.org\/e\/2145 member=/, file);
+    }
 });
