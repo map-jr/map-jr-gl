@@ -951,7 +951,7 @@ export class Map extends CoreMap {
         };
         if (!/^(vector|raster)/.test(type)) return spec === this.rawStyle?.sources[id] ? {...spec, ...more} : Object.assign(spec, more);
         const set = (k: string, v: unknown, ok: boolean) => {
-            if (!ok) throw new Error(`[map-jr-gl] E255 getSource("${id}").${k === 'url' ? 'setUrl(url): "url" must be a string' : 'setTiles(tiles): "tiles" must be an array of URL strings'}.`);
+            if (!ok) throw new Error(k === 'url' ? `[map-jr-gl] E255 getSource("${id}").setUrl(url): "url" must be a string.` : `[map-jr-gl] E10255 getSource("${id}").setTiles(tiles): "tiles" must be an array of URL strings.`);
             this.editStyle(s => { const src = s.sources[id]; if (src) delete src.url, delete src.tiles, src[k] = Array.isArray(v) ? [...v] : v; });
             return source;
         };
@@ -1181,7 +1181,7 @@ export class Map extends CoreMap {
         if (own && ev) { const {sourceId, isSourceLoaded, source, ...rest} = data; ev.fire(own, own === 'error' ? {...data} : rest); }
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
         const e = data.error as Error | undefined;
-        if (type === 'error' && e?.message?.startsWith('[map-jr-gl] E20017 ') && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};
+        if (type === 'error' && (e?.message?.startsWith('[map-jr-gl] E20017 ') || e?.message?.startsWith('[map-jr-gl] E30017 ')) && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};
         // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();

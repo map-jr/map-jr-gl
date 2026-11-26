@@ -104,7 +104,7 @@ export class Videos {
             if (spec.type === 'video') player = playVideo(id, spec.urls.map((u: string) => new URL(u, this.base()).href), send, this.fail);
             else {
                 const canvas = typeof key === 'string' ? document.getElementById(key) : key;
-                if (!(canvas instanceof HTMLCanvasElement)) { this.fail(new Error(`[map-jr-gl] E11452 The canvas source "${id}": ${typeof key === 'string' ? `the page has no <canvas> with the id "${key}"` : '"canvas" is not a <canvas> element'}. Give the id of a <canvas> of the page, or the element.`)); continue; }
+                if (!(canvas instanceof HTMLCanvasElement)) { this.fail(new Error(typeof key === 'string' ? `[map-jr-gl] E11452 The canvas source "${id}": the page has no <canvas> with the id "${key}". Give the id of a <canvas> of the page, or the element.` : `[map-jr-gl] E21452 The canvas source "${id}": "canvas" is not a <canvas> element. Give the id of a <canvas> of the page, or the element.`)); continue; }
                 player = playCanvas(id, canvas, spec.animate !== false, send, this.fail);
             }
             const v = {key, player};

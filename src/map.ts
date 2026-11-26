@@ -752,7 +752,7 @@ export class Map {
             el.textContent = 'This browser cannot show the map.';
             this.canvas.after(el);
         }
-        return new Error(`[map-jr-gl] E20017 The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), {cause});
+        return new Error(/WebGL2/.test(cause.message) ? `[map-jr-gl] E30017 The map cannot be shown: ${cause.message}. Call supported() before you make a map, and show other content when it returns false.` : `[map-jr-gl] E20017 The map cannot be shown: ${cause.message}.`, {cause});
     }
 
     /** @internal Runs before each frame while it is set: on the main renderer inside the frame, and with a worker after it (#2128). */
@@ -975,7 +975,7 @@ export class Map {
     /** The layer ids of `on(type, layerIds, listener)` (one id or an array, as in MapLibre GL JS), or null for `on(type, listener)`. */
     private layerArg(type: string, a: unknown, b: unknown): string[] | null {
         const layers = typeof a === 'string' ? [a] : Array.isArray(a) && a.every(id => typeof id === 'string') ? a.slice() : null;
-        if (layers ? typeof b !== 'function' : typeof a !== 'function') throw new TypeError(`[map-jr-gl] E278 on("${type}"): ${layers ? 'the listener after the layer id is not a function' : 'the second argument is neither a layer id, an array of layer ids nor a listener'}.`);
+        if (layers ? typeof b !== 'function' : typeof a !== 'function') throw new TypeError(layers ? `[map-jr-gl] E278 on("${type}"): the listener after the layer id is not a function.` : `[map-jr-gl] E10278 on("${type}"): the second argument is neither a layer id, an array of layer ids nor a listener.`);
         return layers;
     }
     private wantsFrames = false;
