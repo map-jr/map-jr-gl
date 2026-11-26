@@ -745,6 +745,28 @@ for (const mode of renderers) {
         return {names: data.features.map(f => f.properties.name).join(), at: data.features[0].geometry.coordinates[0], drawn};
     });
     check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
+    // After setData, each tile of the view fires one `sourcedata` with `tile`, as in MapLibre GL JS 6.17 (#2051). (The check
+    // reads the tiles of the zoom of the view: the overview tile at zoom 0 is not one of MapLibre GL JS.)
+    if (mode === 'main') {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const point = lng => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, 0]}}]});
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {p: {type: 'geojson', data: point(0)}},
+                layers: [{id: 'p', type: 'circle', source: 'p'}]}});
+            await new Promise(r => m.once('idle', r));
+            const tiles = [];
+            m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'p' && c?.z === 2) tiles.push(`${c.z}/${c.x}/${c.y}`); });
+            m.getSource('p').setData(point(10));
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => m.once('idle', r));
+            m.remove(); el.remove();
+            return tiles.sort().join();
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check('maplibre-compat: after setData, each tile of the source fires sourcedata with its tile, as MapLibre GL JS (#2051)', ours !== '' && ours === ml, JSON.stringify({ours, ml}));
+    }
     // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
     const urlDiff = await page.evaluate(async () => {
         const m = window.map, source = m.getSource('zones'), point = (id, name) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
@@ -790,7 +812,7 @@ for (const mode of renderers) {
             const calls = [];
             for (let i = 0; i < 50; i++) calls.push(source.setData({type: 'FeatureCollection', features: [point('n' + i)]}));
             await Promise.all(calls);
-            await new Promise(r => setTimeout(r, 300));
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
             const drawn = (await m.querySource('zones', [-74.008, 40.7085], {radius: 5})).map(f => f.properties.name);
             return {one, fifty: sent, drawn};
         } finally { protos.forEach((p, i) => { p.postMessage = real[i]; }); }
@@ -930,7 +952,7 @@ for (const mode of renderers) {
         const m = window.map;
         m.jumpTo({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0});
         m.setPadding({left: 300});
-        await new Promise(r => setTimeout(r, 300));
+        for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
         const size = m.getContainer().getBoundingClientRect(), at = m.project(m.getCenter()), pad = m.getPadding();
         m.setPadding(0);
         return {at, expected: [size.width / 2 + 150, size.height / 2], pad};
@@ -1743,7 +1765,7 @@ for (const mode of renderers) {
         const marker = await page.evaluate(async () => {
             const lib = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.map;
             const one = new lib.Marker({color: '"/></svg><img src=x onerror="window.markerScript=1">'}).setLngLat(m.getCenter()).addTo(m);
-            await new Promise(r => setTimeout(r, 300));
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
             const out = {ran: !!window.markerScript, images: one.getElement().querySelectorAll('img').length, paths: one.getElement().querySelectorAll('path').length};
             one.remove();
             return out;
@@ -2994,7 +3016,7 @@ for (const mode of renderers) {
                         {id: 'line', type: 'line', source: 'g', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}, paint: {'line-width': 10}}]}});
             const idle = () => new Promise(r => { map.once('idle', r); setTimeout(r, 5000); });
             await idle();
-            await new Promise(r => setTimeout(r, 300));
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
             const out = {hidden: urls.length, foundHidden: (await map.queryRenderedFeatures([100, 75], {layers: ['line']})).length};
             map.setGlobalStateProperty('relief', true);
             await idle();
@@ -3752,7 +3774,7 @@ for (const mode of renderers) {
             await new Promise(r => setTimeout(r, 20)); // (the images reach the queue)
             const before = uploads;
             m.remove();
-            await new Promise(r => setTimeout(r, 300));
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
             const after = uploads - before;
             proto.texImage2D = original; ImageBitmap.prototype.close = close; window.createImageBitmap = copy; Object.defineProperty(MessagePort.prototype, 'onmessage', onmessage);
             el.remove(); mod.removeProtocol(name);
@@ -4619,7 +4641,7 @@ for (const mode of renderers) {
                     await new Promise(r => m.once('load', r));
                     window.coopDrag = {el, lng: () => m.getCenter().lng, remove: () => { m.remove(); el.remove(); }};
                 }
-                await new Promise(r => setTimeout(r, 300));
+                for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
                 window.coopDrag.moves = [];
                 window.coopDrag.record = e => window.coopDrag.moves.push(e.touches.length + ':' + e.defaultPrevented);
                 document.addEventListener('touchmove', window.coopDrag.record);
@@ -5573,7 +5595,7 @@ for (const mode of renderers) {
             // The ground past the antimeridian: red with copies of the world, and not red without them.
             const top = async (copies, make) => {
                 const el = box(), m = await make(el, copies);
-                await new Promise(r => setTimeout(r, 300));
+                for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
                 const bmp = await createImageBitmap(await m.toBlob()), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
                 g.drawImage(bmp, 0, 0);
                 const red = g.getImageData(bmp.width / 2, bmp.height * 0.05, 1, 1).data[0] > 200 && g.getImageData(bmp.width / 2, bmp.height * 0.05, 1, 1).data[1] < 60;
@@ -5954,7 +5976,7 @@ for (const mode of renderers) {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
                 const m = window.m1873 = new mod.Map({container: el, renderer, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: 40});
                 await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
-                await new Promise(r => setTimeout(r, 300));
+                for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
                 window.m1873n = {rotateend: 0, moveend: 0};
                 for (const t of ['rotateend', 'moveend']) m.on(t, () => { window.m1873n[t]++; });
             }, [lib, renderer]);
@@ -6038,7 +6060,7 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
             const m = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: -24});
             await new Promise(r => m.loaded() ? r() : m.once('load', r));
-            await new Promise(r => setTimeout(r, 300));
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
             const ends = [];
             m.on('moveend', () => ends.push(+m.getBearing().toFixed(1)));
             const canvas = m.getCanvas();
@@ -6068,7 +6090,7 @@ for (const mode of renderers) {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
                 const m = window.m479 = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
                 await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
-                await new Promise(r => setTimeout(r, 300));
+                for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
                 m.once('dragend', () => { window.at479 = m.project([10, 45]).x; });
             }, lib);
             await page.mouse.move(20, 150); await page.mouse.down();
@@ -6844,7 +6866,7 @@ for (const mode of renderers) {
             await new Promise(r => { m.once('idle', r); setTimeout(r, 3000); });
             const text = el.querySelector('.map-jr-ctrl-attrib-inner').textContent;
             m.setLayoutProperty('s', 'visibility', 'none');
-            await new Promise(r => setTimeout(r, 300)); m.triggerRepaint(); await new Promise(r => { m.once('idle', r); setTimeout(r, 2000); });
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
             const box = el.querySelector('.map-jr-ctrl-attrib'), shown = box.style.display !== 'none' && box.getBoundingClientRect().width > 0;
             m.remove(); el.remove();
             return {text, shown};
@@ -7012,7 +7034,7 @@ for (const mode of renderers) {
             out.off = await window.flashIdle(); out.ground = m.queryTerrainElevation?.([7.6586, 45.9763]) ?? null;
             m.setTerrain({source: 'dem', exaggeration: 1.5});
             out.on = await window.flashIdle();
-            await new Promise(r => setTimeout(r, 300));
+            for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
             out.elevation = Math.round(m.getCenterElevation?.() ?? NaN);
             const el = m.getContainer(); m.remove(); el.remove();
             return out;
@@ -7344,7 +7366,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         // runner, #1656.)
         const restart = await restored;
         m.remove(); el.remove();
-        await new Promise(r => setTimeout(r, 300)); // (a window for a late second call on the lost context)
+        for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
         return {lost, restart, all: window.loseCalls.all - before.all, whileLost: window.loseCalls.whileLost - before.whileLost};
     });
     check('[main] after a lost WebGL context the map does not call loseContext() on the lost context, and remove() loses the new one', calls.lost && calls.restart && calls.whileLost === 0 && calls.all === 2, JSON.stringify(calls));
