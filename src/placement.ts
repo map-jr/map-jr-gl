@@ -116,11 +116,19 @@ function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: numbe
     // (`getPitchedTextCorrection`), the step grows by the cosine at the center over that at (x, y), mixed by the globeness.
     const n = 2 ** it.id.z, g = 1 + tr.globeness * (Math.cosh(Math.PI * (1 - 2 * (it.id.y + y / EXTENT) / n)) * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1);
     const e = 16, d = e / it.scale * g, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
-    const [fx, fy] = tr.projectTile(it.id, x + c, y + s, m), [qx, qy] = tr.projectTile(it.id, x - s, y + c, m);
-    return [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
+    const P = (u: number, v: number) => tr.projectTile(it.id, x + u * c - v * s, y + u * s + v * c, m), [fx, fy] = P(1, 0), [qx, qy] = P(0, 1);
+    const f = [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
+    if (!tr.globeness) return f;
+    // On the globe each corner of a symbol goes through the sphere at its own place, as in MapLibre GL JS (#2194): the
+    // frame has a second order, three pairs for x², xy and y² (in pixels of the symbol), from steps on both sides.
+    // (The first order is then the mean of both sides.)
+    const [bx, by] = P(-1, 0), [vx, vy] = P(0, -1), [dx, dy] = P(1, 1), e2 = e * e;
+    f[0] = (fx - bx) / 2 / e; f[1] = (fy - by) / 2 / e; f[2] = (qx - vx) / 2 / e; f[3] = (qy - vy) / 2 / e;
+    f.push((fx + bx - 2 * ax) / 2 / e2, (fy + by - 2 * ay) / 2 / e2, (dx - fx - qx + ax) / e2, (dy - fy - qy + ay) / e2, (qx + vx - 2 * ax) / 2 / e2, (qy + vy - 2 * ay) / 2 / e2);
+    return f;
 }
 /** Turns the pairs of a frame by `turn` radians on the screen. */
-const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (let i = 0; i < 4; i += 2) { const x = f[i], y = f[i + 1]; to[i] = x * c - y * s; to[i + 1] = x * s + y * c; } };
+const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (let i = 0; i < f.length; i += 2) { const x = f[i], y = f[i + 1]; to[i] = x * c - y * s; to[i + 1] = x * s + y * c; } };
 
 /**
  * Moves the drawn copy `d` of the placed label `p` with the camera between placements: its anchor is now at (ax, ay)

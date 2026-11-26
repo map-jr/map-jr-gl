@@ -81,3 +81,29 @@ test('on the globe without pitch, an icon without text on the ground has the col
     assert.equal(shown(false), 2, 'Mercator shows both icons');
     assert.equal(shown(true), 2, 'the globe shows both icons');
 });
+
+test('on the globe each corner of an icon on the ground goes through the sphere at its own place (#2194)', () => {
+    // A 40-pixel icon at 45° N, 60° E on a globe at zoom 2 that looks at 0°, 0°: off the center the icon is a trapezoid.
+    const layer = compileLayer({id: 'i', type: 'symbol', source: 'g', layout: {
+        'icon-image': 'a', 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map'}})!;
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [60, 45]}} as any), 0, 0, 0);
+    const labels = buildTile(data, 0, [layer], false).labels;
+    const tr = new Transform();
+    tr.width = 512; tr.height = 512;
+    tr.globe = globe; tr.globeStops = [0, 1];
+    tr.set([0, 0], 2, 0, 0);
+    const items = renderItems(tr, [id], () => ({labels})), it = items[0] as any;
+    const icons = () => ({x: 0, y: 0, width: 40, height: 40, pixelRatio: 1} as any);
+    const p = (placeLabels as any)(tr, items, [layer], new EstimateShaper(), new CollisionGrid(), icons)[0];
+    const f: number[] = p.icon.frame, l = p.src;
+    assert.equal(f.length, 10, 'the frame has a second order on the globe');
+    // A pixel of the icon is this many tile units at the anchor (as `groundFrame` measures it).
+    const g = Math.cosh(Math.PI * (1 - 2 * l.y / 4096)) * Math.cos(tr.lat * Math.PI / 180), unit = g / it.scale;
+    for (const [u, v] of [[-20, -20], [20, -20], [-20, 20], [20, 20]]) {
+        const [sx, sy] = tr.projectTile(it.id, l.x + u * unit, l.y + v * unit);
+        const fx = p.ax + u * f[0] + v * f[2], fy = p.ay + u * f[1] + v * f[3];
+        const qx = fx + f[4] * u * u + f[6] * u * v + f[8] * v * v, qy = fy + f[5] * u * u + f[7] * u * v + f[9] * v * v;
+        assert.ok(Math.hypot(qx - sx, qy - sy) < 0.3, `corner (${u}, ${v}) with the second order: ${qx}, ${qy} against ${sx}, ${sy}`);
+        assert.ok(Math.hypot(fx - sx, fy - sy) > 0.8, `corner (${u}, ${v}) without it is off: ${fx}, ${fy} against ${sx}, ${sy}`);
+    }
+});
