@@ -2295,6 +2295,26 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find a point label whose text is hidden by collision, with both renderers (#1968)',
             ['main', 'worker'].every(r => hiddenPoint[r][0] === 'First label' && hiddenPoint[r][1] === 'First label'), JSON.stringify(hiddenPoint));
+        // A polygon in a symbol layer has its label at a point inside it. A query finds the polygon on the box of that label
+        // and not elsewhere in the polygon, as MapLibre GL JS does (#1969).
+        const polygonLabel = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [45, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {name: 'Area'}, geometry: {type: 'Polygon', coordinates: [[[35, -10], [55, -10], [55, 10], [35, 10], [35, -10]]]}}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const c = m.project([45, 0]), corner = m.project([37, 8]);
+                const ask = async p => (await m.queryRenderedFeatures(p, {layers: ['t']})).length;
+                out[renderer] = [await ask([c.x, c.y]), await ask([c.x + 8, c.y]), await ask([c.x + 60, c.y]), await ask([corner.x, corner.y])];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds a polygon of a symbol layer on its shown point label and not elsewhere, with both renderers (#1969)',
+            ['main', 'worker'].every(r => polygonLabel[r].join() === '1,1,0,0'), JSON.stringify(polygonLabel));
         // With `icon-optional`, the wide icon of B collides with the text of A and is hidden, and the text of B is shown. A
         // query at the point of A, under the hidden icon, finds only A, as MapLibre GL JS 6.17 does (#2089).
         const hiddenIcon = await page.evaluate(async () => {
