@@ -1726,7 +1726,7 @@
 "visibility/heatmap/none": "match",
 "visibility/heatmap/visible": "match",
 "visibility/hillshade/none": "match",
-"visibility/hillshade/visible": "match",
+"visibility/hillshade/visible": "near",
 "visibility/icon/none": "match",
 "visibility/icon/visible": "match",
 "visibility/line/none": "match",
