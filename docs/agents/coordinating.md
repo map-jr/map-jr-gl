@@ -99,6 +99,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   decisions in one call. An update says what happened and does not hold a question. Measure each option before you
   ask, and give the numbers: the first question of #1356 ("pages override with 2+ classes") came before a one-class
   page rule was measured, which loses, and had to be asked twice.
+- **Never wait for an answer in the question tool while you have other work that you can do** (the owner,
+  2026-11-26). The call of the tool holds your turn until the owner answers, and the owner may not answer for a long
+  time. Before you call it, do everything that does not depend on the answer: merge what is green, start the next
+  workers, send failures back, file the issues of the reports. Call it only when every step that is left needs the
+  answer, or when no other work is left.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
