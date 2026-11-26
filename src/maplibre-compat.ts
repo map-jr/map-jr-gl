@@ -42,7 +42,7 @@ export class Popup extends CorePopup {
             if (this.map && this.pointer) this.lngLat = toLngLat(this.map.unproject(this.pointer));
             position();
         };
-        if (options.subpixelPositioning) this.setSubpixelPositioning(true);
+        this.round = options.subpixelPositioning ? Number : Math.round;
         if (options.trackPointer) this.trackPointer();
     }
     setSubpixelPositioning(value: boolean) { this.options.subpixelPositioning = value; this.round = value ? Number : Math.round; this.update(); }
@@ -92,7 +92,7 @@ export {Evented};
  * option `subpixelPositioning` of MapLibre GL JS.
  */
 export class Marker extends CoreMarker {
-    constructor(options: MarkerOptions = {}) { super(options); if (options.subpixelPositioning) this.setSubpixelPositioning(true); }
+    constructor(options: MarkerOptions = {}) { super(options); this.setSubpixelPositioning(!!options.subpixelPositioning); }
     /** Places the marker on fractions of a pixel (`true`) or on whole pixels (`false`, the default). */
     setSubpixelPositioning(value: boolean) { this.round = value ? Number : Math.round; this.update(); return this; }
     get _map() { return this.map; }

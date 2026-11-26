@@ -833,6 +833,9 @@ const popup = map.overlay(content, {
 [`defaultPin`](exports.md#defaultpin) returns the default pin as an element. For many points, a symbol layer in
 [`layers`](description.md#layers) renders much faster than overlays.
 
+The map places the element at the fractional pixel position of `lngLat` and does not round it to whole
+pixels.
+
 The pointer events of an overlay reach the page as usual, and a press on an overlay does not pan the map. A drag of an
 element with `draggable` starts once the pointer has moved 3 pixels. A click without that move calls no drag
 callback, and the click at the end of a drag does not reach the element.

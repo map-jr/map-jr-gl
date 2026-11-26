@@ -31,7 +31,8 @@ abstract class Overlay extends Evented {
         this.el.style.transform = `translate(${this.round(p.x + this.offset[0])}px,${this.round(p.y + this.offset[1])}px) translate(-${part(this.anchor).join('%,-')}%)${tilt ? ` rotateX(${tilt}deg)` : ''}${turn ? ` rotate(${turn}deg)` : ''}`;
     };
     protected rotation = 0;
-    protected round = Math.round;
+    /** The main API places at subpixel positions; the compat entry rounds to whole pixels by default, as MapLibre GL JS. */
+    protected round: (v: number) => number = Number;
     protected rotationAlignment = 'auto';
     protected pitchAlignment = 'auto';
     setLngLat(lngLat: LngLatLike) { this.lngLat = toLngLat(lngLat); this.update(); return this; }
