@@ -146,7 +146,7 @@ try {
     check('server: the first view is the children of the element, with the layers and the data of the description', /<map-jr[^>]*><div data-map-jr-ssr=""[^>]*><svg[^>]*data-map-jr-ssr/.test(ssrPage) && ssrPage.includes('#123456') && ssrPage.endsWith('</map-jr>'), `${(ssrPage.length / 1024).toFixed(0)} KB`);
     let thrown = '';
     try { await renderElement(description, {attributes: {'on click': 'x'}}); } catch (e) { thrown = e.message; }
-    check('server: an attribute name that is not one throws a message', thrown.startsWith('[map-jr-gl] E30826 renderElement(): "on click"'), thrown);
+    check('server: an attribute name that is not one throws a message', thrown.startsWith('[map-jr-gl] E50826 renderElement(): "on click"'), thrown);
     thrown = '';
     try { await renderElement(description, {attributes: {onload: 'alert(1)'}}); } catch (e) { thrown = e.message; }
     check('server: an event handler attribute throws a message', thrown.includes('"onload" is not the name of an attribute that the element can have'), thrown);

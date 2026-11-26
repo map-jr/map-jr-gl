@@ -912,7 +912,7 @@ for (const mode of renderers) {
         m.on('click', ['missing-layer', 'zones-fill'], e => window.arrayEvents.push('click:' + e.features[0].properties.name));
         m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
-        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E278 https://map-jr.org/e/278 type="mouseenter"' ? 'message' : error.message); }
+        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E10278 https://map-jr.org/e/10278 type="mouseenter"' ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
         const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
@@ -4320,7 +4320,7 @@ for (const mode of renderers) {
         // an unroute, and its 404 is a page error, #517.)
         await page.unroute('**/test-255.json');
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
-            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E255 https://map-jr.org/e/255 id="r"', JSON.stringify(r));
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E10255 https://map-jr.org/e/10255 id="r"', JSON.stringify(r));
     }
     // Raster tiles are fetched and decoded in the tile workers, and the thread that draws only sends the images to the
     // GPU (#2068). In WebKit a decode runs on the thread that asks for it, and decodes on the thread that draws held its
