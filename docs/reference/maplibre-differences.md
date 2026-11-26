@@ -448,7 +448,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `strict`
 
 - **MapLibre GL JS:** 
-- **This library:** The constructor option `strict: true` makes each of these warnings and `error` events an error that is thrown. Use it in tests and while you change from MapLibre GL JS. The default is `false`.
+- **This library:** The constructor option `strict: true` makes each of these warnings and `error` events an error that is thrown. Use it in tests and while you change from MapLibre GL JS. The default is `false`. The warnings of `@map-jr/map-jr-gl/maplibre-compat` for mistakes and for options and methods that have no effect are in the development build only (the `development` export condition, `dist/*.dev.js`), as the checks of the main API are. The production build writes none of them. With `strict: true` the same cases throw in both builds; in the production build the message is `[map-jr-gl] <option or method> has no effect.` and leaves out the advice. Each row on this page that says that an option or a call "warns" means the development build.
 
 ### CSS class names
 

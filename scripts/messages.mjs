@@ -165,7 +165,7 @@ for (const file of files) {
             if (p.type === 'NewExpression' && /Error$/.test(calleeName(p.callee))) return 'Error';
             if (p.type === 'CallExpression') {
                 const c = calleeName(p.callee);
-                if (c === 'console.warn' || c === 'warnOnce' || c === 'warn' || c === 'noEffect') return 'Warning';
+                if (c === 'console.warn' || c === 'warnOnce' || c === 'warn' || c === 'noEffect' || c === 'this.mistake') return 'Warning';
                 if (c === 'console.error' || c === 'super' || c === 'refused' || c === 'reject' || c === 'fault' || c === 'bad' || /\.fire$|^emit$|\.emit$/.test(c)) return 'Error';
             }
             if (p.type === 'VariableDeclarator') {

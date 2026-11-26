@@ -2235,7 +2235,7 @@ for (const mode of renderers) {
     if (!canWorker) skip('setWorkerUrl with the worker file of MapLibre GL JS is ignored with one warning, and the map keeps its own worker', noWorkerRender);
     else {
         const r = await page.evaluate(async () => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js');
             const warns = [], warn = console.warn;
             console.warn = (...a) => { warns.push(String(a[0])); };
             mod.setWorkerUrl('/node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs');
@@ -2255,7 +2255,7 @@ for (const mode of renderers) {
     // once per map, and a control once per page, so this runs in one mode. (GeolocateControl is checked further down.)
     if (mode === 'main') {
         const r = await page.evaluate(async () => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js');
             const warns = [], warn = console.warn;
             console.warn = (...a) => { warns.push(String(a[0])); };
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
@@ -4297,7 +4297,7 @@ for (const mode of renderers) {
     // refuses fire `error`, and `strict: true` throws.
     if (mode === 'main') {
         const quiet = await page.evaluate(async () => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js'), wait = ms => new Promise(r => setTimeout(r, ms));
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
@@ -4370,6 +4370,23 @@ for (const mode of renderers) {
             && quiet.inline.source === 'geojson' && quiet.inline.of === 'inline' && quiet.inline.drawn > 0 && quiet.inline.kept, JSON.stringify(quiet.inline));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
             quiet.thrown.startsWith('[map-jr-gl] The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+        // #2133: the production build writes none of these warnings; strict: true still throws there, with a short text.
+        const prod = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), warnings = [], warn = console.warn, maps = [];
+            console.warn = (...a) => warnings.push(String(a[0]));
+            const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: []}, ...options}); maps.push(m); return m; };
+            let thrown = '';
+            try {
+                const m = make({fadeDuration: 0, projection: {type: 'globe'}, locale: 'fr', canvasContextAttributes: {preserveDrawingBuffer: true}, dragPan: {linearity: 0.5}, rotateSpeed: 2});
+                m.setRoll(10); m.showCollisionBoxes = true; m.setVerticalFieldOfView(NaN); m.setCenterElevation(100); m.setFeatureState({source: 's'}, {});
+                new mod.LogoControl({compact: true}); new mod.Popup({locationOccludedOpacity: 0.5}); mod.setWorkerUrl('https://unpkg.com/maplibre-gl/dist/maplibre-gl-csp-worker.js');
+                try { make({strict: true, fadeDuration: 0}); } catch (e) { thrown = e.message; }
+            } finally { console.warn = warn; }
+            for (const m of maps) { const el = m.getContainer(); m.remove(); el.remove(); }
+            return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown};
+        });
+        check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws a short text (#2133)',
+            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] The option fadeDuration has no effect.', JSON.stringify(prod));
     }
     // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
     // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
@@ -4953,7 +4970,7 @@ for (const mode of renderers) {
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {
         const logo = await page.evaluate(async () => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js');
             const warnings = [], warn = console.warn;
             console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
             try {
@@ -5127,7 +5144,7 @@ for (const mode of renderers) {
     // as MapLibre GL JS does (#1711): no move event, and so no frame, has a latitude past the limit.
     {
         const hook = await page.evaluate(async renderer => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
             const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const warnings = [], warn = console.warn, out = {};
@@ -5840,7 +5857,7 @@ for (const mode of renderers) {
             m1020.ml.length === m1020.compat.length && m1020.ml.every((v, i) => Math.abs(v - m1020.compat[i]) < 1e-6), JSON.stringify(m1020));
         // On a map that draws in a worker, the function has no effect and warns once; it fires no error (#1020).
         const w1020 = await page.evaluate(async () => {
-            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.dev.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
             const m = new compat.Map({container: el, renderer: 'worker', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 2});
             const warnings = [], errors = [], warn = console.warn;
@@ -7091,7 +7108,7 @@ for (const mode of renderers) {
     // setCenterElevation lasts after setCenterClampedToGround(false), as in MapLibre GL JS, and the engine keeps it (#897).
     // While the center is clamped, the call warns once and the center stays on the ground.
     const elevated = await page.evaluate(async () => {
-        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
         const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, maxPitch: 180, attributionControl: false});
         await new Promise(r => m.once('load', r));
         const idle = () => new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
