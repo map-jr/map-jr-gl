@@ -4972,6 +4972,37 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of an elevation tile whose reload answers 404 was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A raster tile whose reload answers 404 becomes a tile that the server does not have, as on a first load: its old image
+// goes, and a tile of a lower zoom stands in (MapLibre GL JS marks the tile `errored`, so its parent is drawn). The tiles
+// of zoom 4 are green with `max-age=2` and answer 404 from their first reload on; the tiles of lower zoom levels are red.
+// Before, the old tile was replaced by an empty one, and the center showed the blue background (#2124).
+{
+    const page = await browser.newPage({viewport: {width: 300, height: 200}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const seen = new Map();
+        await page.route(/\/ras2124\//, route => {
+            const k = new URL(route.request().url()).pathname, n = (seen.get(k) ?? 0) + 1, top = k.startsWith('/ras2124/4/');
+            seen.set(k, n);
+            const headers = {'access-control-allow-origin': '*', 'cache-control': top ? 'max-age=2' : 'max-age=3600'};
+            return (!top || n === 1 ? route.fulfill({status: 200, contentType: 'image/png', body: solidPNG(256, top ? [0, 255, 0] : [255, 0, 0]), headers}) : route.fulfill({status: 404, body: '', headers})).catch(() => {});
+        });
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const style = {version: 8, sources: {r: {type: 'raster', tiles: [location.origin + '/ras2124/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 4}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#00f'}}, {id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]};
+            const map = lib.createMap(document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'})), {style, initialView: {center: [10, 20], zoom: 4.5}, attribution: false});
+            await new Promise(r => map.listen('idle', r));
+        });
+        const color = async () => page.evaluate(async png => { const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(0, 0, 1, 1).data.slice(0, 3)].join(','); }, (await page.screenshot({clip: {x: 150, y: 100, width: 1, height: 1}})).toString('base64'));
+        const first = await color();
+        let last = first;
+        for (let i = 0; i < 40 && last !== '255,0,0'; i++) { await page.waitForTimeout(250); last = await color(); }
+        check('a raster tile whose reload answers 404 loses its old image, and a tile of a lower zoom stands in (#2124)',
+            first === '0,255,0' && last === '255,0,0', JSON.stringify({first, last}));
+    } catch (e) { check('the test of a raster tile whose reload answers 404 was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
