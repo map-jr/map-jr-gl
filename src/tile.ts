@@ -525,7 +525,7 @@ export function unpackLabels(packed: PackedLabels): Record<string, LabelSrc[]> {
 }
 
 /** `text-overlap` / `icon-overlap` ('never', 'always', 'cooperative') take precedence over the older allow-overlap flags. */
-const overlaps = (mode: string, allow: unknown) => mode ? mode !== 'never' : !!allow;
+export const overlaps = (mode: string, allow: unknown) => mode ? mode !== 'never' : !!allow;
 
 /** `text-justify` as a number; `auto` follows the side the text is anchored on. */
 export function justification(justify: string, anchor: string): number {

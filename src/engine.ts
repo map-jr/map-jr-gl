@@ -11,7 +11,7 @@ import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
-import {globeBuild, type TileGL} from './tile.ts';
+import {globeBuild, overlaps, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
@@ -2013,13 +2013,13 @@ export class Engine {
         for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
     }
 
-    /** The points on the screen (x, y pairs) of the shown labels of a layer that have their icon drawn. */
+    /** The points in Mercator (x, y pairs, 0 to 1) of the shown labels of a layer that have their icon drawn. */
     private iconPoints(layer: string) {
         const out: number[] = [];
         for (const [key, {placed: p, target}] of this.labels) {
             if (!target || !p.icon || !key.startsWith(layer + '|')) continue;
-            const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y);
-            out.push(x, y);
+            const n = 2 ** p.tile.z;
+            out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n);
         }
         return out;
     }
@@ -2085,9 +2085,11 @@ export class Engine {
             // `text-transform` can change it. When no shown text is the feature's, its icon is tested.)
             const own = mine.filter(t => t.text?.toLowerCase().replace(/\s/g, '') === field);
             if (!image || own.length && !own.some(t => t.icon)) return false;
-            // (An icon that collision hid is not found, as in MapLibre GL JS: a shown icon of the layer is at the point: #2181.)
-            let drawn = false;
-            for (let i = 0; i < icons.length && !drawn; i += 2) drawn = Math.abs(icons[i] - x) < 1 && Math.abs(icons[i + 1] - y) < 1;
+            // (An icon that collision hid is not found, as in MapLibre GL JS: a shown icon of the layer is at the point: #2181.
+            // An icon without text that may overlap is always drawn, and the tiles can draw it apart from the labels.)
+            let drawn = !text && overlaps(L.p.iconOverlapMode.eval(z, f), L.p.iconOverlap.eval(z, f));
+            const mx = mercX(lng), my = mercY(lat), e = 1 / tr.worldSize;
+            for (let i = 0; i < icons.length && !drawn; i += 2) drawn = Math.abs(icons[i] - mx) < e && Math.abs(icons[i + 1] - my) < e;
             if (!drawn) return false;
             // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
             const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
