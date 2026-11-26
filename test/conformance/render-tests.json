@@ -635,7 +635,7 @@
 "icon-translate/literal": "match",
 "image/default": "match",
 "image/dragged-corner": "match",
-"image/near-triangle": "differ",
+"image/near-triangle": "match",
 "image/pitched": "match",
 "image/projective": "match",
 "image/projective-trapezoid": "match",
