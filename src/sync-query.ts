@@ -14,12 +14,13 @@ export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: objec
     let data = prepared.get(spec.data);
     if (!data) prepared.set(spec.data, data = prepareSource(spec.data, spec, spec.maxzoom ?? 18));
     // (A circle whose size depends on the feature reaches as far as its largest size in the data; see `QuerySet.most`.)
-    const feats: any[] = (spec.data as any).features ?? [spec.data];
+    // (The features as the source prepared them, with the id that `promoteId` or `generateId` gives.)
+    const feats = [...data.features, ...data.points ?? []];
     sets = sets.map(s => {
         if (!s.size || s.size.line) return s;
         const a = compileProp(s.size.a, 'number', 5), b = compileProp(s.size.b, 'number', 0), most: [number, number] = [0, 0];
         for (const f of feats) {
-            const g = {type: 1, id: f.id, properties: f.properties ?? {}, state: f.id === undefined ? undefined : states?.[`|${f.id}`]};
+            const g = {type: f.type, id: f.id, properties: f.properties, state: f.id === undefined ? undefined : states?.[`|${f.id}`]};
             most[0] = Math.max(most[0], a.eval(s.size.zoom, g)), most[1] = Math.max(most[1], b.eval(s.size.zoom, g));
         }
         return {...s, most};
