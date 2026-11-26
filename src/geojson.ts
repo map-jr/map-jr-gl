@@ -351,6 +351,7 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
             const r = f.rings[ri], keep = f.keep?.[ri];
             if (keep && keep[r.length / 2] < (f.type === 3 ? sqTol : Math.sqrt(sqTol))) continue;
             let pts: number[] = [];
+            const g = f.type === 2 ? 2 : 1;
             // With `lineMetrics`, the distance along the full line at each vertex, so that `line-progress` does not
             // depend on simplification (#1890). Such a line keeps every vertex until it is clipped.
             const d = f.type === 2 && metrics ? (f.dist ??= [])[ri] ??= lengths(r) : null, skip: boolean[] = [];
@@ -373,9 +374,11 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
                 }
                 const drop = !!keep && keep[i / 2] <= sqTol;
                 if (drop && !d) continue;
-                const tx = Math.round(((r[i] + w) * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
+                // (The vertices of a line are rounded to halves of a tile unit, as geojson-vt rounds them to whole units
+                // of a tile 8192 wide; see tessellateLine. Other vertices are rounded to whole units.)
+                const tx = Math.round(((r[i] + w) * n - x) * EXTENT * g) / g, ty = Math.round((r[i + 1] * n - y) * EXTENT * g) / g, m = pts.length;
                 if (d) pts.push(tx, ty), skip.push(drop);
-                else if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
+                else if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than the rounding step
             }
             if (d) {
                 // Each piece is a feature of its own that knows which part of the line it is, as in MapLibre.

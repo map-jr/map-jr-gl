@@ -193,7 +193,7 @@ uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float
 uniform float u_cam; uniform float u_dpr;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap; out float v_aa;
 void main() {
-  vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
+  vec4 a_v = vec4(a_packed.xy * 0.5, a_packed.zw / 8192.0); /* positions in halves of a tile unit: see tessellateLine */ vec2 a_sd = vec2(a_side, a_dist);
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
   v_blur = a_blur + u_zt * a_blur1; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.

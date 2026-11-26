@@ -15,7 +15,7 @@ test('line joins: a right angle meets at the inner miter point and has a pair of
     const out = tessellate(buildTile(data, z, [compileLayer({id: 'l', type: 'line', source: 'g', layout: {'line-join': 'bevel'}})!], false).layers.l)!;
     const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength), vs = [];
     for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
-        vs.push({x: view.getInt16(o, true), y: view.getInt16(o + 2, true), nx: view.getInt16(o + 4, true) / LINE_NORMAL,
+        vs.push({x: view.getInt16(o, true) / 2, y: view.getInt16(o + 2, true) / 2, nx: view.getInt16(o + 4, true) / LINE_NORMAL,
             ny: view.getInt16(o + 6, true) / LINE_NORMAL, side: view.getInt16(o + 8, true), dist: view.getFloat32(o + 12, true)});
     }
     // The corner is the vertex that the line passes at its middle distance.
@@ -44,13 +44,13 @@ test('line joins: line-offset moves the four vertices of a bevel corner along it
     const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength);
     // The position that the vertex shader of src/gl.ts gives a vertex for a half width hw and an offset off (tile units).
     const at = (o: number, hw: number, off: number) => {
-        const x = view.getInt16(o, true), y = view.getInt16(o + 2, true), ex = view.getInt16(o + 4, true) / LINE_NORMAL, ey = view.getInt16(o + 6, true) / LINE_NORMAL;
+        const x = view.getInt16(o, true) / 2, y = view.getInt16(o + 2, true) / 2, ex = view.getInt16(o + 4, true) / LINE_NORMAL, ey = view.getInt16(o + 6, true) / LINE_NORMAL;
         const raw = view.getInt16(o + 8, true), side = Math.sign(raw), c = Math.abs(raw) > 1.5 ? (Math.abs(raw) - 2) / 4096 - 2 : 0;
         return [x + ex * (hw + side * off) + c * off * ey, y + ey * (hw + side * off) - c * off * ex];
     };
     const byCorner = new Map<string, number[]>();
     for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
-        const key = view.getInt16(o, true) + ',' + view.getInt16(o + 2, true);
+        const key = view.getInt16(o, true) / 2 + ',' + view.getInt16(o + 2, true) / 2;
         byCorner.set(key, [...byCorner.get(key) ?? [], o]);
     }
     // The ends and the extra pairs have two vertices, a bevel corner has four.
@@ -77,14 +77,14 @@ test('line joins: line-offset moves a round join and a round cap as a whole, so 
     const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength);
     // The position that the vertex shader of src/gl.ts gives a vertex for a half width hw and an offset off (tile units).
     const at = (o: number, hw: number, off: number) => {
-        const x = view.getInt16(o, true), y = view.getInt16(o + 2, true), nx = view.getInt16(o + 4, true) / LINE_NORMAL, ny = view.getInt16(o + 6, true) / LINE_NORMAL;
+        const x = view.getInt16(o, true) / 2, y = view.getInt16(o + 2, true) / 2, nx = view.getInt16(o + 4, true) / LINE_NORMAL, ny = view.getInt16(o + 6, true) / LINE_NORMAL;
         const raw = view.getInt16(o + 8, true), sa = Math.abs(raw), side = Math.sign(raw), c = sa > 1.5 && sa < 16383.5 ? (sa - 2) / 4096 - 2 : 0, t = (sa - 24575) / 8191 * Math.PI;
         const [ex, ey] = sa > 16383.5 ? [Math.cos(t), Math.sin(t)] : [nx * Math.abs(side), ny * Math.abs(side)], s = side || 1;
         return [x + ex * hw + (nx * s + c * ny) * off, y + ey * hw + (ny * s - c * nx) * off];
     };
     const byPoint = new Map<string, number[]>();
     for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
-        const key = view.getInt16(o, true) + ',' + view.getInt16(o + 2, true);
+        const key = view.getInt16(o, true) / 2 + ',' + view.getInt16(o + 2, true) / 2;
         byPoint.set(key, [...byPoint.get(key) ?? [], o]);
     }
     // Two ends with a cap and four corners with a fan; the extra pairs of a sharp corner have two vertices.
@@ -116,13 +116,13 @@ test('line joins: past a turn of 120 degrees, line-offset moves the pairs of a r
         const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength);
         // The position that the vertex shader of src/gl.ts gives a vertex for a half width hw and an offset off.
         const at = (o: number, hw: number, off: number) => {
-            const x = view.getInt16(o, true), y = view.getInt16(o + 2, true), nx = view.getInt16(o + 4, true) / LINE_NORMAL, ny = view.getInt16(o + 6, true) / LINE_NORMAL;
+            const x = view.getInt16(o, true) / 2, y = view.getInt16(o + 2, true) / 2, nx = view.getInt16(o + 4, true) / LINE_NORMAL, ny = view.getInt16(o + 6, true) / LINE_NORMAL;
             const raw = view.getInt16(o + 8, true), sa = Math.abs(raw), side = Math.sign(raw), c = sa > 1.5 && sa < 16383.5 ? (sa - 2) / 4096 - 2 : 0, t = (sa - 24575) / 8191 * Math.PI;
             const [ex, ey] = sa > 16383.5 ? [Math.cos(t), Math.sin(t)] : [nx * Math.abs(side), ny * Math.abs(side)], s = side || 1;
             return [x + ex * hw + (nx * s + c * ny) * off, y + ey * hw + (ny * s - c * nx) * off];
         };
         const pts = new Map<number, number[]>();
-        for (let o = 0; o < view.byteLength; o += LINE_VERTEX) pts.set(view.getFloat32(o + 12, true), [view.getInt16(o, true), view.getInt16(o + 2, true)]);
+        for (let o = 0; o < view.byteLength; o += LINE_VERTEX) pts.set(view.getFloat32(o + 12, true), [view.getInt16(o, true) / 2, view.getInt16(o + 2, true) / 2]);
         const [p0, p1, p2] = [...pts.keys()].sort((a, b) => a - b).map(k => pts.get(k)!);
         const unit = (x: number, y: number) => { const l = Math.hypot(x, y); return [x / l, y / l]; };
         const [pdx, pdy] = unit(p1[0] - p0[0], p1[1] - p0[1]), [dx, dy] = unit(p2[0] - p1[0], p2[1] - p1[1]);
@@ -131,7 +131,7 @@ test('line joins: past a turn of 120 degrees, line-offset moves the pairs of a r
         const want = [pn, nn].map(([x, y]) => [(bx + (x - bx) * ease) * 12, (by + (y - by) * ease) * 12]);
         const seen = new Set<number>();
         for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
-            if (view.getInt16(o, true) !== p1[0] || view.getInt16(o + 2, true) !== p1[1]) continue;
+            if (view.getInt16(o, true) / 2 !== p1[0] || view.getInt16(o + 2, true) / 2 !== p1[1]) continue;
             const [x0, y0] = at(o, 10, 0), [x1, y1] = at(o, 10, 12), k = want.findIndex(([wx, wy]) => Math.hypot(x1 - x0 - wx, y1 - y0 - wy) < 0.1);
             assert.ok(k >= 0, `turn ${turn}: a vertex at the corner moves by ${[x1 - x0, y1 - y0]}, not by one of ${JSON.stringify(want)}`);
             seen.add(k);
@@ -150,7 +150,7 @@ test('line joins: a miter join that turns more than 120 degrees is a flipbevel, 
     const out = tessellate(buildTile(data, z, [compileLayer({id: 'l', type: 'line', source: 'g', layout: {'line-join': 'miter'}})!], false).layers.l)!;
     const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength), vs = [];
     for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
-        vs.push({x: view.getInt16(o, true), y: view.getInt16(o + 2, true), nx: view.getInt16(o + 4, true) / LINE_NORMAL,
+        vs.push({x: view.getInt16(o, true) / 2, y: view.getInt16(o + 2, true) / 2, nx: view.getInt16(o + 4, true) / LINE_NORMAL,
             ny: view.getInt16(o + 6, true) / LINE_NORMAL, side: view.getInt16(o + 8, true)});
     }
     const atCorner = vs.filter(v => v.x === 2048 && v.y === 2048);
@@ -160,4 +160,23 @@ test('line joins: a miter join that turns more than 120 degrees is a flipbevel, 
     const len = Math.hypot(atCorner[0].nx, atCorner[0].ny);
     for (const v of atCorner) assert.ok(Math.abs(Math.hypot(v.nx, v.ny) - len) < 0.01, 'all the same length');
     assert.ok(len > 1 && len < 1.2, `the length is about 1 / sin of half the turn (${len})`);
+});
+
+test('line joins: a GeoJSON line keeps halves of a tile unit, and a turn of 175 degrees has the pairs of a sharp corner', () => {
+    // MapLibre GL JS rounds the vertices of a GeoJSON line in a tile 8192 units wide, twice as fine as the tiles here,
+    // and adds a pair of vertices 15 pixels from every corner sharper than 75 degrees (#2118; the render test
+    // `regressions/mapbox-gl-native#15139`). Before, vertices were whole units, and a miter corner past 120 degrees had
+    // no such pairs.
+    const z = 10, tx = 300, ty = 380, n = 2 ** z, unit = 360 / n / 4096;
+    const lng = (tx + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 0.5) / n))) * 180 / Math.PI;
+    // The corner is half a unit east of the middle of the tile, and the line turns back by 175 degrees there.
+    const turn = 175 * Math.PI / 180, far = 0.05, cx = lng + 0.5 * unit;
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString',
+        coordinates: [[cx - far, lat], [cx, lat], [cx + far * Math.cos(turn), lat + far * Math.sin(turn)]]}} as any), z, tx, ty);
+    const out = tessellate(buildTile(data, z, [compileLayer({id: 'l', type: 'line', source: 'g'})!], false).layers.l)!;
+    const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength), vs = [];
+    for (let o = 0; o < view.byteLength; o += LINE_VERTEX) vs.push({x: view.getInt16(o, true) / 2, y: view.getInt16(o + 2, true) / 2});
+    assert.ok(vs.some(v => v.x === 2048.5 && v.y === 2048), 'a vertex at the corner, half a unit east of the middle');
+    const sharp = vs.filter(v => Math.abs(Math.hypot(v.x - 2048.5, v.y - 2048) - 120) < 1);
+    assert.equal(sharp.length, 4, 'a pair of vertices on each segment 15 pixels from the corner');
 });

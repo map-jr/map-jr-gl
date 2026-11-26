@@ -17,7 +17,7 @@ test('GeoJSON line-progress: a kept vertex has the progress along the full line 
     const expected = along[corner] / along[along.length - 1];
     for (const z of [5, 8, 11, 14]) {
         const n = 2 ** z, x = Math.floor(mercX(5) * n), y = Math.floor(mercY(0.5) * n);
-        const cx = Math.round((mercX(5) * n - x) * 4096), cy = Math.round((mercY(0.5) * n - y) * 4096);
+        const cx = Math.round((mercX(5) * n - x) * 8192) / 2, cy = Math.round((mercY(0.5) * n - y) * 8192) / 2; // (a line keeps halves of a tile unit)
         let progress: number | undefined;
         for (const f of Object.values(sliceGeoJSON(s, z, x, y, true))[0].features) {
             const c: number[] = [];

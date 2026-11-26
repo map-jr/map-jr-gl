@@ -12,7 +12,8 @@ import {VARIANT, variantName} from './markers.ts';
  * The SVG backend turns this straight into paths; `tessellate` turns it into GPU buffers.
  */
 export interface Geom {
-    coords: Int16Array;
+    /** Float32Array for lines, whose vertices keep halves of a tile unit (see `tessellateLine`). */
+    coords: Int16Array | Float32Array;
     /** Cumulative point count at the end of each ring. */
     ringEnds: Uint32Array;
     /** Cumulative ring count at the end of each feature. */
@@ -409,7 +410,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (!featEnds.length) continue;
             const batch: Batch = {
                 type: kind as Batch['type'],
-                geom: {coords: Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds)},
+                geom: {coords: kind === 'line' ? Float32Array.from(coords) : Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds)},
             };
             if (ddColor && !progress) batch.color = Uint8Array.from(color);
             if (progress) batch.progress = Float32Array.from(progress);
@@ -609,7 +610,7 @@ export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
             }
             edges = Uint32Array.from(list);
         }
-        return {type: 'fill', pos: coords, idx: Uint32Array.from(idx), color, edges};
+        return {type: 'fill', pos: coords as Int16Array, idx: Uint32Array.from(idx), color, edges};
     }
 
     return tessellateLine(b);
@@ -623,7 +624,7 @@ function cutRings(g: Geom, {grid, cutLine}: GlobeCut, closed: boolean): Geom {
         cutLine(g.coords, r ? g.ringEnds[r - 1] : 0, g.ringEnds[r], Math.max(1, grid), out, closed);
         ringEnds[r] = out.length / 2;
     }
-    return {coords: Int16Array.from(out), ringEnds, featEnds: g.featEnds};
+    return {coords: closed ? Int16Array.from(out) : Float32Array.from(out), ringEnds, featEnds: g.featEnds};
 }
 
 /**
@@ -634,7 +635,7 @@ function tessellateGlobeFill(b: Batch, globe: GlobeCut): GLBatch | null {
     const g = b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
     for (let f = 0; f < g.featEnds.length; f++) {
         const polygons: {coords: Int16Array; holes: number[]}[] = [];
-        eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: g.coords.subarray(p0 * 2, p1 * 2), holes}));
+        eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: (g.coords as Int16Array).subarray(p0 * 2, p1 * 2), holes}));
         features.push(polygons);
     }
     const cut = globe.cutFill(features, globe);
@@ -676,7 +677,7 @@ function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: num
         cb(p0, ringEnds[endRing - 1], holes);
     };
     for (let r = first; r < last; r++) {
-        const area = ringArea(coords, r ? ringEnds[r - 1] : 0, ringEnds[r]);
+        const area = ringArea(coords as Int16Array, r ? ringEnds[r - 1] : 0, ringEnds[r]);
         if (!area) continue;
         const sign = area > 0 ? 1 : -1;
         if (!outerSign) outerSign = sign;
@@ -758,7 +759,8 @@ const ARC_STEP = Math.PI / 5;
  * x, y, normalX, normalY, side (-1..1 across the line, for edge antialiasing), distance along the line (for dashes).
  */
 /**
- * A line vertex is 16 bytes: position x, y (int16, tile units); the direction to push it sideways (int16, times
+ * A line vertex is 16 bytes: position x, y (int16, halves of a tile unit, so that a vertex is as exact as in MapLibre GL
+ * JS, whose tiles are 8192 units wide); the direction to push it sideways (int16, times
  * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: its sign;
  * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel and `fan` for the outer vertices of a fan); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
  */
@@ -865,9 +867,9 @@ function tessellateLine(b: Batch): GLBatch | null {
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
                     // As in MapLibre GL JS, a corner sharper than 75 degrees has one more pair of vertices on each
                     // segment, 15 pixels from the corner, so that the join bends the dashes only near the corner.
-                    // (A miter or bevel join past 120 degrees does not have them yet: see #2118.)
-                    const sharp = cos < COS_SHARP && (cos >= 0.5 || round) && b.sharp ? b.sharp : 0;
-                    if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - pdx * sharp, y - pdy * sharp, pnx, pny); dist += sharp; }
+                    // (MapLibre rounds the step to whole units of its tiles, which are halves of a unit here.)
+                    const sharp = cos < COS_SHARP && b.sharp ? b.sharp : 0, step = (t: number) => Math.round(t * sharp * 2) / 2;
+                    if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - step(pdx), y - step(pdy), pnx, pny); dist += sharp; }
                     if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
                     else if (!round && cos < 0.5) {
                         // A miter or bevel join that turns more than 120 degrees is a "flipbevel", as in MapLibre GL JS:
@@ -898,7 +900,7 @@ function tessellateLine(b: Batch): GLBatch | null {
                         }
                         if (blunt) movedPair(x, y, nx, ny, o2x, o2y); else pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
                     }
-                    if (sharp && len > 2 * sharp) { dist += sharp; pair(x + dx * sharp, y + dy * sharp, nx, ny); dist -= sharp; }
+                    if (sharp && len > 2 * sharp) { dist += sharp; pair(x + step(dx), y + step(dy), nx, ny); dist -= sharp; }
                 }
                 dist += len;
                 pdx = dx; pdy = dy; plen = len;
@@ -912,9 +914,9 @@ function tessellateLine(b: Batch): GLBatch | null {
     }
     if (!idx.length) return null;
     // Packed to 16 bytes a vertex (it was 24 as plain floats): lines are most of a tile, and every byte is uploaded.
-    const packed = new ArrayBuffer(count * LINE_VERTEX), view = new DataView(packed);
+    const packed = new ArrayBuffer(count * LINE_VERTEX), view = new DataView(packed), half = (t: number) => Math.max(-32768, Math.min(32767, Math.round(t * 2)));
     for (let i = 0, o = 0; i < count; i++, o += LINE_VERTEX) {
-        view.setInt16(o, Math.round(v[i * 6]), true); view.setInt16(o + 2, Math.round(v[i * 6 + 1]), true);
+        view.setInt16(o, half(v[i * 6]), true); view.setInt16(o + 2, half(v[i * 6 + 1]), true);
         view.setInt16(o + 4, Math.round(v[i * 6 + 2] * LINE_NORMAL), true); view.setInt16(o + 6, Math.round(v[i * 6 + 3] * LINE_NORMAL), true);
         view.setInt16(o + 8, v[i * 6 + 4], true);
         if (b.offset) view.setInt16(o + 10, Math.max(-32768, Math.min(32767, Math.round(b.offset[feats[i]] * 8))), true);
