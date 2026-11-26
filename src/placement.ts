@@ -65,6 +65,11 @@ export interface Placed {
      * and one pixel down the text go on the screen (two x, y pairs). It takes the place of `angle`.
      */
     frame?: number[];
+    /**
+     * Text at a point of a layer with `icon-offset`: drawn without the perspective ratio, as in MapLibre GL JS, while its
+     * collision box and the box that queries find keep the ratio (see `CompiledLayer.fixedSize`).
+     */
+    fixedSize?: boolean;
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
     key: string;
     /** The id of the symbol layer of the label, so that its text is drawn in the place of that layer. */
@@ -85,12 +90,12 @@ export interface Placed {
  * degrees that is at about 1.2 times the camera distance, so without the far plane labels showed in the sky (#924).
  */
 export const tooFar = (tr: Transform, depth: number, far: number) => !!tr.pitch && !(0.5 + 0.5 * tr.cameraDistance / depth >= 0.6 && depth > 0 && (tr.globeness > 0 || depth <= far));
-const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
+export const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
 /**
  * The size of a symbol that lies on the ground, at the distance `depth`, in pixels of the ground for each pixel of its
  * size. As in MapLibre GL JS a far symbol is larger on the ground, by half of what the perspective takes away.
  */
-const flatSize = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * depth / tr.cameraDistance) : 1;
+export const flatSize = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * depth / tr.cameraDistance) : 1;
 /** How much a symbol on the ground grows on the screen when its anchor moves from the distance `from` to `to`. */
 const flatGrow = (tr: Transform, from: number, to: number) => flatSize(tr, to) / flatSize(tr, from) * (to > 0 ? from / to : 1);
 /**
@@ -127,7 +132,8 @@ const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (le
  */
 export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: number, depth: number, turn: number, turned: boolean): boolean {
     const grow = perspective(tr, depth) / perspective(tr, p.depth);
-    const k = p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
+    const k = p.fixedSize ? p.frame ? (depth > 0 ? p.depth / depth : 1) : 1
+        : p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
     d.size = p.size * k;
     const rotate = !!turn && (!p.src.upright || (!p.shaped && !!p.icon && !p.src.icon!.upright));
     const tc = rotate ? Math.cos(turn) * k : k, ts = rotate ? Math.sin(turn) * k : 0, gc = rotate ? Math.cos(turn) : 1, gs = rotate ? Math.sin(turn) : 0;
@@ -470,7 +476,7 @@ export function placeLabels(
                 // is turned by the bearing (#2037).
                 const bturn = line || flat || l.upright ? 0 : north;
                 // (Text that lies on the ground has its size on the ground: see `flatSize`.)
-                const size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * (flat ? flatSize(tr, depth) : persp), s = size / EM;
+                let size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * (flat ? flatSize(tr, depth) : persp), s = size / EM;
                 const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
@@ -672,6 +678,21 @@ export function placeLabels(
                             haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};
                     } else if (!(hasText && (textBox || bent) && ic.optional)) continue; // (a required icon that is not placed drops its text too, as in MapLibre)
                 }
+                // As in MapLibre GL JS (`u_is_offset`), the text of a layer with `icon-offset` is drawn without the perspective
+                // ratio, and so is an icon that `icon-text-fit` stretches around it. Their collision boxes above keep the ratio:
+                // the drawn text, its offset from the anchor and the fitted icon shrink toward the anchor by the ratio (#2057).
+                let fixed = false;
+                if (L.fixedSize && textBox && !line && !twin) {
+                    const r = flat ? flatSize(tr, depth) : persp;
+                    fixed = true;
+                    if (r !== 1) {
+                        size /= r; tx = ax + (tx - ax) / r; ty = ay + (ty - ay) / r;
+                        if (icon && ic && ic.fit !== 'none') {
+                            icon.x = ax + (icon.x - ax) / r; icon.y = ay + (icon.y - ay) / r; icon.w /= r; icon.h /= r;
+                            for (const g of [icon.gx, icon.gy]) if (g) for (let i = 1; i < g.length; i += 2) g[i] /= r;
+                        }
+                    }
+                }
                 if (bent) { bent.icon = icon; for (const b of bentBoxes) grid.insert(...b); if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
                 if (!textBox && !icon) continue;
                 if (textBox && twinKey && !twin) twins.set(twinKey, {layer: L.id, group: L.group, box: textBox, x: tx, y: ty, justify});
@@ -681,7 +702,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor});
+                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor, fixedSize: fixed || undefined});
             }
         }
         if (drawByY && out.length - first > 1) {

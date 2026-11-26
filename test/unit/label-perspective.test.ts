@@ -112,3 +112,30 @@ test('placeLabels: the collision box of an icon fitted to its text is the same w
     assert.equal(plain.length, 2, 'the text and the icon are placed');
     for (let i = 0; i < 4; i++) assert.ok(Math.abs(zero[1][i] - plain[1][i]) < 0.01, `the box with icon-offset [0, 0] is ${zero[1].map(v => v.toFixed(2))}, without it ${plain[1].map(v => v.toFixed(2))}`);
 });
+
+// MapLibre GL JS draws the text of a layer with `icon-offset` without the perspective ratio too (`u_is_offset` is set
+// for the text program), while its collision box keeps the ratio (#2057). An icon fitted to that text is drawn around
+// the text without the ratio, and its box keeps the ratio too.
+for (const align of ['viewport', 'map'] as const) test(`placeLabels: text of a layer with icon-offset and text-pitch-alignment ${align} is drawn without the perspective ratio`, () => {
+    const run = (layout: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'text-field': 'Main', 'text-size': 16, 'text-offset': [0, 2], 'icon-text-fit': 'both', 'text-pitch-alignment': align, ...layout}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: cases[1][2] as any}), z, tx, ty);
+        const labels = buildTile(data, z, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.8)], z, 0, 60);
+        const boxes: number[][] = [], grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+        grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
+        const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+        const [p] = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
+        return {p, boxes};
+    };
+    const plain = run({}), off = run({'icon-offset': [0, 0]});
+    assert.ok(plain.p?.icon && off.p?.icon, 'the labels are placed');
+    const r = plain.p.size / 16;
+    assert.ok(Math.abs(r - 1) > 0.05, `the ratio changes the size of the text (${plain.p.size} px)`);
+    assert.ok(Math.abs(off.p.size - 16) < 0.01, `the text with icon-offset is ${off.p.size} px, not 16`);
+    assert.ok(Math.abs((off.p.y - off.p.ay) * r - (plain.p.y - plain.p.ay)) < 0.01, 'the offset of the text from the anchor has no ratio');
+    assert.ok(Math.abs(off.p.icon.w * r - plain.p.icon.w) < 0.01, `the fitted icon is ${off.p.icon.w} px wide, ${plain.p.icon.w} px with the ratio`);
+    for (let b = 0; b < 2; b++) for (let i = 0; i < 4; i++) assert.ok(Math.abs(off.boxes[b][i] - plain.boxes[b][i]) < 0.01, `box ${b} with icon-offset is ${off.boxes[b].map(v => v.toFixed(2))}, without it ${plain.boxes[b].map(v => v.toFixed(2))}`);
+});
