@@ -91,3 +91,24 @@ for (const align of ['viewport', 'map'] as const) test(`placeLabels: the collisi
     assert.ok(Math.abs(moved[3] - moved[1] - (plain[3] - plain[1])) < 0.01, `the box is ${(moved[3] - moved[1]).toFixed(2)} px high, not ${(plain[3] - plain[1]).toFixed(2)}`);
     assert.ok(Math.abs(moved[1] - plain[1] + h / 2) < 0.05, `the box moves by ${(moved[1] - plain[1]).toFixed(2)} px, not ${(-h / 2).toFixed(2)}`);
 });
+
+// An icon that `icon-text-fit` stretches around its text takes its size from the text, which already has the ratio: its
+// box does not get the ratio a second time when the layer has `icon-offset` (#2058).
+test('placeLabels: the collision box of an icon fitted to its text is the same with icon-offset [0, 0] on a tilted map', () => {
+    const boxesOf = (layout: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'text-field': 'Main', 'icon-text-fit': 'both', ...layout}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: cases[1][2] as any}), z, tx, ty);
+        const labels = buildTile(data, z, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.8)], z, 0, 60);
+        const boxes: number[][] = [], grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+        grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
+        const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+        (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
+        return boxes;
+    };
+    const plain = boxesOf({}), zero = boxesOf({'icon-offset': [0, 0]});
+    assert.equal(plain.length, 2, 'the text and the icon are placed');
+    for (let i = 0; i < 4; i++) assert.ok(Math.abs(zero[1][i] - plain[1][i]) < 0.01, `the box with icon-offset [0, 0] is ${zero[1].map(v => v.toFixed(2))}, without it ${plain[1].map(v => v.toFixed(2))}`);
+});

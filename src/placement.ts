@@ -653,8 +653,9 @@ export function placeLabels(
                         bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1);
                     }
                     // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
-                    // (`L.fixedSize`, a layer with `icon-offset`): the box and its offset from the anchor grow with it.
-                    const r = L.fixedSize ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
+                    // (`L.fixedSize`, a layer with `icon-offset`): the box and its offset from the anchor grow with it. An icon
+                    // that `icon-text-fit` stretches has its size from the text, which has the ratio already.
+                    const r = L.fixedSize && fit === 'none' ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
                     const qx = cx + (bx - cx) * r, qy = cy + (by - cy) * r;
                     bw *= r; bh *= r;
                     const box = line || iflat ? boxAround(qx, qy, bw, bh, angle, ic.padding) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
