@@ -294,6 +294,50 @@ for (const mode of renderers) {
             return result;
         }, mode);
         check(`[${mode}] the globe: queryRenderedFeatures finds an icon moved by icon-translate where it is drawn (#1822)`, moved.drawn[1] > 220 && moved.drawn[1] < 245 && moved.atDrawn === 1 && moved.atScreen === 0, JSON.stringify(moved));
+        // On a pitched Mercator map icon-translate moves the point in tile units, as in MapLibre GL JS: [0, 60] at pitch 60
+        // moves the icon about 27 pixels down the screen, not 60 (#2021). The anchor `viewport` does the same.
+        const pitched = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            for (const anchor of ['map', 'viewport']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60'}));
+                const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 45]}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}, {id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'sq', 'icon-allow-overlap': true}, paint: {'icon-translate': [0, 60], 'icon-translate-anchor': anchor}}]};
+                const map = new mod.Map({container: el, style, center: [10, 45], zoom: 12, pitch: 60, renderer, attributionControl: false});
+                map.addImage('sq', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).map((_, i) => i % 4 === 0 ? 0 : 255)});
+                await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+                const bmp = await createImageBitmap(await map.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, k = bmp.width / 400;
+                let sx = 0, sy = 0, n = 0;
+                for (let i = 0; i < d.length; i += 4) if (d[i] < 60 && d[i + 2] > 200) { sx += (i / 4) % bmp.width; sy += Math.floor(i / 4 / bmp.width); n++; }
+                const x = sx / n / k, y = sy / n / k, found = async (px, py) => (await map.queryRenderedFeatures([[px - 2, py - 2], [px + 2, py + 2]], {layers: ['i']})).length;
+                out[anchor] = {drawn: [Math.round(x), Math.round(y)], atDrawn: await found(x, y), atPixels: await found(200, 260)};
+                map.remove(); el.remove();
+            }
+            return out;
+        }, mode);
+        check(`[${mode}] a pitched Mercator map: icon-translate moves an icon in tile units, and queryRenderedFeatures finds it there (#2021)`, Object.values(pitched).every(m => Math.abs(m.drawn[0] - 200) < 3 && m.drawn[1] > 220 && m.drawn[1] < 245 && m.atDrawn === 1 && m.atPixels === 0), JSON.stringify(pitched));
+        // Near the bottom of a map with pitch 85 the ground is near the camera, and icon-translate [20, 20] moves an icon
+        // by about 80 pixels to the right: queryRenderedFeatures finds it there too (#2021).
+        const near = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:700px;z-index:60'}));
+            const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 45]}}},
+                layers: [{id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'sq', 'icon-allow-overlap': true}, paint: {'icon-translate': [20, 20]}}]};
+            const map = new mod.Map({container: el, style, center: [10, 45], zoom: 14, pitch: 85, maxPitch: 85, renderer, attributionControl: false});
+            map.addImage('sq', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).fill(255)});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const at = map.unproject([200, 630]);
+            map.getSource('p').setData({type: 'Point', coordinates: [at.lng, at.lat]});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            // (Where the GPU draws the icon: the point moved by tile units and projected again.)
+            const ws = 512 * 2 ** 14, mx = (at.lng + 180) / 360 + 20 / ws, my = (1 - Math.log(Math.tan(Math.PI / 4 + at.lat * Math.PI / 360)) / Math.PI) / 2 + 20 / ws;
+            const drawn = map.project([mx * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * my))) * 180 / Math.PI]);
+            const result = {drawn: [Math.round(drawn.x), Math.round(drawn.y)], found: (await map.queryRenderedFeatures([drawn.x, drawn.y], {layers: ['i']})).length};
+            map.remove(); el.remove();
+            return result;
+        }, mode);
+        check(`[${mode}] a map with pitch 85: queryRenderedFeatures finds an icon moved by icon-translate near the bottom of the view (#2021)`, near.drawn[0] > 260 && near.found === 1, JSON.stringify(near));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();
@@ -1625,6 +1669,32 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: on a tilted map a circle-radius from a property or the zoom is the radius of the query, also in the array at once (#1942)`,
         sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
+    // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at
+    // (20, 8) pixels from the center, flat and on a tilted map.
+    const stated = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter(), p = m.project(c), a = m.unproject([p.x - 100, p.y]), b = m.unproject([p.x + 100, p.y]), big = ['boolean', ['feature-state', 'big'], false];
+        m.addSource('st-p', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}});
+        m.addSource('st-l', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {}, geometry: {type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]]}}});
+        m.addLayer({id: 'st-r', type: 'circle', source: 'st-p', paint: {'circle-radius': ['case', big, 30, 4]}});
+        m.addLayer({id: 'st-s', type: 'circle', source: 'st-p', paint: {'circle-radius': 4, 'circle-stroke-width': ['case', big, 26, 0]}});
+        m.addLayer({id: 'st-w', type: 'line', source: 'st-l', paint: {'line-width': ['case', big, 20, 4]}});
+        m.setFeatureState({source: 'st-p', id: 1}, {big: true}); m.setFeatureState({source: 'st-l', id: 1}, {big: true});
+        const layers = ['st-r', 'st-s', 'st-w'], ids = found => found.map(f => f.layer.id).sort().join();
+        let ready = [];
+        for (let i = 0; i < 100 && !ready.length; i++) { await new Promise(r => setTimeout(r, 100)); ready = await m.queryRenderedFeatures(p, {layers}); }
+        const now = ids([...m.queryRenderedFeatures([p.x + 20, p.y + 8], {layers})]), later = ids(await m.queryRenderedFeatures([p.x + 20, p.y + 8], {layers}));
+        const pitch = m.getPitch();
+        m.jumpTo({pitch: 45});
+        const q = m.project(c), tiltedNow = ids([...m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['st-r', 'st-s']})]), tilted = ids(await m.queryRenderedFeatures([q.x + 20, q.y], {layers: ['st-r', 'st-s']}));
+        m.jumpTo({pitch});
+        for (const id of layers) m.removeLayer(id);
+        m.removeSource('st-p'); m.removeSource('st-l');
+        return {now, later, tiltedNow, tilted};
+    });
+    check(`[${mode}] queryRenderedFeatures: a circle-radius, circle-stroke-width or line-width from feature-state is the size of the query, flat and tilted, also in the array at once (#1959)`,
+        stated.now === 'st-r,st-s,st-w' && stated.later === 'st-r,st-s,st-w' && stated.tiltedNow === 'st-r,st-s' && stated.tilted === 'st-r,st-s', JSON.stringify(stated));
+
     // A line whose `line-width` is an expression is found within half of its own width, as in MapLibre (#1941): a width
     // of 20 pixels from a property, one of 20 pixels by zoom, and a gap of 16 pixels between two lines of 2 pixels are
     // found at 8 pixels from the center line; a line of 4 pixels from a property is not.
@@ -2247,6 +2317,38 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures on the globe finds text on a line in each cell where its glyphs are drawn, at zoom 2.5 and across the antimeridian (#1995)',
             Object.values(globeText).every(r => r.text >= 5 && r.found === r.text && r.others <= 2 * r.text), JSON.stringify(globeText));
+        // On the globe without pitch, point text with `text-pitch-alignment: map` lies on the sphere (#2012), and a query
+        // finds it where it is drawn: the row and the column through its point hit no farther than 10 pixels from its
+        // dark pixels, with both renderers. (Its box for queries had the size of flat text, 16 pixels wider on each side.)
+        const globePoint = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:600px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, -28.3], zoom: 1.5, attributionControl: false, fadeDuration: 0, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [28.3, 0]}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'HHHHH', 'text-size': 24, 'text-pitch-alignment': 'map', 'text-rotation-alignment': 'map'}, paint: {'text-color': '#000'}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await m.toBlob()), k = bmp.width / 600, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                // (The dark pixels of the text, near its point: the space around the globe is not counted.)
+                const p = m.project([28.3, 0]), d = c.getImageData(0, 0, bmp.width, bmp.height).data, drawn = [1e9, 1e9, -1e9, -1e9];
+                for (let y = Math.round((p.y - 80) * k); y < (p.y + 80) * k; y++) for (let x = Math.round((p.x - 120) * k); x < (p.x + 120) * k; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i + 3] > 200 && d[i] < 80 && d[i + 1] < 80 && d[i + 2] < 80) drawn.splice(0, 4, Math.min(drawn[0], x / k), Math.min(drawn[1], y / k), Math.max(drawn[2], x / k), Math.max(drawn[3], y / k));
+                }
+                const hit = async (x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).length > 0, xs = [], ys = [];
+                for (let x = Math.round(p.x) - 120; x <= p.x + 120; x++) if (await hit(x, p.y)) xs.push(x);
+                for (let y = Math.round(p.y) - 80; y <= p.y + 80; y++) if (await hit(p.x, y)) ys.push(y);
+                out[renderer] = {drawn: drawn.map(Math.round), x: [xs[0], xs.at(-1)], y: [ys[0], ys.at(-1)]};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures on the globe without pitch finds point text with text-pitch-alignment map where it is drawn, with both renderers (#2012)',
+            Object.values(globePoint).every(r => r.drawn[2] - r.drawn[0] > 30 && r.drawn[2] - r.drawn[0] < 200 && r.x[0] >= r.drawn[0] - 10 && r.x[1] <= r.drawn[2] + 10 && r.y[0] >= r.drawn[1] - 10 && r.y[1] <= r.drawn[3] + 10 && r.x[1] - r.x[0] > 30),
+            JSON.stringify(globePoint));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
@@ -2772,6 +2874,41 @@ for (const mode of renderers) {
         const partial = p => p.out.filter(g => g > 12 && g < 243).length;
         check('[main] compat: at DPR 2 the soft edge of a line and of the inner edge of a gap is one device pixel, as in MapLibre GL JS (#2063)',
             r.line.dpr === 2 && partial(r.line) <= 1 && r.line.out[0] < 12 && partial(r.gap) <= 2 && r.gap.out[0] > 243, JSON.stringify(r));
+    }
+    // #2144: a square cap does not lengthen the dashes of a line, as in MapLibre GL JS (its line atlas draws butt dashes for
+    // every cap but round). Away from the ends of the line, the middle row of a dashed line with a square cap has as many
+    // dark pixels as with a butt cap, within 10%, at DPR 1 and 2. (The phase differs: as in MapLibre, the distance along
+    // the line starts at the end of the cap.) Before the fix each dash was the line width longer, about 50% more dark.
+    if (mode === 'main') {
+        const rows = {};
+        for (const dpr of [1, 2]) {
+            const pg = await browser.newPage({viewport: {width: 400, height: 300}, deviceScaleFactor: dpr});
+            await pg.goto(page.url());
+            rows[dpr] = await pg.evaluate(async () => {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const row = async cap => {
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:100px'}));
+                    const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8,
+                        sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-100, 0], [100, 0]]}}}}, layers: [
+                            {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                            {id: 'l', type: 'line', source: 'l', layout: {'line-cap': cap}, paint: {'line-color': '#000', 'line-width': 6, 'line-dasharray': [2, 2]}}]}});
+                    await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                    m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                    const cv = m.getCanvas(), c = Object.assign(document.createElement('canvas'), {width: cv.width, height: cv.height}).getContext('2d');
+                    c.drawImage(cv, 0, 0);
+                    // (The green of the middle row, without the quarter of the width at each end.)
+                    const d = c.getImageData(cv.width >> 2, cv.height >> 1, cv.width >> 1, 1).data, out = [];
+                    for (let i = 1; i < d.length; i += 4) out.push(d[i]);
+                    m.remove(); el.remove();
+                    return out;
+                };
+                const square = await row('square'), butt = await row('butt');
+                return {square: square.filter(g => g < 128).length, butt: butt.filter(g => g < 128).length};
+            });
+            await pg.close();
+        }
+        check('[main] compat: a square cap does not lengthen the dashes of a dashed line, as in MapLibre GL JS (#2144)',
+            [1, 2].every(d => rows[d].butt > 0 && Math.abs(rows[d].square - rows[d].butt) <= rows[d].butt * 0.1), JSON.stringify(rows));
     }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.

@@ -1496,7 +1496,7 @@ export class Map {
     }
     getStyle() { return this.rawStyle ? plain(this.rawStyle) : undefined; }
     // ---- feature state ----
-    private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
+    protected featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
     private warnedTextId = false;
     /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
     private sendFeatureState(source: string, keys: string[]) {
