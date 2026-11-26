@@ -26,12 +26,14 @@ the size of the context at the end of the run, not the sum of what was processed
 |---|---|
 | general-purpose or claude (all tools) | 68,900 to 69,100 tokens |
 | Explore or Plan (no tools that edit files) | 47,400 tokens |
-| worker (`.claude/agents/worker.md`: Bash, Read, Edit, Write, Grep, Glob) | not measured yet; a session loads agent types when it starts |
+| worker (`.claude/agents/worker.md`: Bash, Read, Edit, Write, Grep, Glob), Sonnet, reply OK | 16,378 tokens (measured 2026-11-26) |
 
 Reading `docs/agents/worker-brief.md` adds about 6,400 tokens; `CLAUDE.md` is about 6,000. The rest of the fixed part
 is the system prompt of Claude Code and the definitions of its tools. Later steps and later subagents of the same model
 and type read that prefix from the prompt cache, so its cost after the first write is small. A subagent costs mostly
-what it reads new and what it writes.
+what it reads new and what it writes. A subagent asks for the five-minute cache (all 5,164 requests of the subagents of
+2026-11-26 did), while the coordinator asks for one hour, so a subagent that waits longer than five minutes writes its
+context again on its next step.
 
 ## Reviews of known faults
 
