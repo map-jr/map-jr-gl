@@ -6,7 +6,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
@@ -2102,7 +2102,10 @@ export class Engine {
             // ground has the size of its frame on the screen, as its collision box has.)
             // (Text of a layer with `icon-offset` is drawn without the perspective ratio, and its box keeps it: see `Placed.fixedSize`.)
             const r = p.fixedSize ? (p.frame ? flatSize(this.tr, at[2]) : perspective(this.tr, at[2])) : 1, f = p.frame, fw = (f ? w * Math.hypot(f[0], f[1]) : w) * r, fh = (f ? h * Math.hypot(f[2], f[3]) : h) * r;
-            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: boxAround(x + (p.x - p.ax) * r, y + (p.y - p.ay) * r, fw, fh, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !f ? -this.tr.bearing * Math.PI / 180 : 0)});
+            // (On the globe the frame has a second order, and the box is the bound of the text as it is drawn: see `quadBox`.)
+            const cx = x + (p.x - p.ax) * r, cy = y + (p.y - p.ay) * r;
+            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: f && f.length > 4 ? quadBox(f, cx, cy, w * r, h * r, p.src.padding)
+                : boxAround(cx, cy, fw, fh, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !f ? -this.tr.bearing * Math.PI / 180 : 0)});
         }
         return out;
     }
