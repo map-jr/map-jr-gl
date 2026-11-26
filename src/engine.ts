@@ -2029,8 +2029,10 @@ export class Engine {
                 }
                 continue;
             }
-            // (The box of placement: `text-padding` is added before the box is turned, as in MapLibre GL JS.)
-            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: boxAround(p.x + x - p.ax, p.y + y - p.ay, w, h, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !(this.tr.pitch && p.src.flat) ? -this.tr.bearing * Math.PI / 180 : 0)});
+            // (The box of placement: `text-padding` is added before the box is turned, as in MapLibre GL JS. Text on the
+            // ground has the size of its frame on the screen, as its collision box has.)
+            const f = p.frame, fw = f ? w * Math.hypot(f[0], f[1]) : w, fh = f ? h * Math.hypot(f[2], f[3]) : h;
+            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: boxAround(p.x + x - p.ax, p.y + y - p.ay, fw, fh, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !f ? -this.tr.bearing * Math.PI / 180 : 0)});
         }
         return out;
     }
