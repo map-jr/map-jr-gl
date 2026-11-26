@@ -6,8 +6,8 @@ import {LOSE_CONTEXT} from './gl-names.ts';
 import {globeStops} from './geo.ts';
 
 declare const __WORKER_SRC__: string; // the worker's source, embedded only in the standalone build
-declare const __VERSION__: string;
-declare const __DEV__: boolean; // true in the development build (dist/*.dev.js) // the version of package.json, set by the build
+declare const __VERSION__: string; // the version of package.json, set by the build
+declare const __DEV__: boolean; // true in the development build (dist/*.dev.js)
 
 let canDraw: boolean | undefined;
 /**
