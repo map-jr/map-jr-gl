@@ -4983,14 +4983,16 @@ for (const mode of renderers) {
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
             let thrown = '';
-            try { make({strict: true, canvasContextAttributes: {depth: false}}); } catch (e) { thrown = e.message; }
+            let thrownCode;
+            try { make({strict: true, canvasContextAttributes: {depth: false}}); } catch (e) { thrown = e.message; thrownCode = e.code; }
             const strict = make({strict: true});
             await new Promise(r => strict.once('load', r));
             let thrownCall = '';
-            try { strict.addLayer({id: 'bg', type: 'background'}); } catch (e) { thrownCall = e.message; }
+            let thrownCallCode;
+            try { strict.addLayer({id: 'bg', type: 'background'}); } catch (e) { thrownCall = e.message; thrownCallCode = e.code; }
             console.warn = warn;
             for (const x of [m, plain, strict]) { const el = x.getContainer(); x.remove(); el.remove(); }
-            return {...out, thrown, thrownCall};
+            return {...out, thrown, thrownCall, thrownCode, thrownCallCode};
         });
         check('[main] maplibre-compat: showCollisionBoxes = true gives one warning, and showTileBoundaries = false none (#752)',
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
@@ -5006,23 +5008,25 @@ for (const mode of renderers) {
             && quiet.inline.source === 'geojson' && quiet.inline.of === 'inline' && quiet.inline.drawn > 0 && quiet.inline.kept, JSON.stringify(quiet.inline));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
             quiet.thrown.startsWith('[map-jr-gl] E2145 The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+        check('[main] maplibre-compat: a refused style call under strict: true throws an error with its code in the field code (#2148)',
+            quiet.thrownCallCode === 'E70' && quiet.thrownCode === 'E2145', JSON.stringify({call: quiet.thrownCallCode, option: quiet.thrownCode}));
         // #2133: the production build writes none of these warnings; strict: true still throws there, with a short text.
         const prod = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), warnings = [], warn = console.warn, maps = [];
             console.warn = (...a) => warnings.push(String(a[0]));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: []}, ...options}); maps.push(m); return m; };
-            let thrown = '';
+            let thrown = '', thrownCode;
             try {
                 const m = make({fadeDuration: 0, projection: {type: 'globe'}, locale: 'fr', canvasContextAttributes: {preserveDrawingBuffer: true}, dragPan: {linearity: 0.5}, rotateSpeed: 2});
                 m.setRoll(10); m.showCollisionBoxes = true; m.setVerticalFieldOfView(NaN); m.setCenterElevation(100); m.setFeatureState({source: 's'}, {});
                 new mod.LogoControl({compact: true}); new mod.Popup({locationOccludedOpacity: 0.5}); mod.setWorkerUrl('https://unpkg.com/maplibre-gl/dist/maplibre-gl-csp-worker.js');
-                try { make({strict: true, fadeDuration: 0}); } catch (e) { thrown = e.message; }
+                try { make({strict: true, fadeDuration: 0}); } catch (e) { thrown = e.message; thrownCode = e.code; }
             } finally { console.warn = warn; }
             for (const m of maps) { const el = m.getContainer(); m.remove(); el.remove(); }
-            return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown};
+            return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown, thrownCode};
         });
         check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws the code, its link and the option (#2133, #2148)',
-            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 https://map-jr.org/e/90 key="The option fadeDuration"', JSON.stringify(prod));
+            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 https://map-jr.org/e/90 key="The option fadeDuration"' && prod.thrownCode === 'E90', JSON.stringify(prod));
     }
     // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
     // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
