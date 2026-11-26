@@ -8,6 +8,7 @@ type Fetch = typeof fetch;
  * it, or else `Expires` when the response has no `Cache-Control`. `etag` is the `ETag` of the response: a reload that the
  * server answers with 304 (not modified) reaches the page as a 200 with the same `ETag` (#2136).
  */
+declare const __DEV__: boolean;
 export interface TileFetchState { missing?: boolean; expires?: number; etag?: string }
 export const PM_PREFIX = 'pmtiles://';
 
@@ -36,6 +37,6 @@ export async function fetchTile(url: string, fetchFn: Fetch = (...a) => fetch(..
     const etag = res.headers?.get('etag');
     if (state) state.etag = etag && etag.length <= 256 ? etag : undefined;
     // (A status 5xx is worth another request: the engine requests a tile of the view again, see `finalFailure`.)
-    if (!res.ok) throw Object.assign(res.status < 500 ? httpError('tile', url, res.status) : requestError('tile', url, `HTTP ${res.status}`), {final: res.status < 500});
+    if (!res.ok) throw Object.assign(res.status < 500 ? httpError('tile', url, res.status) : requestError('tile', url, __DEV__ ? `HTTP ${res.status}. The tile server answered with an error. Check the server; the map requests a tile that the view needs again.` : `HTTP ${res.status}`), {final: res.status < 500});
     return res.image ?? new Uint8Array(await res.arrayBuffer());
 }
