@@ -10,7 +10,7 @@ import {minifyShaders} from './scripts/minify-shaders.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
 import {removedReads} from './scripts/server-reads.mjs';
 import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
-import {messageCodes} from './scripts/message-codes.mjs';
+import {messageCodes, errorCodes} from './scripts/message-codes.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -202,7 +202,7 @@ const hoistImports = {
  * tools are open.
  */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, glConstants, privates, noPreload, keepEnv, hoistImports, ...plugins],
+    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [errorCodes, shaders, glConstants, privates, noPreload, keepEnv, hoistImports, ...plugins],
     build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 

@@ -344,6 +344,14 @@ prints in quotes, and a number without. The section of each code gives the names
 in both builds. The server renderer (\`@map-jr/map-jr-gl/server\`) and the standalone files print the full
 text.
 
+An error that the library throws, or rejects a promise with, carries its code in the field \`code\`, such as
+\`error.code === 'E63'\`, in both builds and in both entries. The \`name\` stays \`Error\` (or \`TypeError\`). The same holds for
+the errors of the server renderer and for the errors that fire in an \`error\` event (\`event.error.code\`).
+
+An error that
+the library does not number, or that comes from the browser, has no \`code\`. Test the field and not the text, because the
+text differs between the development build and the production build.
+
 A code stays the same in later versions. When a message is removed, its section stays here with the version after which
 it was removed, and the code is not used again.
 
