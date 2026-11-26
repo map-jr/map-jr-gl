@@ -49,6 +49,29 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   before you build, and report another cause if the fault does not reproduce as the issue says.
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
 - Start each worker with `isolation: "worktree"` and low effort (90,000 to 160,000 tokens for an issue).
+- **Choose the model of each subagent by its task** (the owner, 2026-11-26; the measurements are in
+  `docs/agents/subagent-models.md`). Pass it as `model` of the Agent tool:
+
+  | Task | Model |
+  |---|---|
+  | A worker on an issue whose cause is known (triage "ran" or "MapLibre read", size S or M) | Sonnet |
+  | A review of code or docs, and the fix of its own findings | Sonnet |
+  | A check of one claim on `main` (does it reproduce, what does MapLibre GL JS do) | Haiku |
+  | Triage, which must run a command for each premise | Opus |
+  | A worker on an issue marked `unverified` or of size L, or on drawing, placement or shaders | Opus |
+  | The coordinator | Opus |
+
+  Read each finding of a Sonnet review, not only its verdict: one Sonnet review called a real fault "minor".
+- **Spend the tokens where they cost.** A subagent starts with about 69,000 tokens of context (the system prompt, the
+  tools and `CLAUDE.md`) before any work, the same on every model. Its later steps read that context from the prompt
+  cache, which costs a twentieth of new input on Opus 5.5 and Sonnet 5.5, so the cost of a subagent is mostly what it
+  reads new (files, logs, command output) and what it writes. Therefore:
+  - send a follow-up to the worker that has the context, within the hour (the cache lives an hour), rather than start
+    a new one;
+  - start parallel subagents a few seconds apart: agents of one model and type then share the cached prefix, where
+    agents started at the same moment each write it;
+  - keep to the few combinations of model and type in the table above: each combination writes its own cache entry;
+  - tell workers to read a log or a large file in parts (`grep`, `tail`), not whole.
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
 - `scripts/agents/suite.mjs` runs at most two browser suites at once on one machine (`SUITE_SLOTS`), and the others
   wait (#1406): on 2026-11-24 about six workers that ran suites at once on the cloud VM (4 cores) made runs time out.
