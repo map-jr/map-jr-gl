@@ -1037,10 +1037,12 @@ export class Engine {
                 this.renderer.destroy();
                 return;
             case 'frames': this.reportFrames = c.on; break;
-            case 'beforeFrames': this.preFrames = c.on; if (!c.on) this.preWait = false; break;
+            case 'beforeFrames': this.preFrames = c.on; this.preGo = this.preWait = false; break;
             case 'frameGo':
                 // (In a worker the answer comes in a later task, and the frame that waits is drawn now. On the main thread it
                 // comes inside `emit`, and the frame goes on by itself.)
+                // (An answer to a frame that no longer waits, because the hook was turned off or on since, is ignored.)
+                if (!this.preWait) return;
                 this.preGo = true;
                 if (this.preWait && !this.preEmit) { this.preWait = false; this.frame(performance.now()); }
                 return;
@@ -1610,7 +1612,7 @@ export class Engine {
         if (this.preFrames && !this.preGo) {
             if (this.preWait) return;
             this.preWait = this.preEmit = true;
-            try { this.emit({type: 'beforeFrame'}); } finally { this.preEmit = false; }
+            try { this.emit({type: 'beforeFrame'}); } catch (e) { this.preWait = this.preGo = false; throw e; } finally { this.preEmit = false; }
             if (!this.preGo) return;
             this.preWait = false;
         }

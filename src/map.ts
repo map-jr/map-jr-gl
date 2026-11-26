@@ -863,7 +863,11 @@ export class Map {
             this.pong = e.n;
         } else if (e.type === 'beforeFrame') {
             // (Before each frame, for the images with `render()` of the compat entry: their pixels go before the frame, #2128.)
-            if (!this.removed) { try { this.beforeFrame?.(); } finally { this.sendUpdates(); this.post({type: 'frameGo'}); } }
+            // (A throw of the hook goes to `error` after the frame: the frame must not stop, #2278.)
+            if (!this.removed) {
+                try { this.beforeFrame?.(); } catch (error) { queueMicrotask(() => this.fire('error', {error})); }
+                this.sendUpdates(); this.post({type: 'frameGo'});
+            }
         } else if (e.type === 'frame') {
             if (!this.drew) this.firstRead();
             this.drew = true; // (an engine reports its first frame also when the page did not ask for frames)
