@@ -248,8 +248,9 @@ test('tiles: a {token} stands for a property only in a constant and in a zoom fu
 });
 
 test('renderer: each WebGL extension that the code asks for is a name of an extension', () => {
-    // (A replacement of text in src/gl.ts once changed a name to one that no browser has, and the heatmap lost its fallback.)
-    const asked = [...readFileSync(new URL('../../src/gl.ts', import.meta.url), 'utf8').matchAll(/getExtension\('([^']+)'\)/g)].map(m => m[1]);
+    // (A replacement of text in src/gl.ts once changed a name to one that no browser has, and the heatmap lost its fallback.
+    // The heatmap is drawn by src/layers-more.ts.)
+    const asked = ['gl.ts', 'layers-more.ts'].flatMap(f => [...readFileSync(new URL('../../src/' + f, import.meta.url), 'utf8').matchAll(/getExtension\('([^']+)'\)/g)].map(m => m[1]));
     const known = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float', 'OES_texture_float_linear', 'EXT_texture_filter_anisotropic', 'WEBGL_lose_context', 'EXT_float_blend', 'OES_texture_half_float_linear', 'KHR_parallel_shader_compile'];
     assert.ok(asked.includes('EXT_color_buffer_half_float'));
     assert.deepEqual(asked.filter(name => !known.includes(name)), []);

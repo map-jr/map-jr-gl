@@ -8,9 +8,10 @@ import {setPartLoader, type PartName} from './parts.ts';
 // What the parts that load on demand (parts.ts) take from this file. A part file is built with these modules left
 // out, and reads them from `MapJrWorker`, the global of this file (see build.mjs).
 export {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, touches} from './geo.ts';
-export {SHADERS, VS_COMMON, opaque, skyValues} from './gl.ts';
+export {SHADERS, VS_COMMON, FS_CLIP, opaque, skyValues} from './gl.ts';
 export {renderItems} from './placement.ts';
-export {compileExpr, compileFilter, warnOnce} from './expr.ts';
+export {compileExpr, compileFilter, parseColor, warnOnce} from './expr.ts';
+export {SPEC, LIGHT_PROPS} from './style.ts';
 export {decodeElevation} from './query.ts';
 export {decodePixels} from './exact-pixels.ts';
 export {heads} from './tile-fetch.ts';
