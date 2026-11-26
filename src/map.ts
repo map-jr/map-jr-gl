@@ -756,11 +756,11 @@ export class Map {
     }
 
     /** @internal Runs before each frame while it is set: on the main renderer inside the frame, and with a worker after it (#2128). */
-    protected setBeforeFrame(fn: (() => void) | null) {
+    protected setBeforeFrame(fn: ((images: string[]) => void) | null) {
         if (!this.beforeFrame !== !fn) this.post({type: 'beforeFrames', on: !!fn});
         this.beforeFrame = fn ?? undefined;
     }
-    private beforeFrame?: () => void;
+    private beforeFrame?: (images: string[]) => void;
     /** @internal Sends a command to the engine. */
 
     protected post(c: Command, transfer?: Transferable[]) {
@@ -865,7 +865,7 @@ export class Map {
             // (For the images with `render()` of the compat entry, #2128. A throw goes to `error` after the frame, which must
             // not stop, #2278. The pixels are sent at once, so that the main renderer draws them in this frame.)
             if (!this.removed) {
-                try { this.beforeFrame?.(); } catch (error) { queueMicrotask(() => this.fire('error', {error})); }
+                try { this.beforeFrame?.(e.images); } catch (error) { queueMicrotask(() => this.fire('error', {error})); }
                 this.sendUpdates();
             }
         } else if (e.type === 'frame') {

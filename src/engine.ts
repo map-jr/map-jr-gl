@@ -111,7 +111,8 @@ export type EngineEvent =
     /** The layers that the last style hides, also by a `visibility` expression of the global state. */
     | {type: 'hidden'; layers: string[]}
     | {type: 'frame'}
-    | {type: 'beforeFrame'}
+    /** `images`: the images that the tiles of the last frame and the patterns of its layers use (an image with `render()` that no layer uses is not rendered, as in MapLibre GL JS; #2236). */
+    | {type: 'beforeFrame'; images: string[]}
     /** The tile workers have indexed the data of the last `geojson` command for this source. The page sends the next data then. */
     | {type: 'geojsonDone'; source: string}
     /** The engine has drawn a frame to its end after the `ping` command with this number. */
@@ -853,6 +854,18 @@ export class Engine {
     private askImages(tile: {labels?: Record<string, {icon?: {name: string}}[]>; icons?: Record<string, {names: string[]}>}) {
         for (const list of Object.values(tile.labels ?? {})) for (const l of list) if (l.icon) this.icon(l.icon.name);
         for (const b of Object.values(tile.icons ?? {})) for (const name of b.names) this.icon(name);
+    }
+    /** The names of the images that the tiles drawn in the frame `frameNo` and the patterns of the visible layers use (#2236). */
+    private usedImages(frameNo: number) {
+        const names = new Set<string>(), add = (n: unknown) => { if (n) names.add(pickImage(String(n), m => this.images.has(m))); };
+        for (const t of this.tiles.values()) {
+            if (t.used !== frameNo || !t.gl) continue;
+            for (const list of Object.values(t.gl.labels)) for (const l of list) add(l.icon?.name);
+            for (const b of Object.values(t.gl.icons ?? {})) b.src.names.forEach(add);
+            for (const b of Object.values(t.gl.batches)) add(b.pat);
+        }
+        for (const L of this.layers) if (L.visible && L.p.pattern && !L.p.pattern.dd) add(L.p.pattern.eval(this.tr.zoom));
+        return [...names];
     }
     private icon = (name: string) => {
         // `coalesce` with images: the first image that the map has, or a variant of a template (it is made when it is
@@ -1621,7 +1634,7 @@ export class Engine {
         }
         // The page runs `render()` of its images before the frame (#2128). On the main renderer this is a call, and the new
         // pixels are in this frame, as in MapLibre GL JS. A worker does not wait for the page: its pixels come a frame later.
-        if (this.preFrames) this.emit({type: 'beforeFrame'});
+        if (this.preFrames) this.emit({type: 'beforeFrame', images: this.usedImages(frameNo - 1)});
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;

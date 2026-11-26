@@ -601,7 +601,8 @@ export class Map extends CoreMap {
         this.checkPixels(name, image);
         this.styleImageNames.delete(name);
         this.dropAnimated(name);
-        // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` at each frame that the map draws: when it
+        // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` at each frame that the map draws while a tile
+        // in view or a pattern uses it (#2236): when it
         // returns true, its `data` is sent again. On the main renderer it runs before the frame and the pixels show in it, as
         // in MapLibre GL JS; the worker renderer does not wait, and they show a frame later (#2128). As in MapLibre GL JS, this
         // does not repaint. A map without such images has no hook.
@@ -621,11 +622,13 @@ export class Map extends CoreMap {
         if (!this.animated.size) this.setBeforeFrame(null);
         if (notify) image.onRemove?.();
     }
-    private renderImages = () => {
+    private renderImages = (used: string[]) => {
+        // (Only the images that the tiles in view or a pattern of a layer use, as in MapLibre GL JS; #2236.)
         // (Pixels that did not change are not sent: each image sent to the engine makes it draw a frame, so a `render` that
         // returns true without a change would keep the map from `idle`.)
-        for (const [name, image] of this.animated) {
-            if (!image.render?.() || !this.hasImage(name)) continue;
+        for (const name of used) {
+            const image = this.animated.get(name);
+            if (!image?.render?.() || !this.hasImage(name)) continue;
             const data = image.data, last = this.sentPixels.get(name);
             if (last && last.length === data.length && last.every((v, i) => v === data[i])) continue;
             this.sentPixels.set(name, data.slice());
