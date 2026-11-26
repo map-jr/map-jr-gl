@@ -1,9 +1,0 @@
-{
-  "label": "vertical-align in format text",
-  "decision": "later",
-  "issue": 1029,
-  "reason": "vertical-align in format text is not available.",
-  "tests": [
-    "text-field/formatted-vertical-align"
-  ]
-}

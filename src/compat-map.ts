@@ -1021,7 +1021,7 @@ export class Map extends CoreMap {
         // At once: the last answer of the engine for this source and these options, in any view (see `sourceAnswers`).
         const key = JSON.stringify([sourceId, options.sourceLayer, options.filter]), turn = this.sourceTurn.get(sourceId);
         let now: QueriedFeature[] = this.sourceAnswers.get(key)?.found ?? [];
-        if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets); } catch { /* the promise has the complete result or the error */ }
+        if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets, this.featureStates[sourceId]); } catch { /* the promise has the complete result or the error */ }
         let awaited = false;
         const result = features(now), had = now.length, all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
             if (turn === this.sourceTurn.get(sourceId)) {
@@ -1071,7 +1071,7 @@ export class Map extends CoreMap {
         if (sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
             const mine = sets.filter(s => s.source === id);
             const data = mine.length && spec.type === 'geojson' && this.geoData(id);
-            if (data) try { const found = sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine); now = now.filter(f => f.source !== id || own.has(id)); own.add(id); now.push(...found); } catch { /* the promise has the complete result or the error */ }
+            if (data) try { const found = sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine, this.featureStates[id]); now = now.filter(f => f.source !== id || own.has(id)); own.add(id); now.push(...found); } catch { /* the promise has the complete result or the error */ }
         }
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.

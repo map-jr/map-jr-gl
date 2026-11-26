@@ -1,7 +1,7 @@
 import {EXTENT, clamp, latFromMerc, lngFromMerc, mercX, mercY, type Transform} from './geo.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
-import {compileFilter, compileProp} from './expr.ts';
+import {compileFilter, compileProp, type MapStates} from './expr.ts';
 import type {TileLayers} from './tile.ts';
 import type {GeoJSONGeometry} from './host.ts';
 
@@ -115,10 +115,10 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
 
 /**
  * How far from its geometry a feature is found, in pixels: for a circle the radius `a` and the stroke `b`; for a line
- * half of the width `a`, or of the gap `b` and two widths when there is a gap, as MapLibre GL JS draws it, and at
- * least 3 pixels so that a thin line can be hit.
+ * half of the width `a`, or of the gap `b` and two widths when there is a gap, as MapLibre GL JS draws it (with no
+ * minimum, as in MapLibre GL JS).
  */
-export const sizeOf = (line: boolean | undefined, a: number, b: number) => line ? Math.max(3, (b > 0 ? b + 2 * a : a) / 2) : a + b;
+export const sizeOf = (line: boolean | undefined, a: number, b: number) => line ? (b > 0 ? b + 2 * a : a) / 2 : a + b;
 
 /** The lines of `c` (rings that end at `ends`) moved by `d` to the right of their direction, as `offsetLine` of MapLibre GL JS does. */
 function offsetLine(c: number[], ends: number[], d: number) {
@@ -139,7 +139,8 @@ function offsetLine(c: number[], ends: number[], d: number) {
 }
 
 /** Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. */
-export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFeature[] {
+/** `states` is the feature state of the source (by "sourceLayer|id"), which a size that uses `feature-state` reads. */
+export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: MapStates['f'][string]): FoundFeature[] {
     const out: FoundFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
@@ -152,6 +153,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
         const mine = q.sets ? sets.filter(s => s.sourceLayer ? s.sourceLayer === name : name === GEOJSON_LAYER || !s.layer) : sets;
         if (!mine.length) continue;
         for (const f of layers[name].features) {
+            f.state = f.id === undefined ? undefined : states?.[`${name === GEOJSON_LAYER ? '' : name}|${f.id}`];
             let c: number[] | null = null, geometry: QueriedFeature['geometry'];
             const ends: number[] = [];
             for (const set of mine) {
@@ -251,13 +253,13 @@ export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
 const sizes = new WeakMap<QuerySet, {r: ReturnType<typeof compileProp>; w: ReturnType<typeof compileProp>}>();
 /**
  * The radius with the stroke in pixels that a circle layer draws a found feature with: the set's `radius`, or for a
- * size that depends on the feature, its size at the zoom of the map (as `queryTile` evaluates it).
+ * size that depends on the feature, its size at the zoom of the map with its state in `states` (as `queryTile` evaluates it).
  */
-export function circleRadius(s: QuerySet, f: QueriedFeature): number {
+export function circleRadius(s: QuerySet, f: QueriedFeature, states?: MapStates['f'][string]): number {
     if (!s.size) return s.radius;
     let size = sizes.get(s);
     if (!size) sizes.set(s, size = {r: compileProp(s.size.a, 'number', 5), w: compileProp(s.size.b, 'number', 0)});
-    const g = {type: TYPES.lastIndexOf(f.type as typeof TYPES[number]), id: f.id, properties: f.properties};
+    const g = {type: TYPES.lastIndexOf(f.type as typeof TYPES[number]), id: f.id, properties: f.properties, state: f.id === undefined ? undefined : states?.[`${f.sourceLayer ?? ''}|${f.id}`]};
     return Math.min(Math.max(size.r.eval(s.size.zoom, g) + size.w.eval(s.size.zoom, g), 0), 1e4);
 }
 

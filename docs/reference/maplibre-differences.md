@@ -125,6 +125,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** Each character follows the line. The style sets the largest angle.
 - **This library:** Each character follows the line. A label does not show where the line turns more than about 35 degrees between characters.
 
+### Images in `format` text
+
+- **MapLibre GL JS:** An image that is taller than the text of its line makes the line taller, and `vertical-align` places each section within that height.
+- **This library:** `vertical-align` places each section as in MapLibre GL JS, but a tall image does not make its line taller. The image reaches above the line into the line before it or above the label, and the label's box keeps the height of the text.
+
 ### `fill-sort-key` and `line-sort-key` with a pattern for each feature
 
 - **MapLibre GL JS:** The sort key orders all features of the layer.
@@ -284,7 +289,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `Marker` and `Popup`
 
 - **MapLibre GL JS:** Rotation, pitch alignment, offsets, class names.
-- This library does the same methods. `pitchAlignment: 'map'` lays a marker on the ground of a map with pitch, and `'auto'` takes the value of `rotationAlignment`, as in MapLibre GL JS. The markers of the description (`MapDescription`) of `@map-jr/map-jr-gl` have no rotation or pitch alignment and stay upright on the screen. `Popup` has the options `focusAfterOpen`, `closeOnMove`, `trackPointer` and `subpixelPositioning` with the defaults of MapLibre GL JS, and the methods `trackPointer()` and `setSubpixelPositioning()`. A popup that follows the pointer moves with the mouse and not with a touch, as in MapLibre GL JS. With the worker renderer, a marker or popup moves in the same frame as the map during a drag, but it can trail an `easeTo`, `flyTo`, a fling or a pinch by about one frame, because the page learns the camera from the worker after the frame. A symbol layer never trails. See [How closely an element of the page follows the map](map.md#overlay).
+- This library does the same methods. `pitchAlignment: 'map'` lays a marker on the ground of a map with pitch, and `'auto'` takes the value of `rotationAlignment`, as in MapLibre GL JS. The markers of the description (`MapDescription`) of `@map-jr/map-jr-gl` have no rotation or pitch alignment and stay upright on the screen. `Popup` has the options `focusAfterOpen`, `closeOnMove`, `trackPointer` and `subpixelPositioning` with the defaults of MapLibre GL JS, and the methods `trackPointer()` and `setSubpixelPositioning()`. `Marker` has the option `subpixelPositioning` (default `false`) and the method `setSubpixelPositioning()`, which returns the marker, as in MapLibre GL JS. With the default, this library places the marker on whole pixels in every frame, while MapLibre GL JS leaves it on fractions of a pixel during a `move` and rounds it afterward. A marker of the description (`MapDescription`) of `@map-jr/map-jr-gl` is always placed on whole pixels. A popup that follows the pointer moves with the mouse and not with a touch, as in MapLibre GL JS. With the worker renderer, a marker or popup moves in the same frame as the map during a drag, but it can trail an `easeTo`, `flyTo`, a fling or a pinch by about one frame, because the page learns the camera from the worker after the frame. A symbol layer never trails. See [How closely an element of the page follows the map](map.md#overlay).
 
 ### `Point`
 
@@ -557,8 +562,7 @@ Properties:
 - `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
 - `text-writing-mode`. Text is always horizontal. The development build of the main API warns one time for each layer with `symbol-placement` `point` that has a value other than `["horizontal"]`, because MapLibre GL JS reads the property only at a point.
 - `text-pitch-alignment` and `icon-pitch-alignment` with `map` at a point, and `icon-pitch-alignment` with `map` or `auto` along a line, are approximations. Along a line, `auto` takes the value of `icon-rotation-alignment`, and the `auto` of that property is `map` there. The symbol lies on the ground with the slant of the ground at its anchor, so a large symbol near the horizon is not as wide at its far edge as MapLibre GL JS draws it, and an icon moved by `icon-offset` does not lean toward the horizon as it does in MapLibre GL JS. Images inside text lie on the ground with their text. An icon with `icon-text-fit` faces the screen. The SVG output of the server renderer (`renderToSVG`) draws point text, icons and images inside text with `map` on the ground in the same way, and it draws images inside text. In the SVG, text along a line keeps its characters upright to the screen, and an icon with `icon-text-fit` faces the screen.
-- `icon-offset` and the perspective ratio. On a tilted map, a symbol that faces the screen is drawn larger near the camera and smaller far from it. A layer that sets `icon-offset` (also `[0, 0]`) draws its icons without that ratio, as MapLibre GL JS does, but its text keeps the ratio, where MapLibre GL JS draws the text of such a layer without it too.
-- In Mercator, `icon-translate` and `text-translate` move a symbol by pixels of the screen, where MapLibre GL JS moves it by tile units, so on a map with pitch the symbol is drawn further from its anchor than in MapLibre GL JS, and it jumps at the switch from the globe to Mercator at zoom 12.
+- `icon-offset` and the perspective ratio. On a tilted map, a symbol that faces the screen is drawn larger near the camera and smaller far from it. A layer that sets `icon-offset` (also `[0, 0]`) draws its icons and its text at a point without that ratio, as MapLibre GL JS does, and their collision boxes keep it, as in MapLibre GL JS. Text along a line in such a layer keeps the ratio, where MapLibre GL JS draws it without the ratio too.
 - `symbol-z-order` sorts the symbols within each tile by the y of their anchor in the tile, turned with the map, as MapLibre GL JS does. The order is found at each placement (about four times a second while the map moves), so it can lag behind a map that rotates. Icons without text that always show (`icon-allow-overlap` with no `text-field`, at a point) keep their order while the map turns, and are sorted again in the first frame after the turn.
 - `symbol-avoid-edges` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each layer that has it.
 - The root property `centerAltitude` of a style has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each map whose style has it.
@@ -566,7 +570,7 @@ Properties:
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and the corners of an extrusion are sharp. The development build of the main API warns one time for each layer that has a value other than 0.
 - The source property `volatile` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each source that has `volatile: true`.
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
-- `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
+- `vertical-align` in `format` text in the server renderer. Its SVG (`renderToSVG`) draws each line in one size on one baseline.
 
 Layers that the server renderer does not draw:
 

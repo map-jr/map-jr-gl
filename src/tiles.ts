@@ -1,5 +1,5 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
-import {compileFor, geo, warnOnce, type MapStates} from './expr.ts';
+import {compileFor, geo, mergeFeatureState, warnOnce, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type GlobeBuild, type GlobeCut, type TileGL, type TileIR} from './tile.ts';
 import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
@@ -47,7 +47,8 @@ export class TileBuilder {
     private geojson = new Map<string, PreparedSource>();
 
     private contours = new Map<string, ContourConfig>();
-    private dems = new Map<string, Promise<DEM | null>>();
+    /** Decoded elevation tiles, by URL, with the time at which the response expires (see `TileFetchState`). */
+    private dems = new Map<string, {dem: Promise<DEM | null>; expires?: number}>();
     /** Image decoder for elevation tiles where there is no browser (server rendering). */
     decodeImage?: ImageDecoder;
     /** Tells the builder how each contour source derives its lines. */
@@ -55,22 +56,31 @@ export class TileBuilder {
     setContours(sources: Record<string, ContourConfig>, ids: Record<string, string | Record<string, string>> = {}) { this.contours = new Map(Object.entries(sources)); this.ids = ids; }
     private ids: Record<string, string | Record<string, string>> = {};
 
-    /** Elevation tiles are shared between neighboring contour tiles, so decoded ones are kept for a while. */
-    private loadDEM = (url: string, encoding: DemEncoding, c: Parts['dem']): Promise<DEM | null> => {
-        let dem = this.dems.get(url);
-        if (!dem) {
-            dem = fetchTile(url, this.fetchFn, undefined, undefined, true).then(bytes => bytes ? c.decodeDEM(bytes, encoding, this.decodeImage) : null);
-            this.dems.set(url, dem);
-            dem.catch(() => this.dems.delete(url));
+    /**
+     * Elevation tiles are shared between neighboring contour tiles, so decoded ones are kept for a while. An expired one
+     * is fetched again, and `seen` gets the time at which each tile that it gives expires (#2053).
+     */
+    private loadDEM = (url: string, encoding: DemEncoding, c: Parts['dem'], seen: (expires?: number) => void): Promise<DEM | null> => {
+        let e = this.dems.get(url);
+        if (!e || e.expires! <= Date.now()) {
+            const st: TileFetchState = {}, entry: {dem: Promise<DEM | null>; expires?: number} = {dem: fetchTile(url, this.fetchFn, undefined, st, true).then(bytes => (entry.expires = st.expires, bytes ? c.decodeDEM(bytes, encoding, this.decodeImage) : null))};
+            e = entry;
+            this.dems.delete(url);
+            this.dems.set(url, e);
+            e.dem.catch(() => this.dems.get(url) === entry && this.dems.delete(url));
             if (this.dems.size > 40) this.dems.delete(this.dems.keys().next().value!);
         }
-        return dem;
+        const got = e;
+        return got.dem.then(d => (seen(got.expires), d));
     };
-    private async contour(url: string) {
+    /** A contour tile expires when the first of its elevation tiles does. */
+    private async contour(url: string): Promise<{layers: Parameters<typeof buildTile>[0]; expires?: number}> {
         const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
-        if (!cfg) return {};
+        if (!cfg) return {layers: {}};
         const c = await part('dem');
-        return c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c), m[1]);
+        let expires: number | undefined;
+        const layers = await c.contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding, c, x => { if (x && !(expires! <= x)) expires = x; }), m[1]);
+        return {layers, expires};
     }
 
     /**
@@ -150,10 +160,7 @@ export class TileBuilder {
 
     /** The global state and the feature state of the map of this builder. */
     private states: MapStates = {g: {}, f: {}};
-    setFeatureState(source: string, states: FeatureStates, replace?: boolean) {
-        const own = replace || !this.states.f[source] ? (this.states.f[source] = {}) : this.states.f[source];
-        for (const k in states) { const v = states[k]; if (v) own[k] = v; else delete own[k]; }
-    }
+    setFeatureState(source: string, states: FeatureStates, replace?: boolean) { mergeFeatureState(this.states.f, source, states, replace); }
     /** The slots of each image that is an SVG template, by the name of the image. */
     private templates: Record<string, string[]> = {};
     setTemplates(templates: Record<string, string[]>) { this.templates = templates; }
@@ -181,7 +188,7 @@ export class TileBuilder {
     async loadIR(req: TileRequest): Promise<TileIR> {
         if (this.geo) await this.geo;
         if (req.url.startsWith(GEOJSON_PREFIX)) return this.build(await this.slice(req.url), req);
-        if (req.url.startsWith('contour://')) return this.build(await this.contour(req.url), req);
+        if (req.url.startsWith('contour://')) { const {layers, expires} = await this.contour(req.url); return {...this.build(layers, req), expires}; }
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
@@ -223,13 +230,13 @@ export class TileBuilder {
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
     /** (The filters of a question are compiled when it is answered: for the states of this map.) */
-    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return queryTile(data, q); }
+    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return queryTile(data, q, this.states.f[q.source]); }
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
         // (A filter of the question can use them where the style does not.)
         if (!this.geo && /"(within|distance)"/.test(JSON.stringify(q.filter ?? null))) this.geo = this.loadGeo();
         if (this.geo) await this.geo;
         if (url.startsWith(GEOJSON_PREFIX)) return this.find(await this.slice(url), q);
-        if (url.startsWith('contour://')) return this.find(await this.contour(url), q);
+        if (url.startsWith('contour://')) return this.find((await this.contour(url)).layers, q);
         const key = q.source + '|' + url, n = this.forgotten;
         let bytes = this.recent.get(key);
         if (!bytes) {

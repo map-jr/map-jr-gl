@@ -9,7 +9,7 @@ import {prepareGeoJSON, sliceGeoJSON} from '../../src/geojson.ts';
 import * as placement from '../../src/placement.ts';
 import {EstimateShaper} from '../../src/text.ts';
 
-const {CollisionGrid, placeLabels, renderItems} = placement;
+const {CollisionGrid, perspective, placeLabels, renderItems} = placement;
 const z = 14, tx = 8000, ty = 5000, n = 2 ** z;
 const lngOf = (x: number) => x / n * 360 - 180, latOf = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
 const id = {z, x: tx, y: ty, w: 0, key: `${z}/${tx}/${ty}`};
@@ -61,4 +61,84 @@ for (const [align, near] of [['viewport', 0.01], ['map', 0.05]] as const) test(`
     (placement as any).moveLabel(b.tr, a.p, d, q[0], q[1], q[2], 0, false);
     const moved = d.icon.y - q[1], placed = b.p.icon.y - b.p.ay;
     assert.ok(Math.abs(moved - placed) < Math.abs(placed) * near, `the moved icon is ${moved.toFixed(2)} px from its anchor, the new placement ${placed.toFixed(2)} px`);
+});
+
+// MapLibre GL JS draws the icons of a layer with `icon-offset` without the perspective ratio, but its collision box
+// keeps the ratio (`CollisionIndex.placeCollisionBox`): the box and its offset from the anchor grow toward the camera
+// as for a layer without `icon-offset` (#2058).
+for (const align of ['viewport', 'map'] as const) test(`placeLabels: the collision box of an icon with icon-offset and icon-pitch-alignment ${align} keeps the perspective ratio`, () => {
+    const boxOf = (layout: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'icon-pitch-alignment': align, ...layout}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: cases[1][2] as any}), z, tx, ty);
+        const labels = buildTile(data, z, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.8)], z, 0, 60);
+        const boxes: number[][] = [], grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+        grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
+        const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+        (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
+        return boxes[0];
+    };
+    // A layer without `icon-offset` has the ratio. An offset of [0, 0] moves nothing, so its box is the same.
+    const plain = boxOf({}), zero = boxOf({'icon-offset': [0, 0]}), moved = boxOf({'icon-offset': [0, -10]});
+    assert.ok(plain && zero && moved, 'the icons are placed');
+    // (The box has `icon-padding`, 2 px, on each side.)
+    const h = plain[3] - plain[1] - 4;
+    assert.ok(Math.abs(h - 20) > 1, `the ratio changes the height of the box (${h} px)`);
+    for (let i = 0; i < 4; i++) assert.ok(Math.abs(zero[i] - plain[i]) < 0.01, `the box with icon-offset [0, 0] is ${zero.map(v => v.toFixed(2))}, without it ${plain.map(v => v.toFixed(2))}`);
+    // With an offset of half the icon, the box moves by half of its height, as the offset grows with the ratio too.
+    assert.ok(Math.abs(moved[3] - moved[1] - (plain[3] - plain[1])) < 0.01, `the box is ${(moved[3] - moved[1]).toFixed(2)} px high, not ${(plain[3] - plain[1]).toFixed(2)}`);
+    assert.ok(Math.abs(moved[1] - plain[1] + h / 2) < 0.05, `the box moves by ${(moved[1] - plain[1]).toFixed(2)} px, not ${(-h / 2).toFixed(2)}`);
+});
+
+// An icon that `icon-text-fit` stretches around its text takes its size from the text, which already has the ratio: its
+// box does not get the ratio a second time when the layer has `icon-offset` (#2058).
+test('placeLabels: the collision box of an icon fitted to its text is the same with icon-offset [0, 0] on a tilted map', () => {
+    const boxesOf = (layout: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'text-field': 'Main', 'icon-text-fit': 'both', ...layout}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: cases[1][2] as any}), z, tx, ty);
+        const labels = buildTile(data, z, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.8)], z, 0, 60);
+        const boxes: number[][] = [], grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+        grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
+        const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+        (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
+        return boxes;
+    };
+    const plain = boxesOf({}), zero = boxesOf({'icon-offset': [0, 0]});
+    assert.equal(plain.length, 2, 'the text and the icon are placed');
+    for (let i = 0; i < 4; i++) assert.ok(Math.abs(zero[1][i] - plain[1][i]) < 0.01, `the box with icon-offset [0, 0] is ${zero[1].map(v => v.toFixed(2))}, without it ${plain[1].map(v => v.toFixed(2))}`);
+});
+
+// MapLibre GL JS draws the text of a layer with `icon-offset` without the perspective ratio too (`u_is_offset` is set
+// for the text program), while its collision box keeps the ratio (#2057). An icon fitted to that text is drawn around
+// the text without the ratio, and its box keeps the ratio too.
+for (const align of ['viewport', 'map'] as const) test(`placeLabels: text of a layer with icon-offset and text-pitch-alignment ${align} is drawn without the perspective ratio`, () => {
+    const run = (layout: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'text-field': 'Main', 'text-size': 16, 'text-offset': [0, 2], 'icon-text-fit': 'both', 'text-pitch-alignment': align, ...layout}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: cases[1][2] as any}), z, tx, ty);
+        const labels = buildTile(data, z, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.8)], z, 0, 60);
+        const boxes: number[][] = [], grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+        grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
+        const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+        const [p] = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
+        return {p, boxes, tr};
+    };
+    const plain = run({}), off = run({'icon-offset': [0, 0]});
+    assert.ok(plain.p?.icon && off.p?.icon, 'the labels are placed');
+    const r = plain.p.size / 16;
+    assert.ok(Math.abs(r - 1) > 0.05, `the ratio changes the size of the text (${plain.p.size} px)`);
+    assert.ok(Math.abs(off.p.size - 16) < 0.01, `the text with icon-offset is ${off.p.size} px, not 16`);
+    assert.ok(Math.abs((off.p.y - off.p.ay) * r - (plain.p.y - plain.p.ay)) < 0.01, 'the offset of the text from the anchor has no ratio');
+    // (The fitted icon faces the screen also around text on the ground, so it drops the ratio of the screen.)
+    const ri = perspective(off.tr, off.p.depth);
+    assert.ok(Math.abs(ri - 1) > 0.05, `the ratio of the screen is ${ri}`);
+    assert.ok(Math.abs(off.p.icon.w * ri - plain.p.icon.w) < 0.01 && Math.abs(off.p.icon.h * ri - plain.p.icon.h) < 0.01, `the fitted icon is ${off.p.icon.w}x${off.p.icon.h} px, ${plain.p.icon.w}x${plain.p.icon.h} px with the ratio ${ri}`);
+    for (let b = 0; b < 2; b++) for (let i = 0; i < 4; i++) assert.ok(Math.abs(off.boxes[b][i] - plain.boxes[b][i]) < 0.01, `box ${b} with icon-offset is ${off.boxes[b].map(v => v.toFixed(2))}, without it ${plain.boxes[b].map(v => v.toFixed(2))}`);
 });
