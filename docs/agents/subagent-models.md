@@ -70,4 +70,4 @@ Opus review and no hint of the fault.
   names the wrong cause in about a third of the cases (`docs/agents/coordinating.md`, "Before a batch").
 - Sonnet workers did as well as Opus workers on issues with a known cause. Two runs are few; record the first-CI result
   and the review findings of the next Sonnet workers, and change the table when they disagree.
-- The model barely changes the number of tokens; the price per token is the saving.
+- The model changes the number of tokens little, so the saving comes from the lower price per token.
