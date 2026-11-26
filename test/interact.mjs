@@ -2083,6 +2083,37 @@ for (const mode of renderers) {
         check(`[${mode}] queryRenderedFeatures: a line with line-offset, also from a property, is found where it is drawn, as MapLibre GL JS, also in the array at once (#2001)`,
             ours.down === 'down' && ours.up === 'up' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
+    // #2217: with line-offset, a miter join longer than 2 (line-miter-limit 4, a turn of 133 degrees, miter 2.5) moves
+    // twice the offset along the miter, as MAX_OFFSET_MITER_LENGTH of MapLibre GL JS does. Before, it moved the full
+    // miter, and the tip reached about 4 px farther. (The bisector of the corner lies near a diagonal of the tile, so
+    // that MapLibre can store the extrusion of this miter in its bytes.) `tip` is the farthest dark pixel along the
+    // outer bisector, in pixels from the corner.
+    if (mode === 'main') {
+        const run = (lib, off) => page.evaluate(async ([lib, off]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const d = 0.003, r = -21.6 * Math.PI / 180, a = r + 133 * Math.PI / 180;
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-d * Math.cos(r), -d * Math.sin(r)], [0, 0], [d * Math.cos(a), d * Math.sin(a)]]}};
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 15, attributionControl: false, fadeDuration: 0, pixelRatio: 1, style: {version: 8,
+                sources: {l: {type: 'geojson', data: line}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'l', type: 'line', source: 'l', layout: {'line-join': 'miter', 'line-miter-limit': 4}, paint: {'line-color': '#000', 'line-width': 10, 'line-offset': off}}]}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+            const c = Object.assign(document.createElement('canvas'), {width: 300, height: 200}).getContext('2d', {willReadFrequently: true});
+            await new Promise(res => { m.once('render', () => { c.drawImage(m.getCanvas(), 0, 0, 300, 200); res(); }); m.triggerRepaint(); });
+            const p = m.project([0, 0]), data = c.getImageData(0, 0, 300, 200).data;
+            let bx = Math.cos(r) - Math.cos(a), by = Math.sin(a) - Math.sin(r), tip = -1e9;
+            const bl = Math.hypot(bx, by); bx /= bl; by /= bl;
+            for (let y = 0; y < 200; y++) for (let x = 0; x < 300; x++) if (data[(y * 300 + x) * 4] < 128) tip = Math.max(tip, (x + 0.5 - p.x) * bx + (y + 0.5 - p.y) * by);
+            m.remove(); el.remove();
+            return Math.round(tip * 10) / 10;
+        }, [lib, off]);
+        const r = {};
+        for (const off of [0, 8]) for (const lib of ['ours', 'ml']) r[`${lib}${off}`] = await run(lib, off);
+        check('[main] compat: line-offset moves a miter join longer than 2 by twice the offset along the miter, as MapLibre GL JS (#2217)',
+            r.ml8 > r.ml0 + 10 && Math.abs(r.ours0 - r.ml0) <= 1.5 && Math.abs(r.ours8 - r.ml8) <= 1.5, JSON.stringify(r));
+    }
 
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
     // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
