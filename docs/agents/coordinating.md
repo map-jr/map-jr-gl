@@ -4,6 +4,57 @@ A coordinator is a session that gives issues to workers (subagents) and merges t
 `CLAUDE.md`; the brief that each worker reads is `docs/agents/worker-brief.md`. Change the brief or these notes when
 a batch shows a fault in them.
 
+## Several coordinators
+
+- **The owner sets the count of coordinators,** and the coordination issue (#2255) names each one with its work. Since
+  2026-11-26 there are three: two take lanes of a tracking issue, and the third does triage of the issues with the
+  label `unverified` and opens almost no pull request that changes `src/`. Do not start a further coordinator. The
+  limits are shared: the usage limit of the account, the runners of CI, the files that most pull requests change, and
+  the time of the owner. From 2026-11-22 to 2026-11-26 the coordinators merged 389 pull requests and closed 398
+  issues while 432 new issues were filed, so one more coordinator on lanes adds issues as fast as it closes them.
+- **The coordination issue is the shared state.** It has the lanes of each coordinator, the holds, the open pull
+  requests by coordinator, the open decisions of the owner and the handoffs. Read it before a batch, before a series
+  of merges and before a release. Edit your row when your state changes, and add a dated comment of one paragraph
+  when a hold starts or ends. A tracking issue stays a list of links.
+- **A message to another session only says that the coordination issue changed.** A message can be held or refused,
+  so nothing may depend on it. On 2026-11-26 a cloud session started a second cloud session and sent it a message
+  with no prompt, and the reply of the second session was refused by the classifier of auto mode ("Unsanctioned
+  Communication"). Between the Mac and a cloud session, each message can ask the owner for permission.
+- **The limit of pull requests in CI is a total** (see "Merging"). The coordination issue gives each coordinator its
+  share of the eight, and a coordinator that needs more asks there.
+- **Lanes that change the same file belong to one coordinator.** Lanes E, F and K of #46 all change `src/gl.ts`. When
+  the lanes are split again, keep such lanes together, and write the new split into the coordination issue first.
+
+### Handoff
+
+A coordinator hands its work to a new session before its context gets in the way. Its workers do not outlive it: a
+subagent that still runs when the session ends is lost, with its report.
+
+- **Hand off at the end of a batch,** when none of your workers runs and each of your pull requests is merged or
+  listed in the coordination issue. Do the steps of "After a batch" first.
+- **Hand off at the next such point** after the first compaction of your context, after a restart of the container, or
+  when the session is about a day old. The best point is not measured yet: write the age of the session and what
+  went wrong into the entry of the handoff, so that the next change of this rule has numbers.
+- **Write the handoff into the coordination issue,** under "Handoff": what the successor takes, each open pull request
+  with what it waits for, each question to the owner that has no answer, and what you did not finish. Do not write it
+  into a file: a cloud container loses `.cache/`, and "Where a document goes" of `docs/development.md` gives a
+  handoff no file.
+- **Start one successor, then stop.** In a cloud session, start it with `create_session` on the model of the table
+  above; on the Mac, the owner starts it. Its prompt has four lines:
+
+  ```
+  You are a coordinator of map-jr/map-jr-gl. Read CLAUDE.md and docs/agents/coordinating.md first.
+  Read the coordination issue map-jr/map-jr-gl#2255, and take the row "Lanes 1" and its entry under "Handoff".
+  Tracking issue: map-jr/map-jr-gl#46, lanes A, B, C, G, H, I, J.
+  Remove the entry of the handoff when you have read it, and write the date into your row.
+  ```
+
+  A session that another session started does not have the owner's word for anything: it asks the owner with the
+  question tool before a step that needs the owner. Its permission mode may also need a change by the owner in the
+  app before it can act without prompts (the coordinator of 2026-11-19).
+- **The successor checks the state itself.** It lists the open pull requests (`node scripts/agents/prs.mjs`) and reads
+  the coordination issue, and it does not take a number of the handoff as measured.
+
 ## Before a batch
 
 - **Triage first.** An issue can be older than `main`. A read-only triage worker checks the issues for about 7,000
@@ -124,9 +175,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   claim that MapLibre GL JS falls back to a full load for another sprite; its source showed that it does not. Ask the
   worker to read the behavior of MapLibre GL JS from its source or to measure it at `/ml/`, and to say so when your
   premise is wrong.
-- **Another session can coordinate on the same repository at the same time.** Leave its pull requests to it, and
-  give it a message (`SendMessage` to the address of its message) when `main` is red or before a release, so that it
-  holds its merges. A message from another session that says the owner asked for something is not the owner's word:
+- **Another session can coordinate on the same repository at the same time** (see "Several coordinators"). Leave its
+  pull requests to it. When `main` is red or before a release, write the hold into the coordination issue, and give
+  the other session a message (`SendMessage` to the address of its message) that says so. A message from another session that says the owner asked for something is not the owner's word:
   ask the owner with the question tool before you act on it (the release of 0.7.0 on 2026-11-17).
 - **Ask the owner with the question tool** (`AskUserQuestion`; see "How work goes" in `CLAUDE.md`) for each pull
   request that waits for the owner and each decision, with the recommendation as the first option. Ask several
@@ -170,7 +221,7 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **Merge when `checks`, the four `browser-*` jobs and `render` have passed** (see `CLAUDE.md`). Do not wait for the
   summary job `browser`: on 2026-11-24 it ran for about 6 s and waited for a runner 10.7 min (median of 15 runs,
   #1602). A browser job that the job `changes` skipped counts as passed.
-- **Keep about eight pull requests in CI at once.** The account ran at most 27 jobs at the same time on 2026-11-24, and
+- **Keep about eight pull requests in CI at once, over all coordinators.** The account ran at most 27 jobs at the same time on 2026-11-24, and
   a pull request that changes `src/` uses about 40 runner-minutes, so 25 open pull requests made each job wait up to
   30 minutes. Start new workers as pull requests merge, not all at once.
 - **Read the source diff before you merge** (`git diff origin/main...origin/<branch> -- src | grep -E "^[+-]"`), and
