@@ -256,7 +256,7 @@ try {
     check('browser: onError gets {sourceId} as its second argument for a source that fails, and {} for the style (#2008)',
         failing.infos === '[{}]' && failing.sourceInfos === '[{"sourceId":"broken"}]', JSON.stringify(failing));
     check('browser: onError gets each error, and without it the error is written to the console',
-        failing.got.length === 1 && /^\[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 \S*no-such-style\.json 404$/.test(failing.got[0]) && failing.loggedWithProp === 0 && failing.logged.length === 1 && /^\[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 \S*no-such-style\.json 404$/.test(failing.logged[0]), JSON.stringify(failing));
+        failing.got.length === 1 && /^\[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 style="\S*no-such-style\.json" status=404$/.test(failing.got[0]) && failing.loggedWithProp === 0 && failing.logged.length === 1 && /^\[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 style="\S*no-such-style\.json" status=404$/.test(failing.logged[0]), JSON.stringify(failing));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
 

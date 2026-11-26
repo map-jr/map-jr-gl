@@ -744,7 +744,7 @@ for (const renderer of renderers) {
             return out;
         }, renderer);
         check(`[${renderer}] queryElevation reads the raster-dem source that the option source names, and rejects for an unknown one (#1213)`,
-            named[0] === 1000 && named[1] === 2000 && (renderer === 'worker' ? named[2] === '[map-jr-gl] E1214 https://map-jr.org/e/1214 none' : String(named[2]).includes('"none"')), JSON.stringify(named));
+            named[0] === 1000 && named[1] === 2000 && (renderer === 'worker' ? named[2] === '[map-jr-gl] E1214 https://map-jr.org/e/1214 source="none"' : String(named[2]).includes('"none"')), JSON.stringify(named));
 
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
@@ -3079,7 +3079,7 @@ for (const renderer of renderers) {
             const before = boxes();
             host.destroy();
             await new Promise(r => setTimeout(r, 200));
-            const out = {before, after: boxes(), aborted, warning: warns.find(w => w.startsWith('[map-jr-gl] E1560 https://map-jr.org/e/1560 Fails ')) ?? ''};
+            const out = {before, after: boxes(), aborted, warning: warns.find(w => w.startsWith('[map-jr-gl] E1560 https://map-jr.org/e/1560 label="Fails" reason="')) ?? ''};
             out.prefixes = out.warning.split('[map-jr-gl]').length - 1;
             el.remove();
             console.warn = warn;
@@ -4061,7 +4061,7 @@ for (const [build, file] of [['the development build, and the file of the checks
             (production ? asked.length === 0 : asked.length > 0) && lost.said.length === 0 && lost.drawn > 0 && !lost.unhandled.length
             && lost.place === (production ? '[map-jr-gl] E9 https://map-jr.org/e/9' : '[map-jr-gl] E9 queryFeatures(): the place is not {x, y} or [lng, lat].'), JSON.stringify(lost));
         check(`${build}: a message prints ${production ? 'its code, the link to the page of the code and its values, and not its text (#2148)' : 'its code and its full text (#2148)'}`,
-            production ? lost.noStyle === '[map-jr-gl] E57 https://map-jr.org/e/57 createMap' && lost.notCluster === '[map-jr-gl] clusterLeaves(): E217 https://map-jr.org/e/217 nope'
+            production ? lost.noStyle === '[map-jr-gl] E57 https://map-jr.org/e/57 method="createMap"' && lost.notCluster === '[map-jr-gl] clusterLeaves(): E217 https://map-jr.org/e/217 id="nope"'
                 : lost.noStyle === '[map-jr-gl] E57 createMap(): the description has no "style". Pass the URL of a style or a style object as "style".'
                 && lost.notCluster === '[map-jr-gl] clusterLeaves(): E217 "nope" is not a GeoJSON source of the style.', JSON.stringify(lost));
     } catch (e) { check(`${build}: the test run was completed`, false, String(e.message).split('\n')[0]); }
@@ -4137,7 +4137,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             console.warn = warn;
             return out;
         }, [entry, renderer]);
-        const text = '[map-jr-gl] E20017 https://map-jr.org/e/20017 WebGL2 is not available';
+        const text = '[map-jr-gl] E20017 https://map-jr.org/e/20017 message="WebGL2 is not available"';
         check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
             able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
             && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
@@ -4167,7 +4167,7 @@ for (const other of [true, false]) {
             console.warn = warn;
             return {said, loaded};
         });
-        const text = `[map-jr-gl] E10017 https://map-jr.org/e/10017 0.0.1 ${version}`;
+        const text = `[map-jr-gl] E10017 https://map-jr.org/e/10017 workerVersion="0.0.1" pageVersion="${version}"`;
         check(other ? 'a worker file of another version: two maps give one warning with both versions, and they load' : 'the worker file of the same version: no warning',
             two.loaded.join() === 'true,true' && (other ? changed > 0 && two.said.length === 1 && two.said[0] === text : two.said.length === 0), JSON.stringify({...two, changed}));
     } catch (e) { check(`the version of the worker file (${other ? 'another' : 'the same'}): the test run was completed`, false, String(e.message).split('\n')[0]); }
@@ -4664,7 +4664,7 @@ for (const status of [404, 403, 503]) {
         });
         const of = s => errors.filter(e => e.source === s), most = map => Math.max(...map.values());
         // (The production build prints the codes, their links and the values, #2148.)
-        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 https://map-jr.org/e/2106 ${s} E1163 https://map-jr.org/e/1163 tile http`));
+        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 https://map-jr.org/e/2106 source="${s}" E1163 https://map-jr.org/e/1163 what="tile" url="http`));
         check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
             seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('.png HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
@@ -4697,7 +4697,7 @@ for (const status of [404, 403, 503]) {
         const most = seen.size ? Math.max(...seen.values()) : 0;
         check('a raster-dem tile that cannot be decoded is requested once and gives one error with the source, and the map is idle (#2109)',
             seen.size > 0 && most === 1 && got.errors.length === seen.size && got.idle
-            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 dem E1163 https://map-jr.org/e/1163 tile http') && e.message.includes('PNG or WebP')),
+            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 source="dem" E1163 https://map-jr.org/e/1163 what="tile" url="http') && e.message.includes('PNG or WebP')),
             JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
     await page.close();

@@ -645,7 +645,7 @@ for (const mode of renderers) {
     const gl = await page.evaluate(() => Promise.resolve().then(() => window.map.addImage('gl', {width: 1, height: 1, data: {renderWithWebGL() {}}})).then(() => 'resolved', e => String(e.message)));
     const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
-    check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl === '[map-jr-gl] E464 https://map-jr.org/e/464 gl', gl);
+    check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl === '[map-jr-gl] E464 https://map-jr.org/e/464 image="gl"', gl);
     // #1746: an image with render() (StyleImageInterface) gets onAdd, render after each frame (new pixels when it returns
     // true) and onRemove, as in MapLibre GL JS.
     const anim = await page.evaluate(async () => {
@@ -850,7 +850,7 @@ for (const mode of renderers) {
         m.on('click', ['missing-layer', 'zones-fill'], e => window.arrayEvents.push('click:' + e.features[0].properties.name));
         m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
-        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E278 https://map-jr.org/e/278 mouseenter' ? 'message' : error.message); }
+        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E278 https://map-jr.org/e/278 type="mouseenter"' ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
         const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
@@ -1180,7 +1180,7 @@ for (const mode of renderers) {
         m.removeFeatureState({source: 'omt'});
         return {both, one, none: m.getFeatureState(f), unread, read, readMs, idle, sent, warned};
     });
-    check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && fs.warned[0].startsWith('[map-jr-gl] E294 https://map-jr.org/e/294 omt '), JSON.stringify(fs.warned));
+    check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && fs.warned[0].startsWith('[map-jr-gl] E294 https://map-jr.org/e/294 source="omt" id="'), JSON.stringify(fs.warned));
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
     // A GeoJSON feature with the id '12' has the id 12 (#528). The string and the number name the same feature state, as
     // in MapLibre GL JS 6.17.0, and '012' is another id there and here (#753).
@@ -2799,7 +2799,7 @@ for (const mode of renderers) {
             return {...out, errors};
         }, mode);
         check(`[${mode}] compat addControl(undefined) and addControl({}): error event, returns the map; a bad position throws`,
-            r.same === true && r.errors.length === 2 && r.errors.every(e => e === '[map-jr-gl] E259 https://map-jr.org/e/259') && r.bad === '[map-jr-gl] E269 https://map-jr.org/e/269 middle', JSON.stringify(r));
+            r.same === true && r.errors.length === 2 && r.errors.every(e => e === '[map-jr-gl] E259 https://map-jr.org/e/259') && r.bad === '[map-jr-gl] E269 https://map-jr.org/e/269 pos="middle"', JSON.stringify(r));
     }
     // #44: in the compat entry, toBlob gives the drawn map, and getCanvas().toDataURL() in a `render` listener is not blank.
     {
@@ -3577,7 +3577,7 @@ for (const mode of renderers) {
         check(`[${mode}] setStyle with a URL that fails: an error event, no rejected promise, and the map keeps its style`,
             failed.badStyle.seen.length === 1 && /^error: \[map-jr-gl\] E63 \S+ \S*no-such-style\.json 404$/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
         check(`[${mode}] addSource with no tiles and no url: one error that names the source, and later changes of the style work`,
-            failed.badSource.seen.length === 1 && failed.badSource.seen[0] === 'error: [map-jr-gl] E10063 https://map-jr.org/e/10063 bad' && failed.badSource.later > 0, JSON.stringify(failed.badSource));
+            failed.badSource.seen.length === 1 && failed.badSource.seen[0] === 'error: [map-jr-gl] E10063 https://map-jr.org/e/10063 source="bad"' && failed.badSource.later > 0, JSON.stringify(failed.badSource));
         check(`[${mode}] maplibre-compat: remove() with queries that nobody awaits gives no unhandled rejection (#787)`, failed.forgotten.length === 0, failed.forgotten.join(' | '));
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
@@ -4046,7 +4046,7 @@ for (const mode of renderers) {
         // an unroute, and its 404 is a page error, #517.)
         await page.unroute('**/test-255.json');
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
-            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E255 https://map-jr.org/e/255 r', JSON.stringify(r));
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E255 https://map-jr.org/e/255 id="r"', JSON.stringify(r));
     }
     // Raster tiles are fetched and decoded in the tile workers, and the thread that draws only sends the images to the
     // GPU (#2068). In WebKit a decode runs on the thread that asks for it, and decodes on the thread that draws held its
@@ -4259,7 +4259,7 @@ for (const mode of renderers) {
             return out;
         }, mode);
         check(`[${mode}] setAnisotropicFilterPitch: raster tiles are filtered anisotropically above the pitch (20 by default), and a pitch above 180 throws (#1713)`,
-            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && r.error === '[map-jr-gl] E2011 https://map-jr.org/e/2011 200', JSON.stringify(r));
+            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && r.error === '[map-jr-gl] E2011 https://map-jr.org/e/2011 pitch=200', JSON.stringify(r));
     }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
@@ -4349,7 +4349,7 @@ for (const mode of renderers) {
         check(`[${mode}] GeoJSON source: setClusterOptions builds the clusters again, getClusterOptions gives the options, and getBounds gives the bounds of the data`,
             r.isPromise && JSON.stringify(r.before.options) === '{"cluster":true,"clusterMaxZoom":17,"clusterRadius":50}' && r.before.shown.join() === '3' && r.before.zoom > 2
             && JSON.stringify(r.after.options) === '{"cluster":false,"clusterMaxZoom":17,"clusterRadius":20}' && r.after.shown.join() === '1,1,1' && r.after.spec === false && /no clusters/.test(r.after.zoom)
-            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message === '[map-jr-gl] E566 https://map-jr.org/e/566 g' && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
+            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message === '[map-jr-gl] E566 https://map-jr.org/e/566 id="g"' && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
         check(`[${mode}] raster source: reload loads the tiles again, and the source has the zoom range and the tiles of its TileJSON`,
             r.had > 0 && r.again > r.had && r.result === undefined && r.loaded && r.minzoom === 1 && r.maxzoom === 9 && /\/t566\/\{z\}/.test(r.tiles?.[0]) && JSON.stringify(r.serialized) === '{"type":"raster","url":"/test-566.json","tileSize":256}', JSON.stringify(r));
     }
@@ -4788,7 +4788,7 @@ for (const mode of renderers) {
             return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown};
         });
         check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws the code, its link and the option (#2133, #2148)',
-            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 https://map-jr.org/e/90 The option fadeDuration', JSON.stringify(prod));
+            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 https://map-jr.org/e/90 key="The option fadeDuration"', JSON.stringify(prod));
     }
     // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
     // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
@@ -5300,7 +5300,7 @@ for (const mode of renderers) {
             return {afterRefused, warnings: warnings.filter(w => w.startsWith('[map-jr-gl] E1593 '))};
         });
         check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
-            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] E1593 https://map-jr.org/e/1593 no-such-type', JSON.stringify(unknown));
+            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] E1593 https://map-jr.org/e/1593 type="no-such-type"', JSON.stringify(unknown));
     }
     // An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text in the development build, once
     // for each layer, property and value, and the map still draws it (#1087). The production build fires none.
@@ -7850,7 +7850,7 @@ for (const mode of renderers) {
         }, mode);
         await page.waitForTimeout(100);
         page.off('console', listen);
-        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0] === '[map-jr-gl] E590 https://map-jr.org/e/590 wrong' && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
+        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0] === '[map-jr-gl] E590 https://map-jr.org/e/590 source="wrong"' && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
         check(`[${mode}] a color-relief layer with one stop, or two stops at one elevation, draws the colour of a stop`, custom.one === '0,255,0' && [custom.below, custom.at, custom.above].every(c => c === '255,0,0' || c === '0,255,0'), JSON.stringify(custom));
     }
 
@@ -7921,7 +7921,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         return told;
     });
     check('[main] setStyle with an unsupported layer type warns, one time for each new set of types',
-        JSON.stringify(warnings) === JSON.stringify(['[map-jr-gl] E1618 https://map-jr.org/e/1618 foo', '[map-jr-gl] E1618 https://map-jr.org/e/1618 foo, bar']), JSON.stringify(warnings));
+        JSON.stringify(warnings) === JSON.stringify(['[map-jr-gl] E1618 https://map-jr.org/e/1618 list="foo"', '[map-jr-gl] E1618 https://map-jr.org/e/1618 list="foo, bar"']), JSON.stringify(warnings));
     await page.close();
 }
 // The compat Map with a style that has a null source and a null layer: each is reported, the rest loads, and the methods
