@@ -2582,6 +2582,13 @@ for (const renderer of renderers) {
             Math.abs(overlayPatch.marker.x - 150) < 1 && Math.abs(overlayPatch.marker.y - 110) < 1 && overlayPatch.sameBox && overlayPatch.closeButton, JSON.stringify(overlayPatch));
         check(`[${renderer}] overlay().patch({lngLat: undefined}) keeps the position, and a later patch of the anchor places the marker there`,
             Math.abs(overlayPatch.kept?.x - 150) < 1 && Math.abs(overlayPatch.kept?.y - 110) < 1, JSON.stringify(overlayPatch.kept));
+        // An overlay of the main API is placed at its fractional pixel position, not rounded to whole pixels (#2189).
+        const subpixel = await page.evaluate(() => { const t = window.t, el = document.createElement('div');
+            const ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 100.5, y: 100.25}), anchor: 'top-left'});
+            const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(el.style.transform); ov.remove();
+            return {transform: el.style.transform, x: m && +m[1], y: m && +m[2]}; });
+        check(`[${renderer}] overlay() places an element at a fractional pixel position without rounding (#2189)`,
+            Math.abs(subpixel.x - 100.5) < 0.05 && Math.abs(subpixel.y - 100.25) < 0.05, JSON.stringify(subpixel));
         // An unknown option of overlay(), update() or patch() warns once for each map in the development build (#1647). The
         // production build gives none (see "The map with no checks" below).
         const overlayUnknown = await page.evaluate(async () => {
