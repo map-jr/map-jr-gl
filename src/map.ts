@@ -1148,6 +1148,8 @@ export class Map {
         this.eased = undefined;
         this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding, elevation});
         this.jumped = this.seq;
+        // (A drag goes on from the new camera, as in MapLibre GL JS: the ground that it held before does not put the camera back, #2140.)
+        this.held = null;
         return this;
     }
     /**
