@@ -899,7 +899,7 @@ for (const mode of renderers) {
     });
     check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
     // After setData, each tile of the view fires one `sourcedata` with `tile`, as in MapLibre GL JS 6.17 (#2051). (The check
-    // reads the tiles of the zoom of the view: the overview tile at zoom 0 is not one of MapLibre GL JS.)
+    // reads the tiles of the zoom of the view; #2135 checks that the overview tile fires none.)
     if (mode === 'main') {
         const run = lib => page.evaluate(async ([lib, mode]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
@@ -919,6 +919,28 @@ for (const mode of renderers) {
         }, [lib, mode]);
         const ours = await run('ours'), ml = await run('ml');
         check('maplibre-compat: after setData, each tile of the source fires sourcedata with its tile, as MapLibre GL JS (#2051)', ours !== '' && ours === ml, JSON.stringify({ours, ml}));
+    }
+    // Only the tiles of the view fire `sourcedata` with `tile`, as in MapLibre GL JS: the zoom-0 overview tile that the
+    // engine requests after the first `idle` fires none (#2135). (The overview is requested after that `idle`, so the
+    // check waits 3 s more; a vector source with a view at zoom 3 has an overview at zoom 0.)
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const tiles = new Set();
+            const m = new mod.Map({container: el, renderer: mode, center: [10, 10], zoom: 3, attributionControl: false, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [10, 10]}}]}}},
+                layers: [{id: 'p', type: 'circle', source: 'p'}]}});
+            m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'p' && c) tiles.add(`${c.z}/${c.x}/${c.y}`); });
+            // (Bounded: a wait that never ends would stop the suite.)
+            const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), new Promise(r => setTimeout(() => r(false), 15000))]);
+            await new Promise(r => setTimeout(r, 3000));
+            m.remove(); el.remove();
+            return (idle ? '' : 'no idle: ') + [...tiles].sort().join();
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] maplibre-compat: only the tiles of the view fire sourcedata with a tile, not the overview tile, as MapLibre GL JS (#2135)`, ours !== '' && ours === ml, JSON.stringify({ours, ml}));
     }
     // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
     const urlDiff = await page.evaluate(async () => {
