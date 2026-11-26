@@ -19,20 +19,20 @@ const alpha = (name: string, a: number) => a < 0.999 ? ` ${name}="${num(a)}"` : 
  * `minSize` and `tol` (quantized units) drop features and vertices too small to see at this scale.
  */
 function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number): string {
-    const {coords, ringEnds, featEnds} = b.geom;
+    const {coords, ringEnds, featEnds} = b.geom, k = b.geom.half ? 0.5 : 1;
     let d = '';
     for (let r = f ? featEnds[f - 1] : 0; r < featEnds[f]; r++) {
         const start = r ? ringEnds[r - 1] : 0, end = ringEnds[r];
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (let i = start; i < end; i++) {
-            const x = coords[i * 2], y = coords[i * 2 + 1];
+            const x = coords[i * 2] * k, y = coords[i * 2 + 1] * k;
             if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
         }
         if (x1 < box[0] || y1 < box[1] || x0 > box[2] || y0 > box[3]) continue;
         if ((x1 - x0) / Q < minSize && (y1 - y0) / Q < minSize) continue;
         let px = 0, py = 0, ring = '', n = 0;
         for (let i = start; i < end; i++) {
-            const x = Math.round(coords[i * 2] / Q), y = Math.round(coords[i * 2 + 1] / Q);
+            const x = Math.round(coords[i * 2] * k / Q), y = Math.round(coords[i * 2 + 1] * k / Q);
             if (i === start) { ring = `M${x} ${y}`; n = 1; } else if (i === end - 1 ? (x !== px || y !== py) : Math.abs(x - px) + Math.abs(y - py) > tol) {
                 const dx = x - px, dy = y - py;
                 ring += dy === 0 ? `h${dx}` : dx === 0 ? `v${dy}` : `l${dx} ${dy}`;
@@ -149,7 +149,8 @@ export function renderSVG(s: SVGScene): string {
             }
             if (!groups.size) continue;
             const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
-            body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap === 'round' || b.cap === 'square' ? ` stroke-linecap="${b.cap}"` : ''}${b.join === 'round' || b.join === 'bevel' ? ` stroke-linejoin="${b.join}"` : ` stroke-miterlimit="${num(+(b.miterLimit ?? 2) || 2)}"`}`}>`);
+            // SVG puts the cap on every dash. As in MapLibre GL JS, the dashes of a line with a square cap are butt dashes (#2175).
+            body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap === 'round' || b.cap === 'square' && !dash ? ` stroke-linecap="${b.cap}"` : ''}${b.join === 'round' || b.join === 'bevel' ? ` stroke-linejoin="${b.join}"` : ` stroke-miterlimit="${num(+(b.miterLimit ?? 2) || 2)}"`}`}>`);
             for (const [attrs, d] of groups) if (d && !fill) { lines.push([body.length, attrs, d]); seen.set(d, (seen.get(d) ?? 0) + 1); body.push(''); }
             else if (d) body.push(`<path ${attrs}${fill && !outline ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
             body.push('</g>');

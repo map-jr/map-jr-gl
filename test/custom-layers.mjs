@@ -25,6 +25,8 @@ export async function checkCustomLayers(page, check, label = '[main]') {
             && w.camera === '2,1,10' && w.image && w.state && w.sky && w.marker && w.moves > 0 && w.notLoaded === 0), JSON.stringify(r.worker));
     check(`${label} maplibre-compat: a context lost before the first frame after the move to the main thread for a custom layer restarts the map once more, and it draws (#1993)`,
         !r.retry.errors.length && r.retry.events === 'webglcontextlost,webglcontextrestored' && r.retry.renderer === 'main' && r.retry.renders > 0, JSON.stringify(r.retry));
+    check(`${label} maplibre-compat: a query of rendered features that the worker engine has not answered when a custom layer moves the map to the main thread gets the features from the new engine (#1998)`,
+        !r.pendingQuery.error && r.pendingQuery.ids === 'top' && r.pendingQuery.renderer === 'main' && !r.pendingQuery.errors.length, JSON.stringify(r.pendingQuery));
     const m = r.mercator;
     check(`${label} maplibre-compat: MercatorCoordinate gives the values of MapLibre GL JS`,
         near(m.origin[0], 0.5) && near(m.origin[1], 0.5) && m.origin[2] === 0 && near(m.ny[0], 0.29444444444444445) && near(m.ny[1], 0.3760277015186852) && near(m.ny[2], 3.295078460614361e-6)
@@ -214,6 +216,22 @@ async function run() {
         } finally { HTMLCanvasElement.prototype.getContext = get; }
         out.retry = {errors, events: events.join(), renderer: w.renderer, renders};
         const e = w.getContainer(); w.remove(); e.remove();
+    }
+    // #1998: a query that the worker engine has not answered when the move begins is answered by the new engine. (The
+    // worker here answers a query only after a second, as a slow worker would: the move comes first.)
+    {
+        const slow = URL.createObjectURL(new Blob([`self.addEventListener('message', e => { let text = ''; try { text = JSON.stringify(e.data); } catch {} if (!e.late && text.includes('"type":"queryRendered"')) { e.stopImmediatePropagation(); setTimeout(() => { const later = new MessageEvent('message', {data: e.data}); later.late = true; self.dispatchEvent(later); }, 1000); } }); importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`], {type: 'text/javascript'}));
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+        const w = new mod.Map({container: el, renderer: 'worker', createWorker: () => new Worker(slow), center: [0, 0], zoom: 1, attributionControl: false, fadeDuration: 0, style}), errors = [];
+        w.on('error', e => errors.push(e.error.message));
+        await new Promise(r => w.once('load', r));
+        await new Promise(r => { w.once('idle', r); setTimeout(r, 5000); });
+        const query = Promise.resolve(w.queryRenderedFeatures(w.project([30, 0])));
+        w.addLayer({id: 'moved', type: 'custom', render() {}});
+        let ids, error;
+        try { ids = (await Promise.race([query, wait(15000).then(() => 'no answer')])); ids = Array.isArray(ids) ? ids.map(f => f.layer.id).join() : ids; } catch (e) { error = e.message; }
+        out.pendingQuery = {ids, error, errors, renderer: w.renderer};
+        w.remove(); el.remove(); URL.revokeObjectURL(slow);
     }
     const c = mod.MercatorCoordinate.fromLngLat([-74, 40.7], 100);
     out.mercator = {origin: Object.values(mod.MercatorCoordinate.fromLngLat({lng: 0, lat: 0})), ny: [c.x, c.y, c.z], altitude: c.toAltitude(), back: c.toLngLat().toArray(), meter: c.meterInMercatorCoordinateUnits()};

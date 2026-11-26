@@ -12,7 +12,10 @@ import {VARIANT, variantName} from './markers.ts';
  * The SVG backend turns this straight into paths; `tessellate` turns it into GPU buffers.
  */
 export interface Geom {
-    coords: Int16Array;
+    /** In tile units, or in halves of a tile unit when `half` is set (lines, see `tessellateLine`). */
+    coords: Int16Array | Float32Array;
+    /** The coordinates are halves of a tile unit (the batches of lines), clamped to int16. */
+    half?: boolean;
     /** Cumulative point count at the end of each ring. */
     ringEnds: Uint32Array;
     /** Cumulative ring count at the end of each feature. */
@@ -142,7 +145,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
-    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
+    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number;
@@ -409,7 +412,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (!featEnds.length) continue;
             const batch: Batch = {
                 type: kind as Batch['type'],
-                geom: {coords: Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds)},
+                geom: {coords: kind === 'line' ? halves(coords) : Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds), half: kind === 'line' || undefined},
             };
             if (ddColor && !progress) batch.color = Uint8Array.from(color);
             if (progress) batch.progress = Float32Array.from(progress);
@@ -609,21 +612,33 @@ export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
             }
             edges = Uint32Array.from(list);
         }
-        return {type: 'fill', pos: coords, idx: Uint32Array.from(idx), color, edges};
+        return {type: 'fill', pos: coords as Int16Array, idx: Uint32Array.from(idx), color, edges};
     }
 
     return tessellateLine(b);
 }
 
+/**
+ * Coordinates in halves of a tile unit, rounded and clamped to int16: 4 bytes a point, as whole units. A line needs no
+ * more: MapLibre GL JS rounds every vertex of a GeoJSON tile, where a line is clipped too, to whole units of a tile 8192
+ * wide.
+ */
+function halves(c: number[]): Int16Array {
+    const out = new Int16Array(c.length);
+    for (let i = 0; i < c.length; i++) { const t = Math.round(c[i] * 2); out[i] = t < -32768 ? -32768 : t > 32767 ? 32767 : t; }
+    return out;
+}
+
 /** The rings of a geometry with a point added where they cross a line of the grid. `closed`: each ring is a polygon ring. */
 function cutRings(g: Geom, {grid, cutLine}: GlobeCut, closed: boolean): Geom {
     if (grid <= 1 && !closed) return g;
-    const out: number[] = [], ringEnds = new Uint32Array(g.ringEnds.length);
+    // (The result is in tile units: a line that is cut is a Float32Array.)
+    const out: number[] = [], ringEnds = new Uint32Array(g.ringEnds.length), c = g.half ? g.coords.map(t => t / 2) : g.coords;
     for (let r = 0; r < g.ringEnds.length; r++) {
-        cutLine(g.coords, r ? g.ringEnds[r - 1] : 0, g.ringEnds[r], Math.max(1, grid), out, closed);
+        cutLine(c, r ? g.ringEnds[r - 1] : 0, g.ringEnds[r], Math.max(1, grid), out, closed);
         ringEnds[r] = out.length / 2;
     }
-    return {coords: Int16Array.from(out), ringEnds, featEnds: g.featEnds};
+    return {coords: closed ? Int16Array.from(out) : Float32Array.from(out), ringEnds, featEnds: g.featEnds};
 }
 
 /**
@@ -634,7 +649,7 @@ function tessellateGlobeFill(b: Batch, globe: GlobeCut): GLBatch | null {
     const g = b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
     for (let f = 0; f < g.featEnds.length; f++) {
         const polygons: {coords: Int16Array; holes: number[]}[] = [];
-        eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: g.coords.subarray(p0 * 2, p1 * 2), holes}));
+        eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: (g.coords as Int16Array).subarray(p0 * 2, p1 * 2), holes}));
         features.push(polygons);
     }
     const cut = globe.cutFill(features, globe);
@@ -676,7 +691,7 @@ function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: num
         cb(p0, ringEnds[endRing - 1], holes);
     };
     for (let r = first; r < last; r++) {
-        const area = ringArea(coords, r ? ringEnds[r - 1] : 0, ringEnds[r]);
+        const area = ringArea(coords as Int16Array, r ? ringEnds[r - 1] : 0, ringEnds[r]);
         if (!area) continue;
         const sign = area > 0 ? 1 : -1;
         if (!outerSign) outerSign = sign;
@@ -698,7 +713,7 @@ export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
  */
 function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
-    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [];
+    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [], cen: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
         const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
@@ -710,10 +725,19 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
         };
         eachPolygon(b.geom, f, (p0, p1, holes) => {
             let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
+            // On 3D terrain, MapLibre GL JS lifts each polygon by the ground at its centroid (the mean of its points,
+            // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
+            const first = count;
+            let cx = 0, cy = 0, cn = 0;
+            for (let r = 0; r + 1 < bounds.length; r++) for (let i = bounds[r]; i < bounds[r + 1]; i++) {
+                if (i === bounds[r + 1] - 1 && coords[i * 2] === coords[bounds[r] * 2] && coords[i * 2 + 1] === coords[bounds[r] * 2 + 1]) continue;
+                cx += coords[i * 2]; cy += coords[i * 2 + 1]; cn++;
+            }
+            const centroid = () => { cen.push(first, count, Math.floor(cx / cn), Math.floor(cy / cn)); };
             const roof = count, cut = globe && globe.cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
             for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
-            if (top <= bottom) return;
+            if (top <= bottom) return centroid();
             if (globe) {
                 // (cutLine repeats the first point of a ring at its end: it is dropped.)
                 const out: number[] = [], ends = [0];
@@ -745,10 +769,14 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                     idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
                 }
             }
+            centroid();
         });
     }
     if (!idx.length) return null;
-    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined};
+    // (cen has the first vertex, the end and the centroid of each polygon.)
+    const c = new Int16Array(count * 2);
+    for (let k = 0; k < cen.length; k += 4) for (let i = cen[k]; i < cen[k + 1]; i++) { c[i * 2] = cen[k + 2]; c[i * 2 + 1] = cen[k + 3]; }
+    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined, c};
 }
 
 const ARC_STEP = Math.PI / 5;
@@ -758,7 +786,8 @@ const ARC_STEP = Math.PI / 5;
  * x, y, normalX, normalY, side (-1..1 across the line, for edge antialiasing), distance along the line (for dashes).
  */
 /**
- * A line vertex is 16 bytes: position x, y (int16, tile units); the direction to push it sideways (int16, times
+ * A line vertex is 16 bytes: position x, y (int16, halves of a tile unit, so that a vertex is as exact as in MapLibre GL
+ * JS, whose tiles are 8192 units wide); the direction to push it sideways (int16, times
  * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: its sign;
  * 0 at the middle of a fan; see `pair` for the outer vertex of a bevel and `fan` for the outer vertices of a fan); the `line-offset` of the feature when it is data-driven (int16, eighths of a pixel; else 0); and the distance along the line (float32, for dashes).
  */
@@ -784,7 +813,9 @@ function perVertex<T extends Uint8Array | Float32Array>(a: T | undefined, feats:
 const COS_SHARP = Math.cos(75 / 2 * Math.PI / 180);
 
 function tessellateLine(b: Batch): GLBatch | null {
-    const {coords, ringEnds, featEnds} = b.geom;
+    // (Positions are in halves of a tile unit throughout, so that they stay small integers, which is faster; lengths are
+    // in tile units.)
+    const {coords, ringEnds, featEnds} = b.geom, k = b.geom.half ? 1 : 2;
     // (`feats`: the feature of each vertex, for the numbers of each feature; see `perVertex`.)
     const v: number[] = [], idx: number[] = [], color: number[] = [], feats: number[] = [];
     const round = b.join === 'round';
@@ -827,12 +858,12 @@ function tessellateLine(b: Batch): GLBatch | null {
             // Drop repeated points, then walk the segments.
             const xs: number[] = [], ys: number[] = [];
             for (let i = r ? ringEnds[r - 1] : 0; i < ringEnds[r]; i++) {
-                const x = coords[i * 2], y = coords[i * 2 + 1], n = xs.length;
+                const x = coords[i * 2] * k, y = coords[i * 2 + 1] * k, n = xs.length;
                 if (!n || x !== xs[n - 1] || y !== ys[n - 1]) { xs.push(x); ys.push(y); }
             }
             const n = xs.length;
             if (n < 2) continue;
-            if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]); }
+            if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) / 2; }
             let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0;
             /**
              * (ox, oy) moves the vertices along the line: both of them, or with `only` (1 or -1) the one on that side.
@@ -855,8 +886,8 @@ function tessellateLine(b: Batch): GLBatch | null {
                 last = a;
             };
             for (let i = 0; i < n - 1; i++) {
-                const x = xs[i], y = ys[i], ex = xs[i + 1] - x, ey = ys[i + 1] - y, len = Math.hypot(ex, ey);
-                const dx = ex / len, dy = ey / len, nx = -dy, ny = dx;
+                const x = xs[i], y = ys[i], ex = xs[i + 1] - x, ey = ys[i + 1] - y, len2 = Math.hypot(ex, ey), len = len2 / 2;
+                const dx = ex / len2, dy = ey / len2, nx = -dy, ny = dx;
                 if (i === 0) {
                     if (b.cap === 'round') fan(x, y, Math.atan2(ny, nx), Math.PI, dist, nx, ny);
                     pair(x, y, nx, ny, ...(b.cap === 'square' ? [-dx, -dy] : [0, 0]));
@@ -865,9 +896,9 @@ function tessellateLine(b: Batch): GLBatch | null {
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
                     // As in MapLibre GL JS, a corner sharper than 75 degrees has one more pair of vertices on each
                     // segment, 15 pixels from the corner, so that the join bends the dashes only near the corner.
-                    // (A miter or bevel join past 120 degrees does not have them yet: see #2118.)
-                    const sharp = cos < COS_SHARP && (cos >= 0.5 || round) && b.sharp ? b.sharp : 0;
-                    if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - pdx * sharp, y - pdy * sharp, pnx, pny); dist += sharp; }
+                    // (MapLibre rounds the step to whole units of its tiles, which are the halves of a unit here.)
+                    const sharp = cos < COS_SHARP && b.sharp ? b.sharp : 0;
+                    if (sharp && plen > 2 * sharp) { dist -= sharp; pair(x - Math.round(pdx * sharp * 2), y - Math.round(pdy * sharp * 2), pnx, pny); dist += sharp; }
                     if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
                     else if (!round && cos < 0.5) {
                         // A miter or bevel join that turns more than 120 degrees is a "flipbevel", as in MapLibre GL JS:
@@ -898,7 +929,7 @@ function tessellateLine(b: Batch): GLBatch | null {
                         }
                         if (blunt) movedPair(x, y, nx, ny, o2x, o2y); else pair(x, y, nx, ny, dx * back, dy * back, -outer, -back);
                     }
-                    if (sharp && len > 2 * sharp) { dist += sharp; pair(x + dx * sharp, y + dy * sharp, nx, ny); dist -= sharp; }
+                    if (sharp && len > 2 * sharp) { dist += sharp; pair(x + Math.round(dx * sharp * 2), y + Math.round(dy * sharp * 2), nx, ny); dist -= sharp; }
                 }
                 dist += len;
                 pdx = dx; pdy = dy; plen = len;
@@ -912,9 +943,9 @@ function tessellateLine(b: Batch): GLBatch | null {
     }
     if (!idx.length) return null;
     // Packed to 16 bytes a vertex (it was 24 as plain floats): lines are most of a tile, and every byte is uploaded.
-    const packed = new ArrayBuffer(count * LINE_VERTEX), view = new DataView(packed);
+    const packed = new ArrayBuffer(count * LINE_VERTEX), view = new DataView(packed), half = (t: number) => Math.max(-32768, Math.min(32767, Math.round(t)));
     for (let i = 0, o = 0; i < count; i++, o += LINE_VERTEX) {
-        view.setInt16(o, Math.round(v[i * 6]), true); view.setInt16(o + 2, Math.round(v[i * 6 + 1]), true);
+        view.setInt16(o, half(v[i * 6]), true); view.setInt16(o + 2, half(v[i * 6 + 1]), true);
         view.setInt16(o + 4, Math.round(v[i * 6 + 2] * LINE_NORMAL), true); view.setInt16(o + 6, Math.round(v[i * 6 + 3] * LINE_NORMAL), true);
         view.setInt16(o + 8, v[i * 6 + 4], true);
         if (b.offset) view.setInt16(o + 10, Math.max(-32768, Math.min(32767, Math.round(b.offset[feats[i]] * 8))), true);

@@ -449,18 +449,22 @@ export function compileExpr(e: any, flags: Flags): Fn {
             const parts: Fn[] = [];
             for (let i = 1; i < e.length; i++) {
                 const part = e[i];
-                if (Array.isArray(part) && (part[0] === 'image' || part[0] === 'coalesce' && part.some((x: unknown) => Array.isArray(x) && x[0] === 'image'))) { const name = compileExpr(part, flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
+                if (Array.isArray(part) && (part[0] === 'image' || part[0] === 'coalesce' && part.some((x: unknown) => Array.isArray(x) && x[0] === 'image'))) {
+                    // An image with "vertical-align" gets a style marker that has only the alignment.
+                    const name = compileExpr(part, flags), o = e[i + 1], align = compileExpr(o && typeof o === 'object' && !Array.isArray(o) ? o['vertical-align'] ?? null : null, flags);
+                    parts.push(c => { const n = name(c), a = align(c); return n ? (a ? `${STYLE_OPEN}|||${a}${STYLE_CLOSE}` : '') + IMAGE_OPEN + n + IMAGE_CLOSE + (a ? STYLE_OPEN + STYLE_CLOSE : '') : ''; });
+                }
                 else if (typeof part !== 'object' || Array.isArray(part)) {
-                    // The options after a section change its size, font or color. They go in the string as a marker
+                    // The options after a section change its size, font, color or vertical alignment. They go in the string as a marker
                     // before the section (see STYLE_OPEN); an empty marker after the section ends them.
-                    const text = arg(i), o = e[i + 1], styled = o && typeof o === 'object' && !Array.isArray(o) && (o['font-scale'] != null || o['text-font'] != null || o['text-color'] != null);
+                    const text = arg(i), o = e[i + 1], styled = o && typeof o === 'object' && !Array.isArray(o) && (o['font-scale'] != null || o['text-font'] != null || o['text-color'] != null || o['vertical-align'] != null);
                     if (!styled) { parts.push(text); continue; }
-                    const scale = compileExpr(o['font-scale'] ?? null, flags), font = compileExpr(o['text-font'] ?? null, flags), tint = compileExpr(o['text-color'] ?? null, flags);
+                    const scale = compileExpr(o['font-scale'] ?? null, flags), font = compileExpr(o['text-font'] ?? null, flags), tint = compileExpr(o['text-color'] ?? null, flags), align = compileExpr(o['vertical-align'] ?? null, flags);
                     parts.push(c => {
                         const t = text(c);
                         if (t == null || t === '') return '';
-                        const f = font(c), col = colorize(tint(c));
-                        return `${STYLE_OPEN}${scale(c) ?? ''}|${f == null ? '' : String(f).replace(/\|/g, '')}|${Array.isArray(col) ? col.join(',') : ''}${STYLE_CLOSE}${t}${STYLE_OPEN}${STYLE_CLOSE}`;
+                        const f = font(c), col = colorize(tint(c)), a = align(c);
+                        return `${STYLE_OPEN}${scale(c) ?? ''}|${f == null ? '' : String(f).replace(/\|/g, '')}|${Array.isArray(col) ? col.join(',') : ''}${a ? '|' + a : ''}${STYLE_CLOSE}${t}${STYLE_OPEN}${STYLE_CLOSE}`;
                     });
                 }
             }

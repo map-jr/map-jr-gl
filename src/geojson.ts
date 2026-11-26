@@ -226,6 +226,27 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
         if (rings.length) out.push({type, id: Number.isSafeInteger(n) ? n : typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
     const open = (r: number[][]) => ring(r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r.slice(0, -1) : r);
+    // The rings of polygons, wound so that `eachPolygon` of tile.ts reads ring 0 of each polygon as outer and the others
+    // as holes, whatever their winding in the input, as MapLibre GL JS does with geojson-vt `rewind` (#1821). The first
+    // ring keeps its direction and its first point, so that a polygon wound one way draws as before.
+    const polygons = (ps: number[][][][]) => {
+        const out: Float64Array[] = [];
+        let first = 0;
+        for (const p of ps) p.forEach((pts, i) => {
+            const r = open(pts);
+            let a = 0;
+            for (let k = 0, j = r.length - 2; k < r.length; j = k, k += 2) a += (r[k] - r[j]) * (r[k + 1] + r[j + 1]);
+            const sign = Math.sign(a);
+            if (!first) first = i ? -sign : sign;
+            // A reversed ring keeps its first point first.
+            if (sign && (sign === first) !== !i) for (let k = 2, m = r.length; k < m; k += 2, m -= 2) {
+                const x = r[k], y = r[k + 1];
+                r[k] = r[m - 2]; r[k + 1] = r[m - 1]; r[m - 2] = x; r[m - 1] = y;
+            }
+            out.push(r);
+        });
+        return out;
+    };
     const walk = (f: any, g: any) => {
         if (!g) return;
         const c = g.coordinates;
@@ -236,8 +257,8 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
             case 'MultiLineString': add(f, 2, c.map(ring)); break;
             // Closing points are dropped: rings are implicitly closed, as in vector tiles. A ring without a closing
             // point keeps its last point, as in MapLibre GL JS.
-            case 'Polygon': add(f, 3, c.map(open)); break;
-            case 'MultiPolygon': add(f, 3, c.flat().map(open)); break;
+            case 'Polygon': add(f, 3, polygons([c])); break;
+            case 'MultiPolygon': add(f, 3, polygons(c)); break;
             case 'GeometryCollection': for (const part of g.geometries) walk(f, part); break;
         }
     };
@@ -330,6 +351,7 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
             const r = f.rings[ri], keep = f.keep?.[ri];
             if (keep && keep[r.length / 2] < (f.type === 3 ? sqTol : Math.sqrt(sqTol))) continue;
             let pts: number[] = [];
+            const g = f.type === 2 ? 2 : 1;
             // With `lineMetrics`, the distance along the full line at each vertex, so that `line-progress` does not
             // depend on simplification (#1890). Such a line keeps every vertex until it is clipped.
             const d = f.type === 2 && metrics ? (f.dist ??= [])[ri] ??= lengths(r) : null, skip: boolean[] = [];
@@ -352,9 +374,11 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
                 }
                 const drop = !!keep && keep[i / 2] <= sqTol;
                 if (drop && !d) continue;
-                const tx = Math.round(((r[i] + w) * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
+                // (The vertices of a line are rounded to halves of a tile unit, as geojson-vt rounds them to whole units
+                // of a tile 8192 wide; see tessellateLine. Other vertices are rounded to whole units.)
+                const tx = Math.round(((r[i] + w) * n - x) * EXTENT * g) / g, ty = Math.round((r[i + 1] * n - y) * EXTENT * g) / g, m = pts.length;
                 if (d) pts.push(tx, ty), skip.push(drop);
-                else if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
+                else if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than the rounding step
             }
             if (d) {
                 // Each piece is a feature of its own that knows which part of the line it is, as in MapLibre.

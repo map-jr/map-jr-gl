@@ -193,7 +193,7 @@ uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float
 uniform float u_cam; uniform float u_dpr;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap; out float v_aa;
 void main() {
-  vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
+  vec4 a_v = vec4(a_packed.xy * 0.5, a_packed.zw / 8192.0); /* positions in halves of a tile unit: see tessellateLine */ vec2 a_sd = vec2(a_side, a_dist);
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
   v_blur = a_blur + u_zt * a_blur1; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
@@ -233,10 +233,9 @@ void main() {
     float px = fw * u_zf; // screen pixels for each dash unit
     float gap = min(min(outside(t, 0.0, u_dash.x), outside(t, period, period + u_dash.x)),
                     min(outside(t, second, second + u_dash.z), outside(t, second - period, second - period + u_dash.z))) * px;
-    // Each dash has the cap of the line: a round or square cap makes it longer by half the line width.
-    // (The round cap takes the smaller coverage, not the product, so that the sides of a dash are not softened twice.)
+    // A round cap makes each dash longer by half the line width. As in MapLibre GL JS, a square cap does not: its
+    // dashes end as butt dashes. (The round cap takes the smaller coverage, so that the sides are not softened twice.)
     if (u_cap == 1) a = min(a, c.a * clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0));
-    else if (u_cap == 2) a *= clamp(0.5 + w * 0.5 - gap, 0.0, 1.0);
     else {
       // Butt caps: the signed distance to the dash end, so that the end is smooth over one pixel.
       float inDash = t < second ? min(t, u_dash.x - t) : min(t - second, second + u_dash.z - t);
@@ -353,7 +352,7 @@ void main() {
 
     // Buildings: roofs and walls with a height in meters and a baked light level.
     extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
-layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; out vec4 v_color; out vec2 v_tile; out vec2 v_p; out float v_side;
+layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; layout(location=3) in vec2 a_centroid; out vec4 v_color; out vec2 v_tile; out vec2 v_p; out float v_side;
 uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
 void main() {
   v_tile = a_v.xy;
@@ -374,7 +373,9 @@ void main() {
   if (!roof) lit *= (1.0 - u_gradient) + u_gradient * clamp((t + base) * sqrt(height / 150.0), mix(0.7, 0.98, 1.0 - u_lightIntensity), 1.0);
   v_color = vec4(clamp(rgb * lit * u_lightColor, mix(vec3(0.0), vec3(0.3), 1.0 - u_lightColor), vec3(1.0)), c.a);
   v_side = horizonSide(a_v.xy);
-  gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_v.xy / ${EXTENT}.0));
+  // On 3D terrain the whole polygon stands on the ground at its centroid, and a base of 0 reaches 10 m lower, so that
+  // the walls go into a slope (as in MapLibre GL JS).
+  gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_centroid / ${EXTENT}.0) - (u_exag != 0.0 && !roof && t < 0.5 && a_v.z <= 0.0 ? 10.0 : 0.0));
 }`, `
 uniform vec4 u_clip; uniform float u_pattern; in vec4 v_color; in vec2 v_tile; in vec2 v_p; in float v_side; out vec4 o; ${PATTERN_GLSL}
 void main() { ${FS_CLIP} if (v_side < 0.0) discard; o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
@@ -865,6 +866,7 @@ export class GLRenderer {
                 attr(0, b.v, 4, gl.FLOAT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.ed) attr(2, b.ed, 1, gl.FLOAT);
+                attr(3, b.c, 2, gl.SHORT);
                 index(b.idx);
                 count = b.idx.length;
             } else if (b.type === 'line') {
@@ -989,8 +991,8 @@ export class GLRenderer {
             const L = s.layers[li];
             if (L.type !== 'symbol' || !L.visible || zoom < L.minzoom || zoom >= L.maxzoom) continue;
             let u: Record<string, WebGLUniformLocation> | undefined;
-            // On the globe, icon-translate moves the point by tile units before it is projected, as in MapLibre GL JS.
-            const move = this.globe ? mapTranslate(L.p.iconTranslate.eval(zoom), L.p.iconTranslateAnchor.eval(zoom), tr.bearing) : [0, 0];
+            // icon-translate moves the point by tile units before it is projected, as in MapLibre GL JS (#2021).
+            const move = mapTranslate(L.p.iconTranslate.eval(zoom), L.p.iconTranslateAnchor.eval(zoom), tr.bearing);
             for (const it of s.items.get(L.source!) ?? []) {
                 const b = it.tile.icons?.[L.id];
                 if (!b || !(b.counts[0] + b.counts[1])) continue;
@@ -1005,7 +1007,7 @@ export class GLRenderer {
                 b.fresh = false; b.seen = angle;
                 if (!u) {
                     u = this.use('icon', tr);
-                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = this.globe ? [0, 0] : screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];
+                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = [0, 0], color = p.iconColor.eval(zoom) as number[];
                     gl.uniform1f(u.u_size, p.iconSize.dd ? 1 : p.iconSize.eval(zoom));
                     gl.uniform1f(u.u_opacity, p.iconOpacity.dd ? 1 : p.iconOpacity.eval(zoom));
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
@@ -1389,7 +1391,7 @@ export class GLRenderer {
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
                         const cap = L.p.cap.dd ? 'butt' : L.p.cap.eval(zoom);
-                        gl.uniform1i(u.u_cap, cap === 'round' ? 1 : cap === 'square' ? 2 : 0);
+                        gl.uniform1i(u.u_cap, cap === 'round' ? 1 : 0);
                         const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
                         gl.uniform2f(u.u_patSize, L.ramp ? -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
                         if (L.ramp) {
@@ -2002,7 +2004,7 @@ export class GLRenderer {
                 for (const g of line.glyphs) {
                     const img = g.image ? lookup(g.image) : undefined;
                     if (img && !!img.custom === custom) {
-                        const w = g.advance * k, h = g.imageHeight! * k, cx = (pen + g.advance / 2) * k, cy = mid * k;
+                        const w = g.advance * k, h = g.imageHeight! * k, cx = (pen + g.advance / 2) * k, cy = (mid + (g.dy ?? 0)) * k;
                         const x0 = flat ? snap(l.x + cx - w / 2) - l.x : cx - w / 2, y0 = flat ? snap(l.y + cy - h / 2) - l.y : cy - h / 2;
                         room(54);
                         for (const [ux, uy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
@@ -2065,7 +2067,7 @@ export class GLRenderer {
                 for (let i = 0; i < glyphs.length; i++) {
                     const g = glyphs[i];
                     if (!g.w) continue;
-                    const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k, along = l.ground?.[i * 3] ?? 1;
+                    const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k + (g.dy ?? 0) * s, along = l.ground?.[i * 3] ?? 1;
                     glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga) * along, Math.sin(ga) * along, x0, y0, x0 + g.w * k, y0 + g.h * k, l.ground?.[i * 3 + 1], l.ground?.[i * 3 + 2]);
                 }
                 continue;
@@ -2079,7 +2081,7 @@ export class GLRenderer {
                     if (g.w) {
                         if (g.scale || g.color) {
                             // Rich text: this glyph has its own size or color. The label's values come back after it.
-                            const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
+                            const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline + (g.dy ?? 0) - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
                             if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
                             gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * k) / SDF_RADIUS);
                             glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * k * s, y0 + g.h * k * s, nx, ny);
