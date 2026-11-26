@@ -2064,10 +2064,15 @@ export class Engine {
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
         const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
         // Text on a line is found on the boxes of its glyphs (see `textBoxes`) when it is shown, and not found when it is
-        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. (A line
-        // with an icon is found within `radius` pixels of its geometry as before.)
-        if (!points) return image || !String(L.p.field.eval(z, f) ?? '') || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
-            : this.textOnLine(g, box, texts);
+        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. A polygon
+        // whose label is placed at a point is found on the box of that label, as in MapLibre GL JS (#1969): the label is
+        // the polygon's when its point lies in the polygon and its text is the polygon's. (A line or a polygon with an
+        // icon is found within `radius` pixels of its geometry as before.)
+        if (!points) {
+            const text = String(L.p.field.eval(z, f) ?? '');
+            return image || !text || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
+                : this.textOnLine(g, box, texts) || this.labelInPolygon(g, box, texts, text.toLowerCase().replace(/\s/g, ''));
+        }
         // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
         const text = String(L.p.field.eval(z, f) ?? ''), field = text.toLowerCase().replace(/\s/g, ''), near = !image && !text, turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
@@ -2088,6 +2093,28 @@ export class Engine {
             // (An icon is found on its collision box, with `icon-padding`, as in MapLibre GL JS.)
             const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f, this.iconMove(L, mercX(lng), mercY(lat), x, y));
             return x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1];
+        });
+    }
+
+    /**
+     * Whether a shown label at a point, whose text without case and spaces is `field`, lies in the polygon `g` (a feature
+     * that a question found) and has its box in the rectangle `box`. The point is tested on the screen, with the even-odd
+     * rule over all rings.
+     */
+    private labelInPolygon(g: NonNullable<QueriedFeature['geometry']>, box: number[], texts: {x: number; y: number; box: number[]; line?: boolean; text?: string}[], field: string): boolean {
+        const polygons = (g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) as number[][][][];
+        const hit = texts.filter(t => !t.line && t.text?.toLowerCase().replace(/\s/g, '') === field && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]);
+        if (!hit.length || !polygons.length) return false;
+        return polygons.some(rings => {
+            const screen = rings.map(ring => ring.map(([lng, lat]) => this.tr.project(lng, lat)));
+            return hit.some(t => {
+                let inside = false;
+                for (const ring of screen) for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                    const [ax, ay] = ring[i], [bx, by] = ring[j];
+                    if ((ay > t.y) !== (by > t.y) && t.x < ax + (bx - ax) * (t.y - ay) / (by - ay)) inside = !inside;
+                }
+                return inside;
+            });
         });
     }
 
