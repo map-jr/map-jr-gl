@@ -100,7 +100,8 @@ export interface PopupOptions {
     subpixelPositioning?: boolean;
     /**
      * maplibre-compat only: the distance in pixels from the edges of the map inside which the popup changes its anchor
-     * so that it stays in view (default 0 on each side). As in MapLibre GL JS, `bottom` does not change the anchor.
+     * so that it stays in view (default 0 on each side). `bottom` has no effect: in MapLibre GL JS it
+     * only turns a `left` or `right` anchor into `bottom-left` or `bottom-right`, which this library always does.
      */
     padding?: {top?: number; right?: number; bottom?: number; left?: number};
     /**
