@@ -30,3 +30,10 @@ test('format: vertical-align places an image in the line', () => {
     assert.equal(g[1].dy, -(2 * EM - h) / 2, 'top');
     assert.equal(g[2].dy, (2 * EM - h) / 2, 'bottom');
 });
+
+test('format: an image without vertical-align sits at the bottom of the line, as in MapLibre GL JS', () => {
+    const g = shape(['format', 'A', {'font-scale': 2}, ['image', 'pin'], {}]);
+    assert.equal(g[1].dy, (2 * EM - g[1].imageHeight) / 2, 'beside a larger text');
+    const plain = shape(['format', 'A', {}, ['image', 'pin'], {}]);
+    assert.equal(plain[1].dy, (EM - plain[1].imageHeight) / 2, 'in text with no other option');
+});

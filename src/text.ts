@@ -138,16 +138,15 @@ abstract class BaseShaper implements Shaper {
             if (hasStyles) text = this.markStyles(text);
             const lines = wrap(text, maxWidthEm * EM, t => this.line(t, font, spacing).width).map(t => this.line(t, font, spacing));
             let height = lines.length * LINE_HEIGHT;
-            if (hasStyles) {
+            if (hasStyles || hasImages) {
                 // A line is as tall as its largest text, as in MapLibre.
                 height = 0;
                 for (const l of lines) {
                     l.scale ??= l.glyphs?.length ? Math.max(...l.glyphs.map(g => g.scale ?? 1)) : 1; l.top = height; height += LINE_HEIGHT * l.scale;
-                    // "vertical-align" moves a section within the height of the largest text of the line. Without it,
-                    // text sits on the baseline (bottom) and an image is centered on the line.
-                    // The height is that of the largest text or image, as in MapLibre.
+                    // "vertical-align" moves a section within the height of the largest text or image of the line, as in
+                    // MapLibre. Without it, text and images sit at the bottom.
                     const h = Math.max(EM * l.scale, ...(l.glyphs ?? []).map(g => g.image ? g.imageHeight! : 0));
-                    for (const g of l.glyphs ?? []) if (g.align != null) g.dy = (h - (g.image ? g.imageHeight! : EM * (g.scale ?? 1))) * (g.align - (g.image ? 0.5 : 1)) - (g.image ? (h - EM * l.scale) / 2 : 0);
+                    for (const g of l.glyphs ?? []) if (g.align != null || g.image) g.dy = (h - (g.image ? g.imageHeight! : EM * (g.scale ?? 1))) * ((g.align ?? 1) - (g.image ? 0.5 : 1)) - (g.image ? (h - EM * l.scale) / 2 : 0);
                 }
             }
             s = {lines, width: Math.max(...lines.map(l => l.width)), height, lineHeight: LINE_HEIGHT};

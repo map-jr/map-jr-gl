@@ -64,19 +64,19 @@ test setup that needs no change.
 | `symbol-placement/line-overscaled-debug` | differ 6.4% | Collision boxes are not drawn, and the anchors differ as in `symbol-placement/line`. | label (debug drawing, wontfix) |
 | `text-field/formatted` | near 4.8% | The edges of the glyphs differ by a pixel (seen). | harness |
 | `text-field/formatted-arabic` | near 4.8% | Not inspected. | none yet |
-| `text-field/formatted-images` | near 2.3% | Not inspected. | none yet |
+| `text-field/formatted-images` | near 2.7% | Not inspected. | none yet |
 | `text-field/formatted-images-line` | differ 5.1% | A formatted label with images on `symbol-placement: line` is not drawn. | #1776 |
-| `text-field/formatted-images-constant-size` | near 1.2% | Not inspected. | none yet |
+| `text-field/formatted-images-constant-size` | near 1.0% | Not inspected. | none yet |
 | `text-field/formatted-grapheme-sections` | differ 15.0% | A combining accent in its own section is not joined to its base letter (the second label shows "a" and a missing glyph). The run also logs a failed request for a Hebrew font. | #1775 |
 | `text-field/formatted-images-variable-anchors-justification` | differ 12.1% | Only 5 of the 9 labels are placed, and the diagonal anchors are missing. | #1771 |
 | `text-field/formatted-images-multiline` | differ 30.0% | The line breaks of a formatted label with images are ignored, so the label is one line. | #1777 |
 | `text-field/formatted-images-vertical` | differ 15.2% | The text is horizontal, because vertical writing is not supported. | label (text-writing-mode, later) |
-| `text-field/formatted-images-zoom-dependent-size` | near 1.3% | Not inspected. | none yet |
+| `text-field/formatted-images-zoom-dependent-size` | near 1.8% | Not inspected. | none yet |
 | `text-field/formatted-text-color` | differ 9.1% | A section with a smaller `font-scale` is centered on the line instead of sitting on the baseline. | #1778 |
 | `text-field/formatted-line` | near 4.3% | Not inspected. | none yet |
 | `text-field/formatted-vertical-align` | differ 6.5% | `vertical-align` places the sections as in MapLibre GL JS (#1029); the whole label is a few pixels higher. | none |
 | `text-field/formatted-vertical-align-line` | near 4.1% | The sections are placed as in MapLibre GL JS (#1029); the images are not drawn (#1776). | #1776 |
-| `text-field/formatted-vertical-align-vertical-text` | near 1.2% | Not inspected. | none yet |
+| `text-field/formatted-vertical-align-vertical-text` | near 1.1% | Not inspected. | none yet |
 | `text-keep-upright/line-placement-true` | near 2.1% | Not inspected. | none yet |
 | `text-keep-upright/line-placement-false` | near 2.1% | Not inspected. | none yet |
 | `text-keep-upright/line-placement-true-pitched` | near 2.7% | Not inspected. | none yet |
