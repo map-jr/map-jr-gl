@@ -206,6 +206,13 @@ export class Map extends CoreMap {
     /** The custom layers of the map start when their file has loaded. */
     private custom?: Promise<unknown>;
     private customLayers?: {forget(): void};
+    /**
+     * As in MapLibre GL JS, `idle` comes after a frame that drew the custom layers: while the first one waits for the move
+     * to this thread and for its file, the map is not idle. Starting the layers sends a numbered command, so the next
+     * `idle` follows a frame that drew them (#2134).
+     */
+    protected override holdIdle() { return this.customStarting; }
+    private customStarting = false;
     /** The custom layers by id. A copy of the style (made when the map restores a lost WebGL context) gets them back from here. */
     private customs?: globalThis.Map<string, CustomLayerInterface>;
     /** One warning for code that used the array of a query without `await`, when the array was not complete. */
@@ -669,7 +676,8 @@ export class Map extends CoreMap {
             // layers start after that, so that `onAdd` gets the context of the new engine once.)
             const moved = this.mainThread || this.toMainThread();
             this.mainThread = true;
-            this.custom ??= Promise.resolve(moved).then(() => import('./custom-layers.ts')).then(m => { this.customLayers = m.customLayers(this, draw => this.ask(id => ({type: 'custom', id, draw}))); }, error => this.fire('error', {error}));
+            if (!this.custom) this.customStarting = true;
+            this.custom ??= Promise.resolve(moved).then(() => import('./custom-layers.ts')).then(m => { this.customLayers = m.customLayers(this, draw => this.ask(id => ({type: 'custom', id, draw}))); }, error => this.fire('error', {error})).finally(() => { this.customStarting = false; if (!this.customLayers) this.triggerRepaint(); });
             one = Object.defineProperty({id: layer.id, type: 'custom'}, 'implementation', {value: layer});
         }
         const {id, source} = one;

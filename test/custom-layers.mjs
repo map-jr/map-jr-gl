@@ -23,6 +23,8 @@ export async function checkCustomLayers(page, check, label = '[main]') {
     check(`${label} maplibre-compat: with the worker renderer (asked for, and the default), the first custom layer moves the map to the main thread; onAdd runs once with its context, the layer draws, and the camera, image, feature state, sky, marker and listeners stay (#1730), and isStyleLoaded() stays true (#1992)`,
         r.worker.length === 2 && r.worker.every(w => w.after === 'main' && !w.errors.length && !w.events.length && w.order === 'bg,red,top' && w.adds === 1 && w.sameGl && w.inside === 'red' && w.covered === 'blue'
             && w.camera === '2,1,10' && w.image && w.state && w.sky && w.marker && w.moves > 0 && w.notLoaded === 0), JSON.stringify(r.worker));
+    check(`${label} maplibre-compat: the first idle after addLayer of a custom layer that moves the map to the main thread follows a frame that drew the layer (#2134)`,
+        r.firstIdle.atIdle > 0 && r.firstIdle.renderer === 'main', JSON.stringify(r.firstIdle));
     check(`${label} maplibre-compat: a context lost before the first frame after the move to the main thread for a custom layer restarts the map once more, and it draws (#1993)`,
         !r.retry.errors.length && r.retry.events === 'webglcontextlost,webglcontextrestored' && r.retry.renderer === 'main' && r.retry.renders > 0, JSON.stringify(r.retry));
     check(`${label} maplibre-compat: a query of rendered features that the worker engine has not answered when a custom layer moves the map to the main thread gets the features from the new engine (#1998)`,
@@ -194,6 +196,19 @@ async function run() {
             camera: [w.getCenter().lng, w.getCenter().lat, w.getBearing()].map(v => Math.round(v * 100) / 100).join(), image: w.hasImage('dot'), state: w.getFeatureState({source: 'g', id: 1}).hover === true,
             sky: w.getSky()?.['sky-color'] === '#123456', marker: w.getContainer().contains(marker.getElement()), moves, notLoaded});
         const e = w.getContainer(); w.remove(); e.remove();
+    }
+    // #2134: as in MapLibre GL JS, the first `idle` after addLayer of a first custom layer follows a frame that drew the
+    // layer, also when the layer moves the map from the worker to the main thread.
+    {
+        // (A style without sources: the worker engine reports `idle` at once, before the move.)
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+        const w = new mod.Map({container: el, renderer: 'worker', center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+        await new Promise(r => w.once('load', r));
+        let drawn = 0;
+        w.addLayer({id: 'first', type: 'custom', render() { drawn++; }});
+        const atIdle = await new Promise(r => { w.once('idle', () => r(drawn)); setTimeout(() => r('no idle'), 15000); });
+        out.firstIdle = {atIdle, renderer: w.renderer};
+        w.remove(); el.remove();
     }
     // #1993: the move for a custom layer is not a lost context, so it does not use up the one restart after a loss.
     // (The context of the new canvas is lost at once, before the engine on this thread draws its first frame.)
