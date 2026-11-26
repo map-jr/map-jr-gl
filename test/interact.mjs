@@ -668,6 +668,23 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
+    // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
+    // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
+    const size = await page.evaluate(async () => {
+        const uncaught = [], onError = e => uncaught.push(e.message || String(e.reason)), seen = [];
+        window.addEventListener('error', onError); window.addEventListener('unhandledrejection', onError);
+        window.map.on('error', e => seen.push(String(e.error?.message)));
+        const calls = {add: 0, render: 0}, out = {};
+        try {
+            const r = window.map.addImage('bad', {width: 1, height: 1, data: new Uint8Array(3), onAdd() { calls.add++; }, render() { calls.render++; return false; }});
+            out.sync = false;
+            await r;
+        } catch (e) { out.message = String(e.message); }
+        await new Promise(r => setTimeout(r, 500));
+        window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onError);
+        return {...out, calls, uncaught, seen, has: window.map.hasImage('bad')};
+    });
+    check(`[${mode}] addImage with pixels of the wrong length throws a clear error and calls nothing (#2233)`, size.message?.startsWith('[map-jr-gl] E2233 addImage("bad")') && size.message.includes('needs 4') && size.calls.add === 0 && size.calls.render === 0 && !size.uncaught.length && !size.has, JSON.stringify(size));
     // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
     const reads = await page.evaluate(async () => {
         const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;
