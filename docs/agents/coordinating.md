@@ -57,6 +57,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   On the owner's Mac (10 cores) four slots ran without failures of timing on 2026-11-24 and six gave six failures in
   one run of `test/interact.mjs`: write `SUITE_SLOTS=4` into the prompt of each worker there. A suite takes 13 to 30
   minutes while several workers build.
+- **On the cloud VM, tell each worker to run its new check as a standalone Playwright script** against a demo server
+  of its own, with and without the fix, and to leave the full suites to CI. On 2026-11-26 eight workers waited more
+  than an hour for a slot of `suite.mjs`, and the main-renderer part of `test/interact.mjs` stopped at an image-source
+  check in every run (#2138), so no worker could show its check failing without the fix through the suite. A
+  standalone script of the check gave that evidence in a few minutes. Keep about four workers at once there.
 
 ## While the workers run
 
@@ -99,11 +104,37 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   decisions in one call. An update says what happened and does not hold a question. Measure each option before you
   ask, and give the numbers: the first question of #1356 ("pages override with 2+ classes") came before a one-class
   page rule was measured, which loses, and had to be asked twice.
+- **Never wait for an answer in the question tool while you have other work that you can do** (the owner,
+  2026-11-26). The call of the tool holds your turn until the owner answers, and the owner may not answer for a long
+  time. Before you call it, do everything that does not depend on the answer: merge what is green, start the next
+  workers, send failures back, file the issues of the reports. Call it only when every step that is left needs the
+  answer, or when no other work is left.
+- **A wake-up does not give a question a timeout.** On 2026-11-26, in the desktop app, a wake-up of `ScheduleWakeup`
+  that was set for 60 seconds did not end a question that waited for two to three minutes, in two runs: it came as a
+  turn of its own after the owner had answered. The owner has seen a question end early before, perhaps after another
+  kind of notice, and this was not reproduced. If a question ends with no answer, go on with the work that does not
+  need the answer and ask again later. No answer is not a yes: a pull request that waits for the owner stays open.
+- **Do not ask the owner between 23:00 and 07:00 New York time** (the owner, 2026-11-26): the owner is usually asleep
+  then. Read the time with `TZ=America/New_York date`. In those hours, go on with the work that does not need the
+  answer, keep each open decision in its issue or pull request, and ask after 07:00.
+- **The setting `askUserQuestionTimeout`** (user settings; `10m` on the owner's Mac since 2026-11-26) closes a question
+  that nobody answers. Read in the documentation of Claude Code and not tested: its timer does not start while the
+  session is connected to Remote Control, and a cloud session does not read the user settings.
+- **Read the time after a question in a later message.** A command in the same message as the question runs at once
+  and not after the answer: both runs of 2026-11-26 seemed to be answered after 4 seconds for this reason.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
 - **A usage limit stops workers with their context.** Push the branch of each stopped worker before you wait. After
   the reset, send each one what changed on `main`; do not start new workers for the same issues.
+- **A restart of the cloud container can lose hours and the results of running workers.** On 2026-11-26 a restart
+  stopped the session for about seven hours; the report of one worker was only in its output file. After a restart,
+  read the output file of each task that the restart notice names, start the CI watch again, and update each open
+  pull request from `main` (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/N/update-branch`) before you merge it,
+  because its CI ran on an old base.
+- **Measure the bytes of a branch on its merge with `main`, not on the branch alone.** A branch that is behind `main`
+  compares with an older base: on 2026-11-26 a reviewer measured +15 bytes for #2178, and its merge with `main` gave
+  +404. Build the result of `git merge` of the branch into `origin/main` in a temporary worktree.
 
 ## Merging
 
@@ -289,7 +320,9 @@ alone cannot.
 - The shell of the owner's Mac sets `noclobber`, so `cat > file` does not replace a file that exists: write `>|`,
   and `2>|` for the error output.
 - The log of one job: `gh api --allow-escape-sequences repos/map-jr/map-jr-gl/actions/jobs/<id>/logs >| file`. Without
-  the option `gh` writes nothing, and the log of a run that is still in progress is not there yet.
+  the option `gh` writes nothing, and the log of a run that is still in progress is not there yet. The `gh` of the
+  cloud VM (2.89) does not know the option and writes the log without it:
+  `gh api repos/map-jr/map-jr-gl/actions/jobs/<id>/logs > file`.
 - `gh api -X PUT …/pulls/N/merge -f sha=` needs the full SHA of 40 characters.
 - A dispatch of the workflow `Browsers` with `safari` (not `safari_only`) replaces a push run of it that waits, a push
   run of a merge included. A dispatch with `safari_only` does not (#1929).

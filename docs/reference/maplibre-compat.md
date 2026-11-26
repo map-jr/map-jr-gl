@@ -113,7 +113,7 @@ library" names a member that MapLibre GL JS does not have.
 | `showPadding` | `boolean` | Has no effect: the map does not draw the padding. |
 | `showCollisionBoxes` | `boolean` | Has no effect: the map does not draw collision boxes. |
 | `showOverdrawInspector` | `boolean` | Has no effect: the map has no overdraw view. |
-| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the map draws on the main thread (`renderer: 'main'`). |
+| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | As in MapLibre GL JS, the map calls the function before a frame in which the camera changed and draws the camera that it returns, when the map draws on the main thread (`renderer: 'main'`). |
 | `setAnisotropicFilterPitch` | `(pitch?: number \| null \| undefined) => Map` | Sets the pitch in degrees above which raster tiles are filtered anisotropically, as in MapLibre GL JS: the far part of a pitched raster map is then sharper. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns the pitch in degrees above which raster tiles are filtered anisotropically (20 by default). |
 | `setSourceTileLodParams` | `(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string \| undefined) => Map` | Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS. |
@@ -281,7 +281,7 @@ map.on('click', async event => {
 ```
 
 When `remove()` is called before the answer, the promise rejects with the error
-`[map-jr-gl] The query has no answer: the map was removed.`
+`[map-jr-gl] E10022 The query has no answer: the map was removed.`
 
 ## `setStyle`
 

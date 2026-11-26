@@ -23,5 +23,5 @@ test('renderToImage embeds raster tiles even when a caller passes inlineImages: 
     assert.doesNotMatch(html, /https:\/\/tiles\.test/);
     // A JavaScript caller that passes the option gets one warning.
     assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /^\[map-jr-gl\] renderToImage\(\): "inlineImages"/);
+    assert.match(warnings[0], /^\[map-jr-gl\] E1582 renderToImage\(\): "inlineImages"/);
 });

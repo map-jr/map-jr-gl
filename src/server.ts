@@ -180,16 +180,16 @@ export interface RenderResult {
 function limitedFetch(o: RenderOptionsBase, fetchFn: typeof fetch): typeof fetch {
     const total = o.timeout ?? 30000, each = o.requestTimeout ?? 10000, max = o.maxBytes ?? 0;
     for (const [name, v] of [['timeout', total], ['requestTimeout', each], ['maxBytes', max]] as const)
-        if (!(v >= 0)) throw new Error(`[map-jr-gl] server render: "${name}" is ${v}. Pass a number that is 0 (no limit) or more.`);
+        if (!(v >= 0)) throw new Error(`[map-jr-gl] E25 server render: "${name}" is ${v}. Pass a number that is 0 (no limit) or more.`);
     if (o.allowHosts && !(Array.isArray(o.allowHosts) && o.allowHosts.every(h => typeof h === 'string' && /^[^/:@\s]+$/.test(h))))
-        throw new Error(`[map-jr-gl] server render: "allowHosts" is ${JSON.stringify(o.allowHosts)}. Pass a list of host names without a scheme, a port or a path, for example ["tiles.example.com"].`);
+        throw new Error(`[map-jr-gl] E10025 server render: "allowHosts" is ${JSON.stringify(o.allowHosts)}. Pass a list of host names without a scheme, a port or a path, for example ["tiles.example.com"].`);
     const hosts = o.allowHosts?.map(h => h.toLowerCase());
     if (!total && !each && !max && !hosts) return fetchFn;
     const end = total ? Date.now() + total : Infinity;
     const check = (url: string) => {
         let host: string | undefined;
         try { host = new URL(url).hostname; } catch { /* not a complete URL: no host */ }
-        if (hosts && (host === undefined || !hosts.includes(host))) throw new Error(`[map-jr-gl] server render: the host of ${url} is not in "allowHosts". Add "${host ?? ''}" to "allowHosts" if the render can request it.`);
+        if (hosts && (host === undefined || !hosts.includes(host))) throw new Error(`[map-jr-gl] E20025 server render: the host of ${url} is not in "allowHosts". Add "${host ?? ''}" to "allowHosts" if the render can request it.`);
     };
     return async (input, init) => {
         let url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -199,8 +199,8 @@ function limitedFetch(o: RenderOptionsBase, fetchFn: typeof fetch): typeof fetch
             if (!whole && !each) return;
             timer = setTimeout(() => {
                 reject(new Error(whole
-                    ? `[map-jr-gl] server render: the requests took longer than the "timeout" of ${total} ms; the request to ${first} was not complete. Pass a larger "timeout", or 0 for no limit.`
-                    : `[map-jr-gl] server render: the request to ${first} took longer than the "requestTimeout" of ${each} ms. Pass a larger "requestTimeout", or 0 for no limit.`));
+                    ? `[map-jr-gl] E30025 server render: the requests took longer than the "timeout" of ${total} ms; the request to ${first} was not complete. Pass a larger "timeout", or 0 for no limit.`
+                    : `[map-jr-gl] E40025 server render: the request to ${first} took longer than the "requestTimeout" of ${each} ms. Pass a larger "requestTimeout", or 0 for no limit.`));
                 ac.abort();
             }, Math.max(0, whole ? left : each));
         });
@@ -214,12 +214,12 @@ function limitedFetch(o: RenderOptionsBase, fetchFn: typeof fetch): typeof fetch
                 if (res.url) check(res.url);
                 const to = hosts && res.status > 300 && res.status < 400 && res.headers.get('location');
                 if (!to) break;
-                if (hop > 4) throw new Error(`[map-jr-gl] server render: the request to ${first} was redirected more than 5 times.`);
+                if (hop > 4) throw new Error(`[map-jr-gl] E50025 server render: the request to ${first} was redirected more than 5 times.`);
                 void res.body?.cancel();
                 url = new URL(to, url).href;
             }
             if (!res.body) return res;
-            const large = () => new Error(`[map-jr-gl] server render: the response of ${first} is larger than "maxBytes" (${max} bytes). Pass a larger "maxBytes", or leave the source out of the style.`);
+            const large = () => new Error(`[map-jr-gl] E60025 server render: the response of ${first} is larger than "maxBytes" (${max} bytes). Pass a larger "maxBytes", or leave the source out of the style.`);
             if (max && +(res.headers.get('content-length') ?? 0) > max) { void res.body.cancel(); throw large(); }
             const reader = res.body.getReader(), parts: Uint8Array[] = [];
             for (let size = 0; ;) {
@@ -253,15 +253,15 @@ function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined,
 async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
-    if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] server render: the options have ${o.center == null && o.zoom == null ? 'no "center" and no "zoom"' : o.center == null ? '"zoom" but no "center"' : '"center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
+    if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] E1640 server render: the options have ${o.center == null && o.zoom == null ? 'no "center" and no "zoom"' : o.center == null ? '"zoom" but no "center"' : '"center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
     // The size is written into the markup as it is: a string could add attributes, and NaN gives a size of NaN (#1668).
     for (const name of ['width', 'height'] as const) {
         const size: unknown = o[name];
         if (typeof size === 'number' && size > 0 && size < Infinity) continue;
-        throw new Error(`[map-jr-gl] server render: "${name}" is ${typeof size === 'string' ? JSON.stringify(size) : String(size)}. Pass the ${name} in CSS pixels as a number greater than 0, for example ${name}: ${name === 'width' ? 800 : 500}.`);
+        throw new Error(`[map-jr-gl] E1670 server render: "${name}" is ${typeof size === 'string' ? JSON.stringify(size) : String(size)}. Pass the ${name} in CSS pixels as a number greater than 0, for example ${name}: ${name === 'width' ? 800 : 500}.`);
     }
     const dz = o.tileZoomOffset ?? 0;
-    if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
+    if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] E985 tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
     let given = styleFor(o.style, o.colorScheme === 'dark'), base: string | undefined;
@@ -359,7 +359,7 @@ async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" styl
             }
             images.set(imageName, {svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image href="${escapeXML(href)}" width="${width}" height="${height}" preserveAspectRatio="none"/></svg>`, width: width!, height: height!});
         } catch (cause) {
-            console.warn(`[map-jr-gl] the server render draws no image "${imageName}", because ${(cause as Error)?.message ?? cause}. The map loads it in the browser.`);
+            console.warn(`[map-jr-gl] E1300 the server render draws no image "${imageName}", because ${(cause as Error)?.message ?? cause}. The map loads it in the browser.`);
         }
     })());
     await Promise.all(jobs);
@@ -498,7 +498,7 @@ export async function renderElement(description: MapDescription, options: Elemen
     }
     if (d.nonce) attrs.push(`nonce="${quote(d.nonce)}"`);
     for (const name in attributes) {
-        if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(`[map-jr-gl] renderElement(): "${name}" is not the name of an attribute${/^on/i.test(name) ? ' that the element can have: an event handler attribute runs script' : ''}. Give names such as "id", "class" or "style".`);
+        if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(`[map-jr-gl] E30826 renderElement(): "${name}" is not the name of an attribute${/^on/i.test(name) ? ' that the element can have: an event handler attribute runs script' : ''}. Give names such as "id", "class" or "style".`);
         if (name !== 'style') attrs.push(`${name}="${quote(attributes[name])}"`);
     }
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden;' + (attributes.style ?? ''))}"`);
@@ -510,7 +510,7 @@ export async function renderElement(description: MapDescription, options: Elemen
             controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, label: rest.label ?? d.locale?.['Map.Title'], nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
             attributionOptions: d.attribution === false ? undefined : d.attribution as {compact?: boolean; customAttribution?: string | string[]} | undefined});
     } catch (cause) {
-        console.error(`[map-jr-gl] renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`);
+        console.error(`[map-jr-gl] E40826 renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`);
     }
     return `<map-jr ${attrs.join(' ')}>${first}</map-jr>`;
 }
@@ -568,7 +568,7 @@ let warnedInline = false;
 export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
     if ('inlineImages' in o && !warnedInline) {
         warnedInline = true;
-        console.warn('[map-jr-gl] renderToImage(): "inlineImages" has no effect, because the image always embeds raster tiles and icons. Remove "inlineImages".');
+        console.warn('[map-jr-gl] E1582 renderToImage(): "inlineImages" has no effect, because the image always embeds raster tiles and icons. Remove "inlineImages".');
     }
     const {svg, tiles} = await renderToSVG({highDensity: (o.pixelRatio ?? 1) > 1, ...o, inlineImages: true});
     const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;

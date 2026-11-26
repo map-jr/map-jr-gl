@@ -21,7 +21,7 @@ let warnedPmtiles = false;
  */
 export function addProtocol(name: string, fn: ProtocolFunction) {
     // (Accepted with no effect for `pmtiles://` URLs, so the development build warns, once per page: the registry is too.)
-    if (__DEV__ && name == 'pmtiles' && !warnedPmtiles) { warnedPmtiles = true; console.warn('[map-jr-gl] addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.'); }
+    if (__DEV__ && name == 'pmtiles' && !warnedPmtiles) { warnedPmtiles = true; console.warn('[map-jr-gl] E316 addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.'); }
     protocols.set(name, fn); for (const f of protocolListeners) f();
 }
 /**

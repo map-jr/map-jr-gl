@@ -417,15 +417,35 @@ export class Transform {
 
     /**
      * The near and far distances of MapLibre GL JS's fog (its fog matrix): the near one is the camera's distance to sea
-     * level along the view, and the far one is its far plane, which it works out for ground at sea level.
+     * level along the view, and the far one is its far plane (`farZ`).
      */
     fogRange(): [number, number] {
+        const p = Math.min(this.pitch, 89.25) * Math.PI / 180, d = this.cameraDistance;
+        return [Math.max(d / 2, d + this.elevation * this.pixelsPerMetre / Math.cos(p)), this.farZ()];
+    }
+
+    /**
+     * MapLibre GL JS's far plane (_calculateNearFarZ). It is worked out for the lowest of the ground and a plane 100 m
+     * below the camera, so at a high pitch the ground reaches a little above the horizon line.
+     */
+    farZ(): number {
         const p = this.pitch * Math.PI / 180, lp = Math.min(p, 89.25 * Math.PI / 180), d = this.cameraDistance, h = this.horizon();
         const near = Math.max(d / 2, d + this.elevation * this.pixelsPerMetre / Math.cos(lp)), oy = this.cy - this.height / 2;
-        const ground = Math.PI / 2 + p, far = (a: number) => Math.sin(a) * near / Math.sin(clamp(Math.PI - ground - a, 0.01, Math.PI - 0.01));
+        const low = Math.min(this.elevation, Math.cos(p) * d / this.pixelsPerMetre + this.elevation - 100);
+        const plane = low < 0 ? near - low * this.pixelsPerMetre / Math.cos(lp) : near;
+        const ground = Math.PI / 2 + p, far = (a: number) => Math.sin(a) * plane / Math.sin(clamp(Math.PI - ground - a, 0.01, Math.PI - 0.01));
         const ha = Math.atan(h / d), min = (90 - 89.25) * Math.PI / 180;
         const top = Math.min(far(this.fov * (0.5 + oy / this.height)), far(ha > min ? 2 * ha * (0.5 + oy / (h * 2)) : min));
-        return [near, (Math.sin(lp) * top + near) * 1.01];
+        return (Math.sin(lp) * top + plane) * 1.01;
+    }
+
+    /**
+     * The pixels from the map center up to where flat ground at the center's height meets MapLibre GL JS's far plane
+     * (`farZ`), which is where it stops drawing the ground; at least `horizon`.
+     */
+    groundTop(): number {
+        const p = this.pitch * Math.PI / 180, d = this.cameraDistance, h = this.horizon();
+        return p <= 0 || p >= Math.PI / 2 ? h : Math.max(h, d * Math.cos(p) * (1 - d / this.farZ()) / Math.sin(p));
     }
 
     /** Tile units (x, y) and meters (z) to clip space, as a column-major 4x4 matrix for the GPU. */

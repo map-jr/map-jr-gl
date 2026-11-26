@@ -390,7 +390,9 @@ export interface OverlayOptions {
     lngLat: Position;
     /**
      * The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners.
-     * @default 'center'
+     * Without `anchor`, a marker takes `'center'`, and a popup chooses its anchor each time it moves: `'top'` near the top
+     * edge, `'bottom'` near the bottom edge or near no edge, and `'left'` or `'right'` near a side, joined into a corner.
+     * @default `'center'` for a marker; for a popup, chosen by the position
      */
     anchor?: Anchor;
     /** A distance in CSS pixels from the position, to the right and down. */
@@ -758,7 +760,7 @@ const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b 
 
 /** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
 function complete(spec: MapDescription, method: string, fix: string) {
-    if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
+    if (!spec?.style) throw new Error(`[map-jr-gl] E57 ${method}(): the description has no "style". ${fix}`);
 }
 
 /**
@@ -807,8 +809,8 @@ export function createMap(container: HTMLElement | string, spec: MapDescription)
 export function makeMap(container: HTMLElement | string, given: MapDescription, name: string): MapInstance {
     complete(given, 'createMap', 'Pass the URL of a style or a style object as "style".');
     const spec = unset(given);
-    if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
-    if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
+    if (!container) throw new Error('[map-jr-gl] E65 createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
+    if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] E10065 createMap(): no element with the id "${container}".`);
     const {bounds, fitPadding, fitMaxZoom, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
@@ -901,7 +903,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             if (!alive || turn !== styleTurn) return;
             fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); }, asked);
             putImages();
-        }, () => { if (alive && turn === styleTurn) map.fire('error', {error: new Error('[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
+        }, () => { if (alive && turn === styleTurn) map.fire('error', {error: new Error('[map-jr-gl] E495 the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
         // (The description of this moment: it can have changed while the style loaded.)
         if (wantedProjection) style = {...style, projection: copy(wantedProjection)};
         if (wantedFonts) style = {...style, 'font-faces': {...style['font-faces'], ...absolute(wantedFonts)}} as typeof style;
@@ -1126,7 +1128,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             const spec = v && typeof v === 'object' && 'image' in v ? v : null;
             // (An image that does not load is an error of the map, and the map goes on without it.)
             const p = map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
-                if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] ${Object.hasOwn(wantedImages ?? {}, name) ? 'images' : 'the style'}: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
+                if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] E20121 ${Object.hasOwn(wantedImages ?? {}, name) ? 'images' : 'the style'}: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
             });
             adding.set(name, p);
         }
@@ -1223,7 +1225,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     };
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
     /** Rejects with the message of the mistake `code`, or with `short` when the checks do not load. */
-    const reject = (code: number, a: string, short: string) => checks().then(m => m.mistake(code, a), () => '[map-jr-gl] ' + short).then(text => { throw new Error(text); });
+    const reject = (code: number, a: string, short: string) => checks().then(m => m.mistake(code, a), () => '[map-jr-gl] E' + code + ' ' + short).then(text => { throw new Error(text); });
     const queryFeatures = (at?: FeaturePlace | FeatureOptions, o: FeatureOptions = {}): Promise<RenderedFeature[]> => {
         if (isOptions(at)) { o = at as FeatureOptions; at = undefined; }
         check(3, at, o);
@@ -1262,7 +1264,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     // (The cluster methods of the core source, with a message that names the method of the map (`MapInstance`).)
     const cluster = (name: string, id: string, run: (source: any) => Promise<any>) => Promise.resolve().then(() => {
         const source = map.getSource(id) as any;
-        if (!source?.getClusterLeaves) throw new Error(`"${id}" is not a GeoJSON source of the style.`);
+        if (!source?.getClusterLeaves) throw new Error(`E217 "${id}" is not a GeoJSON source of the style.`);
         return run(source);
     }).catch(e => { throw new Error(`[map-jr-gl] ${name}(): ${(e as Error)?.message?.replace(/^\[map-jr-gl\] /, '')}`); });
     // An event of the core map as the `MapInstance` gives it: positions as `[lng, lat]`, and the `MapInstance` as `target`. The
@@ -1304,7 +1306,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),
         clusterChildren: (id, clusterId) => cluster('clusterChildren', id, s => s.getClusterChildren(clusterId)),
         clusterLeaves: (id, clusterId, options) => cluster('clusterLeaves', id, s => {
-            if (typeof options !== 'object' && options !== undefined) throw new Error(`the third argument is ${options}. Pass {limit, offset}, for example clusterLeaves(sourceId, clusterId, {limit: 50, offset: 100}).`);
+            if (typeof options !== 'object' && options !== undefined) throw new Error(`E503 the third argument is ${options}. Pass {limit, offset}, for example clusterLeaves(sourceId, clusterId, {limit: 50, offset: 100}).`);
             return s.getClusterLeaves(clusterId, options?.limit, options?.offset);
         }),
         querySource,
@@ -1358,7 +1360,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         listen(type, fn: (event: any) => void) { const w = (e: any) => fn(hostEvent(e)); map.on(type, w); return () => { map.off(type, w); }; },
         once(type) {
             return new Promise<any>((resolve, reject) => {
-                const removed = () => new Error(`[map-jr-gl] once("${type}"): the map was removed.`);
+                const removed = () => new Error(`[map-jr-gl] E484 once("${type}"): the map was removed.`);
                 if (!alive) return reject(removed());
                 if (type === 'load' && state.get().loaded) return resolve({type, target: host});
                 const fn = (event: any) => { map.off(type, fn); waiting.delete(drop); resolve(hostEvent(event)); };

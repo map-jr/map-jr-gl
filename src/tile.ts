@@ -141,14 +141,14 @@ export interface IconBatch {
     avoid?: boolean;
 }
 /** `z`: the zoom that the sizes of the tile were found at, when it is not the zoom of the tile (see `buildTile`). */
-export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** When the fetched tile is out of date (see `TileFetchState`). */ expires?: number }
+export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** When the fetched tile is out of date, and its `ETag` (see `TileFetchState`). */ expires?: number; etag?: string }
 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
-export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number;
+export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number; etag?: string;
     /** A part that the tile could not use (the cut for the globe): the message of its failure. */ fault?: string }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -343,7 +343,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 byName.get(name)?.push(f) ?? byName.set(name, [f]);
                 if (sortKey) last?.[0] === name ? last[1].push(f) : groups.push([name, [f]]);
             }
-            if (groups.length > MAX_RUNS) warnOnce(`layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
+            if (groups.length > MAX_RUNS) warnOnce(`E2040 layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
             if (!sortKey || groups.length > MAX_RUNS) groups = [...byName];
         } else groups.push(['', features]);
         let k = 0;
@@ -905,8 +905,18 @@ function tessellateLine(b: Batch): GLBatch | null {
                         // two pairs at the corner across the bisector, 1 / sin of half the turn long, in opposite order.
                         const s = pnx * ny - pny * nx > 0 ? -1 : 1, l = s / Math.sqrt(Math.max(1e-4, 1 - cos * cos));
                         const fx = cos < 0.01 ? -nx : -my / ml * l, fy = cos < 0.01 ? -ny : mx / ml * l;
-                        pair(x, y, fx, fy);
-                        pair(x, y, -fx, -fy);
+                        // `line-offset` moves both pairs twice the offset along the bisector, and a miter from 3 to 8
+                        // eases that to the normal of each pair (offsetFallback of MapLibre). The side stores the ease
+                        // e as 15872 ± (1 + 510 e), its sign saying which way the bisector lies: see the shader of src/gl.ts.
+                        const e = Math.min(1, Math.max(0, (1 / cos - 3) / 5)), k = 1 + Math.round(e * 510);
+                        const flip = (jx: number, jy: number) => {
+                            const q = jy * mx - jx * my < 0 ? -1 : 1, a = vert(x, y, jx, jy, 15872 + q * k, dist);
+                            vert(x, y, -jx, -jy, -(15872 - q * k), dist);
+                            if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
+                            last = a;
+                        };
+                        flip(fx, fy);
+                        flip(-fx, -fy);
                     } else {
                         // Two pairs at the corner give a bevel; a fan on the outer side rounds it off. As in MapLibre GL
                         // JS, a corner of up to 120 degrees moves the inner vertices to where the inner edges meet, so
@@ -957,7 +967,7 @@ function tessellateLine(b: Batch): GLBatch | null {
 
 /** `globe`: the tile is built for a map that can show the globe (see `tessellate`), with the code of the cut. */
 export function toGL(ir: TileIR, globe?: GlobeCut): {tile: TileGL; transfer: ArrayBuffer[]} {
-    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z, expires: ir.expires}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
+    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z, expires: ir.expires, etag: ir.etag}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
         const b = ir.layers[id];

@@ -5,9 +5,10 @@ type Fetch = typeof fetch;
 /**
  * What a fetch of a tile tells its caller: `missing` for a tile that the server does not have (404), and `expires`,
  * the time (`Date.now()`) after which the tile is out of date. As in MapLibre GL JS, `max-age` of `Cache-Control` gives
- * it, or else `Expires` when the response has no `Cache-Control`.
+ * it, or else `Expires` when the response has no `Cache-Control`. `etag` is the `ETag` of the response: a reload that the
+ * server answers with 304 (not modified) reaches the page as a 200 with the same `ETag` (#2136).
  */
-export interface TileFetchState { missing?: boolean; expires?: number }
+export interface TileFetchState { missing?: boolean; expires?: number; etag?: string }
 export const PM_PREFIX = 'pmtiles://';
 
 /** The first bytes of PMTiles archives (header and root directory) that another thread has read already, by URL. */
@@ -31,6 +32,9 @@ export async function fetchTile(url: string, fetchFn: Fetch = (...a) => fetch(..
     if (res.status === 404 || res.status === 204) { if (state) state.missing = res.status > 204; return null; }
     const cc = res.headers?.get('cache-control'), age = cc && +/max-age="?(\d+)/i.exec(cc)?.[1]!, exp = !cc && res.headers?.get('expires');
     if (state && (age || exp)) state.expires = age ? Date.now() + age * 1e3 : Date.parse(exp as string);
+    // (An `ETag` of more than 256 characters counts as none: the tile reloads in full, and the page keeps no long string.)
+    const etag = res.headers?.get('etag');
+    if (state) state.etag = etag && etag.length <= 256 ? etag : undefined;
     // (A status 5xx is worth another request: the engine requests a tile of the view again, see `finalFailure`.)
     if (!res.ok) throw Object.assign(res.status < 500 ? httpError('tile', url, res.status) : requestError('tile', url, `HTTP ${res.status}. The tile server answered with an error. Check the server; the map requests a tile that the view needs again.`), {final: res.status < 500});
     return res.image ?? new Uint8Array(await res.arrayBuffer());

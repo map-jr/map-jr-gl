@@ -332,6 +332,8 @@ for (const file of new Set(JSON.stringify(pkg.exports).match(/dist\/[\w.-]+\.js/
 execFileSync(process.execPath, [createRequire(import.meta.url).resolve('typescript/package.json').replace(/package\.json$/, 'bin/tsc'), '-p', 'tsconfig.types.json'], {stdio: 'inherit'});
 // A part of the worker (`./worker-*`) is a script with no exports, so its declarations declare nothing.
 writeFileSync('dist/types/worker-part.d.ts', '/** A part of the worker of map-jr-gl. It is a script with no exports. */\nexport {};\n');
+// The texts of the codes of the messages (#2148), for a user who reads a log without network. No page loads this file.
+execFileSync(process.execPath, ['scripts/messages.mjs', '--json'], {stdio: ['ignore', 'ignore', 'inherit']});
 
 const kb = n => (n / 1024).toFixed(1).padStart(6);
 const report = (label, bytes) => console.log(label.padEnd(46), `${kb(bytes.length)} KB min ${kb(gzipSync(bytes, {level: 9}).length)} KB gzip ${kb(brotliCompressSync(bytes).length)} KB brotli`);
