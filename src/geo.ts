@@ -341,6 +341,11 @@ export class Transform {
      */
     screenToGround(px: number, py: number): [number, number] {
         if (!this.heightAt) return this.screenToMerc(px, py);
+        return this.screenToMerc(px, py, (this.groundHeight(px, py) - this.elevation) * this.pixelsPerMetre);
+    }
+
+    /** The height in metres of the ground seen at screen pixels, with 3D terrain (see `screenToGround`). */
+    private groundHeight(px: number, py: number): number {
         // Walk the view ray from the highest ground down to the lowest and stop where it first goes under the surface,
         // then narrow that step down. (Raising or lowering the assumed plane moves along the ray.) A step covers at most
         // one pixel of the world on the ground, so that a crest one cell of the elevation data wide is not stepped
@@ -348,16 +353,16 @@ export class Transform {
         const ppm = this.pixelsPerMetre, [lo, hi] = this.groundRange ?? [this.elevation, this.elevation];
         // The walk takes its points between the two ends, since the ray is straight; the narrowing asks for each point.
         const at = (h: number) => this.screenToMerc(px, py, (h - this.elevation) * ppm);
-        const below = (h: number) => { const m = at(h); return this.heightAt!(m[0], m[1]) >= h; };
+        const heightAt = this.heightAt!, below = (h: number) => { const m = at(h); return heightAt(m[0], m[1]) >= h; };
         const p = at(hi), q = at(lo), n = clamp(Math.ceil(Math.hypot(p[0] - q[0], p[1] - q[1]) * this.worldSize), 96, 4096);
         let a = hi + 1, b = lo - 1;
         for (let i = 1; i <= n; i++) {
             const t = i / n, h = hi + (lo - hi) * t;
-            if (this.heightAt(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t) >= h) { b = h; break; }
+            if (heightAt(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t) >= h) { b = h; break; }
             a = h;
         }
         for (let i = 0; i < 12; i++) { const mid = (a + b) / 2; if (below(mid)) b = mid; else a = mid; }
-        return this.screenToMerc(px, py, ((a + b) / 2 - this.elevation) * ppm);
+        return (a + b) / 2;
     }
 
     /** With 3D terrain: whether the ground hides a point on the surface (a label behind a ridge, say) from the camera. */
@@ -461,7 +466,8 @@ export class Transform {
      */
     unproject(px: number, py: number, exact = false): [number, number] {
         // On the globe the latitude comes from the sphere, so that a point of a polar cap is past 85.05° (#703).
-        if (this.globeness && !this.heightAt) return this.globe!.toLngLat(this, px, py);
+        // With 3D terrain, the point is on the ground at its height (as MapLibre's screenTerrainPointToMercatorCoordinate).
+        if (this.globeness) return this.globe!.toLngLat(this, px, py, this.heightAt ? this.groundHeight(px, py) : this.elevation);
         const flat = exact && !this.globeness && (!this.heightAt || (this.pitch <= 90 && py - this.cy < -this.horizon()));
         const [mx, my] = flat ? this.screenToMerc(px, py, this.flatZ, true) : this.screenToGround(px, py);
         return [lngFromMerc(mx), latFromMerc(flat ? my : clamp(my, 0, 1))];
