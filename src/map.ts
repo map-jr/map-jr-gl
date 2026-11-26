@@ -805,6 +805,8 @@ export class Map {
     private firstRead() {
         if (this.renderer === 'worker' && navigator.vendor.startsWith('Apple')) try { new OffscreenCanvas(1, 1).getContext('2d')!.drawImage(this.canvas, 0, 0); } catch { /* (nothing to read yet) */ }
     }
+    /** The compat entry holds `idle` while a custom layer has not started: its first frame is not drawn yet (#2134). */
+    protected holdIdle() { return false; }
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
@@ -864,7 +866,7 @@ export class Map {
             if (e.seq > this.reported) this.reported = e.seq;
             // (A report from before the last command: the engine sends another after that command.)
             // (While a style of `setStyle` loads, the map is not idle: its `idle` comes after that style; #1167.)
-            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading) return;
+            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading || this.holdIdle()) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
             // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
