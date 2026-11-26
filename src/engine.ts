@@ -1699,6 +1699,9 @@ export class Engine {
                 // During a gesture or an animation the center's height rises instead, so that the pitch and the zoom that the
                 // movement edits are kept. At rest the camera rises over the same point of the ground and keeps the same
                 // center: the pitch and the zoom are solved again. Not while the center waits for its own height.
+                // While the center waits for its height the ground is not known yet, and the camera stays above sea level,
+                // as MapLibre GL JS keeps it above the terrain of height 0 where it has no elevation data.
+                if (this.centreGiven) aboveSeaLevel(tr);
                 for (let pass = 0; pass < 3 && !this.centreGiven; pass++) {
                     const lift = this.terrainAboveCamera(tr);
                     if (lift <= 0) break;
@@ -1712,6 +1715,7 @@ export class Engine {
             this.rawElevation = tr.elevation / this.exaggeration;
         } else {
             tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = held ?? 0;
+            if (!globeness) aboveSeaLevel(tr);
             const st = this.style.terrain, src = st && this.style.sources[st.source];
             if (src) {
                 // Looking straight down the relief is not drawn, but the height under the center is still tracked (it
@@ -2323,4 +2327,18 @@ export class Engine {
             }
         }
     }
+}
+
+/**
+ * Keeps the camera at or above sea level, as `_raiseCameraByPitchAndZoom` of MapLibre GL JS does without terrain (#1851):
+ * a camera under altitude 0 (a pitch above 90, or a center below 0) rises to it over the same point, and the pitch and
+ * the zoom are solved again with the same center. MapLibre GL JS does this on every camera update, during a gesture or
+ * an animation too.
+ */
+function aboveSeaLevel(tr: Transform) {
+    const ppm = tr.pixelsPerMetre, d = tr.cameraDistance, p = tr.pitch * Math.PI / 180;
+    if (d * Math.cos(p) / ppm + tr.elevation >= 0) return;
+    const across = d * Math.sin(p) / ppm, up = -tr.elevation;
+    tr.pitch = Math.atan2(across, up) * 180 / Math.PI;
+    tr.zoom = Math.max(tr.minZoom, tr.zoom + Math.log2(d / ppm / Math.hypot(across, up)));
 }

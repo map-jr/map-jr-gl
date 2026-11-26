@@ -10,13 +10,13 @@ Sizes in KB, compressed with gzip, next to MapLibre GL JS 6.17.0. The page scrip
 
 | File | Map Jr. GL | MapLibre GL JS | Share |
 |---|---:|---:|---:|
-| Page script of `@map-jr/map-jr-gl` | 50.0 | 300.1 | 16.7% |
-| Page script of `@map-jr/map-jr-gl/maplibre-compat` | 60.1 | 300.1 | 20.0% |
-| Worker file | 81.2 | 145.0 | 56.0% |
-| Page script and worker file of `@map-jr/map-jr-gl` | 131.2 | 445.1 | 29.5% |
-| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 141.3 | 445.1 | 31.8% |
+| Page script of `@map-jr/map-jr-gl` | 49.1 | 300.1 | 16.4% |
+| Page script of `@map-jr/map-jr-gl/maplibre-compat` | 58.4 | 300.1 | 19.5% |
+| Worker file | 82.3 | 145.0 | 56.7% |
+| Page script and worker file of `@map-jr/map-jr-gl` | 131.4 | 445.1 | 29.5% |
+| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 140.7 | 445.1 | 31.6% |
 | Hard line for the page script and the worker file | 148.4 | 445.1 | 33.3% |
-| Server renderer | 57.8 |  |  |
+| Server renderer | 59.4 |  |  |
 <!-- sizes:end -->
 
 - A usual map downloads the page script of its entry and the worker file. The [loading guide](loading.md#the-files-that-a-map-loads)
@@ -34,46 +34,46 @@ building outlines, no small roads) make a page of 245 KB into one of 115 KB. The
 ## Speed in browsers
 
 <!-- speed:start -->
-The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS 6.17.0. These figures are from the run of 2026-11-25, for commit b5316d5. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
+The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS 6.17.0. These figures are from the run of 2026-11-26, for commit 3f544f1. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
 
 Load to idle, in milliseconds. A ratio below 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 1488 | 560 | 0.38 |
-| macOS, WebKit | 1437 | 501 | 0.35 |
-| Linux, Chromium | 825 | 635 | 0.77 |
-| Linux, Firefox | 1013 | 464 | 0.46 |
-| Linux, WebKit | 2536 | 823 | 0.32 |
-| Windows, Chromium | 1288 | 776 | 0.60 |
-| Windows, Firefox | 1243 | 826 | 0.66 |
-| Windows, WebKit | 1125 | 692 | 0.62 |
+| macOS, Chromium | 1219 | 578 | 0.47 |
+| macOS, WebKit | 1638 | 719 | 0.44 |
+| Linux, Chromium | 663 | 485 | 0.73 |
+| Linux, Firefox | 1316 | 573 | 0.44 |
+| Linux, WebKit | 2596 | 898 | 0.35 |
+| Windows, Chromium | 1276 | 1028 | 0.81 |
+| Windows, Firefox | 1246 | 622 | 0.50 |
+| Windows, WebKit | 1887 | 978 | 0.52 |
 
 Frames per second while the map moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 31 | 28 | 0.91 |
-| macOS, WebKit | 59 | 51 | 0.86 |
-| Linux, Chromium | 7 | 6 | 0.93 |
-| Linux, Firefox | 20 | 57 | 2.83 |
-| Linux, WebKit | 11 | 10 | 0.92 |
-| Windows, Chromium | 19 | 13 | 0.71 |
-| Windows, Firefox | 23 | 16 | 0.68 |
-| Windows, WebKit | 18 | 17 | 0.95 |
+| macOS, Chromium | 30 | 27 | 0.87 |
+| macOS, WebKit | 54 | 50 | 0.93 |
+| Linux, Chromium | 9 | 9 | 1.03 |
+| Linux, Firefox | 19 | 60 | 3.13 |
+| Linux, WebKit | 11 | 10 | 0.90 |
+| Windows, Chromium | 19 | 13 | 0.70 |
+| Windows, Firefox | 27 | 15 | 0.56 |
+| Windows, WebKit | 13 | 10 | 0.73 |
 
 Frames per second while a map with 10,000 markers moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 2 | 19 | 8.58 |
-| macOS, WebKit | 5 | 55 | 11.80 |
-| Linux, Chromium | 2 | 8 | 4.14 |
-| Linux, Firefox | 8 | 44 | 5.70 |
+| macOS, Chromium | 2 | 22 | 13.07 |
+| macOS, WebKit | 4 | 54 | 13.54 |
+| Linux, Chromium | 3 | 11 | 4.15 |
+| Linux, Firefox | 8 | 44 | 5.48 |
 | Linux, WebKit | 2 | 13 | 6.30 |
-| Windows, Chromium | 2 | 33 | 20.07 |
-| Windows, Firefox | 5 | 26 | 4.83 |
-| Windows, WebKit | 4 | 25 | 5.77 |
+| Windows, Chromium | 2 | 27 | 15.49 |
+| Windows, Firefox | 6 | 28 | 4.47 |
+| Windows, WebKit | 3 | 14 | 5.59 |
 <!-- speed:end -->
 
 Load to idle is the time from the start of the page until the map has drawn its first view completely. The

@@ -476,7 +476,7 @@
 "heatmap-weight/literal": "match",
 "high-pitch/pitch95": "near",
 "high-pitch/pitch95-roll135": "differ",
-"high-pitch/terrain-pitch95": "differ",
+"high-pitch/terrain-pitch95": "near",
 "hillshade-accent-color/default": "match",
 "hillshade-accent-color/literal": "match",
 "hillshade-accent-color/terrarium": "match",
