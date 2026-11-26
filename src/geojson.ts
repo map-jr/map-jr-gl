@@ -21,6 +21,19 @@ interface Prepared {
     keep?: Float64Array[];
     /** For a line, made when a tile first needs `line-progress`: the distance along the full line at each vertex, as geojson-vt measures it. */
     dist?: Float64Array[];
+    /** Made when a ring is first sliced: the bounding box of each run of `RUN` vertices, so a tile skips the runs outside it. */
+    runs?: Float64Array[];
+}
+const RUN = 32;
+/** For each run of `RUN` vertices (the last vertex of a run is the first of the next): min x, min y, max x, max y. */
+function runBoxes(r: Float64Array): Float64Array {
+    const n = r.length / 2, out = new Float64Array(Math.ceil(n / RUN) * 4);
+    for (let c = 0; c * RUN < n; c++) {
+        let a = Infinity, b = Infinity, d = -Infinity, e = -Infinity;
+        for (let i = c * RUN; i <= Math.min(c * RUN + RUN, n - 1); i++) { const x = r[i * 2], y = r[i * 2 + 1]; if (x < a) a = x; if (y < b) b = y; if (x > d) d = x; if (y > e) e = y; }
+        out.set([a, b, d, e], c * 4);
+    }
+    return out;
 }
 export interface SlicedFeature {
     type: number; id?: number | string; properties: Record<string, any>;
@@ -320,7 +333,21 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
             // With `lineMetrics`, the distance along the full line at each vertex, so that `line-progress` does not
             // depend on simplification (#1890). Such a line keeps every vertex until it is clipped.
             const d = f.type === 2 && metrics ? (f.dist ??= [])[ri] ??= lengths(r) : null, skip: boolean[] = [];
-            for (let i = 0; i < r.length; i += 2) {
+            // A run of vertices that lies wholly past one edge of the tile (by more than a tile unit) keeps only its
+            // first and last kept vertex. The edges into the tile stay the same, and each clip step drops the vertices
+            // between them, so the result is the same (#1888).
+            const runs = d || f.type === 1 || r.length < RUN * 8 ? null : (f.runs ??= [])[ri] ??= runBoxes(r), m1 = 1 / EXTENT / n;
+            let to = -1;
+            for (let i = 0; i < r.length; i = to < 0 ? i + 2 : to * 2, to = -1) {
+                const v = i / 2;
+                if (runs && v % RUN === 1) {
+                    const c = (v - 1) / RUN * 4;
+                    if (runs[c + 2] + w < x0 - m1 || runs[c] + w > x1 + m1 || runs[c + 3] < y0 - m1 || runs[c + 1] > y1 + m1) {
+                        let s = v, e = Math.min(v - 1 + RUN, r.length / 2 - 1);
+                        if (keep) { while (s < e && keep[s] <= sqTol) s++; while (e > s && keep[e] <= sqTol) e--; }
+                        if (s < e) { to = e; i = s * 2; }
+                    }
+                }
                 const drop = !!keep && keep[i / 2] <= sqTol;
                 if (drop && !d) continue;
                 const tx = Math.round(((r[i] + w) * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
