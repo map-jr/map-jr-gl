@@ -38,3 +38,26 @@ test('point text that is aligned with the map lies on the sphere of the globe wi
     assert.ok(hd < 0.75, `y is foreshortened at 60° N: ${high.frame}`);
     assert.ok(!place(60, 'viewport')?.frame, 'text aligned with the viewport stays flat on the screen');
 });
+
+/** The placed icon (20 pixels, no text) of a point at `lat`, as in `place` (#2174). */
+function placeIcon(lat: number, pitchAlignment = 'map'): any {
+    const layer = compileLayer({id: 'i', type: 'symbol', source: 'g', layout: {
+        'icon-image': 'a', 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': pitchAlignment}})!;
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, lat]}} as any), 0, 0, 0);
+    const labels = buildTile(data, 0, [layer], false).labels;
+    const tr = new Transform();
+    tr.width = 512; tr.height = 512;
+    tr.globe = globe; tr.globeStops = [0, 1];
+    tr.set([0, 0], 1, 0, 0);
+    const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+    return (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid(), icons)[0];
+}
+
+test('an icon that is aligned with the map lies on the sphere of the globe without pitch (#2174)', () => {
+    const mid = placeIcon(0)?.icon, high = placeIcon(60)?.icon;
+    assert.ok(mid?.frame && high?.frame, 'the icon has a frame on the ground');
+    const [a, , , d] = mid.frame, [ha, , , hd] = high.frame;
+    assert.ok(Math.abs(a - 1) < 0.05 && Math.abs(d - 1) < 0.05, `at the center the icon has its size: ${mid.frame}`);
+    assert.ok(ha > 0.85 && ha < 1 && hd < 0.75, `y is foreshortened at 60° N: ${high.frame}`);
+    assert.ok(!placeIcon(60, 'viewport')?.icon?.frame, 'an icon aligned with the viewport stays flat on the screen');
+});

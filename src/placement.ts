@@ -575,7 +575,7 @@ export function placeLabels(
                 }
                 const n = 2 ** it.id.z, q = 2 ** 22;
                 const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                const ic = meta && l.icon, iflat = !!tr.pitch && !!ic && ic.flat && ic.fit === 'none';
+                const ic = meta && l.icon, iflat = (!!tr.pitch || tr.globeness > 0) && !!ic && ic.flat && ic.fit === 'none';
                 const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (L.fixedSize ? 1 : iflat ? flatSize(tr, depth) : persp) : 0;
                 // Where the icon goes and its size, for text centered at (tx, ty).
                 const sprite = meta, move = ic ? translateAt(it, l.x, l.y, ax, ay, L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom)) : [0, 0];
