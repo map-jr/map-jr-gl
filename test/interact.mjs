@@ -7810,6 +7810,29 @@ for (const mode of renderers) {
     });
     check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
         JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
+    // Without terrain the camera does not go below sea level: a pitch above 90 at a center height of 0, or a center below
+    // 0, gives a smaller pitch and another zoom with the camera over the same point, as in MapLibre GL JS (#1851).
+    const seaLevel = {};
+    for (const lib of ['ml', 'jr']) {
+        seaLevel[lib] = await page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, maxPitch: 180, attributionControl: false});
+            await new Promise(r => m.once('load', r));
+            const idle = () => new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+            m.jumpTo({pitch: 95});
+            await idle();
+            const out = [[m.getPitch(), m.getZoom()]];
+            m.setCenterClampedToGround(false); m.setCenterElevation(-20000); m.jumpTo({pitch: 60, zoom: 10});
+            await idle();
+            out.push([m.getPitch(), m.getZoom()]);
+            m.remove(); el.remove();
+            return out.map(v => v.map(x => Math.round(x * 100) / 100));
+        }, lib);
+    }
+    check('compat: without terrain the camera stays at or above sea level, with the pitch and the zoom of MapLibre GL JS',
+        JSON.stringify(seaLevel.jr) === JSON.stringify(seaLevel.ml) && seaLevel.jr[0][0] === 90, JSON.stringify(seaLevel));
     // jumpTo({elevation}) gives the center its height as MapLibre GL JS does: it lasts after setCenterClampedToGround(false)
     // and the ground replaces it while the center is clamped. easeTo does not read `elevation` in MapLibre GL JS 6.17 (#1852).
     const camElevation = {};
