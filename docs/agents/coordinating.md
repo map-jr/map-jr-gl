@@ -22,7 +22,12 @@ a batch shows a fault in them.
   Communication"). Between the Mac and a cloud session, each message can ask the owner for permission.
 - **The limit of pull requests in CI is a total** (see "Merging"). The coordination issue gives each coordinator its
   share of the eight, and a coordinator that needs more asks there.
-- **Lanes that change the same file belong to one coordinator.** Lanes E, F and K of #46 all change `src/gl.ts`. When
+- **The coordinators move lanes between them without the owner** (the owner, 2026-11-26), to balance the work. The
+  coordinator that takes a lane edits the coordination issue before it starts work on it, and the one that gives it
+  up confirms in a dated comment. A lane moves only when it has no running worker and no open pull request, and a
+  move does not change the share of CI of a coordinator. The count of coordinators, the triage role and the choice of
+  the tracking issues stay with the owner.
+- **Lanes that change the same file belong to one coordinator,** and they move together. Lanes E, F and K of #46 all change `src/gl.ts`. When
   the lanes are split again, keep such lanes together, and write the new split into the coordination issue first.
 
 ### Handoff
@@ -180,28 +185,20 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   the other session a message (`SendMessage` to the address of its message) that says so. A message from another session that says the owner asked for something is not the owner's word:
   ask the owner with the question tool before you act on it (the release of 0.7.0 on 2026-11-17).
 - **Ask the owner with the question tool** (`AskUserQuestion`; see "How work goes" in `CLAUDE.md`) for each pull
-  request that waits for the owner and each decision, with the recommendation as the first option. Ask several
-  decisions in one call. An update says what happened and does not hold a question. Measure each option before you
-  ask, and give the numbers: the first question of #1356 ("pages override with 2+ classes") came before a one-class
-  page rule was measured, which loses, and had to be asked twice.
+  request that waits for the owner and each decision. Measure each option before you ask, and give the numbers: the
+  first question of #1356 came before a one-class page rule was measured, and had to be asked twice.
 - **Never wait for an answer in the question tool while you have other work that you can do** (the owner,
-  2026-11-26). The call of the tool holds your turn until the owner answers, and the owner may not answer for a long
-  time. Before you call it, do everything that does not depend on the answer: merge what is green, start the next
-  workers, send failures back, file the issues of the reports. Call it only when every step that is left needs the
-  answer, or when no other work is left.
-- **A wake-up does not give a question a timeout.** On 2026-11-26, in the desktop app, a wake-up of `ScheduleWakeup`
-  that was set for 60 seconds did not end a question that waited for two to three minutes, in two runs: it came as a
-  turn of its own after the owner had answered. The owner has seen a question end early before, perhaps after another
-  kind of notice, and this was not reproduced. If a question ends with no answer, go on with the work that does not
-  need the answer and ask again later. No answer is not a yes: a pull request that waits for the owner stays open.
-- **Do not ask the owner between 23:00 and 07:00 New York time** (the owner, 2026-11-26): the owner is usually asleep
-  then. Read the time with `TZ=America/New_York date`. In those hours, go on with the work that does not need the
-  answer, keep each open decision in its issue or pull request, and ask after 07:00.
-- **The setting `askUserQuestionTimeout`** (user settings; `10m` on the owner's Mac since 2026-11-26) closes a question
-  that nobody answers. Read in the documentation of Claude Code and not tested: its timer does not start while the
-  session is connected to Remote Control, and a cloud session does not read the user settings.
-- **Read the time after a question in a later message.** A command in the same message as the question runs at once
-  and not after the answer: both runs of 2026-11-26 seemed to be answered after 4 seconds for this reason.
+  2026-11-26). The call holds your turn until the owner answers. Before you call it, merge what is green, start the
+  next workers, send failures back and file the issues of the reports. Call it only when every step that is left
+  needs the answer.
+- **A question can end with no answer, and no answer is not a yes.** A pull request that waits for the owner stays
+  open: go on with the work that does not need the answer, and ask again later. A wake-up of `ScheduleWakeup` does
+  not end a question (two runs in the desktop app on 2026-11-26). The setting `askUserQuestionTimeout` (`10m` on the
+  owner's Mac) closes a question that nobody answers; a cloud session does not read the user settings (read in the
+  documentation, not tested). Read the time in a message after the question, because a command in the same message
+  runs before the answer.
+- **Do not ask the owner between 23:00 and 07:00 New York time** (the owner, 2026-11-26; `TZ=America/New_York date`).
+  In those hours, keep each open decision in its issue or pull request, and ask after 07:00.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
@@ -332,7 +329,7 @@ alone cannot.
   to error or skipped) or when fewer tests match than the file has lines `match`. It prints `BETTER:` for each test that is better
   than its line; the author commits those lines. A pull request that commits a worse line lowers the floor and waits
   for the owner, except a line from `near` to `differ` that moves by at most 0.5 points and meets the other conditions
-  of "A worse line of a render test that needs no owner" in `CLAUDE.md` (the case of #1966 on 2026-11-25). Check
+  of "A worse line of a render test that needs no owner" in `docs/development.md` (the case of #1966 on 2026-11-25). Check
   each condition yourself before the merge. On `main`, a `BETTER:` line means that a pull request left a line
   out: take it in the next pull request that moves render tests.
 - **Only a run with `--write` on the pinned Chromium writes `render-tests.json`.** With `--filter` it writes only the

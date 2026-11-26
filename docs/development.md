@@ -485,6 +485,67 @@ set the floors again.
 
 See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of done.
 
+## A worse line of a render test that needs no owner
+
+A pull request that commits a worse line of `test/conformance/render-tests.json` lowers a floor and waits for the
+owner. This is the one exception.
+
+A pull request may commit a worse line of
+`test/conformance/render-tests.json` without the owner when all of these are true:
+- the line goes from `near` to `differ`, so the count of `match` lines does not change;
+- the percentage of the test moves by at most 0.5 points (for example 4.9% on `main` and 5.0% on the branch), the
+  same in three runs on the pinned Chromium on each side;
+- the change brings the library closer to MapLibre GL JS in what it is for, and the pull request names why this
+  test moves;
+- the fault under the worse line has an issue, which the pull request names.
+
+The pull request lists each such line with its percentages before and after. Every other worse line still needs the
+owner: a line from `match`, a line to `error` or `skipped`, and a move of more than 0.5 points.
+
+## Code and methods from other projects
+
+A change may follow a method of another project, or copy its code, texts or CSS, without the owner when all of the
+following are true. Otherwise leave the pull request open and ask the owner.
+
+- **The license is permissive:** MIT, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, Apache-2.0, or public domain (CC0,
+  Unlicense). Read the license file of the project at the version that you use. Do not copy from GPL, LGPL, AGPL,
+  MPL or CC BY-SA sources (CC BY-SA includes answers on Stack Overflow), or from code that has no license.
+- **`ACKNOWLEDGEMENTS.md` names it.** The line names the project, its license and what follows it (the method, the
+  texts, the CSS), and says whether the code in this library is new or copied.
+- **Copied text keeps its notice.** When code, texts or CSS are copied or closely translated, and not only the method
+  is followed, `THIRD-PARTY-LICENSES.md` has the license text of the project with its copyright line. The package
+  publishes that file with the built files. This meets the condition of MIT, ISC and BSD that the notice goes with
+  every copy, a minified one included. For Apache-2.0, also copy the project's `NOTICE` file if it has one, and say in
+  the file that the code was changed.
+- **No endorsement.** Do not use the name of the project or of its authors to promote this library (the third clause
+  of BSD-3-Clause). Naming them in the acknowledgements and in `docs/reference/maplibre-differences.md` is fine.
+
+Copyright protects the expression of code, and not an idea, an algorithm or a formula. New code that implements a
+method (for example the curve of `flyTo`) needs only the line in `ACKNOWLEDGEMENTS.md`. A library that the built files
+contain is a dependency, and it still needs the owner. This section is general guidance, not legal advice; ask the
+owner when a case is unclear.
+
+## Showing a branch to the owner
+
+To show the owner a branch on a phone, link to the preview of the docs site of its pull request, where
+possible with the code to try in the playground. The workflow `Docs site` builds a preview for each pull request
+with the library of that pull request, and its comment on the pull request gives the address
+(`https://pr-<number>-map-jr-site.belabor.workers.dev`).
+- Write the code to try as a module of the playground (imports from `@map-jr/map-jr-gl` or the compat entry, a map
+  in the element with the id `map`), then `node scripts/agents/play-link.mjs <file> --pr <number>` prints the link to
+  `/play` of the preview with that code in it. Without `--pr`, the link goes to `https://map-jr.org/play`.
+- Say in the message what to try on the phone, step by step.
+- The pages of the demo (`/?sky&pitch=85`, `/bench`) are not on the docs site. For those, the owner runs the demo on
+  the Mac and opens it through a quick tunnel (`cloudflared tunnel --url http://localhost:8000`). A cloud session cannot
+  open a tunnel: its network does not reach the tunnel servers (tried on 2026-11-24).
+
+The workflow `Browsers` can run Safari itself on a macOS runner, but only when it is started by hand (the inputs
+`safari`, `safari_only` and `simulator`). Start it when a change touches the choice of
+the renderer, the workers or the canvas, and read its results before you ask the owner to test in Safari. On that
+runner the worker renderer loads but takes several seconds to reach `idle` (5.8 s against 1.25 s on the main
+thread on 2026-11-14), while an iPhone shows no such gap, and the frame rates mean little: a slow or failing worker
+scenario there is not a fault of the change. The inputs are in "Other browsers and operating systems".
+
 ## How a release is made
 
 The package is `@map-jr/map-jr-gl` on npm. The first version, 0.2.0, was published by hand on 2026-11-14 from the commit
