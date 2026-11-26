@@ -181,7 +181,7 @@ try {
     {
         const response = await fetch(base + '/no-such-page');
         check('/no-such-page: the status is 404', response.status === 404, String(response.status));
-        const internal = await Promise.all(['/development', '/style-guide', '/ecosystem', '/agents/worker-brief', '/sky-and-fog', '/similarity-scan'].map(path => fetch(base + path).then(response => response.status)));
+        const internal = await Promise.all(['/development', '/style-guide', '/ecosystem', '/agents/worker-brief', '/development/error-codes', '/development/similarity-scan'].map(path => fetch(base + path).then(response => response.status)));
         check('the files for people who work on the library are not on the site', internal.every(status => status === 404), internal.join(' '));
     }
 

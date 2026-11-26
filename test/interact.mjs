@@ -417,10 +417,38 @@ for (const mode of renderers) {
         }, mode).catch(e => ({error: String(e)}));
         check(`[${mode}] a drag pan: the events come as in MapLibre GL JS (movestart, dragstart, move before each drag) (#479)`,
             // (The worker renderer can report the last move after the release, when its frame comes later.)
-            (mode === 'main' ? /^movestart dragstart (move drag )+dragend moveend$/ : /^movestart dragstart move drag (move |drag )*dragend (move )?moveend$/).test(flatDrag.order ?? ''), JSON.stringify(flatDrag));
+            (mode === 'main' ? /^movestart dragstart (move drag )+dragend moveend$/ : /^movestart dragstart (move drag )+dragend (move )?moveend$/).test(flatDrag.order ?? ''), JSON.stringify(flatDrag));
         if (mode === 'main') check(`[${mode}] a drag pan: a marker stays on its point in every frame and does not jump at the release (#479)`,
             // (The first 3 px of a drag do not pan, so the marker stays that far behind the pointer from the start.)
             flatDrag.lag?.every(v => Math.abs(v - flatDrag.lag[0]) <= 1) && Math.abs(flatDrag.jump) <= 3, JSON.stringify(flatDrag));
+        // A `drag` listener that calls jumpTo: the drag goes on from the new camera, and the map ends where MapLibre GL JS
+        // (served at /ml/) ends. With the worker renderer the ground that the drag held before the jump put the camera
+        // back at the release (#2140).
+        const jump2140 = {};
+        for (const lib of ['ml', 'compat']) {
+            await page.evaluate(async ([lib, renderer]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m2140 = new mod.Map({container: el, renderer, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.on('drag', () => m.jumpTo({center: [10, 45]}));
+                m.once('dragend', () => { window.at2140 = +m.getCenter().lng.toFixed(3); });
+            }, [lib, mode]);
+            await page.mouse.move(100, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { await page.waitForTimeout(40); await page.mouse.move(100 + i * 10, 150); }
+            // (A pause before the release, so that the drag ends without inertia.)
+            await page.waitForTimeout(300); await page.mouse.up();
+            jump2140[lib] = await page.evaluate(async () => {
+                const m = window.m2140;
+                await new Promise(r => { m.once('moveend', r); setTimeout(r, 2000); });
+                const c = m.getCenter(), el = m.getContainer(); m.remove(); el.remove();
+                return [window.at2140, +c.lng.toFixed(3), +c.lat.toFixed(3)];
+            });
+        }
+        // (The longitude at `dragend`, and the center at the end.)
+        check(`[${mode}] a drag pan: a jumpTo from a drag listener moves the map as in MapLibre GL JS (#2140)`,
+            jump2140.ml && jump2140.compat && jump2140.ml.every((v, i) => Math.abs(v - jump2140.compat[i]) < 0.01), JSON.stringify(jump2140));
     }
 
     // Drag pan: the point under the cursor should follow it.
@@ -617,7 +645,7 @@ for (const mode of renderers) {
     const gl = await page.evaluate(() => Promise.resolve().then(() => window.map.addImage('gl', {width: 1, height: 1, data: {renderWithWebGL() {}}})).then(() => 'resolved', e => String(e.message)));
     const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
-    check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl.startsWith('[map-jr-gl] addImage("gl")') && gl.includes('WebGL'), gl);
+    check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl === '[map-jr-gl] E464 https://map-jr.org/e/464 image="gl"', gl);
     // #1746: an image with render() (StyleImageInterface) gets onAdd, render after each frame (new pixels when it returns
     // true) and onRemove, as in MapLibre GL JS.
     const anim = await page.evaluate(async () => {
@@ -640,6 +668,36 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
+    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own; compat entry only).
+    if (mode === 'compat') {
+        const removed = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+            let calls = 0;
+            await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
+            m.remove(); el.remove();
+            return calls;
+        }, mode).catch(e => String(e));
+        check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
+    }
+    // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
+    // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
+    const size = await page.evaluate(async () => {
+        const uncaught = [], onError = e => uncaught.push(e.message || String(e.reason)), seen = [];
+        window.addEventListener('error', onError); window.addEventListener('unhandledrejection', onError);
+        window.map.on('error', e => seen.push(String(e.error?.message)));
+        const calls = {add: 0, render: 0}, out = {};
+        try {
+            const r = window.map.addImage('bad', {width: 1, height: 1, data: new Uint8Array(3), onAdd() { calls.add++; }, render() { calls.render++; return false; }});
+            out.sync = false;
+            await r;
+        } catch (e) { out.message = String(e.message); }
+        await new Promise(r => setTimeout(r, 500));
+        window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onError);
+        return {...out, calls, uncaught, seen, has: window.map.hasImage('bad')};
+    });
+    check(`[${mode}] addImage with pixels of the wrong length throws a clear error and calls nothing (#2233)`, size.message === '[map-jr-gl] E2233 https://map-jr.org/e/2233 image="bad" length=3 width=1 height=1 expected=4' && size.calls.add === 0 && size.calls.render === 0 && !size.uncaught.length && !size.has, JSON.stringify(size));
     // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
     const reads = await page.evaluate(async () => {
         const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;
@@ -822,7 +880,7 @@ for (const mode of renderers) {
         m.on('click', ['missing-layer', 'zones-fill'], e => window.arrayEvents.push('click:' + e.features[0].properties.name));
         m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
-        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message).startsWith('[map-jr-gl] on("mouseenter")') ? 'message' : error.message); }
+        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E278 https://map-jr.org/e/278 type="mouseenter"' ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
         const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
@@ -871,7 +929,7 @@ for (const mode of renderers) {
     });
     check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
     // After setData, each tile of the view fires one `sourcedata` with `tile`, as in MapLibre GL JS 6.17 (#2051). (The check
-    // reads the tiles of the zoom of the view: the overview tile at zoom 0 is not one of MapLibre GL JS.)
+    // reads the tiles of the zoom of the view; #2135 checks that the overview tile fires none.)
     if (mode === 'main') {
         const run = lib => page.evaluate(async ([lib, mode]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
@@ -891,6 +949,50 @@ for (const mode of renderers) {
         }, [lib, mode]);
         const ours = await run('ours'), ml = await run('ml');
         check('maplibre-compat: after setData, each tile of the source fires sourcedata with its tile, as MapLibre GL JS (#2051)', ours !== '' && ours === ml, JSON.stringify({ours, ml}));
+    }
+    // Only the tiles of the view fire `sourcedata` with `tile`, as in MapLibre GL JS: the zoom-0 overview tile that the
+    // engine requests after the first `idle` fires none (#2135). (The overview is requested after that `idle`, so the
+    // check waits 3 s more; a vector source with a view at zoom 3 has an overview at zoom 0.)
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const tiles = new Set();
+            const m = new mod.Map({container: el, renderer: mode, center: [10, 10], zoom: 3, attributionControl: false, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [10, 10]}}]}}},
+                layers: [{id: 'p', type: 'circle', source: 'p'}]}});
+            m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'p' && c) tiles.add(`${c.z}/${c.x}/${c.y}`); });
+            // (Bounded: a wait that never ends would stop the suite.)
+            const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), new Promise(r => setTimeout(() => r(false), 15000))]);
+            await new Promise(r => setTimeout(r, 3000));
+            m.remove(); el.remove();
+            return (idle ? '' : 'no idle: ') + [...tiles].sort().join();
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] maplibre-compat: only the tiles of the view fire sourcedata with a tile, not the overview tile, as MapLibre GL JS (#2135)`, ours !== '' && ours === ml, JSON.stringify({ours, ml}));
+    }
+    // A reload of an expired vector tile that the server answers with 304 (not modified) fires no `sourcedata` with
+    // `tile`, as in MapLibre GL JS (#2136). (`?etag` of the demo server gives the tile `max-age=1` and an `ETag`, and
+    // answers the reload with 304; the browser gives that as a 200 with the same `ETag`. The check waits for two reloads.)
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:256px;height:256px'}));
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 0, renderWorldCopies: false, attributionControl: false, style: {version: 8,
+                sources: {v: {type: 'vector', tiles: [location.origin + '/tiles/{z}/{x}/{y}.pbf?etag'], maxzoom: 0}}, layers: [{id: 'w', type: 'fill', source: 'v', 'source-layer': 'water'}]}});
+            const tiles = [];
+            m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'v' && c) tiles.push(`${c.z}/${c.x}/${c.y}`); });
+            // (Bounded: a wait that never ends would stop the suite.)
+            const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), new Promise(r => setTimeout(() => r(false), 15000))]);
+            const first = tiles.length;
+            await new Promise(r => setTimeout(r, 3500));
+            m.remove(); el.remove();
+            return (idle && first ? '' : 'no first load: ') + tiles.slice(first).join();
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] maplibre-compat: a reload of an expired tile that answers 304 fires no sourcedata with a tile, as MapLibre GL JS (#2136)`, ours === '' && ours === ml, JSON.stringify({ours, ml}));
     }
     // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
     const urlDiff = await page.evaluate(async () => {
@@ -1130,7 +1232,7 @@ for (const mode of renderers) {
         m.removeFeatureState({source: 'omt'});
         return {both, one, none: m.getFeatureState(f), unread, read, readMs, idle, sent, warned};
     });
-    check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && /setFeatureState\(\): the source "omt"/.test(fs.warned[0]), JSON.stringify(fs.warned));
+    check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && fs.warned[0].startsWith('[map-jr-gl] E294 https://map-jr.org/e/294 source="omt" id="'), JSON.stringify(fs.warned));
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
     // A GeoJSON feature with the id '12' has the id 12 (#528). The string and the number name the same feature state, as
     // in MapLibre GL JS 6.17.0, and '012' is another id there and here (#753).
@@ -1455,7 +1557,7 @@ for (const mode of renderers) {
     });
     const devP = painter['map-jr-gl-maplibre-compat.dev.js'], prodP = painter['map-jr-gl-maplibre-compat.js'];
     check(`[${mode}] map.painter is undefined; the development build warns once per map, the production build does not warn`,
-        [...devP.values, ...prodP.values].every(Boolean) && devP.warns.length === 2 && devP.warns.every(w => w.startsWith('[map-jr-gl] map.painter') && w.includes('supported()')) && prodP.warns.length === 0, JSON.stringify(painter));
+        [...devP.values, ...prodP.values].every(Boolean) && devP.warns.length === 2 && devP.warns.every(w => w.startsWith('[map-jr-gl] E205 map.painter') && w.includes('supported()')) && prodP.warns.length === 0, JSON.stringify(painter));
     // A member of MapLibre GL JS that a class here does not have (#206): the development build warns once per name, and
     // a map that is used as usual, with controls, a marker and a popup, gives no such warning.
     const missing = await page.evaluate(async () => {
@@ -1675,6 +1777,82 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: on a tilted map a circle-radius from a property or the zoom is the radius of the query, also in the array at once (#1942)`,
         sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A circle whose center lies in the next tile is found at its edge, as in MapLibre (#2024): the choice of tiles grows
+    // by the largest radius of the layer, from a constant or the zoom (a size from the data: below). Circles of 170 pixels 150 pixels east
+    // of a tile edge are queried 15 pixels west of it, flat and with pitch 45.
+    const neighbor = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), pt = m.unproject([b.x + 150, b.y]);
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {r: 170}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'zoom', type: 'circle', source: 's', paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 170, 24, 170]}});
+        m.addLayer({id: 'const', type: 'circle', source: 's', paint: {'circle-radius': 170}});
+        await new Promise(r => m.once('idle', r));
+        const out = {};
+        for (const pitch of [0, 45]) {
+            m.jumpTo({pitch});
+            const c = m.project([0, 0]), q = [c.x - 15, c.y];
+            out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
+        }
+        // (A query of all features of the source has no reach that bounds it, and still finds the feature.)
+        out.source = {now: m.querySourceFeatures('s').length, later: (await m.querySourceFeatures('s')).length};
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] querySourceFeatures finds the features of a source while the layers of the source have large circles (#2024)`,
+        neighbor.source.now === 1 && neighbor.source.later === 1, JSON.stringify(neighbor.source));
+    check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
+        [0, 45].every(p => neighbor[p].now === 'const,zoom' && neighbor[p].later === 'const,zoom'), JSON.stringify(neighbor));
+
+    // A circle whose size comes from the data reaches as far as its largest size in the data, as MapLibre takes the largest
+    // value of each bucket (`getMaximumPaintValue`; #2190). A circle of 700 pixels from `get`, and one of 10 pixels with
+    // a stroke of 690 pixels from `get`, and one of 700 pixels from the state of a promoted id, 600 pixels east of a tile edge, are queried 15 pixels west of it, flat and with pitch 45.
+    const farData = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), pt = m.unproject([b.x + 600, b.y]);
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {r: 700}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'radius', type: 'circle', source: 's', paint: {'circle-radius': ['get', 'r']}});
+        m.addLayer({id: 'stroke', type: 'circle', source: 's', paint: {'circle-radius': 10, 'circle-stroke-width': ['-', ['get', 'r'], 10]}});
+        // (A size from the feature state of a source with `promoteId`.)
+        m.addSource('p', {type: 'geojson', promoteId: 'key', data: {type: 'Feature', properties: {key: 'a'}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'state', type: 'circle', source: 'p', paint: {'circle-radius': ['coalesce', ['feature-state', 'r'], 5]}});
+        m.setFeatureState({source: 'p', id: 'a'}, {r: 700});
+        await new Promise(r => m.once('idle', r));
+        const out = {};
+        for (const pitch of [0, 45]) {
+            m.jumpTo({pitch});
+            const c = m.project([0, 0]), q = [c.x - 15, c.y];
+            out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
+        }
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a circle of 700 pixels from the data whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2190)`,
+        [0, 45].every(p => farData[p].now === 'radius,state,stroke' && farData[p].later === 'radius,state,stroke'), JSON.stringify(farData));
+
+    // A circle with a radius far larger than the map is found on a tilted map, as in MapLibre (#2230): the rectangle
+    // that chooses the tiles is cut to the canvas and one tile. Ten circles, pitch 60, a point and a box.
+    const huge = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:300px'}));
+        const features = Array.from({length: 10}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [i * 0.005, Math.sin(i) * 0.02]}}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, pitch: 60, style: {version: 8,
+            sources: {s: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [{id: 'huge', type: 'circle', source: 's', paint: {'circle-radius': 100000}}]}});
+        await new Promise(r => m.once('idle', r));
+        const c = m.project([0, 0]), out = {};
+        out.point = {now: m.queryRenderedFeatures([c.x, c.y]).length, later: (await m.queryRenderedFeatures([c.x, c.y])).length};
+        out.box = {now: m.queryRenderedFeatures([[0, 0], [400, 300]]).length, later: (await m.queryRenderedFeatures([[0, 0], [400, 300]])).length};
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a circle-radius of 100000 on a map with pitch 60 finds every feature, by a point and by a box, also in the array at once (#2230)`,
+        [huge.point, huge.box].every(r => r.now === 10 && r.later === 10), JSON.stringify(huge));
+
     // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
     // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at
     // (20, 8) pixels from the center, flat and on a tilted map.
@@ -1810,6 +1988,39 @@ for (const mode of renderers) {
         const ours = await run('ours'), ml = await run('ml');
         check(`[${mode}] queryRenderedFeatures: a fill, line and fill extrusion with *-translate are found where they are drawn, as MapLibre GL JS, also in the array at once (#1975)`,
             ours.right === 'fill' && ours.up === 'line' && ours.down === 'extrusion' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
+    // A line of a vector source without an id that crosses the edge of two tiles is found once for each tile that holds a
+    // part of it, as in MapLibre GL JS 6.17 (#2088): two times in a box over both tiles, and one time in a box over one
+    // tile, although the buffer of the other tile reaches into it.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            // A vector tile with one layer "a" and one line without id at y = 2048, from x0 to x1.
+            const v = n => { const o = []; while (n > 127) { o.push(n & 127 | 128); n >>>= 7; } o.push(n); return o; };
+            const zz = n => (n << 1) ^ (n >> 31), len = a => [...v(a.length), ...a];
+            const tile = (x0, x1) => {
+                const feature = [0x18, 2, 0x22, ...len([9, ...v(zz(x0)), ...v(zz(2048)), 10, ...v(zz(x1 - x0)), 0])];
+                return new Uint8Array([0x1a, ...len([0x78, 2, 0x0a, 1, 0x61, 0x12, ...len(feature), 0x28, 0x80, 0x20])]).buffer;
+            };
+            const empty = new Uint8Array([0x1a, 5, 0x78, 2, 0x0a, 1, 0x61]).buffer, scheme = `edge${lib}${mode}`;
+            // Tile 1/0/0 holds the line from its middle to its right edge and 64 units of buffer; tile 1/1/0 the rest.
+            mod.addProtocol(scheme, async p => { const [, x, y] = p.url.split('://')[1].split('/').map(Number); return {data: y ? empty : x ? tile(-64, 2048) : tile(2048, 4160)}; });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 66.5], zoom: 1, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {v: {type: 'vector', tiles: [`${scheme}://{z}/{x}/{y}`], minzoom: 1, maxzoom: 1}},
+                layers: [{id: 'edge', type: 'line', source: 'v', 'source-layer': 'a', paint: {'line-width': 4}}]}});
+            await new Promise(r => m.once('idle', r));
+            const p = m.project([0, 66.51]), both = [[p.x - 60, p.y - 10], [p.x + 60, p.y + 10]], one = [[p.x - 60, p.y - 10], [p.x - 20, p.y + 10]];
+            const out = {both: (await m.queryRenderedFeatures(both)).length, one: (await m.queryRenderedFeatures(one)).length,
+                bothNow: [...m.queryRenderedFeatures(both)].length, oneNow: [...m.queryRenderedFeatures(one)].length};
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a vector line without id over a tile edge is found once per tile that holds a part of it, as MapLibre GL JS, also in the array at once (#2088)`,
+            ours.both === 2 && ours.one === 1 && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
 
     // A `*-translate` that is an expression or a function of the zoom is evaluated at the zoom of the map, as in
@@ -2216,6 +2427,26 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find a point label whose text is hidden by collision, with both renderers (#1968)',
             ['main', 'worker'].every(r => hiddenPoint[r][0] === 'First label' && hiddenPoint[r][1] === 'First label'), JSON.stringify(hiddenPoint));
+        // A polygon in a symbol layer has its label at a point inside it. A query finds the polygon on the box of that label
+        // and not elsewhere in the polygon, as MapLibre GL JS does (#1969).
+        const polygonLabel = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [45, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {name: 'Area'}, geometry: {type: 'Polygon', coordinates: [[[35, -10], [55, -10], [55, 10], [35, 10], [35, -10]]]}}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const c = m.project([45, 0]), corner = m.project([37, 8]);
+                const ask = async p => (await m.queryRenderedFeatures(p, {layers: ['t']})).length;
+                out[renderer] = [await ask([c.x, c.y]), await ask([c.x + 8, c.y]), await ask([c.x + 60, c.y]), await ask([corner.x, corner.y])];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds a polygon of a symbol layer on its shown point label and not elsewhere, with both renderers (#1969)',
+            ['main', 'worker'].every(r => polygonLabel[r].join() === '1,1,0,0'), JSON.stringify(polygonLabel));
         // With `icon-optional`, the wide icon of B collides with the text of A and is hidden, and the text of B is shown. A
         // query at the point of A, under the hidden icon, finds only A, as MapLibre GL JS 6.17 does (#2089).
         const hiddenIcon = await page.evaluate(async () => {
@@ -2250,6 +2481,27 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find a label on its icon that collision hid with icon-optional, and finds a shown icon under the text of another label, with both renderers (#2089)',
             ['main', 'worker'].every(r => hiddenIcon[r].join() === 'A,B,B'), JSON.stringify(hiddenIcon));
+        // Of two icons without text whose boxes collide, the hidden one is not found, at its own point or over the whole
+        // view: MapLibre GL JS finds only placed symbols (#2181).
+        const hiddenIcons = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const point = (x, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [x, 0]}});
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(0, 'A'), point(0.5, 'B')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'icon-image': 'sq'}}]}});
+                m.addImage('sq', {width: 32, height: 32, data: new Uint8Array(32 * 32 * 4).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const names = fs => fs.map(f => f.properties.name).sort().join('/');
+                out[renderer] = [names(await m.queryRenderedFeatures({layers: ['t']})), names(await m.queryRenderedFeatures(m.project([0.5, 0]), {layers: ['t']}))];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures does not find an icon that collision hid, with both renderers (#2181)',
+            ['main', 'worker'].every(r => hiddenIcons[r].join() === 'A,A'), JSON.stringify(hiddenIcons));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
@@ -2486,7 +2738,7 @@ for (const mode of renderers) {
             return out;
         });
         check('setWorkerUrl with the worker file of MapLibre GL JS is ignored with one warning, and the map keeps its own worker',
-            r.renderer === 'worker' && r.url === '' && r.warns.length === 1 && r.warns[0].startsWith('[map-jr-gl] setWorkerUrl():'), JSON.stringify(r));
+            r.renderer === 'worker' && r.url === '' && r.warns.length === 1 && r.warns[0].startsWith('[map-jr-gl] E241 setWorkerUrl():'), JSON.stringify(r));
     }
     // Options that are accepted and have no effect (#262): each warns once, also when it is given twice. The map warns
     // once per map, and a control once per page, so this runs in one mode. (GeolocateControl is checked further down.)
@@ -2700,7 +2952,7 @@ for (const mode of renderers) {
             return {...out, errors};
         }, mode);
         check(`[${mode}] compat addControl(undefined) and addControl({}): error event, returns the map; a bad position throws`,
-            r.same === true && r.errors.length === 2 && r.errors.every(e => e.includes('addControl()')) && r.bad?.includes('"middle"'), JSON.stringify(r));
+            r.same === true && r.errors.length === 2 && r.errors.every(e => e === '[map-jr-gl] E259 https://map-jr.org/e/259') && r.bad === '[map-jr-gl] E269 https://map-jr.org/e/269 pos="middle"', JSON.stringify(r));
     }
     // #44: in the compat entry, toBlob gives the drawn map, and getCanvas().toDataURL() in a `render` listener is not blank.
     {
@@ -3474,11 +3726,11 @@ for (const mode of renderers) {
         check(`[${mode}] a source that fails: one error with the URL, the other layers are drawn and load fires`,
             failed.oneSource.seen.filter(s => s.startsWith('error')).length === 1 && failed.oneSource.seen[0].includes('/no-such-tilejson.json') && failed.oneSource.seen.includes('load') && failed.oneSource.loaded && failed.oneSource.drawn > 0, JSON.stringify(failed.oneSource));
         check(`[${mode}] a first style that fails says the URL and the status, and setStyle with a good style then loads the map`,
-            /Style \/no-such-style\.json: HTTP 404/.test(failed.afterFailure.firstError) && failed.afterFailure.seen.includes('load') && failed.afterFailure.loaded && failed.afterFailure.styleLoaded, JSON.stringify(failed.afterFailure));
+            /^error: \[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 style="\/no-such-style\.json" status=404$/.test(failed.afterFailure.firstError) && failed.afterFailure.seen.includes('load') && failed.afterFailure.loaded && failed.afterFailure.styleLoaded, JSON.stringify(failed.afterFailure));
         check(`[${mode}] setStyle with a URL that fails: an error event, no rejected promise, and the map keeps its style`,
-            failed.badStyle.seen.length === 1 && /HTTP 404/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
+            failed.badStyle.seen.length === 1 && /^error: \[map-jr-gl\] E63 \S+ style="\S*no-such-style\.json" status=404$/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
         check(`[${mode}] addSource with no tiles and no url: one error that names the source, and later changes of the style work`,
-            failed.badSource.seen.length === 1 && failed.badSource.seen[0].includes('"bad"') && failed.badSource.later > 0, JSON.stringify(failed.badSource));
+            failed.badSource.seen.length === 1 && failed.badSource.seen[0] === 'error: [map-jr-gl] E10063 https://map-jr.org/e/10063 source="bad"' && failed.badSource.later > 0, JSON.stringify(failed.badSource));
         check(`[${mode}] maplibre-compat: remove() with queries that nobody awaits gives no unhandled rejection (#787)`, failed.forgotten.length === 0, failed.forgotten.join(' | '));
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
@@ -3519,7 +3771,7 @@ for (const mode of renderers) {
             removeEventListener('unhandledrejection', onError); removeEventListener('error', onError);
             return {results, thrown};
         }, mode);
-        const said = /^error: \[map-jr-gl\] The style has no list "layers"/;
+        const said = /^error: \[map-jr-gl\] E539 https:\/\/map-jr\.org\/e\/539$/;
         for (const [name, r] of Object.entries(out.results)) {
             if (name === 'noSources') check(`[${mode}] a style with no "sources" loads without an error`, r.first === 'load' && r.loaded && r.second === '', JSON.stringify(r));
             else check(`[${mode}] a style that is not a style (${name}): one error event that names "layers", then setStyle with a good style loads the map and the map keeps it`,
@@ -3761,7 +4013,7 @@ for (const mode of renderers) {
             for (const i of [0, 1]) {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
                 const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
-                m.on('error', e => { if (/no "tiles" and no "url"/.test(e.error?.message)) counts[i]++; });
+                m.on('error', e => { if (/^\[map-jr-gl\] E10063 /.test(e.error?.message)) counts[i]++; });
                 maps.push(m);
                 await new Promise(r => m.once('load', r));
             }
@@ -3947,7 +4199,7 @@ for (const mode of renderers) {
         // an unroute, and its 404 is a page error, #517.)
         await page.unroute('**/test-255.json');
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
-            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E255 https://map-jr.org/e/255 id="r"', JSON.stringify(r));
     }
     // Raster tiles are fetched and decoded in the tile workers, and the thread that draws only sends the images to the
     // GPU (#2068). In WebKit a decode runs on the thread that asks for it, and decodes on the thread that draws held its
@@ -4160,7 +4412,7 @@ for (const mode of renderers) {
             return out;
         }, mode);
         check(`[${mode}] setAnisotropicFilterPitch: raster tiles are filtered anisotropically above the pitch (20 by default), and a pitch above 180 throws (#1713)`,
-            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && /^\[map-jr-gl\] setAnisotropicFilterPitch\(200\)/.test(r.error), JSON.stringify(r));
+            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && r.error === '[map-jr-gl] E2011 https://map-jr.org/e/2011 pitch=200', JSON.stringify(r));
     }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
@@ -4250,7 +4502,7 @@ for (const mode of renderers) {
         check(`[${mode}] GeoJSON source: setClusterOptions builds the clusters again, getClusterOptions gives the options, and getBounds gives the bounds of the data`,
             r.isPromise && JSON.stringify(r.before.options) === '{"cluster":true,"clusterMaxZoom":17,"clusterRadius":50}' && r.before.shown.join() === '3' && r.before.zoom > 2
             && JSON.stringify(r.after.options) === '{"cluster":false,"clusterMaxZoom":17,"clusterRadius":20}' && r.after.shown.join() === '1,1,1' && r.after.spec === false && /no clusters/.test(r.after.zoom)
-            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message.startsWith('[map-jr-gl] getSource("g").setClusterOptions') && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
+            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message === '[map-jr-gl] E566 https://map-jr.org/e/566 id="g"' && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
         check(`[${mode}] raster source: reload loads the tiles again, and the source has the zoom range and the tiles of its TileJSON`,
             r.had > 0 && r.again > r.had && r.result === undefined && r.loaded && r.minzoom === 1 && r.maxzoom === 9 && /\/t566\/\{z\}/.test(r.tiles?.[0]) && JSON.stringify(r.serialized) === '{"type":"raster","url":"/test-566.json","tileSize":256}', JSON.stringify(r));
     }
@@ -4426,7 +4678,7 @@ for (const mode of renderers) {
             m.once('style.load', () => m.addLayer({id: 'fall-back-test', type: 'background', paint: {'background-color': '#f0f', 'background-opacity': 0.01}}));
             await new Promise(r => { m.once('idle', r); setTimeout(r, 12000); });
             console.warn = warn;
-            const out = {renderer: m.renderer, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread/.test(w)).length, tiles: asked.filter(k => k === 'view').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], warnings: warnings.filter(w => /^\[map-jr-gl\] E798 /.test(w)).length, tiles: asked.filter(k => k === 'view').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
             m.remove(); el.remove();
             return out;
         });
@@ -4530,7 +4782,7 @@ for (const mode of renderers) {
             await new Promise(r => { m.once('idle', r); setTimeout(r, 20000); });
             await new Promise(r => setTimeout(r, 2000));
             console.warn = warn;
-            const out = {renderer: m.renderer, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread/.test(w)).length, canvases: el.querySelectorAll('canvas').length};
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], warnings: warnings.filter(w => /^\[map-jr-gl\] E798 /.test(w)).length, canvases: el.querySelectorAll('canvas').length};
             m.remove(); el.remove();
             return out;
         });
@@ -4584,7 +4836,7 @@ for (const mode of renderers) {
                 for (let i = 0; i < 300 && !(m.renderer === 'main' && m.areTilesLoaded()); i++) { await new Promise(r => setTimeout(r, 100)); if (!toMain && m.renderer === 'main') toMain = performance.now() - start; }
                 console.warn = warn;
                 delete document.hidden; // (the property of the test: the one of the browser is on the prototype)
-                const out = {renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread: the WebGL context was lost/.test(w)).length,
+                const out = {renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /^\[map-jr-gl\] E798 \S+ why="the WebGL context was lost"/.test(w)).length,
                     waited: secondLoss && firstLoss ? Math.round(secondLoss - firstLoss) : null, toMain: Math.round(toMain), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
                 m.remove(); el.remove();
                 return out;
@@ -4636,7 +4888,7 @@ for (const mode of renderers) {
             // The debug drawing is not available (#752): showCollisionBoxes = true warns once, false does not warn.
             projected.showTileBoundaries = false;
             projected.showCollisionBoxes = true; projected.showCollisionBoxes = true;
-            out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] showCollisionBoxes has no effect')).length, warnings.length];
+            out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] E2145 showCollisionBoxes has no effect')).length, warnings.length];
             // The options of the drag handlers have no effect (#673): one warning each, and the handlers are on.
             const dragged = make({dragPan: {linearity: 0.5}, dragRotate: {around: 'center'}, rotateSpeed: 2, pitchSpeed: 1, aroundCenter: false});
             dragged.dragPan.disable(); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragRotate.enable({movement: 'linear'}); dragged.dragRotate.enable();
@@ -4664,7 +4916,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
-            quiet.options.length === 1 && ['new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
+            quiet.options.length === 1 && ['E387 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
@@ -4672,7 +4924,7 @@ for (const mode of renderers) {
             quiet.inline.errors.length === 1 && /addLayer: the layer "g" has a source object, and the style has a source with the id "g" already/.test(quiet.inline.errors[0]) && quiet.inline.layers === 'bg,uses-g,inline,inline-2'
             && quiet.inline.source === 'geojson' && quiet.inline.of === 'inline' && quiet.inline.drawn > 0 && quiet.inline.kept, JSON.stringify(quiet.inline));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
-            quiet.thrown.startsWith('[map-jr-gl] The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+            quiet.thrown.startsWith('[map-jr-gl] E2145 The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
         // #2133: the production build writes none of these warnings; strict: true still throws there, with a short text.
         const prod = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), warnings = [], warn = console.warn, maps = [];
@@ -4688,8 +4940,8 @@ for (const mode of renderers) {
             for (const m of maps) { const el = m.getContainer(); m.remove(); el.remove(); }
             return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown};
         });
-        check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws a short text (#2133)',
-            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] The option fadeDuration has no effect.', JSON.stringify(prod));
+        check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws the code, its link and the option (#2133, #2148)',
+            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 https://map-jr.org/e/90 key="The option fadeDuration"', JSON.stringify(prod));
     }
     // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
     // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
@@ -5198,10 +5450,10 @@ for (const mode of renderers) {
                 m.addLayer({id: 'bg', type: 'no-such-type'}); afterRefused = warnings.length; m.addLayer({id: 'a', type: 'no-such-type'}); m.addLayer({id: 'b', type: 'no-such-type'}); m.addLayer({id: 'c', type: 'background'});
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            return {afterRefused, warnings: warnings.filter(w => w.includes('layer type'))};
+            return {afterRefused, warnings: warnings.filter(w => w.startsWith('[map-jr-gl] E1593 '))};
         });
         check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
-            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
+            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] E1593 https://map-jr.org/e/1593 type="no-such-type"', JSON.stringify(unknown));
     }
     // An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text in the development build, once
     // for each layer, property and value, and the map still draws it (#1087). The production build fires none.
@@ -5229,7 +5481,7 @@ for (const mode of renderers) {
         const dev = zoom['map-jr-gl-maplibre-compat.dev.js'], prod = zoom['map-jr-gl-maplibre-compat.js'];
         const nested = '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.', one = 'Only one zoom-based "step" or "interpolate" subexpression may be used in an expression.';
         check('[main] maplibre-compat: the development build fires error with the text of MapLibre GL JS for a nested, repeated or bare ["zoom"], once each, and keeps the value; the production build fires none',
-            dev.errors.length === 3 && dev.errors[0].startsWith(`[map-jr-gl] layers.c.paint.circle-radius: ${nested}`) && dev.errors[1].startsWith(`[map-jr-gl] layers.c.paint.circle-opacity: ${nested}`) && dev.errors[2].startsWith(`[map-jr-gl] layers.c.paint.circle-blur: ${one}`)
+            dev.errors.length === 3 && dev.errors[0].startsWith(`[map-jr-gl] E1057 layers.c.paint.circle-radius: ${nested}`) && dev.errors[1].startsWith(`[map-jr-gl] E1057 layers.c.paint.circle-opacity: ${nested}`) && dev.errors[2].startsWith(`[map-jr-gl] E1057 layers.c.paint.circle-blur: ${one}`)
             && dev.radius === '*' && prod.errors.length === 0, JSON.stringify(zoom));
     }
     // A paint or layout property that the style specification does not have for the type of the layer fires `error` with
@@ -5255,8 +5507,8 @@ for (const mode of renderers) {
         });
         const dev = unknown['map-jr-gl-maplibre-compat.dev.js'], prod = unknown['map-jr-gl-maplibre-compat.js'];
         check('[main] maplibre-compat: the development build fires error with "unknown property" and the nearest name for a property that the layer type does not have, once each; the production build fires none',
-            dev.length === 2 && dev[0].startsWith('[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
-            && dev[1].startsWith('[map-jr-gl] layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
+            dev.length === 2 && dev[0].startsWith('[map-jr-gl] E11139 layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
+            && dev[1].startsWith('[map-jr-gl] E11139 layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
     }
     // `validate` of setStyle wins over the option of `new Map()` for that style, in the development build (#1748).
     if (mode === 'main') {
@@ -5308,7 +5560,7 @@ for (const mode of renderers) {
             } finally { console.warn = warn; }
         });
         check('[main] maplibre-compat: new LogoControl({compact}) keeps the options and warns once that compact has no effect',
-            logo.compact === true && logo.warnings.length === 1 && logo.warnings[0].startsWith('[map-jr-gl] LogoControl: the option compact has no effect.'), JSON.stringify(logo));
+            logo.compact === true && logo.warnings.length === 1 && logo.warnings[0].startsWith('[map-jr-gl] E10090 LogoControl: the option compact has no effect.'), JSON.stringify(logo));
     }
     // The label of TerrainControl says what a click does, with the texts of MapLibre GL JS (#1234).
     if (mode === 'main') {
@@ -5490,6 +5742,19 @@ for (const mode of renderers) {
                     m.setTransformCameraUpdate(null);
                     done = moved(); m.jumpTo({center: [0, 50]}); await done;
                     out.cleared = m.getCenter().lat;
+                    // A function that always changes the camera runs only when the camera changed, as in MapLibre GL
+                    // JS, and so the map still goes idle (#1970).
+                    let turns = 0;
+                    m.setTransformCameraUpdate(tr => { turns++; return {bearing: tr.bearing + 1}; });
+                    const idle = new Promise(r => m.once('idle', () => r(true)));
+                    m.jumpTo({center: [5, 5]});
+                    out.idle = await Promise.race([idle, new Promise(r => setTimeout(() => r(false), 5000))]);
+                    out.turns = turns;
+                    // A change of the padding alone calls the function too.
+                    const before = turns;
+                    done = moved(); m.easeTo({padding: {left: 100}, duration: 100}); await done;
+                    out.padded = turns - before;
+                    m.setTransformCameraUpdate(null);
                 } else {
                     // A controlled map whose state is one move behind: the function returns the camera before.
                     let last = null, calls = 0;
@@ -5502,12 +5767,12 @@ for (const mode of renderers) {
                     done = moved(); m.jumpTo({zoom: 5}); await done;
                     done = moved(); m.jumpTo({zoom: 6}); await done;
                 }
-                out.warnings = warnings.filter(w => w.startsWith('[map-jr-gl] setTransformCameraUpdate')).length;
+                out.warnings = warnings.filter(w => w.startsWith('[map-jr-gl] E210 setTransformCameraUpdate')).length;
             } finally { console.warn = warn; m.remove(); el.remove(); }
             return out;
         }, mode).catch(e => ({error: String(e)}));
-        if (mode === 'main') check('[main] maplibre-compat: setTransformCameraUpdate draws the camera that its function returns before each frame, and null removes the function (#1711)',
-            Math.abs(hook.applied?.lat - 30) < 1e-6 && hook.applied.zoom === 5 && hook.applied.maxLat <= 30 + 1e-9 && Math.abs(hook.cleared - 50) < 1e-6 && hook.warnings === 0, JSON.stringify(hook));
+        if (mode === 'main') check('[main] maplibre-compat: setTransformCameraUpdate draws the camera that its function returns when the camera changed, goes idle, and null removes the function (#1711, #1970)',
+            Math.abs(hook.applied?.lat - 30) < 1e-6 && hook.applied.zoom === 5 && hook.applied.maxLat <= 30 + 1e-9 && Math.abs(hook.cleared - 50) < 1e-6 && hook.warnings === 0 && hook.idle === true && hook.turns < 10 && hook.padded > 0, JSON.stringify(hook));
         else check(`[${mode}] maplibre-compat: setTransformCameraUpdate warns once when its function changes the camera, and not when it returns an earlier camera`, hook.lagging?.calls > 0 && hook.lagging.warnings === 0 && hook.warnings === 1, JSON.stringify(hook));
     }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
@@ -6476,12 +6741,51 @@ for (const mode of renderers) {
             await new Promise(r => setTimeout(r, 1500));
             m.easeTo({bearing: -3, duration: 100});
             await new Promise(r => setTimeout(r, 1500));
-            const out = {ends: snapEnds, bearing, eased: +m.getBearing().toFixed(1)};
+            const eased = +m.getBearing().toFixed(1);
+            // The same with the ease right after the lift: a call of the page ends the gesture, so its `moveend` does not
+            // snap (#2246; MapLibre GL JS snaps only at the end of a gesture).
+            m.jumpTo({bearing: -24}); await new Promise(r => setTimeout(r, 300));
+            fire('down', 250, 2);
+            for (let k = 1; k <= 4; k++) { wait(10); fire('move', 250 + (k % 2) * 3, 2); }
+            wait(200); fire('up', 250, 0);
+            m.easeTo({bearing: -3, duration: 100});
+            await new Promise(r => setTimeout(r, 1500));
+            const out = {ends: snapEnds, bearing, eased, soon: +m.getBearing().toFixed(1)};
             m.remove(); el.remove();
             return out;
         }, renderer);
         check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
-            Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3), JSON.stringify(m1954));
+            Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3 && r.soon === -3), JSON.stringify(m1954));
+        // #2163: a rotate drag with a frame between its moves, released after a pause (no inertia), ends with the `moveend`
+        // events of MapLibre GL JS: one for the drag and, when it ends within bearingSnap of north, one for the snap. With the
+        // worker renderer the reports of the last turns came after the release, and each ended a move of its own.
+        const m2163 = {};
+        for (const [lib, renderer] of [['ml'], ['compat', 'main'], ['compat', 'worker']]) for (const [start, pause] of [[-24, 200], [-40, 200], [-24, 600]]) (m2163[[lib, renderer ?? 'own', start, pause].join('/')] = await page.evaluate(async ([lib, renderer, start, pause]) => {
+            let mod;
+            if (lib === 'ml') { mod = await import('/ml/maplibre-gl.mjs'); mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href); } else mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: start});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            await new Promise(r => setTimeout(r, 300));
+            let ends = 0;
+            m.on('moveend', () => ends++);
+            const canvas = m.getCanvas();
+            const fire = (type, x, buttons) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: 250, button: 2, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true};
+                canvas.dispatchEvent(new PointerEvent('pointer' + type, o)); canvas.dispatchEvent(new MouseEvent('mouse' + type, o));
+            };
+            let x = 250;
+            fire('down', x, 2);
+            for (let k = 1; k <= (start === -24 ? 8 : 10); k++) { await new Promise(requestAnimationFrame); fire('move', x += 3.3, 2); }
+            await new Promise(r => setTimeout(r, pause));
+            fire('up', x, 0);
+            // (Wait until the snap, if any, has ended.)
+            await new Promise(r => setTimeout(r, 2500));
+            m.remove(); el.remove();
+            return ends;
+        }, [lib, renderer, start, pause]));
+        check('[main] maplibre-compat: a rotate drag released after a pause fires as many moveend events as in MapLibre GL JS, with both renderers (#2163)',
+            Object.entries(m2163).every(([k, n]) => n === m2163['ml/own/' + k.split('/').slice(2).join('/')] && n > 0), JSON.stringify(m2163));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -7125,6 +7429,14 @@ for (const mode of renderers) {
                 out.markerSet = t(pin.setSubpixelPositioning(true)); out.markerBack = t(pin.setSubpixelPositioning(false));
                 out.markerSubpixel = out.markerRound === '100' && Math.abs(out.markerOption - 100.4) < 0.01 && Math.abs(out.markerSet - 100.4) < 0.01 && out.markerBack === '100';
                 pin.remove(); pinned.remove();
+                // #2160: as in MapLibre GL JS, a marker without subpixelPositioning is on fractions of a pixel during a move and on a whole pixel after moveend.
+                const glide = new mod.Marker().setLngLat(frac).addTo(m), seen = [], onMove = () => seen.push(t(glide));
+                m.on('move', onMove);
+                await new Promise(r => { m.once('moveend', r); m.panBy([10.3, 0], {duration: 300}); });
+                m.off('move', onMove);
+                out.glideDuring = seen.filter(v => v?.includes('.')).length; out.glideMoves = seen.length; out.glideEnd = t(glide);
+                out.glides = out.glideDuring > 0 && /^-?\d+$/.test(out.glideEnd);
+                glide.remove(); m.jumpTo({center: m.unproject([m.getContainer().clientWidth / 2 - 10.3, m.getContainer().clientHeight / 2])});
                 // #1783: Popup.setPadding and the option padding move the anchor away from the padded edges, as in MapLibre GL JS.
                 const box = m.getContainer(), W = box.clientWidth, H = box.clientHeight, mid2 = m.unproject([W / 2, H / 2]);
                 const pad = new mod.Popup({animate: false}).setLngLat(mid2).setText('pad').addTo(m), anchors = [pad.getAnchor()];
@@ -7135,6 +7447,13 @@ for (const mode of renderers) {
                 const opt = new mod.Popup({animate: false, padding: {top: H}}).setLngLat(mid2).setText('pad').addTo(m);
                 anchors.push(opt.getAnchor()); opt.remove();
                 out.padding = anchors.join();
+                // #2198: near a side at mid height the anchor is `left` or `right` alone, and `padding.bottom` adds `bottom`.
+                const sides = [];
+                for (const x of [4, W - 4]) {
+                    const q = new mod.Popup({animate: false}).setLngLat(m.unproject([x, H / 2])).setText('side').addTo(m);
+                    sides.push(q.getAnchor()); q.setPadding({bottom: H}); sides.push(q.getAnchor()); q.remove();
+                }
+                out.sides = sides.join();
             } finally { console.warn = warn; }
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
@@ -7142,7 +7461,9 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
             options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
         check('[main] maplibre-compat: Marker places itself on fractions of a pixel with the option subpixelPositioning and setSubpixelPositioning(true), and on whole pixels by default (#1782)', options.markerSubpixel, JSON.stringify(options));
-        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,bottom-right,bottom,top', JSON.stringify(options.padding));
+        check('[main] maplibre-compat: Marker is on fractions of a pixel while the map moves and on a whole pixel after moveend, as in MapLibre GL JS (#2160)', options.glides, JSON.stringify(options));
+        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,right,bottom,top', JSON.stringify(options.padding));
+        check('[main] maplibre-compat: Popup takes the anchor left or right alone near a side at mid height, and bottom-left or bottom-right with padding.bottom, as in MapLibre GL JS (#2198)', options.sides === 'left,bottom-left,right,bottom-right', JSON.stringify(options.sides));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
@@ -7670,7 +7991,8 @@ for (const mode of renderers) {
         check(`[${mode}] a raster-dem source with encoding 'custom' gives its elevations from the factors and the shift`, custom.idle && custom.custom === '255,0,0' && custom.elevation === 500, JSON.stringify(custom));
         // A factor that is not a finite number: the engine warns one time for the source (also when the style is set
         // again) and reads the source as `mapbox`, so it gives the elevation of a source without `encoding`.
-        const told = [], listen = m => { if (m.type() === 'warning' && m.text().includes('"redFactor"')) told.push(m.text()); };
+        // (The production build prints the code, its link and the name of the source, #2148.)
+        const told = [], listen = m => { if (m.type() === 'warning' && m.text().startsWith('[map-jr-gl] E590 ')) told.push(m.text()); };
         page.on('console', listen);
         const wrong = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -7690,7 +8012,7 @@ for (const mode of renderers) {
         }, mode);
         await page.waitForTimeout(100);
         page.off('console', listen);
-        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0].startsWith('[map-jr-gl] The source "wrong": ') && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
+        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0] === '[map-jr-gl] E590 https://map-jr.org/e/590 source="wrong"' && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
         check(`[${mode}] a color-relief layer with one stop, or two stops at one elevation, draws the colour of a stop`, custom.one === '0,255,0' && [custom.below, custom.at, custom.above].every(c => c === '255,0,0' || c === '0,255,0'), JSON.stringify(custom));
     }
 
@@ -7750,7 +8072,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
         const told = [], warn = console.warn;
-        console.warn = (...a) => { if (String(a[0]).includes('unsupported layer types')) told.push(String(a[0])); return warn.apply(console, a); };
+        console.warn = (...a) => { if (String(a[0]).startsWith('[map-jr-gl] E1618 ')) told.push(String(a[0])); return warn.apply(console, a); };
         const style = types => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}, ...types.map((type, i) => ({id: 'x' + i, type}))]});
         const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: style([])});
         await new Promise(r => { m.once('load', r); setTimeout(r, 10000); });
@@ -7761,7 +8083,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         return told;
     });
     check('[main] setStyle with an unsupported layer type warns, one time for each new set of types',
-        JSON.stringify(warnings) === JSON.stringify(['[map-jr-gl] Skipping unsupported layer types: foo', '[map-jr-gl] Skipping unsupported layer types: foo, bar']), JSON.stringify(warnings));
+        JSON.stringify(warnings) === JSON.stringify(['[map-jr-gl] E1618 https://map-jr.org/e/1618 list="foo"', '[map-jr-gl] E1618 https://map-jr.org/e/1618 list="foo, bar"']), JSON.stringify(warnings));
     await page.close();
 }
 // The compat Map with a style that has a null source and a null layer: each is reported, the rest loads, and the methods

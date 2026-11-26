@@ -240,9 +240,8 @@ export interface CompiledLayer {
     fixedSize?: boolean;
 }
 
-/** The most lights that a `hillshade` layer with the method `multidirectional` draws. */
-export const LIGHTS = 8;
-const LIGHT_PROPS = ['direction', 'altitude', 'shadow', 'highlight'], HILLSHADE_METHODS = ['standard', 'combined', 'igor', 'multidirectional', 'basic'];
+/** The properties of a `hillshade` layer that take one value or a list of values, one for each light. */
+export const LIGHT_PROPS = ['direction', 'altitude', 'shadow', 'highlight'];
 
 /**
  * A `*-translate` in pixels along the axes of the map (x east, y south), as MapLibre GL JS's translatePosition has it
@@ -266,33 +265,6 @@ export function screenTranslate(t: unknown, anchor: unknown, bearing: number): [
     if (anchor === 'viewport' || !bearing || !(x || y)) return [x, y];
     const a = -bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
     return [x * c - y * s, x * s + y * c];
-}
-
-/**
- * The lights of a `hillshade` layer at a zoom, as the `hillshade` program takes them. `method` is 0 for `standard`,
- * 1 for `combined`, 2 for `igor` and 3 for `basic` and `multidirectional`. `sun` has the direction (with `bearing`
- * added) and the altitude of each light in radians, and `shadow` and `highlight` have a premultiplied color for each.
- * As in MapLibre GL JS, only `multidirectional` has more than one light, and a list that is shorter than the longest
- * list repeats its last value.
- */
-export function hillshadeLights(p: Record<string, Prop>, zoom: number, bearing: number): {method: number; n: number; sun: number[]; shadow: number[]; highlight: number[]} {
-    const name = p.method.eval(zoom), spec = SPEC.hillshade;
-    let method = HILLSHADE_METHODS.indexOf(name);
-    if (method < 0) { warnOnce(`hillshade-method: ${JSON.stringify(name)} is not a method, and the layer uses "standard". Write "standard", "basic", "combined", "igor" or "multidirectional".`); method = 0; }
-    const [direction, altitude, shadow, highlight]: any[][] = LIGHT_PROPS.map((k, i) => {
-        const v = p[k].eval(zoom), def = spec[k][2], list: any[] = Array.isArray(v) && (i < 2 || typeof v[0] !== 'number') ? v : [v];
-        return (list.length ? list : [def]).map(x => i < 2 ? (typeof x === 'number' && !isNaN(x) ? x : def) * Math.PI / 180
-            : Array.isArray(x) && x.length === 4 && typeof x[0] === 'number' ? x : (typeof x === 'string' && parseColor(x)) || parseColor(def));
-    });
-    let n = method === 3 ? Math.max(direction.length, altitude.length, shadow.length, highlight.length) : 1;
-    if (n > LIGHTS) { warnOnce(`hillshade: a layer has ${n} lights, and the layer draws the first ${LIGHTS}. Give lists of at most ${LIGHTS} values.`); n = LIGHTS; }
-    const out = {method: Math.min(method, 3), n, sun: [] as number[], shadow: [] as number[], highlight: [] as number[]};
-    for (let i = 0; i < n; i++) {
-        const at = (a: any[]) => a[Math.min(i, a.length - 1)];
-        out.sun.push(at(direction) + bearing, at(altitude));
-        for (const [to, c] of [[out.shadow, at(shadow)], [out.highlight, at(highlight)]] as [number[], number[]][]) to.push(c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]);
-    }
-    return out;
 }
 
 /**

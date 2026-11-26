@@ -9,12 +9,13 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
-import {globeBuild, type TileGL} from './tile.ts';
+import {globeBuild, overlaps, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
+import {RARE_LAYERS} from './gl-names.ts';
 
 export interface CameraOptions {
     center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number];
@@ -162,7 +163,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** The `ETag` of the response of a vector tile: a reload of the expired tile with the same `ETag` (a 304) reports no `tileLoaded`, as in MapLibre GL JS (#2136). */ etag?: string; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -270,7 +271,7 @@ function packGeoJSON(data: unknown): () => Uint8Array | null {
  * The message of a tile that failed names its source, after the prefix (#2099). A part of the worker that did not load
  * is not a fault of the source, and its message stays the same for each source, so that the map reports it once (#79).
  */
-const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] The source "${source}": `);
+const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] E2106 The source "${source}": `);
 
 export class Engine {
     tr = new Transform();
@@ -474,6 +475,18 @@ export class Engine {
         return null;
     }
 
+    /**
+     * Whether the source of 3D terrain has no elevation data at a mercator position at all: its tile of the lowest level
+     * there came back as a 404 or empty. The ground there is at sea level, as in MapLibre GL JS, and the camera does not
+     * wait for its height (#1820).
+     */
+    private demNone(x: number, y: number): boolean {
+        const terrain = this.style.terrain, src = terrain && this.style.sources[terrain.source];
+        if (!src) return false;
+        const n = 2 ** src.minzoom, t = this.tiles.get(`${terrain!.source}|${src.minzoom}/${Math.floor(x * n)}/${Math.floor(y * n)}`);
+        return !!t && (t.state === 'error' && !!t.missing || t.state === 'ok' && !t.gl?.raw);
+    }
+
     /** Ground height at a mercator position in meters (exaggerated), from the best elevation tile loaded so far. */
     private heightAt = (mx: number, my: number): number => this.rawHeightAt(mx, my) * this.exaggeration;
     /** Height grids of the loaded elevation tiles, keyed "z/x/y"; mirrored to the page so it can project onto the ground too. */
@@ -490,9 +503,18 @@ export class Engine {
     /** The map was removed (`destroy`): nothing more is sent to the GPU. */
     private removed = false;
     private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void; drop?(): void}[] = [];
+    /** For each circle layer whose size depends on the feature: its largest radius and stroke width in the tiles that arrived (see `QuerySet.most`). */
+    private most = new Map<string, number[]>();
     private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
         let bytes = 0;
-        for (const b of Object.values(tile.layers)) for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
+        for (const [k, b] of Object.entries(tile.layers)) {
+            for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
+            if (b.type !== 'circle') continue;
+            const id = k.split('\0')[0], m = this.most.get(id) ?? [0, 0];
+            for (const a of [b.radius, b.radius1]) for (const v of a ?? []) m[0] = Math.max(m[0], v);
+            for (let i = 0; i < (b.sb?.length ?? 0); i += 2) m[1] = Math.max(m[1], b.sb![i]);
+            this.most.set(id, m);
+        }
         // (A tile that is no longer wanted when its turn comes is not sent.)
         return this.paced(bytes, () => wanted() ? this.renderer.createTile(tile) : {labels: {}, batches: {}});
     }
@@ -589,6 +611,12 @@ export class Engine {
     private terrainLoad?: Promise<void>;
     private terrainFailed = false;
     /**
+     * The code of the layer types heatmap, hillshade and color-relief (layers-more.ts), which loads on demand with the
+     * first style that has such a layer (#2215). Until it is there, these layers are not drawn and the map is not idle.
+     */
+    private layerCode?: typeof import('./layers-more.ts');
+    private layerLoad?: Promise<void>;
+    /**
      * 3D terrain while its code loads: the elevation tiles of the view are requested now, in parallel with the code. The
      * frame asks for the nearest one (it places the camera) before the tiles of the flat layers, and for the others after
      * them, so that neither waits behind the other for a connection (#1849).
@@ -640,7 +668,7 @@ export class Engine {
             if (src.contour && bad(src.contour.encoding)) src.contour.encoding = 'mapbox';
             if (!bad(src.encoding)) continue;
             src.encoding = 'mapbox';
-            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
+            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] E590 The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
         }
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
         // that needs it (a part of the worker, `map-jr-gl-worker-globe.js`, or a chunk for the engine on the main
@@ -691,6 +719,13 @@ export class Engine {
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
+        // The layer types whose code loads on demand: it is part of the first complete picture, as the sprite is (#2215).
+        // When it arrives, the pictures of the 3D terrain that were drawn without these layers are stale.
+        if (!this.layerLoad && style.layers.some(l => RARE_LAYERS.test(l.type))) {
+            this.spritePending++;
+            this.layerLoad = part('layers').then(m => { this.layerCode = m; this.styleVersion++; }, err => { if (!this.lost) this.emit({type: 'error', message: String(err.message)}); })
+                .finally(() => { this.spritePending--; this.invalidate(); });
+        }
         // 3D terrain: its code starts to load with the style, in parallel with the first elevation tiles (#1849).
         if (style.terrain && !this.terrainLoad) this.terrainLoad = part('dem').then(m => { if (!this.lost) { this.terrainCode = m; this.invalidate(); } },
             err => { this.terrainFailed = true; if (!this.lost) { this.emit({type: 'error', message: String(err.message)}); this.invalidate(); } });
@@ -791,8 +826,9 @@ export class Engine {
                 set.add(await face.load());
             } catch (err) {
                 // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
-                const m = (err as Error).message, rest = `The labels use the next font of their "text-font" instead of "${f.name ?? f.family}".`;
-                this.emit({type: 'error', message: m.startsWith('[map-jr-gl]') ? `${m}. ${rest}` : `[map-jr-gl] fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
+                const m = (err as Error).message, font = f.name ?? f.family;
+                if (m.startsWith('[map-jr-gl]')) this.emit({type: 'error', message: m.replace(/^\[map-jr-gl\] /, `[map-jr-gl] E10494 The labels use the next font of their "text-font" instead of "${font}". `)});
+                else this.emit({type: 'error', message: `[map-jr-gl] E494 fonts: the font "${font}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
             }
         })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
     }
@@ -1022,7 +1058,7 @@ export class Engine {
             case 'tileReport': this.tap = c.on; return;
             case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;
-            case 'cameraUpdate': this.cameraUpdate = c.fn; break;
+            case 'cameraUpdate': this.cameraUpdate = c.fn; this.cameraUpdated = undefined; break;
             case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
         this.repaint();
@@ -1056,7 +1092,7 @@ export class Engine {
         const at = this.space.take(w, h) ?? this.repack(w, h);
         if (!at) {
             // (One message, not one for each image that follows.)
-            if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
+            if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] E10121 The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
             this.atlasFull = true;
             return null;
         }
@@ -1096,9 +1132,10 @@ export class Engine {
 
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
+        c = {...c, sets: c.sets.map(s => s.size ? {...s, most: this.most.get(s.layer) as [number, number]} : s)};
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
-        const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
+        const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
         // (The circle layers of a tilted map, whose features are tested on the screen with `circleTouches`.)
         const pitched = pitchedCircles(this.tr, c.box, c.sets), circles = new Map([...pitched?.circles ?? []].map(s => [s.layer, s]));
         for (const [name, src] of Object.entries(this.style.sources)) {
@@ -1108,7 +1145,7 @@ export class Engine {
             // has grown by the farthest reach of an icon of the layer, in the other direction (an icon that reaches 30
             // pixels up from its point is under a pointer that is 30 pixels above the point). Each feature that
             // comes back is then tested with its own icon (`underIcon`). Sets with the same rectangle are asked together.
-            const boxes = new Map<string, {box: number[]; sets: typeof mine; exact: boolean}>();
+            const boxes = new Map<string, {box: number[]; pad: number; sets: typeof mine; exact: boolean}>();
             for (const s of mine) {
                 const L = this.layers.find(l => l.id === s.layer), r = s.radius;
                 let reach: [number, number, number, number] | null = L?.type === 'symbol' ? this.iconReach(L) : null;
@@ -1122,15 +1159,15 @@ export class Engine {
                 // (A symbol layer with no icon and no shown text is still tested with `underIcon`, so that a line whose
                 // label is hidden is not found along its geometry: #1916.)
                 if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
-                if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
+                if (reach) radii.set(s.layer, r), shown.set(s.layer, texts), icons.set(s.layer, this.iconPoints(s.layer));
                 const circle = circles.get(s.layer) === s;
-                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), key = box.join();
-                const group = boxes.get(key) ?? {box, sets: [], exact: !!reach || circle};
+                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), pad = reach || circle ? 0 : setReach(s), key = box.join() + ',' + pad;
+                const group = boxes.get(key) ?? {box, pad, sets: [], exact: !!reach || circle};
                 // (A tilted circle whose size depends on the feature is asked with its size grown as `pitchedCircles` grows the rectangle.)
                 group.sets.push(circle && s.size ? {...s, radius: 0, size: {...s.size, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
                 boxes.set(key, group);
             }
-            for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
+            for (const {box, pad, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom, pad)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
                     sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
@@ -1141,7 +1178,7 @@ export class Engine {
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
-            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
+            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!, icons.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
             if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
@@ -1167,8 +1204,8 @@ export class Engine {
     private async queryElevation(c: Extract<Command, {type: 'elevation'}>): Promise<number | null> {
         const entry = Object.entries(this.style.sources).find(([name, src]) => src.type === 'raster-dem' && (!c.source || c.source === name));
         if (!entry) throw new Error(c.source
-            ? `[map-jr-gl] queryElevation(): the style has no "raster-dem" source "${c.source}". Name a source of type "raster-dem".`
-            : '[map-jr-gl] queryElevation(): the style has no "raster-dem" source. Add a source of type "raster-dem" to the style.');
+            ? `[map-jr-gl] E1214 queryElevation(): the style has no "raster-dem" source "${c.source}". Name a source of type "raster-dem".`
+            : '[map-jr-gl] E11214 queryElevation(): the style has no "raster-dem" source. Add a source of type "raster-dem" to the style.');
         const src = entry[1], z = clamp(Math.floor(c.zoom ?? src.maxzoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
         const url = tileURL(src, z, t.x, t.y, this.dpr);
         let pixels = this.dem.get(url);
@@ -1338,7 +1375,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, t.etag = tile.etag, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1357,7 +1394,7 @@ export class Engine {
             // A tile that was dropped while it waited (it left the view, or the source changed) frees what it sent to the GPU (#400).
             if (this.tiles.get(key) !== t) return this.renderer.destroyTile(gl);
             this.tapTile(key, t.missing ? 'miss' : 'up');
-            if (this.tellLoads) this.emit({type: 'tileLoaded', key});
+            if (this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
             this.expire(t, t.expires);
@@ -1452,7 +1489,7 @@ export class Engine {
     /** With `fresh`, the tile is fetched again (it has expired); an image tile is only ever fetched again. */
     private rebuild(source: string, id: TileID, key: string, t: TileState, fresh?: boolean) {
         // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
-        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++, st: {expires?: number} = {};
+        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++, st: {expires?: number; etag?: string} = {};
         this.tapTile(key, fresh ? 'expired' : 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         if (fresh) t.stale = false;
@@ -1466,16 +1503,18 @@ export class Engine {
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
             ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.tiles.get(key) === t && (t.missing = r.missing), this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
-            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
+            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, st.etag = tile.etag, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
             t.rebuilding = false;
-            if (fresh) this.expire(t, st.expires), t.reloadFailed = false;
+            // A reload of an expired tile that the server answers with 304 (the same `ETag`) fires no event (#2136).
+            const same = fresh && !!st.etag && st.etag === t.etag;
+            if (fresh) this.expire(t, st.expires), t.reloadFailed = false, t.etag = st.etag;
             if (this.tiles.get(key) !== t || !gl) return gl && this.renderer.destroyTile(gl);
             const old = t.gl;
             t.gl = gl;
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
-            if (report && this.tellLoads) this.emit({type: 'tileLoaded', key});
+            if (report && !same && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             this.invalidate();
         }, err => {
             t.rebuilding = false;
@@ -1553,6 +1592,8 @@ export class Engine {
     private stats = {since: 0, frames: 0, cpu: 0};
 
     private cameraUpdate: ((tr: Transform) => void) | null = null;
+    /** The camera after the last call of `cameraUpdate`: as in MapLibre GL JS, the function runs only when the camera changed, so that a map whose function always changes the camera still goes idle (#1970). */
+    private cameraUpdated?: number[];
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
@@ -1578,7 +1619,11 @@ export class Engine {
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), animating = cameraAnimating;
         // (As in MapLibre GL JS, the camera that the function returns is the one that the frame draws, #1711.)
-        if (this.cameraUpdate) try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
+        const cameraNow = () => [tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, ...tr.padding];
+        if (this.cameraUpdate && !this.cameraUpdated?.every((v, i) => v === cameraNow()[i])) {
+            try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
+            this.cameraUpdated = cameraNow();
+        }
         this.flushUploads(this.wentIdle && (cameraAnimating || began - this.cameraMovedAt < 200));
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
@@ -1719,6 +1764,7 @@ export class Engine {
                 else this.refresh(source, id, key, t);
                 // (A tile that was requested for the overview and that the view now needs: its arrival changes the image.)
                 if (t && t.used < 0) t.used = frameNo;
+                if (t) t.quiet = false;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
                 if (!t || t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
@@ -1754,7 +1800,7 @@ export class Engine {
                     const v = this.tiles.get(source + '|' + id.key), failed = v?.state === 'error' && !v.missing;
                     // (Between its first retries, it waits for its next request, as a tile of the view does (#1644).)
                     if (failed && t && (t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES)) { complete = false; if (t.used < 0) t.used = frameNo; }
-                    if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1; if (failed) complete = false; } } else {
+                    if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1, made.quiet = true; if (failed) complete = false; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
@@ -1908,7 +1954,8 @@ export class Engine {
         // at the center is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
         // (The same holds while the code of 3D terrain loads.)
-        const unplaced = !!terrain && !globeness && (this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30) || !this.terrainCode && !this.terrainFailed);
+        const mx0 = mercX(tr.lng) - Math.floor(mercX(tr.lng));
+        const unplaced = !!terrain && !globeness && (this.centreGiven && !this.demTile(mx0, mercY(tr.lat), 30) && !this.demNone(mx0, mercY(tr.lat)) || !this.terrainCode && !this.terrainFailed);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
@@ -1919,7 +1966,7 @@ export class Engine {
             const f = tr.globe!.frame(tr);
             globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, cam: f.cam, rays: tr.globe!.rays(tr), t: globeness, cosLat: Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180), tiles: tr.tileCover(0, 5, TILE_SIZE)};
         }
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene,
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene, layerCode: this.layerCode,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef, code: this.terrainCode!} : undefined});
 
@@ -1945,7 +1992,7 @@ export class Engine {
             // (The bitmap is copied when `convertToBlob` is called, before the drawing buffer goes to the page and is cleared.
             // WebKit gives blank pixels for the canvas of the page whose control went to a worker; #965.)
             for (const c of this.shots.splice(0)) (this.canvas as OffscreenCanvas).convertToBlob({type: c.mime, quality: c.quality})
-                .then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: '[map-jr-gl] toBlob(): the browser could not encode the image as ' + c.mime + '. ' + err}));
+                .then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: '[map-jr-gl] E44 toBlob(): the browser could not encode the image as ' + c.mime + '. ' + err}));
         }
         // In a worker, the frame of the `OffscreenCanvas` reaches the page after this task, and on a loaded machine one
         // frame of the page later still (#555). The next animation frame of the worker starts once this frame has gone
@@ -2013,6 +2060,17 @@ export class Engine {
         for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
     }
 
+    /** The points in Mercator (x, y pairs, 0 to 1) of the shown labels of a layer that have their icon drawn. */
+    private iconPoints(layer: string) {
+        const out: number[] = [];
+        for (const [key, {placed: p, target}] of this.labels) {
+            if (!target || !p.icon || !key.startsWith(layer + '|')) continue;
+            const n = 2 ** p.tile.z;
+            out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n);
+        }
+        return out;
+    }
+
     /**
      * The boxes of the text of the shown labels of a layer at a point (the collision boxes, with `text-padding`), in
      * pixels of the screen, each with the point of its label on the screen now. Text along a line (`line`) has one box
@@ -2051,16 +2109,21 @@ export class Engine {
      * (A feature with no point, and a feature with no text and an icon whose image the map does not have, is found
      * within `radius` pixels of its geometry as before.)
      */
-    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]): boolean {
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[], icons: number[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
         const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
         // Text on a line is found on the boxes of its glyphs (see `textBoxes`) when it is shown, and not found when it is
-        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. (A line
-        // with an icon is found within `radius` pixels of its geometry as before.)
-        if (!points) return image || !String(L.p.field.eval(z, f) ?? '') || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
-            : this.textOnLine(g, box, texts);
+        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. A polygon
+        // whose label is placed at a point is found on the box of that label, as in MapLibre GL JS (#1969): the label is
+        // the polygon's when its point lies in the polygon and its text is the polygon's. (A line or a polygon with an
+        // icon is found within `radius` pixels of its geometry as before.)
+        if (!points) {
+            const text = String(L.p.field.eval(z, f) ?? '');
+            return image || !text || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
+                : this.textOnLine(g, box, texts) || this.labelInPolygon(g, box, texts, text.toLowerCase().replace(/\s/g, ''));
+        }
         // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
         const text = String(L.p.field.eval(z, f) ?? ''), field = text.toLowerCase().replace(/\s/g, ''), near = !image && !text, turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
@@ -2074,6 +2137,12 @@ export class Engine {
             // `text-transform` can change it. When no shown text is the feature's, its icon is tested.)
             const own = mine.filter(t => t.text?.toLowerCase().replace(/\s/g, '') === field);
             if (!image || own.length && !own.some(t => t.icon)) return false;
+            // (An icon that collision hid is not found, as in MapLibre GL JS: a shown icon of the layer is at the point: #2181.
+            // An icon without text that may overlap is always drawn, and the tiles can draw it apart from the labels.)
+            let drawn = !text && overlaps(L.p.iconOverlapMode.eval(z, f), L.p.iconOverlap.eval(z, f));
+            const mx = mercX(lng), my = mercY(lat), e = 1 / tr.worldSize;
+            for (let i = 0; i < icons.length && !drawn; i += 2) drawn = Math.abs(icons[i] - mx) < e && Math.abs(icons[i + 1] - my) < e;
+            if (!drawn) return false;
             // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
             const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
             // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)
@@ -2081,6 +2150,28 @@ export class Engine {
             // (An icon is found on its collision box, with `icon-padding`, as in MapLibre GL JS.)
             const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f, this.iconMove(L, mercX(lng), mercY(lat), x, y));
             return x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1];
+        });
+    }
+
+    /**
+     * Whether a shown label at a point, whose text without case and spaces is `field`, lies in the polygon `g` (a feature
+     * that a question found) and has its box in the rectangle `box`. The point is tested on the screen, with the even-odd
+     * rule over all rings.
+     */
+    private labelInPolygon(g: NonNullable<QueriedFeature['geometry']>, box: number[], texts: {x: number; y: number; box: number[]; line?: boolean; text?: string}[], field: string): boolean {
+        const polygons = (g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) as number[][][][];
+        const hit = texts.filter(t => !t.line && t.text?.toLowerCase().replace(/\s/g, '') === field && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]);
+        if (!hit.length || !polygons.length) return false;
+        return polygons.some(rings => {
+            const screen = rings.map(ring => ring.map(([lng, lat]) => this.tr.project(lng, lat)));
+            return hit.some(t => {
+                let inside = false;
+                for (const ring of screen) for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                    const [ax, ay] = ring[i], [bx, by] = ring[j];
+                    if ((ay > t.y) !== (by > t.y) && t.x < ax + (bx - ax) * (t.y - ay) / (by - ay)) inside = !inside;
+                }
+                return inside;
+            });
         });
     }
 

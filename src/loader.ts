@@ -2,7 +2,7 @@
  * How the library finds and starts its workers. The default needs no configuration: the worker file is looked for
  * next to this module. Everything can be overridden per map or globally with `configure()`.
  */
-import {LOSE_CONTEXT} from './gl-names.ts';
+import {LOSE_CONTEXT, RARE_LAYERS} from './gl-names.ts';
 import {globeStops} from './geo.ts';
 
 declare const __WORKER_SRC__: string; // the worker's source, embedded only in the standalone build
@@ -65,7 +65,7 @@ export function configure(options: LoadOptions) {
     const n = options.tileWorkers;
     if (__DEV__ && n !== undefined && pool && pool.key === poolKey({}) && pool.count !== n && !warnedCount) {
         warnedCount = true;
-        console.warn(`[map-jr-gl] configure(): tileWorkers: ${n} has no effect while a map uses the ${pool.count} tile workers that exist. Call configure() before the first map is created, or destroy every map first.`);
+        console.warn(`[map-jr-gl] E1630 configure(): tileWorkers: ${n} has no effect while a map uses the ${pool.count} tile workers that exist. Call configure() before the first map is created, or destroy every map first.`);
     }
 }
 
@@ -101,10 +101,11 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
         within: at('within', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-within.js?no-inline', import.meta.url)),
         globe: at('globe', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-globe.js?no-inline', import.meta.url)),
         subdivide: at('subdivide', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-subdivide.js?no-inline', import.meta.url)),
+        layers: at('layers', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-layers.js?no-inline', import.meta.url)),
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;
-        console.warn('[map-jr-gl] workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain or with a globe cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
+        console.warn('[map-jr-gl] E1846 workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain, with a globe or with a heatmap, hillshade or color-relief layer cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
     }
     return out as Record<string, string>;
 }
@@ -119,14 +120,16 @@ const partCode = new globalThis.Map<string, Promise<string | null>>();
 /**
  * Starts to fetch the parts that a style (as written) needs: see `partsFor` in engine.ts. 3D terrain needs the part
  * `dem` too, and a globe the part `globe`, in the engine worker (`engineWorker`; #1849, #2006). An engine on the page loads the chunk of that part instead.
- * A globe also needs the part `subdivide` in the tile workers (#2075).
+ * A globe also needs the part `subdivide` in the tile workers (#2075), and a layer of the type heatmap, hillshade or
+ * color-relief the part `layers` in the engine worker (#2215).
  */
-export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>; terrain?: unknown; projection?: {type?: unknown}}, engineWorker: boolean) {
+export function prefetchParts(o: LoadOptions, style: {sources?: Record<string, {type?: string; url?: unknown; tiles?: unknown}>; terrain?: unknown; projection?: {type?: unknown}; layers?: unknown}, engineWorker: boolean) {
     const urls = partUrls(o);
     if (!urls) return;
     const names: string[] = Object.values(style?.sources ?? {}).map(s => s?.type === 'geojson' ? 'geojson' : s?.type === 'contour' ? 'dem'
         : [s?.url, ...(Array.isArray(s?.tiles) ? s.tiles : [])].some(u => typeof u === 'string' && u.startsWith('pmtiles://')) ? 'pmtiles' : '');
     if (style?.terrain && engineWorker) names.push('dem');
+    if (engineWorker && Array.isArray(style?.layers) && style.layers.some(l => RARE_LAYERS.test(l?.type))) names.push('layers');
     // (The tile workers cut the tiles of a globe with the part `subdivide`, also when the engine is on the page.)
     if (globeStops(style?.projection?.type)) names.push('subdivide', ...engineWorker ? ['globe'] : []);
     for (const name of names) {
@@ -224,7 +227,7 @@ export function workerReady(w: Worker, timeout = 8000): Promise<Worker> {
             // The page file and the worker file can come from two versions of the package (a CDN, a cache, a copy that
             // was not replaced). Messages between them can then differ, so the page says it, once.
             const v = e.data.version;
-            if (v !== __VERSION__ && !mismatch) console.warn(mismatch = `[map-jr-gl] The worker file is version ${v ?? 'unknown'} and the page file is version ${__VERSION__}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`);
+            if (v !== __VERSION__ && !mismatch) console.warn(mismatch = `[map-jr-gl] E10017 The worker file is version ${v ?? 'unknown'} and the page file is version ${__VERSION__}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`);
             done();
         };
         const onError = (e: ErrorEvent) => done(new Error(e.message || 'the worker script could not be loaded'));

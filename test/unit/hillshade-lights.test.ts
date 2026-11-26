@@ -2,7 +2,8 @@
 // that take a list of values. Run with: pnpm test:unit
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {compileLayer, hillshadeLights, LIGHTS} from '../../src/style.ts';
+import {compileLayer} from '../../src/style.ts';
+import {hillshadeLights, LIGHTS} from '../../src/layers-more.ts';
 
 const lights = (paint: object, zoom = 0, bearing = 0) => hillshadeLights(compileLayer({id: 'h', type: 'hillshade', source: 'dem', paint} as any)!.p, zoom, bearing);
 const near = (a: number[], b: number[]) => { assert.equal(a.length, b.length); a.forEach((v, i) => assert.ok(Math.abs(v - b[i]) < 1e-6, `${a} is not ${b}`)); };
@@ -66,6 +67,6 @@ test('hillshade: a value that is not valid gives the default, and too many light
         assert.deepEqual(h.shadow, [0, 0, 0, 1, 0, 0, 0, 1]);
     } finally { console.warn = warn; }
     assert.equal(said.length, 2, said.join('\n'));
-    assert.match(said[0], /^\[map-jr-gl\] hillshade: a layer has 11 lights, and the layer draws the first 8\./);
-    assert.match(said[1], /^\[map-jr-gl\] hillshade-method: "soft" is not a method, and the layer uses "standard"\./);
+    assert.match(said[0], /^\[map-jr-gl\] E10569 hillshade: a layer has 11 lights, and the layer draws the first 8\./);
+    assert.match(said[1], /^\[map-jr-gl\] E569 hillshade-method: "soft" is not a method, and the layer uses "standard"\./);
 });

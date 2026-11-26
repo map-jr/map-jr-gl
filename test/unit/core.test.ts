@@ -170,7 +170,7 @@ test('expressions: number-format with an option that Intl.NumberFormat rejects g
     try {
         assert.equal(run(['number-format', 1234.5, {currency: 'not a currency'}]), '1234.5');
         assert.equal(warnings.length, 1);
-        assert.match(warnings[0], /^\[map-jr-gl\] number-format: .*"not a currency"/);
+        assert.match(warnings[0], /^\[map-jr-gl\] E583 number-format: .*"not a currency"/);
         assert.equal(run(['number-format', 1234.5, {locale: 'en-US', unit: 'furlong'}]), '1234.5');
         assert.equal(run(['number-format', 1234.5, {locale: 'not_a_locale!'}]), '1234.5');
         assert.equal(run(['number-format', 1234.5, {'min-fraction-digits': 500}]), '1234.5');
@@ -248,8 +248,9 @@ test('tiles: a {token} stands for a property only in a constant and in a zoom fu
 });
 
 test('renderer: each WebGL extension that the code asks for is a name of an extension', () => {
-    // (A replacement of text in src/gl.ts once changed a name to one that no browser has, and the heatmap lost its fallback.)
-    const asked = [...readFileSync(new URL('../../src/gl.ts', import.meta.url), 'utf8').matchAll(/getExtension\('([^']+)'\)/g)].map(m => m[1]);
+    // (A replacement of text in src/gl.ts once changed a name to one that no browser has, and the heatmap lost its fallback.
+    // The heatmap is drawn by src/layers-more.ts.)
+    const asked = ['gl.ts', 'layers-more.ts'].flatMap(f => [...readFileSync(new URL('../../src/' + f, import.meta.url), 'utf8').matchAll(/getExtension\('([^']+)'\)/g)].map(m => m[1]));
     const known = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float', 'OES_texture_float_linear', 'EXT_texture_filter_anisotropic', 'WEBGL_lose_context', 'EXT_float_blend', 'OES_texture_half_float_linear', 'KHR_parallel_shader_compile'];
     assert.ok(asked.includes('EXT_color_buffer_half_float'));
     assert.deepEqual(asked.filter(name => !known.includes(name)), []);
@@ -484,6 +485,14 @@ test('style: font-faces become web fonts keyed by family, weight and style', asy
     ]);
 });
 
+test('fetchTile: the ETag is kept up to 256 characters, and a longer one counts as none (#2136)', async () => {
+    const {fetchTile} = await import('../../src/tile-fetch.ts');
+    const get = async (etag: string) => { const st: {etag?: string} = {}; await fetchTile('https://tiles.test/0/0/0.pbf', (async () => new Response(new Uint8Array([1]), {headers: {etag}})) as any, undefined, st); return st.etag; };
+    assert.equal(await get('"a"'), '"a"');
+    assert.equal((await get('"' + 'a'.repeat(254) + '"'))?.length, 256);
+    assert.equal(await get('"' + 'a'.repeat(255) + '"'), undefined);
+});
+
 test('pmtiles: tiles are read from an archive by range request, through directories', async () => {
     const {PMTiles, tileId} = await import('../../src/pmtiles.ts'), {fetchTile} = await import('../../src/tile-fetch.ts');
     assert.deepEqual([tileId(0, 0, 0), tileId(1, 0, 0), tileId(1, 0, 1), tileId(1, 1, 1), tileId(1, 1, 0), tileId(2, 0, 0)], [0, 1, 2, 3, 4, 5]);
@@ -538,7 +547,7 @@ test('pmtiles: a server that ignores Range is read once, and a file above 64 MB 
     assert.equal(calls, 1, 'the whole file is downloaded once');
     let read = false;
     const big = (async () => new Response(new ReadableStream({pull(c) { read = true; c.close(); }}, {highWaterMark: 0}), {status: 200, headers: {'content-length': String(100 << 20)}})) as any;
-    await assert.rejects(new PMTiles('https://tiles.test/big.pmtiles', big).info(), /^Error: \[map-jr-gl\] PMTiles https:\/\/tiles.test\/big.pmtiles: the server ignores Range requests, .*\(100 MB\)/);
+    await assert.rejects(new PMTiles('https://tiles.test/big.pmtiles', big).info(), /^Error: \[map-jr-gl\] E277 PMTiles https:\/\/tiles.test\/big.pmtiles: the server ignores Range requests, .*\(100 MB\)/);
     assert.equal(read, false, 'the body of a file above the limit is not read');
     // Without Content-Length, the stream is read only until it passes the limit. One 1 MB chunk is sent repeatedly.
     const chunk = new Uint8Array(1 << 20);
@@ -582,7 +591,7 @@ test('geojson: sources are cut into tiles, clipped, and render and query like ve
     const view = {center: [lng(TILE.x + 0.5), lat(TILE.y + 0.5)] as [number, number], zoom: 14, width: 300, height: 300, fetch: (async () => { throw new Error('no network expected'); }) as any};
     const made = await renderToSVG({...view, style: {version: 8, sources: {}, layers: [style.layers[0]]}, data: {g: data}});
     assert.match(made.svg, /fill="#ff0000"/);
-    await assert.rejects(renderToSVG({...view, style: {version: 8, sources: {g: {type: 'vector', tiles: []}}, layers: []}, data: {g: data}}), /\[map-jr-gl\] data: the source "g" has the type "vector"/);
+    await assert.rejects(renderToSVG({...view, style: {version: 8, sources: {g: {type: 'vector', tiles: []}}, layers: []}, data: {g: data}}), /\[map-jr-gl\] E487 data: the source "g" has the type "vector"/);
     // A pair {light, dark} in `style`: 'dark' uses dark, 'light' and no value use light (#491).
     const pair = {light: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}]}, dark: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000000'}}]}};
     for (const [scheme, colour] of [['dark', '#000000'], ['light', '#ffffff'], [undefined, '#ffffff']] as const) {
@@ -1097,6 +1106,14 @@ test('a URL of a custom protocol that has another URL inside stays as it is writ
     assert.equal(resolved.sprite, 'made://https://example.com/sprite');
     // (A relative URL is still joined to the URL of the style.)
     assert.deepEqual(resolved.sources.d.tiles, ['https://example.org/styles/tiles/{z}/{x}/{y}.png']);
+});
+
+test('transform: at pitch 85 the ground reaches above the horizon to the far plane of MapLibre GL JS (#1817)', () => {
+    // The camera of the render test sky/sky-color/default. MapLibre GL JS works out its far plane for a plane 100 m below
+    // the camera (34 m up here), and its background ends 15.95 px above the centre, at row 48 of 128.
+    const t = new Transform(); t.width = 256; t.height = 128; t.maxPitch = 85; t.set([35.38, 31.55], 15, 0, 85);
+    close(t.groundTop(), 15.95, 0.02);
+    assert.ok(t.cy - t.groundTop() < 48.5, 'row 48 is ground');
 });
 
 test('transform: a pitch up to 180, with a tile cover and a far plane that stop at the horizon (#886, #897)', () => {

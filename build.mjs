@@ -10,6 +10,7 @@ import {minifyShaders} from './scripts/minify-shaders.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
 import {removedReads} from './scripts/server-reads.mjs';
 import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
+import {messageCodes} from './scripts/message-codes.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -47,7 +48,7 @@ rmSync('dist', {recursive: true, force: true});
 mkdirSync('dist', {recursive: true});
 
 /**
- * Makes the shader programs smaller: the GLSL in src/gl.ts, src/terrain.ts and src/globe.ts keeps its comments and layout
+ * Makes the shader programs smaller: the GLSL in src/gl.ts, src/terrain.ts, src/globe.ts and src/layers-more.ts keeps its comments and layout
  * in the source, but the built files do not need them. Whitespace and comments go, a number loses the zeros it does not
  * need (`1.0` is `1.`), and declarations of one type that follow each other become one (`uniform vec4 a,b;`), so the
  * programs stay the same (scripts/minify-shaders.mjs).
@@ -55,7 +56,7 @@ mkdirSync('dist', {recursive: true});
 const shaders = {
     name: 'minify-shaders',
     transform(code, id) {
-        if (!/\/src\/(gl|terrain|globe)\.ts$/.test(id)) return null;
+        if (!/\/src\/(gl|terrain|globe|layers-more)\.ts$/.test(id)) return null;
         const edited = new MagicString(code);
         for (const [start, end, text] of minifyShaders(code)) edited.overwrite(start, end, text);
         return withMap(edited, id);
@@ -106,7 +107,10 @@ const allInOne = {
         // (The parts of the worker, src/parts.ts, are imported in the same way.)
         if (id.endsWith('/src/parts.ts')) {
             const edited = new MagicString(code);
-            for (const m of code.matchAll(partImport)) edited.overwrite(m.index, m.index + m[0].length, `Promise.resolve(part_${m[1]})`).append(`\nimport * as part_${m[1]} from './${m[1]}.ts';\n`);
+            for (const m of code.matchAll(partImport)) {
+                const name = 'part_' + m[1].replace(/-/g, '_'); // (a file name can have a hyphen: layers-more.ts)
+                edited.overwrite(m.index, m.index + m[0].length, `Promise.resolve(${name})`).append(`\nimport * as ${name} from './${m[1]}.ts';\n`);
+            }
             return withMap(edited, id);
         }
         const lazy = "await import('./pmtiles-info.ts')";
@@ -212,10 +216,10 @@ const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
 const workerLib = {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'};
 await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne, globalNames]);
 const workerSrc = readFileSync('.cache/worker-all-in-one/map-jr-gl-worker.js', 'utf8');
-await run({lib: workerLib}, undefined, [splitParts, allInOne, globalNames]);
+await run({lib: workerLib}, undefined, [splitParts, allInOne, globalNames, messageCodes]);
 for (const {name, file} of workerParts) {
     await run({lib: {entry: `src/${file}.ts`, formats: ['iife'], name: 'MapJrPart', fileName: () => `map-jr-gl-worker-${name}.js`},
-        rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}});
+        rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}}, undefined, [messageCodes]);
 }
 
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
@@ -229,7 +233,8 @@ const esm = (input, extra = {}) => ({
 // replacement for MapLibre GL JS.
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
 const entries = {'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', element: 'src/element.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'};
-await run(esm(entries));
+// (The production files keep the code of each message and its link, and not its text: scripts/message-codes.mjs, #2148.)
+await run(esm(entries), undefined, [messageCodes]);
 // The development build of the same entries (`<name>.dev.js`, the `development` condition of package.json). It differs
 // from the build above in `__DEV__` only: it loads the checks for common mistakes (src/mistakes.ts) after the map has
 // started, and the build above has no code for that. The name of a chunk has a hash of its content, so a chunk that is
@@ -246,14 +251,14 @@ await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: fal
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM). It draws without WebGL, so of the
 // part `dem` it takes the contour lines and not 3D terrain, which would bring the renderer of WebGL with it (#1849).
-// The parts `globe` and `subdivide` are for the WebGL engine and its tiles only, and the server renderer does not contain them (#2006, #2075).
+// The parts `globe`, `subdivide` and `layers` are for the WebGL engine and its tiles only, and the server renderer does not contain them (#2006, #2075, #2215).
 const contourOnly = {
     name: 'server-dem',
     enforce: 'pre',
     transform(code, id) {
         if (!id.endsWith('/src/parts.ts')) return null;
         const edited = new MagicString(code);
-        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"], ["subdivide: () => import('./subdivide.ts')", "subdivide: () => Promise.reject(Error('subdivide'))"]]) {
+        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"], ["subdivide: () => import('./subdivide.ts')", "subdivide: () => Promise.reject(Error('subdivide'))"], ["layers: () => import('./layers-more.ts')", "layers: () => Promise.reject(Error('layers'))"]]) {
             const at = code.indexOf(from);
             if (at < 0) throw new Error(`build.mjs: src/parts.ts has no line "${from}".`);
             edited.overwrite(at, at + from.length, to);
@@ -332,6 +337,8 @@ for (const file of new Set(JSON.stringify(pkg.exports).match(/dist\/[\w.-]+\.js/
 execFileSync(process.execPath, [createRequire(import.meta.url).resolve('typescript/package.json').replace(/package\.json$/, 'bin/tsc'), '-p', 'tsconfig.types.json'], {stdio: 'inherit'});
 // A part of the worker (`./worker-*`) is a script with no exports, so its declarations declare nothing.
 writeFileSync('dist/types/worker-part.d.ts', '/** A part of the worker of map-jr-gl. It is a script with no exports. */\nexport {};\n');
+// The texts of the codes of the messages (#2148), for a user who reads a log without network. No page loads this file.
+execFileSync(process.execPath, ['scripts/messages.mjs', '--json'], {stdio: ['ignore', 'ignore', 'inherit']});
 
 const kb = n => (n / 1024).toFixed(1).padStart(6);
 const report = (label, bytes) => console.log(label.padEnd(46), `${kb(bytes.length)} KB min ${kb(gzipSync(bytes, {level: 9}).length)} KB gzip ${kb(brotliCompressSync(bytes).length)} KB brotli`);

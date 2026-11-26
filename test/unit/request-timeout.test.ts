@@ -23,12 +23,12 @@ const neverFetch = (asked: string[], answers: Record<string, () => Response> = {
 /** Lets the promises that are ready run (a request starts after a few of them). */
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)); };
 // (The message of a tile names its source after the prefix, #2099.)
-const timedOut = (url: string) => new RegExp(`\\[map-jr-gl\\] (The source "\\w+": )?the request to ${url.replace(/[.?/]/g, '\\$&')} did not finish within 30000 ms`);
+const timedOut = (url: string) => new RegExp(`\\[map-jr-gl\\] (E2106 The source "\\w+": |E10494 The labels use the next font of their "text-font" instead of "\\w+"\\. )?E415 the request to ${url.replace(/[.?/]/g, '\\$&')} did not finish within 30000 ms`);
 
 test('request timeout: a request that never answers rejects and is aborted', async () => {
     let signal: AbortSignal | undefined;
     const never = ((_: unknown, init?: RequestInit) => { signal = init?.signal ?? undefined; return new Promise<Response>(() => {}); }) as typeof fetch;
-    await assert.rejects(withTimeout(never, 50)('https://glyphs.test/0-255.pbf'), /\[map-jr-gl\] the request to https:\/\/glyphs\.test\/0-255\.pbf did not finish within 50 ms/);
+    await assert.rejects(withTimeout(never, 50)('https://glyphs.test/0-255.pbf'), /\[map-jr-gl\] E415 the request to https:\/\/glyphs\.test\/0-255\.pbf did not finish within 50 ms/);
     assert.equal(signal?.aborted, true);
 });
 
@@ -102,7 +102,7 @@ test('request timeout: a tile request that never answers fails after 30 s like a
     assert.equal(failed, undefined);
     t.mock.timers.tick(1);
     await new Promise(r => setImmediate(r));
-    assert.match(String(failed), /\[map-jr-gl\] the request to https:\/\/tiles\.test\/1\/0\/0\.pbf did not finish within 30000 ms/);
+    assert.match(String(failed), /\[map-jr-gl\] E415 the request to https:\/\/tiles\.test\/1\/0\/0\.pbf did not finish within 30000 ms/);
 });
 
 test('request timeout: each request of the map that never answers fails after 30 s (style, TileJSON, GeoJSON, setData)', async t => {

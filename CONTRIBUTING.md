@@ -31,5 +31,5 @@ needs a strong reason.
 ## License
 
 MIT. By contributing you agree that your contribution has this license. If your change follows a method from
-another project, name it in `ACKNOWLEDGEMENTS.md`. Before a release, the [similarity scan](docs/similarity-scan.md)
+another project, name it in `ACKNOWLEDGEMENTS.md`. Before a release, the [similarity scan](docs/development/similarity-scan.md)
 checks that the source contains no code of another project without its notice.

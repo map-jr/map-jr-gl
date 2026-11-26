@@ -20,7 +20,7 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
     });
 }
 /** The error of a request that failed: it names the resource, the URL (cut, because it comes from a style) and the reason. */
-export const requestError = (what: string, url: string, reason: unknown, cause?: unknown) => new Error(`[map-jr-gl] the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause});
+export const requestError = (what: string, url: string, reason: unknown, cause?: unknown) => new Error(`[map-jr-gl] E1163 the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause});
 /** The error of a response with an HTTP error status. */
 export const httpError = (what: string, url: string, status: number) => requestError(what, url, 'HTTP ' + status);
 /**
@@ -28,7 +28,7 @@ export const httpError = (what: string, url: string, status: number) => requestE
  * `transformRequest`. A network error and an HTTP status 5xx are worth another request (#652). Such an error has
  * `final: true`, also after it crossed from a tile worker. The message is read for an error that comes from elsewhere.
  */
-export const finalFailure = (err: {final?: boolean; message?: unknown}) => !!err.final || /HTTP 4\d\d\b|: the protocol rejected it: |: transformRequest threw: /.test(String(err.message));
+export const finalFailure = (err: {final?: boolean; message?: unknown}) => !!err.final || /HTTP 4\d\d\b|\bthe protocol rejected it: |\btransformRequest threw: /.test(String(err.message));
 const KINDS: Record<string, string> = {Tile: 'tile', RasterTile: 'tile', SpriteJSON: 'sprite', SpriteImage: 'sprite image', Glyphs: 'glyphs', Font: 'font', Image: 'image'};
 function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: string): typeof fetch {
     return async (input, init) => {
@@ -53,7 +53,7 @@ function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: strin
 export function withTimeout(f: typeof fetch, ms = 30000): typeof fetch {
     return (input, init) => {
         const ac = new AbortController(), outer = init?.signal;
-        const timer = setTimeout(() => ac.abort(new Error(`[map-jr-gl] the request to ${input} did not finish within ${ms} ms.`)), ms), done = () => clearTimeout(timer);
+        const timer = setTimeout(() => ac.abort(new Error(`[map-jr-gl] E415 the request to ${input} did not finish within ${ms} ms.`)), ms), done = () => clearTimeout(timer);
         ac.signal.addEventListener('abort', done);
         // An abort by the caller (a tile that is no longer needed) still ends the request.
         if (outer) outer.aborted ? ac.abort(outer.reason) : outer.addEventListener('abort', () => ac.abort(outer.reason));

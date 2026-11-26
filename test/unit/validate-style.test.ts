@@ -82,7 +82,7 @@ test('the compat entry fires each error once, with the place and the text, and v
     const errors: string[] = [], reported = new Set<string>();
     zoomCurveErrors(styles[2], reported, e => errors.push(e.message));
     zoomCurveErrors(styles[2], reported, e => errors.push(e.message));
-    assert.deepEqual(errors, ['[map-jr-gl] layers[0]: missing required property "source". The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.']);
+    assert.deepEqual(errors, ['[map-jr-gl] E1748 layers[0]: missing required property "source". The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.']);
     const skipped: string[] = [];
     zoomCurveErrors(styles[2], new Set(), e => skipped.push(e.message), true);
     assert.deepEqual(skipped, []);

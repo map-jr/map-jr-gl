@@ -25,6 +25,7 @@ async function finish(ir: TileIR, req: TileRequest) {
 }
 
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
+declare const __DEV__: boolean;
 export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number; /** When the tile is out of date (see `TileFetchState`). */ expires?: number }
 /** A raster tile to fetch, and what comes back: its decoded image (none for a tile that does not exist or is empty) and the state of the fetch. */
@@ -97,7 +98,7 @@ export class TileBuilder {
             // (The error of a page without the means to decode stays as it is.)
             const px = await decodePixels(bytes, this.decodeImage).catch((e: Error) => {
                 if (e.message?.startsWith('Elevation tiles need')) throw e;
-                throw Object.assign(requestError('tile', req.url, 'the response is not an image that the browser can decode. Check that the tile URLs of the source give PNG or WebP images.', e), {final: true});
+                throw Object.assign(requestError('tile', req.url, __DEV__ ? 'the response is not an image that the browser can decode. Check that the tile URLs of the source give PNG or WebP images.' : 'undecodable image', e), {final: true});
             }), {width: w, height: h} = px, grid = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
             let lo = Infinity, hi = -Infinity;
             // Each cell of the grid is the mean of the pixels that it covers (two by two for a tile of 512 pixels), so that
@@ -133,7 +134,7 @@ export class TileBuilder {
             const st: TileFetchState = {}, got = await fetchTile(req.url, this.fetchFn, ac.signal, st, true);
             // An image that cannot be decoded would fail again, so it is final: it is not requested again, as in MapLibre GL JS (#2099).
             const image = got && 'length' in got ? await createImageBitmap(new Blob([got as BlobPart])).catch(e => {
-                throw Object.assign(requestError('tile', req.url, 'the response is not an image that the browser can decode. Check that the tile URLs of the source give PNG, JPEG or WebP images.', e), {final: true});
+                throw Object.assign(requestError('tile', req.url, __DEV__ ? 'the response is not an image that the browser can decode. Check that the tile URLs of the source give PNG, JPEG or WebP images.' : 'undecodable image', e), {final: true});
             }) : got;
             return {...st, image};
         } finally { this.aborts.delete(req.id); }
@@ -200,9 +201,9 @@ export class TileBuilder {
                 this.loading.set(key, p);
                 try { bytes = await p; } finally { if (this.loading.get(key) === p) this.loading.delete(key); }
             }
-            if (!bytes) return {layers: {}, labels: {}, expires: st.expires};
+            if (!bytes) return {layers: {}, labels: {}, expires: st.expires, etag: st.etag};
             if (n === this.forgotten) this.remember(key, bytes);
-            return {...bytes.length ? this.build(decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires};
+            return {...bytes.length ? this.build(decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires, etag: st.etag};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -321,7 +322,7 @@ export class PortBackend implements TileBackend {
             if (!p) return;
             this.pending.delete(e.data.id);
             if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final}));
-            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, fault: e.data.tile.fault});
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, etag: e.data.tile.etag, fault: e.data.tile.fault});
             else p.resolve(e.data.result);
         };
     }
@@ -396,7 +397,7 @@ export function serveTiles(port: Port) {
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = await finish(await builder.loadIR(m.req), m.req);
-                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, fault: tile.fault}}, transfer);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, etag: tile.etag, fault: tile.fault}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final});
             }

@@ -79,7 +79,7 @@ const down = await failing({mapStyle: makeStyle(`http://127.0.0.1:${broken.addre
 const silent = await failing({mapStyle: makeStyle(`http://127.0.0.1:${broken.address().port}/{z}/{x}/{y}.pbf`, 'Example tiles'), ssr: true, onError: undefined});
 broken.close();
 check('server: a tile with status 500 gives the page without the first view, one message in the console and one error event (#706)',
-    down.page.includes('map-jr-vue') && !down.page.includes('<svg') && !down.thrown.length && down.logged.length === 1 && down.logged[0].startsWith('[map-jr-gl] <MapJr>') && down.logged[0].includes('500') && down.emitted.length === 1 && down.emitted[0] instanceof Error && down.emitted[0].message === down.logged[0]
+    down.page.includes('map-jr-vue') && !down.page.includes('<svg') && !down.thrown.length && down.logged.length === 1 && down.logged[0].startsWith('[map-jr-gl] E706 https://map-jr.org/e/706 message="') && down.logged[0].includes('500') && down.emitted.length === 1 && down.emitted[0] instanceof Error && down.emitted[0].message === down.logged[0]
     && silent.page.includes('map-jr-vue') && !silent.thrown.length && silent.logged.length === 1,
     JSON.stringify({page: down.page.slice(0, 80), thrown: down.thrown, logged: down.logged.map(m => m.slice(0, 200)), emitted: down.emitted.length, silent: {thrown: silent.thrown, logged: silent.logged.length}}));
 check('server: without the ssr prop the component renders an empty element', !plain.includes('<svg') && plain.includes('map-jr-vue'), plain.slice(0, 120));
@@ -329,7 +329,7 @@ try {
     check('browser: the event error has {sourceId} as its second value for a source that fails, and {} for the style (#2008)',
         failing.infos === '[{}]' && failing.sourceInfos === '[{"sourceId":"broken"}]', JSON.stringify(failing));
     check('browser: the event error gets each error, and without a listener the error is written to the console',
-        failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithListener === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
+        failing.got.length === 1 && /^\[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 style="\S*no-such-style\.json" status=404$/.test(failing.got[0]) && failing.loggedWithListener === 0 && failing.logged.length === 1 && /^\[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 style="\S*no-such-style\.json" status=404$/.test(failing.logged[0]), JSON.stringify(failing));
     // The warning for a container of height 0 names what the user wrote: `<MapJr>` or `useMapJr()`, not `createMap()` (#268).
     const flat = await page.evaluate(async () => {
         const {createApp, h, ref} = await import('vue'), {MapJr, useMapJr} = await import('/dist/vue.dev.js');
@@ -347,7 +347,7 @@ try {
         console.warn = warn;
         return warned;
     });
-    check('browser: the warning for height 0 names <MapJr> and useMapJr()', flat.length === 2 && flat[0].startsWith('[map-jr-gl] <MapJr>: the container has height 0') && flat[1].startsWith('[map-jr-gl] useMapJr(): the container has height 0'), JSON.stringify(flat));
+    check('browser: the warning for height 0 names <MapJr> and useMapJr()', flat.length === 2 && flat[0].startsWith('[map-jr-gl] E0 <MapJr>: the container has height 0') && flat[1].startsWith('[map-jr-gl] E0 useMapJr(): the container has height 0'), JSON.stringify(flat));
     // v-model:color-scheme keeps the value that the control colorScheme() sets (#541).
     const schemes = await page.evaluate(async () => {
         const {createApp, h, ref} = await import('vue'), {MapJr} = await import('/dist/vue.js'), {colorScheme} = await import('/dist/controls.js');
@@ -426,7 +426,7 @@ try {
         return out;
     });
     check('browser: before the map has loaded, the members of the template ref are undefined, and in the development build a method throws a message that names it (#1151)',
-        JSON.stringify(beforeLoad['vue.js'].slice(0, 4)) === JSON.stringify(['false', 'undefined', 'undefined', '0']) && JSON.stringify(beforeLoad['vue.dev.js'].slice(0, 4)) === JSON.stringify(['true', 'function', 'undefined', '0']) && beforeLoad['vue.dev.js'][4].startsWith('[map-jr-gl] <MapJr>: the template ref has no method "moveTo" until the map has loaded.'), JSON.stringify(beforeLoad));
+        JSON.stringify(beforeLoad['vue.js'].slice(0, 4)) === JSON.stringify(['false', 'undefined', 'undefined', '0']) && JSON.stringify(beforeLoad['vue.dev.js'].slice(0, 4)) === JSON.stringify(['true', 'function', 'undefined', '0']) && beforeLoad['vue.dev.js'][4].startsWith('[map-jr-gl] E1151 <MapJr>: the template ref has no method "moveTo" until the map has loaded.'), JSON.stringify(beforeLoad));
     check('browser: :sources in the render and :data from a shallowRef: new data is no new style, and the source objects of the render are unchanged (#857)',
         declared.restyled === 0 && declared.unchanged && declared.renders >= 3, JSON.stringify(declared));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
@@ -458,7 +458,7 @@ try {
             map.getSource('pts').setData({type: 'FeatureCollection', features: [1, 2].map(n => ({type: 'Feature', properties: {n}, geometry: {type: 'Point', coordinates: [-74.0065, 40.7085]}}))});
             await wait(1500);
             const after = (await map.querySourceFeatures('pts')).length;
-            out['compat ' + renderer] = {found, style: style2, errs: errs.filter(m => !m.startsWith('[map-jr-gl] The map could not copy data')), cycle: errs.length === 1, after};
+            out['compat ' + renderer] = {found, style: style2, errs: errs.filter(m => !m.startsWith('[map-jr-gl] E242 ')), cycle: errs.length === 1, after};
             map.remove(); el.remove();
             step = 'main API map, ' + renderer;
             const herrs = [], hel = box();

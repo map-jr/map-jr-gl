@@ -1,5 +1,5 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import {hillshadeLights, LIGHTS, withFilter, screenTranslate, mapTranslate, type CompiledLayer, type Light} from './style.ts';
+import {withFilter, screenTranslate, mapTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
@@ -24,7 +24,7 @@ vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 #define shown(c) true
 #endif
 `;
-const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
+export const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
 
 // Ground height from an elevation tile, for vertex shaders. `u_demRect` is the part of the elevation image under this
 // tile (offset x, y and scale, then the image size in pixels); `u_exag` of zero means "no heights here (yet)", and
@@ -38,18 +38,7 @@ float ground(vec2 uv) {
 }
 `;
 
-// The vertex shader of the layers that color an elevation tile (`hillshade`, `color-relief`).
-const VS_DEM = `${VS_COMMON}
-layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
-#ifdef GLOBE
-void main() { v_uv = clamp(unpole(a_pos) / ${EXTENT}.0, 0.0, 1.0); v_tile = v_uv * ${EXTENT}.0; gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile); }
-#else
-void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }
-#endif`;
-
 const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1, 0];
-/** Heatmap densities are accumulated at this fraction of the screen's resolution: the result is smooth anyway. */
-const HEAT_SCALE = 4;
 /**
  * Perspective weights for a quadrilateral's corners, from where its diagonals cross (all equal for a parallelogram).
  * A quadrilateral that is not convex (concave, or crossing itself) has none, because no perspective view gives it.
@@ -85,36 +74,6 @@ const PATTERN_GLSL = `uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2
 vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex); }`;
 
 const BUILTIN = {
-    // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
-    heat: [`${VS_COMMON}
-layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight; layout(location=5) in float a_weight1; layout(location=6) in vec2 a_radius;
-uniform float u_zt; uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip; uniform float u_scale; uniform float u_corner;
-out vec2 v_ex; out float v_w;
-void main() {
-  v_w = mix(a_weight, a_weight1, u_zt) * u_weight;
-  // The bump is drawn out to where it falls below what the picture can store, and no further.
-  float s = sqrt(max(0.0, -2.0 * log(${(1 / 255 / 16).toFixed(8)} / max(v_w * u_intensity * 0.3989422804, 1e-9)))) / 3.0;
-  v_ex = s * a_corner * u_corner;
-  float r = u_radius + a_radius.x + u_zt * a_radius.y; // a radius for each feature is a_radius, and u_radius is then 0
-  bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
-#ifdef GLOBE
-  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): r is in pixels at the center of the view.
-  vec4 c = toClipTurn(a_pos, v_ex * r / u_scale, 0.0);
-#else
-  vec4 c = toClip(a_pos);
-  c.xy += v_ex * r * vec2(2.0, -2.0) / u_view * c.w;
-#endif
-  gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
-}`, `
-uniform float u_intensity; in vec2 v_ex; in float v_w; out vec4 o;
-void main() { o = vec4(v_w * u_intensity * 0.3989422804 * exp(-4.5 * dot(v_ex, v_ex)), 0.0, 0.0, 1.0); }`],
-
-    // Heatmap, step two: the density picture is colored through the layer's ramp.
-    heatColor: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
-void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
-uniform sampler2D u_heat; uniform sampler2D u_ramp; uniform float u_opacity; in vec2 v_uv; out vec4 o;
-void main() { o = texture(u_ramp, vec2(clamp(texture(u_heat, v_uv).r, 0.0, 1.0), 0.5)) * u_opacity; }`],
-
     // Draws a whole layer, rendered separately, onto the map in one go (layer-wide opacity and blending).
     composite: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
 void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
@@ -202,15 +161,18 @@ void main() {
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
   // As in MapLibre GL JS (ANTIALIASING), the soft edge is one device pixel wide and reaches half a device pixel out.
   v_aa = 1.0 / u_dpr;
-  v_gap = u_gap + a_gap + u_zt * a_gap1; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5 * v_aa; float sa = abs(a_sd.x), side = sign(a_sd.x), c = sa > 1.5 && sa < 16383.5 ? (sa - 2.0) / 4096.0 - 2.0 : 0.0, t = (sa - 24575.0) / 8191.0 * 3.1415927; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
+  v_gap = u_gap + a_gap + u_zt * a_gap1; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5 * v_aa; float sa = abs(a_sd.x), side = sign(a_sd.x), c = sa > 1.5 && sa < 15360.5 ? (sa - 2.0) / 4096.0 - 2.0 : 0.0, k = 1.0, t = (sa - 24575.0) / 8191.0 * 3.1415927; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
   // (The outer vertex of a bevel also moves c times the offset along the line, so that it moves along the miter. A
   // vertex of a fan moves along its normal, and an outer one is pushed out along the angle t: see \`fan\` in tile.ts.)
+  // A vertex of a flipbevel moves k times the offset along its normal, and 1 - k times twice the offset along the
+  // bisector: see the flipbevel of tessellateLine.
   float off = u_offset + a_offset / 8.0 + u_zt * a_offset1;
+  if (sa > 15360.5 && sa < 16383.5) { float u = sa - 15872.0; k = (abs(u) - 1.0) / 510.0; c = sign(u) * (1.0 - k) * 2.0 / length(a_v.zw); }
   vec2 e = sa > 16383.5 ? vec2(cos(t), sin(t)) : a_v.zw * abs(side);
-  v_tile = a_v.xy + (e * v_hw + (a_v.zw * (side == 0.0 ? 1.0 : side) + c * vec2(a_v.w, -a_v.z)) * off) / u_scale * lineScale(a_v.xy);
+  v_tile = a_v.xy + (e * v_hw + (a_v.zw * (side == 0.0 ? k : side * k) + c * vec2(a_v.w, -a_v.z)) * off) / u_scale * lineScale(a_v.xy);
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;
@@ -446,60 +408,6 @@ void main() {
   o = clamp(vec4(deriv / 8.0 + 128.0 / 255.0, 1.0, 1.0), 0.0, 1.0);
 }`],
 
-    // A `hillshade` layer. `u_light` has `hillshade-exaggeration`, the method (0 `standard`, 1 `combined`, 2 `igor`,
-    // 3 `basic` and `multidirectional`) and the number of lights; `u_sun` has the direction and the altitude of each
-    // light in radians. The methods are those of MapLibre GL JS; `basic` is `multidirectional` with one light.
-    hillshade: [VS_DEM, `
-uniform sampler2D u_image; uniform vec4 u_clip; uniform vec2 u_latrange; uniform vec3 u_light; uniform vec2 u_sun[${LIGHTS}];
-uniform vec4 u_shadow[${LIGHTS}]; uniform vec4 u_highlight[${LIGHTS}]; uniform vec4 u_accent; in vec2 v_uv; in vec2 v_tile; out vec4 o;
-const float PI = 3.141592653589793;
-void main() {
-  ${FS_CLIP}
-  // Slopes are divided by cos(latitude) to undo the mercator projection's stretching.
-  float scaleFactor = cos(radians((u_latrange.x - u_latrange.y) * (1.0 - v_uv.y) + u_latrange.y));
-  vec2 deriv = (texture(u_image, v_uv).rg - 128.0 / 255.0) * 8.0 / scaleFactor;
-  float aspect = deriv.x != 0.0 ? atan(deriv.y, -deriv.x) : PI / 2.0 * (deriv.y > 0.0 ? 1.0 : -1.0);
-  float intensity = u_light.x, shade = abs(mod((aspect + u_sun[0].x) / PI + 1.5, 2.0) - 1.0);
-  if (u_light.y > 0.0) {
-    deriv *= intensity * 2.0;
-    float steep = atan(length(deriv)) * 2.0 / PI;
-    o = steep * mix(u_shadow[0], u_highlight[0], shade);
-    if (u_light.y == 2.0) return;
-    for (int i = 0; i < int(u_light.z); i++) {
-      // The cosine of the angle between the light and the normal of the ground.
-      float c = clamp((sin(u_sun[i].y) + cos(u_sun[i].y) * (deriv.y * cos(u_sun[i].x) - deriv.x * sin(u_sun[i].x))) / sqrt(1.0 + dot(deriv, deriv)), 0.0, 1.0);
-      if (u_light.y == 1.0) { o = steep * mix(u_highlight[0], u_shadow[0], acos(c) * 2.0 / PI); return; }
-      if (i == 0) o = vec4(0.0);
-      o += (c > 0.5 ? u_highlight[i] * (2.0 * c - 1.0) : u_shadow[i] * (1.0 - 2.0 * c)) / u_light.z;
-    }
-    return;
-  }
-  float slope = atan(0.625 * length(deriv));
-  float base = 1.875 - intensity * 1.75, maxValue = 0.5 * PI;
-  float scaledSlope = intensity != 0.5 ? ((pow(base, slope) - 1.0) / (pow(base, maxValue) - 1.0)) * maxValue : slope;
-  vec4 accent = (1.0 - cos(scaledSlope)) * u_accent * clamp(intensity * 2.0, 0.0, 1.0);
-  vec4 shadeColor = mix(u_shadow[0], u_highlight[0], shade) * sin(scaledSlope) * clamp(intensity * 2.0, 0.0, 1.0);
-  o = accent * (1.0 - shadeColor.a) + shadeColor;
-}`],
-
-    // A `color-relief` layer: the color of each pixel comes from its elevation. `u_stops` has the elevations of the
-    // stops of `color-relief-color` and `u_ramp` has the color at each stop. The color between two stops is a linear
-    // mix, as in MapLibre GL JS. (The filter of the elevation texture is linear, and so is the encoding: the texture
-    // gives the elevation between its pixels.) Two stops of the same elevation have one color in `u_ramp`,
-    // and the shader does not divide by their distance of zero. (A ramp of one stop arrives here as two stops.)
-    'color-relief': [VS_DEM, `
-uniform sampler2D u_image; uniform sampler2D u_ramp; uniform highp sampler2D u_stops; uniform vec4 u_clip; uniform vec4 u_unpack; uniform float u_opacity;
-in vec2 v_uv; in vec2 v_tile; out vec4 o;
-float stop(int i) { return texelFetch(u_stops, ivec2(i, 0), 0).r; }
-void main() {
-  ${FS_CLIP}
-  float e = dot(texture(u_image, v_uv).rgb * 255.0, u_unpack.rgb) - u_unpack.a;
-  int l = 0, r = textureSize(u_stops, 0).x - 1;
-  while (r - l > 1) { int m = (l + r) / 2; if (e < stop(m)) r = m; else l = m; }
-  float d = stop(r) - stop(l);
-  o = mix(texelFetch(u_ramp, ivec2(l, 0), 0), texelFetch(u_ramp, ivec2(r, 0), 0), d > 0.0 ? clamp((e - stop(l)) / d, 0.0, 1.0) : 0.0) * u_opacity;
-}`],
-
     // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
     // from its point in the tile, as for circles. `a_v`: the point, and the corner in the texture. `a_d`: the corner
     // from the center of the icon in pixels at size 1, and 1 for a distance-field icon.
@@ -548,16 +456,17 @@ void main() {
 };
 
 /**
- * The name of a program: a built-in one, `terrain`, which the part for elevation data adds (see terrain.ts), or `halo`,
- * the atmosphere of the globe, which the renderer adds from the part of the globe (see `render`).
+ * The name of a program: a built-in one, `terrain`, which the part for elevation data adds (see terrain.ts), `halo`,
+ * the atmosphere of the globe, which the renderer adds from the part of the globe (see `render`), or one of the
+ * layer types that the part `layers` adds (see layers-more.ts).
  */
-type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo';
+type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
 /**
  * The second order of a frame on the globe (see `groundFrame` in placement.ts) at the point (u, v) of a symbol: for
  * x on the screen with k = 0, for y with k = 1. Without it (Mercator, a frame of four numbers, no frame) it is 0.
  */
 const second = (q: number[] | undefined, k: number, u: number, v: number) => q && q.length > 4 ? q[4 + k] * u * u + q[6 + k] * u * v + q[8 + k] * v * v : 0;
-/** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849), and the globe adds `halo`. */
+/** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849), the globe adds `halo`, and the part `layers` adds the programs of its layer types (#2215). */
 export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = BUILTIN;
 
 /** `u` is empty until the program is first used: see `link`. */
@@ -637,6 +546,8 @@ export interface Scene {
     items: Map<string, RenderItem<GLTile>[]>;
     labels: Placed[];
     atlas: GlyphAtlas;
+    /** The code of the layer types heatmap, hillshade and color-relief, which loads on demand (layers-more.ts). */
+    layerCode?: typeof import('./layers-more.ts');
     /** 3D terrain: the ground tiles to draw, and a lookup of the heights under any tile (for buildings). */
     terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null; /** The code of 3D terrain, which loads on demand (terrain.ts). */ code: typeof import('./terrain.ts')};
     /** The light on buildings. */
@@ -1208,7 +1119,8 @@ export class GLRenderer {
             // (A custom layer draws on the screen, also with 3D terrain and on the globe, and not on the pictures of the
             // terrain tiles. On the globe it gets the matrices of the globe, #1431.)
             if (L.type === 'custom') { if (pass !== 'ground') { this.custom?.(L.id, s); this.current = null; } continue; }
-            if (L.type === 'heatmap') { if (pass !== 'buildings') this.drawHeatmap(L, tr, bySource.get(L.source!) ?? [], target); continue; }
+            // (The code of the layer types heatmap, hillshade and color-relief loads on demand: until it is there, they are not drawn.)
+            if (L.type === 'heatmap') { if (pass !== 'buildings') s.layerCode?.drawHeatmap.call(this, L, tr, bySource.get(L.source!) ?? [], target); continue; }
             if (!only && (L.type === 'fill' || L.type === 'line' || L.type === 'raster') && pass !== 'buildings') {
                 // Layer-wide opacity and blending: the layer is drawn on its own first, so that overlapping features
                 // form one surface, and that surface is then put onto the map once.
@@ -1255,7 +1167,7 @@ export class GLRenderer {
                 // Unit square -> the screen below the horizon (all of it unless the pitch is high), or above the line of
                 // `underside` when the camera is below the ground.
                 const under = tr.globeness ? null : tr.underside();
-                const top = under !== null ? 1 : tr.globeness ? 1 : Math.min(1, 1 - 2 * (tr.cy - tr.horizon()) / tr.height);
+                const top = under !== null ? 1 : tr.globeness ? 1 : Math.min(1, 1 - 2 * (tr.cy - tr.groundTop()) / tr.height);
                 const bottom = under !== null ? Math.max(-1, 1 - 2 * (tr.cy + under) / tr.height) : -1;
                 gl.uniformMatrix4fv(u.u_matrix, false, [2, 0, 0, 0, 0, bottom - top, 0, 0, 0, 0, 1, 0, -1, top, 0, 1]);
                 gl.uniform4f(u.u_clip, -1, -1, 2, 2);
@@ -1266,6 +1178,7 @@ export class GLRenderer {
             const items = bySource.get(L.source!);
             if (!items) continue;
             if (L.type === 'raster' || L.type === 'hillshade' || L.type === 'color-relief') {
+                if (L.type !== 'raster' && !s.layerCode) continue;
                 const u = use(L.type), p = L.p;
                 gl.activeTexture(gl.TEXTURE0);
                 gl.uniform1i(u.u_image, 0);
@@ -1282,20 +1195,7 @@ export class GLRenderer {
                     gl.uniform2f(u.u_bright, p.brightnessMin.eval(zoom), p.brightnessMax.eval(zoom));
                     const h = p.hueRotate.eval(zoom) * Math.PI / 180, sn = Math.sin(h), cs = Math.cos(h);
                     gl.uniform3f(u.u_spin, (2 * cs + 1) / 3, (-Math.sqrt(3) * sn - cs + 1) / 3, (Math.sqrt(3) * sn - cs + 1) / 3);
-                } else if (L.relief) {
-                    gl.uniform1f(u.u_opacity, p.opacity.eval(zoom));
-                    gl.uniform1i(u.u_ramp, 1); gl.uniform1i(u.u_stops, 2);
-                    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.ramp!));
-                    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.relief));
-                    gl.activeTexture(gl.TEXTURE0);
-                } else {
-                    const h = hillshadeLights(p, zoom, p.anchor.eval(zoom) === 'viewport' ? s.tr.bearing * Math.PI / 180 : 0); // the map's bearing, also when drawing a terrain tile's picture
-                    gl.uniform3f(u.u_light, p.exaggeration.eval(zoom), h.method, h.n);
-                    gl.uniform2fv(u.u_sun, h.sun);
-                    gl.uniform4fv(u.u_shadow, h.shadow);
-                    gl.uniform4fv(u.u_highlight, h.highlight);
-                    const c = p.accent.eval(zoom); gl.uniform4f(u.u_accent, c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]);
-                }
+                } else s.layerCode!.demUniforms.call(this, L, u, zoom, s.tr.bearing);
                 // A map at rest, seen from above: the image (raster, hillshade or color-relief) moves by less than a pixel, so that its pixels are on the pixels of
                 // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the center of the
                 // map goes to a whole pixel of the world (to a half pixel when the size of the map is odd).
@@ -1620,7 +1520,8 @@ export class GLRenderer {
         this.current = null;
     }
 
-    private heatTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
+    /** The density picture of a heatmap (see `drawHeatmap` in layers-more.ts). */
+    private declare heatTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
     private ramps = new Map<Uint8Array | Float32Array, WebGLTexture>();
     private rampLayers?: CompiledLayer[];
     /**
@@ -1650,58 +1551,7 @@ export class GLRenderer {
         const keep = new Set(layers.flatMap(L => [L.ramp, L.relief]));
         for (const [pixels, tex] of this.ramps) if (!keep.has(pixels)) { this.gl.deleteTexture(tex); this.ramps.delete(pixels); }
     }
-    private floatTargets?: boolean;
-
-    private drawHeatmap(L: CompiledLayer, tr: Transform, items: RenderItem<GLTile>[], target: [number, number]) {
-        const gl = this.gl, zoom = tr.zoom, w = Math.max(1, Math.ceil(target[0] / HEAT_SCALE)), h = Math.max(1, Math.ceil(target[1] / HEAT_SCALE));
-        const back = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
-        // Densities add up past 1, so the picture holds half-float values where the browser can draw to them.
-        this.floatTargets ??= !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float');
-        let t = this.heatTarget;
-        if (!t || t.w !== w || t.h !== h) {
-            if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }
-            const tex = this.newTexture(), fb = gl.createFramebuffer()!;
-            if (this.floatTargets) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
-            else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-            gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-            t = this.heatTarget = {fb, tex, w, h};
-        }
-        gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
-        gl.viewport(0, 0, w, h);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.blendFunc(gl.ONE, gl.ONE);
-        let u = this.use('heat', tr);
-        gl.uniform1f(u.u_weight, L.p.weight.dd ? 1 : L.p.weight.eval(zoom));
-        gl.uniform1f(u.u_intensity, L.p.intensity.eval(zoom));
-        gl.uniform1f(u.u_radius, L.p.radius.dd ? 0 : L.p.radius.eval(zoom));
-        for (const it of items) {
-            const b = it.tile.batches[L.id];
-            if (!b) continue;
-            this.placeTile(u, it.id, it.matrix4);
-            gl.uniform4fv(u.u_clip, it.clip);
-            gl.uniform1f(u.u_scale, it.scale);
-            gl.uniform1f(u.u_corner, b.grid ? 1 / 7 : 1);
-            gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
-            gl.bindVertexArray(b.vao);
-            if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
-            if (!b.stroke) gl.vertexAttrib1f(6, 0);
-            gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
-        }
-        gl.bindFramebuffer(gl.FRAMEBUFFER, back);
-        gl.viewport(0, 0, target[0], target[1]);
-        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-        const ramp = this.rampTexture(L.ramp!);
-        u = this.use('heatColor', tr);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ramp);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, t.tex);
-        gl.uniform1i(u.u_heat, 0); gl.uniform1i(u.u_ramp, 1);
-        gl.uniform1f(u.u_opacity, L.p.opacity.eval(zoom));
-        gl.bindVertexArray(this.quad);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        this.current = null;
-    }
+    private declare floatTargets?: boolean;
 
     /** Points a terrain-aware program at the heights under the tile about to be drawn. */
     private bindDem(u: Record<string, WebGLUniformLocation>, dem: DemRef | null, exaggeration: number, level = 0) {

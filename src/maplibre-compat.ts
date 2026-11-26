@@ -15,7 +15,7 @@ const noEffect: Record<string, 1> = {};
 const accepted = (type: string, options: Record<string, unknown>, names: string[]) => {
     if (__DEV__) for (const n of names) if (options[n] !== undefined && !noEffect[n]) {
         noEffect[n] = 1;
-        console.warn(`[map-jr-gl] ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/reference/maplibre-differences.md.`);
+        console.warn(`[map-jr-gl] E11510 ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/reference/maplibre-differences.md.`);
     }
 };
 import {toLngLat, type LngLatLike as Where} from './geo.ts';
@@ -95,8 +95,13 @@ export {Evented};
  */
 export class Marker extends CoreMarker {
     constructor(options: MarkerOptions = {}) { super(options); this.setSubpixelPositioning(!!options.subpixelPositioning); }
-    /** Places the marker on fractions of a pixel (`true`) or on whole pixels (`false`, the default). */
-    setSubpixelPositioning(value: boolean) { this.round = value ? Number : Math.round; this.update(); return this; }
+    /**
+     * Places the marker on fractions of a pixel (`true`) or on whole pixels (`false`, the default). As in MapLibre GL JS,
+     * a marker without it is on fractions of a pixel while the map moves and on a whole pixel after `moveend` (#2160).
+     */
+    setSubpixelPositioning(value: boolean) { this.round = value ? Number : v => this.map?.isMoving() ? v : Math.round(v); this.update(); return this; }
+    protected attach(map: CoreMap) { super.attach(map); map.on('moveend', this.update); }
+    protected detach() { this.map?.off('moveend', this.update); super.detach(); }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
     /** The offset as a `Point`, as in MapLibre GL JS. */
@@ -158,7 +163,7 @@ export const getVersion = () => __VERSION__;
 let warned = 0;
 export const setWorkerUrl = (url: string) => {
     if (/maplibre-gl[^/]*worker/i.test(String(url))) {
-        if (__DEV__ && !warned++) console.warn('[map-jr-gl] setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.');
+        if (__DEV__ && !warned++) console.warn('[map-jr-gl] E241 setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.');
         return;
     }
     workerUrl = url; set({workerUrl: url});

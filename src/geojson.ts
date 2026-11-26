@@ -226,20 +226,17 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
         if (rings.length) out.push({type, id: Number.isSafeInteger(n) ? n : typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
     const open = (r: number[][]) => ring(r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r.slice(0, -1) : r);
-    // The rings of polygons, wound so that `eachPolygon` of tile.ts reads ring 0 of each polygon as outer and the others
-    // as holes, whatever their winding in the input, as MapLibre GL JS does with geojson-vt `rewind` (#1821). The first
-    // ring keeps its direction and its first point, so that a polygon wound one way draws as before.
+    // The rings of polygons, wound as geojson-vt `rewind` in MapLibre GL JS winds them: each outer ring with a negative
+    // and each hole with a positive signed area in mercator units (y down), so that `eachPolygon` of tile.ts reads ring 0
+    // of each polygon as outer and the others as holes, whatever their winding in the input (#1821, #2171). A reversed
+    // ring keeps its first point first, as the reversal of a closed ring in geojson-vt does.
     const polygons = (ps: number[][][][]) => {
         const out: Float64Array[] = [];
-        let first = 0;
         for (const p of ps) p.forEach((pts, i) => {
             const r = open(pts);
             let a = 0;
             for (let k = 0, j = r.length - 2; k < r.length; j = k, k += 2) a += (r[k] - r[j]) * (r[k + 1] + r[j + 1]);
-            const sign = Math.sign(a);
-            if (!first) first = i ? -sign : sign;
-            // A reversed ring keeps its first point first.
-            if (sign && (sign === first) !== !i) for (let k = 2, m = r.length; k < m; k += 2, m -= 2) {
+            if (i ? a < 0 : a > 0) for (let k = 2, m = r.length; k < m; k += 2, m -= 2) {
                 const x = r[k], y = r[k + 1];
                 r[k] = r[m - 2]; r[k + 1] = r[m - 1]; r[m - 2] = x; r[m - 1] = y;
             }

@@ -115,10 +115,10 @@ test one status:
 | `error` | The test did not end in 8 seconds plus the time of its own waits, or the test threw an error. A method of an operation that the map does not have is such an error. |
 | `skipped` | The run cannot do the test, and does not draw it. The test has the operation `pauseTiles`, or it compares a part of the canvas only (`reportWidth` or `reportHeight`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures` and the run could not download that package. |
 
-[Triage of the symbol render tests](render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
-[Triage of the other render-test groups](render-triage-other.md) does the same for `combinations`, `debug`,
+[Triage of the symbol render tests](development/render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
+[Triage of the other render-test groups](development/render-triage-other.md) does the same for `combinations`, `debug`,
 `hillshade-*`, `line-dasharray`, `line-gradient`, `line-pattern`, `regressions`, `sky` and `terrain`.
-[Triage of the globe render tests](render-triage-globe.md) does the same for the tests of `projection/globe/`.
+[Triage of the globe render tests](development/render-triage-globe.md) does the same for the tests of `projection/globe/`.
 
 A test can script the map: `metadata.test.operations` of its style is a list of operations, and each operation is
 the name of a method of the map with its arguments, or one of the words in the table below. The run applies them
@@ -297,6 +297,7 @@ zone `map-jr.org` in that account. Without the secrets, the step writes a notice
 | `src/map.ts` | The core map class, which the two entries use. It sends commands to the engine. |
 | `src/engine.ts` | The work for each frame: camera, tiles, labels. It does not use the DOM, so it can run in a worker. |
 | `src/gl.ts` | The WebGL2 renderer. The GLSL of the globe (`GLOBE_GLSL`, `HALO`) is in `src/globe.ts`, which loads on demand as the part `globe`, and its names get the same short names (`SHADER_FILES` in `scripts/private-names.mjs`). |
+| `src/layers-more.ts` | The shaders and the drawing code of the layer types `heatmap`, `hillshade` and `color-relief`, which load on demand as the part `layers` (#2215). Its functions run as methods of the renderer, and its shaders get the same short names as those of `gl.ts` (`SHADER_FILES` in `scripts/private-names.mjs`). |
 | `src/terrain.ts`, `src/dem.ts` | 3D terrain, which loads on demand with the contour lines as the part `dem` (#1849). Its functions run as methods of the engine and the renderer. The shaders of `terrain.ts` get the same short names as those of `gl.ts` (`SHADER_FILES` in `scripts/private-names.mjs`). |
 | `src/svg.ts`, `src/server.ts` | The SVG renderer and the server functions |
 | `src/geo.ts` | Camera and projection calculations |
@@ -315,6 +316,17 @@ Some members cannot be private, because other files use them (`tr.worldSize`). T
 has such names, and the build shortens them too. Add a name to the list only when the class is not part of the API,
 and no browser object has a property with that name. The build fails if the name is also a key of an object
 literal, a field of a type, a string, or a member that `src/` reads from the WebGL context (`gl.depthRange`).
+
+The production files (the page scripts, their chunks, the worker and its parts) keep the code of each message and not
+its text (`scripts/message-codes.mjs`, #2148): `[map-jr-gl] E1163 the request for the ${what} ${url} failed: ${reason}`
+prints `[map-jr-gl] E1163 https://map-jr.org/e/1163 what="tile" url="https://example.com/1/2/3.pbf" reason="HTTP 404"`.
+Each value has the name of its expression in the template (`this.url` is `url`, `MAX_RUNS` is `maxRuns`), and a string
+prints in quotes. Where the expression gives no clear name (`name`, `v`, a longer expression), the build stops until the
+list `valueNames` of the script names it. Users read these names in logs and on `docs/reference/messages.md`, so
+a change that renames a variable of a message adds its old name to `valueNames`. The development build, the standalone files and `server.js` keep the full texts. A check of a test that reads a message of a production file compares the
+code and the values, not the text. Code of `src/` that tests a message tests its code (`isPartFailure` in
+`src/parts.ts`). A message whose code the source adds at run time needs an entry in the list `special` of the script,
+and the build stops when an entry no longer matches `src/`.
 
 Each built file has a source map beside it (`dist/<file>.js.map`), and its last line names the map. A browser fetches
 a source map only when its developer tools are open, and `pnpm test:size` does not count the maps. The map contains
@@ -456,6 +468,29 @@ the numbered texts of `src/mistakes.ts`. It fails when a placeholder says nothin
 message cannot be classed as a warning or an error, and when the source adds the prefix to a text that the script
 cannot read; the message of the failure says which entry to add to `prefixHelpers`.
 
+## Where a document goes
+
+A document that is not a page of the user docs has one place, by its kind. `pnpm test:consistency` runs
+`scripts/docs-places.mjs`, which fails on a markdown file of `docs/` that is outside these places.
+
+| Kind | Place |
+|---|---|
+| A fault, a decision or a short proposal | Its issue. The body is the current state. |
+| A design that is too long for an issue | `docs/development/design/<issue>-<name>.md`. The pull request that adds it names the issue. |
+| Measurements or a triage table | The pull request. A table that a script or a page of `docs/` reads is a file of `docs/development/`. |
+| A note for contributors (a tool, a process, a format) | `docs/development.md`, or a file of `docs/development/` when it is longer than a section. |
+| The state of a coordinator, or a handoff | The coordination issue. It is never a file. |
+| Scratch (a draft, a log, a plan of one session) | The scratchpad of the session or `.cache/agents/`. It is never committed. |
+| A lesson for agents | A section of `docs/agents/coordinating.md` or `docs/agents/worker-brief.md`. `docs/agents/` gets no new file. |
+
+A design is deleted when its feature ships. The pull request that ships the last part moves what stays true into
+`docs/reference/` and `docs/development.md`, and deletes the file; the history is in git and in the issue. A design
+whose issue is closed as not planned is deleted in the pull request that closes it. After a batch, the coordinator
+lists the files of `docs/development/design/` and files an issue for each one whose issue is closed.
+
+A new markdown file at the root of `docs/`, a new folder of `docs/` and a new file of `docs/agents/` need the owner,
+because each one changes the lists of `scripts/docs-places.mjs`.
+
 ## Helpers for agents
 
 The scripts in `scripts/agents/` serve the workflow of `docs/agents/` and run on macOS and Linux with no dependency
@@ -473,6 +508,67 @@ change only when this library changes. To take newer tests, change the commit, d
 set the floors again.
 
 See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of done.
+
+## A worse line of a render test that needs no owner
+
+A pull request that commits a worse line of `test/conformance/render-tests.json` lowers a floor and waits for the
+owner. This is the one exception.
+
+A pull request may commit a worse line of
+`test/conformance/render-tests.json` without the owner when all of these are true:
+- the line goes from `near` to `differ`, so the count of `match` lines does not change;
+- the percentage of the test moves by at most 0.5 points (for example 4.9% on `main` and 5.0% on the branch), the
+  same in three runs on the pinned Chromium on each side;
+- the change brings the library closer to MapLibre GL JS in what it is for, and the pull request names why this
+  test moves;
+- the fault under the worse line has an issue, which the pull request names.
+
+The pull request lists each such line with its percentages before and after. Every other worse line still needs the
+owner: a line from `match`, a line to `error` or `skipped`, and a move of more than 0.5 points.
+
+## Code and methods from other projects
+
+A change may follow a method of another project, or copy its code, texts or CSS, without the owner when all of the
+following are true. Otherwise leave the pull request open and ask the owner.
+
+- **The license is permissive:** MIT, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, Apache-2.0, or public domain (CC0,
+  Unlicense). Read the license file of the project at the version that you use. Do not copy from GPL, LGPL, AGPL,
+  MPL or CC BY-SA sources (CC BY-SA includes answers on Stack Overflow), or from code that has no license.
+- **`ACKNOWLEDGEMENTS.md` names it.** The line names the project, its license and what follows it (the method, the
+  texts, the CSS), and says whether the code in this library is new or copied.
+- **Copied text keeps its notice.** When code, texts or CSS are copied or closely translated, and not only the method
+  is followed, `THIRD-PARTY-LICENSES.md` has the license text of the project with its copyright line. The package
+  publishes that file with the built files. This meets the condition of MIT, ISC and BSD that the notice goes with
+  every copy, a minified one included. For Apache-2.0, also copy the project's `NOTICE` file if it has one, and say in
+  the file that the code was changed.
+- **No endorsement.** Do not use the name of the project or of its authors to promote this library (the third clause
+  of BSD-3-Clause). Naming them in the acknowledgements and in `docs/reference/maplibre-differences.md` is fine.
+
+Copyright protects the expression of code, and not an idea, an algorithm or a formula. New code that implements a
+method (for example the curve of `flyTo`) needs only the line in `ACKNOWLEDGEMENTS.md`. A library that the built files
+contain is a dependency, and it still needs the owner. This section is general guidance, not legal advice; ask the
+owner when a case is unclear.
+
+## Showing a branch to the owner
+
+To show the owner a branch on a phone, link to the preview of the docs site of its pull request, where
+possible with the code to try in the playground. The workflow `Docs site` builds a preview for each pull request
+with the library of that pull request, and its comment on the pull request gives the address
+(`https://pr-<number>-map-jr-site.belabor.workers.dev`).
+- Write the code to try as a module of the playground (imports from `@map-jr/map-jr-gl` or the compat entry, a map
+  in the element with the id `map`), then `node scripts/agents/play-link.mjs <file> --pr <number>` prints the link to
+  `/play` of the preview with that code in it. Without `--pr`, the link goes to `https://map-jr.org/play`.
+- Say in the message what to try on the phone, step by step.
+- The pages of the demo (`/?sky&pitch=85`, `/bench`) are not on the docs site. For those, the owner runs the demo on
+  the Mac and opens it through a quick tunnel (`cloudflared tunnel --url http://localhost:8000`). A cloud session cannot
+  open a tunnel: its network does not reach the tunnel servers (tried on 2026-11-24).
+
+The workflow `Browsers` can run Safari itself on a macOS runner, but only when it is started by hand (the inputs
+`safari`, `safari_only` and `simulator`). Start it when a change touches the choice of
+the renderer, the workers or the canvas, and read its results before you ask the owner to test in Safari. On that
+runner the worker renderer loads but takes several seconds to reach `idle` (5.8 s against 1.25 s on the main
+thread on 2026-11-14), while an iPhone shows no such gap, and the frame rates mean little: a slow or failing worker
+scenario there is not a fault of the change. The inputs are in "Other browsers and operating systems".
 
 ## How a release is made
 

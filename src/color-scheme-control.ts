@@ -38,7 +38,7 @@ export class ColorSchemeControl implements Control {
                 : svg('<circle cx="9" cy="9" r="3.200"/><path d="M9 1.800v1.200M9 15v1.200M1.800 9H3M15 9h1.200M3.900 3.900l.850.850M13.250 13.250l.850.850M3.900 14.100l.850-.850M13.250 4.750l.850-.850"/>');
         };
         if (instance) { show(instance.state.get().colorScheme); this.stop = instance.state.subscribe(s => s.colorScheme, show); }
-        else console.warn('[map-jr-gl] colorScheme(): the control works only in the controls of a map of the main API (createMap).');
+        else console.warn('[map-jr-gl] E541 colorScheme(): the control works only in the controls of a map of the main API (createMap).');
         return el;
     }
     onRemove() { this.stop?.(); this.el?.remove(); }
