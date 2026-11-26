@@ -1099,6 +1099,14 @@ test('a URL of a custom protocol that has another URL inside stays as it is writ
     assert.deepEqual(resolved.sources.d.tiles, ['https://example.org/styles/tiles/{z}/{x}/{y}.png']);
 });
 
+test('transform: at pitch 85 the ground reaches above the horizon to the far plane of MapLibre GL JS (#1817)', () => {
+    // The camera of the render test sky/sky-color/default. MapLibre GL JS works out its far plane for a plane 100 m below
+    // the camera (34 m up here), and its background ends 15.95 px above the centre, at row 48 of 128.
+    const t = new Transform(); t.width = 256; t.height = 128; t.maxPitch = 85; t.set([35.38, 31.55], 15, 0, 85);
+    close(t.groundTop(), 15.95, 0.02);
+    assert.ok(t.cy - t.groundTop() < 48.5, 'row 48 is ground');
+});
+
 test('transform: a pitch up to 180, with a tile cover and a far plane that stop at the horizon (#886, #897)', () => {
     const t = new Transform(); t.width = 1024; t.height = 768; t.maxPitch = 180; t.set([-74.006, 40.7128], 14, 0, 85);
     assert.equal(t.pitch, 85, 'a pitch above 60 is kept');
