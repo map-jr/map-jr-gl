@@ -304,6 +304,8 @@ export function tilesUnderBox(tr: Transform, box: number[], minzoom: number, max
         const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
         return [Math.min(...c.map(p => p[0])), Math.max(...c.map(p => p[0])), Math.min(...c.map(p => p[1])), Math.max(...c.map(p => p[1]))];
     };
+    // (A reach without a bound, as a query of all features has, chooses no more tiles; a pad is at most one tile.)
+    pad = pad < Infinity ? Math.min(pad, 512 * 2 ** (tr.zoom % 1)) : 0;
     const [west, east, north, south] = span(box), g = span([box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad]);
     const z = clamp(Math.floor(tr.zoom), minzoom, maxzoom), n = 2 ** z, scale = EXTENT / (512 * 2 ** (tr.zoom - z)), out: {z: number; x: number; y: number; box: [number, number, number, number]; scale: number}[] = [];
     const tx0 = Math.floor(g[0] * n), tx1 = Math.floor(g[1] * n), ty0 = clamp(Math.floor(g[2] * n), 0, n - 1), ty1 = clamp(Math.floor(g[3] * n), 0, n - 1);

@@ -1645,9 +1645,13 @@ for (const mode of renderers) {
             const c = m.project([0, 0]), q = [c.x - 15, c.y];
             out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
         }
+        // (A query of all features of the source has no reach that bounds it, and still finds the feature.)
+        out.source = {now: m.querySourceFeatures('s').length, later: (await m.querySourceFeatures('s')).length};
         m.remove(); el.remove();
         return out;
     }, mode);
+    check(`[${mode}] querySourceFeatures finds the features of a source while the layers of the source have large circles (#2024)`,
+        neighbor.source.now === 1 && neighbor.source.later === 1, JSON.stringify(neighbor.source));
     check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
         [0, 45].every(p => neighbor[p].now === 'const,data,zoom' && neighbor[p].later === 'const,data,zoom'), JSON.stringify(neighbor));
 
