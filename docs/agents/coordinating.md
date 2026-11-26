@@ -72,10 +72,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   tools and `CLAUDE.md`) before any work, the same on every model. Its later steps read that context from the prompt
   cache, which costs a twentieth of new input on Opus 5.5 and Sonnet 5.5, so the cost of a subagent is mostly what it
   reads new (files, logs, command output) and what it writes. Therefore:
-  - send a follow-up to the worker that has the context, within the hour (the cache lives an hour), rather than start
-    a new one;
-  - start parallel subagents a few seconds apart: agents of one model and type then share the cached prefix, where
-    agents started at the same moment each write it;
+  - send a follow-up to the worker that has the context rather than start a new one. A subagent's cache lives five
+    minutes (all 5,164 requests of the subagents of 2026-11-26 asked for the five-minute cache; the coordinator asks
+    for one hour), so a follow-up within five minutes of the worker's last step reads its context from the cache. A
+    later follow-up writes the context again once, at 1.25 times the price of input, which still costs less than a new
+    worker that reads the same files again;
+  - start parallel subagents a few seconds apart, and within five minutes of each other: agents of one model and type
+    then share the cached prefix, where agents started at the same moment each write it;
   - keep to the few combinations of model and type in the table above: each combination writes its own cache entry;
   - tell workers to read a log or a large file in parts (`grep`, `tail`), not whole.
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
@@ -180,6 +183,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   2026-11-17 a rebased branch of #801 carried old copies of lines of #802 and #803, and would have undone both. A
   three-dot diff of a branch that started before a merge can also show lines that the merge keeps; the merge tree
   decides.
+- **Update a branch whose CI ran before a merge that adds checks.** A clean merge tree only says that the lines do not
+  conflict. On 2026-11-26 #2240 added a message while its CI ran on a base without #2229, which made the build replace
+  each message with its code and stop on a value without a name. `main` was red after the merge, in the build, in
+  `docs/reference/messages.md` and in a check of `test/interact.mjs` (fixed in #2247). When `main` has had a merge since
+  the CI of a branch ran, and that merge changed a script of the build or of the checks (`scripts/`, `build.mjs`,
+  `test/`) or the same kind of code (messages, the description, the reference), update the branch
+  (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/<n>/update-branch`) and merge on the new CI.
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
   (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
