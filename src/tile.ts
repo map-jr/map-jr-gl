@@ -71,6 +71,8 @@ export interface Batch {
     base?: Float32Array;
     /** Building extrusions with fill-extrusion-pattern: the walls carry the distance along their ring, for the image. */
     ed?: boolean;
+    /** Building extrusions of a GeoJSON source: for each ring, the centroid of its whole polygon (see `SlicedFeature.geometry`). */
+    cen?: Float32Array;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
     pat?: string;
     /** The points of a heatmap layer. */
@@ -161,14 +163,14 @@ const WHITE: RGBA = [1, 1, 1, 1];
 
 /** A decoded tile: named layers of features. Vector tiles and sliced GeoJSON both take this shape. */
 export type TileLayers = Record<string, {features: TileFeature[]}>;
-export interface TileFeature extends Feature { /** See `SlicedFeature`. */ index?: number; geometry(extent: number, coords: number[], ringEnds: number[]): number }
+export interface TileFeature extends Feature { /** See `SlicedFeature`. */ index?: number; geometry(extent: number, coords: number[], ringEnds: number[], cen?: number[]): number }
 
 export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
-    const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
+    const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]; cen: number[]}>();
     const geometry = (f: TileFeature) => {
         let g = geomCache.get(f);
-        if (!g) { g = {coords: [], ringEnds: []}; f.geometry(EXTENT, g.coords, g.ringEnds); geomCache.set(f, g); }
+        if (!g) { g = {coords: [], ringEnds: [], cen: []}; f.geometry(EXTENT, g.coords, g.ringEnds, g.cen); geomCache.set(f, g); }
         return g;
     };
     // A size is found at this zoom and at the next, and the map mixes the two. A tile that is built for the zoom of the
@@ -350,7 +352,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         for (const [pat, fs] of groups) {
             const heights: number[] = [], bases: number[] = [];
             const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
-            const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
+            const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [], cen: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
             const color: number[] = [], scalar: number[] = [], scalar1: number[] = [], offset: number[] = [], stroke: number[] = [], sb: number[] = [];
             const circle = L.type === 'circle', ddStroke = circle && (p.strokeColor.dd || p.strokeOpacity.dd), ddSb = circle ? p.strokeWidth.dd || p.blur.dd : heat && p.radius.dd;
@@ -371,6 +373,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
                 if (L.filter && !L.filter(ctx)) continue;
                 const g = geometry(f);
+                if (extrude) for (let r = 0; r < g.ringEnds.length * 2; r++) cen.push(g.cen[r] ?? NaN);
                 let start = 0;
                 for (const end of g.ringEnds) {
                     if (kind === 'circle') {
@@ -423,7 +426,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (ddSb) batch.sb = Float32Array.from(sb);
             if (stroke1?.some((c, i) => c !== stroke[i])) batch.stroke1 = Uint8Array.from(stroke1);
             interleaveFeat(batch, feats);
-            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
+            if (extrude) {
+                batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases);
+                if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true;
+                if (cen.some(v => v === v)) batch.cen = Float32Array.from(cen);
+            }
             if (line) { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
             if (pat) batch.pat = pat;
@@ -681,14 +688,14 @@ function tessellateGlobeFill(b: Batch, globe: GlobeCut): GLBatch | null {
  * Splits a feature's rings into polygons (an outer ring followed by its holes) and reports each as a point range
  * plus hole offsets, the form earcut wants. Ring direction relative to the first ring tells outers from holes.
  */
-function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: number[]) => void) {
+function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: number[], ring: number) => void) {
     const {coords, ringEnds, featEnds} = g, first = f ? featEnds[f - 1] : 0, last = featEnds[f];
     let polyStart = first, outerSign = 0;
     const flush = (endRing: number) => {
         if (endRing <= polyStart) return;
         const p0 = polyStart ? ringEnds[polyStart - 1] : 0, holes: number[] = [];
         for (let h = polyStart; h < endRing - 1; h++) holes.push(ringEnds[h] - p0);
-        cb(p0, ringEnds[endRing - 1], holes);
+        cb(p0, ringEnds[endRing - 1], holes, polyStart);
     };
     for (let r = first; r < last; r++) {
         const area = ringArea(coords as Int16Array, r ? ringEnds[r - 1] : 0, ringEnds[r]);
@@ -708,6 +715,13 @@ function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: num
 export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
 
 /**
+ * Whether the edge from point j to point i of a ring runs along the edge of the buffer of the tile, where the clip of the
+ * source cut the polygon. Such an edge gets no wall, as in MapLibre GL JS (`isBoundaryEdge`): buildings are not cut at the
+ * edge of the tile, so the wall would stand inside the building, in the part that the next tile draws.
+ */
+const buffer = (c: ArrayLike<number>, i: number, j: number) => c[i * 2] === c[j * 2] && (c[i * 2] < 0 || c[i * 2] > EXTENT) || c[i * 2 + 1] === c[j * 2 + 1] && (c[i * 2 + 1] < 0 || c[i * 2 + 1] > EXTENT);
+
+/**
  * Buildings: a roof at the feature's height and a wall under every edge. Each vertex says which way its face looks, for
  * the light. With `globe`, the roof is cut as a fill is (without the caps at the poles) and each wall is cut where its
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
@@ -723,17 +737,24 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
             feats.push(f);
             return count++;
         };
-        eachPolygon(b.geom, f, (p0, p1, holes) => {
+        eachPolygon(b.geom, f, (p0, p1, holes, ring) => {
             let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
             // On 3D terrain, MapLibre GL JS lifts each polygon by the ground at its centroid (the mean of its points,
             // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
-            const first = count;
+            // MapLibre GL JS takes the centroid of the piece in the tile, so the pieces of a building that crosses the
+            // edge of a tile stand at different heights. A GeoJSON source gives the centroid of the whole polygon (#2185),
+            // which is taken when it lies within half a tile of this tile. The ground is read from the elevation tile under
+            // this tile, which holds little more, so the piece of a larger polygon keeps the centroid of the piece.
+            const first = count, wx = b.cen?.[ring * 2] ?? NaN, wy = b.cen?.[ring * 2 + 1] ?? NaN;
             let cx = 0, cy = 0, cn = 0;
             for (let r = 0; r + 1 < bounds.length; r++) for (let i = bounds[r]; i < bounds[r + 1]; i++) {
                 if (i === bounds[r + 1] - 1 && coords[i * 2] === coords[bounds[r] * 2] && coords[i * 2 + 1] === coords[bounds[r] * 2 + 1]) continue;
                 cx += coords[i * 2]; cy += coords[i * 2 + 1]; cn++;
             }
-            const centroid = () => { cen.push(first, count, Math.floor(cx / cn), Math.floor(cy / cn)); };
+            const centroid = () => {
+                if (Math.abs(wx - EXTENT / 2) <= EXTENT && Math.abs(wy - EXTENT / 2) <= EXTENT) cx = wx, cy = wy, cn = 1;
+                cen.push(first, count, Math.floor(cx / cn), Math.floor(cy / cn));
+            };
             const roof = count, cut = globe && globe.cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
             for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
@@ -754,13 +775,13 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                 // For fill-extrusion-pattern: the distance along the ring where each wall starts, counted from the
                 // corner where MapLibre GL JS starts, so that the image on the walls lines up as it does there.
                 for (let k = 1, d = 0; b.ed && k <= n; k++) {
-                    const i = s + k % n, j = s + k - 1, len = Math.hypot(coords[i * 2] - coords[j * 2], coords[i * 2 + 1] - coords[j * 2 + 1]);
+                    const i = s + k % n, j = s + k - 1, len = buffer(coords, i, j) ? 0 : Math.hypot(coords[i * 2] - coords[j * 2], coords[i * 2 + 1] - coords[j * 2 + 1]);
                     if (len && d + len > EXTENT * 4) d = 0; // (32768 units of MapLibre GL JS)
                     dist.push(d); d += len;
                 }
                 for (let i = s, j = e - 1; i < e; j = i++) {
                     const ax = coords[j * 2], ay = coords[j * 2 + 1], bx = coords[i * 2], by = coords[i * 2 + 1], len = Math.hypot(bx - ax, by - ay);
-                    if (!len) continue;
+                    if (!len || buffer(coords, i, j)) continue;
                     const facing = Math.atan2(-(bx - ax) * out, (by - ay) * out) + Math.PI, other = (h: number) => WALL_OTHER * Math.floor(Math.min(60000, Math.max(0, h)));
                     const low = facing + other(top), high = facing + WALL_TOP + other(bottom);
                     const d = dist[(i - s + n - 1) % n] ?? 0;

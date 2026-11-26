@@ -317,10 +317,9 @@ void main() {
 
     // Buildings: roofs and walls with a height in meters and a baked light level.
     extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
-layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; layout(location=3) in vec2 a_centroid; out vec4 v_color; out vec2 v_tile; out vec2 v_p; out float v_side;
+layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; layout(location=3) in vec2 a_centroid; out vec4 v_color; out vec2 v_p; out float v_side;
 uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
 void main() {
-  v_tile = a_v.xy;
   // The light model of MapLibre. A face is brighter when it looks at the light; a dark color is made brighter by
   // more than a light color. Walls are darker near the ground (the vertical gradient).
   bool roof = a_v.w < 0.0; float other = floor(a_v.w / ${WALL_OTHER}.0), rest = a_v.w - other * ${WALL_OTHER}.0, t = rest >= ${WALL_TOP}.0 ? 1.0 : 0.0, angle = rest - t * ${WALL_TOP}.0 - ${Math.PI};
@@ -342,8 +341,11 @@ void main() {
   // the walls go into a slope (as in MapLibre GL JS).
   gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_centroid / ${EXTENT}.0) - (u_exag != 0.0 && !roof && t < 0.5 && a_v.z <= 0.0 ? 10.0 : 0.0));
 }`, `
-uniform vec4 u_clip; uniform float u_pattern; in vec4 v_color; in vec2 v_tile; in vec2 v_p; in float v_side; out vec4 o; ${PATTERN_GLSL}
-void main() { ${FS_CLIP} if (v_side < 0.0) discard; o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
+uniform float u_pattern; in vec4 v_color; in vec2 v_p; in float v_side; out vec4 o; ${PATTERN_GLSL}
+// (Buildings are not cut at the edge of the tile, as in MapLibre GL JS. The piece of a building in the buffer of a tile
+// overlaps the piece of the next tile, so where the two pieces stand at different heights on 3D terrain (see the centroid
+// in tessellateExtrusion), the higher one hides the step. The depth pass and the stencil draw each pixel once.)
+void main() { if (v_side < 0.0) discard; o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
 
     raster: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; uniform float u_blend; uniform vec3 u_fold; out vec3 v_uvq; out vec2 v_tile; out float v_fold;
