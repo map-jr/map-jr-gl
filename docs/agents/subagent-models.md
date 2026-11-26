@@ -50,6 +50,8 @@ Opus review and no hint of the fault.
 
 ## Other runs
 
+The tokens are the size of the context at the end of each run, as in the task notices; `docs/agents/coordinating.md` retires a worker at about 140,000.
+
 | Task | Model | Tokens | Result |
 |---|---|---|---|
 | Triage of #1820, #1851, #1907, #2211, #2212, #2128 | Opus | 97,000 | ran code for #1820 and #2211 and corrected both premises |
