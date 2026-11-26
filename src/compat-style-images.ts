@@ -14,7 +14,7 @@ export function compatImages(map: {hasImage(name: string): boolean; fire: Functi
         if (map.hasImage(name) && !names.has(name)) return;
         const v = from[name], spec = typeof v === 'object' ? v : null;
         names.add(name);
-        return add(name, spec ? spec.image : v, spec ?? {}).catch(() => fault(`[map-jr-gl] the style: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`));
+        return add(name, spec ? spec.image : v, spec ?? {}).catch(() => fault(`[map-jr-gl] E121 the style: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`));
     };
     for (const name of now) put(name);
     return (name: string) => Object.hasOwn(from, name) && !map.hasImage(name) && (put(name) ?? true);

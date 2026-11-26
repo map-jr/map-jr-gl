@@ -17,6 +17,6 @@ test('emptyResponse "missing": one warning that names the source and the propert
         await resolveStyle(style);
         assert.ok(a.sources.v && a.sources.r);
         assert.equal(warnings.length, 1);
-        assert.match(warnings[0]!, /^\[map-jr-gl\] The source "v": "emptyResponse": "missing" has no effect/);
+        assert.match(warnings[0]!, /^\[map-jr-gl\] E1695 The source "v": "emptyResponse": "missing" has no effect/);
     } finally { console.warn = warn; }
 });

@@ -278,14 +278,14 @@ export function screenTranslate(t: unknown, anchor: unknown, bearing: number): [
 export function hillshadeLights(p: Record<string, Prop>, zoom: number, bearing: number): {method: number; n: number; sun: number[]; shadow: number[]; highlight: number[]} {
     const name = p.method.eval(zoom), spec = SPEC.hillshade;
     let method = HILLSHADE_METHODS.indexOf(name);
-    if (method < 0) { warnOnce(`hillshade-method: ${JSON.stringify(name)} is not a method, and the layer uses "standard". Write "standard", "basic", "combined", "igor" or "multidirectional".`); method = 0; }
+    if (method < 0) { warnOnce(`E569 hillshade-method: ${JSON.stringify(name)} is not a method, and the layer uses "standard". Write "standard", "basic", "combined", "igor" or "multidirectional".`); method = 0; }
     const [direction, altitude, shadow, highlight]: any[][] = LIGHT_PROPS.map((k, i) => {
         const v = p[k].eval(zoom), def = spec[k][2], list: any[] = Array.isArray(v) && (i < 2 || typeof v[0] !== 'number') ? v : [v];
         return (list.length ? list : [def]).map(x => i < 2 ? (typeof x === 'number' && !isNaN(x) ? x : def) * Math.PI / 180
             : Array.isArray(x) && x.length === 4 && typeof x[0] === 'number' ? x : (typeof x === 'string' && parseColor(x)) || parseColor(def));
     });
     let n = method === 3 ? Math.max(direction.length, altitude.length, shadow.length, highlight.length) : 1;
-    if (n > LIGHTS) { warnOnce(`hillshade: a layer has ${n} lights, and the layer draws the first ${LIGHTS}. Give lists of at most ${LIGHTS} values.`); n = LIGHTS; }
+    if (n > LIGHTS) { warnOnce(`E10569 hillshade: a layer has ${n} lights, and the layer draws the first ${LIGHTS}. Give lists of at most ${LIGHTS} values.`); n = LIGHTS; }
     const out = {method: Math.min(method, 3), n, sun: [] as number[], shadow: [] as number[], highlight: [] as number[]};
     for (let i = 0; i < n; i++) {
         const at = (a: any[]) => a[Math.min(i, a.length - 1)];

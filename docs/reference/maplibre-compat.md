@@ -281,7 +281,7 @@ map.on('click', async event => {
 ```
 
 When `remove()` is called before the answer, the promise rejects with the error
-`[map-jr-gl] The query has no answer: the map was removed.`
+`[map-jr-gl] E10022 The query has no answer: the map was removed.`
 
 ## `setStyle`
 

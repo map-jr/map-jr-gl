@@ -9,7 +9,7 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import {globeBuild, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
@@ -270,7 +270,7 @@ function packGeoJSON(data: unknown): () => Uint8Array | null {
  * The message of a tile that failed names its source, after the prefix (#2099). A part of the worker that did not load
  * is not a fault of the source, and its message stays the same for each source, so that the map reports it once (#79).
  */
-const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] The source "${source}": `);
+const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] E2106 The source "${source}": `);
 
 export class Engine {
     tr = new Transform();
@@ -640,7 +640,7 @@ export class Engine {
             if (src.contour && bad(src.contour.encoding)) src.contour.encoding = 'mapbox';
             if (!bad(src.encoding)) continue;
             src.encoding = 'mapbox';
-            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
+            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] E590 The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
         }
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
         // that needs it (a part of the worker, `map-jr-gl-worker-globe.js`, or a chunk for the engine on the main
@@ -792,7 +792,7 @@ export class Engine {
             } catch (err) {
                 // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
                 const m = (err as Error).message, rest = `The labels use the next font of their "text-font" instead of "${f.name ?? f.family}".`;
-                this.emit({type: 'error', message: m.startsWith('[map-jr-gl]') ? `${m}. ${rest}` : `[map-jr-gl] fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
+                this.emit({type: 'error', message: m.startsWith('[map-jr-gl]') ? `${m}. ${rest}` : `[map-jr-gl] E494 fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
             }
         })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
     }
@@ -1056,7 +1056,7 @@ export class Engine {
         const at = this.space.take(w, h) ?? this.repack(w, h);
         if (!at) {
             // (One message, not one for each image that follows.)
-            if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
+            if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] E10121 The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
             this.atlasFull = true;
             return null;
         }
@@ -1108,7 +1108,7 @@ export class Engine {
             // has grown by the farthest reach of an icon of the layer, in the other direction (an icon that reaches 30
             // pixels up from its point is under a pointer that is 30 pixels above the point). Each feature that
             // comes back is then tested with its own icon (`underIcon`). Sets with the same rectangle are asked together.
-            const boxes = new Map<string, {box: number[]; sets: typeof mine; exact: boolean}>();
+            const boxes = new Map<string, {box: number[]; pad: number; sets: typeof mine; exact: boolean}>();
             for (const s of mine) {
                 const L = this.layers.find(l => l.id === s.layer), r = s.radius;
                 let reach: [number, number, number, number] | null = L?.type === 'symbol' ? this.iconReach(L) : null;
@@ -1124,13 +1124,13 @@ export class Engine {
                 if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
                 if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
                 const circle = circles.get(s.layer) === s;
-                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), key = box.join();
-                const group = boxes.get(key) ?? {box, sets: [], exact: !!reach || circle};
+                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), pad = reach || circle ? 0 : setReach(s), key = box.join() + ',' + pad;
+                const group = boxes.get(key) ?? {box, pad, sets: [], exact: !!reach || circle};
                 // (A tilted circle whose size depends on the feature is asked with its size grown as `pitchedCircles` grows the rectangle.)
                 group.sets.push(circle && s.size ? {...s, radius: 0, size: {...s.size, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
                 boxes.set(key, group);
             }
-            for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
+            for (const {box, pad, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom, pad)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
                     sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
@@ -1167,8 +1167,8 @@ export class Engine {
     private async queryElevation(c: Extract<Command, {type: 'elevation'}>): Promise<number | null> {
         const entry = Object.entries(this.style.sources).find(([name, src]) => src.type === 'raster-dem' && (!c.source || c.source === name));
         if (!entry) throw new Error(c.source
-            ? `[map-jr-gl] queryElevation(): the style has no "raster-dem" source "${c.source}". Name a source of type "raster-dem".`
-            : '[map-jr-gl] queryElevation(): the style has no "raster-dem" source. Add a source of type "raster-dem" to the style.');
+            ? `[map-jr-gl] E1214 queryElevation(): the style has no "raster-dem" source "${c.source}". Name a source of type "raster-dem".`
+            : '[map-jr-gl] E11214 queryElevation(): the style has no "raster-dem" source. Add a source of type "raster-dem" to the style.');
         const src = entry[1], z = clamp(Math.floor(c.zoom ?? src.maxzoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
         const url = tileURL(src, z, t.x, t.y, this.dpr);
         let pixels = this.dem.get(url);
@@ -1946,7 +1946,7 @@ export class Engine {
             // (The bitmap is copied when `convertToBlob` is called, before the drawing buffer goes to the page and is cleared.
             // WebKit gives blank pixels for the canvas of the page whose control went to a worker; #965.)
             for (const c of this.shots.splice(0)) (this.canvas as OffscreenCanvas).convertToBlob({type: c.mime, quality: c.quality})
-                .then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: '[map-jr-gl] toBlob(): the browser could not encode the image as ' + c.mime + '. ' + err}));
+                .then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: '[map-jr-gl] E44 toBlob(): the browser could not encode the image as ' + c.mime + '. ' + err}));
         }
         // In a worker, the frame of the `OffscreenCanvas` reaches the page after this task, and on a loaded machine one
         // frame of the page later still (#555). The next animation frame of the worker starts once this frame has gone

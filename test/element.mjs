@@ -146,14 +146,14 @@ try {
     check('server: the first view is the children of the element, with the layers and the data of the description', /<map-jr[^>]*><div data-map-jr-ssr=""[^>]*><svg[^>]*data-map-jr-ssr/.test(ssrPage) && ssrPage.includes('#123456') && ssrPage.endsWith('</map-jr>'), `${(ssrPage.length / 1024).toFixed(0)} KB`);
     let thrown = '';
     try { await renderElement(description, {attributes: {'on click': 'x'}}); } catch (e) { thrown = e.message; }
-    check('server: an attribute name that is not one throws a message', thrown.startsWith('[map-jr-gl] renderElement(): "on click"'), thrown);
+    check('server: an attribute name that is not one throws a message', thrown.startsWith('[map-jr-gl] E30826 renderElement(): "on click"'), thrown);
     thrown = '';
     try { await renderElement(description, {attributes: {onload: 'alert(1)'}}); } catch (e) { thrown = e.message; }
     check('server: an event handler attribute throws a message', thrown.includes('"onload" is not the name of an attribute that the element can have'), thrown);
     const logged = [], error = console.error;
     console.error = m => logged.push(m);
     const failedRender = await renderElement({style: 'http://127.0.0.1:1/style.json', initialView: {zoom: 2}}, {timeout: 3000}).finally(() => { console.error = error; });
-    check('server: a render that fails gives the element without the first view, and one message', failedRender.startsWith('<map-jr ') && !failedRender.includes('<svg') && logged.length === 1 && logged[0].startsWith('[map-jr-gl] renderElement():'), failedRender.slice(0, 120) + ' | ' + String(logged[0]).slice(0, 120));
+    check('server: a render that fails gives the element without the first view, and one message', failedRender.startsWith('<map-jr ') && !failedRender.includes('<svg') && logged.length === 1 && logged[0].startsWith('[map-jr-gl] E40826 renderElement():'), failedRender.slice(0, 120) + ' | ' + String(logged[0]).slice(0, 120));
 
     // 2. The markup of the server in a browser: shown without scripts, then the element takes it over.
     let page = await open('/ssr', {javaScriptEnabled: false});

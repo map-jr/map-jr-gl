@@ -497,7 +497,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
                         f = null;
                         if (!warned) {
                             warned = true;
-                            warnOnce(`number-format: Intl.NumberFormat does not accept the options ${JSON.stringify({locale: l, 'min-fraction-digits': mn, 'max-fraction-digits': mx, currency: cur, unit: u})} (${(err as Error).message}). The expression gives the number as plain text. Pass a BCP 47 locale, an ISO 4217 currency and a unit that Intl.NumberFormat supports.`);
+                            warnOnce(`E583 number-format: Intl.NumberFormat does not accept the options ${JSON.stringify({locale: l, 'min-fraction-digits': mn, 'max-fraction-digits': mx, currency: cur, unit: u})} (${(err as Error).message}). The expression gives the number as plain text. Pass a BCP 47 locale, an ISO 4217 currency and a unit that Intl.NumberFormat supports.`);
                         }
                     }
                     if (cache.size >= 64) cache.clear();
@@ -520,7 +520,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         default:
             if (math1[op]) { const a = arg(1), f = math1[op]; return c => f(a(c)); }
             if (e === flags.list) return () => e;
-            warnOnce(`Unsupported expression "${op}"`);
+            warnOnce(`E2148 Unsupported expression "${op}"`);
             return () => null;
     }
 }
@@ -567,7 +567,7 @@ function legacyFilter(f: any): Fn {
         return c => set.has(get(c)) === want;
     }
     const test = cmp[op], v = f[2];
-    if (!test) { warnOnce(`Unsupported filter "${op}"`); return () => true; }
+    if (!test) { warnOnce(`E12148 Unsupported filter "${op}"`); return () => true; }
     // A feature without an id has the id null, so `["==", "$id", null]` holds for it (MapLibre compares `["id"]`).
     if (key === '$id' && v === null && (op === '==' || op === '!=')) return c => (get(c) == null) === (op === '==');
     // As MapLibre's `filter-==`: a property that is null equals null, and a missing one equals nothing. The order

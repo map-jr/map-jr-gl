@@ -18,7 +18,7 @@ const nuxtModule: any = defineNuxtModule({
     setup(options: Record<string, unknown> | undefined, nuxt: any) {
         // Nuxt passes the key `mapJr` of nuxt.config and the options in `modules` here. The module has none (#1241).
         const keys = Object.keys(options || {}).map(key => `"${key}"`).join(', ');
-        if (keys) console.warn(`[map-jr-gl] nuxt.config: the module @map-jr/map-jr-gl/nuxt has no options, so it ignores ${keys}. Remove the key "mapJr" and the options of the module in "modules", and set the props of <MapJr> instead.`);
+        if (keys) console.warn(`[map-jr-gl] E1241 nuxt.config: the module @map-jr/map-jr-gl/nuxt has no options, so it ignores ${keys}. Remove the key "mapJr" and the options of the module in "modules", and set the props of <MapJr> instead.`);
         // (By package specifier, so that the generated `components.d.ts` and `imports.d.ts` take the types from `exports`.)
         const vue = '@map-jr/map-jr-gl/vue', controls = '@map-jr/map-jr-gl/controls';
         // Vite in development must not pre-bundle the package, or the URL of the tile worker breaks (docs/guide/loading.md).

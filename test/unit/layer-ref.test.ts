@@ -34,7 +34,7 @@ test('a ref to a layer that does not exist leaves the layer out with one message
     assert.deepEqual(r.layers.map(l => l.id), ['a']);
     // (A map resolves its style again after each change: the message comes one time.)
     await resolveStyle(style, undefined, undefined, undefined, fail);
-    assert.deepEqual(errors, ['[map-jr-gl] The layer "b": "ref" names "nope", which is no layer without "ref". Name such a layer, or give "type" and "source".']);
+    assert.deepEqual(errors, ['[map-jr-gl] E2033 The layer "b": "ref" names "nope", which is no layer without "ref". Name such a layer, or give "type" and "source".']);
 });
 
 test('a ref to a layer that has ref itself (a chain or a cycle) leaves the layer out with a message, as MapLibre GL JS rejects it', async () => {

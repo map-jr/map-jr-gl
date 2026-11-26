@@ -43,7 +43,7 @@ The map shows the controls of the last description, and each item of `controls` 
   that a later description adds goes after the controls that the corner has.
 - **Loading.** Each control except [`custom`](#custom) appears a moment after the map adds it, because the map
   loads the code of the controls then. When that code does not load, the console shows the error
-  `[map-jr-gl] The control "<name>" could not be loaded`, and the map works without the control. Serve every file of
+  `[map-jr-gl] E160 The control "<name>" could not be loaded`, and the map works without the control. Serve every file of
   `dist/` of the package from the folder of the file that the page imports.
 - **Texts.** A change of [`locale`](description.md#locale) removes every control and adds it again with the new
   texts. See [The texts of the controls](#the-texts-of-the-controls).
