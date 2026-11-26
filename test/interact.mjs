@@ -6960,12 +6960,19 @@ for (const mode of renderers) {
                 out.round = t(round); out.sub = t(sub);
                 out.subpixel = round.getElement().style.transform.startsWith('translate(100px') && Math.abs(parseFloat(t(sub)) - 100.4) < 0.01;
                 round.remove(); sub.remove();
+                // #1782: Marker has setSubpixelPositioning and the option subpixelPositioning, as in MapLibre GL JS.
+                const pin = new mod.Marker().setLngLat(frac).addTo(m), pinned = new mod.Marker({subpixelPositioning: true}).setLngLat(frac).addTo(m);
+                out.markerRound = t(pin); out.markerOption = t(pinned);
+                out.markerSet = t(pin.setSubpixelPositioning(true)); out.markerBack = t(pin.setSubpixelPositioning(false));
+                out.markerSubpixel = out.markerRound === '100' && Math.abs(out.markerOption - 100.4) < 0.01 && Math.abs(out.markerSet - 100.4) < 0.01 && out.markerBack === '100';
+                pin.remove(); pinned.remove();
             } finally { console.warn = warn; }
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
         });
         check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
             options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
+        check('[main] maplibre-compat: Marker places itself on fractions of a pixel with the option subpixelPositioning and setSubpixelPositioning(true), and on whole pixels by default (#1782)', options.markerSubpixel, JSON.stringify(options));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
