@@ -28,3 +28,9 @@ test('icon-padding and text-padding are added before the box is turned, as in Ma
     near(box, [-box[2], -box[3], box[2], box[3]]);
     assert.ok(Math.abs(box[2] - 42 * Math.SQRT1_2 / 2) < 1e-9 && Math.abs(box[2] - 14.85) < 0.01);
 });
+
+test('a symbol aligned with the map is boxed at its rotation, then the box is turned by the bearing, as in MapLibre GL JS (#2037)', () => {
+    // (MapLibre GL JS 6.17: 20 by 10 pixels, padding 2, rotation 45 degrees, bearing 45 degrees: 38 by 38.)
+    const box = boxAround(0, 0, 20, 10, Math.PI / 2, 2, Math.PI / 4);
+    assert.ok(Math.abs(box[2] - box[0] - 38) < 1e-9 && Math.abs(box[3] - box[1] - 38) < 1e-9, `${box}`);
+});
