@@ -1181,6 +1181,9 @@ test('transform: unproject gives the point of MapLibre GL JS near a pitch of 90 
         const [a, b] = t.unproject(300, y, true);
         close(a, lng, 1e-5); close(b, lat, 1e-5);
     }
+    // A ray along the plane with the camera above it (pitch 45, field of view 90, top row) is far away, as in MapLibre GL JS (lat 90).
+    const f = new Transform(); f.width = 400; f.height = 300; f.set([0, 0], 10, 0, 45); f.fov = Math.PI / 2;
+    assert.ok(f.unproject(200, 0, true)[1] > 85, String(f.unproject(200, 0, true)));
 });
 
 test('transform: above a pitch of 90 the camera looks up, and screen positions invert on both sides of the ground (#897)', () => {
