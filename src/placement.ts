@@ -714,6 +714,11 @@ function followLine(
     w *= size / s;
     const start = cum[anchorIndex] - w / 2;
     if (start < 0 || start + w > cum[n - 1]) return null; // not enough line for the text at this zoom
+    // On the globe, text that reaches the far side of the globe is hidden, as in MapLibre GL JS (#1996). Text on the
+    // screen is hidden when a point of the line under it, or at the ends of the pieces that it lies on, is behind the
+    // horizon (MapLibre's `anyProjectionOccluded`); text on the ground when the place of one of its glyphs is.
+    const z = 2 ** it.id.z, behind = (u: number, v: number) => !!tr.globeness && tr.globe!.hidden(tr, (it.id.x + u / EXTENT) / z, (it.id.y + v / EXTENT) / z);
+    if (tr.globeness && !k) for (let i = 0; i < n; i++) if ((i === n - 1 || cum[i + 1] > start) && (i === 0 || cum[i - 1] < start + w) && behind(us[i], vs[i])) return null;
     const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centered on the line
     const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
     let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
@@ -728,6 +733,7 @@ function followLine(
             // the whole piece made the size of the letters jump at each point of the line.)
             const tu = (us[seg] - us[seg - 1]) / len, tv = (vs[seg] - vs[seg - 1]) / len, pu = us[seg - 1] + tu * t, pv = vs[seg - 1] + tv * t, e = 16;
             const m = heightAt(tr, it, pu, pv), [px, py] = tr.projectTile(it.id, pu, pv, m), [fx, fy] = tr.projectTile(it.id, pu + tu * e, pv + tv * e, m), [qx, qy] = tr.projectTile(it.id, pu - tv * e, pv + tu * e, m);
+            if (behind(pu, pv)) return null;
             // (On the globe a step in the tile is shorter on the sphere where the latitude is higher. Each glyph keeps the
             // size at the anchor, as in MapLibre GL JS, also when the text spans many degrees of latitude.)
             const f = round ? (1 + round * (anchorCos / cosLat(pv) - 1)) / e : 1 / e;
