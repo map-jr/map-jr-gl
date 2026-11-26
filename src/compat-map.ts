@@ -593,8 +593,9 @@ export class Map extends CoreMap {
         const [name, image] = args;
         this.styleImageNames.delete(name);
         this.dropAnimated(name);
-        // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` before each frame: when it returns
-        // true, its `data` is sent again. A map without such images listens to no frame.
+        // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` after each frame that the map draws
+        // (no hook runs before a frame of the worker renderer): when it returns true, its `data` is sent again and shows in
+        // the next frame. As in MapLibre GL JS, this does not repaint. A map without such images listens to no frame.
         if (typeof (image as StyleImageInterface).render == 'function') {
             if (!this.animated.size) this.on('render', this.renderImages);
             this.animated.set(name, image as StyleImageInterface);
@@ -611,7 +612,7 @@ export class Map extends CoreMap {
         image.onRemove?.();
     }
     private renderImages = () => {
-        for (const [name, image] of this.animated) if (image.render?.() && this.hasImage(name)) { this.updateImage(name, image); this.triggerRepaint(); }
+        for (const [name, image] of this.animated) if (image.render?.() && this.hasImage(name)) this.updateImage(name, image);
     };
     private async styleImage(name: string) {
         if (!await (await this.imagesFor)?.(name)) await this.resolver?.(name);

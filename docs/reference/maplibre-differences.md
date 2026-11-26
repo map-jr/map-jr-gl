@@ -679,7 +679,7 @@ These types differ from MapLibre GL JS:
 | `DragPanOptions`, `DragRotateOptions`, `AroundCenterOptions` | They have no effect and warn once: `enable(options)` of a handler turns it on, and an object as the option `dragPan` or `dragRotate` of `new Map()` counts as `true`. |
 | `UpdateImageOptions` | It has `url` and `coordinates`, and no `image`. |
 | `CanvasSourceSpecification` | The type exists. The library draws canvas sources (see `canvas` in "Source methods"). |
-| `StyleImageInterface` | `data` is RGBA pixels. `render` is called before each frame also while no layer uses the image. |
+| `StyleImageInterface` | `data` is RGBA pixels. `render` is called after each frame that the map draws, and not before it, so the pixels of a `true` result show one frame later. It is called also while no layer uses the image. `setStyle` (also with `diff: false`) keeps the image and does not call `onRemove`; `removeImage`, `addImage` with the same name and `remove()` call it. |
 | `StyleImageData` | It has only `data`, which is what `map.addImage` accepts. |
 | `StyleOptions` | `validate`, `localIdeographFontFamily` and `globalState` have no effect in `map.setStyle`. For `localIdeographFontFamily`, this is a decision and will stay. |
 | `ResourceType` | It is a union of strings and not a `const enum`. It also has `Font`. |
