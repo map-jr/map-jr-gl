@@ -4,6 +4,12 @@ Each error and warning of the library starts with `[map-jr-gl]` and a code, such
 of each code. A placeholder such as `<source name>` stands for a value that the message fills in. The package has the
 same texts in `dist/messages.json` (each code with its kind and its texts), so that a log can be read without network.
 
+The development build prints the code and the text. The production build prints the code, the address
+`https://map-jr.org/e/<number>` and the values of the placeholders in their order, separated by spaces, for example
+`[map-jr-gl] E1163 https://map-jr.org/e/1163 tile https://example.com/1/2/3.pbf HTTP 404`. The worker prints the same
+short form in both builds. The server renderer (`@map-jr/map-jr-gl/server`) and the standalone files print the full
+text.
+
 A code stays the same in later versions. When a message is removed, its section stays here with the version after which
 it was removed, and the code is not used again.
 

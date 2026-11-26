@@ -1248,9 +1248,10 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
                 if (alive && !stopped && text !== last) { last = text; listener(found); }
             }, e => {
                 // (A query of a removed map or of a lost context has no answer and is asked again later. Any other
-                // rejection is a mistake of the caller: it is an error of the map, once until the answer changes.)
+                // rejection is a mistake of the caller: it is an error of the map, once until the answer changes. The code E10022 is
+                // the one of "The query has no answer", which the production files keep without the text; #2148.)
                 const text = 'e' + (e as Error)?.message;
-                if (alive && !stopped && text !== last && !text.includes('has no answer')) { last = text; map.fire('error', {error: e}); }
+                if (alive && !stopped && text !== last && !text.includes('] E10022 ')) { last = text; map.fire('error', {error: e}); }
             }).finally(() => { busy = false; if (again && !stopped) { again = false; run(); } });
         };
         const data = (e: any) => { if (!source || !e.sourceId || e.sourceId === source) run(); };

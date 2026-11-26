@@ -316,6 +316,14 @@ has such names, and the build shortens them too. Add a name to the list only whe
 and no browser object has a property with that name. The build fails if the name is also a key of an object
 literal, a field of a type, a string, or a member that `src/` reads from the WebGL context (`gl.depthRange`).
 
+The production files (the page scripts, their chunks, the worker and its parts) keep the code of each message and not
+its text (`scripts/message-codes.mjs`, #2148): `[map-jr-gl] E1163 the request for the ${what} ${url} failed: ${reason}`
+becomes `[map-jr-gl] E1163 https://map-jr.org/e/1163 ${what} ${url} ${reason}`. The development build, the standalone
+files and `server.js` keep the full texts. A check of a test that reads a message of a production file compares the
+code and the values, not the text. Code of `src/` that tests a message tests its code (`isPartFailure` in
+`src/parts.ts`). A message whose code the source adds at run time needs an entry in the list `special` of the script,
+and the build stops when an entry no longer matches `src/`.
+
 Each built file has a source map beside it (`dist/<file>.js.map`), and its last line names the map. A browser fetches
 a source map only when its developer tools are open, and `pnpm test:size` does not count the maps. The map contains
 the text of the files of `src/`. A plugin of the build that changes code must return a source map of its change
