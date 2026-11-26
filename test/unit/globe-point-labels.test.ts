@@ -61,3 +61,23 @@ test('an icon that is aligned with the map lies on the sphere of the globe witho
     assert.ok(ha > 0.85 && ha < 1 && hd < 0.75, `y is foreshortened at 60° N: ${high.frame}`);
     assert.ok(!placeIcon(60, 'viewport')?.icon?.frame, 'an icon aligned with the viewport stays flat on the screen');
 });
+
+test('on the globe without pitch, an icon without text on the ground has the collision box of Mercator', () => {
+    // As in MapLibre GL JS, `text-pitch-alignment` decides whether the box lies on the ground. Two icons 32 pixels apart
+    // on a map turned by 30°: their boxes (24 pixels with the padding) turned by the bearing would overlap.
+    const layer = compileLayer({id: 'i', type: 'symbol', source: 'g', layout: {
+        'icon-image': 'a', 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map'}})!;
+    const points = [-5.625, 5.625].map(lng => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, 0]}}));
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'FeatureCollection', features: points} as any), 0, 0, 0);
+    const labels = buildTile(data, 0, [layer], false).labels;
+    const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+    const shown = (onGlobe: boolean) => {
+        const tr = new Transform();
+        tr.width = 512; tr.height = 512;
+        if (onGlobe) { tr.globe = globe; tr.globeStops = [0, 1]; }
+        tr.set([0, 0], 1, 30, 0);
+        return (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid(), icons).filter((p: any) => p.icon).length;
+    };
+    assert.equal(shown(false), 2, 'Mercator shows both icons');
+    assert.equal(shown(true), 2, 'the globe shows both icons');
+});
