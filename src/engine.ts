@@ -11,7 +11,7 @@ import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
-import {globeBuild, type TileGL} from './tile.ts';
+import {globeBuild, overlaps, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
@@ -1098,7 +1098,7 @@ export class Engine {
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
-        const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
+        const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
         // (The circle layers of a tilted map, whose features are tested on the screen with `circleTouches`.)
         const pitched = pitchedCircles(this.tr, c.box, c.sets), circles = new Map([...pitched?.circles ?? []].map(s => [s.layer, s]));
         for (const [name, src] of Object.entries(this.style.sources)) {
@@ -1122,7 +1122,7 @@ export class Engine {
                 // (A symbol layer with no icon and no shown text is still tested with `underIcon`, so that a line whose
                 // label is hidden is not found along its geometry: #1916.)
                 if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
-                if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
+                if (reach) radii.set(s.layer, r), shown.set(s.layer, texts), icons.set(s.layer, this.iconPoints(s.layer));
                 const circle = circles.get(s.layer) === s;
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), pad = reach || circle ? 0 : setReach(s), key = box.join() + ',' + pad;
                 const group = boxes.get(key) ?? {box, pad, sets: [], exact: !!reach || circle};
@@ -1141,7 +1141,7 @@ export class Engine {
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
-            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
+            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!, icons.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
             if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
@@ -2022,6 +2022,17 @@ export class Engine {
         for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
     }
 
+    /** The points in Mercator (x, y pairs, 0 to 1) of the shown labels of a layer that have their icon drawn. */
+    private iconPoints(layer: string) {
+        const out: number[] = [];
+        for (const [key, {placed: p, target}] of this.labels) {
+            if (!target || !p.icon || !key.startsWith(layer + '|')) continue;
+            const n = 2 ** p.tile.z;
+            out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n);
+        }
+        return out;
+    }
+
     /**
      * The boxes of the text of the shown labels of a layer at a point (the collision boxes, with `text-padding`), in
      * pixels of the screen, each with the point of its label on the screen now. Text along a line (`line`) has one box
@@ -2060,7 +2071,7 @@ export class Engine {
      * (A feature with no point, and a feature with no text and an icon whose image the map does not have, is found
      * within `radius` pixels of its geometry as before.)
      */
-    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]): boolean {
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[], icons: number[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
@@ -2088,6 +2099,12 @@ export class Engine {
             // `text-transform` can change it. When no shown text is the feature's, its icon is tested.)
             const own = mine.filter(t => t.text?.toLowerCase().replace(/\s/g, '') === field);
             if (!image || own.length && !own.some(t => t.icon)) return false;
+            // (An icon that collision hid is not found, as in MapLibre GL JS: a shown icon of the layer is at the point: #2181.
+            // An icon without text that may overlap is always drawn, and the tiles can draw it apart from the labels.)
+            let drawn = !text && overlaps(L.p.iconOverlapMode.eval(z, f), L.p.iconOverlap.eval(z, f));
+            const mx = mercX(lng), my = mercY(lat), e = 1 / tr.worldSize;
+            for (let i = 0; i < icons.length && !drawn; i += 2) drawn = Math.abs(icons[i] - mx) < e && Math.abs(icons[i + 1] - my) < e;
+            if (!drawn) return false;
             // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
             const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
             // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)

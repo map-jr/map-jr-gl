@@ -2422,6 +2422,27 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find a label on its icon that collision hid with icon-optional, and finds a shown icon under the text of another label, with both renderers (#2089)',
             ['main', 'worker'].every(r => hiddenIcon[r].join() === 'A,B,B'), JSON.stringify(hiddenIcon));
+        // Of two icons without text whose boxes collide, the hidden one is not found, at its own point or over the whole
+        // view: MapLibre GL JS finds only placed symbols (#2181).
+        const hiddenIcons = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const point = (x, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [x, 0]}});
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(0, 'A'), point(0.5, 'B')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'icon-image': 'sq'}}]}});
+                m.addImage('sq', {width: 32, height: 32, data: new Uint8Array(32 * 32 * 4).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const names = fs => fs.map(f => f.properties.name).sort().join('/');
+                out[renderer] = [names(await m.queryRenderedFeatures({layers: ['t']})), names(await m.queryRenderedFeatures(m.project([0.5, 0]), {layers: ['t']}))];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures does not find an icon that collision hid, with both renderers (#2181)',
+            ['main', 'worker'].every(r => hiddenIcons[r].join() === 'A,A'), JSON.stringify(hiddenIcons));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
