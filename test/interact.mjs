@@ -755,14 +755,14 @@ for (const mode of renderers) {
             const point = lng => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, 0]}}]});
             const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {p: {type: 'geojson', data: point(0)}},
                 layers: [{id: 'p', type: 'circle', source: 'p'}]}});
-            await new Promise(r => m.once('idle', r));
+            // (Bounded: a wait that never ends would stop the suite.)
+            const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), new Promise(r => setTimeout(() => r(false), 15000))]);
             const tiles = [];
             m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'p' && c?.z === 2) tiles.push(`${c.z}/${c.x}/${c.y}`); });
             m.getSource('p').setData(point(10));
             for (let i = 0; i < 50 && (i < 10 || !m.isSourceLoaded('p')); i++) await new Promise(r => setTimeout(r, 100));
-            await new Promise(r => m.once('idle', r));
             m.remove(); el.remove();
-            return tiles.sort().join();
+            return (idle ? '' : 'no idle: ') + tiles.sort().join();
         }, [lib, mode]);
         const ours = await run('ours'), ml = await run('ml');
         check('maplibre-compat: after setData, each tile of the source fires sourcedata with its tile, as MapLibre GL JS (#2051)', ours !== '' && ours === ml, JSON.stringify({ours, ml}));
