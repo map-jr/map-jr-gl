@@ -417,7 +417,7 @@ for (const mode of renderers) {
         }, mode).catch(e => ({error: String(e)}));
         check(`[${mode}] a drag pan: the events come as in MapLibre GL JS (movestart, dragstart, move before each drag) (#479)`,
             // (The worker renderer can report the last move after the release, when its frame comes later.)
-            (mode === 'main' ? /^movestart dragstart (move drag )+dragend moveend$/ : /^movestart dragstart move drag (move |drag )*dragend (move )?moveend$/).test(flatDrag.order ?? ''), JSON.stringify(flatDrag));
+            (mode === 'main' ? /^movestart dragstart (move drag )+dragend moveend$/ : /^movestart dragstart (move drag )+dragend (move )?moveend$/).test(flatDrag.order ?? ''), JSON.stringify(flatDrag));
         if (mode === 'main') check(`[${mode}] a drag pan: a marker stays on its point in every frame and does not jump at the release (#479)`,
             // (The first 3 px of a drag do not pan, so the marker stays that far behind the pointer from the start.)
             flatDrag.lag?.every(v => Math.abs(v - flatDrag.lag[0]) <= 1) && Math.abs(flatDrag.jump) <= 3, JSON.stringify(flatDrag));
