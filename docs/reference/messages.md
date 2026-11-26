@@ -1641,6 +1641,12 @@ Unsupported expression "<op>"
 
 An error of both entries.
 
+The production build prints this:
+
+```text
+[map-jr-gl] E2233 https://map-jr.org/e/2233 image=… length=… width=… height=… expected=…
+```
+
 ```text
 addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
 ```
