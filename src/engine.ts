@@ -11,7 +11,7 @@ import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
-import {globeBuild, type TileGL} from './tile.ts';
+import {globeBuild, overlaps, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
 import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
@@ -162,7 +162,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** The `ETag` of the response of a vector tile: a reload of the expired tile with the same `ETag` (a 304) reports no `tileLoaded`, as in MapLibre GL JS (#2136). */ etag?: string; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -791,8 +791,9 @@ export class Engine {
                 set.add(await face.load());
             } catch (err) {
                 // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
-                const m = (err as Error).message, rest = `The labels use the next font of their "text-font" instead of "${f.name ?? f.family}".`;
-                this.emit({type: 'error', message: m.startsWith('[map-jr-gl]') ? `${m}. ${rest}` : `[map-jr-gl] E494 fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
+                const m = (err as Error).message, font = f.name ?? f.family;
+                if (m.startsWith('[map-jr-gl]')) this.emit({type: 'error', message: m.replace(/^\[map-jr-gl\] /, `[map-jr-gl] E10494 The labels use the next font of their "text-font" instead of "${font}". `)});
+                else this.emit({type: 'error', message: `[map-jr-gl] E494 fonts: the font "${font}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
             }
         })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
     }
@@ -1098,7 +1099,7 @@ export class Engine {
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
-        const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
+        const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
         // (The circle layers of a tilted map, whose features are tested on the screen with `circleTouches`.)
         const pitched = pitchedCircles(this.tr, c.box, c.sets), circles = new Map([...pitched?.circles ?? []].map(s => [s.layer, s]));
         for (const [name, src] of Object.entries(this.style.sources)) {
@@ -1122,7 +1123,7 @@ export class Engine {
                 // (A symbol layer with no icon and no shown text is still tested with `underIcon`, so that a line whose
                 // label is hidden is not found along its geometry: #1916.)
                 if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
-                if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
+                if (reach) radii.set(s.layer, r), shown.set(s.layer, texts), icons.set(s.layer, this.iconPoints(s.layer));
                 const circle = circles.get(s.layer) === s;
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), pad = reach || circle ? 0 : setReach(s), key = box.join() + ',' + pad;
                 const group = boxes.get(key) ?? {box, pad, sets: [], exact: !!reach || circle};
@@ -1141,7 +1142,7 @@ export class Engine {
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
-            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
+            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!, icons.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
             if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
@@ -1338,7 +1339,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, t.etag = tile.etag, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1452,7 +1453,7 @@ export class Engine {
     /** With `fresh`, the tile is fetched again (it has expired); an image tile is only ever fetched again. */
     private rebuild(source: string, id: TileID, key: string, t: TileState, fresh?: boolean) {
         // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
-        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++, st: {expires?: number} = {};
+        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++, st: {expires?: number; etag?: string} = {};
         this.tapTile(key, fresh ? 'expired' : 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         if (fresh) t.stale = false;
@@ -1466,16 +1467,18 @@ export class Engine {
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
             ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.tiles.get(key) === t && (t.missing = r.missing), this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
-            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
+            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, st.etag = tile.etag, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
             t.rebuilding = false;
-            if (fresh) this.expire(t, st.expires), t.reloadFailed = false;
+            // A reload of an expired tile that the server answers with 304 (the same `ETag`) fires no event (#2136).
+            const same = fresh && !!st.etag && st.etag === t.etag;
+            if (fresh) this.expire(t, st.expires), t.reloadFailed = false, t.etag = st.etag;
             if (this.tiles.get(key) !== t || !gl) return gl && this.renderer.destroyTile(gl);
             const old = t.gl;
             t.gl = gl;
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
-            if (report && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
+            if (report && !same && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             this.invalidate();
         }, err => {
             t.rebuilding = false;
@@ -2020,6 +2023,17 @@ export class Engine {
         for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
     }
 
+    /** The points in Mercator (x, y pairs, 0 to 1) of the shown labels of a layer that have their icon drawn. */
+    private iconPoints(layer: string) {
+        const out: number[] = [];
+        for (const [key, {placed: p, target}] of this.labels) {
+            if (!target || !p.icon || !key.startsWith(layer + '|')) continue;
+            const n = 2 ** p.tile.z;
+            out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n);
+        }
+        return out;
+    }
+
     /**
      * The boxes of the text of the shown labels of a layer at a point (the collision boxes, with `text-padding`), in
      * pixels of the screen, each with the point of its label on the screen now. Text along a line (`line`) has one box
@@ -2058,7 +2072,7 @@ export class Engine {
      * (A feature with no point, and a feature with no text and an icon whose image the map does not have, is found
      * within `radius` pixels of its geometry as before.)
      */
-    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]): boolean {
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[], icons: number[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
@@ -2086,6 +2100,12 @@ export class Engine {
             // `text-transform` can change it. When no shown text is the feature's, its icon is tested.)
             const own = mine.filter(t => t.text?.toLowerCase().replace(/\s/g, '') === field);
             if (!image || own.length && !own.some(t => t.icon)) return false;
+            // (An icon that collision hid is not found, as in MapLibre GL JS: a shown icon of the layer is at the point: #2181.
+            // An icon without text that may overlap is always drawn, and the tiles can draw it apart from the labels.)
+            let drawn = !text && overlaps(L.p.iconOverlapMode.eval(z, f), L.p.iconOverlap.eval(z, f));
+            const mx = mercX(lng), my = mercY(lat), e = 1 / tr.worldSize;
+            for (let i = 0; i < icons.length && !drawn; i += 2) drawn = Math.abs(icons[i] - mx) < e && Math.abs(icons[i + 1] - my) < e;
+            if (!drawn) return false;
             // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
             const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
             // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)

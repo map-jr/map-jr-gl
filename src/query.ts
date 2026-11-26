@@ -267,7 +267,8 @@ export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
     if (!circles.length) return null;
     // A circle is largest at the bottom of the screen, which is nearest to the camera.
     const k = Math.max(1, tr.perspectiveAt(...tr.screenToGround(tr.width / 2, Math.max(box[3], tr.height))));
-    const r = Math.max(...circles.map(s => setReach(s))) * k;
+    // (A reach that is larger than the canvas is cut to it and one tile: the tiles that a map holds lie in about that distance around the view, and `circleTouches` decides each feature.)
+    const r = Math.min(Math.max(...circles.map(s => setReach(s))), Math.max(tr.width, tr.height) + 512) * k;
     // (A translated circle is drawn away from its feature: the rectangle also reaches back by each translation.)
     const [x0, y0, x1, y1] = circles.reduce((b, s) => { const t = setBox(box, s); return [Math.min(b[0], t[0]), Math.min(b[1], t[1]), Math.max(b[2], t[2]), Math.max(b[3], t[3])]; }, box);
     return {box: [x0 - r, y0 - r, x1 + r, y1 + r], circles: new Set(circles), k};
