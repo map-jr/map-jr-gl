@@ -212,7 +212,7 @@ export class Map extends CoreMap {
     private incomplete(name: string, had: number, has: number) {
         if (!__DEV__ || this.warned.has(name)) return;
         this.warned.add(name);
-        console.warn(`[map-jr-gl] E1510 ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.`);
+        console.warn(`[map-jr-gl] E32148 ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.`);
     }
     /** Has no effect: the camera has no roll. */
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }

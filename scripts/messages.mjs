@@ -318,7 +318,7 @@ for (const part of generated.split(/^(?=## E\d+$)/m)) { const m = part.match(/^#
 const isRemoved = section => /\nRemoved after /.test(section);
 for (const [code, section] of before) if (isRemoved(section) && byCode.has(code))
     problems.push(`the code E${code} was removed (see docs/reference/messages.md), and a message of src/ uses it again. Give the message the number of its issue.`);
-const entryOf = (code, file) => file === 'server.ts' ? 'the server render' : file === 'host.ts' ? 'the main API' : file === 'mistakes.ts' ? (sites.some(x => x.alias && x.code === code && x.file === 'host.ts') ? 'the main API' : 'the development build')
+const entryOf = (code, file) => file === 'server.ts' ? 'the server renderer' : file === 'host.ts' ? 'the main API' : file === 'mistakes.ts' ? (sites.some(x => x.alias && x.code === code && x.file === 'host.ts') ? 'the main API' : 'the main API (development build only)')
     : /^(compat-|maplibre-compat)/.test(file) ? 'the compat entry' : file === 'vue.ts' ? 'the Vue component' : file === 'nuxt.ts' ? 'the module for Nuxt' : file === 'react.ts' ? 'the React component' : 'both entries';
 const plain = text => text.replace(/\n/g, ' ').replace(/^\[map-jr-gl\] E\d+ /, '').replace(/^\[map-jr-gl\] (<method>\(\): )E\d+ /, '$1').replace(/^\[map-jr-gl\] (\w+\(\): )/, '$1');
 const sections = new Map();

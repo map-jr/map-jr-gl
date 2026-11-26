@@ -10,7 +10,7 @@ it was removed, and the code is not used again.
 <!-- messages:start -->
 ## E0
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <call>: the container has height 0, so the map shows nothing. Give the container a height in CSS.
@@ -18,7 +18,7 @@ A warning of the development build.
 
 ## E1
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 interactiveLayers: the style has no layer "<layer id>". Write the id of a layer of the style or of "layers".
@@ -26,7 +26,7 @@ interactiveLayers: the style has no layer "<layer id>". Write the id of a layer 
 
 ## E2
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 the layer "<layer id>" uses the source "<source id>", which the map does not have. A key of "data" makes a source only while it is in "data": keep "<source id>" in "data", or remove the layer.
@@ -34,7 +34,7 @@ the layer "<layer id>" uses the source "<source id>", which the map does not hav
 
 ## E3
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 queryFeatures(): the style has no layer "<layer id>". In "layers" of the query, write the id of a layer of the style or of "layers" of the description.
@@ -42,7 +42,7 @@ queryFeatures(): the style has no layer "<layer id>". In "layers" of the query, 
 
 ## E4
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 querySource(): the style has no source "<source id>". Write the id of a source of the style or of "sources".
@@ -50,7 +50,7 @@ querySource(): the style has no source "<source id>". Write the id of a source o
 
 ## E5
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 layers: the layer "<layer id>" has before: "<before id>", but the style has no layer "<before id>", so the layer goes on top. Write the id of a layer of the style.
@@ -58,7 +58,7 @@ layers: the layer "<layer id>" has before: "<before id>", but the style has no l
 
 ## E6
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 layers: the layer "<layer id>" uses the source "<source id>", which the style does not have. Add "<source id>" to "sources", or give its GeoJSON as "<source id>" in "data".
@@ -66,7 +66,7 @@ layers: the layer "<layer id>" uses the source "<source id>", which the style do
 
 ## E8
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 update(): "<option>" changed, but it is read only when the map is made. To move the map, change "view" or call moveTo().
@@ -102,7 +102,7 @@ querySource(): <first argument> is not the id of a source. Write querySource("id
 
 ## E11
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 querySource(): "<option>" has an effect only in a query at a point or a position. This query ignores it.
@@ -110,7 +110,7 @@ querySource(): "<option>" has an effect only in a query at a point or a position
 
 ## E12
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 querySource(): "<option>" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).
@@ -122,7 +122,7 @@ queryFeatures(): "<option>" is not an option of queryFeatures, which finds what 
 
 ## E13
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <method>(): "radius" has an effect only in a query at a point or a position. This query ignores it.
@@ -130,7 +130,7 @@ A warning of the development build.
 
 ## E14
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 images: a layer gives the parameter "<parameter>" to the image "<image id>", but that image has no slot {{<parameter>}}, so the parameter has no effect. Write {{<parameter>}} in the SVG of "<image id>" in "images", or remove the parameter.
@@ -138,7 +138,7 @@ images: a layer gives the parameter "<parameter>" to the image "<image id>", but
 
 ## E20
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.
@@ -146,7 +146,7 @@ The description has "glyphs". That field was removed and has no effect: the map 
 
 ## E21
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 points(): the record <record> has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.
@@ -154,7 +154,7 @@ points(): the record <record> has no position of two finite numbers, so it is le
 
 ## E22
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 globalState: the value of "<key>" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.
@@ -162,7 +162,7 @@ globalState: the value of "<key>" is not JSON (a function, a class instance, NaN
 
 ## E23
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 moveTo(): "fitPadding" and "fitMaxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.
@@ -178,7 +178,7 @@ the request to <to> was aborted.
 
 ## E25
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: "<option name>" is <option value>. Pass a number that is 0 (no limit) or more.
@@ -186,7 +186,7 @@ server render: "<option name>" is <option value>. Pass a number that is 0 (no li
 
 ## E30
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.
@@ -198,7 +198,7 @@ hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature
 
 ## E40
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 colorScheme: <scheme> is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.
@@ -222,7 +222,7 @@ toBlob(): the browser could not encode the image as <mime>. <err>
 
 ## E45
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.
@@ -230,7 +230,7 @@ style: the object is not a style, because it has no "version" and "layers", and 
 
 ## E46
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 style: the pair has no "<missing>", so the map uses "<used>" in both color schemes. Give both "light" and "dark".
@@ -246,7 +246,7 @@ Map: the option glyphs was removed and has no effect; the map loads the glyph fi
 
 ## E55
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 sprite: <sprite> is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".
@@ -286,14 +286,6 @@ An error of the main API.
 
 ```text
 createMap(): the container is <container>. In a framework, make the map after the element is mounted.
-```
-
-## E68
-
-A warning of both entries.
-
-```text
-Workers are unavailable (<message>); running on the main thread. If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.
 ```
 
 ## E70
@@ -362,7 +354,7 @@ map.painter does not exist in @map-jr/map-jr-gl/maplibre-compat. To check for We
 
 ## E206
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <member> is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. <advice>
@@ -570,7 +562,7 @@ An error of the main API.
 
 ## E524
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 the description has no field "<field>", so the map ignores it. Check the spelling against MapDescription in docs/reference/description.md, or remove "<field>".
@@ -626,7 +618,7 @@ The source "<source name>": "redFactor", "greenFactor", "blueFactor" and "baseSh
 
 ## E645
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <layer>: "color-relief-color" is not an "interpolate" expression, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].
@@ -638,7 +630,7 @@ A warning of the development build.
 
 ## E648
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <where>: "<property>" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.
@@ -646,7 +638,7 @@ A warning of the development build.
 
 ## E685
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 locale: <problem>. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.
@@ -678,7 +670,7 @@ Worker rendering unavailable, using the main thread: <why>
 
 ## E826
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <map-jr>: the attribute <attribute> cannot be read, so the element ignores it. Write a number, for example zoom="11".
@@ -710,7 +702,7 @@ setCenterElevation(): the map center is clamped to the ground, which replaces th
 
 ## E985
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 tileZoomOffset: <dz> is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.
@@ -734,7 +726,7 @@ setSourceTileLodParams: there is no source "<sourceId>". Add the source first, o
 
 ## E1057
 
-An error of the development build.
+An error of the main API (development build only).
 
 ```text
 <where>: <reason> The map draws it, but MapLibre GL JS rejects the style. Write ["zoom"] only as the input of one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.
@@ -742,7 +734,7 @@ An error of the development build.
 
 ## E1139
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <where>: a layer of this type has no such property in the style specification, so the map ignores it. Write "<near>".
@@ -754,7 +746,7 @@ A warning of the development build.
 
 ## E1147
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <target>: "<option>" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit<option>". "<option>" of the description applies to the map for good.
@@ -762,7 +754,7 @@ A warning of the development build.
 
 ## E1148
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <call>: the description has both "view" and "initialView.bounds". "view" wins, so the map does not fit "initialView.bounds". Remove "view" to fit the bounds, or remove "bounds" from "initialView".
@@ -770,7 +762,7 @@ A warning of the development build.
 
 ## E1151
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <MapJr>: the template ref has no method "<method>" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.
@@ -790,7 +782,7 @@ the request for the <resource> <url> failed: <reason>
 
 ## E1189
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 sources: the GeoJSON source "<source id>" has no "data", and "data" of the description has no key "<source id>", so the source has no features. Give the source its own "data", or write the features as "data: {<source id>: geojson}".
@@ -798,7 +790,7 @@ sources: the GeoJSON source "<source id>" has no "data", and "data" of the descr
 
 ## E1190
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 update(): "view" is a view that the map reported earlier, so the map does not move. The map ignores such a view so that a slow application does not pull it back while the user moves it. To return to a stored view, call moveTo(view).
@@ -806,7 +798,7 @@ update(): "view" is a view that the map reported earlier, so the map does not mo
 
 ## E1195
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 controls: two custom() controls have the key "<control>", so the map adds only the first. Give each custom() control its own "key".
@@ -842,7 +834,7 @@ setMinPitch(<p>): the pitch must be between 0 and the largest pitch, <maxPitch>.
 
 ## E1258
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <map-jr>: the attribute <attribute>="false" switches the option off all the same, because an attribute that is there takes effect, whatever its value. To keep the option on, remove <attribute>.
@@ -854,7 +846,7 @@ A warning of the development build.
 
 ## E1300
 
-A warning of the server render.
+A warning of the server renderer.
 
 ```text
 the server render draws no image "<imageName>", because <cause>. The map loads it in the browser.
@@ -892,14 +884,6 @@ An error of both entries.
 createTileMesh(): the granularity is too large for 16-bit indices. Pass a smaller granularity, or "32bit".
 ```
 
-## E1510
-
-A warning of the compat entry.
-
-```text
-<method>: the result was used without `await` and was not complete (<had> of <has> features). Tile data is in a worker. Change const features = map.<method>(...); to const features = await map.<method>(...); (this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.
-```
-
 ## E1519
 
 A warning of both entries.
@@ -918,7 +902,7 @@ styles(): no picture for "<label>": <reason>.
 
 ## E1582
 
-A warning of the server render.
+A warning of the server renderer.
 
 ```text
 renderToImage(): "inlineImages" has no effect, because the image always embeds raster tiles and icons. Remove "inlineImages".
@@ -982,7 +966,7 @@ The workers sent 200 different warnings. Later ones are not shown.
 
 ## E1640
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: the options have no "center" and no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
@@ -998,7 +982,7 @@ server render: the options have "center" but no "zoom", and no "bounds". Pass "c
 
 ## E1647
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <call>: "<option>" is not an option of an overlay, so it has no effect. Write "<option>". The options are <overlay options>.
@@ -1010,7 +994,7 @@ A warning of the development build.
 
 ## E1670
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: "<option name>" is <size>. Pass the <option name> in CSS pixels as a number greater than 0, for example <option name>: 800.
@@ -1030,7 +1014,7 @@ server render: "<option name>" is <size>. Pass the <option name> in CSS pixels a
 
 ## E1692
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <layer>: "symbol-avoid-edges" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.
@@ -1054,7 +1038,7 @@ setVerticalFieldOfView(<fov>): the field of view is not a number. Pass degrees f
 
 ## E1712
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.
@@ -1062,7 +1046,7 @@ style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, w
 
 ## E1748
 
-An error of the development build.
+An error of the main API (development build only).
 
 ```text
 <where>: <why>. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.
@@ -1166,7 +1150,7 @@ The query has no answer: the map <why>.
 
 ## E10025
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: "allowHosts" is <allowHosts>. Pass a list of host names without a scheme, a port or a path, for example ["tiles.example.com"].
@@ -1258,7 +1242,7 @@ The map cannot start: WebGL2 is not available.
 
 ## E10206
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <member> is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.
@@ -1282,7 +1266,7 @@ the style: metadata["map-jr:images"] is not an object of images by name, and the
 
 ## E10524
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 the description has no field "extend", so the map ignores it. Write "sources", "layers" and "terrain" at the root of the description.
@@ -1298,7 +1282,7 @@ hillshade: a layer has <n> lights, and the layer draws the first <LIGHTS>. Give 
 
 ## E10645
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <layer>: "color-relief-color" has <stops> stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.
@@ -1306,7 +1290,7 @@ A warning of the development build.
 
 ## E10826
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <map-jr>: the element has no style, so it shows no map. Write the URL of a style in the attribute "map-style", or set the property "mapStyle".
@@ -1322,7 +1306,7 @@ jumpTo(): the map center is clamped to the ground, which replaces "elevation" in
 
 ## E11139
 
-An error of the development build.
+An error of the main API (development build only).
 
 ```text
 <where>: unknown property "<property>". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "<near>".
@@ -1434,7 +1418,7 @@ The map cannot be shown: <message>.
 
 ## E20025
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: the host of <url> is not in "allowHosts". Add "<host>" to "allowHosts" if the render can request it.
@@ -1486,7 +1470,7 @@ the style: the image "<image name>" of metadata["map-jr:images"] is left out, be
 
 ## E20648
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <source>: "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.
@@ -1494,7 +1478,7 @@ A warning of the development build.
 
 ## E20826
 
-A warning of the development build.
+A warning of the main API (development build only).
 
 ```text
 <map-jr>: the attribute "map-style" was removed and the element has no "mapStyle", so the map keeps the style that it has. To change the style, give another URL in "map-style" or set "mapStyle".
@@ -1516,9 +1500,17 @@ An error of both entries.
 The worker could not load map-jr-gl-worker-<partName>.js, the part of the worker for <partName>: it has no URL. Set workerUrl to an http(s) URL of map-jr-gl-worker.js.
 ```
 
+## E22148
+
+A warning of both entries.
+
+```text
+Workers are unavailable (<message>); running on the main thread. If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.
+```
+
 ## E30025
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: the requests took longer than the "timeout" of <total> ms; the request to <first> was not complete. Pass a larger "timeout", or 0 for no limit.
@@ -1542,7 +1534,7 @@ MapImage "<image name>" has no image: its content has no <svg> element. Write an
 
 ## E30826
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 renderElement(): "<attribute name>" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".
@@ -1560,9 +1552,17 @@ An error of both entries.
 The worker could not load <url>, the part of the worker for <partName>. Serve map-jr-gl-worker-<partName>.js from the same folder and version as map-jr-gl-worker.js.
 ```
 
+## E32148
+
+A warning of the compat entry.
+
+```text
+<method>: the result was used without `await` and was not complete (<had> of <has> features). Tile data is in a worker. Change const features = map.<method>(...); to const features = await map.<method>(...); (this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.
+```
+
 ## E40025
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: the request to <first> took longer than the "requestTimeout" of <each> ms. Pass a larger "requestTimeout", or 0 for no limit.
@@ -1578,7 +1578,7 @@ The image "<image>" cannot be drawn with the values of its slots (<message>). Ch
 
 ## E40826
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: <cause>
@@ -1586,7 +1586,7 @@ renderElement(): the server render failed, and the element has no first view. Th
 
 ## E50025
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: the request to <first> was redirected more than 5 times.
@@ -1594,7 +1594,7 @@ server render: the request to <first> was redirected more than 5 times.
 
 ## E60025
 
-An error of the server render.
+An error of the server renderer.
 
 ```text
 server render: the response of <first> is larger than "maxBytes" (<max> bytes). Pass a larger "maxBytes", or leave the source out of the style.

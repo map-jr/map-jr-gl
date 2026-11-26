@@ -132,8 +132,9 @@ pull request.
    `--check` checks the codes. Add a code to every message of `src/`. The configuration warnings of the map chunk that
    #2133 keeps in production get a code too. Done in the pull request of step 1: every message prints its code after
    the prefix and keeps its full text in every build (`[map-jr-gl] E1846 workerUrl: ...`), so production gains about
-   0.2 KB gzip until step 2 drops the texts. A message that came before the history of the repository (two warnings of
-   expressions) takes the number of #2148.
+   0.2 KB gzip until step 2 drops the texts. A message whose text came with a commit that names no issue
+   (two warnings of expressions, the fallback to the main thread and the query used without `await`) takes the
+   number of #2148: E2148, E12148, E22148 and E32148.
 2. Add the production form: the build replaces the text with the code in production files except `server.js` and the
    standalone bundles (a define or a small
    plugin of `build.mjs` keyed on the helper calls), and the helper adds the link. The pull request gives

@@ -404,7 +404,7 @@ export class Map {
         const preload = () => void import('./engine-entry.ts').catch(() => {});
         const pool = acquireTileWorkers(o).catch((err: Error) => {
             preload();
-            console.warn(`[map-jr-gl] E68 Workers are unavailable (${err.message}); running on the main thread. ` +
+            console.warn(`[map-jr-gl] E22148 Workers are unavailable (${err.message}); running on the main thread. ` +
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
             // Vite in development serves the library from its dependency cache, which does not contain the worker file.
             if (__DEV__ && !(o.workerUrl ?? loadDefaults.workerUrl ?? o.createWorker ?? loadDefaults.createWorker) && import.meta.url.includes('/node_modules/.vite/deps/'))
