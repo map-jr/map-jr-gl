@@ -107,7 +107,10 @@ const heightAt = (tr: Transform, it: RenderItem<unknown>, x: number, y: number) 
     return tr.heightAt ? tr.heightAt((it.id.x + x / EXTENT) / n, (it.id.y + y / EXTENT) / n) : undefined;
 };
 function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, angle: number): number[] {
-    const e = 16, d = e / it.scale, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
+    // On the globe a step in the tile is shorter on the sphere by the cosine of the latitude: as in MapLibre GL JS
+    // (`getPitchedTextCorrection`), the step grows by the cosine at the center over that at (x, y), mixed by the globeness.
+    const n = 2 ** it.id.z, g = 1 + tr.globeness * (Math.cosh(Math.PI * (1 - 2 * (it.id.y + y / EXTENT) / n)) * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1);
+    const e = 16, d = e / it.scale * g, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
     const [fx, fy] = tr.projectTile(it.id, x + c, y + s, m), [qx, qy] = tr.projectTile(it.id, x - s, y + c, m);
     return [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
 }
@@ -462,7 +465,7 @@ export function placeLabels(
                 const ratio = 0.5 + 0.5 * tr.cameraDistance / depth;
                 if (tooFar(tr, depth, far)) continue;
                 const persp = tr.pitch ? Math.min(4, ratio) : 1;
-                const line = l.angle !== null, flat = !!tr.pitch && l.flat && !line;
+                const line = l.angle !== null, flat = (!!tr.pitch || tr.globeness > 0) && l.flat && !line;
                 // As in MapLibre GL JS, `text-rotation-alignment` decides whether every box of the symbol, the icon's too,
                 // is turned by the bearing (#2037).
                 const bturn = line || flat || l.upright ? 0 : north;
