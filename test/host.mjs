@@ -4727,7 +4727,7 @@ for (const status of [404, 403, 503]) {
             const lib = await import('/dist/map-jr-gl.js'), errors = [], tiles = kind => ({type: 'raster', tiles: [`${location.origin}/raster-2099/${kind}/{z}/{x}/{y}.png`], tileSize: 256});
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
             const m = lib.createMap(el, {style: {version: 8, sources: {five: tiles('five'), png: tiles('png')}, layers: [{id: 'a', type: 'raster', source: 'five'}, {id: 'b', type: 'raster', source: 'png'}]},
-                view: {center: [0, 0], zoom: 2}, attribution: false, onError: (e, info) => errors.push({source: info.sourceId, message: e.message})});
+                view: {center: [0, 0], zoom: 2}, attribution: false, onError: (e, info) => errors.push({source: info.sourceId, message: e.message, code: e.code})});
             await new Promise(r => setTimeout(r, 6000));
             m.destroy();
             return errors;
@@ -4739,6 +4739,8 @@ for (const status of [404, 403, 503]) {
             seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('.png" reason="HTTP 500"')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
             seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
+        check('the error of a tile that fails carries its code in the field code, in the event and in onError (#2148)',
+            of('five').length > 0 && errors.every(e => e.code === 'E2106'), JSON.stringify(errors.slice(0, 2)));
     } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
