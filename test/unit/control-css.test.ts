@@ -17,3 +17,7 @@ test('the braces of CONTROL_CSS balance and never close more than they open', ()
     });
     assert.equal(depth, 0, 'the sheet leaves braces open');
 });
+
+test('CONTROL_CSS has no comments: they are comments of the script, which the page script does not carry (#2215)', () => {
+    assert.ok(!CONTROL_CSS.includes('/*'), CONTROL_CSS.slice(CONTROL_CSS.indexOf('/*'), CONTROL_CSS.indexOf('/*') + 80));
+});
