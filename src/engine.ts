@@ -1460,10 +1460,12 @@ export class Engine {
         const report = fresh || t.reload;
         t.reload = false;
         const src = this.style.sources[source];
+        // A reload that answers 404 makes the tile one that the server does not have, as a first load does: a tile of a lower
+        // zoom stands in (MapLibre GL JS marks it `errored`, #2124).
         (src.type === 'raster-dem'
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
-            ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
+            ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.tiles.get(key) === t && (t.missing = r.missing), this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
             : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
             t.rebuilding = false;
