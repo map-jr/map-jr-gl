@@ -8,7 +8,7 @@ import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {Evented} from './evented.ts';
 import {zoomCurveErrors} from './mistakes.ts';
-import {httpError} from './requests.ts';
+import {httpError, withCode} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, FOV, EARTH_CIRCUMFERENCE, type LngLatLike} from './geo.ts';
@@ -195,7 +195,7 @@ export class Map extends CoreMap {
      * pass `__DEV__ ? text : ''`, so that the production build has no text.
      */
     private mistake(key: string, message: string) {
-        if (this.strict) throw new Error(__DEV__ ? message : `[map-jr-gl] E90 ${key} has no effect.`);
+        if (this.strict) throw withCode(new Error(__DEV__ ? message : `[map-jr-gl] E90 ${key} has no effect.`));
         if (__DEV__ && !this.warned.has(key)) { this.warned.add(key); console.warn(message); }
     }
     private warned = new Set<string>();
@@ -650,7 +650,7 @@ export class Map extends CoreMap {
     // ---- Changes of the style that MapLibre GL JS refuses ----
     // The call has no effect and the map fires `error`, as in MapLibre GL JS. (Before the style has come, nothing is checked.)
     private refused(message: string) {
-        const error = new Error('[map-jr-gl] ' + message);
+        const error = withCode(new Error('[map-jr-gl] ' + message));
         if (this.strict) throw error;
         this.fire('error', {error});
         return this;

@@ -507,14 +507,15 @@ export class Engine {
     /** The map was removed (`destroy`): nothing more is sent to the GPU. */
     private removed = false;
     private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void; drop?(): void}[] = [];
-    /** For each circle layer whose size depends on the feature: its largest radius and stroke width in the tiles that arrived (see `QuerySet.most`). */
+    /** For each circle or line layer whose size depends on the feature: its largest sizes in the tiles that arrived (see `QuerySet.most`). */
     private most = new Map<string, number[]>();
     private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
         let bytes = 0;
         for (const [k, b] of Object.entries(tile.layers)) {
             for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
+            const id = k.split('\0')[0], m = this.most.get(id) ?? [0, 0, 0];
+            if (b.type === 'line' && b.most) { b.most.forEach((v, i) => m[i] = Math.max(m[i], v)); this.most.set(id, m); }
             if (b.type !== 'circle') continue;
-            const id = k.split('\0')[0], m = this.most.get(id) ?? [0, 0];
             for (const a of [b.radius, b.radius1]) for (const v of a ?? []) m[0] = Math.max(m[0], v);
             for (let i = 0; i < (b.sb?.length ?? 0); i += 2) m[1] = Math.max(m[1], b.sb![i]);
             this.most.set(id, m);
@@ -1137,7 +1138,7 @@ export class Engine {
 
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
-        c = {...c, sets: c.sets.map(s => s.size ? {...s, most: this.most.get(s.layer) as [number, number]} : s)};
+        c = {...c, sets: c.sets.map(s => s.size ? {...s, most: this.most.get(s.layer)} : s)};
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
         const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
