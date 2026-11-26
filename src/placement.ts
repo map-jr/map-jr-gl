@@ -725,6 +725,10 @@ function followLine(
     w *= size / s;
     const start = cum[anchorIndex] - w / 2;
     if (start < 0 || start + w > cum[n - 1]) return null; // not enough line for the text at this zoom
+    // On the globe, text with a glyph behind the horizon is hidden, as in MapLibre GL JS (#1996). MapLibre tests the
+    // vertices of the label line, which it divides on the globe into steps of 64 tile units, so the test of the point
+    // under each glyph (in the tile, at its place along the piece) gives nearly the same result without the division.
+    const z = 2 ** it.id.z, behind = (u: number, v: number) => !!tr.globeness && tr.globe!.hidden(tr, (it.id.x + u / EXTENT) / z, (it.id.y + v / EXTENT) / z);
     const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centered on the line
     const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
     let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
@@ -733,6 +737,7 @@ function followLine(
         while (seg < n - 1 && cum[seg] < mid) seg++;
         const len = cum[seg] - cum[seg - 1] || 1, t = mid - cum[seg - 1];
         let dx = (xs[seg] - xs[seg - 1]) / len, dy = (ys[seg] - ys[seg - 1]) / len, cx = xs[seg - 1] + dx * t, cy = ys[seg - 1] + dy * t;
+        if (tr.globeness && behind(us[seg - 1] + (us[seg] - us[seg - 1]) * t / len, vs[seg - 1] + (vs[seg] - vs[seg - 1]) * t / len)) return null;
         if (k) {
             // Text on the ground: the place of the glyph on the ground, and where one step along the line and one step
             // across it go on the screen from there. (The perspective changes along a piece of the line: one size for

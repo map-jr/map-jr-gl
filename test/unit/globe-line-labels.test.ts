@@ -16,15 +16,16 @@ const id = {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'};
  * The label of a line (by default along the equator from 45° W to 45° E), on a view of 256 pixels at zoom 0 that looks
  * at 45° N (by default).
  */
-function place(onGlobe: boolean, coordinates = [[-45, 0], [45, 0]], center = [0, 45], zoom = 0, size = 256): any {
-    const layer = compileLayer({id: 't', type: 'symbol', source: 'g', layout: {'symbol-placement': 'line', 'text-field': 'AAAAAAAAAAA', 'text-size': 16}})!;
+function place(onGlobe: boolean, coordinates = [[-45, 0], [45, 0]], center = [0, 45], zoom = 0, size = 256, pitch = 0, all = false, extra = {}): any {
+    const layer = compileLayer({id: 't', type: 'symbol', source: 'g', layout: {'symbol-placement': 'line', 'text-field': 'AAAAAAAAAAA', 'text-size': 16, ...extra}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}} as any), 0, 0, 0);
     const labels = buildTile(data, 0, [layer], false).labels;
     const tr = new Transform();
     tr.width = size; tr.height = size;
     if (onGlobe) { tr.globe = globe; tr.globeStops = [0, 1]; }
-    tr.set(center as [number, number], zoom, 0, 0);
-    return (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid())[0];
+    tr.set(center as [number, number], zoom, 0, pitch);
+    const out = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid());
+    return all ? out : out[0];
 }
 
 test('a label along a line is drawn on the globe, along the curve of the sphere', () => {
@@ -48,4 +49,22 @@ test('a label along a meridian on the globe keeps one size, also when it spans m
     // `ground` has, for each glyph, the length on the screen of one pixel of text along the line, and then the step across it.
     const along = p.ground.filter((_: number, i: number) => i % 3 === 0), ratio = Math.max(...along) / Math.min(...along);
     assert.ok(ratio < 1.15, `the glyphs have one size, as in MapLibre GL JS: ${along.map((v: number) => v.toFixed(2))}`);
+});
+
+test('a label along a line on the globe is hidden when its glyphs are behind the horizon, as in MapLibre GL JS (#1996)', () => {
+    // A meridian from 60° S to 30° N, with text on the screen, at zoom 2.5. Its label is at 12° S. Seen from the equator,
+    // the label is drawn. Seen from 20° N, the line under the glyphs is behind the horizon, and the label is hidden.
+    const viewport = {'text-pitch-alignment': 'viewport'};
+    const front = place(true, [[0, -60], [0, 30]], [0, 0], 2.5, 512, 0, true, viewport);
+    assert.equal(front.length, 1, 'seen from the equator, the label is drawn');
+    assert.deepEqual(place(true, [[0, -60], [0, 30]], [0, 20], 2.5, 512, 0, true, viewport), [], 'seen from 20° N, the label is hidden');
+});
+
+test('a label on the globe is drawn when only the far end of the line under it is behind the horizon, as in MapLibre GL JS (#1996)', () => {
+    // A parallel at 15° N from 0° to 80° E, seen from (0, 0) at zoom 2, with text on the screen. Its label is at 40° E, in
+    // front of the horizon, and the end at 80° E is behind it. MapLibre GL JS divides the line on the globe and tests only
+    // the points next to the glyphs, so it draws the label. A label at 100° E is behind the horizon and is hidden.
+    const viewport = {'text-pitch-alignment': 'viewport', 'symbol-placement': 'line-center', 'text-field': 'AAAA'};
+    assert.equal(place(true, [[0, 15], [80, 15]], [0, 0], 2, 512, 0, true, viewport).length, 1, 'the label at 40° E is drawn');
+    assert.deepEqual(place(true, [[60, 15], [140, 15]], [0, 0], 2, 512, 0, true, viewport), [], 'the label at 100° E is hidden');
 });
