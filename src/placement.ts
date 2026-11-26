@@ -484,7 +484,7 @@ export function placeLabels(
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
-                let textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
+                let flatBox: number[] | undefined, textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
                 let bent: Placed | undefined, bentBoxes: Box[] = [];
                 const anchors: string[] = [];
@@ -545,7 +545,9 @@ export function placeLabels(
                         const [a, b, c, d] = frame;
                         textAngle = Math.atan2(b, a);
                         candidates = candidates.map(([dx, dy]) => [dx * a + dy * c, dx * b + dy * d]);
-                        // (The box for collisions is the size of the text on the screen.)
+                        // (The box for collisions is the bound on the screen of the text on the ground, as in MapLibre GL JS's
+                        // `_projectCollisionBox`, and not the bound of a turned box, which is taller where the frame is skewed.)
+                        flatBox = [Math.abs(a) * w + Math.abs(c) * h, Math.abs(b) * w + Math.abs(d) * h];
                         w *= Math.hypot(a, b); h *= Math.hypot(c, d);
                     } else if (!line && turned) {
                         // text-rotate turns the label about its anchor point, so the offset from the anchor turns with it.
@@ -618,7 +620,7 @@ export function placeLabels(
                     if (l.overlap) for (let i = 0; i < candidates.length; i++) tries.push(i + candidates.length);
                     for (const k of tries) {
                         const i = k % candidates.length, overlap = k >= candidates.length;
-                        const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
+                        const [dx, dy] = candidates[i], box = flatBox ? boxAround(ax + dx, ay + dy, flatBox[0], flatBox[1], 0, l.padding) : boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
                         if (!overlap && grid.hits(...box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);
