@@ -61,6 +61,14 @@ test('globe: unproject gives a latitude past 85.05° on a polar cap, and project
     assert.ok(Math.abs(lng) < 1e-9 && Math.abs(y - 100) < 1e-3 && Math.abs(x - 400) < 1e-3, `${lng} ${x},${y}`);
 });
 
+test('globe: with 3D terrain, unproject gives a latitude past 85.05° on a polar cap, on the ground there (#2115)', () => {
+    const tr = make([0, 80], 2);
+    tr.heightAt = () => 3000; tr.groundRange = [3000, 3000];
+    const [lng, lat] = tr.unproject(400, 100), [x, y] = tr.project(lng, lat);
+    assert.ok(lat > 85.0511 && lat < 90, `${lat}`);
+    assert.ok(Math.abs(lng) < 1e-9 && Math.abs(y - 100) < 0.05 && Math.abs(x - 400) < 0.05, `${lng} ${x},${y}`);
+});
+
 test('globe: the far side is hidden, and the tiles in view are chosen, also over a pole', () => {
     const tr = make([0, 0], 1);
     assert.equal(globe.hidden(tr, mercX(180), mercY(0)), true);
