@@ -62,3 +62,32 @@ for (const [align, near] of [['viewport', 0.01], ['map', 0.05]] as const) test(`
     const moved = d.icon.y - q[1], placed = b.p.icon.y - b.p.ay;
     assert.ok(Math.abs(moved - placed) < Math.abs(placed) * near, `the moved icon is ${moved.toFixed(2)} px from its anchor, the new placement ${placed.toFixed(2)} px`);
 });
+
+// MapLibre GL JS draws the icons of a layer with `icon-offset` without the perspective ratio, but its collision box
+// keeps the ratio (`CollisionIndex.placeCollisionBox`): the box and its offset from the anchor grow toward the camera
+// as for a layer without `icon-offset` (#2058).
+for (const align of ['viewport', 'map'] as const) test(`placeLabels: the collision box of an icon with icon-offset and icon-pitch-alignment ${align} keeps the perspective ratio`, () => {
+    const boxOf = (layout: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'icon-pitch-alignment': align, ...layout}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: cases[1][2] as any}), z, tx, ty);
+        const labels = buildTile(data, z, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.8)], z, 0, 60);
+        const boxes: number[][] = [], grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+        grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
+        const icons = () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any);
+        (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
+        return boxes[0];
+    };
+    // A layer without `icon-offset` has the ratio. An offset of [0, 0] moves nothing, so its box is the same.
+    const plain = boxOf({}), zero = boxOf({'icon-offset': [0, 0]}), moved = boxOf({'icon-offset': [0, -10]});
+    assert.ok(plain && zero && moved, 'the icons are placed');
+    // (The box has `icon-padding`, 2 px, on each side.)
+    const h = plain[3] - plain[1] - 4;
+    assert.ok(Math.abs(h - 20) > 1, `the ratio changes the height of the box (${h} px)`);
+    for (let i = 0; i < 4; i++) assert.ok(Math.abs(zero[i] - plain[i]) < 0.01, `the box with icon-offset [0, 0] is ${zero.map(v => v.toFixed(2))}, without it ${plain.map(v => v.toFixed(2))}`);
+    // With an offset of half the icon, the box moves by half of its height, as the offset grows with the ratio too.
+    assert.ok(Math.abs(moved[3] - moved[1] - (plain[3] - plain[1])) < 0.01, `the box is ${(moved[3] - moved[1]).toFixed(2)} px high, not ${(plain[3] - plain[1]).toFixed(2)}`);
+    assert.ok(Math.abs(moved[1] - plain[1] + h / 2) < 0.05, `the box moves by ${(moved[1] - plain[1]).toFixed(2)} px, not ${(-h / 2).toFixed(2)}`);
+});

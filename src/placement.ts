@@ -652,7 +652,12 @@ export function placeLabels(
                         }
                         bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1);
                     }
-                    const box = line || iflat ? boxAround(bx, by, bw, bh, angle, ic.padding) : boxAround(bx, by, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
+                    // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
+                    // (`L.fixedSize`, a layer with `icon-offset`): the box and its offset from the anchor grow with it.
+                    const r = L.fixedSize ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
+                    const qx = cx + (bx - cx) * r, qy = cy + (by - cy) * r;
+                    bw *= r; bh *= r;
+                    const box = line || iflat ? boxAround(qx, qy, bw, bh, angle, ic.padding) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
