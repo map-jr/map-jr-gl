@@ -2,6 +2,6 @@
   "label": "the horizon with sky is a pixel lower than in MapLibre",
   "decision": "later",
   "issue": 1817,
-  "reason": "The horizon with sky is a pixel lower than in MapLibre.",
-  "pattern": "^(sky/fog-color/function|sky/fog-color/global-state|sky/fog-ground-blend/default|sky/fog-ground-blend/function|sky/fog-ground-blend/global-state|sky/horizon-color/default|sky/horizon-color/function|sky/horizon-color/global-state|sky/horizon-fog-blend/default|sky/sky-color/default|sky/sky-color/function|sky/sky-color/global-state|sky/sky-horizon-blend/default|sky/sky-horizon-blend/function|sky/sky-horizon-blend/global-state)$"
+  "reason": "With 3D terrain, the fog band along the horizon is a few pixels off MapLibre. Without terrain, the horizon matches MapLibre.",
+  "pattern": "^(sky/fog-color/function|sky/fog-color/global-state|sky/fog-ground-blend/default|sky/fog-ground-blend/function|sky/fog-ground-blend/global-state|sky/horizon-fog-blend/default)$"
 }
