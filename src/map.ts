@@ -784,6 +784,15 @@ export class Map {
     private dragMove?: PointerEvent;
     /** The `seq` of the `pan` of `dragMove`: an older camera report fires `move` without it (#2157). */
     private dragSeq = 0;
+    /** The page frames with a drag move that have not given a `drag` yet: a late camera report fires `move` and `drag` for each (#2208). */
+    private dragOwed = 0;
+    private fireDrag() {
+        const originalEvent = this.dragMove!;
+        this.dragMove = undefined;
+        this.fire('drag', {originalEvent});
+        for (; this.dragOwed > 1; this.dragOwed--) { this.fire('move'); this.fire('drag', {originalEvent}); }
+        this.dragOwed = 0;
+    }
     /**
      * A drag with one pointer and the worker renderer (#38): the number of its first `pan`, the ground that the engine
      * grabbed (known from its first report), and the pointer positions that the page has placed (`x`, `y`, at the time
@@ -832,7 +841,7 @@ export class Map {
             if (!this.moving) this.fire('movestart');
             this.moving = true;
             this.fire('move');
-            if (this.dragMove && (e.seq ?? this.dragSeq) >= this.dragSeq) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
+            if (this.dragMove && (e.seq ?? this.dragSeq) >= this.dragSeq) this.fireDrag();
             if (zoomed) { if (!this.zooming) this.fire('zoomstart'); this.zooming = true; this.fire('zoom'); }
             if (turned) { if (!this.rotating) this.fire('rotatestart'); this.rotating = true; this.fire('rotate'); }
             if (tilted) { if (!this.pitching) this.fire('pitchstart'); this.pitching = true; this.fire('pitch'); }
@@ -2367,7 +2376,7 @@ export class Map {
                 // As in MapLibre GL JS, the moves of one frame give one sample, at the time of the frame (see `up`).
                 const list = samples;
                 pendingPan = {x: p.x, y: p.y};
-                if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; flushPan(); if (pendingPan && list === samples) list.push({t: performance.now(), ...pendingPan}); pendingPan = null; });
+                if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; if (this.dragMove) this.dragOwed++; flushPan(); if (pendingPan && list === samples) list.push({t: performance.now(), ...pendingPan}); pendingPan = null; });
             }
         });
         const up = (e: PointerEvent) => {
@@ -2413,7 +2422,7 @@ export class Map {
             const wasDragging = this.dragging;
             this.dragging = false;
             // (A move that the engine has not reported yet gets its `move` here, so that `drag` follows a `move`, #2157.)
-            if (this.dragMove) { const ev = this.dragMove; this.dragMove = undefined; if (this.moving) this.fire('move'); this.fire('drag', {originalEvent: ev}); }
+            if (this.dragMove) { if (this.moving) this.fire('move'); this.fireDrag(); }
             if (wasDragging) this.fire('dragend', {originalEvent: e});
             if (tapDrag) {
                 if (!tapDrag.zoomed) {

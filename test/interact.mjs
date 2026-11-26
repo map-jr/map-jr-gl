@@ -418,6 +418,23 @@ for (const mode of renderers) {
         check(`[${mode}] a drag pan: the events come as in MapLibre GL JS (movestart, dragstart, move before each drag) (#479)`,
             // (The worker renderer can report the last move after the release, when its frame comes later.)
             (mode === 'main' ? /^movestart dragstart (move drag )+dragend moveend$/ : /^movestart dragstart (move drag )+dragend (move )?moveend$/).test(flatDrag.order ?? ''), JSON.stringify(flatDrag));
+        // One `drag` for each frame in which the drag moved, as in MapLibre GL JS, also when the worker's camera reports come late (#2208).
+        const dragCount = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            let drags = 0; m.on('drag', () => drags++);
+            const c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
+            const send = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, clientX: x, clientY: 200, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true}));
+            send('pointerdown', 200); await frame();
+            for (let i = 1; i <= 8; i++) { send('pointermove', 200 + i * 8); await frame(); }
+            await new Promise(r => setTimeout(r, 300));
+            send('pointerup', 264); await new Promise(r => setTimeout(r, 500));
+            m.remove(); el.remove();
+            return drags;
+        }, mode).catch(e => String(e));
+        check(`[${mode}] a drag pan: 8 moves over 8 frames fire 8 drag events (#2208)`, dragCount === 8, String(dragCount));
         if (mode === 'main') check(`[${mode}] a drag pan: a marker stays on its point in every frame and does not jump at the release (#479)`,
             // (The first 3 px of a drag do not pan, so the marker stays that far behind the pointer from the start.)
             flatDrag.lag?.every(v => Math.abs(v - flatDrag.lag[0]) <= 1) && Math.abs(flatDrag.jump) <= 3, JSON.stringify(flatDrag));
