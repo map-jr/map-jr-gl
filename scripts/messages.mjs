@@ -23,6 +23,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
 import {parseAst} from 'vite';
+import {LINK, productionNames} from './message-codes.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mode = ['--check', '--write', '--json'].find(m => process.argv.includes(m));
@@ -321,14 +322,27 @@ for (const [code, section] of before) if (isRemoved(section) && byCode.has(code)
 const entryOf = (code, file) => file === 'server.ts' ? 'the server renderer' : file === 'host.ts' ? 'the main API' : file === 'mistakes.ts' ? (sites.some(x => x.alias && x.code === code && x.file === 'host.ts') ? 'the main API' : 'the main API (development build only)')
     : /^(compat-|maplibre-compat)/.test(file) ? 'the compat entry' : file === 'vue.ts' ? 'the Vue component' : file === 'nuxt.ts' ? 'the module for Nuxt' : file === 'react.ts' ? 'the React component' : 'both entries';
 const plain = text => text.replace(/\n/g, ' ').replace(/^\[map-jr-gl\] E\d+ /, '').replace(/^\[map-jr-gl\] (<method>\(\): )E\d+ /, '$1').replace(/^\[map-jr-gl\] (\w+\(\): )/, '$1');
+// The names of the values that the production build prints for each code (scripts/message-codes.mjs).
+const valueNames = new Map();
+for (const file of files) for (const [code, names] of productionNames(readFileSync(path.join(root, 'src', file), 'utf8'), path.join(root, 'src', file))) valueNames.set(code, names);
+/** What the production build prints for a code, with each value as `name=…`; nothing for a message that production does not have. */
+const production = (code, x) => /development build only|server renderer/.test(entryOf(code, x.file)) ? ''
+    : `The production build prints this:\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
 const sections = new Map();
-for (const [code, x] of byCode) sections.set(code, `## E${code}\n\nA${x.kind === 'Error' ? 'n error' : ' warning'} of ${entryOf(code, x.file)}.\n\n` + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
+for (const [code, x] of byCode) sections.set(code, `## E${code}\n\nA${x.kind === 'Error' ? 'n error' : ' warning'} of ${entryOf(code, x.file)}.\n\n` + production(code, x) + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
 for (const [code, section] of before) if (!byCode.has(code)) sections.set(code, isRemoved(section) ? section : section.replace(/\n\n/, `\n\nRemoved after ${pkg.version}.\n\n`));
 const page = `# Messages
 
 Each error and warning of the library starts with \`[map-jr-gl]\` and a code, such as \`E1846\`. This page gives the text
 of each code. A placeholder such as \`<source name>\` stands for a value that the message fills in. The package has the
 same texts in \`dist/messages.json\` (each code with its kind and its texts), so that a log can be read without network.
+
+The development build prints the code and the text. The production build prints the code, the address
+\`https://map-jr.org/e/<number>\` and the values of the placeholders in their order, each with its name, for example
+\`[map-jr-gl] E1163 https://map-jr.org/e/1163 what="tile" url="https://example.com/1/2/3.pbf" reason="HTTP 404"\`. A string
+prints in quotes, and a number without. The section of each code gives the names. The worker prints the same short form
+in both builds. The server renderer (\`@map-jr/map-jr-gl/server\`) and the standalone files print the full
+text.
 
 A code stays the same in later versions. When a message is removed, its section stays here with the version after which
 it was removed, and the code is not used again.

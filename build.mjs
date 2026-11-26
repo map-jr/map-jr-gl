@@ -10,6 +10,7 @@ import {minifyShaders} from './scripts/minify-shaders.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
 import {removedReads} from './scripts/server-reads.mjs';
 import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
+import {messageCodes} from './scripts/message-codes.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -215,10 +216,10 @@ const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
 const workerLib = {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'};
 await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne, globalNames]);
 const workerSrc = readFileSync('.cache/worker-all-in-one/map-jr-gl-worker.js', 'utf8');
-await run({lib: workerLib}, undefined, [splitParts, allInOne, globalNames]);
+await run({lib: workerLib}, undefined, [splitParts, allInOne, globalNames, messageCodes]);
 for (const {name, file} of workerParts) {
     await run({lib: {entry: `src/${file}.ts`, formats: ['iife'], name: 'MapJrPart', fileName: () => `map-jr-gl-worker-${name}.js`},
-        rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}});
+        rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}}, undefined, [messageCodes]);
 }
 
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
@@ -232,7 +233,8 @@ const esm = (input, extra = {}) => ({
 // replacement for MapLibre GL JS.
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
 const entries = {'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', element: 'src/element.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'};
-await run(esm(entries));
+// (The production files keep the code of each message and its link, and not its text: scripts/message-codes.mjs, #2148.)
+await run(esm(entries), undefined, [messageCodes]);
 // The development build of the same entries (`<name>.dev.js`, the `development` condition of package.json). It differs
 // from the build above in `__DEV__` only: it loads the checks for common mistakes (src/mistakes.ts) after the map has
 // started, and the build above has no code for that. The name of a chunk has a hash of its content, so a chunk that is

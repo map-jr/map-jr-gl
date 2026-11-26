@@ -191,7 +191,7 @@ export class Map extends CoreMap {
     }
     /**
      * A mistake or an option with no effect (#2133). With `strict: true` it throws in both builds; production throws the
-     * short text "<key> has no effect". The warning, once per map and key, is in the development build only. Callers
+     * code E90, its link and `key` (#2148). The warning, once per map and key, is in the development build only. Callers
      * pass `__DEV__ ? text : ''`, so that the production build has no text.
      */
     private mistake(key: string, message: string) {
@@ -595,6 +595,8 @@ export class Map extends CoreMap {
     setMissingStyleImageResolver(resolver: Parameters<CoreMap['setMissingStyleImageResolver']>[0]) { this.resolver = resolver; return this; }
     addImage(...args: Parameters<CoreMap['addImage']>) {
         const [name, image] = args;
+        // (Before `onAdd` and the state: as MapLibre GL JS, a mismatch throws at once and changes nothing; #2233.)
+        this.checkPixels(name, image);
         this.styleImageNames.delete(name);
         this.dropAnimated(name);
         // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` after each frame that the map draws
