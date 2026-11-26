@@ -51,7 +51,8 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
     // (A field that is undefined carries no data, and is left out: #2075 gave a line and a building such fields. The
     // code of main before #2075 gives the same hash.)
     for (const id of Object.keys(flat.layers).sort()) for (const [k, v] of Object.entries(flat.layers[id]).sort()) {
-        if (v === undefined) continue;
+        // (#2154 gave a building the centroid of each vertex, `c`, which is not part of the hash.)
+        if (v === undefined || k === 'c') continue;
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }

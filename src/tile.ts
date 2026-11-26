@@ -143,7 +143,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
-    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
+    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number;
@@ -699,7 +699,7 @@ export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
  */
 function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
-    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [];
+    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [], cen: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
         const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
@@ -711,10 +711,19 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
         };
         eachPolygon(b.geom, f, (p0, p1, holes) => {
             let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
+            // On 3D terrain, MapLibre GL JS lifts each polygon by the ground at its centroid (the mean of its points,
+            // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
+            const first = count;
+            let cx = 0, cy = 0, cn = 0;
+            for (let r = 0; r + 1 < bounds.length; r++) for (let i = bounds[r]; i < bounds[r + 1]; i++) {
+                if (i === bounds[r + 1] - 1 && coords[i * 2] === coords[bounds[r] * 2] && coords[i * 2 + 1] === coords[bounds[r] * 2 + 1]) continue;
+                cx += coords[i * 2]; cy += coords[i * 2 + 1]; cn++;
+            }
+            const centroid = () => { cen.push(first, count, Math.floor(cx / cn), Math.floor(cy / cn)); };
             const roof = count, cut = globe && globe.cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
             for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
-            if (top <= bottom) return;
+            if (top <= bottom) return centroid();
             if (globe) {
                 // (cutLine repeats the first point of a ring at its end: it is dropped.)
                 const out: number[] = [], ends = [0];
@@ -746,10 +755,14 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                     idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
                 }
             }
+            centroid();
         });
     }
     if (!idx.length) return null;
-    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined};
+    // (cen has the first vertex, the end and the centroid of each polygon.)
+    const c = new Int16Array(count * 2);
+    for (let k = 0; k < cen.length; k += 4) for (let i = cen[k]; i < cen[k + 1]; i++) { c[i * 2] = cen[k + 2]; c[i * 2 + 1] = cen[k + 3]; }
+    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined, c};
 }
 
 const ARC_STEP = Math.PI / 5;
