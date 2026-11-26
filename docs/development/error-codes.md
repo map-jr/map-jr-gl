@@ -1,8 +1,19 @@
 # Error codes in production (design for #2148)
 
-This is a design for the owner to decide on. It is not a page of the user docs. It proposes that a message that stays
-in production prints a short code, such as `[map-jr-gl] E123 https://map-jr.org/e/123`, and that the development
-build keeps the full text. All numbers are bytes gzip (level 9), measured on 2026-11-26 on `7463900`.
+This is the design of #2148, which the owner decided on 2026-11-26 (see "Decision"). It is not a page of the user docs.
+A message that stays in production prints a short code, such as `[map-jr-gl] E123 https://map-jr.org/e/123`, and the
+development build keeps the full text. All numbers are bytes gzip (Node `zlib`, level 9), measured on 2026-11-26 on
+`7463900`. The `gzip -9` command gives other numbers for the same files.
+
+## Decision
+
+The owner decided on 2026-11-26 to build the plan of this page, with these choices:
+
+- The configuration warnings of the shared map chunk print a code in production (about 60 bytes).
+- The "has no effect" warnings and the checks of `src/mistakes.ts` stay in the development build only.
+- `server.js` keeps the full texts.
+- The order is #2145 first, then the shared warnings of #2133, and then the steps of the plan below, one pull request
+  each.
 
 ## How it was measured
 
@@ -97,16 +108,35 @@ larger part.
 The cost of the codes is the difference between the file with codes for these messages and the file without the
 messages, in memory as above. Recommendation: keep the checks of `src/mistakes.ts` and the no-effect warnings of the
 compat entry in the development build only. Give codes in production to the configuration warnings of the map
-chunk whose cause can be in production only (a style or a URL that the server gives), at about 30 bytes.
+chunk whose cause can be in production only (a style or a URL that the server gives), at about 30 bytes. The owner
+accepted this recommendation (see "Decision").
+
+## Ideas from nostics.dev
+
+nostics.dev documents `nostics`, an MIT library for catalogs of diagnostic codes. This page follows some of its ideas;
+it copies no text or code from it.
+
+- An `Error` thrown in production carries the code in its `name` as well as in its `message`, so that code which
+  catches it can test the code without parsing text (step 2).
+- The page of a code is in the HTML of the response, with the code in its title, and a code that does not exist
+  answers 404, so that a tool that follows the link from a log can tell the two apart (step 3, changed).
+- The page of a code puts what to do first and the cause after it (step 3, changed).
+- A link that a release has printed keeps working after the code is removed (already in the rules above).
 
 ## Plan
 
+The plan starts after #2145 and the pull request of #2133 that moves the shared warnings have merged. Each step is one
+pull request.
+
 1. Extend `scripts/messages.mjs`: `--write` generates `docs/reference/messages.md` and `dist/messages.json`, and
-   `--check` checks the codes. Add a code to every message of `src/` (one pull request, no change of behavior).
-2. Add the production form: the build replaces the text with the code in production files (a define or a small
+   `--check` checks the codes. Add a code to every message of `src/` (no change of behavior). The configuration
+   warnings of the map chunk that #2133 keeps in production get a code too.
+2. Add the production form: the build replaces the text with the code in production files except `server.js` and the
+   standalone bundles (a define or a small
    plugin of `build.mjs` keyed on the helper calls), and the helper adds the link. The pull request gives
    `pnpm test:size` before and after.
-3. Serve `/e/<number>` on the docs site.
+3. Serve `/e/<number>` on the docs site as a page of its own in the HTML of the response, with the code in the
+   title, what to do first, and then the cause. A code that does not exist answers 404.
 4. The worker: the page of the development build looks up the code of a worker message and prints its text.
 5. Update `docs/reference/maplibre-differences.md` (MapLibre GL JS prints full texts) and the guide on errors.
 
