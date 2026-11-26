@@ -6,7 +6,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {boxAround, CollisionGrid, FULL_CLIP, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
@@ -2035,8 +2035,9 @@ export class Engine {
             }
             // (The box of placement: `text-padding` is added before the box is turned, as in MapLibre GL JS. Text on the
             // ground has the size of its frame on the screen, as its collision box has.)
-            const f = p.frame, fw = f ? w * Math.hypot(f[0], f[1]) : w, fh = f ? h * Math.hypot(f[2], f[3]) : h;
-            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: boxAround(p.x + x - p.ax, p.y + y - p.ay, fw, fh, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !f ? -this.tr.bearing * Math.PI / 180 : 0)});
+            // (Text of a layer with `icon-offset` is drawn without the perspective ratio, and its box keeps it: see `Placed.fixedSize`.)
+            const r = p.fixedSize ? (p.frame ? flatSize(this.tr, at[2]) : perspective(this.tr, at[2])) : 1, f = p.frame, fw = (f ? w * Math.hypot(f[0], f[1]) : w) * r, fh = (f ? h * Math.hypot(f[2], f[3]) : h) * r;
+            out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: boxAround(x + (p.x - p.ax) * r, y + (p.y - p.ay) * r, fw, fh, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !f ? -this.tr.bearing * Math.PI / 180 : 0)});
         }
         return out;
     }
