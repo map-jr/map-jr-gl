@@ -4860,6 +4860,29 @@ for (const mode of renderers) {
             dev.length === 2 && dev[0].startsWith('[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
             && dev[1].startsWith('[map-jr-gl] layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
     }
+    // `validate` of setStyle wins over the option of `new Map()` for that style, in the development build (#1748).
+    if (mode === 'main') {
+        const v = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = id => ({version: 8, sources: {}, layers: [{id, type: 'fill'}]});
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const errors = [];
+            m.on('error', e => errors.push(e.error.message));
+            await new Promise(r => m.once('load', r));
+            const out = {};
+            for (const [id, options] of [['a', {validate: false}], ['b', {}], ['c', {validate: false, diff: false}]]) {
+                errors.length = 0;
+                m.setStyle(style(id), options);
+                await new Promise(r => m.once('idle', r));
+                out[id] = errors.filter(e => e.includes('missing required property')).length;
+            }
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: setStyle(style, {validate: false}) skips the check of the style in the development build, and a later setStyle without it checks again',
+            v.a === 0 && v.b === 1 && v.c === 0, JSON.stringify(v));
+    }
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {
         const logo = await page.evaluate(async () => {

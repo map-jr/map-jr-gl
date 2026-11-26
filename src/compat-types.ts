@@ -213,9 +213,11 @@ export type StyleSpecification = {
 export type StyleSetterOptions = {validate?: boolean};
 /**
  * The options of `map.setStyle`. The map always replaces the whole style, so `diff` has no effect on the result.
- * `transformStyle` gets the style before and the new style, and returns the style to use.
+ * `transformStyle` gets the style before and the new style, and returns the style to use. In the development build,
+ * `validate: false` skips the check of this style, and `validate: true` checks it; without `validate`, the option
+ * `validate` of `new Map()` applies. The production build checks no style.
  */
-export type StyleSwapOptions = {diff?: boolean; transformStyle?: (previous: any, next: any) => any};
+export type StyleSwapOptions = {diff?: boolean; validate?: boolean; transformStyle?: (previous: any, next: any) => any};
 export type StyleImageMetadata = {pixelRatio?: number; sdf?: boolean; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: string; textFitHeight?: string};
 
 /**
