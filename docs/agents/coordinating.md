@@ -57,6 +57,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   On the owner's Mac (10 cores) four slots ran without failures of timing on 2026-11-24 and six gave six failures in
   one run of `test/interact.mjs`: write `SUITE_SLOTS=4` into the prompt of each worker there. A suite takes 13 to 30
   minutes while several workers build.
+- **On the cloud VM, tell each worker to run its new check as a standalone Playwright script** against a demo server
+  of its own, with and without the fix, and to leave the full suites to CI. On 2026-11-26 eight workers waited more
+  than an hour for a slot of `suite.mjs`, and the main-renderer part of `test/interact.mjs` stopped at an image-source
+  check in every run (#2138), so no worker could show its check failing without the fix through the suite. A
+  standalone script of the check gave that evidence in a few minutes. Keep about four workers at once there.
 
 ## While the workers run
 
@@ -104,6 +109,14 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   the background in the worktree of the worker.
 - **A usage limit stops workers with their context.** Push the branch of each stopped worker before you wait. After
   the reset, send each one what changed on `main`; do not start new workers for the same issues.
+- **A restart of the cloud container can lose hours and the results of running workers.** On 2026-11-26 a restart
+  stopped the session for about seven hours; the report of one worker was only in its output file. After a restart,
+  read the output file of each task that the restart notice names, start the CI watch again, and update each open
+  pull request from `main` (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/N/update-branch`) before you merge it,
+  because its CI ran on an old base.
+- **Measure the bytes of a branch on its merge with `main`, not on the branch alone.** A branch that is behind `main`
+  compares with an older base: on 2026-11-26 a reviewer measured +15 bytes for #2178, and its merge with `main` gave
+  +404. Build the result of `git merge` of the branch into `origin/main` in a temporary worktree.
 
 ## Merging
 
@@ -289,7 +302,9 @@ alone cannot.
 - The shell of the owner's Mac sets `noclobber`, so `cat > file` does not replace a file that exists: write `>|`,
   and `2>|` for the error output.
 - The log of one job: `gh api --allow-escape-sequences repos/map-jr/map-jr-gl/actions/jobs/<id>/logs >| file`. Without
-  the option `gh` writes nothing, and the log of a run that is still in progress is not there yet.
+  the option `gh` writes nothing, and the log of a run that is still in progress is not there yet. The `gh` of the
+  cloud VM (2.89) does not know the option and writes the log without it:
+  `gh api repos/map-jr/map-jr-gl/actions/jobs/<id>/logs > file`.
 - `gh api -X PUT …/pulls/N/merge -f sha=` needs the full SHA of 40 characters.
 - A dispatch of the workflow `Browsers` with `safari` (not `safari_only`) replaces a push run of it that waits, a push
   run of a merge included. A dispatch with `safari_only` does not (#1929).
