@@ -1022,7 +1022,7 @@ export class Engine {
             case 'tileReport': this.tap = c.on; return;
             case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;
-            case 'cameraUpdate': this.cameraUpdate = c.fn; break;
+            case 'cameraUpdate': this.cameraUpdate = c.fn; this.cameraUpdated = undefined; break;
             case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
         this.repaint();
@@ -1553,6 +1553,8 @@ export class Engine {
     private stats = {since: 0, frames: 0, cpu: 0};
 
     private cameraUpdate: ((tr: Transform) => void) | null = null;
+    /** The camera after the last call of `cameraUpdate`: as in MapLibre GL JS, the function runs only when the camera changed, so that a map whose function always changes the camera still goes idle (#1970). */
+    private cameraUpdated?: number[];
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
@@ -1578,7 +1580,10 @@ export class Engine {
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), animating = cameraAnimating;
         // (As in MapLibre GL JS, the camera that the function returns is the one that the frame draws, #1711.)
-        if (this.cameraUpdate) try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
+        if (this.cameraUpdate && !this.cameraUpdated?.every((v, i) => v === [tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch][i])) {
+            try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
+            this.cameraUpdated = [tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch];
+        }
         this.flushUploads(this.wentIdle && (cameraAnimating || began - this.cameraMovedAt < 200));
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
