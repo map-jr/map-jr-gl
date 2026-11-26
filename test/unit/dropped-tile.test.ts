@@ -13,7 +13,7 @@ test('dropped tile: a tile dropped before or after its upload leaves no live GPU
     const answers: ((tile: unknown) => void)[] = [];
     const backend = {load: () => new Promise(r => answers.push(r)), cancel() {}};
     const e = Object.assign(Object.create(Engine.prototype), {
-        renderer, backends: [backend], tiles: new Map(), uploads: [], nextBackend: 0, nextReq: 0, tilesVersion: 0, freshTiles: new Map(),
+        renderer, backends: [backend], tiles: new Map(), uploads: [], most: new WeakMap(), nextBackend: 0, nextReq: 0, tilesVersion: 0, freshTiles: new Map(),
         frameNo: 1, frameTime: 0, zoomMovedAt: -1e9, sourceSigs: new Map(), zoomBuilt: new Set(), tap: false,
         style: {sources: {s: {type: 'vector', tiles: ['https://tiles.test/{z}/{x}/{y}.pbf'], maxzoom: 14}}},
         repaint() {}, invalidate() {}, emit() {}, ground() {},
