@@ -317,6 +317,27 @@ for (const mode of renderers) {
             return out;
         }, mode);
         check(`[${mode}] a pitched Mercator map: icon-translate moves an icon in tile units, and queryRenderedFeatures finds it there (#2021)`, Object.values(pitched).every(m => Math.abs(m.drawn[0] - 200) < 3 && m.drawn[1] > 220 && m.drawn[1] < 245 && m.atDrawn === 1 && m.atPixels === 0), JSON.stringify(pitched));
+        // Near the bottom of a map with pitch 85 the ground is near the camera, and icon-translate [20, 20] moves an icon
+        // by about 80 pixels to the right: queryRenderedFeatures finds it there too (#2021).
+        const near = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:700px;z-index:60'}));
+            const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 45]}}},
+                layers: [{id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'sq', 'icon-allow-overlap': true}, paint: {'icon-translate': [20, 20]}}]};
+            const map = new mod.Map({container: el, style, center: [10, 45], zoom: 14, pitch: 85, maxPitch: 85, renderer, attributionControl: false});
+            map.addImage('sq', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).fill(255)});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const at = map.unproject([200, 630]);
+            map.getSource('p').setData({type: 'Point', coordinates: [at.lng, at.lat]});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            // (Where the GPU draws the icon: the point moved by tile units and projected again.)
+            const ws = 512 * 2 ** 14, mx = (at.lng + 180) / 360 + 20 / ws, my = (1 - Math.log(Math.tan(Math.PI / 4 + at.lat * Math.PI / 360)) / Math.PI) / 2 + 20 / ws;
+            const drawn = map.project([mx * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * my))) * 180 / Math.PI]);
+            const result = {drawn: [Math.round(drawn.x), Math.round(drawn.y)], found: (await map.queryRenderedFeatures([drawn.x, drawn.y], {layers: ['i']})).length};
+            map.remove(); el.remove();
+            return result;
+        }, mode);
+        check(`[${mode}] a map with pitch 85: queryRenderedFeatures finds an icon moved by icon-translate near the bottom of the view (#2021)`, near.drawn[0] > 260 && near.found === 1, JSON.stringify(near));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();
