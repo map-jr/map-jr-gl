@@ -2001,7 +2001,7 @@ export class GLRenderer {
                 for (const g of line.glyphs) {
                     const img = g.image ? lookup(g.image) : undefined;
                     if (img && !!img.custom === custom) {
-                        const w = g.advance * k, h = g.imageHeight! * k, cx = (pen + g.advance / 2) * k, cy = mid * k;
+                        const w = g.advance * k, h = g.imageHeight! * k, cx = (pen + g.advance / 2) * k, cy = (mid + (g.dy ?? 0)) * k;
                         const x0 = flat ? snap(l.x + cx - w / 2) - l.x : cx - w / 2, y0 = flat ? snap(l.y + cy - h / 2) - l.y : cy - h / 2;
                         room(54);
                         for (const [ux, uy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
@@ -2064,7 +2064,7 @@ export class GLRenderer {
                 for (let i = 0; i < glyphs.length; i++) {
                     const g = glyphs[i];
                     if (!g.w) continue;
-                    const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k, along = l.ground?.[i * 3] ?? 1;
+                    const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k + (g.dy ?? 0) * s, along = l.ground?.[i * 3] ?? 1;
                     glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga) * along, Math.sin(ga) * along, x0, y0, x0 + g.w * k, y0 + g.h * k, l.ground?.[i * 3 + 1], l.ground?.[i * 3 + 2]);
                 }
                 continue;
@@ -2078,7 +2078,7 @@ export class GLRenderer {
                     if (g.w) {
                         if (g.scale || g.color) {
                             // Rich text: this glyph has its own size or color. The label's values come back after it.
-                            const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
+                            const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline + (g.dy ?? 0) - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
                             if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
                             gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * k) / SDF_RADIUS);
                             glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * k * s, y0 + g.h * k * s, nx, ny);
