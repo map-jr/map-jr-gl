@@ -1754,6 +1754,24 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
         [0, 45].every(p => neighbor[p].now === 'const,zoom' && neighbor[p].later === 'const,zoom'), JSON.stringify(neighbor));
 
+    // A circle with a radius far larger than the map is found on a tilted map, as in MapLibre (#2230): the rectangle
+    // that chooses the tiles is cut to the canvas and one tile. Ten circles, pitch 60, a point and a box.
+    const huge = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:300px'}));
+        const features = Array.from({length: 10}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [i * 0.005, Math.sin(i) * 0.02]}}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, pitch: 60, style: {version: 8,
+            sources: {s: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [{id: 'huge', type: 'circle', source: 's', paint: {'circle-radius': 100000}}]}});
+        await new Promise(r => m.once('idle', r));
+        const c = m.project([0, 0]), out = {};
+        out.point = {now: m.queryRenderedFeatures([c.x, c.y]).length, later: (await m.queryRenderedFeatures([c.x, c.y])).length};
+        out.box = {now: m.queryRenderedFeatures([[0, 0], [400, 300]]).length, later: (await m.queryRenderedFeatures([[0, 0], [400, 300]])).length};
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a circle-radius of 100000 on a map with pitch 60 finds every feature, by a point and by a box, also in the array at once (#2230)`,
+        [huge.point, huge.box].every(r => r.now === 10 && r.later === 10), JSON.stringify(huge));
+
     // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
     // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at
     // (20, 8) pixels from the center, flat and on a tilted map.
