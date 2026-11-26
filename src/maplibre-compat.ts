@@ -87,9 +87,14 @@ export class Popup extends CorePopup {
 import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
 export {Evented};
-/** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
+/**
+ * The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read, and the
+ * option `subpixelPositioning` of MapLibre GL JS.
+ */
 export class Marker extends CoreMarker {
-    constructor(options: MarkerOptions = {}) { super(options); this.round = Math.round; }
+    constructor(options: MarkerOptions = {}) { super(options); this.setSubpixelPositioning(!!options.subpixelPositioning); }
+    /** Places the marker on fractions of a pixel (`true`) or on whole pixels (`false`, the default). */
+    setSubpixelPositioning(value: boolean) { this.round = value ? Number : Math.round; this.update(); return this; }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
     /** The offset as a `Point`, as in MapLibre GL JS. */

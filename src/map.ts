@@ -548,6 +548,8 @@ export class Map {
     }
 
     private restarted = false;
+    /** A restart for a lost context ran: the next loss before a first frame is an error. A move for a custom layer does not count (#1993). */
+    private retried = false;
     private restarting = false;
     /** The restart moves the engine to this thread for a custom layer (see `toMainThread`). */
     private movingToMain = false;
@@ -560,6 +562,7 @@ export class Map {
     private async restart(main?: boolean, quiet?: boolean) {
         if (this.restarting || this.removed) return;
         this.restarting = this.restarted = true;
+        if (!quiet) this.retried = true;
         this.movingToMain = !!quiet;
         if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
         this.watchTurn++;
@@ -663,14 +666,14 @@ export class Map {
      * already and fails before its first frame, or does not draw in its time, is an error.
      */
     private contextLost(silent?: boolean) {
-        if (__DEV__) this.note('contextLost()', {silent: !!silent, removed: this.removed, restarting: this.restarting, restarted: this.restarted, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
+        if (__DEV__) this.note('contextLost()', {silent: !!silent, removed: this.removed, restarting: this.restarting, retried: this.retried, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
         if (this.removed) return;
         // (The new engine lost its context while `restart` still waits, for the images for example.)
         if (this.restarting) return void setTimeout(() => this.contextLost(silent), 1000);
         const worker = this.renderer === 'worker', now = Date.now(), drew = this.drew && !silent, toMain = worker && (!drew || now - this.lostAt < 10000);
         this.lostAt = now;
-        if (__DEV__) this.note('decision', drew || worker || !this.restarted ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
-        if (drew || worker || !this.restarted) {
+        if (__DEV__) this.note('decision', drew || worker || !this.retried ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
+        if (drew || worker || !this.retried) {
             if (toMain) this.fellBack('the WebGL context was lost');
             this.restart(toMain);
         } else {
@@ -2022,7 +2025,7 @@ export class Map {
         const only = options.layers ? new Set(options.layers) : null, z = this.tr.zoom, layers: any[] = this.rawStyle?.layers ?? [];
         const number = (v: unknown, fallback: number) => typeof v === 'number' ? v : fallback;
         // (As `sizeOf` of `src/query.ts`, which the page script does not load: half of the width, or of the gap and two widths.)
-        const lineReach = (w: number, gap: number) => Math.max(3, (gap > 0 ? gap + 2 * w : w) / 2);
+        const lineReach = (w: number, gap: number) => (gap > 0 ? gap + 2 * w : w) / 2;
         // A circle or line layer whose size is not a number (an expression or a function) is tested with the size of
         // each feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.size`).
         const size = (l: any): QuerySet['size'] => {

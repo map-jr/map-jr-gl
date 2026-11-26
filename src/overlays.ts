@@ -277,6 +277,8 @@ export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?:
     /** The opacity of the marker (default `'1'`), and its opacity while the far side of the globe hides its position (default `'0.2'`), as in MapLibre GL JS. */
     opacity?: string | number;
     opacityWhenCovered?: string | number;
+    /** maplibre-compat only: places the marker on fractions of a pixel instead of whole pixels (default `false`). */
+    subpixelPositioning?: boolean;
 }
 
 /**

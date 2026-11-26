@@ -1645,6 +1645,22 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
 
+    // A thin line is found only within half of its width, with no minimum, as in MapLibre GL JS (#2003): a line of
+    // 1 pixel (a number, and from a property) is found on its center line and not 2 pixels away.
+    const thin = await page.evaluate(async () => {
+        const m = window.map, p = m.project(m.getCenter()), a = m.unproject([p.x - 100, p.y]), b = m.unproject([p.x + 100, p.y]);
+        m.addSource('thin', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {w: 1}, geometry: {type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]]}}});
+        m.addLayer({id: 't-number', type: 'line', source: 'thin', paint: {'line-width': 1}});
+        m.addLayer({id: 't-data', type: 'line', source: 'thin', paint: {'line-width': ['get', 'w']}});
+        const layers = ['t-number', 't-data'], ids = fs => fs.map(f => f.layer.id).sort().join();
+        let on = [];
+        for (let i = 0; i < 100 && on.length < 2; i++) { await new Promise(r => setTimeout(r, 100)); on = await m.queryRenderedFeatures(p, {layers}); }
+        const off = await m.queryRenderedFeatures([p.x, p.y + 2], {layers});
+        layers.forEach(l => m.removeLayer(l)); m.removeSource('thin');
+        return {on: ids(on), off: ids(off)};
+    });
+    check(`[${mode}] queryRenderedFeatures: a line of 1 pixel is found on its center line and not 2 pixels away (#2003)`, thin.on === 't-data,t-number' && thin.off === '', JSON.stringify(thin));
+
     // A line layer without `line-width` is queried with the default of the style specification, 1 pixel, as in MapLibre
     // GL JS 6.17 (#2002). With a `line-gap-width` of 4 the line reaches 3 pixels from its center line, so a point 4.5
     // pixels away misses it (a width of 4 reached 6). (Without a gap the 3-pixel minimum of #2003 hides the default.)
@@ -1860,6 +1876,14 @@ for (const mode of renderers) {
     // react-map-gl 8 drives `onMouseEnter` and `cursor` with `queryRenderedFeatures(e.point, {layers})`, read at once in
     // its `mousemove` listener (#195). One move of the mouse onto features of tiles must reach the enter state.
     {
+        // (The point is one where an awaited query finds a feature, so that the check does not depend on a thin line
+        // within 3 pixels, which neither this library nor MapLibre GL JS finds; #2003.)
+        const spot = await page.evaluate(async () => {
+            const m = window.map, c = m.getCanvas(), layers = m.getStyle().layers.filter(l => l.source && l.type !== 'raster').map(l => l.id);
+            for (let d = 0; d < 200; d += 10) for (const [dx, dy] of [[-70 - d, -30], [-70 + d, -30], [-70, -30 - d], [-70, -30 + d]])
+                if ((await m.queryRenderedFeatures([c.clientWidth / 2 + dx, c.clientHeight / 2 + dy], {layers})).length) return [dx, dy];
+            return [-70, -30];
+        });
         await page.evaluate(() => {
             const m = window.map, layers = m.getStyle().layers.filter(l => l.source && l.type !== 'raster').map(l => l.id);
             window.hover = {enter: 0, moves: 0};
@@ -1867,7 +1891,7 @@ for (const mode of renderers) {
             m.on('mousemove', window.hoverMove);
         });
         const box = await page.locator('canvas').first().boundingBox();
-        await page.mouse.move(box.x + box.width / 2 - 70, box.y + box.height / 2 - 30);
+        await page.mouse.move(box.x + box.width / 2 + spot[0], box.y + box.height / 2 + spot[1]);
         await page.waitForTimeout(1500);
         const hover = await page.evaluate(() => { window.map.off('mousemove', window.hoverMove); return window.hover; });
         check(`[${mode}] react-map-gl hover: a mousemove listener that reads queryRenderedFeatures with layers at once gets the features`, hover.enter === 1, JSON.stringify(hover));
@@ -6936,12 +6960,19 @@ for (const mode of renderers) {
                 out.round = t(round); out.sub = t(sub);
                 out.subpixel = round.getElement().style.transform.startsWith('translate(100px') && Math.abs(parseFloat(t(sub)) - 100.4) < 0.01;
                 round.remove(); sub.remove();
+                // #1782: Marker has setSubpixelPositioning and the option subpixelPositioning, as in MapLibre GL JS.
+                const pin = new mod.Marker().setLngLat(frac).addTo(m), pinned = new mod.Marker({subpixelPositioning: true}).setLngLat(frac).addTo(m);
+                out.markerRound = t(pin); out.markerOption = t(pinned);
+                out.markerSet = t(pin.setSubpixelPositioning(true)); out.markerBack = t(pin.setSubpixelPositioning(false));
+                out.markerSubpixel = out.markerRound === '100' && Math.abs(out.markerOption - 100.4) < 0.01 && Math.abs(out.markerSet - 100.4) < 0.01 && out.markerBack === '100';
+                pin.remove(); pinned.remove();
             } finally { console.warn = warn; }
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
         });
         check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
             options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
+        check('[main] maplibre-compat: Marker places itself on fractions of a pixel with the option subpixelPositioning and setSubpixelPositioning(true), and on whole pixels by default (#1782)', options.markerSubpixel, JSON.stringify(options));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
