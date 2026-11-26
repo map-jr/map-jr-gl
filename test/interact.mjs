@@ -646,6 +646,23 @@ for (const mode of renderers) {
     const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
     check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl === '[map-jr-gl] E464 https://map-jr.org/e/464 image="gl"', gl);
+    // #2236: render() runs only for an image that a layer uses, as in MapLibre GL JS. The checks below use each image in a
+    // transparent background layer (`useImage`).
+    const unused = await page.evaluate(async () => {
+        const m = window.map, frame = () => frames++;
+        window.useImage = (name, on = true) => on ? m.addLayer({id: 'use-' + name, type: 'background', paint: {'background-pattern': name, 'background-opacity': 0}}) : m.removeLayer('use-' + name);
+        let renders = 0, frames = 0;
+        m.on('render', frame);
+        await m.addImage('unused', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; return false; }});
+        const t0 = performance.now();
+        while (frames < 5 && performance.now() - t0 < 20000) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 50)); }
+        const before = renders;
+        window.useImage('unused');
+        while (renders < 2 && performance.now() - t0 < 20000) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 50)); }
+        window.useImage('unused', false); m.removeImage('unused'); m.off('render', frame);
+        return {frames, before, used: renders - before};
+    });
+    check(`[${mode}] render() of an image that no layer uses is not called (#2236)`, unused.frames >= 5 && unused.before === 0 && unused.used >= 2, JSON.stringify(unused));
     // #1746: an image with render() (StyleImageInterface) gets onAdd, render before each frame (new pixels when it returns
     // true) and onRemove, as in MapLibre GL JS.
     const anim = await page.evaluate(async () => {
@@ -653,18 +670,20 @@ for (const mode of renderers) {
         const image = {width: 2, height: 2, data: new Uint8Array(16), onAdd(m, id) { log.add++; log.id = id; }, onRemove() { log.remove++; },
             render() { log.renders++; this.data = new Uint8Array(16).fill(log.renders % 255); window.map.triggerRepaint(); return true; }};
         await window.map.addImage('pulse', image);
+        window.useImage('pulse');
         const t0 = performance.now();
         while (log.renders < 3 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 50));
-        window.map.removeImage('pulse');
+        window.useImage('pulse', false); window.map.removeImage('pulse');
         const n = log.renders;
         window.map.triggerRepaint();
         await new Promise(r => setTimeout(r, 300));
         log.after = log.renders - n;
         // An image whose render() returns true and whose code does not repaint lets the map reach idle.
         await window.map.addImage('still', {width: 1, height: 1, data: new Uint8Array(4), render: () => true});
+        window.useImage('still');
         window.map.triggerRepaint();
         log.idle = await new Promise(r => { window.map.once('idle', () => r(true)); setTimeout(() => r(false), 3000); });
-        window.map.removeImage('still');
+        window.useImage('still', false); window.map.removeImage('still');
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
@@ -678,10 +697,11 @@ for (const mode of renderers) {
             window.map.on('render', frame);
             let n = 0;
             await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
+            window.useImage('early');
             window.map.triggerRepaint();
             const t0 = performance.now();
             while (order.length < 6 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 20));
-            window.map.removeImage('early'); window.map.off('render', frame);
+            window.useImage('early', false); window.map.removeImage('early'); window.map.off('render', frame);
             return order.join('');
         });
         check(`[${mode}] render() of an image runs before each frame (#2128)`, /^(RF)+R?$/.test(renderOrder), renderOrder);
@@ -691,12 +711,13 @@ for (const mode of renderers) {
         const m = window.map, order = [], errors = [], frame = () => order.push('F'), err = e => errors.push(String(e.error?.message));
         m.on('render', frame); m.on('error', err);
         await m.addImage('throws', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('T'); throw new Error('boom'); }});
+        window.useImage('throws');
         // (It waits for three frames after the throws, not for a fixed time: a loaded runner draws fewer frames in it.)
         const count = () => [order.filter(o => o === 'F').length, errors.filter(e => e === 'boom').length];
         const t0 = performance.now();
         while ((count()[0] < 3 || count()[1] < 3) && performance.now() - t0 < 20000) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 100)); }
         const frames = count()[0];
-        m.removeImage('throws'); m.off('render', frame); m.off('error', err);
+        window.useImage('throws', false); m.removeImage('throws'); m.off('render', frame); m.off('error', err);
         return {frames, errors: errors.filter(e => e === 'boom').length};
     });
     check(`[${mode}] a throw of render() fires error and does not stop the frames (#2278)`, hookFaults.frames >= 3 && hookFaults.errors >= 3, JSON.stringify(hookFaults));
