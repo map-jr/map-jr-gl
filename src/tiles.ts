@@ -200,9 +200,9 @@ export class TileBuilder {
                 this.loading.set(key, p);
                 try { bytes = await p; } finally { if (this.loading.get(key) === p) this.loading.delete(key); }
             }
-            if (!bytes) return {layers: {}, labels: {}, expires: st.expires};
+            if (!bytes) return {layers: {}, labels: {}, expires: st.expires, etag: st.etag};
             if (n === this.forgotten) this.remember(key, bytes);
-            return {...bytes.length ? this.build(decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires};
+            return {...bytes.length ? this.build(decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires, etag: st.etag};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -321,7 +321,7 @@ export class PortBackend implements TileBackend {
             if (!p) return;
             this.pending.delete(e.data.id);
             if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final}));
-            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, fault: e.data.tile.fault});
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, etag: e.data.tile.etag, fault: e.data.tile.fault});
             else p.resolve(e.data.result);
         };
     }
@@ -396,7 +396,7 @@ export function serveTiles(port: Port) {
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = await finish(await builder.loadIR(m.req), m.req);
-                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, fault: tile.fault}}, transfer);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, etag: tile.etag, fault: tile.fault}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final});
             }

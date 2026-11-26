@@ -942,6 +942,28 @@ for (const mode of renderers) {
         const ours = await run('ours'), ml = await run('ml');
         check(`[${mode}] maplibre-compat: only the tiles of the view fire sourcedata with a tile, not the overview tile, as MapLibre GL JS (#2135)`, ours !== '' && ours === ml, JSON.stringify({ours, ml}));
     }
+    // A reload of an expired vector tile that the server answers with 304 (not modified) fires no `sourcedata` with
+    // `tile`, as in MapLibre GL JS (#2136). (`?etag` of the demo server gives the tile `max-age=1` and an `ETag`, and
+    // answers the reload with 304; the browser gives that as a 200 with the same `ETag`. The check waits for two reloads.)
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:256px;height:256px'}));
+            const m = new mod.Map({container: el, renderer: mode, center: [0, 0], zoom: 0, renderWorldCopies: false, attributionControl: false, style: {version: 8,
+                sources: {v: {type: 'vector', tiles: [location.origin + '/tiles/{z}/{x}/{y}.pbf?etag'], maxzoom: 0}}, layers: [{id: 'w', type: 'fill', source: 'v', 'source-layer': 'water'}]}});
+            const tiles = [];
+            m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'v' && c) tiles.push(`${c.z}/${c.x}/${c.y}`); });
+            // (Bounded: a wait that never ends would stop the suite.)
+            const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), new Promise(r => setTimeout(() => r(false), 15000))]);
+            const first = tiles.length;
+            await new Promise(r => setTimeout(r, 3500));
+            m.remove(); el.remove();
+            return (idle && first ? '' : 'no first load: ') + tiles.slice(first).join();
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] maplibre-compat: a reload of an expired tile that answers 304 fires no sourcedata with a tile, as MapLibre GL JS (#2136)`, ours === '' && ours === ml, JSON.stringify({ours, ml}));
+    }
     // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
     const urlDiff = await page.evaluate(async () => {
         const m = window.map, source = m.getSource('zones'), point = (id, name) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
