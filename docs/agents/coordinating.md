@@ -104,6 +104,10 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   time. Before you call it, do everything that does not depend on the answer: merge what is green, start the next
   workers, send failures back, file the issues of the reports. Call it only when every step that is left needs the
   answer, or when no other work is left.
+- **A question can have a timeout** (the owner, 2026-11-26). Schedule a wake-up with the wake-up tool of the session
+  (`ScheduleWakeup`, or a scheduled task where that tool is missing) for the time that you can wait, and then ask.
+  When the wake-up comes and the owner has not answered, go on with the work that does not need the answer, and ask
+  again later. No answer is not a yes: a pull request that waits for the owner stays open.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
