@@ -60,6 +60,11 @@ export interface QuerySet {
      * moved to the right of its direction, as MapLibre GL JS does (`offsetLine`).
      */
     size?: {line?: boolean; a: unknown; b: unknown; o?: unknown; zoom: number; scale?: number};
+    /**
+     * A circle layer whose size depends on the feature: the largest `circle-radius` and `circle-stroke-width` in pixels
+     * of its features in the data that the map has, as MapLibre GL JS takes from each bucket (`getMaximumPaintValue`).
+     */
+    most?: [number, number];
     /** A circle, fill, line or fill-extrusion layer with `*-translate`: how far it is drawn from its features, in pixels of the screen. */
     translate?: [number, number];
 }
@@ -81,11 +86,12 @@ function bound(v: any): number {
 
 /**
  * How far from its features a set draws in pixels of the screen, which the choice of tiles of a query grows by: its
- * `radius`, or for a size that depends only on the zoom its largest value. Any other size keeps its `radius`.
+ * `radius`, or for a size that depends only on the zoom its largest value. A size of a circle that depends on the
+ * feature takes the largest value in `most`. Any other size keeps its `radius`.
  */
 export function setReach(s: QuerySet): number {
     if (!s.size) return s.radius;
-    const z = s.size, d = (v: unknown, x: number) => bound(v ?? x), w = d(z.a, z.line ? 1 : 5), b = d(z.b, 0);
+    const z = s.size, d = (v: unknown, x: number, i: number) => { const n = bound(v ?? x); return n < Infinity || z.line ? n : s.most?.[i] ?? n; }, w = d(z.a, z.line ? 1 : 5, 0), b = d(z.b, 0, 1);
     const r = (z.line ? (b > 0 ? b + 2 * w : w) / 2 : w + b) + (z.o === undefined ? 0 : bound(z.o));
     return r < Infinity ? r : s.radius;
 }
@@ -303,12 +309,16 @@ export function tilesUnderBox(tr: Transform, box: number[], minzoom: number, max
         const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
         return [Math.min(...c.map(p => p[0])), Math.max(...c.map(p => p[0])), Math.min(...c.map(p => p[1])), Math.max(...c.map(p => p[1]))];
     };
-    // (A reach without a bound, as a query of all features has, chooses no more tiles; a pad is at most one tile.)
-    pad = pad < Infinity ? Math.min(pad, 512 * 2 ** (tr.zoom % 1)) : 0;
-    const [west, east, north, south] = span(box), g = span([box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad]);
-    const z = clamp(Math.floor(tr.zoom), minzoom, maxzoom), n = 2 ** z, scale = EXTENT / (512 * 2 ** (tr.zoom - z)), out: {z: number; x: number; y: number; box: [number, number, number, number]; scale: number}[] = [];
-    const tx0 = Math.floor(g[0] * n), tx1 = Math.floor(g[1] * n), ty0 = clamp(Math.floor(g[2] * n), 0, n - 1), ty1 = clamp(Math.floor(g[3] * n), 0, n - 1);
-    if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 256) throw new Error('The query covers too many tiles');
+    // (A reach without a bound, as a query of all features has, chooses no more tiles. A pad is at most the canvas and
+    // one tile, as in `pitchedCircles`, and at most one tile when the larger pad would choose too many tiles.)
+    const tile = 512 * 2 ** (tr.zoom % 1), [west, east, north, south] = span(box), z = clamp(Math.floor(tr.zoom), minzoom, maxzoom), n = 2 ** z;
+    const range = (p: number) => { const g = span([box[0] - p, box[1] - p, box[2] + p, box[3] + p]); return [Math.floor(g[0] * n), Math.floor(g[1] * n), clamp(Math.floor(g[2] * n), 0, n - 1), clamp(Math.floor(g[3] * n), 0, n - 1)]; };
+    const count = (r: number[]) => (r[1] - r[0] + 1) * (r[3] - r[2] + 1);
+    pad = pad < Infinity ? Math.min(pad, Math.max(tr.width, tr.height) + tile) : 0;
+    let r = range(pad);
+    if (pad > tile && count(r) > 256) r = range(tile);
+    const [tx0, tx1, ty0, ty1] = r, scale = EXTENT / (512 * 2 ** (tr.zoom - z)), out: {z: number; x: number; y: number; box: [number, number, number, number]; scale: number}[] = [];
+    if (count(r) > 256) throw new Error('The query covers too many tiles');
     for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
         out.push({z, x: ((tx % n) + n) % n, y: ty, scale, box: [(west * n - tx) * EXTENT, (north * n - ty) * EXTENT, (east * n - tx) * EXTENT, (south * n - ty) * EXTENT]});
     }
