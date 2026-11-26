@@ -62,6 +62,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   | The coordinator | Opus |
 
   Read each finding of a Sonnet review, not only its verdict: one Sonnet review called a real fault "minor".
+- **Use the subagent type `worker`** (`.claude/agents/worker.md`, added on 2026-11-26) for workers and for reviewers that
+  push, and the built-in type `Explore` or `Plan` for read-only subagents (triage, a review that pushes nothing, a check
+  on `main`). These types load fewer tool definitions than `general-purpose` (47,400 tokens for `Plan` against 69,000;
+  `worker` is not measured yet). The first coordinator that uses `worker` measures it with a run that only replies,
+  and writes the number into `docs/agents/subagent-models.md`.
 - **Spend the tokens where they cost.** A subagent starts with about 69,000 tokens of context (the system prompt, the
   tools and `CLAUDE.md`) before any work, the same on every model. Its later steps read that context from the prompt
   cache, which costs a twentieth of new input on Opus 5.5 and Sonnet 5.5, so the cost of a subagent is mostly what it

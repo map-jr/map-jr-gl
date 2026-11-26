@@ -26,6 +26,7 @@ the size of the context at the end of the run, not the sum of what was processed
 |---|---|
 | general-purpose or claude (all tools) | 68,900 to 69,100 tokens |
 | Explore or Plan (no tools that edit files) | 47,400 tokens |
+| worker (`.claude/agents/worker.md`: Bash, Read, Edit, Write, Grep, Glob) | not measured yet; a session loads agent types when it starts |
 
 Reading `docs/agents/worker-brief.md` adds about 6,400 tokens; `CLAUDE.md` is about 6,000. The rest of the fixed part
 is the system prompt of Claude Code and the definitions of its tools. Later steps and later subagents of the same model
