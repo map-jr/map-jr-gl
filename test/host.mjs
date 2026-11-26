@@ -3675,6 +3675,7 @@ for (const renderer of ['worker', 'main']) {
             // A hillshade on 3D terrain whose part `layers` comes after the pictures of the ground tiles were drawn (#2215):
             // the pictures are drawn again with the hillshade. The same for a hillshade that `update()` adds after load, and
             // on the globe. Each picture is compared with the one where the part comes at once.
+            for (const mode of ['load', 'update', 'globe']) {
             const shade = await browser.newPage({viewport: {width: 900, height: 600}});
             try {
                 const run = (mode) => shade.evaluate(async ({renderer, mode}) => {
@@ -3700,18 +3701,16 @@ for (const renderer of ['worker', 'main']) {
                     host.destroy(); el.remove();
                     return {idle, dark, errors};
                 }, {renderer, mode});
-                const modes = ['load', 'update', 'globe'], soon = {};
                 await shade.goto(origin + '/bench');
-                for (const m of modes) soon[m] = await run(m);
+                const soon = await run(mode);
                 await shade.context().route(/map-jr-gl-(worker-layers|layers-more-[\w-]+)\.js/, async route => { const res = await route.fetch(); await new Promise(r => setTimeout(r, 1500)); await route.fulfill({response: res}); });
-                for (const m of modes) {
-                    // (A new page: it has not loaded the part.)
-                    await shade.goto(origin + '/bench');
-                    const late = await run(m);
-                    check(`[${renderer}] a hillshade on 3D terrain (${m}) whose part layers comes 1.5 s late draws as when it comes at once (#2215)`,
-                        late.idle && soon[m].idle && !late.errors.length && soon[m].dark > 500 && Math.abs(late.dark - soon[m].dark) < soon[m].dark * 0.05, JSON.stringify({soon: soon[m], late}));
-                }
+                // (A new page: it has not loaded the part.)
+                await shade.goto(origin + '/bench');
+                const late = await run(mode);
+                check(`[${renderer}] a hillshade on 3D terrain (${mode}) whose part layers comes 1.5 s late draws as when it comes at once (#2215)`,
+                    late.idle && soon.idle && !late.errors.length && soon.dark > 500 && Math.abs(late.dark - soon.dark) < soon.dark * 0.05, JSON.stringify({soon, late}));
             } finally { await shade.close(); }
+            }
             // 3D terrain whose part comes late (#1849): the tiles of the flat layers are requested while the part loads,
             // and do not wait for it (they did, behind the elevation tiles, by more than 3 s).
             if (renderer === 'worker') {
