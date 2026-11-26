@@ -285,7 +285,7 @@ export class Map {
     protected zooming = false; protected rotating = false; protected pitching = false;
     /** Height grids of loaded elevation tiles (3D terrain), mirrored from the engine. */
     private heights = new globalThis.Map<string, Float32Array>();
-    private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void; result?: Promise<unknown>}>();
+    private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void; result?: Promise<unknown>; sent?: Command}>();
     private nextQuery = 1;
     /** Only in this library: the thread that draws the map, `'worker'` or `'main'`. */
     renderer: 'worker' | 'main' = 'main';
@@ -567,7 +567,10 @@ export class Map {
         if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
         this.watchTurn++;
         if (!quiet) this.fire('webglcontextlost');
-        this.drop('lost its WebGL context. Ask again');
+        // (A move for a custom layer keeps the queries that the old engine has not answered: the new engine answers them
+        // when it has the style and the images, as MapLibre GL JS, which has no move, answers them; #1998.)
+        const asked = quiet ? [...this.pending.values()] : [];
+        if (!quiet) this.drop('lost its WebGL context. Ask again');
         try {
             // (An engine on the main thread does not end with a worker. It must stop: it can still have a context when
             // the restart is for an engine that reported no frame.)
@@ -591,9 +594,10 @@ export class Map {
             this.resumeEase();
             this.templates.clear(); // (as after a fall back; #882)
             for (const [name, [source, options]] of this.imageInputs) await this.putImage(name, source, options);
+            for (const p of asked) if (p.sent && [...this.pending.values()].includes(p)) this.post(p.sent);
             if (!quiet) this.fire('webglcontextrestored');
             if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
-        } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
+        } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); if (quiet) this.drop('could not move to the main thread'); this.fire('error', {error}); } finally { this.restarting = false; }
     }
 
     /**
@@ -1962,8 +1966,9 @@ export class Map {
         const id = this.nextQuery++;
         const answer = new Promise<T>((resolve, reject) => this.pending.set(id, {resolve, reject}));
         const result = then ? answer.then(then) : answer as unknown as Promise<R>;
-        this.pending.get(id)!.result = result;
-        if (this.removed) this.drop('was removed'); else this.post(command(id));
+        const entry = this.pending.get(id)!, c = command(id);
+        entry.result = result; entry.sent = c;
+        if (this.removed) this.drop('was removed'); else this.post(c);
         return result;
     }
     /** @internal For the benchmark page (#360): the engine fires a `tile` event for each step of a tile and for each frame. */
