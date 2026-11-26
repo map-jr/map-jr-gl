@@ -99,6 +99,11 @@ export interface PopupOptions {
     /** maplibre-compat only: places the popup on fractions of a pixel instead of whole pixels (default `false`). */
     subpixelPositioning?: boolean;
     /**
+     * maplibre-compat only: the distance in pixels from the edges of the map inside which the popup changes its anchor
+     * so that it stays in view (default 0 on each side). As in MapLibre GL JS, `bottom` does not change the anchor.
+     */
+    padding?: {top?: number; right?: number; bottom?: number; left?: number};
+    /**
      * Accepted for MapLibre GL JS, with no effect: the popup keeps its full opacity when the globe or terrain hides its
      * map position, where MapLibre GL JS dims it to this value. The compat entry writes one warning per page when it is
      * given.
@@ -180,8 +185,9 @@ export class Popup extends Overlay {
     private chooseAnchor(): Anchor {
         const map = this.map!, p = map.project(this.lngLat!), c = map.getContainer(), w = this.box.offsetWidth + 16, h = this.box.offsetHeight + 16;
         const o = this.options.offset, lift = typeof o === 'number' ? o : o && !Array.isArray(o) && !('x' in o) ? -xy((o as Partial<Record<Anchor, PointLike>>).bottom ?? [0, 0])[1] : 0;
-        const vertical = p.y - lift - h < 0 && p.y + h < c.clientHeight + 40 ? 'top' : 'bottom';
-        const horizontal = p.x - w / 2 < 0 ? '-left' : p.x + w / 2 > c.clientWidth ? '-right' : '';
+        const {top = 0, left = 0, right = 0} = this.options.padding ?? {};
+        const vertical = p.y - lift - h < top && p.y + h < c.clientHeight + 40 ? 'top' : 'bottom';
+        const horizontal = p.x - w / 2 < left ? '-left' : p.x + w / 2 > c.clientWidth - right ? '-right' : '';
         return (vertical + horizontal) as Anchor;
     }
     getAnchor() { return this.anchor; }
