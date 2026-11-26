@@ -267,11 +267,18 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
   drawn until the new one has loaded. A response that is out of date when it arrives is requested again after 1 s,
   2 s, 4 s and so on. The map option `refreshExpiredTiles: false` turns this off.
 
+  A reload of a vector tile whose response has the same `ETag` as before (the server answered 304, not modified, which
+  the browser gives as a 200 with the cached tile) fires no `sourcedata` with `tile`, and the tile is not parsed again.
+  Every other successful reload fires one.
+
   A failed request of an expired tile fires one `error` with `sourceId`, `source`, `tile`, `isSourceLoaded` and
   `style`, and the tile is not requested again, so each tile is requested twice in all.
 - **This library:** The same, for vector, raster and elevation tiles of both entries. `idle` waits for each new tile,
   as `idle` of MapLibre GL JS comes after it. GeoJSON sources, tiles of PMTiles archives and the elevation tiles that
   contour lines are made from are not requested again.
+
+  A reload of a vector tile with the same `ETag` fires no `sourcedata` with `tile` in the compat entry, as in MapLibre
+  GL JS. The library builds such a tile again all the same.
 
   A failed request of an expired tile keeps the old tile and is made again after 1 s, 2 s, 4 s and so on. The first
   failure fires one `error` with `sourceId` (and `source` in the compat entry), and the failures after it fire none

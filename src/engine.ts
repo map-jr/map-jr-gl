@@ -162,7 +162,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** The `ETag` of the response of a vector tile: a reload of the expired tile with the same `ETag` (a 304) reports no `tileLoaded`, as in MapLibre GL JS (#2136). */ etag?: string; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -1338,7 +1338,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, t.expires = tile.expires, t.etag = tile.etag, tile.fault && this.emit({type: 'error', message: tile.fault, source}), this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1452,7 +1452,7 @@ export class Engine {
     /** With `fresh`, the tile is fetched again (it has expired); an image tile is only ever fetched again. */
     private rebuild(source: string, id: TileID, key: string, t: TileState, fresh?: boolean) {
         // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
-        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++, st: {expires?: number} = {};
+        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++, st: {expires?: number; etag?: string} = {};
         this.tapTile(key, fresh ? 'expired' : 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         if (fresh) t.stale = false;
@@ -1466,16 +1466,18 @@ export class Engine {
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
             ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.tiles.get(key) === t && (t.missing = r.missing), this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
-            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
+            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, st.etag = tile.etag, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
         ).then(gl => {
             t.rebuilding = false;
-            if (fresh) this.expire(t, st.expires), t.reloadFailed = false;
+            // A reload of an expired tile that the server answers with 304 (the same `ETag`) fires no event (#2136).
+            const same = fresh && !!st.etag && st.etag === t.etag;
+            if (fresh) this.expire(t, st.expires), t.reloadFailed = false, t.etag = st.etag;
             if (this.tiles.get(key) !== t || !gl) return gl && this.renderer.destroyTile(gl);
             const old = t.gl;
             t.gl = gl;
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
-            if (report && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
+            if (report && !same && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             this.invalidate();
         }, err => {
             t.rebuilding = false;
