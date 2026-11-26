@@ -1127,8 +1127,10 @@ export class Map {
         const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
         if (padding) this.tr.padding = padding;
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
+        // `elevation` gives the center its height, as `setCenterElevation` does (MapLibre GL JS applies it after the jump).
+        const elevation = this.heldFrom(o.elevation);
         this.eased = undefined;
-        this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding});
+        this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding, elevation});
         this.jumped = this.seq;
         return this;
     }
@@ -1157,7 +1159,8 @@ export class Map {
         const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
         const duration = still ? 0 : o.duration ?? 500;
         // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
-        if (duration <= 0 && !around) return this.jumpTo({...o, center});
+        // (As in MapLibre GL JS, `easeTo` does not read `elevation`, also when it jumps.)
+        if (duration <= 0 && !around) return this.jumpTo({...o, center, elevation: undefined});
         const easing = o.easing && Array.from({length: 65}, (_, i) => o.easing!(i / 64));
         const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
         this.post(c);
@@ -1228,6 +1231,13 @@ export class Map {
         return Math.min(MAX_PITCH, p);
     }
     declare private centreHeld?: boolean;
+    /** The height that a camera option `elevation` gives the center (see `setCenterElevation`); `undefined` keeps it. */
+    private heldFrom(meters: number | null | undefined) {
+        if (meters === undefined) return undefined;
+        this.centreHeld = meters !== null;
+        if (meters !== null || !this.tr.heightAt) this.tr.elevation = meters ?? 0;
+        return meters;
+    }
     /**
      * Gives the map center a height of its own, in meters above sea level, or puts it back on the ground with `null` (the
      * default). The camera keeps its distance and its pitch from the center, so with a center high above the ground a
@@ -1236,9 +1246,7 @@ export class Map {
      */
     setCenterElevation(meters: number | null) {
         if (meters !== null && !Number.isFinite(meters)) { console.warn(`[map-jr-gl] setCenterElevation(${meters}): the height is not a number. Pass a number of meters, or null to put the center on the ground.`); return this; }
-        this.centreHeld = meters !== null;
-        if (meters !== null || !this.tr.heightAt) this.tr.elevation = meters ?? 0;
-        this.post({type: 'jump', elevation: meters});
+        this.post({type: 'jump', elevation: this.heldFrom(meters)});
         this.jumped = this.seq;
         return this;
     }
