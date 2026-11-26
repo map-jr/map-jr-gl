@@ -170,7 +170,7 @@ table names the causes that this triage found. "label" names a label of
 | `terrain/image` | near 3.7% | Layers on the terrain are a pixel or two off MapLibre's positions, and lines show at some tile edges. | #1818 |
 | `terrain/low-zoom` | near 2.1% | Layers on the terrain are a pixel or two off MapLibre's positions, and lines show at some tile edges. | #1818 |
 | `terrain/occlusion-debug` | near 4.4% | Layers on the terrain are a pixel or two off MapLibre's positions, and lines show at some tile edges. | #1818 |
-| `terrain/pitched-world` | differ 42.9% | The map at zoom -2.5 with terrain and pitch 60 is empty. | #1820 |
+| `terrain/pitched-world` | near 1.4% | Fixed: the camera waited for the height of a center that has no elevation tile (a 404) and never drew the terrain. | #1820 |
 | `terrain/rtt-mipmap-minification/pitch-70` | near 4.1% | The pitch is above 60 degrees. | label (pitch above 60 degrees, later) |
 | `terrain/skirts-auto` | differ 15.0% | The terrain surface has spikes, and `terrainSkirtLength` is not read. | #1788 |
 | `terrain/skirts-none` | differ 14.2% | The terrain surface has spikes, and `terrainSkirtLength` is not read. | #1788 |
