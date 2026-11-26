@@ -503,14 +503,15 @@ export class Engine {
     /** The map was removed (`destroy`): nothing more is sent to the GPU. */
     private removed = false;
     private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void; drop?(): void}[] = [];
-    /** For each circle layer whose size depends on the feature: its largest radius and stroke width in the tiles that arrived (see `QuerySet.most`). */
+    /** For each circle or line layer whose size depends on the feature: its largest sizes in the tiles that arrived (see `QuerySet.most`). */
     private most = new Map<string, number[]>();
     private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
         let bytes = 0;
         for (const [k, b] of Object.entries(tile.layers)) {
             for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
+            const id = k.split('\0')[0], m = this.most.get(id) ?? [0, 0, 0];
+            if (b.type === 'line' && b.most) { b.most.forEach((v, i) => m[i] = Math.max(m[i], v)); this.most.set(id, m); }
             if (b.type !== 'circle') continue;
-            const id = k.split('\0')[0], m = this.most.get(id) ?? [0, 0];
             for (const a of [b.radius, b.radius1]) for (const v of a ?? []) m[0] = Math.max(m[0], v);
             for (let i = 0; i < (b.sb?.length ?? 0); i += 2) m[1] = Math.max(m[1], b.sb![i]);
             this.most.set(id, m);
@@ -1132,7 +1133,7 @@ export class Engine {
 
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
-        c = {...c, sets: c.sets.map(s => s.size ? {...s, most: this.most.get(s.layer) as [number, number]} : s)};
+        c = {...c, sets: c.sets.map(s => s.size ? {...s, most: this.most.get(s.layer)} : s)};
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
         const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
@@ -1699,6 +1700,9 @@ export class Engine {
                 // During a gesture or an animation the center's height rises instead, so that the pitch and the zoom that the
                 // movement edits are kept. At rest the camera rises over the same point of the ground and keeps the same
                 // center: the pitch and the zoom are solved again. Not while the center waits for its own height.
+                // While the center waits for its height the ground is not known yet, and the camera stays above sea level,
+                // as MapLibre GL JS keeps it above the terrain of height 0 where it has no elevation data.
+                if (this.centreGiven) aboveSeaLevel(tr);
                 for (let pass = 0; pass < 3 && !this.centreGiven; pass++) {
                     const lift = this.terrainAboveCamera(tr);
                     if (lift <= 0) break;
@@ -1712,6 +1716,7 @@ export class Engine {
             this.rawElevation = tr.elevation / this.exaggeration;
         } else {
             tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = held ?? 0;
+            if (!globeness) aboveSeaLevel(tr);
             const st = this.style.terrain, src = st && this.style.sources[st.source];
             if (src) {
                 // Looking straight down the relief is not drawn, but the height under the center is still tracked (it
@@ -2308,4 +2313,18 @@ export class Engine {
             }
         }
     }
+}
+
+/**
+ * Keeps the camera at or above sea level, as `_raiseCameraByPitchAndZoom` of MapLibre GL JS does without terrain (#1851):
+ * a camera under altitude 0 (a pitch above 90, or a center below 0) rises to it over the same point, and the pitch and
+ * the zoom are solved again with the same center. MapLibre GL JS does this on every camera update, during a gesture or
+ * an animation too.
+ */
+function aboveSeaLevel(tr: Transform) {
+    const ppm = tr.pixelsPerMetre, d = tr.cameraDistance, p = tr.pitch * Math.PI / 180;
+    if (d * Math.cos(p) / ppm + tr.elevation >= 0) return;
+    const across = d * Math.sin(p) / ppm, up = -tr.elevation;
+    tr.pitch = Math.atan2(across, up) * 180 / Math.PI;
+    tr.zoom = Math.max(tr.minZoom, tr.zoom + Math.log2(d / ppm / Math.hypot(across, up)));
 }

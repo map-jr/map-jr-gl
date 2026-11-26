@@ -1835,6 +1835,33 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a circle of 700 pixels from the data whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2190)`,
         [0, 45].every(p => farData[p].now === 'radius,state,stroke' && farData[p].later === 'radius,state,stroke'), JSON.stringify(farData));
 
+    // A line whose `line-width`, `line-gap-width` or `line-offset` comes from the data reaches as far as its largest value
+    // in the data, as MapLibre takes the largest value of each bucket (`getMaximumPaintValue`; #2268). A line 600 pixels
+    // east of a tile edge, 1300 pixels wide, with a gap of 1300 pixels, or moved 600 pixels west by its offset, is queried
+    // 15 pixels west of the edge, flat and with pitch 45.
+    const farLine = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), s = m.unproject([b.x + 600, b.y + 200]), n = m.unproject([b.x + 600, b.y - 200]);
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', properties: {w: 1300, g: 1300, o: 600}, geometry: {type: 'LineString', coordinates: [[n.lng, n.lat], [s.lng, s.lat]]}}});
+        m.addLayer({id: 'width', type: 'line', source: 's', paint: {'line-width': ['get', 'w']}});
+        m.addLayer({id: 'gap', type: 'line', source: 's', paint: {'line-width': 2, 'line-gap-width': ['get', 'g']}});
+        m.addLayer({id: 'offset', type: 'line', source: 's', paint: {'line-width': 40, 'line-offset': ['get', 'o']}});
+        await new Promise(r => m.once('idle', r));
+        const out = {};
+        for (const pitch of [0, 45]) {
+            m.jumpTo({pitch});
+            const c = m.project([0, 0]), q = [c.x - 15, c.y];
+            out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
+        }
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a line whose width, gap or offset from the data reaches past its tile is found, flat and tilted, also in the array at once (#2268)`,
+        [0, 45].every(p => farLine[p].now === 'gap,offset,width' && farLine[p].later === 'gap,offset,width'), JSON.stringify(farLine));
+
     // A circle with a radius far larger than the map is found on a tilted map, as in MapLibre (#2230): the rectangle
     // that chooses the tiles is cut to the canvas and one tile. Ten circles, pitch 60, a point and a box.
     const huge = await page.evaluate(async renderer => {
@@ -2082,6 +2109,37 @@ for (const mode of renderers) {
         const ours = await run('ours'), ml = await run('ml');
         check(`[${mode}] queryRenderedFeatures: a line with line-offset, also from a property, is found where it is drawn, as MapLibre GL JS, also in the array at once (#2001)`,
             ours.down === 'down' && ours.up === 'up' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+    // #2217: with line-offset, a miter join longer than 2 (line-miter-limit 4, a turn of 133 degrees, miter 2.5) moves
+    // twice the offset along the miter, as MAX_OFFSET_MITER_LENGTH of MapLibre GL JS does. Before, it moved the full
+    // miter, and the tip reached about 4 px farther. (The bisector of the corner lies near a diagonal of the tile, so
+    // that MapLibre can store the extrusion of this miter in its bytes.) `tip` is the farthest dark pixel along the
+    // outer bisector, in pixels from the corner.
+    if (mode === 'main') {
+        const run = (lib, off) => page.evaluate(async ([lib, off]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const d = 0.003, r = -21.6 * Math.PI / 180, a = r + 133 * Math.PI / 180;
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-d * Math.cos(r), -d * Math.sin(r)], [0, 0], [d * Math.cos(a), d * Math.sin(a)]]}};
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 15, attributionControl: false, fadeDuration: 0, pixelRatio: 1, style: {version: 8,
+                sources: {l: {type: 'geojson', data: line}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'l', type: 'line', source: 'l', layout: {'line-join': 'miter', 'line-miter-limit': 4}, paint: {'line-color': '#000', 'line-width': 10, 'line-offset': off}}]}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+            const c = Object.assign(document.createElement('canvas'), {width: 300, height: 200}).getContext('2d', {willReadFrequently: true});
+            await new Promise(res => { m.once('render', () => { c.drawImage(m.getCanvas(), 0, 0, 300, 200); res(); }); m.triggerRepaint(); });
+            const p = m.project([0, 0]), data = c.getImageData(0, 0, 300, 200).data;
+            let bx = Math.cos(r) - Math.cos(a), by = Math.sin(a) - Math.sin(r), tip = -1e9;
+            const bl = Math.hypot(bx, by); bx /= bl; by /= bl;
+            for (let y = 0; y < 200; y++) for (let x = 0; x < 300; x++) if (data[(y * 300 + x) * 4] < 128) tip = Math.max(tip, (x + 0.5 - p.x) * bx + (y + 0.5 - p.y) * by);
+            m.remove(); el.remove();
+            return Math.round(tip * 10) / 10;
+        }, [lib, off]);
+        const r = {};
+        for (const off of [0, 8]) for (const lib of ['ours', 'ml']) r[`${lib}${off}`] = await run(lib, off);
+        check('[main] compat: line-offset moves a miter join longer than 2 by twice the offset along the miter, as MapLibre GL JS (#2217)',
+            r.ml8 > r.ml0 + 10 && Math.abs(r.ours0 - r.ml0) <= 1.5 && Math.abs(r.ours8 - r.ml8) <= 1.5, JSON.stringify(r));
     }
 
     // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
@@ -7841,6 +7899,29 @@ for (const mode of renderers) {
     });
     check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
         JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
+    // Without terrain the camera does not go below sea level: a pitch above 90 at a center height of 0, or a center below
+    // 0, gives a smaller pitch and another zoom with the camera over the same point, as in MapLibre GL JS (#1851).
+    const seaLevel = {};
+    for (const lib of ['ml', 'jr']) {
+        seaLevel[lib] = await page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, maxPitch: 180, attributionControl: false});
+            await new Promise(r => m.once('load', r));
+            const idle = () => new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+            m.jumpTo({pitch: 95});
+            await idle();
+            const out = [[m.getPitch(), m.getZoom()]];
+            m.setCenterClampedToGround(false); m.setCenterElevation(-20000); m.jumpTo({pitch: 60, zoom: 10});
+            await idle();
+            out.push([m.getPitch(), m.getZoom()]);
+            m.remove(); el.remove();
+            return out.map(v => v.map(x => Math.round(x * 100) / 100));
+        }, lib);
+    }
+    check('compat: without terrain the camera stays at or above sea level, with the pitch and the zoom of MapLibre GL JS',
+        JSON.stringify(seaLevel.jr) === JSON.stringify(seaLevel.ml) && seaLevel.jr[0][0] === 90, JSON.stringify(seaLevel));
     // jumpTo({elevation}) gives the center its height as MapLibre GL JS does: it lasts after setCenterClampedToGround(false)
     // and the ground replaces it while the center is clamped. easeTo does not read `elevation` in MapLibre GL JS 6.17 (#1852).
     const camElevation = {};
