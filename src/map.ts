@@ -2130,6 +2130,14 @@ export class Map {
         // `isActive()` of a handler is true from the start of its gesture (see where each is set) until a pointer of the gesture lifts.
         const rest = () => { for (const h of [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch, this.boxZoom]) h.active = false; };
         this.inputCleanup.push(rest);
+        let movePan: {type: 'pan'; dx: number; dy: number; x: number; y: number} | null = null;
+        /** Posts the pan of the moves since the last frame (see `pointermove`). */
+        const flushPan = () => {
+            const pan = movePan;
+            movePan = null;
+            if (!pan || this.removed) return;
+            this.post(pan);
+        };
         let panFrame = 0, pendingPan: {x: number; y: number} | null = null, rotating = false, moved = 0, samples: {t: number; x: number; y: number; w?: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
@@ -2187,6 +2195,7 @@ export class Map {
                 this.fire('boxzoomstart', {originalEvent: e});
                 return;
             }
+            flushPan();
             this.post({type: 'stop'});
             if (pointers.size === 1) {
                 // (As in MapLibre, a mouse button that is down makes `dragPan` active before the pointer moves.)
@@ -2259,10 +2268,12 @@ export class Map {
                 this.dragging = this.dragPan.active = true;
                 this.fire('drag', {originalEvent: e});
                 // (With 3D terrain the page does not know the ground well enough, and the engine moves the camera alone.)
-                const pan = {type: 'pan' as const, dx, dy, x: p.x, y: p.y};
-                this.post(pan);
+                // As in MapLibre GL JS (handler_manager), the moves of one frame are applied together, once, in the frame
+                // (on the globe, one turn from the first pointer to the last differs from several small turns; #479).
+                if (movePan) { movePan.dx += dx; movePan.dy += dy; movePan.x = p.x; movePan.y = p.y; }
+                else movePan = {type: 'pan', dx, dy, x: p.x, y: p.y};
                 // (Not on the globe: there each move turns the globe from the last pointer, and the page waits for the engine's camera.)
-                const h = this.tr.heightAt || this.tr.globeness || this.renderer !== 'worker' ? null : this.held ??= {from: (pan as {seq?: number}).seq!, t: 0};
+                const h = this.tr.heightAt || this.tr.globeness || this.renderer !== 'worker' ? null : this.held ??= {from: this.seq + 1, t: 0};
                 if (h) {
                     // The worker draws a move in the frame after the one in which the page receives it: the page places
                     // the markers for each move one frame later too.
@@ -2282,11 +2293,13 @@ export class Map {
                 // As in MapLibre GL JS, the moves of one frame give one sample, at the time of the frame (see `up`).
                 const list = samples;
                 pendingPan = {x: p.x, y: p.y};
-                if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; if (pendingPan && list === samples) list.push({t: performance.now(), ...pendingPan}); pendingPan = null; });
+                if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; flushPan(); if (pendingPan && list === samples) list.push({t: performance.now(), ...pendingPan}); pendingPan = null; });
             }
         });
         const up = (e: PointerEvent) => {
             if (!pointers.has(e.pointerId)) return;
+            // (The pan of the moves of this frame comes before the end of the drag, as in MapLibre GL JS.)
+            flushPan();
             this.held = null;
             rest();
             if (e.type !== 'blur') pointerEvent(e.type === 'pointerup' ? 'end' : 'cancel', e);
