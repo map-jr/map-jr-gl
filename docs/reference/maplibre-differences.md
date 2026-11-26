@@ -332,7 +332,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Images that draw themselves
 
 - **MapLibre GL JS:** An image with `render()` (`StyleImageInterface`) gets `onAdd(map, id)`, and `render()` before each frame that uses the image. A `true` result uploads `data` again without a repaint. `setStyle` removes the image and calls `onRemove()`.
-- **This library (`@map-jr/map-jr-gl/maplibre-compat`):** `onAdd(map, id)` runs when the image is added. `render()` runs after each frame that the map draws, also while no layer uses the image, so new pixels show one frame later. A `true` result sends `data` again only when the pixels changed, and the map draws one frame for it, so call `map.triggerRepaint()` to animate, as in MapLibre GL JS. `onRemove()` runs on `removeImage`, on `addImage` with the same name and on `remove()`. `setStyle`, also with `diff: false`, keeps the image and does not call `onRemove()`.
+- **This library (`@map-jr/map-jr-gl/maplibre-compat`):** `onAdd(map, id)` runs when the image is added. `render()` runs after each frame that the map draws, also while no layer uses the image, so new pixels show one frame later. A `true` result sends `data` again only when the pixels changed, and the map draws one frame for it, so call `map.triggerRepaint()` to animate, as in MapLibre GL JS. `onRemove()` runs on `removeImage` and on `addImage` with the same name. `remove()` stops the calls of `render()` and does not call `onRemove()`, as in MapLibre GL JS. `setStyle`, also with `diff: false`, keeps the image and does not call `onRemove()`.
 
 ### `easeTo`, `flyTo`
 

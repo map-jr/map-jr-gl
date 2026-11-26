@@ -582,7 +582,8 @@ export class Map extends CoreMap {
             this.once('remove', () => removeEventListener(type, lifted, true));
         }
         super.setMissingStyleImageResolver(name => this.styleImage(name));
-        this.once('remove', () => { this.imagesTurn++; for (const name of [...this.animated.keys()]) this.dropAnimated(name); });
+        // (`remove()` does not call `onRemove` of an image, as in MapLibre GL JS: it only stops the frames; #2235.)
+        this.once('remove', () => { this.imagesTurn++; for (const name of [...this.animated.keys()]) this.dropAnimated(name, false); });
     }
 
     // ---- The images in metadata["map-jr:images"] of the style (#759), as the main entry has them (#495) ----
@@ -612,12 +613,12 @@ export class Map extends CoreMap {
     }
     removeImage(name: string) { this.dropAnimated(name); return super.removeImage(name); }
     private animated = new globalThis.Map<string, StyleImageInterface>();
-    private dropAnimated(name: string) {
+    private dropAnimated(name: string, notify = true) {
         const image = this.animated.get(name);
         this.sentPixels.delete(name);
         if (!image || !this.animated.delete(name)) return;
         if (!this.animated.size) this.off('render', this.renderImages);
-        image.onRemove?.();
+        if (notify) image.onRemove?.();
     }
     private renderImages = () => {
         // (Pixels that did not change are not sent: each image sent to the engine makes it draw a frame, so a `render` that
