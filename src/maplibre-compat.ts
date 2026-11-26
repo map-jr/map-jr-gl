@@ -95,8 +95,13 @@ export {Evented};
  */
 export class Marker extends CoreMarker {
     constructor(options: MarkerOptions = {}) { super(options); this.setSubpixelPositioning(!!options.subpixelPositioning); }
-    /** Places the marker on fractions of a pixel (`true`) or on whole pixels (`false`, the default). */
-    setSubpixelPositioning(value: boolean) { this.round = value ? Number : Math.round; this.update(); return this; }
+    /**
+     * Places the marker on fractions of a pixel (`true`) or on whole pixels (`false`, the default). As in MapLibre GL JS,
+     * a marker without it is on fractions of a pixel while the map moves and on a whole pixel after `moveend` (#2160).
+     */
+    setSubpixelPositioning(value: boolean) { this.round = value ? Number : v => this.map?.isMoving() ? v : Math.round(v); this.update(); return this; }
+    protected attach(map: CoreMap) { super.attach(map); map.on('moveend', this.update); }
+    protected detach() { this.map?.off('moveend', this.update); super.detach(); }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
     /** The offset as a `Point`, as in MapLibre GL JS. */
