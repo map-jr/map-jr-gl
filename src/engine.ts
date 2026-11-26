@@ -1455,7 +1455,7 @@ export class Engine {
         if (fresh) t.stale = false;
         const src = this.style.sources[source];
         (src.type === 'raster-dem'
-            ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem && this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox')))
+            ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
             ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
             : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
@@ -1500,6 +1500,18 @@ export class Engine {
      * The GPU tile of an elevation tile, in its turn (see `paced`). It also gives the tile its heights, which shape 3D
      * terrain; a tile that is loaded again because it expired replaces the heights of the old one at the same moment.
      */
+    /**
+     * An elevation tile whose reload answered 404: it becomes a tile that the server does not have, as a vector tile in the
+     * same case, and the terrain leaves its heights. (MapLibre GL JS marks the tile `errored`, which has no data, #2055.)
+     */
+    private demGone(source: string, key: string, t: TileState): GLTile | null {
+        if (this.tiles.get(key) !== t) return null;
+        if (t.dem && this.style.terrain?.source === source) this.ground(key, t, false);
+        t.dem = undefined;
+        t.missing = true;
+        return {labels: {}, batches: {}};
+    }
+
     private elevationTile(dem: ElevationTile, source: string, id: TileID, key: string, t: TileState, encoding: DemEncoding) {
         return this.paced(dem.pixels.length * 2, () => {
             if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
