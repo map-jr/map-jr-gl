@@ -474,6 +474,18 @@ export class Engine {
         return null;
     }
 
+    /**
+     * Whether the source of 3D terrain has no elevation data at a mercator position at all: its tile of the lowest level
+     * there came back as a 404 or empty. The ground there is at sea level, as in MapLibre GL JS, and the camera does not
+     * wait for its height (#1820).
+     */
+    private demNone(x: number, y: number): boolean {
+        const terrain = this.style.terrain, src = terrain && this.style.sources[terrain.source];
+        if (!src) return false;
+        const n = 2 ** src.minzoom, t = this.tiles.get(`${terrain!.source}|${src.minzoom}/${Math.floor(x * n)}/${Math.floor(y * n)}`);
+        return !!t && (t.state === 'error' && !!t.missing || t.state === 'ok' && !t.gl?.raw);
+    }
+
     /** Ground height at a mercator position in meters (exaggerated), from the best elevation tile loaded so far. */
     private heightAt = (mx: number, my: number): number => this.rawHeightAt(mx, my) * this.exaggeration;
     /** Height grids of the loaded elevation tiles, keyed "z/x/y"; mirrored to the page so it can project onto the ground too. */
@@ -1922,7 +1934,8 @@ export class Engine {
         // at the center is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
         // (The same holds while the code of 3D terrain loads.)
-        const unplaced = !!terrain && !globeness && (this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30) || !this.terrainCode && !this.terrainFailed);
+        const mx0 = mercX(tr.lng) - Math.floor(mercX(tr.lng));
+        const unplaced = !!terrain && !globeness && (this.centreGiven && !this.demTile(mx0, mercY(tr.lat), 30) && !this.demNone(mx0, mercY(tr.lat)) || !this.terrainCode && !this.terrainFailed);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
