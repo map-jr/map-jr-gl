@@ -107,7 +107,10 @@ const heightAt = (tr: Transform, it: RenderItem<unknown>, x: number, y: number) 
     return tr.heightAt ? tr.heightAt((it.id.x + x / EXTENT) / n, (it.id.y + y / EXTENT) / n) : undefined;
 };
 function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, angle: number): number[] {
-    const e = 16, d = e / it.scale, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
+    // On the globe a step in the tile is shorter on the sphere by the cosine of the latitude: as in MapLibre GL JS
+    // (`getPitchedTextCorrection`), the step grows by the cosine at the center over that at (x, y), mixed by the globeness.
+    const n = 2 ** it.id.z, g = 1 + tr.globeness * (Math.cosh(Math.PI * (1 - 2 * (it.id.y + y / EXTENT) / n)) * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1);
+    const e = 16, d = e / it.scale * g, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
     const [fx, fy] = tr.projectTile(it.id, x + c, y + s, m), [qx, qy] = tr.projectTile(it.id, x - s, y + c, m);
     return [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
 }
@@ -462,7 +465,7 @@ export function placeLabels(
                 const ratio = 0.5 + 0.5 * tr.cameraDistance / depth;
                 if (tooFar(tr, depth, far)) continue;
                 const persp = tr.pitch ? Math.min(4, ratio) : 1;
-                const line = l.angle !== null, flat = !!tr.pitch && l.flat && !line;
+                const line = l.angle !== null, flat = (!!tr.pitch || tr.globeness > 0) && l.flat && !line;
                 // As in MapLibre GL JS, `text-rotation-alignment` decides whether every box of the symbol, the icon's too,
                 // is turned by the bearing (#2037).
                 const bturn = line || flat || l.upright ? 0 : north;
@@ -481,7 +484,7 @@ export function placeLabels(
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
-                let textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
+                let flatBox: number[] | undefined, textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
                 let bent: Placed | undefined, bentBoxes: Box[] = [];
                 const anchors: string[] = [];
@@ -542,7 +545,9 @@ export function placeLabels(
                         const [a, b, c, d] = frame;
                         textAngle = Math.atan2(b, a);
                         candidates = candidates.map(([dx, dy]) => [dx * a + dy * c, dx * b + dy * d]);
-                        // (The box for collisions is the size of the text on the screen.)
+                        // (The box for collisions is the bound on the screen of the text on the ground, as in MapLibre GL JS's
+                        // `_projectCollisionBox`, and not the bound of a turned box, which is taller where the frame is skewed.)
+                        flatBox = [Math.abs(a) * w + Math.abs(c) * h, Math.abs(b) * w + Math.abs(d) * h];
                         w *= Math.hypot(a, b); h *= Math.hypot(c, d);
                     } else if (!line && turned) {
                         // text-rotate turns the label about its anchor point, so the offset from the anchor turns with it.
@@ -615,7 +620,7 @@ export function placeLabels(
                     if (l.overlap) for (let i = 0; i < candidates.length; i++) tries.push(i + candidates.length);
                     for (const k of tries) {
                         const i = k % candidates.length, overlap = k >= candidates.length;
-                        const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
+                        const [dx, dy] = candidates[i], box = flatBox ? boxAround(ax + dx, ay + dy, flatBox[0], flatBox[1], 0, l.padding) : boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
                         if (!overlap && grid.hits(...box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);

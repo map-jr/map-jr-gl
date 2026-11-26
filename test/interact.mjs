@@ -2317,6 +2317,38 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures on the globe finds text on a line in each cell where its glyphs are drawn, at zoom 2.5 and across the antimeridian (#1995)',
             Object.values(globeText).every(r => r.text >= 5 && r.found === r.text && r.others <= 2 * r.text), JSON.stringify(globeText));
+        // On the globe without pitch, point text with `text-pitch-alignment: map` lies on the sphere (#2012), and a query
+        // finds it where it is drawn: the row and the column through its point hit no farther than 10 pixels from its
+        // dark pixels, with both renderers. (Its box for queries had the size of flat text, 16 pixels wider on each side.)
+        const globePoint = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:600px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, -28.3], zoom: 1.5, attributionControl: false, fadeDuration: 0, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [28.3, 0]}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'HHHHH', 'text-size': 24, 'text-pitch-alignment': 'map', 'text-rotation-alignment': 'map'}, paint: {'text-color': '#000'}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await m.toBlob()), k = bmp.width / 600, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                // (The dark pixels of the text, near its point: the space around the globe is not counted.)
+                const p = m.project([28.3, 0]), d = c.getImageData(0, 0, bmp.width, bmp.height).data, drawn = [1e9, 1e9, -1e9, -1e9];
+                for (let y = Math.round((p.y - 80) * k); y < (p.y + 80) * k; y++) for (let x = Math.round((p.x - 120) * k); x < (p.x + 120) * k; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i + 3] > 200 && d[i] < 80 && d[i + 1] < 80 && d[i + 2] < 80) drawn.splice(0, 4, Math.min(drawn[0], x / k), Math.min(drawn[1], y / k), Math.max(drawn[2], x / k), Math.max(drawn[3], y / k));
+                }
+                const hit = async (x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['t']})).length > 0, xs = [], ys = [];
+                for (let x = Math.round(p.x) - 120; x <= p.x + 120; x++) if (await hit(x, p.y)) xs.push(x);
+                for (let y = Math.round(p.y) - 80; y <= p.y + 80; y++) if (await hit(p.x, y)) ys.push(y);
+                out[renderer] = {drawn: drawn.map(Math.round), x: [xs[0], xs.at(-1)], y: [ys[0], ys.at(-1)]};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures on the globe without pitch finds point text with text-pitch-alignment map where it is drawn, with both renderers (#2012)',
+            Object.values(globePoint).every(r => r.drawn[2] - r.drawn[0] > 30 && r.drawn[2] - r.drawn[0] < 200 && r.x[0] >= r.drawn[0] - 10 && r.x[1] <= r.drawn[2] + 10 && r.y[0] >= r.drawn[1] - 10 && r.y[1] <= r.drawn[3] + 10 && r.x[1] - r.x[0] > 30),
+            JSON.stringify(globePoint));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
