@@ -115,10 +115,10 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
 
 /**
  * How far from its geometry a feature is found, in pixels: for a circle the radius `a` and the stroke `b`; for a line
- * half of the width `a`, or of the gap `b` and two widths when there is a gap, as MapLibre GL JS draws it, and at
- * least 3 pixels so that a thin line can be hit.
+ * half of the width `a`, or of the gap `b` and two widths when there is a gap, as MapLibre GL JS draws it (with no
+ * minimum, as in MapLibre GL JS).
  */
-export const sizeOf = (line: boolean | undefined, a: number, b: number) => line ? Math.max(3, (b > 0 ? b + 2 * a : a) / 2) : a + b;
+export const sizeOf = (line: boolean | undefined, a: number, b: number) => line ? (b > 0 ? b + 2 * a : a) / 2 : a + b;
 
 /** The lines of `c` (rings that end at `ends`) moved by `d` to the right of their direction, as `offsetLine` of MapLibre GL JS does. */
 function offsetLine(c: number[], ends: number[], d: number) {
