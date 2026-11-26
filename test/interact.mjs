@@ -2560,6 +2560,37 @@ for (const mode of renderers) {
         check('[main] compat: line-gap-width with line-blur fades the inner edge of the gap as the outer edge (#1949)',
             r[2] > 235 && r[4] < 225 && r[5] < 200, JSON.stringify(r));
     }
+    // #2063: at a device pixel ratio of 2 the soft edge of a line is one device pixel wide and reaches half a device
+    // pixel out, as ANTIALIASING in MapLibre GL JS. A line 4 px wide along the middle row has at most one partly
+    // covered device pixel at each edge (with an edge of one CSS pixel it had two). The inner edge of a gap is the same.
+    if (mode === 'main') {
+        const dpr2 = await browser.newPage({viewport: {width: 400, height: 300}, deviceScaleFactor: 2});
+        await dpr2.goto(page.url());
+        const r = await dpr2.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const profile = async paint => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:200px;height:100px'}));
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8,
+                    sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20, 0], [20, 0]]}}}}, layers: [
+                        {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'l', type: 'line', source: 'l', paint: {'line-color': '#000', ...paint}}]}});
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                const cv = m.getCanvas(), c = Object.assign(document.createElement('canvas'), {width: cv.width, height: cv.height}).getContext('2d');
+                c.drawImage(cv, 0, 0);
+                // (The green of each device pixel row from the middle down, 16 rows.)
+                const out = [];
+                for (let y = cv.height >> 1; y < (cv.height >> 1) + 16; y++) out.push(c.getImageData(cv.width >> 1, y, 1, 1).data[1]);
+                m.remove(); el.remove();
+                return {dpr: cv.width / 200, out};
+            };
+            return {line: await profile({'line-width': 4}), gap: await profile({'line-width': 2, 'line-gap-width': 6})};
+        });
+        await dpr2.close();
+        const partial = p => p.out.filter(g => g > 12 && g < 243).length;
+        check('[main] compat: at DPR 2 the soft edge of a line and of the inner edge of a gap is one device pixel, as in MapLibre GL JS (#2063)',
+            r.line.dpr === 2 && partial(r.line) <= 1 && r.line.out[0] < 12 && partial(r.gap) <= 2 && r.gap.out[0] > 243, JSON.stringify(r));
+    }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
     if (mode === 'main') {

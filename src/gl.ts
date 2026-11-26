@@ -190,14 +190,16 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoo
 layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur; layout(location=8) in float a_gap;
 layout(location=9) in float a_offset1; layout(location=10) in float a_blur1; layout(location=11) in float a_gap1;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
-uniform float u_cam;
-out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap;
+uniform float u_cam; uniform float u_dpr;
+out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap; out float v_aa;
 void main() {
   vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
   float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
   v_blur = a_blur + u_zt * a_blur1; v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle. A gap for each feature is a_gap.
-  v_gap = u_gap + a_gap + u_zt * a_gap1; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5; float sa = abs(a_sd.x), side = sign(a_sd.x), c = sa > 1.5 && sa < 16383.5 ? (sa - 2.0) / 4096.0 - 2.0 : 0.0, t = (sa - 24575.0) / 8191.0 * 3.1415927; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
+  // As in MapLibre GL JS (ANTIALIASING), the soft edge is one device pixel wide and reaches half a device pixel out.
+  v_aa = 1.0 / u_dpr;
+  v_gap = u_gap + a_gap + u_zt * a_gap1; v_hw = (v_gap > 0.0 ? v_gap * 0.5 + w : w * 0.5) + 0.5 * v_aa; float sa = abs(a_sd.x), side = sign(a_sd.x), c = sa > 1.5 && sa < 16383.5 ? (sa - 2.0) / 4096.0 - 2.0 : 0.0, t = (sa - 24575.0) / 8191.0 * 3.1415927; v_d = side * v_hw; v_w = w; v_dist = a_sd.y;
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
@@ -211,7 +213,7 @@ void main() {
   v_persp = gl_Position.w / u_cam;
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
-in float v_blur; in float v_gap;
+in float v_blur; in float v_gap; in float v_aa;
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
 uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
@@ -221,9 +223,9 @@ void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
   if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
-  float bl = v_persp * (1.0 + u_blur + v_blur), a = c.a * clamp((v_hw - abs(v_d)) / bl, 0.0, 1.0); // line-blur widens the soft edge
+  float bl = v_persp * (v_aa + u_blur + v_blur), a = c.a * clamp((v_hw - abs(v_d)) / bl, 0.0, 1.0); // line-blur widens the soft edge
   // The inner edge of a gap fades over the same width, into the gap, as in MapLibre GL JS.
-  if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 - 0.5 + bl) / bl, 0.0, 1.0);
+  if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 - 0.5 * v_aa + bl) / bl, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
     // Dash lengths are in multiples of the line width. The gap is how far this point is outside the nearest dash.
@@ -1379,6 +1381,7 @@ export class GLRenderer {
                     if (b.type === 'line') {
                         const dash = L.p.dash.eval(zoom) as number[] | null;
                         gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));
+                        gl.uniform1f(u.u_dpr, this.dpr);
                         gl.uniform1f(u.u_floorWidth, L.p.width.dd ? 1 : L.p.width.eval(Math.floor(zoom)));
                         gl.uniform1f(u.u_zf, 2 ** (zoom - Math.floor(zoom)));
                         gl.uniform1f(u.u_gap, L.p.gap.dd ? 0 : L.p.gap.eval(zoom));
