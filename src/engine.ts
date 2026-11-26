@@ -79,6 +79,8 @@ export type Command =
     | ({type: 'resourceResult'; id: number} & RequestAnswer)
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
     | {type: 'frames'; on: boolean}
+    /** Asks for a `beforeFrame` event before each frame (images with `render()`, #2128). The frame does not wait for the page. */
+    | {type: 'beforeFrames'; on: boolean}
     /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
     | {type: 'ping'; n: number}
     /** In a worker: answers with the next frame that is drawn, encoded as an image (a Blob), taken in the same task as the frame (#965). */
@@ -109,6 +111,7 @@ export type EngineEvent =
     /** The layers that the last style hides, also by a `visibility` expression of the global state. */
     | {type: 'hidden'; layers: string[]}
     | {type: 'frame'}
+    | {type: 'beforeFrame'}
     /** The tile workers have indexed the data of the last `geojson` command for this source. The page sends the next data then. */
     | {type: 'geojsonDone'; source: string}
     /** The engine has drawn a frame to its end after the `ping` command with this number. */
@@ -323,6 +326,7 @@ export class Engine {
     private zoomSeen = NaN;
     private contourWait = false;
     private reportFrames = false;
+    private preFrames = false;
     private drew = false;
     private pinged = 0;
     /** The `snapshot` commands that wait for the next frame. */
@@ -1052,6 +1056,7 @@ export class Engine {
                 this.renderer.destroy();
                 return;
             case 'frames': this.reportFrames = c.on; break;
+            case 'beforeFrames': this.preFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'snapshot': this.shots.push(c); break;
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
@@ -1614,6 +1619,9 @@ export class Engine {
             this.warmed = this.layers;
             this.atlas.warm(this.layers.filter(l => l.type === 'symbol' && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && !l.p.font.dd && (l.p.field.dd || l.p.field.eval(tr.zoom) !== '')).map(l => l.p.font.eval(tr.zoom)));
         }
+        // The page runs `render()` of its images before the frame (#2128). On the main renderer this is a call, and the new
+        // pixels are in this frame, as in MapLibre GL JS. A worker does not wait for the page: its pixels come a frame later.
+        if (this.preFrames) this.emit({type: 'beforeFrame'});
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;
