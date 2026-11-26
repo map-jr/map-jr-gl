@@ -14,7 +14,7 @@ const calls = [
 for (const [name, call] of calls) {
     test(`${name}: options with neither center and zoom nor bounds reject with a message`, async () => {
         await assert.rejects(call({style, width: 10, height: 10}),
-            {message: /^\[map-jr-gl\] server render: the options have no "center" and no "zoom", and no "bounds"\. Pass "center" and "zoom"/});
+            {message: /^\[map-jr-gl\] E1640 server render: the options have no "center" and no "zoom", and no "bounds"\. Pass "center" and "zoom"/});
         await assert.rejects(call({style, width: 10, height: 10, center: [0, 0]}), {message: /"center" but no "zoom", and no "bounds"/});
         await assert.rejects(call({style, width: 10, height: 10, zoom: 2}), {message: /"zoom" but no "center", and no "bounds"/});
     });

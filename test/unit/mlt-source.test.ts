@@ -12,7 +12,7 @@ test('mlt source: it is left out, and reported one time for the source object', 
     await resolveStyle(style, undefined, undefined, undefined, fail);
     assert.equal(a.sources.x, undefined);
     assert.ok(a.sources.y);
-    assert.deepEqual(errors, ['[map-jr-gl] The source "x" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".']);
+    assert.deepEqual(errors, ['[map-jr-gl] E1438 The source "x" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".']);
 });
 
 test('a source that cannot be used is reported one time to each map that uses the source object (#855)', async () => {
@@ -20,7 +20,7 @@ test('a source that cannot be used is reported one time to each map that uses th
     const a: string[] = [], b: string[] = [];
     const failA = (e: unknown) => a.push(String((e as Error).message)), failB = (e: unknown) => b.push(String((e as Error).message));
     for (const fail of [failA, failB, failA, failB]) await resolveStyle(style, undefined, undefined, undefined, fail);
-    const expected = ['[map-jr-gl] The source "none" has no "tiles" and no "url". Give it one of them.', '[map-jr-gl] The source "x" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".'];
+    const expected = ['[map-jr-gl] E10063 The source "none" has no "tiles" and no "url". Give it one of them.', '[map-jr-gl] E1438 The source "x" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".'];
     assert.deepEqual(a, expected);
     assert.deepEqual(b, expected);
 });

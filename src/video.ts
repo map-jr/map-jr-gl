@@ -33,7 +33,7 @@ export function playVideo(id: string, urls: string[], send: (frame: ImageBitmap)
         last.src = url;
         video.append(last);
     }
-    last?.addEventListener('error', () => fail(new Error(`[map-jr-gl] The video source "${id}" could not load any of its "urls". Check the URLs, and that a server of another origin sends CORS headers.`)));
+    last?.addEventListener('error', () => fail(new Error(`[map-jr-gl] E1448 The video source "${id}" could not load any of its "urls". Check the URLs, and that a server of another origin sends CORS headers.`)));
     const pump = framePump(() => video.readyState >= 2 ? video : undefined, send);
     // A frame for each frame of the video (requestVideoFrameCallback), or for each frame of the page where the browser
     // does not have that. (A callback of requestVideoFrameCallback waits while the video is paused.)
@@ -68,7 +68,7 @@ export function playVideo(id: string, urls: string[], send: (frame: ImageBitmap)
  */
 export function playCanvas(id: string, canvas: HTMLCanvasElement, animate: boolean, send: (frame: ImageBitmap) => void, fail: (error: Error) => void) {
     // (A canvas of no size gives no frame, and the error of MapLibre GL JS.)
-    if (!(canvas.width > 0 && canvas.height > 0)) fail(new Error(`[map-jr-gl] The canvas source "${id}": the canvas is ${canvas.width} × ${canvas.height} pixels. Give it a width and a height above 0.`));
+    if (!(canvas.width > 0 && canvas.height > 0)) fail(new Error(`[map-jr-gl] E1452 The canvas source "${id}": the canvas is ${canvas.width} × ${canvas.height} pixels. Give it a width and a height above 0.`));
     const pump = framePump(() => canvas.width > 0 && canvas.height > 0 ? canvas : undefined, send);
     let on = false;
     const tick = () => { if (on) { pump.frame(); requestAnimationFrame(tick); } };
@@ -104,7 +104,7 @@ export class Videos {
             if (spec.type === 'video') player = playVideo(id, spec.urls.map((u: string) => new URL(u, this.base()).href), send, this.fail);
             else {
                 const canvas = typeof key === 'string' ? document.getElementById(key) : key;
-                if (!(canvas instanceof HTMLCanvasElement)) { this.fail(new Error(`[map-jr-gl] The canvas source "${id}": ${typeof key === 'string' ? `the page has no <canvas> with the id "${key}"` : '"canvas" is not a <canvas> element'}. Give the id of a <canvas> of the page, or the element.`)); continue; }
+                if (!(canvas instanceof HTMLCanvasElement)) { this.fail(new Error(`[map-jr-gl] E11452 The canvas source "${id}": ${typeof key === 'string' ? `the page has no <canvas> with the id "${key}"` : '"canvas" is not a <canvas> element'}. Give the id of a <canvas> of the page, or the element.`)); continue; }
                 player = playCanvas(id, canvas, spec.animate !== false, send, this.fail);
             }
             const v = {key, player};

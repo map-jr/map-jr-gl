@@ -645,7 +645,7 @@ for (const mode of renderers) {
     const gl = await page.evaluate(() => Promise.resolve().then(() => window.map.addImage('gl', {width: 1, height: 1, data: {renderWithWebGL() {}}})).then(() => 'resolved', e => String(e.message)));
     const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
-    check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl.startsWith('[map-jr-gl] addImage("gl")') && gl.includes('WebGL'), gl);
+    check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl.startsWith('[map-jr-gl] E464 addImage("gl")') && gl.includes('WebGL'), gl);
     // #1746: an image with render() (StyleImageInterface) gets onAdd, render after each frame (new pixels when it returns
     // true) and onRemove, as in MapLibre GL JS.
     const anim = await page.evaluate(async () => {
@@ -850,7 +850,7 @@ for (const mode of renderers) {
         m.on('click', ['missing-layer', 'zones-fill'], e => window.arrayEvents.push('click:' + e.features[0].properties.name));
         m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
-        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message).startsWith('[map-jr-gl] on("mouseenter")') ? 'message' : error.message); }
+        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message).startsWith('[map-jr-gl] E278 on("mouseenter")') ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
         const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
@@ -1483,7 +1483,7 @@ for (const mode of renderers) {
     });
     const devP = painter['map-jr-gl-maplibre-compat.dev.js'], prodP = painter['map-jr-gl-maplibre-compat.js'];
     check(`[${mode}] map.painter is undefined; the development build warns once per map, the production build does not warn`,
-        [...devP.values, ...prodP.values].every(Boolean) && devP.warns.length === 2 && devP.warns.every(w => w.startsWith('[map-jr-gl] map.painter') && w.includes('supported()')) && prodP.warns.length === 0, JSON.stringify(painter));
+        [...devP.values, ...prodP.values].every(Boolean) && devP.warns.length === 2 && devP.warns.every(w => w.startsWith('[map-jr-gl] E205 map.painter') && w.includes('supported()')) && prodP.warns.length === 0, JSON.stringify(painter));
     // A member of MapLibre GL JS that a class here does not have (#206): the development build warns once per name, and
     // a map that is used as usual, with controls, a marker and a popup, gives no such warning.
     const missing = await page.evaluate(async () => {
@@ -1702,6 +1702,35 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a circle-radius from a property or the zoom is the radius of the query, also in the array at once`, sized.near.join() === 'by-data:1,by-zoom:1' && sized.now.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
     check(`[${mode}] queryRenderedFeatures: on a tilted map a circle-radius from a property or the zoom is the radius of the query, also in the array at once (#1942)`,
         sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
+
+    // A circle whose center lies in the next tile is found at its edge, as in MapLibre (#2024): the choice of tiles grows
+    // by the largest radius of the layer, from a constant or the zoom (a size from the data: #2190). Circles of 170 pixels 150 pixels east
+    // of a tile edge are queried 15 pixels west of it, flat and with pitch 45.
+    const neighbor = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), pt = m.unproject([b.x + 150, b.y]);
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {r: 170}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'zoom', type: 'circle', source: 's', paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 170, 24, 170]}});
+        m.addLayer({id: 'const', type: 'circle', source: 's', paint: {'circle-radius': 170}});
+        await new Promise(r => m.once('idle', r));
+        const out = {};
+        for (const pitch of [0, 45]) {
+            m.jumpTo({pitch});
+            const c = m.project([0, 0]), q = [c.x - 15, c.y];
+            out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
+        }
+        // (A query of all features of the source has no reach that bounds it, and still finds the feature.)
+        out.source = {now: m.querySourceFeatures('s').length, later: (await m.querySourceFeatures('s')).length};
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] querySourceFeatures finds the features of a source while the layers of the source have large circles (#2024)`,
+        neighbor.source.now === 1 && neighbor.source.later === 1, JSON.stringify(neighbor.source));
+    check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
+        [0, 45].every(p => neighbor[p].now === 'const,zoom' && neighbor[p].later === 'const,zoom'), JSON.stringify(neighbor));
 
     // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
     // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at
@@ -2514,7 +2543,7 @@ for (const mode of renderers) {
             return out;
         });
         check('setWorkerUrl with the worker file of MapLibre GL JS is ignored with one warning, and the map keeps its own worker',
-            r.renderer === 'worker' && r.url === '' && r.warns.length === 1 && r.warns[0].startsWith('[map-jr-gl] setWorkerUrl():'), JSON.stringify(r));
+            r.renderer === 'worker' && r.url === '' && r.warns.length === 1 && r.warns[0].startsWith('[map-jr-gl] E241 setWorkerUrl():'), JSON.stringify(r));
     }
     // Options that are accepted and have no effect (#262): each warns once, also when it is given twice. The map warns
     // once per map, and a control once per page, so this runs in one mode. (GeolocateControl is checked further down.)
@@ -3547,7 +3576,7 @@ for (const mode of renderers) {
             removeEventListener('unhandledrejection', onError); removeEventListener('error', onError);
             return {results, thrown};
         }, mode);
-        const said = /^error: \[map-jr-gl\] The style has no list "layers"/;
+        const said = /^error: \[map-jr-gl\] E539 The style has no list "layers"/;
         for (const [name, r] of Object.entries(out.results)) {
             if (name === 'noSources') check(`[${mode}] a style with no "sources" loads without an error`, r.first === 'load' && r.loaded && r.second === '', JSON.stringify(r));
             else check(`[${mode}] a style that is not a style (${name}): one error event that names "layers", then setStyle with a good style loads the map and the map keeps it`,
@@ -3975,7 +4004,7 @@ for (const mode of renderers) {
         // an unroute, and its 404 is a page error, #517.)
         await page.unroute('**/test-255.json');
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
-            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] E255 getSource("r").setTiles'), JSON.stringify(r));
     }
     // Raster tiles are fetched and decoded in the tile workers, and the thread that draws only sends the images to the
     // GPU (#2068). In WebKit a decode runs on the thread that asks for it, and decodes on the thread that draws held its
@@ -4188,7 +4217,7 @@ for (const mode of renderers) {
             return out;
         }, mode);
         check(`[${mode}] setAnisotropicFilterPitch: raster tiles are filtered anisotropically above the pitch (20 by default), and a pitch above 180 throws (#1713)`,
-            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && /^\[map-jr-gl\] setAnisotropicFilterPitch\(200\)/.test(r.error), JSON.stringify(r));
+            r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && /^\[map-jr-gl\] E2011 setAnisotropicFilterPitch\(200\)/.test(r.error), JSON.stringify(r));
     }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
@@ -4278,7 +4307,7 @@ for (const mode of renderers) {
         check(`[${mode}] GeoJSON source: setClusterOptions builds the clusters again, getClusterOptions gives the options, and getBounds gives the bounds of the data`,
             r.isPromise && JSON.stringify(r.before.options) === '{"cluster":true,"clusterMaxZoom":17,"clusterRadius":50}' && r.before.shown.join() === '3' && r.before.zoom > 2
             && JSON.stringify(r.after.options) === '{"cluster":false,"clusterMaxZoom":17,"clusterRadius":20}' && r.after.shown.join() === '1,1,1' && r.after.spec === false && /no clusters/.test(r.after.zoom)
-            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message.startsWith('[map-jr-gl] getSource("g").setClusterOptions') && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
+            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message.startsWith('[map-jr-gl] E566 getSource("g").setClusterOptions') && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
         check(`[${mode}] raster source: reload loads the tiles again, and the source has the zoom range and the tiles of its TileJSON`,
             r.had > 0 && r.again > r.had && r.result === undefined && r.loaded && r.minzoom === 1 && r.maxzoom === 9 && /\/t566\/\{z\}/.test(r.tiles?.[0]) && JSON.stringify(r.serialized) === '{"type":"raster","url":"/test-566.json","tileSize":256}', JSON.stringify(r));
     }
@@ -4664,7 +4693,7 @@ for (const mode of renderers) {
             // The debug drawing is not available (#752): showCollisionBoxes = true warns once, false does not warn.
             projected.showTileBoundaries = false;
             projected.showCollisionBoxes = true; projected.showCollisionBoxes = true;
-            out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] showCollisionBoxes has no effect')).length, warnings.length];
+            out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] E2145 showCollisionBoxes has no effect')).length, warnings.length];
             // The options of the drag handlers have no effect (#673): one warning each, and the handlers are on.
             const dragged = make({dragPan: {linearity: 0.5}, dragRotate: {around: 'center'}, rotateSpeed: 2, pitchSpeed: 1, aroundCenter: false});
             dragged.dragPan.disable(); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragPan.enable({maxSpeed: 1}); dragged.dragRotate.enable({movement: 'linear'}); dragged.dragRotate.enable();
@@ -4692,7 +4721,7 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
-            quiet.options.length === 1 && ['new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
+            quiet.options.length === 1 && ['E387 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
@@ -4700,7 +4729,7 @@ for (const mode of renderers) {
             quiet.inline.errors.length === 1 && /addLayer: the layer "g" has a source object, and the style has a source with the id "g" already/.test(quiet.inline.errors[0]) && quiet.inline.layers === 'bg,uses-g,inline,inline-2'
             && quiet.inline.source === 'geojson' && quiet.inline.of === 'inline' && quiet.inline.drawn > 0 && quiet.inline.kept, JSON.stringify(quiet.inline));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
-            quiet.thrown.startsWith('[map-jr-gl] The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+            quiet.thrown.startsWith('[map-jr-gl] E2145 The option canvasContextAttributes (but for antialias) has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
         // #2133: the production build writes none of these warnings; strict: true still throws there, with a short text.
         const prod = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), warnings = [], warn = console.warn, maps = [];
@@ -4717,7 +4746,7 @@ for (const mode of renderers) {
             return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown};
         });
         check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws a short text (#2133)',
-            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] The option fadeDuration has no effect.', JSON.stringify(prod));
+            prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 The option fadeDuration has no effect.', JSON.stringify(prod));
     }
     // #1431: on the globe a '3d' custom layer shares the depth of the fill-extrusion layers below it: a quad at 1000 m
     // is hidden inside a building 3000 m tall and shows above a building 300 m tall. (The building is small: the roof
@@ -5229,7 +5258,7 @@ for (const mode of renderers) {
             return {afterRefused, warnings: warnings.filter(w => w.includes('layer type'))};
         });
         check('[main] maplibre-compat: addLayer with an unknown layer type warns once for the type, as a loaded style does',
-            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
+            unknown.afterRefused === 0 && unknown.warnings.length === 1 && unknown.warnings[0] === '[map-jr-gl] E1593 Skipping unsupported layer types: no-such-type', JSON.stringify(unknown));
     }
     // An expression whose ["zoom"] MapLibre GL JS rejects fires `error` with MapLibre's text in the development build, once
     // for each layer, property and value, and the map still draws it (#1087). The production build fires none.
@@ -5257,7 +5286,7 @@ for (const mode of renderers) {
         const dev = zoom['map-jr-gl-maplibre-compat.dev.js'], prod = zoom['map-jr-gl-maplibre-compat.js'];
         const nested = '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.', one = 'Only one zoom-based "step" or "interpolate" subexpression may be used in an expression.';
         check('[main] maplibre-compat: the development build fires error with the text of MapLibre GL JS for a nested, repeated or bare ["zoom"], once each, and keeps the value; the production build fires none',
-            dev.errors.length === 3 && dev.errors[0].startsWith(`[map-jr-gl] layers.c.paint.circle-radius: ${nested}`) && dev.errors[1].startsWith(`[map-jr-gl] layers.c.paint.circle-opacity: ${nested}`) && dev.errors[2].startsWith(`[map-jr-gl] layers.c.paint.circle-blur: ${one}`)
+            dev.errors.length === 3 && dev.errors[0].startsWith(`[map-jr-gl] E1057 layers.c.paint.circle-radius: ${nested}`) && dev.errors[1].startsWith(`[map-jr-gl] E1057 layers.c.paint.circle-opacity: ${nested}`) && dev.errors[2].startsWith(`[map-jr-gl] E1057 layers.c.paint.circle-blur: ${one}`)
             && dev.radius === '*' && prod.errors.length === 0, JSON.stringify(zoom));
     }
     // A paint or layout property that the style specification does not have for the type of the layer fires `error` with
@@ -5283,8 +5312,8 @@ for (const mode of renderers) {
         });
         const dev = unknown['map-jr-gl-maplibre-compat.dev.js'], prod = unknown['map-jr-gl-maplibre-compat.js'];
         check('[main] maplibre-compat: the development build fires error with "unknown property" and the nearest name for a property that the layer type does not have, once each; the production build fires none',
-            dev.length === 2 && dev[0].startsWith('[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
-            && dev[1].startsWith('[map-jr-gl] layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
+            dev.length === 2 && dev[0].startsWith('[map-jr-gl] E11139 layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
+            && dev[1].startsWith('[map-jr-gl] E11139 layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
     }
     // `validate` of setStyle wins over the option of `new Map()` for that style, in the development build (#1748).
     if (mode === 'main') {
@@ -5336,7 +5365,7 @@ for (const mode of renderers) {
             } finally { console.warn = warn; }
         });
         check('[main] maplibre-compat: new LogoControl({compact}) keeps the options and warns once that compact has no effect',
-            logo.compact === true && logo.warnings.length === 1 && logo.warnings[0].startsWith('[map-jr-gl] LogoControl: the option compact has no effect.'), JSON.stringify(logo));
+            logo.compact === true && logo.warnings.length === 1 && logo.warnings[0].startsWith('[map-jr-gl] E10090 LogoControl: the option compact has no effect.'), JSON.stringify(logo));
     }
     // The label of TerrainControl says what a click does, with the texts of MapLibre GL JS (#1234).
     if (mode === 'main') {
@@ -5530,7 +5559,7 @@ for (const mode of renderers) {
                     done = moved(); m.jumpTo({zoom: 5}); await done;
                     done = moved(); m.jumpTo({zoom: 6}); await done;
                 }
-                out.warnings = warnings.filter(w => w.startsWith('[map-jr-gl] setTransformCameraUpdate')).length;
+                out.warnings = warnings.filter(w => w.startsWith('[map-jr-gl] E210 setTransformCameraUpdate')).length;
             } finally { console.warn = warn; m.remove(); el.remove(); }
             return out;
         }, mode).catch(e => ({error: String(e)}));
@@ -7718,7 +7747,7 @@ for (const mode of renderers) {
         }, mode);
         await page.waitForTimeout(100);
         page.off('console', listen);
-        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0].startsWith('[map-jr-gl] The source "wrong": ') && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
+        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0].startsWith('[map-jr-gl] E590 The source "wrong": ') && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
         check(`[${mode}] a color-relief layer with one stop, or two stops at one elevation, draws the colour of a stop`, custom.one === '0,255,0' && [custom.below, custom.at, custom.above].every(c => c === '255,0,0' || c === '0,255,0'), JSON.stringify(custom));
     }
 
@@ -7789,7 +7818,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         return told;
     });
     check('[main] setStyle with an unsupported layer type warns, one time for each new set of types',
-        JSON.stringify(warnings) === JSON.stringify(['[map-jr-gl] Skipping unsupported layer types: foo', '[map-jr-gl] Skipping unsupported layer types: foo, bar']), JSON.stringify(warnings));
+        JSON.stringify(warnings) === JSON.stringify(['[map-jr-gl] E1618 Skipping unsupported layer types: foo', '[map-jr-gl] E1618 Skipping unsupported layer types: foo, bar']), JSON.stringify(warnings));
     await page.close();
 }
 // The compat Map with a style that has a null source and a null layer: each is reported, the rest loads, and the methods

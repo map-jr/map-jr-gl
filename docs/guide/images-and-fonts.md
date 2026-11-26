@@ -1516,7 +1516,7 @@ the list as they are written, joined by commas.
 ### When a font does not load
 
 A font file that does not load is reported to `onError`, for example
-`[map-jr-gl] fonts: the font "Inter Semibold" did not load from …`. The labels then use the next name of their
+`[map-jr-gl] E494 fonts: the font "Inter Semibold" did not load from …`. The labels then use the next name of their
 `text-font` list, then `fontFamily`, and then the fonts of the browser.
 
 `fontFamily` is a CSS font family list, a field of the description of

@@ -30,7 +30,7 @@ test('server limits: a response that does not end stops at requestTimeout, also 
     const start = Date.now();
     let aborted = false;
     await assert.rejects(render(async (_url, init) => { init!.signal!.addEventListener('abort', () => { aborted = true; }); return endless(); }, {requestTimeout: 60}),
-        /^Error: \[map-jr-gl\] server render: the request to https:\/\/tiles\.test\/14\/4823\/6160\.pbf took longer than the "requestTimeout" of 60 ms/);
+        /^Error: \[map-jr-gl\] E40025 server render: the request to https:\/\/tiles\.test\/14\/4823\/6160\.pbf took longer than the "requestTimeout" of 60 ms/);
     assert.ok(Date.now() - start < 3000);
     assert.ok(aborted, 'the request gets an abort signal');
     // A fetch that never answers at all.

@@ -197,8 +197,8 @@ export function MapImage<const P extends string = never>({name, params, src, wid
     useEffect(() => () => give?.(owner.current, null), [give]);
     useEffect(() => {
         if (!__DEV__) return;
-        if (!give) { console.warn(`[map-jr-gl] MapImage "${name}" is not inside MapJr, so no map gets the image. Put it into the children of MapJr.`); return; }
-        const timer = setTimeout(() => { if (!src && !el?.querySelector('svg')) console.warn(`[map-jr-gl] MapImage "${name}" has no image: its content has no <svg> element. Give an <svg> element as the content, or the URL of an image as "src".`); }, 1000);
+        if (!give) { console.warn(`[map-jr-gl] E129 MapImage "${name}" is not inside MapJr, so no map gets the image. Put it into the children of MapJr.`); return; }
+        const timer = setTimeout(() => { if (!src && !el?.querySelector('svg')) console.warn(`[map-jr-gl] E10129 MapImage "${name}" has no image: its content has no <svg> element. Give an <svg> element as the content, or the URL of an image as "src".`); }, 1000);
         return () => clearTimeout(timer);
     }, [give]);
     // (The value of a parameter in the SVG is the text of a slot of a template: `{{color}}`.)

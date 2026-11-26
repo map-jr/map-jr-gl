@@ -43,7 +43,7 @@ const texts: (((a: string, b: string) => string) | undefined)[] = [
 ];
 // A new text, and a new kind of check (below), takes the number of its issue, for example texts[544]; a second one for
 // the same issue takes that number plus 10000. Branches that run at the same time then cannot take the same number,
-// and `pnpm test:consistency` fails when a number is taken twice. The production build has none of these numbers.
+// and `pnpm test:consistency` fails when a number is taken twice. The production build has none of these texts; the rejections of queryFeatures() and querySource() print their number there.
 texts[1151] = method => `<MapJr>: the template ref has no method "${method}" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.`;
 // The methods of the map (`MapInstance`): a template ref of the Vue component has them before the map has loaded.
 type Method = {[K in keyof MapInstance]: MapInstance[K] extends Function ? K : never}[keyof MapInstance];
@@ -85,7 +85,7 @@ texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
-export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code]!(a, b);
+export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] E' + code + ' ' + texts[code]!(a, b);
 
 /** A value that JSON keeps as it is: no function, `undefined` in an array, number that is not finite, class instance or cycle. */
 const isJson = (v: unknown, seen: unknown[] = []): boolean => {
@@ -411,8 +411,8 @@ export function watchMembers(classes: Record<string, {prototype: object}>, membe
             if (list.has(key) && !reported.has(name)) {
                 reported.add(name);
                 console.warn(cls === 'Map' && privateState[key]
-                    ? `[map-jr-gl] ${name} is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. ${privateState[key]}`
-                    : `[map-jr-gl] ${name} is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.`);
+                    ? `[map-jr-gl] E206 ${name} is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. ${privateState[key]}`
+                    : `[map-jr-gl] E10206 ${name} is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.`);
             }
             break;
         }

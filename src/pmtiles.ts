@@ -57,7 +57,7 @@ function parseDirectory(b: Uint8Array): Entry[] {
 }
 
 const LIMIT = 64 << 20;
-const tooLarge = (url: string, n: number) => new Error(`[map-jr-gl] PMTiles ${url}: the server ignores Range requests, so each tile would download the whole file (${Math.round(n / 1048576)} MB). Serve the file from a server that supports Range requests.`);
+const tooLarge = (url: string, n: number) => new Error(`[map-jr-gl] E277 PMTiles ${url}: the server ignores Range requests, so each tile would download the whole file (${Math.round(n / 1048576)} MB). Serve the file from a server that supports Range requests.`);
 
 export class PMTiles {
     private header?: Promise<{h: PMHeader; root: Entry[]; first: Uint8Array}>;

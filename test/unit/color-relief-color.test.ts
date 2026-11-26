@@ -19,9 +19,9 @@ test('color-relief-color: the main API warns once for a value that is not interp
         check(c, 4, style);
         check(c, 4, style);
         assert.deepEqual(warnings.filter(w => w.includes('color-relief-color')), [
-            '[map-jr-gl] the color-relief layer "step": "color-relief-color" is not an "interpolate" expression, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].',
-            '[map-jr-gl] the color-relief layer "none": "color-relief-color" is missing, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].',
-            '[map-jr-gl] the color-relief layer "many": "color-relief-color" has 2050 stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.',
+            '[map-jr-gl] E645 the color-relief layer "step": "color-relief-color" is not an "interpolate" expression, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].',
+            '[map-jr-gl] E645 the color-relief layer "none": "color-relief-color" is missing, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].',
+            '[map-jr-gl] E10645 the color-relief layer "many": "color-relief-color" has 2050 stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.',
         ]);
     } finally { console.warn = warn; }
 });

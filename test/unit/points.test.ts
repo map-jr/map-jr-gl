@@ -28,6 +28,6 @@ test('a record without a position of two finite numbers is left out, and one war
         assert.equal(points(records, {lngLat: r => [r.lng as number, r.lat]}).features.length, 2);
         assert.equal(points([null, {}], {lngLat: (r: any) => r?.p}).features.length, 0);
         await new Promise(r => setTimeout(r, 50));
-        assert.deepEqual(warnings, ['[map-jr-gl] points(): the record 1 has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.']);
+        assert.deepEqual(warnings, ['[map-jr-gl] E21 points(): the record 1 has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.']);
     } finally { console.warn = warn; }
 });

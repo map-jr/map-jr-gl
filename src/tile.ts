@@ -343,7 +343,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 byName.get(name)?.push(f) ?? byName.set(name, [f]);
                 if (sortKey) last?.[0] === name ? last[1].push(f) : groups.push([name, [f]]);
             }
-            if (groups.length > MAX_RUNS) warnOnce(`layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
+            if (groups.length > MAX_RUNS) warnOnce(`E2040 layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
             if (!sortKey || groups.length > MAX_RUNS) groups = [...byName];
         } else groups.push(['', features]);
         let k = 0;

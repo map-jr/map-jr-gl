@@ -22,7 +22,7 @@ const pageWarned = new Set<string>();
 const pageWarn = (msg: string) => {
     if (pageWarned.size > 200 || pageWarned.has(msg)) return;
     pageWarned.add(msg);
-    console.warn('[map-jr-gl] ' + (pageWarned.size > 200 ? 'The workers sent 200 different warnings. Later ones are not shown.' : msg));
+    console.warn('[map-jr-gl] ' + (pageWarned.size > 200 ? 'E1634 The workers sent 200 different warnings. Later ones are not shown.' : msg));
 };
 
 /** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
@@ -253,7 +253,7 @@ export class Map {
     /** Draws one variant of a template: the SVG with the value of each slot, made safe for XML. */
     private async addVariant(name: string, image: string, template: {svg: string; options: ImageOptions; slots: string[]; count: number; failed?: boolean}, values: string[]) {
         if (++template.count > MAX_VARIANTS) {
-            if (template.count === MAX_VARIANTS + 1) this.fire('error', {error: new Error(`[map-jr-gl] The image "${image}" has more than ${MAX_VARIANTS} different sets of values for its slots, and the others are not drawn. Give its slots values from a small set.`)});
+            if (template.count === MAX_VARIANTS + 1) this.fire('error', {error: new Error(`[map-jr-gl] E30121 The image "${image}" has more than ${MAX_VARIANTS} different sets of values for its slots, and the others are not drawn. Give its slots values from a small set.`)});
             return;
         }
         // (A picture that the SVG names is put into it first, as for a marker template.)
@@ -265,7 +265,7 @@ export class Map {
         if (now !== template) { if (now?.svg === template.svg && String(now.slots) === String(template.slots)) this.addVariant(name, image, now, values); return; }
         // (A template that cannot be drawn gives one error with its name, not one for each of its variants.)
         this.putImage(name, svg, template.options, true).catch(error => {
-            if (!template.failed) this.fire('error', {error: new Error(`[map-jr-gl] The image "${image}" cannot be drawn with the values of its slots (${(error as Error).message}). Check that the SVG is well-formed, also with a value in each slot.`)});
+            if (!template.failed) this.fire('error', {error: new Error(`[map-jr-gl] E40121 The image "${image}" cannot be drawn with the values of its slots (${(error as Error).message}). Check that the SVG is well-formed, also with a value in each slot.`)});
             template.failed = true;
         });
     }
@@ -297,7 +297,7 @@ export class Map {
         const c = typeof options.container === 'string' ? document.getElementById(options.container) : options.container;
         if (!c) throw new Error('Map container not found');
         // Two maps in one element leave two canvases. Hot module replacement and an effect without a clean-up do this.
-        if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
+        if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] E97 The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
         this.container = c;
         (this as any).__v_skip = true; // (Vue does not make the map reactive: its proxies cannot be posted, #242)
         // As in MapLibre GL JS, a class gives the container `position: relative` and `overflow: hidden` (a frame from before
@@ -324,7 +324,7 @@ export class Map {
         this.tr.worldCopies = !!(options.renderWorldCopies ?? true);
         const ratio = options.pixelRatio;
         if (ratio! > 0 && ratio! < Infinity) this.pixelRatio = ratio;
-        else if (ratio !== undefined && __DEV__) console.warn(`[map-jr-gl] The option pixelRatio is ${ratio}. Give a number above 0, or leave it out to follow devicePixelRatio.`);
+        else if (ratio !== undefined && __DEV__) console.warn(`[map-jr-gl] E1621 The option pixelRatio is ${ratio}. Give a number above 0, or leave it out to follow devicePixelRatio.`);
         this.measure();
         this.canvas.width = Math.round(this.tr.width * this.dpr);
         this.canvas.height = Math.round(this.tr.height * this.dpr);
@@ -404,11 +404,11 @@ export class Map {
         const preload = () => void import('./engine-entry.ts').catch(() => {});
         const pool = acquireTileWorkers(o).catch((err: Error) => {
             preload();
-            console.warn(`[map-jr-gl] Workers are unavailable (${err.message}); running on the main thread. ` +
+            console.warn(`[map-jr-gl] E22148 Workers are unavailable (${err.message}); running on the main thread. ` +
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
             // Vite in development serves the library from its dependency cache, which does not contain the worker file.
             if (__DEV__ && !(o.workerUrl ?? loadDefaults.workerUrl ?? o.createWorker ?? loadDefaults.createWorker) && import.meta.url.includes('/node_modules/.vite/deps/'))
-                console.warn("[map-jr-gl] Vite's dependency cache does not contain the worker file. Add optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']} to vite.config and restart the dev server.");
+                console.warn("[map-jr-gl] E10387 Vite's dependency cache does not contain the worker file. Add optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']} to vite.config and restart the dev server.");
         });
         const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? startWorker(o).catch(() => null) : null;
         if (engine) engine.then(w => w || preload()); else preload();
@@ -682,13 +682,13 @@ export class Map {
             this.restart(toMain);
         } else {
             this.watchTurn++;
-            this.fire('error', {error: new Error('[map-jr-gl] The WebGL context was lost again. Call remove() and create the map again later.')});
+            this.fire('error', {error: new Error('[map-jr-gl] E110 The WebGL context was lost again. Call remove() and create the map again later.')});
         }
     }
 
     /** Says that the engine goes to the main thread: a warning for `renderer: 'worker'`, and with `'auto'` only a note of the development build. */
     private fellBack(why: string) {
-        const text = '[map-jr-gl] Worker rendering unavailable, using the main thread: ' + why;
+        const text = '[map-jr-gl] E798 Worker rendering unavailable, using the main thread: ' + why;
         if (this.askedWorker) console.warn(text);
         else if (__DEV__) console.info(text);
     }
@@ -752,7 +752,7 @@ export class Map {
             el.textContent = 'This browser cannot show the map.';
             this.canvas.after(el);
         }
-        return new Error(`[map-jr-gl] The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), {cause});
+        return new Error(`[map-jr-gl] E20017 The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), {cause});
     }
 
     /** @internal Sends a command to the engine. */
@@ -771,7 +771,7 @@ export class Map {
             catch (error) {
                 // (Data that did not go gets no `geojsonDone`: the source must not wait for it.)
                 if (c.type === 'geojson') this.geoBusy.delete(c.source);
-                this.fire('error', {error: new Error(`[map-jr-gl] The map could not copy data to its workers (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})});
+                this.fire('error', {error: new Error(`[map-jr-gl] E242 The map could not copy data to its workers (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})});
             }
         }
     }
@@ -956,7 +956,7 @@ export class Map {
     /** The layer ids of `on(type, layerIds, listener)` (one id or an array, as in MapLibre GL JS), or null for `on(type, listener)`. */
     private layerArg(type: string, a: unknown, b: unknown): string[] | null {
         const layers = typeof a === 'string' ? [a] : Array.isArray(a) && a.every(id => typeof id === 'string') ? a.slice() : null;
-        if (layers ? typeof b !== 'function' : typeof a !== 'function') throw new TypeError(`[map-jr-gl] on("${type}"): ${layers ? 'the listener after the layer id is not a function' : 'the second argument is neither a layer id, an array of layer ids nor a listener'}.`);
+        if (layers ? typeof b !== 'function' : typeof a !== 'function') throw new TypeError(`[map-jr-gl] E278 on("${type}"): ${layers ? 'the listener after the layer id is not a function' : 'the second argument is neither a layer id, an array of layer ids nor a listener'}.`);
         return layers;
     }
     private wantsFrames = false;
@@ -992,7 +992,7 @@ export class Map {
             // a glyph range and a font file have the type `arrayBuffer`, as in MapLibre GL JS (#1675).
             const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' || kind === 'Glyphs' || kind === 'Font' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
             const out = image && (data instanceof ImageBitmap || data instanceof HTMLImageElement) ? await createImageBitmap(data) : toBytes(data);
-            if (ac.signal.aborted) { (out as Partial<ImageBitmap>).close?.(); throw new Error(`[map-jr-gl] the request to ${to} was aborted.`); }
+            if (ac.signal.aborted) { (out as Partial<ImageBitmap>).close?.(); throw new Error(`[map-jr-gl] E24 the request to ${to} was aborted.`); }
             return {data: out};
         } finally { this.protocolAborts.delete(ac); signal?.removeEventListener('abort', stop); }
     }
@@ -1076,7 +1076,7 @@ export class Map {
      */
     toBlob(type = 'image/png', quality?: number): Promise<Blob> {
         return new Promise((resolve, reject) => {
-            const gone = () => reject(new Error('[map-jr-gl] toBlob(): the map was removed before its image was taken.'));
+            const gone = () => reject(new Error('[map-jr-gl] E10044 toBlob(): the map was removed before its image was taken.'));
             const shoot = () => {
                 if (this.removed) return gone();
                 // (The engine in a worker takes the image itself: WebKit gives blank pixels for the canvas of the page; #965.)
@@ -1085,7 +1085,7 @@ export class Map {
                     // (The engine reports frames only while a page listens to `render`.)
                     if (!this.listeners.render?.length) { this.wantsFrames = false; this.post({type: 'frames', on: false}); }
                     this.off('remove', gone);
-                    this.canvas.toBlob(b => b ? resolve(b) : reject(new Error('[map-jr-gl] toBlob(): the browser could not encode the image as ' + type + '.')), type, quality);
+                    this.canvas.toBlob(b => b ? resolve(b) : reject(new Error('[map-jr-gl] E20044 toBlob(): the browser could not encode the image as ' + type + '.')), type, quality);
                 });
                 this.triggerRepaint();
             };
@@ -1245,7 +1245,7 @@ export class Map {
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
     private pitchCap(p?: number | null) {
         p ??= 60;
-        if (p > MAX_PITCH && __DEV__ && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}. Pass ${MAX_PITCH} or less.`);
+        if (p > MAX_PITCH && __DEV__ && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] E893 maxPitch ${p}: the pitch stops at ${MAX_PITCH}. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
     declare private centreHeld?: boolean;
@@ -1263,7 +1263,7 @@ export class Map {
      * @param meters The height in meters, or `null` for the ground (3D terrain, or sea level without it).
      */
     setCenterElevation(meters: number | null) {
-        if (meters !== null && !Number.isFinite(meters)) { console.warn(`[map-jr-gl] setCenterElevation(${meters}): the height is not a number. Pass a number of meters, or null to put the center on the ground.`); return this; }
+        if (meters !== null && !Number.isFinite(meters)) { console.warn(`[map-jr-gl] E20897 setCenterElevation(${meters}): the height is not a number. Pass a number of meters, or null to put the center on the ground.`); return this; }
         this.post({type: 'jump', elevation: this.heldFrom(meters)});
         this.jumped = this.seq;
         return this;
@@ -1280,7 +1280,7 @@ export class Map {
      */
     setMinPitch(p?: number | null) {
         p ??= 0;
-        if (!(p >= 0 && p <= this.tr.maxPitch)) throw new Error(`[map-jr-gl] setMinPitch(${p}): the pitch must be between 0 and the largest pitch, ${this.tr.maxPitch}. Pass a value in that range, or raise the largest pitch with setMaxPitch first.`);
+        if (!(p >= 0 && p <= this.tr.maxPitch)) throw new Error(`[map-jr-gl] E1245 setMinPitch(${p}): the pitch must be between 0 and the largest pitch, ${this.tr.maxPitch}. Pass a value in that range, or raise the largest pitch with setMaxPitch first.`);
         this.tr.minPitch = p;
         return this.limits();
     }
@@ -1382,7 +1382,7 @@ export class Map {
     private unsupportedTold = '';
     private warnUnsupported(types: string[]) {
         const list = types.join(', ');
-        if (list && list !== this.unsupportedTold) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + list);
+        if (list && list !== this.unsupportedTold) console.warn('[map-jr-gl] E1618 Skipping unsupported layer types: ' + list);
         this.unsupportedTold = list;
     }
     /**
@@ -1468,7 +1468,7 @@ export class Map {
         const t = this.rawStyle?.projection?.type, said = this.projectionWarned;
         if (t === undefined || t === 'mercator' || globeStops(t) || said.has('name')) return;
         said.add('name');
-        console.warn(`[map-jr-gl] The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
+        console.warn(`[map-jr-gl] E238 The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
     }
     /**
      * Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for
@@ -1523,7 +1523,7 @@ export class Map {
         const raw = this.rawStyle?.sources[feature.source];
         if (typeof feature.id === 'string' && !this.warnedTextId && isNaN(+feature.id) && /^(vector|raster)/.test(raw?.type) && raw?.promoteId == null) {
             this.warnedTextId = true;
-            console.warn(`[map-jr-gl] setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`);
+            console.warn(`[map-jr-gl] E294 setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.`);
         }
         const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
         states[key] = {...states[key], ...state};
@@ -1584,10 +1584,10 @@ export class Map {
         if (typeof style !== 'string') made = plain(style);
         else {
             const res = await this.fetchAs('Style')(style);
-            if (!res.ok) throw new Error(`[map-jr-gl] Style ${style}: HTTP ${res.status}`);
+            if (!res.ok) throw new Error(`[map-jr-gl] E63 Style ${style}: HTTP ${res.status}`);
             made = await res.json();
         }
-        if (!Array.isArray(made?.layers)) throw new Error('[map-jr-gl] The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.');
+        if (!Array.isArray(made?.layers)) throw new Error('[map-jr-gl] E539 The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.');
         return made;
     }
     /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
@@ -1822,7 +1822,7 @@ export class Map {
     addControl(control: Control, position?: ControlPosition) {
         const pos = position ?? control.getDefaultPosition?.() ?? 'top-right';
         const corner = this.corners[pos];
-        if (!corner) throw new Error(`[map-jr-gl] addControl(): "${pos}" is not a position. Write "top-left", "top-right", "bottom-left" or "bottom-right".`);
+        if (!corner) throw new Error(`[map-jr-gl] E269 addControl(): "${pos}" is not a position. Write "top-left", "top-right", "bottom-left" or "bottom-right".`);
         const el = control.onAdd(this);
         adoptClasses(el); // a control written for MapLibre GL JS gets this library's styles
         this.controls.set(control, el);
@@ -1892,7 +1892,7 @@ export class Map {
             width ??= sourceWidth / (options.pixelRatio ?? 1); height ??= (pic === img ? img.naturalHeight : pic.height) / (options.pixelRatio ?? 1);
             drawable = pic;
         } else if ('data' in source) {
-            if (typeof (source.data as {length?: unknown})?.length !== 'number') throw new Error(`[map-jr-gl] addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
+            if (typeof (source.data as {length?: unknown})?.length !== 'number') throw new Error(`[map-jr-gl] E464 addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
             // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). They are stored at their own size, as in
             // MapLibre GL JS, and premultiplied directly below: scaling them to the screen adds no detail, and at a pixel
             // ratio of 3 it sent 9 times the bytes for each updateImage (#979). Pixels whose length is not width × height × 4
@@ -1980,7 +1980,7 @@ export class Map {
     private drop(why: string) {
         // (After `remove()`, a query that nobody awaits is not an unhandled rejection of the page: a caller that awaits
         // still gets the error, but the page that forgot the query does not hear of it, as with MapLibre's synchronous queries.)
-        for (const p of this.pending.values()) { if (why === 'was removed') p.result?.catch(() => {}); p.reject(new Error(`[map-jr-gl] The query has no answer: the map ${why}.`)); }
+        for (const p of this.pending.values()) { if (why === 'was removed') p.result?.catch(() => {}); p.reject(new Error(`[map-jr-gl] E10022 The query has no answer: the map ${why}.`)); }
         this.pending.clear();
     }
 
