@@ -691,8 +691,11 @@ for (const mode of renderers) {
         const m = window.map, order = [], errors = [], frame = () => order.push('F'), err = e => errors.push(String(e.error?.message));
         m.on('render', frame); m.on('error', err);
         await m.addImage('throws', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('T'); throw new Error('boom'); }});
-        for (let i = 0; i < 4; i++) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 100)); }
-        const frames = order.filter(o => o === 'F').length;
+        // (It waits for three frames after the throws, not for a fixed time: a loaded runner draws fewer frames in it.)
+        const count = () => [order.filter(o => o === 'F').length, errors.filter(e => e === 'boom').length];
+        const t0 = performance.now();
+        while ((count()[0] < 3 || count()[1] < 3) && performance.now() - t0 < 20000) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 100)); }
+        const frames = count()[0];
         m.removeImage('throws'); m.off('render', frame); m.off('error', err);
         return {frames, errors: errors.filter(e => e === 'boom').length};
     });
