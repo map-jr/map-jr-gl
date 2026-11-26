@@ -462,6 +462,11 @@ void main() {
  * layer types that the part `layers` adds (see layers-more.ts).
  */
 type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
+/**
+ * The second order of a frame on the globe (see `groundFrame` in placement.ts) at the point (u, v) of a symbol: for
+ * x on the screen with k = 0, for y with k = 1. Without it (Mercator, a frame of four numbers, no frame) it is 0.
+ */
+const second = (q: number[] | undefined, k: number, u: number, v: number) => q && q.length > 4 ? q[4 + k] * u * u + q[6 + k] * u * v + q[8 + k] * v * v : 0;
 /** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849), the globe adds `halo`, and the part `layers` adds the programs of its layer types (#2215). */
 export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = BUILTIN;
 
@@ -1840,8 +1845,8 @@ export class GLRenderer {
                     // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
                     const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;
                     const u0 = sx + gx[a], u1 = sx + gx[a + 2], v0 = sy + gy[b], v1 = sy + gy[b + 2];
-                    const p00x = x + x0 * cos + y0 * nx, p00y = y + x0 * sin + y0 * ny, p10x = x + x1 * cos + y0 * nx, p10y = y + x1 * sin + y0 * ny;
-                    const p01x = x + x0 * cos + y1 * nx, p01y = y + x0 * sin + y1 * ny, p11x = x + x1 * cos + y1 * nx, p11y = y + x1 * sin + y1 * ny;
+                    const p00x = x + x0 * cos + y0 * nx + second(fr, 0, x0, y0), p00y = y + x0 * sin + y0 * ny + second(fr, 1, x0, y0), p10x = x + x1 * cos + y0 * nx + second(fr, 0, x1, y0), p10y = y + x1 * sin + y0 * ny + second(fr, 1, x1, y0);
+                    const p01x = x + x0 * cos + y1 * nx + second(fr, 0, x0, y1), p01y = y + x0 * sin + y1 * ny + second(fr, 1, x0, y1), p11x = x + x1 * cos + y1 * nx + second(fr, 0, x1, y1), p11y = y + x1 * sin + y1 * ny + second(fr, 1, x1, y1);
                     vertex(p00x, p00y, u0, v0, alpha, tint); vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);
                     vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p11x, p11y, u1, v1, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);
                 }
@@ -1866,7 +1871,7 @@ export class GLRenderer {
                         room(54);
                         for (const [ux, uy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
                             const dx = x0 + ux * w, dy = y0 + uy * h;
-                            vertex(l.x + dx * cos + dy * nx, l.y + dx * sin + dy * ny, img.x + ux * img.width, img.y + uy * img.height, Math.min(1, l.opacity) * 0.999, plain);
+                            vertex(l.x + dx * cos + dy * nx + second(fr, 0, dx, dy), l.y + dx * sin + dy * ny + second(fr, 1, dx, dy), img.x + ux * img.width, img.y + uy * img.height, Math.min(1, l.opacity) * 0.999, plain);
                         }
                     }
                     pen += g.advance + l.src.spacing * EM;
@@ -1886,7 +1891,7 @@ export class GLRenderer {
         let o = 0;
         const B = SDF_BUFFER;
         // The state of the label in work. `glyph` reads it, so that no objects are made for each glyph.
-        let hedge = 0, gamma = 0, haloGamma = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
+        let q: number[] | undefined, hedge = 0, gamma = 0, haloGamma = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
         /**
          * One glyph: two triangles about the origin (ox, oy). (cos, sin) is where one pixel along the text goes on the
          * screen, and (px, py) one pixel down the text: a turn by an angle, or the ground of a tilted map.
@@ -1897,6 +1902,7 @@ export class GLRenderer {
                 const cx = right ? x1 : x0, cy = low ? y1 : y0, fi = o >> 2;
                 f[fi] = ox + cx * cos + cy * px;
                 f[fi + 1] = oy + cx * sin + cy * py;
+                if (q) { f[fi] += second(q, 0, cx, cy); f[fi + 1] += second(q, 1, cx, cy); }
                 f[fi + 2] = right ? g.x + g.w : g.x;
                 f[fi + 3] = low ? g.y + g.h : g.y;
                 b[o + 16] = c0; b[o + 17] = c1; b[o + 18] = c2; b[o + 19] = c3;
@@ -1918,6 +1924,7 @@ export class GLRenderer {
             const col = src.color, halo = src.halo;
             c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * 255 * l.opacity * (l.alpha ?? 1));
             h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * 255 * l.opacity * (l.alpha ?? 1));
+            q = !l.curve && fr && fr.length > 4 ? fr : undefined;
             if (l.curve) {
                 // Text along a line: every glyph has its own origin and rotation.
                 const glyphs = shaped.lines[0].glyphs!, curve = l.curve;
