@@ -25,9 +25,15 @@ test('a chain of + keeps its values and drops each piece of text, and a ? : of t
     assert.equal(said('`[map-jr-gl] E20017 The map cannot be shown: ${x}.` + (/W/.test(x) ? \' Call supported().\' : \'\')'), '[map-jr-gl] E20017 https://map-jr.org/e/20017 roads');
 });
 
-test('a text with no code, and a text with a code after the name of a method, are not changed', () => {
+test('a text that ends with a space keeps one, so that a message after it stays apart', () => {
+    assert.equal(said('`[map-jr-gl] E2106 The source "${x}": `') + 'E1163', '[map-jr-gl] E2106 https://map-jr.org/e/2106 roads E1163');
+    assert.equal(said(`'[map-jr-gl] E798 Worker rendering unavailable: '`), '[map-jr-gl] E798 https://map-jr.org/e/798 ');
+});
+
+test('a text with no code, a text with a code after the name of a method, and a text that a test of a message compares are not changed', () => {
     assert.equal(said(`'[map-jr-gl] ' + x`), '[map-jr-gl] roads');
     assert.equal(said('`[map-jr-gl] ${x}(): ${y}`'), '[map-jr-gl] roads(): 404');
+    assert.equal(said(`x.startsWith('[map-jr-gl] E20017 ')`), false);
 });
 
 test('the messages of src/host.ts whose code is added at run time keep the code and the link', () => {

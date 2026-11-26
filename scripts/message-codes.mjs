@@ -58,6 +58,9 @@ function shortenMessages(code, file) {
         if (choice(n)) return [];
         return [src(n)];
     };
+    /** The text at the right end of a message: of its last piece, when that piece is text. */
+    const lastText = n => n.type === 'Literal' && typeof n.value === 'string' ? n.value : n.type === 'TemplateLiteral' ? n.quasis.at(-1).value.cooked ?? ''
+        : n.type === 'BinaryExpression' && n.operator === '+' ? lastText(n.right) : '';
     /** Drops a text argument: a string becomes '' and a template keeps its values. */
     const dropText = n => edits.push([n.start, n.end, n.type === 'Literal' ? "''" : '`' + n.expressions.map(e => '${' + src(e) + '}').join(' ') + '`']);
     for (const [name, from, to] of special) {
@@ -68,12 +71,16 @@ function shortenMessages(code, file) {
     }
     walk(ast, n => {
         if (!isText(n) || !CODED.test(textOf(n))) return;
+        // (A text that a test of a message compares, `message.startsWith('[map-jr-gl] E20017 ')`, is not a message.)
+        const call = parents.get(n);
+        if (call?.type === 'CallExpression' && call.arguments.includes(n) && /^(startsWith|endsWith|includes|indexOf)$/.test(call.callee.property?.name ?? '')) return;
         const [, prefix = '', number] = CODED.exec(textOf(n));
         // (When the text is the left end of a `+` chain, the whole chain is the message.)
         let top = n;
         for (let p = parents.get(top); p?.type === 'BinaryExpression' && p.operator === '+' && p.left === top; p = parents.get(p)) top = p;
-        const head = `${prefix}E${number} ${LINK}${number}`, list = values(top);
-        edits.push([top.start, top.end, list.length ? '`' + head + list.map(v => ' ${' + v + '}').join('') + '`' : JSON.stringify(head)]);
+        // (A text that ends with a space, such as a prefix that the source puts before another message, keeps one.)
+        const head = `${prefix}E${number} ${LINK}${number}`, list = values(top), space = /\s$/.test(lastText(top)) ? ' ' : '';
+        edits.push([top.start, top.end, list.length ? '`' + head + list.map(v => ' ${' + v + '}').join('') + space + '`' : JSON.stringify(head + space)]);
     });
     // The texts that `complete(spec, method, fix)` and `reject(code, value, short)` of src/host.ts get go: the code is added by those functions.
     if (file.endsWith('/src/host.ts')) walk(ast, n => {

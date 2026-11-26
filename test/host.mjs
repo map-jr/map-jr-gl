@@ -3848,7 +3848,7 @@ for (const renderer of renderers) {
             el.remove();
             return left;
         });
-        const said = warnings.filter(w => w.startsWith('[map-jr-gl] E97 The container already has a map.')).length, mark = warnings.indexOf('mark');
+        const said = warnings.filter(w => w === '[map-jr-gl] E97 https://map-jr.org/e/97').length, mark = warnings.indexOf('mark');
         check('a second map in one element gets a warning, and a map after destroy() does not', said === 1 && mark >= 0 && warnings.findIndex(w => w === '[map-jr-gl] E97 https://map-jr.org/e/97') > mark && twice === 0, JSON.stringify({warnings, twice}));
     } catch (e) { check('removed while loading: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
@@ -4663,9 +4663,10 @@ for (const status of [404, 403, 503]) {
             return errors;
         });
         const of = s => errors.filter(e => e.source === s), most = map => Math.max(...map.values());
-        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 The source "${s}": E1163 the request for the tile http`));
+        // (The production build prints the codes, their links and the values, #2148.)
+        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 https://map-jr.org/e/2106 ${s} E1163 https://map-jr.org/e/1163 tile http`));
         check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
-            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('failed: HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
+            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('.png HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
             seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
     } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
@@ -4696,7 +4697,7 @@ for (const status of [404, 403, 503]) {
         const most = seen.size ? Math.max(...seen.values()) : 0;
         check('a raster-dem tile that cannot be decoded is requested once and gives one error with the source, and the map is idle (#2109)',
             seen.size > 0 && most === 1 && got.errors.length === seen.size && got.idle
-            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 The source "dem": E1163 the request for the tile http') && e.message.includes('PNG or WebP')),
+            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 dem E1163 https://map-jr.org/e/1163 tile http') && e.message.includes('PNG or WebP')),
             JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
