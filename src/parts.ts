@@ -47,7 +47,7 @@ export function part<K extends PartName>(name: K): Promise<Parts[K]> {
 }
 
 /** Whether an error message is the failure of a part (see `fromUrl` in worker.ts). */
-const isPartFailure = (message: string) => message.startsWith('[map-jr-gl]') && /could not load .*the part of the /.test(message);
+export const isPartFailure = (message: string) => message.startsWith('[map-jr-gl]') && /could not load .*the part of the /.test(message);
 
 /** Wraps the events of one map so that the failure of each part is reported once, and not by each tile and query (#79). */
 export function oncePerPart<E extends {type: string; message?: string}>(emit: (e: E) => void): (e: E) => void {

@@ -308,6 +308,34 @@ export class Map extends CoreMap {
         if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
         return this;
     }
+    // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
+    /**
+     * Has no effect: the map does not draw tile borders. Reading it returns the value that was set.
+     * @default false
+     */
+    get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
+    set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
+    /**
+     * Has no effect: the map does not draw the padding. Reading it returns the value that was set.
+     * @default false
+     */
+    get showPadding() { return !!this.debugDraw.showPadding; }
+    set showPadding(v: boolean) { this.setDebug('showPadding', v); }
+    /**
+     * Has no effect: the map does not draw collision boxes. Reading it returns the value that was set.
+     * @default false
+     */
+    get showCollisionBoxes() { return !!this.debugDraw.showCollisionBoxes; }
+    set showCollisionBoxes(v: boolean) { this.setDebug('showCollisionBoxes', v); }
+    /**
+     * Has no effect: the map has no overdraw view. Reading it returns the value that was set.
+     * @default false
+     */
+    get showOverdrawInspector() { return !!this.debugDraw.showOverdrawInspector; }
+    set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
+    private debugDraw: Record<string, boolean> = {};
+    private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
+
     /**
      * As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the
      * map draws on the main thread (`renderer: 'main'`). With the worker renderer the map does not apply what the
@@ -357,34 +385,6 @@ export class Map extends CoreMap {
         this.warned.add('setTransformCameraUpdate');
         console.warn('[map-jr-gl] setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.');
     }
-    // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
-    /**
-     * Has no effect: the map does not draw tile borders. Reading it returns the value that was set.
-     * @default false
-     */
-    get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
-    set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
-    /**
-     * Has no effect: the map does not draw the padding. Reading it returns the value that was set.
-     * @default false
-     */
-    get showPadding() { return !!this.debugDraw.showPadding; }
-    set showPadding(v: boolean) { this.setDebug('showPadding', v); }
-    /**
-     * Has no effect: the map does not draw collision boxes. Reading it returns the value that was set.
-     * @default false
-     */
-    get showCollisionBoxes() { return !!this.debugDraw.showCollisionBoxes; }
-    set showCollisionBoxes(v: boolean) { this.setDebug('showCollisionBoxes', v); }
-    /**
-     * Has no effect: the map has no overdraw view. Reading it returns the value that was set.
-     * @default false
-     */
-    get showOverdrawInspector() { return !!this.debugDraw.showOverdrawInspector; }
-    set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
-    private debugDraw: Record<string, boolean> = {};
-    private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
-
     /**
      * Sets the pitch in degrees above which raster tiles are filtered anisotropically, as in MapLibre GL JS: the far part
      * of a pitched raster map is then sharper. `null` or `undefined` sets the default, 20. A value outside 0 to 180 throws.
@@ -530,8 +530,8 @@ export class Map extends CoreMap {
             console.warn(message);
         }
         this.unsupported('The option logoPosition', !o.logoPosition);
-        // (Development build) `validate: false` skips the check of the required fields of the style (#1748).
-        if (__DEV__) this.noValidate = o.validate === false;
+        // (Development build) `validate: false` skips the check of the style (#1748). `setStyle` can override it for one style.
+        if (__DEV__) this.noValidate = this.noValidateMap = o.validate === false;
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
@@ -572,7 +572,8 @@ export class Map extends CoreMap {
         };
         this.on('moveend', end);
         for (const type of ['pointerup', 'touchend'] as const) {
-            const lifted = () => setTimeout(end);
+            // (The lift marks a gesture too, because its moves can come with no frame and so no `move` before it, #1954.)
+            const lifted = () => { byHand ||= held(); setTimeout(end); };
             addEventListener(type, lifted, true);
             this.once('remove', () => removeEventListener(type, lifted, true));
         }
@@ -677,6 +678,8 @@ export class Map extends CoreMap {
      */
     setStyle(style: unknown, options: StyleSwapOptions = {}) {
         this.styleUrl = typeof style === 'string' ? style : null;
+        // (Development build) As in MapLibre GL JS, `validate` of this call wins over the option of `new Map()` (#1748).
+        if (__DEV__) this.noValidate = options.validate === undefined ? this.noValidateMap : !options.validate;
         const own = options.transformStyle, diff = options.diff !== false;
         return super.setStyle(style, !this.customs?.size ? {transformStyle: own, diff} : {diff, transformStyle: (previous: any, next: any) => {
             next = own ? own(previous, next) : next;
@@ -1109,6 +1112,7 @@ export class Map extends CoreMap {
         super.loadedEvents(id);
     }
     private noValidate = false;
+    private noValidateMap = false;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }

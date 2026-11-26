@@ -129,9 +129,15 @@ export function rays(tr: Transform): number[] {
 
 /** Screen pixels to the Mercator position of the globe there; off the globe, the nearest point of the horizon (as in MapLibre). */
 export function toMerc(tr: Transform, px: number, py: number, metres = tr.elevation): [number, number] {
-    const p = surface(tr, px, py, 1 + metres / 6371008.8), lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
-    // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
+    const [lng, lat] = toLngLat(tr, px, py, metres);
     return [mercX(lng), mercY(clamp(lat, -85.051129, 85.051129))];
+}
+
+/** Screen pixels to the position on the globe there, with the latitude up to ±90° (as MapLibre's unprojectScreenPoint). */
+export function toLngLat(tr: Transform, px: number, py: number, metres = tr.elevation): [number, number] {
+    const p = surface(tr, px, py, 1 + metres / 6371008.8);
+    // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
+    return [Math.atan2(p[0], p[2]) / RAD, Math.asin(clamp(p[1], -1, 1)) / RAD];
 }
 
 /** Screen pixels to the point of the sphere of radius `r` there, scaled to the unit sphere, also past 85.05° (off the globe, the nearest point of the horizon). */
@@ -237,7 +243,11 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
  * sample points are behind the horizon (with the bulge of a large tile), or outside the view, or when a hull around it
  * is more than 60 pixels outside one edge of the view, as MapLibre GL JS 6.17 culls a volume around the tile (#1922).
  * The level that a tile gets falls with the distance from the camera to its nearest sample point, as with 3D terrain
- * (geo.ts); below zoom 5 it is usually one level lower than MapLibre GL JS's, on purpose (#1828).
+ * (geo.ts). Below zoom 5 it is often lower than in MapLibre GL JS 6.17, on purpose (#1828, #2061). Measured at latitude 0
+ * and pitch 0 on a map of 497x509 pixels, with the same result at DPR 1 and 2: a vector source (512 px, `round` false)
+ * gets the level of MapLibre GL JS at zoom 0.5, 1 and 1.5 and one level lower at zoom 2.5 (z1 for z2). A raster source
+ * (256 px, `round` true) gets one level lower at zoom 0.5, 1 and 2.5 (z1 for z2, z3 for z4) and two levels lower at
+ * zoom 1.5 (z1 for z3).
  */
 export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSize: number, round: boolean, cap = 160): TileID[] {
     const f = frame(tr), exact = tr.zoom + Math.log2(TILE_SIZE / tileSize), out: (TileID & {near: number})[] = [];

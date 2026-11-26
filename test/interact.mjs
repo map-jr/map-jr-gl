@@ -88,6 +88,36 @@ for (const mode of renderers) {
     check(`[${mode}] the first idle comes after the picture of an image source has loaded, and a picture that fails says so once (#1449)`,
         picture.idle && picture.px?.[0] > 200 && picture.px[1] < 60 && picture.said?.length === 1 && picture.said[0].includes('no-such-1449.png'), JSON.stringify(picture));
 
+    // #1983: an image source whose corners make a concave shape is drawn as in MapLibre GL JS 6.17, in Mercator and on
+    // the globe: the picture is stretched bilinearly, and the parts that the stretch turns over are not drawn. For these
+    // corners MapLibre draws only a small shape above the inner corner (0, 10): (0, 20) is red, while (0, -20) in the
+    // lower point and (-30, 35) in the left arm stay white. Before the fix both arms of a V were drawn. With corners 0, 1
+    // and 2 on one line, MapLibre culls the whole picture (a cross of 0 is not flipped in `hasWrongWindingOrder`), so
+    // (-10, 20) stays white.
+    const concave = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const c = Object.assign(document.createElement('canvas'), {width: 8, height: 8}), g = c.getContext('2d');
+        g.fillStyle = '#f00'; g.fillRect(0, 0, 8, 8);
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:400px'})), out = {};
+        const corners = {concave: [[-40, 50], [0, 10], [40, 50], [0, -40]], line: [[-30, 40], [-30, 0], [-30, -40], [30, 40]]};
+        for (const type of ['mercator', 'globe']) for (const shape of ['concave', 'line']) {
+            const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 5], zoom: 0.6, style: {version: 8, projection: {type},
+                sources: {i: {type: 'image', url: c.toDataURL(), coordinates: corners[shape]}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'i', type: 'raster', source: 'i'}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            const bmp = await createImageBitmap(await m.toBlob()), k = bmp.width / 400, cv = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), cg = cv.getContext('2d');
+            cg.drawImage(bmp, 0, 0);
+            const red = ll => { const p = m.project(ll); return cg.getImageData(Math.round(p.x * k), Math.round(p.y * k), 1, 1).data[1] < 100; };
+            if (shape === 'line') out[type].line = red([-10, 20]);
+            else out[type] = {inside: red([0, 20]), point: red([0, -20]), arm: red([-30, 35])};
+            m.remove();
+        }
+        el.remove();
+        return out;
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] compat: an image source with a concave shape of corners, or with corners 0, 1 and 2 on one line, is drawn as in MapLibre GL JS, in Mercator and on the globe (#1983)`,
+        ['mercator', 'globe'].every(t => concave[t]?.inside && !concave[t].point && !concave[t].arm && concave[t].line === false), JSON.stringify(concave));
+
     // Paint transitions (#960), as in MapLibre GL JS: setPaintProperty and setStyle with `diff` move a colour over the
     // layer's `*-transition` (here 3 s), `idle` waits for the end, and setStyle with `diff: false` changes it at once.
     // (`toBlob` waits for `idle`, so a screenshot of the page reads the colour in the middle.)
@@ -2650,6 +2680,38 @@ for (const mode of renderers) {
         check(`[${mode}] compat: fill-antialias draws the edges of a fill-pattern in the pattern, and false draws none, also with fill-outline-color (#1469)`,
             r.on?.[0] > 200 && r.on[1] < 230 && Math.abs(r.on[1] - r.on[2]) < 20 && r.off?.every(v => v > 245), JSON.stringify(r));
     }
+    // #2045: the edges of a fill-pattern layer are drawn after the fills of all its batches, as in MapLibre GL JS
+    // (drawFill). With fill-sort-key and two images, the red square (key 1) and the blue one (key 2) are two batches.
+    // The left edge of the red square runs through the column left of the middle, inside the blue square, so that
+    // column is a mix of red and blue. With the edges drawn after each batch, the blue fill covered it.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const solid = c => { const data = new Uint8Array(16 * 16 * 4); for (let i = 0; i < data.length; i += 4) data.set(c, i); return {width: 16, height: 16, data}; };
+            await m.addImage('red', solid([255, 0, 0, 255]));
+            await m.addImage('blue', solid([0, 0, 255, 255]));
+            const box = (x0, x1, img, k) => ({type: 'Feature', properties: {img, k}, geometry: {type: 'Polygon', coordinates: [[[x0, -60], [x1, -60], [x1, 60], [x0, 60], [x0, -60]]]}});
+            m.addSource('s', {type: 'geojson', data: {type: 'FeatureCollection', features: [box(-0.1, 170, 'red', 1), box(-100, 15, 'blue', 2)]}});
+            m.addLayer({id: 'p', type: 'fill', source: 's', layout: {'fill-sort-key': ['get', 'k']}, paint: {'fill-pattern': ['get', 'img']}});
+            // (The image is taken until both fills are drawn or 30 s pass; the edge is in the same image.)
+            let edge = null, blue = null, red = null;
+            for (const t0 = performance.now(); performance.now() - t0 < 30000;) {
+                const bmp = await createImageBitmap(await m.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                const at = x => Array.from(g.getImageData(x, bmp.height >> 1, 1, 1).data);
+                edge = at((bmp.width >> 1) - 1); blue = at(bmp.width * 5 >> 3); red = at(bmp.width * 7 >> 3);
+                if (blue[2] > 200 && blue[0] < 30 && red[0] > 200 && red[2] < 30) break;
+                await new Promise(res => setTimeout(res, 100));
+            }
+            m.remove(); el.remove();
+            return {edge, blue, red};
+        }, mode);
+        check(`[${mode}] compat: the edges of a fill-pattern layer are drawn after the fills of all its batches (#2045)`,
+            r.blue?.[2] > 200 && r.red?.[0] > 200 && r.edge?.[0] > 120 && r.edge[1] < 60, JSON.stringify(r));
+    }
     // #949: updateImage replaces the pixels in place and keeps the options of the image (here `sdf`), as in MapLibre
     // GL JS. The icon is drawn with the new pixels, and an image of another size replaces the old one.
     {
@@ -4798,6 +4860,29 @@ for (const mode of renderers) {
             dev.length === 2 && dev[0].startsWith('[map-jr-gl] layers.c.paint.circle-colour: unknown property "circle-colour".') && dev[0].endsWith('Write "circle-color".')
             && dev[1].startsWith('[map-jr-gl] layers.c.paint.circle-opacityy: unknown property "circle-opacityy".') && dev[1].endsWith('Write "circle-opacity".') && prod.length === 0, JSON.stringify(unknown));
     }
+    // `validate` of setStyle wins over the option of `new Map()` for that style, in the development build (#1748).
+    if (mode === 'main') {
+        const v = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = id => ({version: 8, sources: {}, layers: [{id, type: 'fill'}]});
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const errors = [];
+            m.on('error', e => errors.push(e.error.message));
+            await new Promise(r => m.once('load', r));
+            const out = {};
+            for (const [id, options] of [['a', {validate: false}], ['b', {}], ['c', {validate: false, diff: false}]]) {
+                errors.length = 0;
+                m.setStyle(style(id), options);
+                await new Promise(r => m.once('idle', r));
+                out[id] = errors.filter(e => e.includes('missing required property')).length;
+            }
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: setStyle(style, {validate: false}) skips the check of the style in the development build, and a later setStyle without it checks again',
+            v.a === 0 && v.b === 1 && v.c === 0, JSON.stringify(v));
+    }
     // `new LogoControl({compact})` is accepted as in MapLibre GL JS, and `compact` warns once, because it has no effect (#671).
     if (mode === 'main') {
         const logo = await page.evaluate(async () => {
@@ -5945,6 +6030,34 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: the inertia of a rotate drag that ends within bearingSnap of north turns north in one movement, as in MapLibre GL JS (#1834)',
             m1834r.ends.length === 1 && m1834r.ends[0] === 0 && m1834r.bearing === 0, JSON.stringify(m1834r));
+        // #1954: a rotate drag from bearing -24 to about -3 whose moves and release come in one task (no frame between
+        // them, so no `move` while the button is down) and that pauses 200 ms before the release (no inertia) turns
+        // north after its `moveend`, as MapLibre GL JS does after every gesture (`HandlerManager._onMoveEnd`).
+        const m1954 = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: -24});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            await new Promise(r => setTimeout(r, 300));
+            const ends = [];
+            m.on('moveend', () => ends.push(+m.getBearing().toFixed(1)));
+            const canvas = m.getCanvas();
+            const fire = (type, x, buttons) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: 250, button: 2, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true};
+                canvas.dispatchEvent(new PointerEvent('pointer' + type, o)); canvas.dispatchEvent(new MouseEvent('mouse' + type, o));
+            };
+            const wait = ms => { const t0 = performance.now(); while (performance.now() - t0 < ms); };
+            fire('down', 250, 2);
+            for (let k = 1; k <= 8; k++) { wait(10); fire('move', 250 + k * 3.3, 2); }
+            wait(200);
+            fire('up', 276.4, 0);
+            await new Promise(r => setTimeout(r, 2500));
+            const out = {ends, bearing: +m.getBearing().toFixed(1)};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
+            m1954.ends.length >= 1 && Math.abs(m1954.ends[0]) > 0.5 && Math.abs(m1954.ends[0]) < 7 && m1954.bearing === 0, JSON.stringify(m1954));
         // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
         // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
         const m479 = {};
@@ -6949,6 +7062,23 @@ for (const mode of renderers) {
     });
     check('compat: setVerticalFieldOfView changes the camera, clamps to 150 and fires the move events',
         fov.start === 36.87 && fov.set === 90 && fov.top[1] > fov.top[0] + 0.01 && fov.events.join() === 'movestart!,move!,moveend!' && fov.back.join() === '123,87' && Math.abs(fov.clamped - 150) < 1e-9, JSON.stringify(fov));
+    // setVerticalFieldOfView during an easeTo keeps the animation, as in MapLibre GL JS, which changes the field of view
+    // without stopping the camera (#1858).
+    const fovEase = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [0, 0], zoom: 3, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const end = new Promise(r => m.once('moveend', r));
+        m.easeTo({center: [20, 10], zoom: 5, duration: 300});
+        await new Promise(r => setTimeout(r, 60));
+        m.setVerticalFieldOfView(50);
+        await end; await new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+        const c = m.getCenter(), out = [+c.lng.toFixed(3), +c.lat.toFixed(3), +m.getZoom().toFixed(3), Math.round(m.getVerticalFieldOfView())];
+        m.remove(); el.remove();
+        return out;
+    });
+    check('compat: setVerticalFieldOfView during easeTo keeps the animation, which ends at its target',
+        fovEase.join() === '20,10,5,50', JSON.stringify(fovEase));
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));

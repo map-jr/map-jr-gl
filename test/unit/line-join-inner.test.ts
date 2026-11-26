@@ -139,3 +139,25 @@ test('line joins: past a turn of 120 degrees, line-offset moves the pairs of a r
         assert.equal(seen.size, ease ? 2 : 1, `turn ${turn}: the vectors that the offset moves the corner along`);
     }
 });
+
+test('line joins: a miter join that turns more than 120 degrees is a flipbevel, as in MapLibre GL JS (#1981)', () => {
+    // A turn of about 150 degrees: the line goes east, then back to the west and north.
+    const z = 10, tx = 300, ty = 380, n = 2 ** z;
+    const lng = (tx + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 0.5) / n))) * 180 / Math.PI;
+    const a = 150 * Math.PI / 180, d = 0.05;
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString',
+        coordinates: [[lng - d, lat], [lng, lat], [lng + d * Math.cos(a), lat + d * Math.sin(a) * 0.6]]}} as any), z, tx, ty);
+    const out = tessellate(buildTile(data, z, [compileLayer({id: 'l', type: 'line', source: 'g', layout: {'line-join': 'miter'}})!], false).layers.l)!;
+    const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength), vs = [];
+    for (let o = 0; o < view.byteLength; o += LINE_VERTEX) {
+        vs.push({x: view.getInt16(o, true), y: view.getInt16(o + 2, true), nx: view.getInt16(o + 4, true) / LINE_NORMAL,
+            ny: view.getInt16(o + 6, true) / LINE_NORMAL, side: view.getInt16(o + 8, true)});
+    }
+    const atCorner = vs.filter(v => v.x === 2048 && v.y === 2048);
+    // Two plain pairs across the bisector of the two normals, 1 / sin of half the turn long (about 1.035 here).
+    assert.equal(atCorner.length, 4, 'two pairs at the corner');
+    for (const v of atCorner) assert.equal(Math.abs(v.side), 1, 'a plain pair');
+    const len = Math.hypot(atCorner[0].nx, atCorner[0].ny);
+    for (const v of atCorner) assert.ok(Math.abs(Math.hypot(v.nx, v.ny) - len) < 0.01, 'all the same length');
+    assert.ok(len > 1 && len < 1.2, `the length is about 1 / sin of half the turn (${len})`);
+});

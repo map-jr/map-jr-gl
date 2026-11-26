@@ -109,11 +109,11 @@ library" names a member that MapLibre GL JS does not have.
 | `setVerticalFieldOfView` | `(fov: number, eventData?: EventData \| undefined) => Map` | Sets the vertical field of view of the camera in degrees, as in MapLibre GL JS: the value is clamped to 0.1 to 150, the zoom stays, and the map fires `movestart`, `move` and `moveend`. |
 | `getVerticalFieldOfView` | `() => number` | Returns the vertical field of view of the camera in degrees (36.87 by default). |
 | `setCenterElevation` | `(elevation: number, eventData?: EventData \| undefined) => Map` | Sets the height of the map center in meters, as in MapLibre GL JS. |
-| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the map draws on the main thread (`renderer: 'main'`). |
 | `showTileBoundaries` | `boolean` | Has no effect: the map does not draw tile borders. |
 | `showPadding` | `boolean` | Has no effect: the map does not draw the padding. |
 | `showCollisionBoxes` | `boolean` | Has no effect: the map does not draw collision boxes. |
 | `showOverdrawInspector` | `boolean` | Has no effect: the map has no overdraw view. |
+| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | As in MapLibre GL JS, the map calls the function before each frame and draws the camera that it returns, when the map draws on the main thread (`renderer: 'main'`). |
 | `setAnisotropicFilterPitch` | `(pitch?: number \| null \| undefined) => Map` | Sets the pitch in degrees above which raster tiles are filtered anisotropically, as in MapLibre GL JS: the far part of a pitched raster map is then sharper. |
 | `getAnisotropicFilterPitch` | `() => number` | Returns the pitch in degrees above which raster tiles are filtered anisotropically (20 by default). |
 | `setSourceTileLodParams` | `(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string \| undefined) => Map` | Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS. |

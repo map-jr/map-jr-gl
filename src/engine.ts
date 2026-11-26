@@ -13,7 +13,7 @@ import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCente
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import {globeBuild, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
-import {oncePerPart, part, type PartName} from './parts.ts';
+import {isPartFailure, oncePerPart, part, type PartName} from './parts.ts';
 import {imagePixels} from './exact-pixels.ts';
 
 export interface CameraOptions {
@@ -265,6 +265,12 @@ function packGeoJSON(data: unknown): () => Uint8Array | null {
     let bytes: Uint8Array | null | undefined;
     return () => bytes !== undefined ? bytes : (bytes = data && typeof data === 'object' ? new TextEncoder().encode(JSON.stringify(data)) : null);
 }
+
+/**
+ * The message of a tile that failed names its source, after the prefix (#2099). A part of the worker that did not load
+ * is not a fault of the source, and its message stays the same for each source, so that the map reports it once (#79).
+ */
+const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] The source "${source}": `);
 
 export class Engine {
     tr = new Transform();
@@ -842,7 +848,9 @@ export class Engine {
                 try { this.frame(performance.now()); } finally { this.inResize = false; }
                 this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr, buffer: [this.renderer.gl.drawingBufferWidth, this.renderer.gl.drawingBufferHeight]});
                 return;
-            case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; if (c.fov) tr.fov = c.fov; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true;
+            case 'jump': // (A change of the field of view alone keeps a running animation, as in MapLibre GL JS; #1858.)
+                if (Object.keys(c).some(k => k !== 'type' && k !== 'seq' && k !== 'fov')) this.stop();
+                if (c.padding) tr.padding = c.padding; if (c.fov) tr.fov = c.fov; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true;
                 if (c.elevation !== undefined && (this.heldElevation = c.elevation) === null) this.centreGiven = true;
                 break;
             case 'ease': {
@@ -1365,7 +1373,7 @@ export class Engine {
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
             // A tile reports its failure once, at its first failed request, as MapLibre GL JS 6.17 fires one `error` for
             // each failed tile (and makes no request again). The retries below are silent (#2007).
-            if (!t.tries) this.emit({type: 'error', message: err.message, source});
+            if (!t.tries) this.emit({type: 'error', message: tileMessage(source, err), source});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
@@ -1449,7 +1457,7 @@ export class Engine {
         if (fresh) t.stale = false;
         const src = this.style.sources[source];
         (src.type === 'raster-dem'
-            ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem && this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox')))
+            ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
             ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
             : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
@@ -1467,7 +1475,7 @@ export class Engine {
             // A failed reload of an expired tile fires one `error`, with its source, as in MapLibre GL JS 6.17. The
             // reloads after it (1 s, 2 s, 4 s and so on, see `expire`) fire none until one succeeds (#2072).
             if (fresh) { this.expire(t, 0); if (t.reloadFailed) return; t.reloadFailed = true; }
-            this.emit({type: 'error', message: err.message, source});
+            this.emit({type: 'error', message: tileMessage(source, err), source});
         });
     }
 
@@ -1494,6 +1502,18 @@ export class Engine {
      * The GPU tile of an elevation tile, in its turn (see `paced`). It also gives the tile its heights, which shape 3D
      * terrain; a tile that is loaded again because it expired replaces the heights of the old one at the same moment.
      */
+    /**
+     * An elevation tile whose reload answered 404: it becomes a tile that the server does not have, as a vector tile in the
+     * same case, and the terrain leaves its heights. (MapLibre GL JS marks the tile `errored`, which has no data, #2055.)
+     */
+    private demGone(source: string, key: string, t: TileState): GLTile | null {
+        if (this.tiles.get(key) !== t) return null;
+        if (t.dem && this.style.terrain?.source === source) this.ground(key, t, false);
+        t.dem = undefined;
+        t.missing = true;
+        return {labels: {}, batches: {}};
+    }
+
     private elevationTile(dem: ElevationTile, source: string, id: TileID, key: string, t: TileState, encoding: DemEncoding) {
         return this.paced(dem.pixels.length * 2, () => {
             if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};

@@ -4621,6 +4621,37 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check(`the test of a tile that answers HTTP ${status} was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A raster tile that fails gives one error with the prefix and the name of its source (#2099): one source answers 500,
+// the other answers 200 with bytes that are not an image. A tile that cannot be decoded would fail again, so it is
+// requested once in 6 s, as in MapLibre GL JS; a 500 is requested again (0.5 s, 1 s, 2 s).
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = {five: new Map(), png: new Map()};
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/raster-2099\/(five|png)\//, route => {
+            const u = new URL(route.request().url()), kind = u.pathname.split('/')[2];
+            seen[kind].set(u.pathname, (seen[kind].get(u.pathname) ?? 0) + 1);
+            return kind === 'five' ? route.fulfill({status: 500, body: 'down'}) : route.fulfill({status: 200, contentType: 'image/png', body: 'not a png'});
+        });
+        const errors = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), errors = [], tiles = kind => ({type: 'raster', tiles: [`${location.origin}/raster-2099/${kind}/{z}/{x}/{y}.png`], tileSize: 256});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = lib.createMap(el, {style: {version: 8, sources: {five: tiles('five'), png: tiles('png')}, layers: [{id: 'a', type: 'raster', source: 'five'}, {id: 'b', type: 'raster', source: 'png'}]},
+                view: {center: [0, 0], zoom: 2}, attribution: false, onError: (e, info) => errors.push({source: info.sourceId, message: e.message})});
+            await new Promise(r => setTimeout(r, 6000));
+            m.destroy();
+            return errors;
+        });
+        const of = s => errors.filter(e => e.source === s), most = map => Math.max(...map.values());
+        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] The source "${s}": the request for the tile http`));
+        check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
+            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('failed: HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
+        check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
+            seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
+    } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A tile that a custom protocol rejects is asked for once (#652): the loader is called once for each tile in 6 s.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
@@ -4865,6 +4896,44 @@ for (const status of [404, 403, 503]) {
         check('an elevation tile with max-age=3600 is requested once (#1988)', usual.seen.size > 0 && twice.length === 0, JSON.stringify({tiles: usual.seen.size, twice: twice.slice(0, 3)}));
     } catch (e) { check('the test of elevation tiles that expire was completed', false, String(e.message).split('\n')[0]); }
     for (const page of pages) await page?.close();
+}
+// An elevation tile whose reload answers 404 is dropped as a tile that the server does not have, as a vector tile is in
+// the same case, and as in MapLibre GL JS (whose tile becomes `errored` and has no data then). The tile under the center
+// and the tiles of lower zoom levels are at 0 m for good; the tile east of it is at 8000 m and answers 404 from its first
+// reload on. The terrain then leaves its heights, so the point that `project` gives for a place east of the center goes
+// back to where it is on a map without terrain, and the tile is not requested again (#2055). Before, the old heights
+// stayed for good.
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const seen = new Map();
+        await page.route(/\/dem2055\//, route => {
+            const k = new URL(route.request().url()).pathname, n = (seen.get(k) ?? 0) + 1, under = !k.startsWith('/dem2055/4/') || k.startsWith('/dem2055/4/8/'), v = 32768 + (under ? 0 : 8000);
+            seen.set(k, n);
+            const headers = {'access-control-allow-origin': '*', 'cache-control': under ? 'max-age=3600' : 'max-age=4'};
+            return (n === 1 ? route.fulfill({status: 200, contentType: 'image/png', body: solidPNG(256, [v >> 8, v & 255, 0]), headers}) : route.fulfill({status: 404, body: '', headers})).catch(() => {});
+        });
+        const out = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), view = {center: [22, 45], zoom: 6, pitch: 60}, bg = [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}], east = [24, 45];
+            const make = style => lib.createMap(document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'})), {style, initialView: view, attribution: false});
+            const flat = make({version: 8, sources: {}, layers: bg});
+            await new Promise(r => flat.listen('idle', r));
+            const flatX = flat.project(east).x, flatY = flat.project(east).y;
+            flat.destroy();
+            const host = make({version: 8, sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/dem2055/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 4}}, terrain: {source: 'dem'}, layers: bg});
+            await new Promise(r => host.listen('idle', r));
+            const at = () => Math.hypot(host.project(east).x - flatX, host.project(east).y - flatY), first = at();
+            await new Promise(r => setTimeout(r, 8000));
+            const last = at();
+            host.destroy();
+            return {first, last};
+        });
+        const east = [...seen].filter(([k]) => k.startsWith('/dem2055/4/') && !k.startsWith('/dem2055/4/8/')).map(([, n]) => n);
+        check('an elevation tile whose reload answers 404 leaves the terrain and is not requested again, as a vector tile (#2055)',
+            east.length > 0 && east.every(n => n === 2) && out.first > 5 && out.last < 0.5, JSON.stringify({requests: east, ...out}));
+    } catch (e) { check('the test of an elevation tile whose reload answers 404 was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
 }
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
