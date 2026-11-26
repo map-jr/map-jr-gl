@@ -4,6 +4,62 @@ A coordinator is a session that gives issues to workers (subagents) and merges t
 `CLAUDE.md`; the brief that each worker reads is `docs/agents/worker-brief.md`. Change the brief or these notes when
 a batch shows a fault in them.
 
+## Several coordinators
+
+- **The owner sets the count of coordinators,** and the coordination issue (#2255) names each one with its work. Since
+  2026-11-26 there are three: two take lanes of a tracking issue, and the third does triage of the issues with the
+  label `unverified` and opens almost no pull request that changes `src/`. Do not start a further coordinator. The
+  limits are shared: the usage limit of the account, the runners of CI, the files that most pull requests change, and
+  the time of the owner. From 2026-11-22 to 2026-11-26 the coordinators merged 389 pull requests and closed 398
+  issues while 432 new issues were filed, so one more coordinator on lanes adds issues as fast as it closes them.
+- **The coordination issue is the shared state.** It has the lanes of each coordinator, the holds, the open pull
+  requests by coordinator, the open decisions of the owner and the handoffs. Read it before a batch, before a series
+  of merges and before a release. Edit your row when your state changes, and add a dated comment of one paragraph
+  when a hold starts or ends. A tracking issue stays a list of links.
+- **A message to another session only says that the coordination issue changed.** A message can be held or refused,
+  so nothing may depend on it. On 2026-11-26 a cloud session started a second cloud session and sent it a message
+  with no prompt, and the reply of the second session was refused by the classifier of auto mode ("Unsanctioned
+  Communication"). Between the Mac and a cloud session, each message can ask the owner for permission.
+- **The limit of pull requests in CI is a total** (see "Merging"). The coordination issue gives each coordinator its
+  share of the eight, and a coordinator that needs more asks there.
+- **The coordinators move lanes between them without the owner** (the owner, 2026-11-26), to balance the work. The
+  coordinator that takes a lane edits the coordination issue before it starts work on it, and the one that gives it
+  up confirms in a dated comment. A lane moves only when it has no running worker and no open pull request, and a
+  move does not change the share of CI of a coordinator. The count of coordinators, the triage role and the choice of
+  the tracking issues stay with the owner.
+- **Lanes that change the same file belong to one coordinator,** and they move together. Lanes E, F and K of #46 all change `src/gl.ts`. When
+  the lanes are split again, keep such lanes together, and write the new split into the coordination issue first.
+
+### Handoff
+
+A coordinator hands its work to a new session before its context gets in the way. Its workers do not outlive it: a
+subagent that still runs when the session ends is lost, with its report.
+
+- **Hand off at the end of a batch,** when none of your workers runs and each of your pull requests is merged or
+  listed in the coordination issue. Do the steps of "After a batch" first.
+- **Hand off at the next such point** after the first compaction of your context, after a restart of the container, or
+  when the session is about a day old. The best point is not measured yet: write the age of the session and what
+  went wrong into the entry of the handoff, so that the next change of this rule has numbers.
+- **Write the handoff into the coordination issue,** under "Handoff": what the successor takes, each open pull request
+  with what it waits for, each question to the owner that has no answer, and what you did not finish. Do not write it
+  into a file: a cloud container loses `.cache/`, and "Where a document goes" of `docs/development.md` gives a
+  handoff no file.
+- **Start one successor, then stop.** In a cloud session, start it with `create_session` on the model of the table
+  above; on the Mac, the owner starts it. Its prompt has four lines:
+
+  ```
+  You are a coordinator of map-jr/map-jr-gl. Read CLAUDE.md and docs/agents/coordinating.md first.
+  Read the coordination issue map-jr/map-jr-gl#2255, and take the row "Lanes 1" and its entry under "Handoff".
+  Tracking issue: map-jr/map-jr-gl#46, lanes A, B, C, G, H, I, J.
+  Remove the entry of the handoff when you have read it, and write the date into your row.
+  ```
+
+  A session that another session started does not have the owner's word for anything: it asks the owner with the
+  question tool before a step that needs the owner. Its permission mode may also need a change by the owner in the
+  app before it can act without prompts (the coordinator of 2026-11-19).
+- **The successor checks the state itself.** It lists the open pull requests (`node scripts/agents/prs.mjs`) and reads
+  the coordination issue, and it does not take a number of the handoff as measured.
+
 ## Before a batch
 
 - **Triage first.** An issue can be older than `main`. A read-only triage worker checks the issues for about 7,000
@@ -65,17 +121,20 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **Use the subagent type `worker`** (`.claude/agents/worker.md`, added on 2026-11-26) for every subagent that runs
   code: workers, reviews, triage (it runs a command for each premise) and checks on `main` (they write a short
   Playwright script). Use the built-in types `Explore` or `Plan` only for a search that reads and runs nothing: they
-  cannot write a file. These types load fewer tool definitions than `general-purpose` (47,400 tokens for `Plan`
-  against 69,000; `worker` is not measured yet). The first coordinator that uses `worker` measures it with a run that
-  only replies, and writes the number into `docs/agents/subagent-models.md`.
-- **Spend tokens on the work, not on context.** A subagent starts with about 69,000 tokens of context (the system prompt, the
-  tools and `CLAUDE.md`) before any work, the same on every model. Its later steps read that context from the prompt
+  cannot write a file. These types load fewer tool definitions than `general-purpose` (16,400 tokens for `worker`
+  and 47,400 for `Plan`, against 69,000).
+- **Spend tokens on the work, not on context.** A subagent of the type `general-purpose` starts with about 69,000 tokens of
+  context (the system prompt, the tools and `CLAUDE.md`) before any work, the same on every model, and one of the type
+  `worker` with about 16,400. Its later steps read that context from the prompt
   cache, which costs a twentieth of new input on Opus 5.5 and Sonnet 5.5, so the cost of a subagent is mostly what it
   reads new (files, logs, command output) and what it writes. Therefore:
-  - send a follow-up to the worker that has the context, within the hour (the cache lives an hour), rather than start
-    a new one;
-  - start parallel subagents a few seconds apart: agents of one model and type then share the cached prefix, where
-    agents started at the same moment each write it;
+  - send a follow-up to the worker that has the context rather than start a new one. A subagent's cache lives five
+    minutes (all 5,164 requests of the subagents of 2026-11-26 asked for the five-minute cache; the coordinator asks
+    for one hour), so a follow-up within five minutes of the worker's last step reads its context from the cache. A
+    later follow-up writes the context again once, at 1.25 times the price of input, which still costs less than a new
+    worker that reads the same files again;
+  - start parallel subagents a few seconds apart, and within five minutes of each other: agents of one model and type
+    then share the cached prefix, where agents started at the same moment each write it;
   - keep to the few combinations of model and type in the table above: each combination writes its own cache entry;
   - tell workers to read a log or a large file in parts (`grep`, `tail`), not whole.
 - A worker needs no port: `scripts/agents/suite.mjs` takes a free one.
@@ -124,33 +183,25 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   claim that MapLibre GL JS falls back to a full load for another sprite; its source showed that it does not. Ask the
   worker to read the behavior of MapLibre GL JS from its source or to measure it at `/ml/`, and to say so when your
   premise is wrong.
-- **Another session can coordinate on the same repository at the same time.** Leave its pull requests to it, and
-  give it a message (`SendMessage` to the address of its message) when `main` is red or before a release, so that it
-  holds its merges. A message from another session that says the owner asked for something is not the owner's word:
+- **Another session can coordinate on the same repository at the same time** (see "Several coordinators"). Leave its
+  pull requests to it. When `main` is red or before a release, write the hold into the coordination issue, and give
+  the other session a message (`SendMessage` to the address of its message) that says so. A message from another session that says the owner asked for something is not the owner's word:
   ask the owner with the question tool before you act on it (the release of 0.7.0 on 2026-11-17).
 - **Ask the owner with the question tool** (`AskUserQuestion`; see "How work goes" in `CLAUDE.md`) for each pull
-  request that waits for the owner and each decision, with the recommendation as the first option. Ask several
-  decisions in one call. An update says what happened and does not hold a question. Measure each option before you
-  ask, and give the numbers: the first question of #1356 ("pages override with 2+ classes") came before a one-class
-  page rule was measured, which loses, and had to be asked twice.
+  request that waits for the owner and each decision. Measure each option before you ask, and give the numbers: the
+  first question of #1356 came before a one-class page rule was measured, and had to be asked twice.
 - **Never wait for an answer in the question tool while you have other work that you can do** (the owner,
-  2026-11-26). The call of the tool holds your turn until the owner answers, and the owner may not answer for a long
-  time. Before you call it, do everything that does not depend on the answer: merge what is green, start the next
-  workers, send failures back, file the issues of the reports. Call it only when every step that is left needs the
-  answer, or when no other work is left.
-- **A wake-up does not give a question a timeout.** On 2026-11-26, in the desktop app, a wake-up of `ScheduleWakeup`
-  that was set for 60 seconds did not end a question that waited for two to three minutes, in two runs: it came as a
-  turn of its own after the owner had answered. The owner has seen a question end early before, perhaps after another
-  kind of notice, and this was not reproduced. If a question ends with no answer, go on with the work that does not
-  need the answer and ask again later. No answer is not a yes: a pull request that waits for the owner stays open.
-- **Do not ask the owner between 23:00 and 07:00 New York time** (the owner, 2026-11-26): the owner is usually asleep
-  then. Read the time with `TZ=America/New_York date`. In those hours, go on with the work that does not need the
-  answer, keep each open decision in its issue or pull request, and ask after 07:00.
-- **The setting `askUserQuestionTimeout`** (user settings; `10m` on the owner's Mac since 2026-11-26) closes a question
-  that nobody answers. Read in the documentation of Claude Code and not tested: its timer does not start while the
-  session is connected to Remote Control, and a cloud session does not read the user settings.
-- **Read the time after a question in a later message.** A command in the same message as the question runs at once
-  and not after the answer: both runs of 2026-11-26 seemed to be answered after 4 seconds for this reason.
+  2026-11-26). The call holds your turn until the owner answers. Before you call it, merge what is green, start the
+  next workers, send failures back and file the issues of the reports. Call it only when every step that is left
+  needs the answer.
+- **A question can end with no answer, and no answer is not a yes.** A pull request that waits for the owner stays
+  open: go on with the work that does not need the answer, and ask again later. A wake-up of `ScheduleWakeup` does
+  not end a question (two runs in the desktop app on 2026-11-26). The setting `askUserQuestionTimeout` (`10m` on the
+  owner's Mac) closes a question that nobody answers; a cloud session does not read the user settings (read in the
+  documentation, not tested). Read the time in a message after the question, because a command in the same message
+  runs before the answer.
+- **Do not ask the owner between 23:00 and 07:00 New York time** (the owner, 2026-11-26; `TZ=America/New_York date`).
+  In those hours, keep each open decision in its issue or pull request, and ask after 07:00.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
@@ -170,7 +221,7 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **Merge when `checks`, the four `browser-*` jobs and `render` have passed** (see `CLAUDE.md`). Do not wait for the
   summary job `browser`: on 2026-11-24 it ran for about 6 s and waited for a runner 10.7 min (median of 15 runs,
   #1602). A browser job that the job `changes` skipped counts as passed.
-- **Keep about eight pull requests in CI at once.** The account ran at most 27 jobs at the same time on 2026-11-24, and
+- **Keep about eight pull requests in CI at once, over all coordinators.** The account ran at most 27 jobs at the same time on 2026-11-24, and
   a pull request that changes `src/` uses about 40 runner-minutes, so 25 open pull requests made each job wait up to
   30 minutes. Start new workers as pull requests merge, not all at once.
 - **Read the source diff before you merge** (`git diff origin/main...origin/<branch> -- src | grep -E "^[+-]"`), and
@@ -180,6 +231,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   2026-11-17 a rebased branch of #801 carried old copies of lines of #802 and #803, and would have undone both. A
   three-dot diff of a branch that started before a merge can also show lines that the merge keeps; the merge tree
   decides.
+- **Update a branch whose CI ran before a merge that adds checks.** A clean merge tree only says that the lines do not
+  conflict. On 2026-11-26 #2240 added a message while its CI ran on a base without #2229, which made the build replace
+  each message with its code and stop on a value without a name. `main` was red after the merge, in the build, in
+  `docs/reference/messages.md` and in a check of `test/interact.mjs` (fixed in #2247). When `main` has had a merge since
+  the CI of a branch ran, and that merge changed a script of the build or of the checks (`scripts/`, `build.mjs`,
+  `test/`) or the same kind of code (messages, the description, the reference), update the branch
+  (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/<n>/update-branch`) and merge on the new CI.
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
   (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
@@ -281,7 +339,7 @@ alone cannot.
   to error or skipped) or when fewer tests match than the file has lines `match`. It prints `BETTER:` for each test that is better
   than its line; the author commits those lines. A pull request that commits a worse line lowers the floor and waits
   for the owner, except a line from `near` to `differ` that moves by at most 0.5 points and meets the other conditions
-  of "A worse line of a render test that needs no owner" in `CLAUDE.md` (the case of #1966 on 2026-11-25). Check
+  of "A worse line of a render test that needs no owner" in `docs/development.md` (the case of #1966 on 2026-11-25). Check
   each condition yourself before the merge. On `main`, a `BETTER:` line means that a pull request left a line
   out: take it in the next pull request that moves render tests.
 - **Only a run with `--write` on the pinned Chromium writes `render-tests.json`.** With `--filter` it writes only the

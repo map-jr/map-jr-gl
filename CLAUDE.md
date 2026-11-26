@@ -16,16 +16,12 @@ to protect those qualities.
   answer it and do what it asks before other work.
 - Every few tool calls, give the user a one-line update on where things stand.
 - **A question for the owner goes through the question tool (`AskUserQuestion`), not into the text of an update.**
-  Use it for every decision that the owner must make while other work goes on: a pull request that waits for the
-  owner, a recommendation to accept, a number to choose. A question in an update is hard to find again and hard to
-  answer in a short reply.
-  - Each question stands on its own. It names the issue or the pull request, gives the facts and the numbers that the
-    decision needs, and has the options with the recommended one first. It does not refer to an earlier message.
-  - Ask as soon as the work that does not depend on the answer is started, and ask several open decisions in one
-    call (it takes up to four). Carry on with the other work.
+  Use it for every decision that the owner must make while other work goes on.
+  - Each question stands on its own: it names the issue or the pull request, gives the facts and the numbers that the
+    decision needs, and has the recommended option first.
+  - Ask as soon as the work that does not depend on the answer is started, with up to four decisions in one call.
   - Write the answer into the issue (the line "Decision") before you act on it.
-  - Where the tool is missing, end every update with the heading "Waiting for you" and each open question in full,
-    also the ones from earlier updates.
+  - Where the tool is missing, end every update with the heading "Waiting for you" and each open question in full.
   - A worker does not ask the owner. It writes "Needs owner" in its report, and the coordinator asks.
 
 ## Issues
@@ -72,17 +68,9 @@ to protect those qualities.
     a check fails. A change of how a workflow runs needs no owner: a retry, a cache, a timeout, a version of a tool
     or of an action, or the order of steps. Its pull request says why the change is needed;
   - is labeled `needs: owner`.
-- **A worse line of a render test that needs no owner.** A pull request may commit a worse line of
-  `test/conformance/render-tests.json` without the owner when all of these are true:
-  - the line goes from `near` to `differ`, so the count of `match` lines does not change;
-  - the percentage of the test moves by at most 0.5 points (for example 4.9% on `main` and 5.0% on the branch), the
-    same in three runs on the pinned Chromium on each side;
-  - the change brings the library closer to MapLibre GL JS in what it is for, and the pull request names why this
-    test moves;
-  - the fault under the worse line has an issue, which the pull request names.
-
-  The pull request lists each such line with its percentages before and after. Every other worse line still needs the
-  owner: a line from `match`, a line to `error` or `skipped`, and a move of more than 0.5 points.
+- **A worse line of a render test** lowers a floor and needs the owner. The one exception is a line from `near` to
+  `differ` that moves by at most 0.5 points and meets every condition of "A worse line of a render test that needs no
+  owner" in `docs/development.md`.
 - **Before version 1.0, a correction does not need the owner.** A change that makes the types stricter, or that
   corrects a result, so that an entry agrees with its documentation or with MapLibre GL JS can be merged on green CI,
   even when code that compiled or ran before can break. The pull request lists what can break.
@@ -96,27 +84,20 @@ to protect those qualities.
   each) can share a pull request, whose body says `Fixes #N` for each, because each pull request runs all of CI.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
   its results (`git fetch origin bench-results && git show origin/bench-results:README.md`) before you ask the
-  owner to test on a device.
-- The same workflow can run Safari itself on a macOS runner, but only when it is started by hand (the inputs
-  `safari`, `safari_only` and `simulator`; see `docs/development.md`). Start it when a change touches the choice of
-  the renderer, the workers or the canvas, and read its results before you ask the owner to test in Safari. On that
-  runner the worker renderer loads but takes several seconds to reach `idle` (5.8 s against 1.25 s on the main
-  thread on 2026-11-14), while an iPhone shows no such gap, and the frame rates mean little: a slow or failing worker
-  scenario there is not a fault of the change.
+  owner to test on a device. Started by hand, it also runs Safari on a macOS runner: start that run when a change
+  touches the choice of the renderer, the workers or the canvas. "Showing a branch to the owner" in
+  `docs/development.md` says how to start it and what that runner cannot show.
 
 ## Working with several workers
 
 One session can act as the coordinator and give issues to workers (subagents). This file is loaded into every
-worker, so it has only the rules. The brief that every worker reads is `docs/agents/worker-brief.md`, and the notes
-for the coordinator are `docs/agents/coordinating.md`. Read the notes before you start a batch.
+worker, so it has only the rules. A worker reads `docs/agents/worker-brief.md`, and a coordinator reads
+`docs/agents/coordinating.md` before it starts a batch.
 
-- **A worker gets one issue and one branch,** or a bundle of small fixes of tests or tools (see above). Its prompt
-  is the path of the brief and four lines: the issue, the branch, the scope, and the files and lines where the work
-  starts.
-- **A worker opens the pull request and stops.** The coordinator watches CI, merges, and sends a failure back to the
-  same worker, which still has its context.
-- **A worker reports in at most 12 lines** in the format of the brief. It files nothing and merges nothing. The
-  coordinator turns the faults that a report names into issues.
+- **A worker gets one issue and one branch,** or a bundle of small fixes of tests or tools (see above).
+- **A worker opens the pull request and stops.** It reports in at most 12 lines in the format of the brief, and it
+  files nothing and merges nothing. The coordinator watches CI, merges, sends a failure back to the same worker, and
+  turns the faults that a report names into issues.
 - **The coordinator runs `pnpm status` once for a batch.** A worker does not run it, because every run rewrites the
   same lines of the README.
 
@@ -158,26 +139,12 @@ A change is done when all of these that apply are true. The pull request templat
 
 ## Code and methods from other projects
 
-A change may follow a method of another project, or copy its code, texts or CSS, without the owner when all of the
-following are true. Otherwise leave the pull request open and ask the owner.
-
-- **The license is permissive:** MIT, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, Apache-2.0, or public domain (CC0,
-  Unlicense). Read the license file of the project at the version that you use. Do not copy from GPL, LGPL, AGPL,
-  MPL or CC BY-SA sources (CC BY-SA includes answers on Stack Overflow), or from code that has no license.
-- **`ACKNOWLEDGEMENTS.md` names it.** The line names the project, its license and what follows it (the method, the
-  texts, the CSS), and says whether the code in this library is new or copied.
-- **Copied text keeps its notice.** When code, texts or CSS are copied or closely translated, and not only the method
-  is followed, `THIRD-PARTY-LICENSES.md` has the license text of the project with its copyright line. The package
-  publishes that file with the built files. This meets the condition of MIT, ISC and BSD that the notice goes with
-  every copy, a minified one included. For Apache-2.0, also copy the project's `NOTICE` file if it has one, and say in
-  the file that the code was changed.
-- **No endorsement.** Do not use the name of the project or of its authors to promote this library (the third clause
-  of BSD-3-Clause). Naming them in the acknowledgements and in `docs/reference/maplibre-differences.md` is fine.
-
-Copyright protects the expression of code, and not an idea, an algorithm or a formula. New code that implements a
-method (for example the curve of `flyTo`) needs only the line in `ACKNOWLEDGEMENTS.md`. A library that the built files
-contain is a dependency, and it still needs the owner. This section is general guidance, not legal advice; ask the
-owner when a case is unclear.
+A change may follow a method of another project, or copy its code, texts or CSS, without the owner when the license
+is permissive (MIT, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, Apache-2.0, or public domain) and `ACKNOWLEDGEMENTS.md`
+names the project. Copied text also keeps its notice in `THIRD-PARTY-LICENSES.md`. Do not copy from GPL, LGPL, AGPL,
+MPL or CC BY-SA sources (CC BY-SA includes answers on Stack Overflow), or from code that has no license. Read "Code
+and methods from other projects" in `docs/development.md` before you follow or copy anything: it has each condition.
+A library that the built files contain is a dependency, and it needs the owner. Ask the owner when a case is unclear.
 
 ## Writing
 
@@ -235,54 +202,39 @@ Size is a main advantage of the library, and the owner watches the worker file i
 fast time to idle (the map drawn and ready) comes before the size of the files that load up front. Think about both
 in every change, and do not spend an hour to save 50 bytes.
 
-- **Say what a change adds.** `pnpm test:size` prints the bytes (gzip) of each built file. A pull request that
-  changes `src/` gives the numbers before and after in "How it was checked". A change that adds more than about
-  0.3 KB to a page script, or 1 KB to the worker file, says why the bytes are worth it.
+- **Say what a change adds.** A pull request that changes `src/` gives the bytes (gzip) of each built file before and
+  after, from `pnpm test:size`. A change that adds more than about 0.3 KB to a page script, or 1 KB to the worker
+  file, says why the bytes are worth it.
 - **Do not make a usual map wait for a request.** Code that a usual map needs at the start stays in the files that
-  load up front, even when moving it to a file loaded on demand would save bytes: each such file is one more request
-  before the map is ready. A change that makes the map idle sooner can add bytes, and its pull request gives the time
-  to idle before and after.
-- **Load on demand what only some maps need.** Code that only some maps need is a file that is loaded on demand
-  (`import()`), as `src/hash.ts` and `src/pmtiles-info.ts` are. Code that only a developer needs (checks for
-  mistakes, long messages) goes into the development build (`src/mistakes.ts`). The build shortens the names of
-  private class members and of the names in the shaders (see `docs/development.md`): declare members `private`, and
-  name uniforms `u_...`.
-- **The hard line is a third of MapLibre GL JS.** The page script that loads up front and the worker file together
-  stay under a third of what MapLibre GL JS downloads (its page script, its worker and its CSS), for each entry.
-  `scripts/size-check.mjs` computes the limit from the installed MapLibre GL JS, so the limit does not rise, and the
-  owner does not raise it. The other built files have wide ceilings that only catch an accident. The line is not a
-  target: keep each change as small as it can be, and do not rewrite working code to save a few bytes.
+  load up front, because each file loaded on demand is one more request before the map is ready. A change that makes
+  the map idle sooner can add bytes, and its pull request gives the time to idle before and after.
+- **Load on demand what only some maps need** (`import()`, as `src/hash.ts` and `src/pmtiles-info.ts` are). Code that
+  only a developer needs goes into the development build (`src/mistakes.ts`). The build shortens the names of private
+  class members and of the names in the shaders: declare members `private`, and name uniforms `u_...`.
+- **The hard line is a third of MapLibre GL JS.** For each entry, the page script that loads up front and the worker
+  file together stay under a third of what MapLibre GL JS downloads (its page script, its worker and its CSS).
+  `scripts/size-check.mjs` computes the limit, and the owner does not raise it. The other built files have wide
+  ceilings that only catch an accident. The line is not a target: keep each
+  change as small as it can be, and do not rewrite working code to save a few bytes.
 - **When the download comes within 5 KB of the line,** tell the owner, and start the pass for savings before more
-  features merge.
-- **Savings are found in one pass before a release,** not in each pull request: one worker reads the built files for
-  what is large or repeated, and its pull request has only that concern. Write a saving that you notice during
-  other work into the issue for that pass.
+  features merge. Savings are found in that one pass before a release, by one worker whose pull request has only
+  that concern, and not in each pull request. Write a saving that you notice into the issue for that pass.
 
 ## Commands
 
-See `docs/development.md`. In short:
-
-| Command | What it does | Needs |
-|---|---|---|
-| `pnpm build` | Type check, build, type declarations | |
-| `pnpm test` | Unit tests, expression and API floors, size budgets, examples, consistency | a build |
-| `pnpm test:browser` | The map and the compat entry (`test/interact.mjs`), the main API (`test/host.mjs`) | `pnpm demo` running |
-| `pnpm test:vue`, `pnpm test:react` | The adapters | a build |
-| `pnpm test:loading`, `pnpm test:cloudflare` | Ways to load the library; the server renderer on Workers | `pnpm demo` running |
-| `pnpm test:render` | MapLibre's render tests against the committed status of each test (about ten minutes) | a build |
-| `pnpm status` | Rewrites the status table in the README | results of the above |
-
-CI runs all of these except `test:cloudflare`. Run locally what your change can affect before you push.
+`docs/development.md` has every command and what each one needs. `pnpm build` comes first: `pnpm test` (unit tests,
+the expression and API floors, the size budgets, the examples, consistency), `pnpm test:vue`, `pnpm test:react` and
+`pnpm test:render` (about ten minutes) need a build. `pnpm test:browser` and `pnpm test:loading` also need
+`pnpm demo` running. `pnpm status` rewrites the status table in the README from the results of these. CI runs all of
+them, and it does not run `pnpm test:cloudflare`. Run locally what your change can affect before you push.
 
 ## Checking work
 
 - **Claim only what you verified.** Say "measured" or "ran" only for what you ran, and give the number. Say "not
   checked on a GPU" when that is the case.
-- To find faults in common use, run real pages and plugins, not only the test suites. Each of these compares the
-  library with MapLibre GL JS and writes its results into `docs/ecosystem.md`:
-  `node test/conformance/examples.mjs --write` (the example pages of the MapLibre documentation; about 30 minutes;
-  `--filter=<regex>` for a part), `node test/conformance/plugins.mjs --write` (plugins and framework wrappers),
-  `node test/conformance/styles.mjs --write` (public styles).
+- To find faults in common use, run real pages and plugins, not only the test suites. Three tools of
+  `test/conformance/` compare the library with MapLibre GL JS and write `docs/ecosystem.md` when run with `--write`:
+  `examples.mjs` (the example pages of the MapLibre documentation; about 30 minutes), `plugins.mjs` and `styles.mjs`.
 - Do not run `node build.mjs` while a long run (render tests, example pages) reads `dist/`. Use a git worktree for
   parallel work.
 - The tests use one tile worker in some places. A fault can need the usual number of workers to show. Also test
@@ -291,16 +243,9 @@ CI runs all of these except `test:cloudflare`. Run locally what your change can 
   Real numbers come from the owner running `/bench` (an Apple M4 and an iPhone so far).
 - Safari on iOS behaves differently from Chromium in places (canvas scaling, OffscreenCanvas in workers). Changes
   to image or canvas handling need a check on a device by the owner.
-- **To show the owner a branch on a phone,** link to the preview of the docs site of its pull request, where
-  possible with the code to try in the playground. The workflow `Docs site` builds a preview for each pull request
-  with the library of that pull request, and its comment on the pull request gives the address
-  (`https://pr-<number>-map-jr-site.belabor.workers.dev`).
-  - Write the code to try as a module of the playground (imports from `@map-jr/map-jr-gl` or the compat entry, a map
-    in the element with the id `map`), then `node scripts/agents/play-link.mjs <file> --pr <number>` prints the link to
-    `/play` of the preview with that code in it. Without `--pr`, the link goes to `https://map-jr.org/play`.
-  - Say in the message what to try on the phone, step by step.
-  - The pages of the demo (`/?sky&pitch=85`, `/bench`) are not on the docs site. For those, the owner runs the demo on
-    the Mac and opens it through a quick tunnel (`cloudflared tunnel --url http://localhost:8000`). A cloud session cannot
-    open a tunnel: its network does not reach the tunnel servers (tried on 2026-11-24).
+- **To show the owner a branch on a phone,** link to the preview of the docs site of its pull request, with the code
+  to try in the playground, and say in the message what to try, step by step. "Showing a branch to the owner" in
+  `docs/development.md` has the address of the preview, the tool that writes the link, and the pages that need the
+  owner's Mac.
 - For a larger change, ask for an independent review before merging: a reviewer that has not seen your reasoning,
   told to reproduce what it suspects. The reviews of 2026-11-12 found 25 reproducible faults this way.
