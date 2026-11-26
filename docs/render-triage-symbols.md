@@ -74,8 +74,8 @@ test setup that needs no change.
 | `text-field/formatted-images-zoom-dependent-size` | near 1.3% | Not inspected. | none yet |
 | `text-field/formatted-text-color` | differ 9.1% | A section with a smaller `font-scale` is centered on the line instead of sitting on the baseline. | #1778 |
 | `text-field/formatted-line` | near 4.3% | Not inspected. | none yet |
-| `text-field/formatted-vertical-align` | differ 6.8% | `vertical-align` in a section has no effect. | label (vertical-align in format text, later) |
-| `text-field/formatted-vertical-align-line` | near 3.8% | Not inspected. | none yet |
+| `text-field/formatted-vertical-align` | differ 6.5% | `vertical-align` places the sections as in MapLibre GL JS (#1029); the whole label is a few pixels higher. | none |
+| `text-field/formatted-vertical-align-line` | near 4.1% | The sections are placed as in MapLibre GL JS (#1029); the images are not drawn (#1776). | #1776 |
 | `text-field/formatted-vertical-align-vertical-text` | near 1.2% | Not inspected. | none yet |
 | `text-keep-upright/line-placement-true` | near 2.1% | Not inspected. | none yet |
 | `text-keep-upright/line-placement-false` | near 2.1% | Not inspected. | none yet |

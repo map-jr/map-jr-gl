@@ -51,8 +51,8 @@ const same = (a, b) => {
 };
 // The library keeps the result of "format" and of "image" as one text, and the fixtures write it as an object. This
 // gives the text that the library has for the object of a fixture (see STYLE_OPEN and IMAGE_OPEN in src/expr.ts), so
-// that the two are compared in one form. Three things have no place in the text, and they differ as follows.
-// - "vertical-align" is not supported. A fixture that sets it gets a text that no result is equal to, so it fails.
+// that the two are compared in one form. "vertical-align" is a fourth field of the style marker, and an image with it
+// is inside a style marker that has only that field. One thing has no place in the text, and it differs as follows.
 // - The expression gives the name of an image and does not know whether the image is available, so `available` is
 //   not compared. `coalesce` gives the names of all its images, and the engine takes the first one that the map has
 //   (`pickImage`): the runner does the same with `availableImages` of the fixture.
@@ -61,11 +61,11 @@ const internal = want => {
     if (typeof want.name === 'string' && 'available' in want) return want.name;
     if (!Array.isArray(want.sections)) return want;
     return want.sections.map(s => {
-        if (s.verticalAlign != null) return `vertical-align: ${s.verticalAlign}`;
-        if (s.image) return `${s.image.name}`;
-        if (s.scale == null && s.fontStack == null && s.textColor == null || s.text === '') return s.text;
+        const va = s.verticalAlign == null ? '' : '|' + s.verticalAlign;
+        if (s.image) return va ? `||${va}${s.image.name}` : `${s.image.name}`;
+        if (s.scale == null && s.fontStack == null && s.textColor == null && !va || s.text === '') return s.text;
         const c = s.textColor;
-        return `${s.scale ?? ''}|${s.fontStack ?? ''}|${c ? [c.r, c.g, c.b, c.a].join(',') : ''}${s.text}`;
+        return `${s.scale ?? ''}|${s.fontStack ?? ''}|${c ? [c.r, c.g, c.b, c.a].join(',') : ''}${va}${s.text}`;
     }).join('');
 };
 // Fixtures that do not pass by a decision. A fixture takes the first entry that matches it. `match` gets the id of
@@ -77,8 +77,6 @@ const deliberate = [
         reason: 'The fixture expects a compile error. By a decision of the owner of 2026-11-16, the production build does not check the types of an expression or validate a style. The development build checks them (src/expr-check.ts, #1748), and the line "Development build" counts them.'},
     {label: 'projection-transition', decision: 'later', match: f => f.id.startsWith('interpolate/projection'),
         reason: 'An "interpolate" between two projections gives the first projection, and not the transition between the two ({from, to, transition}).'},
-    {label: 'vertical-align', decision: 'later', match: f => /^format\/(basic|data-driven-vertical-align|image-sections)$/.test(f.id),
-        reason: 'The option "vertical-align" of "format" is not implemented (docs/reference/maplibre-differences.md).'},
     {label: 'upstream-fixture', decision: 'later', match: f => f.id === 'legacy/identity/enum',
         reason: 'The fixture wants "c", which is not a value of the enum, from an identity function with no default; "legacy/identity/enum-default" and the identity function of MapLibre GL JS replace such a value. The fixture is to be corrected upstream (#656).'},
 ];

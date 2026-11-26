@@ -566,7 +566,7 @@ Properties:
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and the corners of an extrusion are sharp. The development build of the main API warns one time for each layer that has a value other than 0.
 - The source property `volatile` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each source that has `volatile: true`.
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
-- `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
+- `vertical-align` in `format` text in the SVG output of the server, which draws each line in one size on one baseline. The map places each section as MapLibre GL JS does. An image in `format` text without `vertical-align` is centered on its line, where MapLibre GL JS puts it at the bottom, and an image taller than the text does not make its line taller.
 
 Layers that the server renderer does not draw:
 
