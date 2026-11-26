@@ -848,7 +848,9 @@ export class Engine {
                 try { this.frame(performance.now()); } finally { this.inResize = false; }
                 this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr, buffer: [this.renderer.gl.drawingBufferWidth, this.renderer.gl.drawingBufferHeight]});
                 return;
-            case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; if (c.fov) tr.fov = c.fov; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true;
+            case 'jump': // (A change of the field of view alone keeps a running animation, as in MapLibre GL JS; #1858.)
+                if (Object.keys(c).some(k => k !== 'type' && k !== 'seq' && k !== 'fov')) this.stop();
+                if (c.padding) tr.padding = c.padding; if (c.fov) tr.fov = c.fov; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true;
                 if (c.elevation !== undefined && (this.heldElevation = c.elevation) === null) this.centreGiven = true;
                 break;
             case 'ease': {
