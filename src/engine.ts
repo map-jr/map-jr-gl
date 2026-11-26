@@ -162,7 +162,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -1022,7 +1022,7 @@ export class Engine {
             case 'tileReport': this.tap = c.on; return;
             case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;
-            case 'cameraUpdate': this.cameraUpdate = c.fn; break;
+            case 'cameraUpdate': this.cameraUpdate = c.fn; this.cameraUpdated = undefined; break;
             case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
         this.repaint();
@@ -1357,7 +1357,7 @@ export class Engine {
             // A tile that was dropped while it waited (it left the view, or the source changed) frees what it sent to the GPU (#400).
             if (this.tiles.get(key) !== t) return this.renderer.destroyTile(gl);
             this.tapTile(key, t.missing ? 'miss' : 'up');
-            if (this.tellLoads) this.emit({type: 'tileLoaded', key});
+            if (this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
             this.expire(t, t.expires);
@@ -1475,7 +1475,7 @@ export class Engine {
             t.gl = gl;
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
-            if (report && this.tellLoads) this.emit({type: 'tileLoaded', key});
+            if (report && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             this.invalidate();
         }, err => {
             t.rebuilding = false;
@@ -1553,6 +1553,8 @@ export class Engine {
     private stats = {since: 0, frames: 0, cpu: 0};
 
     private cameraUpdate: ((tr: Transform) => void) | null = null;
+    /** The camera after the last call of `cameraUpdate`: as in MapLibre GL JS, the function runs only when the camera changed, so that a map whose function always changes the camera still goes idle (#1970). */
+    private cameraUpdated?: number[];
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
@@ -1578,7 +1580,11 @@ export class Engine {
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), animating = cameraAnimating;
         // (As in MapLibre GL JS, the camera that the function returns is the one that the frame draws, #1711.)
-        if (this.cameraUpdate) try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
+        const cameraNow = () => [tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, ...tr.padding];
+        if (this.cameraUpdate && !this.cameraUpdated?.every((v, i) => v === cameraNow()[i])) {
+            try { this.cameraUpdate(tr); } catch (e) { this.emit({type: 'error', message: String((e as Error)?.message ?? e)}); }
+            this.cameraUpdated = cameraNow();
+        }
         this.flushUploads(this.wentIdle && (cameraAnimating || began - this.cameraMovedAt < 200));
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
@@ -1719,6 +1725,7 @@ export class Engine {
                 else this.refresh(source, id, key, t);
                 // (A tile that was requested for the overview and that the view now needs: its arrival changes the image.)
                 if (t && t.used < 0) t.used = frameNo;
+                if (t) t.quiet = false;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
                 if (!t || t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
@@ -1754,7 +1761,7 @@ export class Engine {
                     const v = this.tiles.get(source + '|' + id.key), failed = v?.state === 'error' && !v.missing;
                     // (Between its first retries, it waits for its next request, as a tile of the view does (#1644).)
                     if (failed && t && (t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES)) { complete = false; if (t.used < 0) t.used = frameNo; }
-                    if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1; if (failed) complete = false; } } else {
+                    if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1, made.quiet = true; if (failed) complete = false; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
@@ -2057,10 +2064,15 @@ export class Engine {
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
         const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
         // Text on a line is found on the boxes of its glyphs (see `textBoxes`) when it is shown, and not found when it is
-        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. (A line
-        // with an icon is found within `radius` pixels of its geometry as before.)
-        if (!points) return image || !String(L.p.field.eval(z, f) ?? '') || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
-            : this.textOnLine(g, box, texts);
+        // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. A polygon
+        // whose label is placed at a point is found on the box of that label, as in MapLibre GL JS (#1969): the label is
+        // the polygon's when its point lies in the polygon and its text is the polygon's. (A line or a polygon with an
+        // icon is found within `radius` pixels of its geometry as before.)
+        if (!points) {
+            const text = String(L.p.field.eval(z, f) ?? '');
+            return image || !text || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
+                : this.textOnLine(g, box, texts) || this.labelInPolygon(g, box, texts, text.toLowerCase().replace(/\s/g, ''));
+        }
         // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
         const text = String(L.p.field.eval(z, f) ?? ''), field = text.toLowerCase().replace(/\s/g, ''), near = !image && !text, turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
@@ -2081,6 +2093,28 @@ export class Engine {
             // (An icon is found on its collision box, with `icon-padding`, as in MapLibre GL JS.)
             const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f, this.iconMove(L, mercX(lng), mercY(lat), x, y));
             return x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1];
+        });
+    }
+
+    /**
+     * Whether a shown label at a point, whose text without case and spaces is `field`, lies in the polygon `g` (a feature
+     * that a question found) and has its box in the rectangle `box`. The point is tested on the screen, with the even-odd
+     * rule over all rings.
+     */
+    private labelInPolygon(g: NonNullable<QueriedFeature['geometry']>, box: number[], texts: {x: number; y: number; box: number[]; line?: boolean; text?: string}[], field: string): boolean {
+        const polygons = (g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) as number[][][][];
+        const hit = texts.filter(t => !t.line && t.text?.toLowerCase().replace(/\s/g, '') === field && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]);
+        if (!hit.length || !polygons.length) return false;
+        return polygons.some(rings => {
+            const screen = rings.map(ring => ring.map(([lng, lat]) => this.tr.project(lng, lat)));
+            return hit.some(t => {
+                let inside = false;
+                for (const ring of screen) for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                    const [ax, ay] = ring[i], [bx, by] = ring[j];
+                    if ((ay > t.y) !== (by > t.y) && t.x < ax + (bx - ax) * (t.y - ay) / (by - ay)) inside = !inside;
+                }
+                return inside;
+            });
         });
     }
 

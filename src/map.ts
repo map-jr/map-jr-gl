@@ -805,6 +805,8 @@ export class Map {
     private firstRead() {
         if (this.renderer === 'worker' && navigator.vendor.startsWith('Apple')) try { new OffscreenCanvas(1, 1).getContext('2d')!.drawImage(this.canvas, 0, 0); } catch { /* (nothing to read yet) */ }
     }
+    /** The compat entry holds `idle` while a custom layer has not started: its first frame is not drawn yet (#2134). */
+    protected holdIdle() { return false; }
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
@@ -837,7 +839,9 @@ export class Map {
             if (e.moving) this.awaitingInertia = false;
             this.engineMoving = !!e.moving;
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
-            if (!e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active) this.settle();
+            // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
+            // of its last turn, with one `moveend`, #2163.)
+            if (!e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
@@ -864,7 +868,7 @@ export class Map {
             if (e.seq > this.reported) this.reported = e.seq;
             // (A report from before the last command: the engine sends another after that command.)
             // (While a style of `setStyle` loads, the map is not idle: its `idle` comes after that style; #1167.)
-            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading) return;
+            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading || this.holdIdle()) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
             // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
@@ -1148,6 +1152,8 @@ export class Map {
         this.eased = undefined;
         this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding, elevation});
         this.jumped = this.seq;
+        // (A drag goes on from the new camera, as in MapLibre GL JS: the ground that it held before does not put the camera back, #2140.)
+        this.held = null;
         return this;
     }
     /**
@@ -2421,7 +2427,7 @@ export class Map {
             if (rotating) samples = [];
             if (spin) this.easeTo({bearing: this.spinBearing(last.x + spin.bearing), pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
             // A rotate drag released after a pause ends here; one released while the engine still turns ends at its next report.
-            else if (rotating && this.moving && !this.engineMoving && !this.dragging) this.settle();
+            else if (rotating && this.moving && !this.engineMoving && !this.dragging && !this.turnPending()) this.settle();
             if (wasDragging && !rotating) {
                 // Inertia as in MapLibre GL JS (see `inertiaSpan`): in the next frame, the movement of the last 60 ms of
                 // frames over the time up to that frame, so that a pointer that slowed or stopped before the release

@@ -100,8 +100,7 @@ export interface PopupOptions {
     subpixelPositioning?: boolean;
     /**
      * maplibre-compat only: the distance in pixels from the edges of the map inside which the popup changes its anchor
-     * so that it stays in view (default 0 on each side). `bottom` has no effect: in MapLibre GL JS it
-     * only turns a `left` or `right` anchor into `bottom-left` or `bottom-right`, which this library always does.
+     * so that it stays in view (default 0 on each side), as in MapLibre GL JS.
      */
     padding?: {top?: number; right?: number; bottom?: number; left?: number};
     /**
@@ -182,14 +181,17 @@ export class Popup extends Overlay {
         this.outline();
     }
 
-    /** Above the point when it fits, otherwise below; hugging the left or right edge when the point is near one. */
+    /**
+     * As in MapLibre GL JS: `top` near the padded top edge, `bottom` near the padded bottom edge, and `left` or `right`
+     * near a padded side; the parts combine (`top-left`), and a popup that is near no edge takes `bottom`.
+     */
     private chooseAnchor(): Anchor {
         const map = this.map!, p = map.project(this.lngLat!), c = map.getContainer(), w = this.box.offsetWidth + 16, h = this.box.offsetHeight + 16;
         const o = this.options.offset, lift = typeof o === 'number' ? o : o && !Array.isArray(o) && !('x' in o) ? -xy((o as Partial<Record<Anchor, PointLike>>).bottom ?? [0, 0])[1] : 0;
-        const {top = 0, left = 0, right = 0} = this.options.padding ?? {};
-        const vertical = p.y - lift - h < top && p.y + h < c.clientHeight + 40 ? 'top' : 'bottom';
-        const horizontal = p.x - w / 2 < left ? '-left' : p.x + w / 2 > c.clientWidth - right ? '-right' : '';
-        return (vertical + horizontal) as Anchor;
+        const {top = 0, bottom = 0, left = 0, right = 0} = this.options.padding ?? {};
+        const vertical = p.y - lift - h < top ? 'top' : p.y > c.clientHeight - h - bottom ? 'bottom' : '';
+        const horizontal = p.x < w / 2 + left ? 'left' : p.x > c.clientWidth - w / 2 - right ? 'right' : '';
+        return ([vertical, horizontal].filter(Boolean).join('-') || 'bottom') as Anchor;
     }
     getAnchor() { return this.anchor; }
     /** Moves the focus to the first element that takes it. A candidate can refuse it (a disabled button, a hidden link). */
@@ -284,7 +286,7 @@ export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?:
     /** The opacity of the marker (default `'1'`), and its opacity while the far side of the globe hides its position (default `'0.2'`), as in MapLibre GL JS. */
     opacity?: string | number;
     opacityWhenCovered?: string | number;
-    /** maplibre-compat only: places the marker on fractions of a pixel instead of whole pixels (default `false`). */
+    /** maplibre-compat only: places the marker on fractions of a pixel in every frame (default `false`: on fractions of a pixel during a move and on a whole pixel after it, as in MapLibre GL JS). */
     subpixelPositioning?: boolean;
 }
 

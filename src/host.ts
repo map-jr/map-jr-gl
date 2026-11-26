@@ -390,7 +390,9 @@ export interface OverlayOptions {
     lngLat: Position;
     /**
      * The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners.
-     * @default 'center'
+     * Without `anchor`, a marker takes `'center'`, and a popup chooses its anchor each time it moves: `'top'` near the top
+     * edge, `'bottom'` near the bottom edge or near no edge, and `'left'` or `'right'` near a side, joined into a corner.
+     * @default `'center'` for a marker; for a popup, chosen by the position
      */
     anchor?: Anchor;
     /** A distance in CSS pixels from the position, to the right and down. */

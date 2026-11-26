@@ -421,6 +421,34 @@ for (const mode of renderers) {
         if (mode === 'main') check(`[${mode}] a drag pan: a marker stays on its point in every frame and does not jump at the release (#479)`,
             // (The first 3 px of a drag do not pan, so the marker stays that far behind the pointer from the start.)
             flatDrag.lag?.every(v => Math.abs(v - flatDrag.lag[0]) <= 1) && Math.abs(flatDrag.jump) <= 3, JSON.stringify(flatDrag));
+        // A `drag` listener that calls jumpTo: the drag goes on from the new camera, and the map ends where MapLibre GL JS
+        // (served at /ml/) ends. With the worker renderer the ground that the drag held before the jump put the camera
+        // back at the release (#2140).
+        const jump2140 = {};
+        for (const lib of ['ml', 'compat']) {
+            await page.evaluate(async ([lib, renderer]) => {
+                const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+                const m = window.m2140 = new mod.Map({container: el, renderer, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.on('drag', () => m.jumpTo({center: [10, 45]}));
+                m.once('dragend', () => { window.at2140 = +m.getCenter().lng.toFixed(3); });
+            }, [lib, mode]);
+            await page.mouse.move(100, 150); await page.mouse.down();
+            for (let i = 1; i <= 8; i++) { await page.waitForTimeout(40); await page.mouse.move(100 + i * 10, 150); }
+            // (A pause before the release, so that the drag ends without inertia.)
+            await page.waitForTimeout(300); await page.mouse.up();
+            jump2140[lib] = await page.evaluate(async () => {
+                const m = window.m2140;
+                await new Promise(r => { m.once('moveend', r); setTimeout(r, 2000); });
+                const c = m.getCenter(), el = m.getContainer(); m.remove(); el.remove();
+                return [window.at2140, +c.lng.toFixed(3), +c.lat.toFixed(3)];
+            });
+        }
+        // (The longitude at `dragend`, and the center at the end.)
+        check(`[${mode}] a drag pan: a jumpTo from a drag listener moves the map as in MapLibre GL JS (#2140)`,
+            jump2140.ml && jump2140.compat && jump2140.ml.every((v, i) => Math.abs(v - jump2140.compat[i]) < 0.01), JSON.stringify(jump2140));
     }
 
     // Drag pan: the point under the cursor should follow it.
@@ -871,7 +899,7 @@ for (const mode of renderers) {
     });
     check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
     // After setData, each tile of the view fires one `sourcedata` with `tile`, as in MapLibre GL JS 6.17 (#2051). (The check
-    // reads the tiles of the zoom of the view: the overview tile at zoom 0 is not one of MapLibre GL JS.)
+    // reads the tiles of the zoom of the view; #2135 checks that the overview tile fires none.)
     if (mode === 'main') {
         const run = lib => page.evaluate(async ([lib, mode]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
@@ -891,6 +919,28 @@ for (const mode of renderers) {
         }, [lib, mode]);
         const ours = await run('ours'), ml = await run('ml');
         check('maplibre-compat: after setData, each tile of the source fires sourcedata with its tile, as MapLibre GL JS (#2051)', ours !== '' && ours === ml, JSON.stringify({ours, ml}));
+    }
+    // Only the tiles of the view fire `sourcedata` with `tile`, as in MapLibre GL JS: the zoom-0 overview tile that the
+    // engine requests after the first `idle` fires none (#2135). (The overview is requested after that `idle`, so the
+    // check waits 3 s more; a vector source with a view at zoom 3 has an overview at zoom 0.)
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const tiles = new Set();
+            const m = new mod.Map({container: el, renderer: mode, center: [10, 10], zoom: 3, attributionControl: false, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [10, 10]}}]}}},
+                layers: [{id: 'p', type: 'circle', source: 'p'}]}});
+            m.on('sourcedata', e => { const c = e.tile?.tileID.canonical; if (e.sourceId === 'p' && c) tiles.add(`${c.z}/${c.x}/${c.y}`); });
+            // (Bounded: a wait that never ends would stop the suite.)
+            const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), new Promise(r => setTimeout(() => r(false), 15000))]);
+            await new Promise(r => setTimeout(r, 3000));
+            m.remove(); el.remove();
+            return (idle ? '' : 'no idle: ') + [...tiles].sort().join();
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] maplibre-compat: only the tiles of the view fire sourcedata with a tile, not the overview tile, as MapLibre GL JS (#2135)`, ours !== '' && ours === ml, JSON.stringify({ours, ml}));
     }
     // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
     const urlDiff = await page.evaluate(async () => {
@@ -2245,6 +2295,26 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find a point label whose text is hidden by collision, with both renderers (#1968)',
             ['main', 'worker'].every(r => hiddenPoint[r][0] === 'First label' && hiddenPoint[r][1] === 'First label'), JSON.stringify(hiddenPoint));
+        // A polygon in a symbol layer has its label at a point inside it. A query finds the polygon on the box of that label
+        // and not elsewhere in the polygon, as MapLibre GL JS does (#1969).
+        const polygonLabel = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [45, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {name: 'Area'}, geometry: {type: 'Polygon', coordinates: [[[35, -10], [55, -10], [55, 10], [35, 10], [35, -10]]]}}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const c = m.project([45, 0]), corner = m.project([37, 8]);
+                const ask = async p => (await m.queryRenderedFeatures(p, {layers: ['t']})).length;
+                out[renderer] = [await ask([c.x, c.y]), await ask([c.x + 8, c.y]), await ask([c.x + 60, c.y]), await ask([corner.x, corner.y])];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds a polygon of a symbol layer on its shown point label and not elsewhere, with both renderers (#1969)',
+            ['main', 'worker'].every(r => polygonLabel[r].join() === '1,1,0,0'), JSON.stringify(polygonLabel));
         // With `icon-optional`, the wide icon of B collides with the text of A and is hidden, and the text of B is shown. A
         // query at the point of A, under the hidden icon, finds only A, as MapLibre GL JS 6.17 does (#2089).
         const hiddenIcon = await page.evaluate(async () => {
@@ -5519,6 +5589,19 @@ for (const mode of renderers) {
                     m.setTransformCameraUpdate(null);
                     done = moved(); m.jumpTo({center: [0, 50]}); await done;
                     out.cleared = m.getCenter().lat;
+                    // A function that always changes the camera runs only when the camera changed, as in MapLibre GL
+                    // JS, and so the map still goes idle (#1970).
+                    let turns = 0;
+                    m.setTransformCameraUpdate(tr => { turns++; return {bearing: tr.bearing + 1}; });
+                    const idle = new Promise(r => m.once('idle', () => r(true)));
+                    m.jumpTo({center: [5, 5]});
+                    out.idle = await Promise.race([idle, new Promise(r => setTimeout(() => r(false), 5000))]);
+                    out.turns = turns;
+                    // A change of the padding alone calls the function too.
+                    const before = turns;
+                    done = moved(); m.easeTo({padding: {left: 100}, duration: 100}); await done;
+                    out.padded = turns - before;
+                    m.setTransformCameraUpdate(null);
                 } else {
                     // A controlled map whose state is one move behind: the function returns the camera before.
                     let last = null, calls = 0;
@@ -5535,8 +5618,8 @@ for (const mode of renderers) {
             } finally { console.warn = warn; m.remove(); el.remove(); }
             return out;
         }, mode).catch(e => ({error: String(e)}));
-        if (mode === 'main') check('[main] maplibre-compat: setTransformCameraUpdate draws the camera that its function returns before each frame, and null removes the function (#1711)',
-            Math.abs(hook.applied?.lat - 30) < 1e-6 && hook.applied.zoom === 5 && hook.applied.maxLat <= 30 + 1e-9 && Math.abs(hook.cleared - 50) < 1e-6 && hook.warnings === 0, JSON.stringify(hook));
+        if (mode === 'main') check('[main] maplibre-compat: setTransformCameraUpdate draws the camera that its function returns when the camera changed, goes idle, and null removes the function (#1711, #1970)',
+            Math.abs(hook.applied?.lat - 30) < 1e-6 && hook.applied.zoom === 5 && hook.applied.maxLat <= 30 + 1e-9 && Math.abs(hook.cleared - 50) < 1e-6 && hook.warnings === 0 && hook.idle === true && hook.turns < 10 && hook.padded > 0, JSON.stringify(hook));
         else check(`[${mode}] maplibre-compat: setTransformCameraUpdate warns once when its function changes the camera, and not when it returns an earlier camera`, hook.lagging?.calls > 0 && hook.lagging.warnings === 0 && hook.warnings === 1, JSON.stringify(hook));
     }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
@@ -6511,6 +6594,36 @@ for (const mode of renderers) {
         }, renderer);
         check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
             Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3), JSON.stringify(m1954));
+        // #2163: a rotate drag with a frame between its moves, released after a pause (no inertia), ends with the `moveend`
+        // events of MapLibre GL JS: one for the drag and, when it ends within bearingSnap of north, one for the snap. With the
+        // worker renderer the reports of the last turns came after the release, and each ended a move of its own.
+        const m2163 = {};
+        for (const [lib, renderer] of [['ml'], ['compat', 'main'], ['compat', 'worker']]) for (const [start, pause] of [[-24, 200], [-40, 200], [-24, 600]]) (m2163[[lib, renderer ?? 'own', start, pause].join('/')] = await page.evaluate(async ([lib, renderer, start, pause]) => {
+            let mod;
+            if (lib === 'ml') { mod = await import('/ml/maplibre-gl.mjs'); mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href); } else mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: start});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            await new Promise(r => setTimeout(r, 300));
+            let ends = 0;
+            m.on('moveend', () => ends++);
+            const canvas = m.getCanvas();
+            const fire = (type, x, buttons) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: 250, button: 2, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true};
+                canvas.dispatchEvent(new PointerEvent('pointer' + type, o)); canvas.dispatchEvent(new MouseEvent('mouse' + type, o));
+            };
+            let x = 250;
+            fire('down', x, 2);
+            for (let k = 1; k <= (start === -24 ? 8 : 10); k++) { await new Promise(requestAnimationFrame); fire('move', x += 3.3, 2); }
+            await new Promise(r => setTimeout(r, pause));
+            fire('up', x, 0);
+            // (Wait until the snap, if any, has ended.)
+            await new Promise(r => setTimeout(r, 2500));
+            m.remove(); el.remove();
+            return ends;
+        }, [lib, renderer, start, pause]));
+        check('[main] maplibre-compat: a rotate drag released after a pause fires as many moveend events as in MapLibre GL JS, with both renderers (#2163)',
+            Object.entries(m2163).every(([k, n]) => n === m2163['ml/own/' + k.split('/').slice(2).join('/')] && n > 0), JSON.stringify(m2163));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -7154,6 +7267,14 @@ for (const mode of renderers) {
                 out.markerSet = t(pin.setSubpixelPositioning(true)); out.markerBack = t(pin.setSubpixelPositioning(false));
                 out.markerSubpixel = out.markerRound === '100' && Math.abs(out.markerOption - 100.4) < 0.01 && Math.abs(out.markerSet - 100.4) < 0.01 && out.markerBack === '100';
                 pin.remove(); pinned.remove();
+                // #2160: as in MapLibre GL JS, a marker without subpixelPositioning is on fractions of a pixel during a move and on a whole pixel after moveend.
+                const glide = new mod.Marker().setLngLat(frac).addTo(m), seen = [], onMove = () => seen.push(t(glide));
+                m.on('move', onMove);
+                await new Promise(r => { m.once('moveend', r); m.panBy([10.3, 0], {duration: 300}); });
+                m.off('move', onMove);
+                out.glideDuring = seen.filter(v => v?.includes('.')).length; out.glideMoves = seen.length; out.glideEnd = t(glide);
+                out.glides = out.glideDuring > 0 && /^-?\d+$/.test(out.glideEnd);
+                glide.remove(); m.jumpTo({center: m.unproject([m.getContainer().clientWidth / 2 - 10.3, m.getContainer().clientHeight / 2])});
                 // #1783: Popup.setPadding and the option padding move the anchor away from the padded edges, as in MapLibre GL JS.
                 const box = m.getContainer(), W = box.clientWidth, H = box.clientHeight, mid2 = m.unproject([W / 2, H / 2]);
                 const pad = new mod.Popup({animate: false}).setLngLat(mid2).setText('pad').addTo(m), anchors = [pad.getAnchor()];
@@ -7164,6 +7285,13 @@ for (const mode of renderers) {
                 const opt = new mod.Popup({animate: false, padding: {top: H}}).setLngLat(mid2).setText('pad').addTo(m);
                 anchors.push(opt.getAnchor()); opt.remove();
                 out.padding = anchors.join();
+                // #2198: near a side at mid height the anchor is `left` or `right` alone, and `padding.bottom` adds `bottom`.
+                const sides = [];
+                for (const x of [4, W - 4]) {
+                    const q = new mod.Popup({animate: false}).setLngLat(m.unproject([x, H / 2])).setText('side').addTo(m);
+                    sides.push(q.getAnchor()); q.setPadding({bottom: H}); sides.push(q.getAnchor()); q.remove();
+                }
+                out.sides = sides.join();
             } finally { console.warn = warn; }
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
@@ -7171,7 +7299,9 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
             options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
         check('[main] maplibre-compat: Marker places itself on fractions of a pixel with the option subpixelPositioning and setSubpixelPositioning(true), and on whole pixels by default (#1782)', options.markerSubpixel, JSON.stringify(options));
-        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,bottom-right,bottom,top', JSON.stringify(options.padding));
+        check('[main] maplibre-compat: Marker is on fractions of a pixel while the map moves and on a whole pixel after moveend, as in MapLibre GL JS (#2160)', options.glides, JSON.stringify(options));
+        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,right,bottom,top', JSON.stringify(options.padding));
+        check('[main] maplibre-compat: Popup takes the anchor left or right alone near a side at mid height, and bottom-left or bottom-right with padding.bottom, as in MapLibre GL JS (#2198)', options.sides === 'left,bottom-left,right,bottom-right', JSON.stringify(options.sides));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
