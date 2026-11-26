@@ -21,6 +21,19 @@ interface Prepared {
     keep?: Float64Array[];
     /** For a line, made when a tile first needs `line-progress`: the distance along the full line at each vertex, as geojson-vt measures it. */
     dist?: Float64Array[];
+    /** Made when a ring is first sliced: the bounding box of each run of `RUN` vertices, so a tile skips the runs outside it. */
+    runs?: Float64Array[];
+}
+const RUN = 32;
+/** For each run of `RUN` vertices (the last vertex of a run is the first of the next): min x, min y, max x, max y. */
+function runBoxes(r: Float64Array): Float64Array {
+    const n = r.length / 2, out = new Float64Array(Math.ceil(n / RUN) * 4);
+    for (let c = 0; c * RUN < n; c++) {
+        let a = Infinity, b = Infinity, d = -Infinity, e = -Infinity;
+        for (let i = c * RUN; i <= Math.min(c * RUN + RUN, n - 1); i++) { const x = r[i * 2], y = r[i * 2 + 1]; if (x < a) a = x; if (y < b) b = y; if (x > d) d = x; if (y > e) e = y; }
+        out.set([a, b, d, e], c * 4);
+    }
+    return out;
 }
 export interface SlicedFeature {
     type: number; id?: number | string; properties: Record<string, any>;
@@ -213,6 +226,27 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
         if (rings.length) out.push({type, id: Number.isSafeInteger(n) ? n : typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
     const open = (r: number[][]) => ring(r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r.slice(0, -1) : r);
+    // The rings of polygons, wound so that `eachPolygon` of tile.ts reads ring 0 of each polygon as outer and the others
+    // as holes, whatever their winding in the input, as MapLibre GL JS does with geojson-vt `rewind` (#1821). The first
+    // ring keeps its direction and its first point, so that a polygon wound one way draws as before.
+    const polygons = (ps: number[][][][]) => {
+        const out: Float64Array[] = [];
+        let first = 0;
+        for (const p of ps) p.forEach((pts, i) => {
+            const r = open(pts);
+            let a = 0;
+            for (let k = 0, j = r.length - 2; k < r.length; j = k, k += 2) a += (r[k] - r[j]) * (r[k + 1] + r[j + 1]);
+            const sign = Math.sign(a);
+            if (!first) first = i ? -sign : sign;
+            // A reversed ring keeps its first point first.
+            if (sign && (sign === first) !== !i) for (let k = 2, m = r.length; k < m; k += 2, m -= 2) {
+                const x = r[k], y = r[k + 1];
+                r[k] = r[m - 2]; r[k + 1] = r[m - 1]; r[m - 2] = x; r[m - 1] = y;
+            }
+            out.push(r);
+        });
+        return out;
+    };
     const walk = (f: any, g: any) => {
         if (!g) return;
         const c = g.coordinates;
@@ -223,8 +257,8 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
             case 'MultiLineString': add(f, 2, c.map(ring)); break;
             // Closing points are dropped: rings are implicitly closed, as in vector tiles. A ring without a closing
             // point keeps its last point, as in MapLibre GL JS.
-            case 'Polygon': add(f, 3, c.map(open)); break;
-            case 'MultiPolygon': add(f, 3, c.flat().map(open)); break;
+            case 'Polygon': add(f, 3, polygons([c])); break;
+            case 'MultiPolygon': add(f, 3, polygons(c)); break;
             case 'GeometryCollection': for (const part of g.geometries) walk(f, part); break;
         }
     };
@@ -320,7 +354,23 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
             // With `lineMetrics`, the distance along the full line at each vertex, so that `line-progress` does not
             // depend on simplification (#1890). Such a line keeps every vertex until it is clipped.
             const d = f.type === 2 && metrics ? (f.dist ??= [])[ri] ??= lengths(r) : null, skip: boolean[] = [];
-            for (let i = 0; i < r.length; i += 2) {
+            // A run of vertices that lies wholly past one edge of the tile (by more than a tile unit) keeps only its
+            // first and last kept vertex. The edges into the tile stay the same, and each clip step drops the vertices
+            // between them, so the result is the same (#1888). A run past the top or the bottom edge is skipped only
+            // when it lies within the left and right edges: the clip of a polygon cuts at x first, and a run that crosses
+            // x = lo or x = hi there would leave other points on that edge, so the ring would start or turn elsewhere.
+            const runs = d || f.type === 1 || r.length < RUN * 8 ? null : (f.runs ??= [])[ri] ??= runBoxes(r), m1 = 1 / EXTENT / n;
+            let to = -1;
+            for (let i = 0; i < r.length; i = to < 0 ? i + 2 : to * 2, to = -1) {
+                const v = i / 2;
+                if (runs && v % RUN === 1) {
+                    const c = (v - 1) / RUN * 4;
+                    if (runs[c + 2] + w < x0 - m1 || runs[c] + w > x1 + m1 || (runs[c + 3] < y0 - m1 || runs[c + 1] > y1 + m1) && runs[c] + w > x0 + m1 && runs[c + 2] + w < x1 - m1) {
+                        let s = v, e = Math.min(v - 1 + RUN, r.length / 2 - 1);
+                        if (keep) { while (s < e && keep[s] <= sqTol) s++; while (e > s && keep[e] <= sqTol) e--; }
+                        if (s < e) { to = e; i = s * 2; }
+                    }
+                }
                 const drop = !!keep && keep[i / 2] <= sqTol;
                 if (drop && !d) continue;
                 const tx = Math.round(((r[i] + w) * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;

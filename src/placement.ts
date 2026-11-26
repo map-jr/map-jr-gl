@@ -1,5 +1,5 @@
 import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
-import {screenTranslate, mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
+import {mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
 import {anchors as lineAnchors, justification, type LabelSrc} from './tile.ts';
 import {BASELINE, EM, type Shaped, type Shaper} from './text.ts';
 import {CollisionGrid} from './collision.ts';
@@ -65,6 +65,11 @@ export interface Placed {
      * and one pixel down the text go on the screen (two x, y pairs). It takes the place of `angle`.
      */
     frame?: number[];
+    /**
+     * Text at a point of a layer with `icon-offset`: drawn without the perspective ratio, as in MapLibre GL JS, while its
+     * collision box and the box that queries find keep the ratio (see `CompiledLayer.fixedSize`).
+     */
+    fixedSize?: boolean;
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
     key: string;
     /** The id of the symbol layer of the label, so that its text is drawn in the place of that layer. */
@@ -85,12 +90,12 @@ export interface Placed {
  * degrees that is at about 1.2 times the camera distance, so without the far plane labels showed in the sky (#924).
  */
 export const tooFar = (tr: Transform, depth: number, far: number) => !!tr.pitch && !(0.5 + 0.5 * tr.cameraDistance / depth >= 0.6 && depth > 0 && (tr.globeness > 0 || depth <= far));
-const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
+export const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
 /**
  * The size of a symbol that lies on the ground, at the distance `depth`, in pixels of the ground for each pixel of its
  * size. As in MapLibre GL JS a far symbol is larger on the ground, by half of what the perspective takes away.
  */
-const flatSize = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * depth / tr.cameraDistance) : 1;
+export const flatSize = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * depth / tr.cameraDistance) : 1;
 /** How much a symbol on the ground grows on the screen when its anchor moves from the distance `from` to `to`. */
 const flatGrow = (tr: Transform, from: number, to: number) => flatSize(tr, to) / flatSize(tr, from) * (to > 0 ? from / to : 1);
 /**
@@ -107,7 +112,10 @@ const heightAt = (tr: Transform, it: RenderItem<unknown>, x: number, y: number) 
     return tr.heightAt ? tr.heightAt((it.id.x + x / EXTENT) / n, (it.id.y + y / EXTENT) / n) : undefined;
 };
 function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, angle: number): number[] {
-    const e = 16, d = e / it.scale, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
+    // On the globe a step in the tile is shorter on the sphere by the cosine of the latitude: as in MapLibre GL JS
+    // (`getPitchedTextCorrection`), the step grows by the cosine at the center over that at (x, y), mixed by the globeness.
+    const n = 2 ** it.id.z, g = 1 + tr.globeness * (Math.cosh(Math.PI * (1 - 2 * (it.id.y + y / EXTENT) / n)) * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1);
+    const e = 16, d = e / it.scale * g, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
     const [fx, fy] = tr.projectTile(it.id, x + c, y + s, m), [qx, qy] = tr.projectTile(it.id, x - s, y + c, m);
     return [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
 }
@@ -124,7 +132,8 @@ const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (le
  */
 export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: number, depth: number, turn: number, turned: boolean): boolean {
     const grow = perspective(tr, depth) / perspective(tr, p.depth);
-    const k = p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
+    const k = p.fixedSize ? p.frame ? (depth > 0 ? p.depth / depth : 1) : 1
+        : p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
     d.size = p.size * k;
     const rotate = !!turn && (!p.src.upright || (!p.shaped && !!p.icon && !p.src.icon!.upright));
     const tc = rotate ? Math.cos(turn) * k : k, ts = rotate ? Math.sin(turn) * k : 0, gc = rotate ? Math.cos(turn) : 1, gs = rotate ? Math.sin(turn) : 0;
@@ -399,10 +408,10 @@ export function placeLabels(
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
     const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
-    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. On the globe the
-    // point is moved by tile units and projected again, as in MapLibre GL JS, so the offset follows the curve of the sphere.
+    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. The point is moved
+    // by tile units and projected again, as in MapLibre GL JS, so the offset shrinks with the distance on a pitched map
+    // and follows the curve of the sphere on the globe (#2021).
     const translateAt = (it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, t: unknown, anchor: unknown): [number, number] => {
-        if (!tr.globeness) return screenTranslate(t, anchor, tr.bearing);
         const [mx, my] = mapTranslate(t, anchor, tr.bearing);
         if (!mx && !my) return [0, 0];
         const [px, py] = tr.projectTile(it.id, x + mx / it.scale, y + my / it.scale);
@@ -462,12 +471,12 @@ export function placeLabels(
                 const ratio = 0.5 + 0.5 * tr.cameraDistance / depth;
                 if (tooFar(tr, depth, far)) continue;
                 const persp = tr.pitch ? Math.min(4, ratio) : 1;
-                const line = l.angle !== null, flat = !!tr.pitch && l.flat && !line;
+                const line = l.angle !== null, flat = (!!tr.pitch || tr.globeness > 0) && l.flat && !line;
                 // As in MapLibre GL JS, `text-rotation-alignment` decides whether every box of the symbol, the icon's too,
                 // is turned by the bearing (#2037).
                 const bturn = line || flat || l.upright ? 0 : north;
                 // (Text that lies on the ground has its size on the ground: see `flatSize`.)
-                const size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * (flat ? flatSize(tr, depth) : persp), s = size / EM;
+                let size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * (flat ? flatSize(tr, depth) : persp), s = size / EM;
                 const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
@@ -481,7 +490,7 @@ export function placeLabels(
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
-                let textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
+                let flatBox: number[] | undefined, textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
                 let bent: Placed | undefined, bentBoxes: Box[] = [];
                 const anchors: string[] = [];
@@ -542,7 +551,9 @@ export function placeLabels(
                         const [a, b, c, d] = frame;
                         textAngle = Math.atan2(b, a);
                         candidates = candidates.map(([dx, dy]) => [dx * a + dy * c, dx * b + dy * d]);
-                        // (The box for collisions is the size of the text on the screen.)
+                        // (The box for collisions is the bound on the screen of the text on the ground, as in MapLibre GL JS's
+                        // `_projectCollisionBox`, and not the bound of a turned box, which is taller where the frame is skewed.)
+                        flatBox = [Math.abs(a) * w + Math.abs(c) * h, Math.abs(b) * w + Math.abs(d) * h];
                         w *= Math.hypot(a, b); h *= Math.hypot(c, d);
                     } else if (!line && turned) {
                         // text-rotate turns the label about its anchor point, so the offset from the anchor turns with it.
@@ -615,7 +626,7 @@ export function placeLabels(
                     if (l.overlap) for (let i = 0; i < candidates.length; i++) tries.push(i + candidates.length);
                     for (const k of tries) {
                         const i = k % candidates.length, overlap = k >= candidates.length;
-                        const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
+                        const [dx, dy] = candidates[i], box = flatBox ? boxAround(ax + dx, ay + dy, flatBox[0], flatBox[1], 0, l.padding) : boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding, bturn);
                         if (!overlap && grid.hits(...box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);
@@ -652,7 +663,13 @@ export function placeLabels(
                         }
                         bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1);
                     }
-                    const box = line || iflat ? boxAround(bx, by, bw, bh, angle, ic.padding) : boxAround(bx, by, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
+                    // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
+                    // (`L.fixedSize`, a layer with `icon-offset`): the box and its offset from the anchor grow with it. An icon
+                    // that `icon-text-fit` stretches has its size from the text, which has the ratio already.
+                    const r = L.fixedSize && fit === 'none' ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
+                    const qx = cx + (bx - cx) * r, qy = cy + (by - cy) * r;
+                    bw *= r; bh *= r;
+                    const box = line || iflat ? boxAround(qx, qy, bw, bh, angle, ic.padding) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
@@ -660,6 +677,20 @@ export function placeLabels(
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
                             haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};
                     } else if (!(hasText && (textBox || bent) && ic.optional)) continue; // (a required icon that is not placed drops its text too, as in MapLibre)
+                }
+                // As in MapLibre GL JS (`u_is_offset`), the text of a layer with `icon-offset` is drawn without the perspective
+                // ratio, and so is an icon that `icon-text-fit` stretches around it. Their collision boxes above keep the ratio:
+                // the drawn text, its offset from the anchor and the fitted icon shrink toward the anchor by the ratio (#2057).
+                let fixed = false;
+                if (L.fixedSize && textBox && !line && !twin) {
+                    // (A fitted icon faces the screen, also around text on the ground, so it drops the ratio of the screen.)
+                    const r = flat ? flatSize(tr, depth) : persp;
+                    fixed = true;
+                    if (r !== 1) { size /= r; tx = ax + (tx - ax) / r; ty = ay + (ty - ay) / r; }
+                    if (persp !== 1 && icon && ic && ic.fit !== 'none') {
+                        icon.x = ax + (icon.x - ax) / persp; icon.y = ay + (icon.y - ay) / persp; icon.w /= persp; icon.h /= persp;
+                        for (const g of [icon.gx, icon.gy]) if (g) for (let i = 1; i < g.length; i += 2) g[i] /= persp;
+                    }
                 }
                 if (bent) { bent.icon = icon; for (const b of bentBoxes) grid.insert(...b); if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
                 if (!textBox && !icon) continue;
@@ -670,7 +701,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor});
+                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor, fixedSize: fixed || undefined});
             }
         }
         if (drawByY && out.length - first > 1) {
@@ -714,6 +745,10 @@ function followLine(
     w *= size / s;
     const start = cum[anchorIndex] - w / 2;
     if (start < 0 || start + w > cum[n - 1]) return null; // not enough line for the text at this zoom
+    // On the globe, text with a glyph behind the horizon is hidden, as in MapLibre GL JS (#1996). MapLibre tests the
+    // vertices of the label line, which it divides on the globe into steps of 64 tile units, so the test of the point
+    // under each glyph (in the tile, at its place along the piece) gives nearly the same result without the division.
+    const z = 2 ** it.id.z, behind = (u: number, v: number) => !!tr.globeness && tr.globe!.hidden(tr, (it.id.x + u / EXTENT) / z, (it.id.y + v / EXTENT) / z);
     const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centered on the line
     const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
     let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
@@ -722,6 +757,7 @@ function followLine(
         while (seg < n - 1 && cum[seg] < mid) seg++;
         const len = cum[seg] - cum[seg - 1] || 1, t = mid - cum[seg - 1];
         let dx = (xs[seg] - xs[seg - 1]) / len, dy = (ys[seg] - ys[seg - 1]) / len, cx = xs[seg - 1] + dx * t, cy = ys[seg - 1] + dy * t;
+        if (tr.globeness && behind(us[seg - 1] + (us[seg] - us[seg - 1]) * t / len, vs[seg - 1] + (vs[seg] - vs[seg - 1]) * t / len)) return null;
         if (k) {
             // Text on the ground: the place of the glyph on the ground, and where one step along the line and one step
             // across it go on the screen from there. (The perspective changes along a piece of the line: one size for
