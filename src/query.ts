@@ -67,6 +67,31 @@ export interface QuerySet {
 /** The rectangle of the screen that a set is tested with: moved back by its translation, as MapLibre GL JS does. */
 export const setBox = (box: number[], s: QuerySet) => s.translate ? [box[0] - s.translate[0], box[1] - s.translate[1], box[2] - s.translate[0], box[3] - s.translate[1]] : box;
 
+/**
+ * A bound of the absolute value that a paint value can take, as MapLibre GL JS widens a query by the largest value
+ * of a layer (`getMaximumPaintValue`): the largest output of a constant, a function with `stops`, `interpolate`,
+ * `step`, `match`, `case` or `coalesce`, and sums and products of those. A value from the data (`get`,
+ * `feature-state`) has no bound.
+ */
+function bound(v: any): number {
+    if (typeof v === 'number') return Math.abs(v);
+    if (!Array.isArray(v)) return v && Array.isArray(v.stops) ? Math.max(...v.stops.map((s: unknown[]) => bound(s[1])), v.default === undefined ? 0 : bound(v.default)) : Infinity;
+    const [op, ...a] = v, at = (i: number, step: number, last?: boolean) => Math.max(...a.filter((_, k) => (k >= i && (k - i) % step === 0) || (last && k === a.length - 1)).map(bound));
+    return op === 'literal' ? bound(a[0]) : /^interpolate/.test(op) ? at(3, 2) : op === 'step' ? at(1, 2) : op === 'match' ? at(2, 2, true) : op === 'case' ? at(1, 2, true)
+        : /^(coalesce|max|min|number|to-number|let)$/.test(op) ? at(op === 'let' ? a.length - 1 : 0, 1) : op === '+' || op === '-' ? a.reduce((t, x) => t + bound(x), 0) : op === '*' ? a.reduce((t, x) => t * bound(x), 1) : Infinity;
+}
+
+/**
+ * How far from its features a set draws in pixels of the screen, which the choice of tiles of a query grows by: its
+ * `radius`, or for a size from an expression the bound of the expression. A size from the data reaches one tile.
+ */
+export function setReach(s: QuerySet, tr: Transform): number {
+    if (!s.size) return s.radius;
+    const z = s.size, d = (v: unknown, x: number) => bound(v ?? x), w = d(z.a, z.line ? 1 : 5), b = d(z.b, 0);
+    const r = (z.line ? (b > 0 ? b + 2 * w : w) / 2 : w + b) + (z.o === undefined ? 0 : bound(z.o));
+    return r < Infinity ? r : 512 * 2 ** (tr.zoom % 1);
+}
+
 function outside(c: number[]) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let i = 0; i < c.length; i += 2) x0 = Math.min(x0, c[i]), x1 = Math.max(x1, c[i]), y0 = Math.min(y0, c[i + 1]), y1 = Math.max(y1, c[i + 1]);
@@ -244,7 +269,7 @@ export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
     if (!circles.length) return null;
     // A circle is largest at the bottom of the screen, which is nearest to the camera.
     const k = Math.max(1, tr.perspectiveAt(...tr.screenToGround(tr.width / 2, Math.max(box[3], tr.height))));
-    const r = Math.max(...circles.map(s => s.radius)) * k;
+    const r = Math.max(...circles.map(s => setReach(s, tr))) * k;
     // (A translated circle is drawn away from its feature: the rectangle also reaches back by each translation.)
     const [x0, y0, x1, y1] = circles.reduce((b, s) => { const t = setBox(box, s); return [Math.min(b[0], t[0]), Math.min(b[1], t[1]), Math.max(b[2], t[2]), Math.max(b[3], t[3])]; }, box);
     return {box: [x0 - r, y0 - r, x1 + r, y1 + r], circles: new Set(circles), k};
@@ -274,11 +299,14 @@ export function circleCenters(g: GeoJSONGeometry): number[][] {
  * The tiles of one source under a rectangle of the screen, each with the rectangle in its own units and the number of
  * tile units for one screen pixel. When the map is turned or tilted, the rectangle is the one around the four corners.
  */
-export function tilesUnderBox(tr: Transform, [x0, y0, x1, y1]: number[], minzoom: number, maxzoom: number) {
-    const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
-    const west = Math.min(...corners.map(p => p[0])), east = Math.max(...corners.map(p => p[0])), north = Math.min(...corners.map(p => p[1])), south = Math.max(...corners.map(p => p[1]));
+export function tilesUnderBox(tr: Transform, box: number[], minzoom: number, maxzoom: number, /** The tiles are chosen under the rectangle grown by this many pixels. */ pad = 0) {
+    const span = ([x0, y0, x1, y1]: number[]) => {
+        const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
+        return [Math.min(...c.map(p => p[0])), Math.max(...c.map(p => p[0])), Math.min(...c.map(p => p[1])), Math.max(...c.map(p => p[1]))];
+    };
+    const [west, east, north, south] = span(box), g = span([box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad]);
     const z = clamp(Math.floor(tr.zoom), minzoom, maxzoom), n = 2 ** z, scale = EXTENT / (512 * 2 ** (tr.zoom - z)), out: {z: number; x: number; y: number; box: [number, number, number, number]; scale: number}[] = [];
-    const tx0 = Math.floor(west * n), tx1 = Math.floor(east * n), ty0 = clamp(Math.floor(north * n), 0, n - 1), ty1 = clamp(Math.floor(south * n), 0, n - 1);
+    const tx0 = Math.floor(g[0] * n), tx1 = Math.floor(g[1] * n), ty0 = clamp(Math.floor(g[2] * n), 0, n - 1), ty1 = clamp(Math.floor(g[3] * n), 0, n - 1);
     if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 256) throw new Error('The query covers too many tiles');
     for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
         out.push({z, x: ((tx % n) + n) % n, y: ty, scale, box: [(west * n - tx) * EXTENT, (north * n - ty) * EXTENT, (east * n - tx) * EXTENT, (south * n - ty) * EXTENT]});

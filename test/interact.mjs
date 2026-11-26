@@ -1625,6 +1625,32 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: on a tilted map a circle-radius from a property or the zoom is the radius of the query, also in the array at once (#1942)`,
         sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
+    // A circle whose center lies in the next tile is found at its edge, as in MapLibre (#2024): the choice of tiles grows
+    // by the largest radius of the layer, from a constant, the zoom or the data. Circles of 170 pixels 150 pixels east
+    // of a tile edge are queried 15 pixels west of it, flat and with pitch 45.
+    const neighbor = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), pt = m.unproject([b.x + 150, b.y]);
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {r: 170}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'data', type: 'circle', source: 's', paint: {'circle-radius': ['get', 'r']}});
+        m.addLayer({id: 'zoom', type: 'circle', source: 's', paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 170, 24, 170]}});
+        m.addLayer({id: 'const', type: 'circle', source: 's', paint: {'circle-radius': 170}});
+        await new Promise(r => m.once('idle', r));
+        const out = {};
+        for (const pitch of [0, 45]) {
+            m.jumpTo({pitch});
+            const c = m.project([0, 0]), q = [c.x - 15, c.y];
+            out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
+        }
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
+        [0, 45].every(p => neighbor[p].now === 'const,data,zoom' && neighbor[p].later === 'const,data,zoom'), JSON.stringify(neighbor));
+
     // A size from `feature-state` is the size of the query with the state of the feature, as in MapLibre (#1959): a
     // state makes a circle 30 pixels wide, a stroke reach 30 pixels and a line 20 pixels wide, and each is found at
     // (20, 8) pixels from the center, flat and on a tilted map.
