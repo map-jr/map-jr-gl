@@ -3640,6 +3640,37 @@ for (const renderer of ['worker', 'main']) {
                 check(`[${renderer}] setProjection to the globe: the page fetches the part subdivide once for all tile workers, and the globe draws its vector tiles (#2075)`,
                     later.idle && later.water > 0 && !later.errors.length && laterAsked.length === 1, JSON.stringify({later, laterAsked}));
             } finally { await globe.close(); }
+            // The layer types heatmap, hillshade and color-relief draw with the part `layers` (#2215). A heatmap map loads
+            // it once and draws; when it does not load, the map reports one error and is idle without the heatmap.
+            const rare = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                const asked = [], file = /map-jr-gl-(worker-layers|layers-more-[\w-]+)\.js/;
+                rare.context().on('request', r => { if (file.test(r.url())) asked.push(r.url()); });
+                const run = () => rare.evaluate(async renderer => {
+                    const lib = await import('/dist/map-jr-gl.js'), errors = [];
+                    const style = {version: 8, sources: {pt: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}},
+                        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'heat', type: 'heatmap', source: 'pt', paint: {'heatmap-radius': 60, 'heatmap-intensity': 3}}]};
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                    const host = lib.createMap(el, {style, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    const until = async (f, ms) => { for (let t = 0; t < ms && !f(); t += 50) await new Promise(r => setTimeout(r, 50)); return f(); };
+                    const idle = await until(() => host.state.get().idle, 15000);
+                    const bmp = await createImageBitmap(await host.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                    g.drawImage(bmp, 0, 0);
+                    const centre = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+                    host.destroy(); el.remove();
+                    return {idle, centre, errors};
+                }, renderer);
+                await rare.goto(origin + '/bench');
+                const drawn = await run(), drawnAsked = asked.splice(0);
+                await rare.context().route(file, route => route.fulfill({status: 404, body: ''}));
+                // (A new page: it has not loaded the part.)
+                await rare.goto(origin + '/bench');
+                const missing = await run();
+                check(`[${renderer}] a heatmap loads the part layers once, is idle and draws (#2215)`,
+                    drawn.idle && !drawn.errors.length && drawnAsked.length === 1 && drawn.centre[0] > 200 && drawn.centre[2] < 100, JSON.stringify({drawn, drawnAsked}));
+                check(`[${renderer}] the part layers does not load: the map reports one error, is idle and draws its other layers (#2215)`,
+                    missing.idle && missing.errors.length === 1 && /layers/.test(missing.errors[0]) && missing.centre.slice(0, 3).every(v => v > 250), JSON.stringify(missing));
+            } finally { await rare.close(); }
             // 3D terrain whose part comes late (#1849): the tiles of the flat layers are requested while the part loads,
             // and do not wait for it (they did, behind the elevation tiles, by more than 3 s).
             if (renderer === 'worker') {

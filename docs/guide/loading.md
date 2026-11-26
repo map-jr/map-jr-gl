@@ -15,7 +15,7 @@ bundler copies them too.
 |---|---|
 | The page script: the file of the entry and the files that it imports, called its parts | When the page imports the entry |
 | `map-jr-gl-worker.js` | When the map is created, together with the style. The same file starts the worker of the renderer and the tile workers. |
-| `map-jr-gl-worker-geojson.js`, `map-jr-gl-worker-dem.js`, `map-jr-gl-worker-pmtiles.js`, `map-jr-gl-worker-within.js`, `map-jr-gl-worker-globe.js`, `map-jr-gl-worker-subdivide.js` | The parts of the worker. A worker loads each one once, when a map needs it (see [Serve the worker files yourself](#serve-the-worker-files-yourself)). |
+| `map-jr-gl-worker-geojson.js`, `map-jr-gl-worker-dem.js`, `map-jr-gl-worker-pmtiles.js`, `map-jr-gl-worker-within.js`, `map-jr-gl-worker-globe.js`, `map-jr-gl-worker-subdivide.js`, `map-jr-gl-worker-layers.js` | The parts of the worker. A worker loads each one once, when a map needs it (see [Serve the worker files yourself](#serve-the-worker-files-yourself)). |
 | `map-jr-gl-engine-entry-<hash>.js` | Only when the map draws on the main thread: with `renderer: 'main'`, or when a worker cannot draw |
 | `map-jr-gl-custom-layers-<hash>.js` | Only in `@map-jr/map-jr-gl/maplibre-compat`, when `addLayer` adds the first custom layer |
 | `map-jr-gl-standalone.js` | Only when the page imports the one-file build instead of the entry |
@@ -106,6 +106,7 @@ when a map needs it, from the folder of the worker file.
 | `map-jr-gl-worker-within.js` | The expressions `within` and `distance` |
 | `map-jr-gl-worker-globe.js` | A style whose `projection` draws a globe. With `renderer: 'main'`, the page loads the globe as a chunk of the library instead. |
 | `map-jr-gl-worker-subdivide.js` | A style whose `projection` draws a globe: the tile workers cut the tiles along the grid of the globe with it |
+| `map-jr-gl-worker-layers.js` | A style with a layer of the type `heatmap`, `hillshade` or `color-relief`. With `renderer: 'main'`, the page loads it as a chunk of the library instead. |
 
 Copy every `map-jr-gl-worker*.js` file of `node_modules/@map-jr/map-jr-gl/dist/` into one folder under its own name, so that a part
 that a later version adds is there too. When a part is missing, the worker reports an error that names the file
