@@ -601,9 +601,10 @@ export class Map extends CoreMap {
         this.checkPixels(name, image);
         this.styleImageNames.delete(name);
         this.dropAnimated(name);
-        // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` before each frame that the map draws:
-        // when it returns true, its `data` is sent again and shows in that frame, as in MapLibre GL JS (#2128). As there,
-        // this does not repaint. A map without such images has no hook, and its frames do not wait.
+        // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` at each frame that the map draws: when it
+        // returns true, its `data` is sent again. On the main renderer it runs before the frame and the pixels show in it, as
+        // in MapLibre GL JS; the worker renderer does not wait, and they show a frame later (#2128). As in MapLibre GL JS, this
+        // does not repaint. A map without such images has no hook.
         if (typeof (image as StyleImageInterface).render == 'function') {
             if (!this.animated.size) this.setBeforeFrame(this.renderImages);
             this.animated.set(name, image as StyleImageInterface);

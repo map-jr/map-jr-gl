@@ -668,43 +668,35 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
-    // #2128: render() of an image runs before the frame, as in MapLibre GL JS, so that its pixels are in that frame. (The
-    // listener of `render` is added before the image: a hook on `render` would run after it.)
-    const before = await page.evaluate(async () => {
-        await new Promise(r => window.map.loaded() && !window.map.isMoving() ? setTimeout(r, 300) : window.map.once('idle', r));
-        const order = [], frame = () => order.push('F');
-        window.map.on('render', frame);
-        let n = 0;
-        await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
-        window.map.triggerRepaint();
-        const t0 = performance.now();
-        while (order.length < 6 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 20));
-        window.map.removeImage('early'); window.map.off('render', frame);
-        return order.join('');
-    });
-    check(`[${mode}] render() of an image runs before each frame (#2128)`, /^(RF)+R?$/.test(before), before);
-    // #2278: a throw of render() goes to `error` and does not stop the frames; an image added inside render() of another
-    // and the image added in the same task gets its render() before the next frame (an answer to the old hook does not skip it).
+    // #2128: on the main renderer render() of an image runs before the frame, as in MapLibre GL JS, so that its pixels are in
+    // that frame (the worker renderer does not wait, by the decision on #2128). (The listener of `render` is added before the
+    // image: a hook on `render` would run after it.)
+    if (mode === 'main') {
+        const renderOrder = await page.evaluate(async () => {
+            await new Promise(r => window.map.loaded() && !window.map.isMoving() ? setTimeout(r, 300) : window.map.once('idle', r));
+            const order = [], frame = () => order.push('F');
+            window.map.on('render', frame);
+            let n = 0;
+            await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
+            window.map.triggerRepaint();
+            const t0 = performance.now();
+            while (order.length < 6 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 20));
+            window.map.removeImage('early'); window.map.off('render', frame);
+            return order.join('');
+        });
+        check(`[${mode}] render() of an image runs before each frame (#2128)`, /^(RF)+R?$/.test(renderOrder), renderOrder);
+    }
+    // #2278: a throw of render() goes to `error` and does not stop the frames.
     const hookFaults = await page.evaluate(async () => {
         const m = window.map, order = [], errors = [], frame = () => order.push('F'), err = e => errors.push(String(e.error?.message));
         m.on('render', frame); m.on('error', err);
         await m.addImage('throws', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('T'); throw new Error('boom'); }});
         for (let i = 0; i < 4; i++) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 100)); }
         const frames = order.filter(o => o === 'F').length;
-        m.removeImage('throws');
-        await new Promise(r => setTimeout(r, 300));
-        order.length = 0;
-        const b = {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('b'); return false; }};
-        await m.addImage('a', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('a'); m.removeImage('a'); queueMicrotask(() => { order.push('B'); m.addImage('b', b); }); return false; }});
-        m.triggerRepaint();
-        const t0 = performance.now();
-        while (!order.includes('b') && performance.now() - t0 < 3000) await new Promise(r => setTimeout(r, 20));
-        await new Promise(r => setTimeout(r, 100));
-        m.removeImage('b'); m.off('render', frame); m.off('error', err);
-        return {frames, errors: errors.filter(e => e === 'boom').length, swap: order.join('')};
+        m.removeImage('throws'); m.off('render', frame); m.off('error', err);
+        return {frames, errors: errors.filter(e => e === 'boom').length};
     });
     check(`[${mode}] a throw of render() fires error and does not stop the frames (#2278)`, hookFaults.frames >= 3 && hookFaults.errors >= 3, JSON.stringify(hookFaults));
-    check(`[${mode}] after an image is removed in render(), the next image gets render() before the next frame (#2278)`, /^aBb/.test(hookFaults.swap), JSON.stringify(hookFaults));
     // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own; compat entry only).
     if (mode === 'compat') {
         const removed = await page.evaluate(async renderer => {

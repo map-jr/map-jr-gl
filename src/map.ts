@@ -755,7 +755,7 @@ export class Map {
         return new Error(`[map-jr-gl] E20017 The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), {cause});
     }
 
-    /** @internal Runs before each frame that the engine draws while it is set; the frame waits for it (#2128). */
+    /** @internal Runs before each frame while it is set: on the main renderer inside the frame, and with a worker after it (#2128). */
     protected setBeforeFrame(fn: (() => void) | null) {
         if (!this.beforeFrame !== !fn) this.post({type: 'beforeFrames', on: !!fn});
         this.beforeFrame = fn ?? undefined;
@@ -766,7 +766,7 @@ export class Map {
     protected post(c: Command, transfer?: Transferable[]) {
         // (A command that changes or reads the images goes after the updates of this task. A repaint does not wait.)
         if (c.type === 'style' || c.type === 'templates' || c.type === 'removeImage' || c.type === 'snapshot' || c.type === 'image' && !c.update) this.sendUpdates();
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'beforeFrames' && c.type !== 'frameGo' && c.type !== 'snapshot' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'beforeFrames' && c.type !== 'snapshot' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
         if (c.type === 'query' || c.type === 'queryRendered') this.tilePool?.wake(); // (#824)
         if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
     }
@@ -862,11 +862,11 @@ export class Map {
         } else if (e.type === 'pong') {
             this.pong = e.n;
         } else if (e.type === 'beforeFrame') {
-            // (Before each frame, for the images with `render()` of the compat entry: their pixels go before the frame, #2128.)
-            // (A throw of the hook goes to `error` after the frame: the frame must not stop, #2278.)
+            // (For the images with `render()` of the compat entry, #2128. A throw goes to `error` after the frame, which must
+            // not stop, #2278. The pixels are sent at once, so that the main renderer draws them in this frame.)
             if (!this.removed) {
                 try { this.beforeFrame?.(); } catch (error) { queueMicrotask(() => this.fire('error', {error})); }
-                this.sendUpdates(); this.post({type: 'frameGo'});
+                this.sendUpdates();
             }
         } else if (e.type === 'frame') {
             if (!this.drew) this.firstRead();
