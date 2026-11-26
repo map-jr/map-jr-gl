@@ -104,10 +104,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   time. Before you call it, do everything that does not depend on the answer: merge what is green, start the next
   workers, send failures back, file the issues of the reports. Call it only when every step that is left needs the
   answer, or when no other work is left.
-- **A question can have a timeout** (the owner, 2026-11-26). Schedule a wake-up with the wake-up tool of the session
-  (`ScheduleWakeup`, or a scheduled task where that tool is missing) for the time that you can wait, and then ask.
-  When the wake-up comes and the owner has not answered, go on with the work that does not need the answer, and ask
-  again later. No answer is not a yes: a pull request that waits for the owner stays open.
+- **A wake-up does not give a question a timeout.** On 2026-11-26, in the desktop app, a wake-up of `ScheduleWakeup`
+  that was set for 60 seconds did not end a question that waited for two to three minutes, in two runs: it came as a
+  turn of its own after the owner had answered. The owner has seen a question end early before, perhaps after another
+  kind of notice, and this was not reproduced. If a question ends with no answer, go on with the work that does not
+  need the answer and ask again later. No answer is not a yes: a pull request that waits for the owner stays open.
+- **Read the time after a question in a later message.** A command in the same message as the question runs at once
+  and not after the answer: both runs of 2026-11-26 seemed to be answered after 4 seconds for this reason.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
