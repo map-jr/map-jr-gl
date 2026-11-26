@@ -362,6 +362,8 @@ for (const mode of renderers) {
             const x0 = marker.getBoundingClientRect().left, lag = [];
             send('pointerdown', [200, 200]); await frame();
             for (let i = 1; i <= 10; i++) { send('pointermove', [200 + i * 6 - 3, 200]); send('pointermove', [200 + i * 6, 200]); await frame(); lag.push(Math.round(marker.getBoundingClientRect().left - x0 - i * 6)); }
+            // (A pause before the release, so that the drag ends without inertia.)
+            await new Promise(r => setTimeout(r, 300));
             const before = marker.getBoundingClientRect().left;
             send('pointerup', [260, 200]);
             await new Promise(r => { m.once('moveend', r); setTimeout(r, 2000); });
