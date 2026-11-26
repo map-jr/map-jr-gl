@@ -28,11 +28,10 @@ writing); this brief has the steps.
    At most two suites run at once on one machine, over all worktrees. A suite that must wait prints
    `suite.mjs: waiting for a free slot` and starts when a slot is free.
    A demo server that you start yourself (`PORT=… node demo/serve.mjs`) gets a port of its own, and you stop it by
-   its process id. Do not use `pkill -f demo/serve.mjs` or a similar pattern: other workers share the machine, and on
-   2026-11-24 such a command stopped the servers of their running suites.
+   its process id. Do not use `pkill -f demo/serve.mjs` or a similar pattern: it also stops the servers of the suites
+   of other workers on the machine.
    A change of placement, of the engine or of `src/gl.ts` runs both `test/host.mjs` and `test/interact.mjs`, because
-   CI runs both: on 2026-11-19 a change of the order of symbols broke two checks of `test/host.mjs`, one of them the
-   frame time with 100,000 icons, that its worker had not run (#1074).
+   CI runs both (#1074).
    Before a push, also run `pnpm test:consistency`. It runs `scripts/messages.mjs --check`, which checks each message
    text of `src/`.
 6. When the change can change what a map draws (a style property, placement, a shader, the building of tiles), run
@@ -48,7 +47,7 @@ writing); this brief has the steps.
    write a line that is worse (match to near or differ, near to differ, any to error or skipped) unless
    `--lower=<id,id>` names the test. A pull request that commits a worse line lowers the floor: give the reason in it,
    leave it open, and write "Needs owner" in your report. The one exception is a line from `near` to `differ` that
-   meets every condition of "A worse line of a render test that needs no owner" in `CLAUDE.md`: list it with its
+   meets every condition of "A worse line of a render test that needs no owner" in `docs/development.md`: list it with its
    percentages on `main` and on the branch (three runs each) and the issue of the fault under it, and write
    "Needs owner: no (worse line within 0.5 points)".
    Run render tests and pixel checks on the Chromium build that CI uses, which is the build that the installed
@@ -70,12 +69,10 @@ writing); this brief has the steps.
 ## Rules
 
 - Put a new check of `test/interact.mjs` or `test/host.mjs` next to the checks of the same feature, not at the end of
-  a section. On 2026-11-24 three pull requests added their checks at the same line after "The checks below run with
-  RENDERER=main" and each one conflicted with the others.
+  a section: checks that several pull requests add at the same line conflict with each other.
 - Do not write "close", "closes", "fix" or "fixes" before an issue number in the body of a pull request unless that
   pull request closes it: GitHub reads "does not close #N" as a closing keyword (#1602 was closed this way).
-- A fault that your own change causes is not a "Found" line: fix it in your pull request, with a check. (On
-  2026-11-19 a change left the filter NEAREST on a texture that terrain shares, and reported it as found, #1071.)
+- A fault that your own change causes is not a "Found" line: fix it in your pull request, with a check (#1071).
 - Measure the size before the change on `origin/main` (`pnpm test:size` in the copy of `without-fix.mjs`, or in a
   worktree of `origin/main`); do not write "not measured".
 - A file with the decision `wontfix` in `test/conformance/render-expectations/` needs the owner: write it under
@@ -96,19 +93,16 @@ writing); this brief has the steps.
   `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
   takes WebGL away from workers, as in WebKit on Linux and Windows.
 - `node test/conformance/render.mjs --help` prints its options. An argument that it does not know, or `--list`
-  without `--filter`, stops it with that text. Only a run with `--write` on the pinned Chromium writes
-  `test/conformance/render-tests.json`, and with `--filter` it writes only the lines of the tests of that run.
+  without `--filter`, stops it with that text.
 - `gh pr edit` fails on this repository; change the body of your pull request with
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`. In cloud sessions GraphQL is blocked, so
   `gh issue view`, `gh pr view` and `gh pr list` fail too: use `gh api` REST for everything.
 - A check that navigates uses its own page, so that it does not break the checks after it. A check waits for the
-  value that it measures, not for a proxy of it (a label, "non-empty", an earlier state): the copy check of #1366
-  took three rounds (#1369, #1372 and a fix of that) because each wait was on a proxy, and each passed locally 20
-  times. `pnpm test:consistency` warns when a new check compares a measured time with a fixed upper bound
+  value that it measures, not for a proxy of it (a label, "non-empty", an earlier state; #1366 took three rounds this
+  way). `pnpm test:consistency` warns when a new check compares a measured time with a fixed upper bound
   (`scripts/timing-lint.mjs`, #1930), because a loaded CI runner takes longer than this machine. For a fix of a check that fails in some runs, ask in the pull request for three runs of its CI job.
 - An error in a run of the script that you changed is not "the network" until it reproduces on `main`.
-- A "Found" line marked "read" is a hypothesis: check its premise with one command before you write it (two of
-  2026-11-21, #1363 and #1383, were wrong on a second read).
+- A "Found" line marked "read" is a hypothesis: check its premise with one command before you write it.
 - A worker has no Agent tool. A task that needs an independent agent run (the migration prompt of #1122, a review)
   is started by the coordinator: prepare the inputs (a baseline project, a checker script) and hand them back.
 - Make an extra worktree with `git worktree add` under `.claude/worktrees/`, so that
@@ -116,8 +110,7 @@ writing); this brief has the steps.
 - To compare the look of your branch with `main` and MapLibre GL JS, run `node scripts/agents/compare.mjs <your worktree>`
   in a built checkout of `main`; `--shots <dir>` writes the screenshots of three maps side by side.
 - For a change of the look, the pull request has screenshots of what users see first (JavaScript off, or before the
-  map loads) at 390, 1024 and 1440 px, and a geometric check of one known feature before and after. The homepage
-  checks of 2026-11-21 proved that a first paint exists, not that it was sized right.
+  map loads) at 390, 1024 and 1440 px, and a geometric check of one known feature before and after.
 - Start the name of each file that you write to the shared scratchpad with your branch name.
 - Do not leave a process running when you stop. `suite.mjs` stops its server; stop any server that you start
   yourself in the same command.

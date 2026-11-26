@@ -6699,12 +6699,21 @@ for (const mode of renderers) {
             await new Promise(r => setTimeout(r, 1500));
             m.easeTo({bearing: -3, duration: 100});
             await new Promise(r => setTimeout(r, 1500));
-            const out = {ends: snapEnds, bearing, eased: +m.getBearing().toFixed(1)};
+            const eased = +m.getBearing().toFixed(1);
+            // The same with the ease right after the lift: a call of the page ends the gesture, so its `moveend` does not
+            // snap (#2246; MapLibre GL JS snaps only at the end of a gesture).
+            m.jumpTo({bearing: -24}); await new Promise(r => setTimeout(r, 300));
+            fire('down', 250, 2);
+            for (let k = 1; k <= 4; k++) { wait(10); fire('move', 250 + (k % 2) * 3, 2); }
+            wait(200); fire('up', 250, 0);
+            m.easeTo({bearing: -3, duration: 100});
+            await new Promise(r => setTimeout(r, 1500));
+            const out = {ends: snapEnds, bearing, eased, soon: +m.getBearing().toFixed(1)};
             m.remove(); el.remove();
             return out;
         }, renderer);
         check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
-            Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3), JSON.stringify(m1954));
+            Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3 && r.soon === -3), JSON.stringify(m1954));
         // #2163: a rotate drag with a frame between its moves, released after a pause (no inertia), ends with the `moveend`
         // events of MapLibre GL JS: one for the drag and, when it ends within bearingSnap of north, one for the snap. With the
         // worker renderer the reports of the last turns came after the release, and each ended a move of its own.

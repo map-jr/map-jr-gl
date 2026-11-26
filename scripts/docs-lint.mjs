@@ -189,7 +189,7 @@ const codeNames = {
 const quoted = [
     ['docs/migrate/from-maplibre.md', "'circle-colour'"], // a misspelled paint property, the point of the example
     ['docs/ecosystem.md', 'render_min_height, colour, hide_3d'], // property names of the tiles that Maputnik reads
-    ['docs/render-triage-other.md', 'terrain/dem-cell-centre-hillshade-peak'], // the id of a MapLibre render test
+    ['docs/development/render-triage-other.md', 'terrain/dem-cell-centre-hillshade-peak'], // the id of a MapLibre render test
 ];
 const spellingFiles = named.length ? files : ['docs', 'src', 'examples'].flatMap(function all(dir) {
     return readdirSync(path.join(root, dir), {withFileTypes: true}).flatMap(e => e.isDirectory() ? all(path.join(dir, e.name))

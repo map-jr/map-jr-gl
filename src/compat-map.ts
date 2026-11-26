@@ -558,16 +558,17 @@ export class Map extends CoreMap {
         // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
         // closer to north than bearingSnap turns the map north. The inertia of a pan or of a rotate drag ends at north (see
         // `post` and `spinBearing`); after a gesture without inertia, the snap follows the gesture.
-        let byHand = false;
+        // `byHand` is a field: a camera method that the page calls ends the gesture, so a late `idle` or report of the
+        // gesture does not snap the page's move (#2246).
         const handlers = [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch];
-        const held = () => handlers.some(h => h.isActive());
-        this.on('move', () => { byHand ||= held(); });
-        const wheel = () => { byHand ||= this.scrollZoom.isEnabled(); };
+        const held = this.gesturing = () => handlers.some(h => h.isActive());
+        this.on('move', () => { this.byHand ||= held(); });
+        const wheel = () => { this.byHand ||= this.scrollZoom.isEnabled(); };
         this.getCanvasContainer().addEventListener('wheel', wheel, {passive: true});
         // (A pause during a gesture also ends a move: the snap waits until the pointers of the gesture lift.)
         const end = () => {
-            if (!byHand || held() || this.isMoving() || this.turnPending()) return;
-            byHand = false;
+            if (!this.byHand || held() || this.isMoving() || this.turnPending()) return;
+            this.byHand = false;
             if (this.tr.bearing !== 0) this.snapToNorth();
         };
         this.on('moveend', end);
@@ -576,7 +577,7 @@ export class Map extends CoreMap {
         for (const type of ['pointerup', 'touchend'] as const) {
             // (The lift marks a gesture too, because its moves can come with no frame and so no `move` before it, #1954.)
             // (On the worker renderer the camera of the last moves can come after the lift: the snap waits for its `moveend`, #2152.)
-            const lifted = () => { byHand ||= held(); setTimeout(end); };
+            const lifted = () => { this.byHand ||= held(); setTimeout(end); };
             addEventListener(type, lifted, true);
             this.once('remove', () => removeEventListener(type, lifted, true));
         }
@@ -784,11 +785,14 @@ export class Map extends CoreMap {
         return linear ? this.easeTo({...camera, ...o}, eventData) : this.flyTo({...camera, ...o}, eventData);
     }
     private camera(eventData: EventData | undefined, f: () => this) {
-        if (!this.nested) this.moveData = eventData;
+        if (!this.nested) { this.moveData = eventData; if (!this.gesturing?.()) this.byHand = false; }
         this.nested++;
         try { return f(); } finally { this.nested--; }
     }
     private moveData?: EventData;
+    /** True from a gesture until its snap to north (see the constructor). */
+    private byHand = false;
+    private gesturing?: () => boolean;
     private nested = 0;
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
         return this.camera(eventData, () => super.flyTo(this.snapped(o)));
