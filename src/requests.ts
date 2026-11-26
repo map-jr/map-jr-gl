@@ -28,7 +28,7 @@ export const httpError = (what: string, url: string, status: number) => requestE
  * `transformRequest`. A network error and an HTTP status 5xx are worth another request (#652). Such an error has
  * `final: true`, also after it crossed from a tile worker. The message is read for an error that comes from elsewhere.
  */
-export const finalFailure = (err: {final?: boolean; message?: unknown}) => !!err.final || /HTTP 4\d\d\b|: the protocol rejected it: |: transformRequest threw: /.test(String(err.message));
+export const finalFailure = (err: {final?: boolean; message?: unknown}) => !!err.final || /HTTP 4\d\d\b|\bthe protocol rejected it: |\btransformRequest threw: /.test(String(err.message));
 const KINDS: Record<string, string> = {Tile: 'tile', RasterTile: 'tile', SpriteJSON: 'sprite', SpriteImage: 'sprite image', Glyphs: 'glyphs', Font: 'font', Image: 'image'};
 function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: string): typeof fetch {
     return async (input, init) => {
