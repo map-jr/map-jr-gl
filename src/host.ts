@@ -20,7 +20,7 @@ import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
 import type {BackgroundLayerSpecification, CircleLayerSpecification, ColorReliefLayerSpecification, FillExtrusionLayerSpecification, FillLayerSpecification, HeatmapLayerSpecification, HillshadeLayerSpecification, LineLayerSpecification, ProjectionSpecification, RasterLayerSpecification, SourceSpecification, StyleSpecification, SymbolLayerSpecification, TerrainSpecification} from './compat-types.ts';
 import {unset, type Given} from './unset.ts';
-import {withCode} from './error-code.ts';
+import {withCode} from './requests.ts';
 
 /**
  * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`

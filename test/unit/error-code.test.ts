@@ -1,16 +1,19 @@
-// The field `code` of a thrown error (#2148; scripts/message-codes.mjs `errorCodes`, src/error-code.ts): the build wraps each
+// The field `code` of a thrown error (#2148; scripts/message-codes.mjs `errorCodes`, src/requests.ts): the build wraps each
 // `new Error(text)` whose text has a code, and `name` stays `Error`.
 import {test} from 'node:test';
 import {stripTypeScriptTypes} from 'node:module';
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 // @ts-expect-error (a module of the build, without types)
 import {errorCodes, productionMessages} from '../../scripts/message-codes.mjs';
 
+// (The function of src/requests.ts, which the build imports into each file.)
+const helper = /export (function withCode[^]*?\n\}\n)/.exec(readFileSync(new URL('../../src/requests.ts', import.meta.url), 'utf8'))![1];
 const wrap = (code: string): string => errorCodes.transform(code, '/x/src/a.ts')?.code ?? code;
 const run = (code: string, production = false) => {
     let source = wrap(code);
     if (production) source = productionMessages(source, '/x/src/a.ts')?.code ?? source;
-    try { new Function(stripTypeScriptTypes(source))(); } catch (e) { return e as Error & {code?: string}; }
+    try { new Function(stripTypeScriptTypes(source.replace(/^import .*\n/, helper)))(); } catch (e) { return e as Error & {code?: string}; }
     throw new Error('did not throw');
 };
 
