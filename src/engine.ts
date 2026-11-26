@@ -503,21 +503,29 @@ export class Engine {
     /** The map was removed (`destroy`): nothing more is sent to the GPU. */
     private removed = false;
     private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void; drop?(): void}[] = [];
-    /** For each circle or line layer whose size depends on the feature: its largest sizes in the tiles that arrived (see `QuerySet.most`). */
-    private most = new Map<string, number[]>();
-    private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
-        let bytes = 0;
+    /**
+     * For each tile on the GPU, the largest sizes of each circle or line layer whose size depends on the feature (see
+     * `QuerySet.most`). A query takes the largest over the tiles held now, as MapLibre GL JS takes them from its buckets,
+     * so the reach follows the current paint and data (#2269).
+     */
+    private most = new WeakMap<GLTile, Record<string, number[]>>();
+    private sized(tile: TileGL, gl: GLTile) {
+        const r: Record<string, number[]> = {};
         for (const [k, b] of Object.entries(tile.layers)) {
-            for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
-            const id = k.split('\0')[0], m = this.most.get(id) ?? [0, 0, 0];
-            if (b.type === 'line' && b.most) { b.most.forEach((v, i) => m[i] = Math.max(m[i], v)); this.most.set(id, m); }
+            const m = r[k.split('\0')[0]] ??= [0, 0, 0];
+            if (b.type === 'line') b.most?.forEach((v, i) => m[i] = Math.max(m[i], v));
             if (b.type !== 'circle') continue;
             for (const a of [b.radius, b.radius1]) for (const v of a ?? []) m[0] = Math.max(m[0], v);
             for (let i = 0; i < (b.sb?.length ?? 0); i += 2) m[1] = Math.max(m[1], b.sb![i]);
-            this.most.set(id, m);
         }
+        this.most.set(gl, r);
+        return gl;
+    }
+    private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
+        let bytes = 0;
+        for (const b of Object.values(tile.layers)) for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
         // (A tile that is no longer wanted when its turn comes is not sent.)
-        return this.paced(bytes, () => wanted() ? this.renderer.createTile(tile) : {labels: {}, batches: {}});
+        return this.paced(bytes, () => wanted() ? this.sized(tile, this.renderer.createTile(tile)) : {labels: {}, batches: {}});
     }
     /**
      * Does a piece of GPU upload work in its turn, so that one frame never has too much of it. `drop` frees what the
@@ -1133,7 +1141,12 @@ export class Engine {
 
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
-        c = {...c, sets: c.sets.map(s => s.size ? {...s, most: this.most.get(s.layer)} : s)};
+        c = {...c, sets: c.sets.map(s => {
+            if (!s.size) return s;
+            const most = [0, 0, 0];
+            for (const t of this.tiles.values()) this.most.get(t.gl!)?.[s.layer]?.forEach((v, i) => most[i] = Math.max(most[i], v));
+            return {...s, most};
+        })};
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
         const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
@@ -1504,7 +1517,7 @@ export class Engine {
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
             : t.band === undefined
             ? backend.loadImage({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr)}).then(r => (st.expires = r.expires, this.tiles.get(key) === t && (t.missing = r.missing), this.imageTile(r.image, id, () => this.tiles.get(key) === t)))
-            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, st.etag = tile.etag, this.tiles.get(key) === t ? this.renderer.createTile(tile) : null))
+            : backend.load({...this.build(req, source, id, t), again: !fresh}).then(tile => (st.expires = tile.expires, st.etag = tile.etag, this.tiles.get(key) === t ? this.sized(tile, this.renderer.createTile(tile)) : null))
         ).then(gl => {
             t.rebuilding = false;
             // A reload of an expired tile that the server answers with 304 (the same `ETag`) fires no event (#2136).

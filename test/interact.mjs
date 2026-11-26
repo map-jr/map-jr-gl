@@ -1862,6 +1862,36 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a line whose width, gap or offset from the data reaches past its tile is found, flat and tilted, also in the array at once (#2268)`,
         [0, 45].every(p => farLine[p].now === 'gap,offset,width' && farLine[p].later === 'gap,offset,width'), JSON.stringify(farLine));
 
+    // The reach of a circle whose size comes from the data follows the paint of the tiles held now, as MapLibre takes the
+    // largest value of the buckets it has (#2269). The circle grows from 7 to 700 pixels with `setPaintProperty` and
+    // shrinks again, and a new layer starts at 700 pixels and shrinks. Where the engine runs on the page, the queries that
+    // reach the tile workers are counted: a small circle asks as few tiles as before it grew.
+    const followPaint = await page.evaluate(async renderer => {
+        let n = 0; const post = MessagePort.prototype.postMessage;
+        MessagePort.prototype.postMessage = function (msg, ...rest) { if (msg?.type === 'query') n++; return post.call(this, msg, ...rest); };
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), pt = m.unproject([b.x + 600, b.y + 100]), small = ['*', 0.01, ['get', 'r']];
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', properties: {r: 700}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'c', type: 'circle', source: 's', paint: {'circle-radius': small}});
+        const idle = () => new Promise(r => m.once('idle', r)), c = m.project([0, 0]), q = [c.x - 15, c.y + 100], out = {main: m.renderer === 'main'};
+        const ask = async k => { await idle(); n = 0; out[k] = [(await m.queryRenderedFeatures(q)).length, n]; };
+        await ask('small');
+        m.setPaintProperty('c', 'circle-radius', ['get', 'r']); await ask('large');
+        m.setPaintProperty('c', 'circle-radius', small); await ask('smallAgain');
+        m.removeLayer('c'); m.addLayer({id: 'd', type: 'circle', source: 's', paint: {'circle-radius': ['get', 'r']}}); await ask('newLarge');
+        m.setPaintProperty('d', 'circle-radius', small); await ask('newSmall');
+        MessagePort.prototype.postMessage = post;
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: the reach of a circle whose size comes from the data follows setPaintProperty, larger and smaller (#2269)`,
+        followPaint.large[0] === 1 && followPaint.newLarge[0] === 1 && followPaint.small[0] === 0 && followPaint.newSmall[0] === 0
+        && (!followPaint.main || followPaint.large[1] > followPaint.small[1] && followPaint.smallAgain[1] === followPaint.small[1] && followPaint.newSmall[1] === followPaint.small[1]),
+        JSON.stringify(followPaint));
+
     // A circle with a radius far larger than the map is found on a tilted map, as in MapLibre (#2230): the rectangle
     // that chooses the tiles is cut to the canvas and one tile. Ten circles, pitch 60, a point and a box.
     const huge = await page.evaluate(async renderer => {
