@@ -2016,7 +2016,7 @@ export class Map {
         const only = options.layers ? new Set(options.layers) : null, z = this.tr.zoom, layers: any[] = this.rawStyle?.layers ?? [];
         const number = (v: unknown, fallback: number) => typeof v === 'number' ? v : fallback;
         // (As `sizeOf` of `src/query.ts`, which the page script does not load: half of the width, or of the gap and two widths.)
-        const lineReach = (w: number, gap: number) => Math.max(3, (gap > 0 ? gap + 2 * w : w) / 2);
+        const lineReach = (w: number, gap: number) => (gap > 0 ? gap + 2 * w : w) / 2;
         // A circle or line layer whose size is not a number (an expression or a function) is tested with the size of
         // each feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.size`).
         const size = (l: any): QuerySet['size'] => {

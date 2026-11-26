@@ -1564,6 +1564,22 @@ for (const mode of renderers) {
     });
     check(`[${mode}] queryRenderedFeatures: a line-width or line-gap-width from a property or the zoom is the width of the query, also in the array at once`, wide.near.join() === 'w-data:1,w-gap:1,w-zoom:1' && wide.now.join() === 'w-data:1,w-gap:1,w-zoom:1', JSON.stringify(wide));
 
+    // A thin line is found only within half of its width, with no minimum, as in MapLibre GL JS (#2003): a line of
+    // 1 pixel (a number, and from a property) is found on its center line and not 2 pixels away.
+    const thin = await page.evaluate(async () => {
+        const m = window.map, p = m.project(m.getCenter()), a = m.unproject([p.x - 100, p.y]), b = m.unproject([p.x + 100, p.y]);
+        m.addSource('thin', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {w: 1}, geometry: {type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]]}}});
+        m.addLayer({id: 't-number', type: 'line', source: 'thin', paint: {'line-width': 1}});
+        m.addLayer({id: 't-data', type: 'line', source: 'thin', paint: {'line-width': ['get', 'w']}});
+        const layers = ['t-number', 't-data'], ids = fs => fs.map(f => f.layer.id).sort().join();
+        let on = [];
+        for (let i = 0; i < 100 && on.length < 2; i++) { await new Promise(r => setTimeout(r, 100)); on = await m.queryRenderedFeatures(p, {layers}); }
+        const off = await m.queryRenderedFeatures([p.x, p.y + 2], {layers});
+        layers.forEach(l => m.removeLayer(l)); m.removeSource('thin');
+        return {on: ids(on), off: ids(off)};
+    });
+    check(`[${mode}] queryRenderedFeatures: a line of 1 pixel is found on its center line and not 2 pixels away (#2003)`, thin.on === 't-data,t-number' && thin.off === '', JSON.stringify(thin));
+
     // A line layer without `line-width` is queried with the default of the style specification, 1 pixel, as in MapLibre
     // GL JS 6.17 (#2002). With a `line-gap-width` of 4 the line reaches 3 pixels from its center line, so a point 4.5
     // pixels away misses it (a width of 4 reached 6). (Without a gap the 3-pixel minimum of #2003 hides the default.)
