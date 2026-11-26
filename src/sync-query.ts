@@ -4,6 +4,7 @@
 import type {Transform} from './geo.ts';
 import {prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {mercX, mercY} from './geo.ts';
+import {compileProp} from './expr.ts';
 import {circleCenters, circleRadius, circleTouches, featureKey, pitchedCircles, queryTile, setBox, setReach, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 
 const prepared = new WeakMap<object, PreparedSource>();
@@ -12,6 +13,17 @@ const prepared = new WeakMap<object, PreparedSource>();
 export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: object; maxzoom?: number}, tr: Transform, box: number[], sets: QuerySet[], /** The feature state of the source, by "sourceLayer|id". */ states?: Record<string, Record<string, unknown>>): QueriedFeature[] {
     let data = prepared.get(spec.data);
     if (!data) prepared.set(spec.data, data = prepareSource(spec.data, spec, spec.maxzoom ?? 18));
+    // (A circle whose size depends on the feature reaches as far as its largest size in the data; see `QuerySet.most`.)
+    const feats: any[] = (spec.data as any).features ?? [spec.data];
+    sets = sets.map(s => {
+        if (!s.size || s.size.line) return s;
+        const a = compileProp(s.size.a, 'number', 5), b = compileProp(s.size.b, 'number', 0), most: [number, number] = [0, 0];
+        for (const f of feats) {
+            const g = {type: 1, id: f.id, properties: f.properties ?? {}, state: f.id === undefined ? undefined : states?.[`|${f.id}`]};
+            most[0] = Math.max(most[0], a.eval(s.size.zoom, g)), most[1] = Math.max(most[1], b.eval(s.size.zoom, g));
+        }
+        return {...s, most};
+    });
     const out: QueriedFeature[] = [], seen = new Set<string>(), pitched = pitchedCircles(tr, box, sets);
     // (A set with a translation is asked with its own rectangle; see `setBox`.)
     // (The tiles are chosen under the rectangle grown by the reach of the set; see `setReach`.)
