@@ -183,7 +183,9 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Buildings across a tile edge on 3D terrain
 
 - **MapLibre GL JS:** A `fill-extrusion` polygon stands on the ground at its centroid. Each tile takes the centroid of the piece of the polygon that the tile holds, so on a slope the pieces of a polygon that crosses a tile edge stand at different heights. The pieces overlap by the buffer of the source, and the higher piece hides part of the step.
-- **This library:** The same for a `vector` source. For a `geojson` source, a piece of a polygon stands on the ground at the centroid of the whole polygon (the mean of the points of its rings) when that centroid lies within half a tile of the tile of the piece, so a building that crosses a tile edge has one height. A piece of a larger polygon stands on the ground at the centroid of the piece, as in MapLibre GL JS. The ground is read from the elevation tile under the tile of the piece. Where the centroid lies outside that elevation tile, the piece stands on the ground at the nearest point of the elevation tile, so a step can remain at the edge of an elevation tile.
+- **This library:** The same for a `vector` source. For a `geojson` source, a piece of a polygon stands on the ground at the centroid of the whole polygon (the mean of the points of its rings) when that centroid lies within half a tile of the tile of the piece, so a building that crosses a tile edge has one height.
+- A piece of a larger polygon in a `geojson` source stands on the ground at the centroid of the piece, as in MapLibre GL JS.
+- The ground is read from the elevation tile under the tile of the piece. Where the centroid lies outside that elevation tile, the piece stands on the ground at the nearest point of the elevation tile, so a step can remain at the edge of an elevation tile.
 
 ### Camera
 
