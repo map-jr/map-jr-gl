@@ -905,8 +905,18 @@ function tessellateLine(b: Batch): GLBatch | null {
                         // two pairs at the corner across the bisector, 1 / sin of half the turn long, in opposite order.
                         const s = pnx * ny - pny * nx > 0 ? -1 : 1, l = s / Math.sqrt(Math.max(1e-4, 1 - cos * cos));
                         const fx = cos < 0.01 ? -nx : -my / ml * l, fy = cos < 0.01 ? -ny : mx / ml * l;
-                        pair(x, y, fx, fy);
-                        pair(x, y, -fx, -fy);
+                        // `line-offset` moves both pairs twice the offset along the bisector, and a miter from 3 to 8
+                        // eases that to the normal of each pair (offsetFallback of MapLibre). The side stores the ease
+                        // e as 15872 ± (1 + 510 e), its sign saying which way the bisector lies: see the shader of src/gl.ts.
+                        const e = Math.min(1, Math.max(0, (1 / cos - 3) / 5)), k = 1 + Math.round(e * 510);
+                        const flip = (jx: number, jy: number) => {
+                            const q = jy * mx - jx * my < 0 ? -1 : 1, a = vert(x, y, jx, jy, 15872 + q * k, dist);
+                            vert(x, y, -jx, -jy, -(15872 - q * k), dist);
+                            if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
+                            last = a;
+                        };
+                        flip(fx, fy);
+                        flip(-fx, -fy);
                     } else {
                         // Two pairs at the corner give a bevel; a fan on the outer side rounds it off. As in MapLibre GL
                         // JS, a corner of up to 120 degrees moves the inner vertices to where the inner edges meet, so
