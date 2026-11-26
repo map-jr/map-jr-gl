@@ -1297,8 +1297,8 @@ export class Map {
     refreshTiles(sourceId: string) { this.unloaded(sourceId); this.post({type: 'refresh', source: sourceId}); return this; }
     /** The data of a source changed: the source is not loaded until the engine says so. */
     private unloaded(id: string) { this.loadedSources.delete(id); this.tilesLoaded = false; }
-    /** Whether the style has loaded. */
-    isStyleLoaded() { return this.ready; }
+    /** Whether the style has loaded. (A move to this thread for a custom layer keeps the style: no `style.load` follows it; #1992.) */
+    isStyleLoaded() { return this.ready || this.restarting && this.movingToMain; }
     /** Whether the tiles of the current view have loaded. */
     areTilesLoaded() { return this.tilesLoaded; }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
