@@ -1637,6 +1637,14 @@ The production build prints this:
 Unsupported expression "<op>"
 ```
 
+## E2233
+
+An error of both entries.
+
+```text
+addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
+```
+
 ## E10017
 
 A warning of both entries.

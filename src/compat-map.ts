@@ -595,6 +595,8 @@ export class Map extends CoreMap {
     setMissingStyleImageResolver(resolver: Parameters<CoreMap['setMissingStyleImageResolver']>[0]) { this.resolver = resolver; return this; }
     addImage(...args: Parameters<CoreMap['addImage']>) {
         const [name, image] = args;
+        // (Before `onAdd` and the state: as MapLibre GL JS, a mismatch throws at once and changes nothing; #2233.)
+        this.checkPixels(name, image);
         this.styleImageNames.delete(name);
         this.dropAnimated(name);
         // An image with `render` (StyleImageInterface; #1746) gets `onAdd`, and `render` after each frame that the map draws

@@ -1856,9 +1856,18 @@ export class Map {
      * the features of a layer give its slots: see "images" in docs/reference/description.md.
      */
     addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) { return this.putImage(name, source, options); }
+    /** Throws when raw pixels do not have width × height × 4 values. Both entries call it before anything else, so that the compat entry throws as MapLibre GL JS does (#2233). */
+    protected checkPixels(name: string, source: Parameters<Map['addImage']>[1]) {
+        const data = typeof source == 'object' && 'data' in source ? (source as {data?: {length?: unknown}}).data : undefined;
+        if (typeof data?.length != 'number') return;
+        const {width, height} = source as {width: number; height: number};
+        const length = data.length, expected = width * height * 4;
+        if (length !== expected) throw new Error(`[map-jr-gl] E2233 addImage("${name}"): the data has ${length} values, but an image of ${width}×${height} needs ${expected} (width × height × 4, RGBA). Pass an array of that length.`);
+    }
     /** `variant`: the image is one variant of a template. It is not an image that the page added, and it is not looked at for slots. */
     private async putImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions, variant?: boolean, update?: boolean): Promise<this> {
         if (!update) this.sendUpdates();
+        this.checkPixels(name, source);
         let drawable: CanvasImageSource | undefined, width = options.width, height = options.height, sourceWidth = 0, w = 0, h = 0;
         const turn = this.imageTurn(name);
         if (!variant) {
@@ -1899,16 +1908,10 @@ export class Map {
             if (typeof (source.data as {length?: unknown})?.length !== 'number') throw new Error(`[map-jr-gl] E464 addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
             // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). They are stored at their own size, as in
             // MapLibre GL JS, and premultiplied directly below: scaling them to the screen adds no detail, and at a pixel
-            // ratio of 3 it sent 9 times the bytes for each updateImage (#979). Pixels whose length is not width × height × 4
-            // go through ImageData, which throws an error that names the lengths.
+            // ratio of 3 it sent 9 times the bytes for each updateImage (#979). (`checkPixels` has checked the length.)
             sourceWidth = source.width;
             width ??= source.width / (options.pixelRatio ?? 1); height ??= source.height / (options.pixelRatio ?? 1);
-            if (source.data.length === source.width * source.height * 4) { w = source.width; h = source.height; } else {
-                const canvas = this.scratch[1] ??= document.createElement('canvas');
-                canvas.width = source.width; canvas.height = source.height;
-                canvas.getContext('2d', {willReadFrequently: true})!.putImageData(new ImageData(new Uint8ClampedArray(source.data), source.width, source.height), 0, 0);
-                drawable = canvas;
-            }
+            w = source.width; h = source.height;
         } else {
             drawable = source;
             sourceWidth = (source as ImageBitmap).width as number;
