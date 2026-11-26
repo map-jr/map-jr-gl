@@ -684,7 +684,7 @@ for (const mode of renderers) {
         window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onError);
         return {...out, calls, uncaught, seen, has: window.map.hasImage('bad')};
     });
-    check(`[${mode}] addImage with pixels of the wrong length throws a clear error and calls nothing (#2233)`, size.message?.startsWith('[map-jr-gl] E2233 addImage("bad")') && size.message.includes('needs 4') && size.calls.add === 0 && size.calls.render === 0 && !size.uncaught.length && !size.has, JSON.stringify(size));
+    check(`[${mode}] addImage with pixels of the wrong length throws a clear error and calls nothing (#2233)`, size.message === '[map-jr-gl] E2233 https://map-jr.org/e/2233 image="bad" length=3 width=1 height=1 expected=4' && size.calls.add === 0 && size.calls.render === 0 && !size.uncaught.length && !size.has, JSON.stringify(size));
     // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
     const reads = await page.evaluate(async () => {
         const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;
