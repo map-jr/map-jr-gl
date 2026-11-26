@@ -149,7 +149,8 @@ export function renderSVG(s: SVGScene): string {
             }
             if (!groups.size) continue;
             const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
-            body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap === 'round' || b.cap === 'square' ? ` stroke-linecap="${b.cap}"` : ''}${b.join === 'round' || b.join === 'bevel' ? ` stroke-linejoin="${b.join}"` : ` stroke-miterlimit="${num(+(b.miterLimit ?? 2) || 2)}"`}`}>`);
+            // SVG puts the cap on every dash. As in MapLibre GL JS, the dashes of a line with a square cap are butt dashes (#2175).
+            body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap === 'round' || b.cap === 'square' && !dash ? ` stroke-linecap="${b.cap}"` : ''}${b.join === 'round' || b.join === 'bevel' ? ` stroke-linejoin="${b.join}"` : ` stroke-miterlimit="${num(+(b.miterLimit ?? 2) || 2)}"`}`}>`);
             for (const [attrs, d] of groups) if (d && !fill) { lines.push([body.length, attrs, d]); seen.set(d, (seen.get(d) ?? 0) + 1); body.push(''); }
             else if (d) body.push(`<path ${attrs}${fill && !outline ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
             body.push('</g>');

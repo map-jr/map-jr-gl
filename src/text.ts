@@ -25,6 +25,8 @@ export interface Glyph {
     image?: string; imageHeight?: number;
     /** Rich text: the size of this glyph relative to the text size, and its own color. */
     scale?: number; color?: number[];
+    /** Rich text: "vertical-align" as in MapLibre (top 0, center 0.5, bottom 1), and the shift down that it gives in the line. */
+    align?: number; dy?: number;
 }
 /** Images that can appear inside text: their size in pixels, or undefined while one is not available yet. */
 export type ImageSizes = (name: string) => {width: number; height: number; pixelRatio: number} | undefined;
@@ -32,7 +34,7 @@ export type ImageSizes = (name: string) => {width: number; height: number; pixel
 const IMAGE_CHAR = 0xE100;
 // Rich text: one private-use character before each character of a styled section names its style.
 const STYLE_CHAR = 0xE800, STYLE_CHARS = /[\uE800-\uEFFF]/g;
-interface TextStyle { scale: number; font?: string; color?: number[] }
+interface TextStyle { scale: number; font?: string; color?: number[]; align?: number }
 export interface ShapedLine {
     text: string; width: number; glyphs?: Glyph[];
     /** The line split into the units that are positioned individually, with each one's advance. */
@@ -136,10 +138,16 @@ abstract class BaseShaper implements Shaper {
             if (hasStyles) text = this.markStyles(text);
             const lines = wrap(text, maxWidthEm * EM, t => this.line(t, font, spacing).width).map(t => this.line(t, font, spacing));
             let height = lines.length * LINE_HEIGHT;
-            if (hasStyles) {
+            if (hasStyles || hasImages) {
                 // A line is as tall as its largest text, as in MapLibre.
                 height = 0;
-                for (const l of lines) { l.scale ??= l.glyphs?.length ? Math.max(...l.glyphs.map(g => g.scale ?? 1)) : 1; l.top = height; height += LINE_HEIGHT * l.scale; }
+                for (const l of lines) {
+                    l.scale ??= l.glyphs?.length ? Math.max(...l.glyphs.map(g => g.scale ?? 1)) : 1; l.top = height; height += LINE_HEIGHT * l.scale;
+                    // "vertical-align" moves a section within the height of the largest text or image of the line, as in
+                    // MapLibre. Without it, text and images sit at the bottom.
+                    const h = Math.max(EM * l.scale, ...(l.glyphs ?? []).map(g => g.image ? g.imageHeight! : 0));
+                    for (const g of l.glyphs ?? []) if (g.align != null || g.image) g.dy = (h - (g.image ? g.imageHeight! : EM * (g.scale ?? 1))) * ((g.align ?? 1) - (g.image ? 0.5 : 1)) - (g.image ? (h - EM * l.scale) / 2 : 0);
+                }
             }
             s = {lines, width: Math.max(...lines.map(l => l.width)), height, lineHeight: LINE_HEIGHT};
             // Text waiting for an image or for a glyph file is shaped again once that has arrived.
@@ -154,9 +162,10 @@ abstract class BaseShaper implements Shaper {
         let out = '', mark = '';
         for (const part of text.split(/(\uE002[^\uE003]*\uE003)/)) {
             if (part[0] === '\uE002') {
-                const [scale, font, color] = part.slice(1, -1).split('|');
-                if (!scale && !font && !color) { mark = ''; continue; }
-                this.styles.push({scale: +scale || 1, font: font ? fontKey(font.split(',')) : undefined, color: color ? color.split(',').map(Number) : undefined});
+                const [scale, font, color, align] = part.slice(1, -1).split('|');
+                if (!scale && !font && !color && !align) { mark = ''; continue; }
+                this.styles.push({scale: +scale || 1, font: font ? fontKey(font.split(',')) : undefined, color: color ? color.split(',').map(Number) : undefined,
+                    align: align === 'top' ? 0 : align === 'center' ? 0.5 : align ? 1 : undefined});
                 mark = String.fromCharCode(STYLE_CHAR + this.styles.length - 1);
             } else out += mark ? graphemes(part).map(g => g === '\n' ? g : mark + g).join('') : part;
         }
@@ -176,7 +185,7 @@ abstract class BaseShaper implements Shaper {
             if (st) { style = st; continue; }
             if (p.charCodeAt(0) >= STYLE_CHAR && p.charCodeAt(0) < 0xF000 && p.length === 1) continue; // a style that is not known
             const g = glyph(p, style?.font);
-            glyphs.push(style ? {...g, advance: g.advance * style.scale, imageHeight: g.imageHeight, scale: style.scale, color: style.color} : g);
+            glyphs.push(style ? {...g, advance: g.advance * style.scale, imageHeight: g.imageHeight, scale: style.scale, color: style.color, align: style.align} : g);
             chars.push(p);
             style = undefined;
         }
