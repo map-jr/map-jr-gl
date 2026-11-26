@@ -6574,6 +6574,36 @@ for (const mode of renderers) {
         }, renderer);
         check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
             Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3), JSON.stringify(m1954));
+        // #2163: a rotate drag with a frame between its moves, released after a pause (no inertia), ends with the `moveend`
+        // events of MapLibre GL JS: one for the drag and, when it ends within bearingSnap of north, one for the snap. With the
+        // worker renderer the reports of the last turns came after the release, and each ended a move of its own.
+        const m2163 = {};
+        for (const [lib, renderer] of [['ml'], ['compat', 'main'], ['compat', 'worker']]) for (const [start, pause] of [[-24, 200], [-40, 200], [-24, 600]]) (m2163[[lib, renderer ?? 'own', start, pause].join('/')] = await page.evaluate(async ([lib, renderer, start, pause]) => {
+            let mod;
+            if (lib === 'ml') { mod = await import('/ml/maplibre-gl.mjs'); mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href); } else mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:500px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, bearing: start});
+            await new Promise(r => m.loaded() ? r() : m.once('load', r));
+            await new Promise(r => setTimeout(r, 300));
+            let ends = 0;
+            m.on('moveend', () => ends++);
+            const canvas = m.getCanvas();
+            const fire = (type, x, buttons) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: 250, button: 2, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true};
+                canvas.dispatchEvent(new PointerEvent('pointer' + type, o)); canvas.dispatchEvent(new MouseEvent('mouse' + type, o));
+            };
+            let x = 250;
+            fire('down', x, 2);
+            for (let k = 1; k <= (start === -24 ? 8 : 10); k++) { await new Promise(requestAnimationFrame); fire('move', x += 3.3, 2); }
+            await new Promise(r => setTimeout(r, pause));
+            fire('up', x, 0);
+            // (Wait until the snap, if any, has ended.)
+            await new Promise(r => setTimeout(r, 2500));
+            m.remove(); el.remove();
+            return ends;
+        }, [lib, renderer, start, pause]));
+        check('[main] maplibre-compat: a rotate drag released after a pause fires as many moveend events as in MapLibre GL JS, with both renderers (#2163)',
+            Object.entries(m2163).every(([k, n]) => n === m2163['ml/own/' + k.split('/').slice(2).join('/')] && n > 0), JSON.stringify(m2163));
         // #1245: setMinPitch throws for a value below 0 or above the largest pitch, and null restores 0, as in MapLibre GL JS (served at /ml/).
         const m1245 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
