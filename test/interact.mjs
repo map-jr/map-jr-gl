@@ -1835,6 +1835,33 @@ for (const mode of renderers) {
     check(`[${mode}] queryRenderedFeatures: a circle of 700 pixels from the data whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2190)`,
         [0, 45].every(p => farData[p].now === 'radius,state,stroke' && farData[p].later === 'radius,state,stroke'), JSON.stringify(farData));
 
+    // A line whose `line-width`, `line-gap-width` or `line-offset` comes from the data reaches as far as its largest value
+    // in the data, as MapLibre takes the largest value of each bucket (`getMaximumPaintValue`; #2268). A line 600 pixels
+    // east of a tile edge, 1300 pixels wide, with a gap of 1300 pixels, or moved 600 pixels west by its offset, is queried
+    // 15 pixels west of the edge, flat and with pitch 45.
+    const farLine = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), s = m.unproject([b.x + 600, b.y + 200]), n = m.unproject([b.x + 600, b.y - 200]);
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', properties: {w: 1300, g: 1300, o: 600}, geometry: {type: 'LineString', coordinates: [[n.lng, n.lat], [s.lng, s.lat]]}}});
+        m.addLayer({id: 'width', type: 'line', source: 's', paint: {'line-width': ['get', 'w']}});
+        m.addLayer({id: 'gap', type: 'line', source: 's', paint: {'line-width': 2, 'line-gap-width': ['get', 'g']}});
+        m.addLayer({id: 'offset', type: 'line', source: 's', paint: {'line-width': 40, 'line-offset': ['get', 'o']}});
+        await new Promise(r => m.once('idle', r));
+        const out = {};
+        for (const pitch of [0, 45]) {
+            m.jumpTo({pitch});
+            const c = m.project([0, 0]), q = [c.x - 15, c.y];
+            out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
+        }
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a line whose width, gap or offset from the data reaches past its tile is found, flat and tilted, also in the array at once (#2268)`,
+        [0, 45].every(p => farLine[p].now === 'gap,offset,width' && farLine[p].later === 'gap,offset,width'), JSON.stringify(farLine));
+
     // A circle with a radius far larger than the map is found on a tilted map, as in MapLibre (#2230): the rectangle
     // that chooses the tiles is cut to the canvas and one tile. Ten circles, pitch 60, a point and a box.
     const huge = await page.evaluate(async renderer => {
