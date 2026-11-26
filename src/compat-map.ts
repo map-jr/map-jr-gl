@@ -559,13 +559,14 @@ export class Map extends CoreMap {
         this.getCanvasContainer().addEventListener('wheel', wheel, {passive: true});
         // (A pause during a gesture also ends a move: the snap waits until the pointers of the gesture lift.)
         const end = () => {
-            if (!byHand || held() || this.isMoving()) return;
+            if (!byHand || held() || this.isMoving() || this.turnPending()) return;
             byHand = false;
             if (this.tr.bearing !== 0) this.snapToNorth();
         };
         this.on('moveend', end);
         for (const type of ['pointerup', 'touchend'] as const) {
             // (The lift marks a gesture too, because its moves can come with no frame and so no `move` before it, #1954.)
+            // (On the worker renderer the camera of the last moves can come after the lift: the snap waits for its `moveend`, #2152.)
             const lifted = () => { byHand ||= held(); setTimeout(end); };
             addEventListener(type, lifted, true);
             this.once('remove', () => removeEventListener(type, lifted, true));

@@ -805,6 +805,7 @@ export class Map {
             const was = this.seen ?? this.tr, zoomed = e.zoom !== was.zoom;
             const turned = e.bearing !== was.bearing, tilted = e.pitch !== was.pitch;
             this.seen = {zoom: e.zoom, bearing: e.bearing, pitch: e.pitch};
+            if (e.seq !== undefined) this.reported = e.seq;
             // (A report from before the last jumpTo would move the camera back for a frame: the needle of the compass and
             // getBearing() stepped back during a fast drag of the compass with the worker renderer, #548.)
             if ((e.seq ?? this.jumped) >= this.jumped) Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation, padding: e.padding});
@@ -2111,6 +2112,12 @@ export class Map {
     private dragging = false;
     private awaitingInertia = false;
     private engineMoving = false;
+    /** The `seq` of the last turn of a rotate drag, and of the last command whose camera the engine has reported. */
+    private turned = 0;
+    private reported = 0;
+    /** @internal True while the engine has not reported the camera of the last turn of a rotate drag: the worker renderer
+     * reports it in a later frame, which can come after the release (#2152). */
+    turnPending() { return this.reported < this.turned; }
     /** Ends a movement: the end events of zoom, rotate and pitch, then `moveend`. */
     private settle() {
         this.moving = false;
@@ -2213,7 +2220,7 @@ export class Map {
             if (pointers.size === 1) touches = {two: false, t: now};
             else touches.two = true;
             rotating = e.button === 2 || e.ctrlKey;
-            moved = 0; samples = []; aim = {b: this.tr.bearing, p: this.tr.pitch}; pinch = null; this.held = null;
+            moved = 0; samples = []; aim = {b: this.tr.bearing, p: this.tr.pitch}; pinch = null; this.held = null; this.turned = 0;
             if (pointerEvent('start', e)) inert = true;
             if (inert) return;
             // Shift and drag: a box to zoom to.
@@ -2291,7 +2298,7 @@ export class Map {
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = this.touchZoomRotate.active = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
-            } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; const b = turn(prev, p), t = performance.now(); aim = {b: aim.b + b, p: Math.max(this.tr.minPitch, Math.min(this.tr.maxPitch, aim.p - dy * 0.5))}; addTurnSample(samples, {t, x: aim.b, y: aim.p}); this.post({type: 'rotate', delta: b, pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
+            } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; const b = turn(prev, p), t = performance.now(); aim = {b: aim.b + b, p: Math.max(this.tr.minPitch, Math.min(this.tr.maxPitch, aim.p - dy * 0.5))}; addTurnSample(samples, {t, x: aim.b, y: aim.p}); const c = {type: 'rotate' as const, delta: b, pitch: -dy * 0.5}; this.post(c); this.turned = (c as {seq?: number}).seq!; } } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gated && (solo(e), true))) {
                 // As in MapLibre GL JS, `movestart` comes before `dragstart`, and the camera moves (`move`) before `drag`.
                 if (!this.dragging) {
