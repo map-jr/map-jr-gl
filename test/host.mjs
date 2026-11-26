@@ -1224,10 +1224,10 @@ for (const renderer of renderers) {
         // 3d. `radius` widens a query for what the style layers draw, as it widens a query of `querySource` (#12).
         const radius = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
-            // A line of 2 pixels through the centre of the map, from west to east. The questions are 6 pixels below it: the default radius of 3 finds the line there, and a radius of 2 or 0 does not.
+            // A line of 7 pixels through the centre of the map, from west to east, which is found within 3.5 pixels of its centre line (#2003). The questions are 6 pixels below it: the default radius of 3 finds the line there, and a radius of 2 or 0 does not.
             const line = {type: 'Feature', properties: {name: 'line'}, geometry: {type: 'LineString', coordinates: [[-74.02, 40.7085], [-73.99, 40.7085]]}};
             const host = t.lib.createMap(el, {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false,
-                sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 2}}]});
+                sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 7}}]});
             await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const at = {x: 100, y: 81}, below = host.unproject(at), count = async (place, o) => (await host.queryFeatures(place, o)).length;
             const out = {on: await count({x: 100, y: 75}, {layers: ['own-line']}), near: await count(at, {layers: ['own-line']}), nearZero: await count(at, {layers: ['own-line'], radius: 0}), small: await count(at, {layers: ['own-line'], radius: 2}), point: await count(at, {layers: ['own-line'], radius: 8}),
@@ -4650,6 +4650,36 @@ for (const status of [404, 403, 503]) {
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
             seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
     } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// A raster-dem tile that cannot be decoded is final, as in MapLibre GL JS 6.17 (#2109): it is requested once in 6 s,
+// gives one error with the prefix and the source, and the map reaches idle without it.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = new Map();
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/dem-2109\//, route => {
+            const u = new URL(route.request().url()).pathname;
+            seen.set(u, (seen.get(u) ?? 0) + 1);
+            return route.fulfill({status: 200, contentType: 'image/png', body: 'not a png'});
+        });
+        const got = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), errors = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = lib.createMap(el, {style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: [`${location.origin}/dem-2109/{z}/{x}/{y}.png`], tileSize: 256}}, layers: [{id: 'h', type: 'hillshade', source: 'dem'}]},
+                view: {center: [0, 0], zoom: 2}, attribution: false, onError: (e, info) => errors.push({source: info.sourceId, message: e.message})});
+            await new Promise(r => setTimeout(r, 6000));
+            const idle = m.state.get().idle;
+            m.destroy();
+            return {errors, idle};
+        });
+        const most = seen.size ? Math.max(...seen.values()) : 0;
+        check('a raster-dem tile that cannot be decoded is requested once and gives one error with the source, and the map is idle (#2109)',
+            seen.size > 0 && most === 1 && got.errors.length === seen.size && got.idle
+            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] The source "dem": the request for the tile http') && e.message.includes('PNG or WebP')),
+            JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
+    } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // A tile that a custom protocol rejects is asked for once (#652): the loader is called once for each tile in 6 s.

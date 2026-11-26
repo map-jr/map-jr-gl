@@ -548,6 +548,8 @@ export class Map {
     }
 
     private restarted = false;
+    /** A restart for a lost context ran: the next loss before a first frame is an error. A move for a custom layer does not count (#1993). */
+    private retried = false;
     private restarting = false;
     /** The restart moves the engine to this thread for a custom layer (see `toMainThread`). */
     private movingToMain = false;
@@ -560,6 +562,7 @@ export class Map {
     private async restart(main?: boolean, quiet?: boolean) {
         if (this.restarting || this.removed) return;
         this.restarting = this.restarted = true;
+        if (!quiet) this.retried = true;
         this.movingToMain = !!quiet;
         if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
         this.watchTurn++;
@@ -663,14 +666,14 @@ export class Map {
      * already and fails before its first frame, or does not draw in its time, is an error.
      */
     private contextLost(silent?: boolean) {
-        if (__DEV__) this.note('contextLost()', {silent: !!silent, removed: this.removed, restarting: this.restarting, restarted: this.restarted, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
+        if (__DEV__) this.note('contextLost()', {silent: !!silent, removed: this.removed, restarting: this.restarting, retried: this.retried, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
         if (this.removed) return;
         // (The new engine lost its context while `restart` still waits, for the images for example.)
         if (this.restarting) return void setTimeout(() => this.contextLost(silent), 1000);
         const worker = this.renderer === 'worker', now = Date.now(), drew = this.drew && !silent, toMain = worker && (!drew || now - this.lostAt < 10000);
         this.lostAt = now;
-        if (__DEV__) this.note('decision', drew || worker || !this.restarted ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
-        if (drew || worker || !this.restarted) {
+        if (__DEV__) this.note('decision', drew || worker || !this.retried ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
+        if (drew || worker || !this.retried) {
             if (toMain) this.fellBack('the WebGL context was lost');
             this.restart(toMain);
         } else {
@@ -771,6 +774,11 @@ export class Map {
 
     private seen?: {zoom: number; bearing: number; pitch: number};
     /**
+     * The last pointer move of a drag pan whose `drag` event has not fired. As in MapLibre GL JS, `drag` fires after the
+     * `move` of the frame that applies the move, once for the moves of one frame (or at the release).
+     */
+    private dragMove?: PointerEvent;
+    /**
      * A drag with one pointer and the worker renderer (#38): the number of its first `pan`, the ground that the engine
      * grabbed (known from its first report), and the pointer positions that the page has placed (`x`, `y`, at the time
      * `t`), will place in the next frame (`next`) and has just received (`pend`). The page moves its own camera as the
@@ -815,6 +823,7 @@ export class Map {
             if (!this.moving) this.fire('movestart');
             this.moving = true;
             this.fire('move');
+            if (this.dragMove) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
             if (zoomed) { if (!this.zooming) this.fire('zoomstart'); this.zooming = true; this.fire('zoom'); }
             if (turned) { if (!this.rotating) this.fire('rotatestart'); this.rotating = true; this.fire('rotate'); }
             if (tilted) { if (!this.pitching) this.fire('pitchstart'); this.pitching = true; this.fire('pitch'); }
@@ -1297,8 +1306,8 @@ export class Map {
     refreshTiles(sourceId: string) { this.unloaded(sourceId); this.post({type: 'refresh', source: sourceId}); return this; }
     /** The data of a source changed: the source is not loaded until the engine says so. */
     private unloaded(id: string) { this.loadedSources.delete(id); this.tilesLoaded = false; }
-    /** Whether the style has loaded. */
-    isStyleLoaded() { return this.ready; }
+    /** Whether the style has loaded. (A move to this thread for a custom layer keeps the style: no `style.load` follows it; #1992.) */
+    isStyleLoaded() { return this.ready || this.restarting && this.movingToMain; }
     /** Whether the tiles of the current view have loaded. */
     areTilesLoaded() { return this.tilesLoaded; }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
@@ -1487,7 +1496,7 @@ export class Map {
     }
     getStyle() { return this.rawStyle ? plain(this.rawStyle) : undefined; }
     // ---- feature state ----
-    private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
+    protected featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
     private warnedTextId = false;
     /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
     private sendFeatureState(source: string, keys: string[]) {
@@ -2016,7 +2025,7 @@ export class Map {
         const only = options.layers ? new Set(options.layers) : null, z = this.tr.zoom, layers: any[] = this.rawStyle?.layers ?? [];
         const number = (v: unknown, fallback: number) => typeof v === 'number' ? v : fallback;
         // (As `sizeOf` of `src/query.ts`, which the page script does not load: half of the width, or of the gap and two widths.)
-        const lineReach = (w: number, gap: number) => Math.max(3, (gap > 0 ? gap + 2 * w : w) / 2);
+        const lineReach = (w: number, gap: number) => (gap > 0 ? gap + 2 * w : w) / 2;
         // A circle or line layer whose size is not a number (an expression or a function) is tested with the size of
         // each feature at the zoom of the map, as in MapLibre GL JS: the worker evaluates it (`QuerySet.size`).
         const size = (l: any): QuerySet['size'] => {
@@ -2153,6 +2162,14 @@ export class Map {
         // `isActive()` of a handler is true from the start of its gesture (see where each is set) until a pointer of the gesture lifts.
         const rest = () => { for (const h of [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch, this.boxZoom]) h.active = false; };
         this.inputCleanup.push(rest);
+        let movePan: {type: 'pan'; dx: number; dy: number; x: number; y: number} | null = null;
+        /** Posts the pan of the moves since the last frame (see `pointermove`). */
+        const flushPan = () => {
+            const pan = movePan;
+            movePan = null;
+            if (!pan || this.removed) return;
+            this.post(pan);
+        };
         let panFrame = 0, pendingPan: {x: number; y: number} | null = null, rotating = false, moved = 0, samples: {t: number; x: number; y: number; w?: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
@@ -2210,6 +2227,7 @@ export class Map {
                 this.fire('boxzoomstart', {originalEvent: e});
                 return;
             }
+            flushPan();
             this.post({type: 'stop'});
             if (pointers.size === 1) {
                 // (As in MapLibre, a mouse button that is down makes `dragPan` active before the pointer moves.)
@@ -2278,14 +2296,31 @@ export class Map {
                 if (moved > 6) { tapDrag.zoomed = this.touchZoomRotate.active = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
             } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; const b = turn(prev, p), t = performance.now(); aim = {b: aim.b + b, p: Math.max(this.tr.minPitch, Math.min(this.tr.maxPitch, aim.p - dy * 0.5))}; addTurnSample(samples, {t, x: aim.b, y: aim.p}); this.post({type: 'rotate', delta: b, pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gated && (solo(e), true))) {
-                if (!this.dragging) this.fire('dragstart', {originalEvent: e});
+                // As in MapLibre GL JS, `movestart` comes before `dragstart`, and the camera moves (`move`) before `drag`.
+                if (!this.dragging) {
+                    if (!this.moving) { this.moving = true; this.fire('movestart', {originalEvent: e}); }
+                    this.fire('dragstart', {originalEvent: e});
+                }
                 this.dragging = this.dragPan.active = true;
-                this.fire('drag', {originalEvent: e});
                 // (With 3D terrain the page does not know the ground well enough, and the engine moves the camera alone.)
-                const pan = {type: 'pan' as const, dx, dy, x: p.x, y: p.y};
-                this.post(pan);
+                // On the globe, as in MapLibre GL JS (handler_manager), the moves of one frame are applied together, once,
+                // in the frame: one turn from the first pointer to the last differs from several small turns (#479). On a
+                // flat map the sum of the moves is the same pan, and each move is sent at once, so that the camera, the
+                // markers and `move` follow the pointer in the same frame.
+                let seq: number | undefined;
+                if (this.tr.globeness) {
+                    if (movePan) { movePan.dx += dx; movePan.dy += dy; movePan.x = p.x; movePan.y = p.y; }
+                    else movePan = {type: 'pan', dx, dy, x: p.x, y: p.y};
+                } else {
+                    flushPan();
+                    const pan = {type: 'pan' as const, dx, dy, x: p.x, y: p.y};
+                    this.post(pan);
+                    seq = (pan as {seq?: number}).seq;
+                }
+                // (`drag` follows the `move` of the camera that this move gives: see `dragMove`.)
+                this.dragMove = e;
                 // (Not on the globe: there each move turns the globe from the last pointer, and the page waits for the engine's camera.)
-                const h = this.tr.heightAt || this.tr.globeness || this.renderer !== 'worker' ? null : this.held ??= {from: (pan as {seq?: number}).seq!, t: 0};
+                const h = seq === undefined || this.tr.heightAt || this.renderer !== 'worker' ? null : this.held ??= {from: seq, t: 0};
                 if (h) {
                     // The worker draws a move in the frame after the one in which the page receives it: the page places
                     // the markers for each move one frame later too.
@@ -2305,11 +2340,13 @@ export class Map {
                 // As in MapLibre GL JS, the moves of one frame give one sample, at the time of the frame (see `up`).
                 const list = samples;
                 pendingPan = {x: p.x, y: p.y};
-                if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; if (pendingPan && list === samples) list.push({t: performance.now(), ...pendingPan}); pendingPan = null; });
+                if (!panFrame) panFrame = requestAnimationFrame(() => { panFrame = 0; flushPan(); if (pendingPan && list === samples) list.push({t: performance.now(), ...pendingPan}); pendingPan = null; });
             }
         });
         const up = (e: PointerEvent) => {
             if (!pointers.has(e.pointerId)) return;
+            // (The pan of the moves of this frame comes before the end of the drag, as in MapLibre GL JS.)
+            flushPan();
             this.held = null;
             rest();
             if (e.type !== 'blur') pointerEvent(e.type === 'pointerup' ? 'end' : 'cancel', e);
@@ -2338,6 +2375,7 @@ export class Map {
             if (pointers.size) return;
             const wasDragging = this.dragging;
             this.dragging = false;
+            if (this.dragMove) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
             if (wasDragging) this.fire('dragend', {originalEvent: e});
             if (tapDrag) {
                 if (!tapDrag.zoomed) {

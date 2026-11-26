@@ -348,18 +348,26 @@ entries for them. TypeScript 7 removed `"node"`.
 ## The development build
 
 The development build of `@map-jr/map-jr-gl` writes warnings for common mistakes, such as an id in
-`interactiveLayers` that is not in the style. `package.json` names that build under the `development` export
-condition, so a bundler that sets the condition takes it in development and takes the production build otherwise.
+`interactiveLayers` that is not in the style. The development build of `@map-jr/map-jr-gl/maplibre-compat` writes the
+warnings for mistakes and for options and methods of MapLibre GL JS that have no effect, such as the option
+`fadeDuration` or `setRoll(10)`; the production build of that entry writes none of them. With the map option
+`strict: true`, these cases throw in both builds, and in the production build the error names only the option or
+method.
+
+`package.json` names the development build under the `development` export condition, so a bundler that sets
+the condition takes it in development and takes the production build otherwise.
 
 | How the page gets `@map-jr/map-jr-gl` | Checks |
 |---|---|
 | A bundler in development that sets the `development` condition | Yes. The map loads the file of the checks after it has started. |
 | A bundler that builds for production | No. |
 | The file `dist/map-jr-gl.js` by URL, with no bundler | No. Import `dist/map-jr-gl.dev.js` instead while you develop. |
+| The file `dist/map-jr-gl-maplibre-compat.js` by URL, with no bundler | No. Import `dist/map-jr-gl-maplibre-compat.dev.js` instead while you develop. |
 
 The development server of Vite takes the development build, and `vite build` takes the production build. Node.js
 takes it with `--conditions=development`. The production build makes no request for the checks
-and writes none of their warnings.
+and writes none of their warnings. Warnings about what the map does at run time, such as a failed request, a style
+that cannot load or a layer type that the library does not draw, are in both builds.
 
 ## See also
 

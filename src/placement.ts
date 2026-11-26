@@ -1,5 +1,5 @@
 import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
-import {screenTranslate, mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
+import {mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
 import {anchors as lineAnchors, justification, type LabelSrc} from './tile.ts';
 import {BASELINE, EM, type Shaped, type Shaper} from './text.ts';
 import {CollisionGrid} from './collision.ts';
@@ -402,10 +402,10 @@ export function placeLabels(
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
     const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
-    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. On the globe the
-    // point is moved by tile units and projected again, as in MapLibre GL JS, so the offset follows the curve of the sphere.
+    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. The point is moved
+    // by tile units and projected again, as in MapLibre GL JS, so the offset shrinks with the distance on a pitched map
+    // and follows the curve of the sphere on the globe (#2021).
     const translateAt = (it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, t: unknown, anchor: unknown): [number, number] => {
-        if (!tr.globeness) return screenTranslate(t, anchor, tr.bearing);
         const [mx, my] = mapTranslate(t, anchor, tr.bearing);
         if (!mx && !my) return [0, 0];
         const [px, py] = tr.projectTile(it.id, x + mx / it.scale, y + my / it.scale);
@@ -657,7 +657,13 @@ export function placeLabels(
                         }
                         bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1);
                     }
-                    const box = line || iflat ? boxAround(bx, by, bw, bh, angle, ic.padding) : boxAround(bx, by, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
+                    // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
+                    // (`L.fixedSize`, a layer with `icon-offset`): the box and its offset from the anchor grow with it. An icon
+                    // that `icon-text-fit` stretches has its size from the text, which has the ratio already.
+                    const r = L.fixedSize && fit === 'none' ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
+                    const qx = cx + (bx - cx) * r, qy = cy + (by - cy) * r;
+                    bw *= r; bh *= r;
+                    const box = line || iflat ? boxAround(qx, qy, bw, bh, angle, ic.padding) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,

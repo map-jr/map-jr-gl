@@ -13,7 +13,7 @@ import {Marker as CoreMarker, Popup as CorePopup, type MarkerOptions, type Popup
 /** Options of MapLibre GL JS that `Marker` and `Popup` accept with no effect: each warns once per page. */
 const noEffect: Record<string, 1> = {};
 const accepted = (type: string, options: Record<string, unknown>, names: string[]) => {
-    for (const n of names) if (options[n] !== undefined && !noEffect[n]) {
+    if (__DEV__) for (const n of names) if (options[n] !== undefined && !noEffect[n]) {
         noEffect[n] = 1;
         console.warn(`[map-jr-gl] ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/reference/maplibre-differences.md.`);
     }
@@ -87,9 +87,14 @@ export class Popup extends CorePopup {
 import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
 export {Evented};
-/** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
+/**
+ * The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read, and the
+ * option `subpixelPositioning` of MapLibre GL JS.
+ */
 export class Marker extends CoreMarker {
-    constructor(options: MarkerOptions = {}) { super(options); }
+    constructor(options: MarkerOptions = {}) { super(options); if (options.subpixelPositioning) this.setSubpixelPositioning(true); }
+    /** Places the marker on fractions of a pixel (`true`) or on whole pixels (`false`, the default). */
+    setSubpixelPositioning(value: boolean) { this.round = value ? Number : Math.round; this.update(); return this; }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
     /** The offset as a `Point`, as in MapLibre GL JS. */
@@ -151,7 +156,7 @@ export const getVersion = () => __VERSION__;
 let warned = 0;
 export const setWorkerUrl = (url: string) => {
     if (/maplibre-gl[^/]*worker/i.test(String(url))) {
-        if (!warned++) console.warn('[map-jr-gl] setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.');
+        if (__DEV__ && !warned++) console.warn('[map-jr-gl] setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.');
         return;
     }
     workerUrl = url; set({workerUrl: url});

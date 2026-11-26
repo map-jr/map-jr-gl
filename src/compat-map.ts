@@ -186,12 +186,17 @@ export class Map extends CoreMap {
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
     // value. They are here so that such code does not stop. A value that this library cannot do gives one warning.
     private unsupported(name: string, isDefault: boolean) {
-        if (!isDefault && !this.warned.has(name)) {
-            const message = `[map-jr-gl] ${name} has no effect: this library does not have that feature.`;
-            if (this.strict) throw new Error(message);
-            this.warned.add(name); console.warn(message);
-        }
+        if (!isDefault) this.mistake(name, __DEV__ ? `[map-jr-gl] ${name} has no effect: this library does not have that feature.` : '');
         return this;
+    }
+    /**
+     * A mistake or an option with no effect (#2133). With `strict: true` it throws in both builds; production throws the
+     * short text "<key> has no effect". The warning, once per map and key, is in the development build only. Callers
+     * pass `__DEV__ ? text : ''`, so that the production build has no text.
+     */
+    private mistake(key: string, message: string) {
+        if (this.strict) throw new Error(__DEV__ ? message : `[map-jr-gl] ${key} has no effect.`);
+        if (__DEV__ && !this.warned.has(key)) { this.warned.add(key); console.warn(message); }
     }
     private warned = new Set<string>();
     /** `strict: true`: what gives a warning or an `error` event for code written for MapLibre GL JS throws an error. */
@@ -205,7 +210,7 @@ export class Map extends CoreMap {
     private customs?: globalThis.Map<string, CustomLayerInterface>;
     /** One warning for code that used the array of a query without `await`, when the array was not complete. */
     private incomplete(name: string, had: number, has: number) {
-        if (this.warned.has(name)) return;
+        if (!__DEV__ || this.warned.has(name)) return;
         this.warned.add(name);
         console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.`);
     }
@@ -292,7 +297,7 @@ export class Map extends CoreMap {
      * the zoom stays, and the map fires `movestart`, `move` and `moveend`. The default is 36.87.
      */
     setVerticalFieldOfView(fov: number, eventData?: EventData) {
-        if (!Number.isFinite(fov)) { console.warn(`[map-jr-gl] setVerticalFieldOfView(${fov}): the field of view is not a number. Pass degrees from 0.1 to 150.`); return this; }
+        if (!Number.isFinite(fov)) { if (__DEV__) console.warn(`[map-jr-gl] setVerticalFieldOfView(${fov}): the field of view is not a number. Pass degrees from 0.1 to 150.`); return this; }
         const r = Math.min(150, Math.max(0.1, fov)) * Math.PI / 180;
         if (r !== this.tr.fov) { this.post({type: 'jump', fov: this.tr.fov = r}); for (const t of ['movestart', 'move', 'moveend']) this.fire(t, {...eventData}); }
         return this;
@@ -305,7 +310,7 @@ export class Map extends CoreMap {
      */
     setCenterElevation(elevation: number, eventData?: EventData) {
         if (this.unclamped) return this.camera(eventData, () => super.setCenterElevation(+elevation));
-        if (!this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
+        if (__DEV__ && !this.warned.has('elevation')) { this.warned.add('elevation'); console.warn('[map-jr-gl] setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
         return this;
     }
     // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
@@ -378,7 +383,7 @@ export class Map extends CoreMap {
         recent.unshift(now); recent.length = Math.min(recent.length, 8);
         let r: CameraChanges | undefined;
         try { r = fn({center, zoom: now.zoom, bearing: now.bearing, pitch: now.pitch, padding: this.getPadding(), elevation: 0}); } catch { return; }
-        if (this.mainThread || !r || typeof r != 'object' || this.warned.has('setTransformCameraUpdate')) return;
+        if (!__DEV__ || this.mainThread || !r || typeof r != 'object' || this.warned.has('setTransformCameraUpdate')) return;
         const c = r.center as {lng?: number; lat?: number} | number[] | undefined, lng = Array.isArray(c) ? c[0] : c?.lng, lat = Array.isArray(c) ? c[1] : c?.lat;
         const same = (a: number | undefined, b: number) => typeof a != 'number' || Math.abs(a - b) < 1e-9;
         if (recent.some(k => same(lng, k.lng) && same(lat, k.lat) && same(r.zoom, k.zoom) && same(r.bearing, k.bearing) && same(r.pitch, k.pitch))) return;
@@ -424,9 +429,7 @@ export class Map extends CoreMap {
     setTransformConstrain(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) | null) {
         // The engine calls the function on each change of the camera, so it must run on this thread, as a custom layer does.
         if (fn && !this.mainThread) {
-            const message = "[map-jr-gl] setTransformConstrain has no effect: the function needs the map to draw on the main thread. Pass renderer: 'main' to new Map().";
-            if (this.strict) throw new Error(message);
-            if (!this.warned.has('setTransformConstrain')) { this.warned.add('setTransformConstrain'); console.warn(message); }
+            this.mistake('setTransformConstrain', __DEV__ ? "[map-jr-gl] setTransformConstrain has no effect: the function needs the map to draw on the main thread. Pass renderer: 'main' to new Map()." : '');
             return this;
         }
         const wrap = fn ? (t: typeof this.tr) => { const r = fn(new LngLat(t.lng, t.lat), t.zoom); [t.lng, t.lat] = toLngLat(r.center); t.zoom = r.zoom; } : null;
@@ -511,24 +514,17 @@ export class Map extends CoreMap {
         if (o.cooperativeGestures) this.cooperativeGestures.enable();
         if (o.centerClampedToGround === false) this.setCenterClampedToGround(false);
         if (o.elevation != null) this.setCenterElevation(o.elevation);
-        if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
-        if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
+        if (__DEV__ && (o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
+        if (o.locale != null && typeof o.locale != 'object') { if (__DEV__) console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.'); }
         else this.uiLocale = o.locale;
         const title = this._getUIString('Map.Title');
         if (title != null) this.getCanvas().setAttribute('aria-label', title);
         // (MapLibre GL JS 6.17 has no option projection and draws Mercator for it: pages that pass it expect that.)
-        if (o.projection && ((o.projection as {type?: unknown}).type ?? o.projection) !== 'mercator' && !this.warned.has('projection')) {
-            this.warned.add('projection');
-            const message = '[map-jr-gl] new Map(): the option projection has no effect, as in MapLibre GL JS 6.17. Put "projection": {"type": "globe"} into the style, or call map.setProjection({type: "globe"}) after the style has loaded.';
-            if (this.strict) throw new Error(message);
-            console.warn(message);
-        }
+        if (o.projection && ((o.projection as {type?: unknown}).type ?? o.projection) !== 'mercator')
+            this.mistake('new Map(): the option projection', __DEV__ ? '[map-jr-gl] new Map(): the option projection has no effect, as in MapLibre GL JS 6.17. Put "projection": {"type": "globe"} into the style, or call map.setProjection({type: "globe"}) after the style has loaded.' : '');
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
-        if (context?.preserveDrawingBuffer) {
-            const message = '[map-jr-gl] new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.';
-            if (this.strict) throw new Error(message);
-            console.warn(message);
-        }
+        if (context?.preserveDrawingBuffer)
+            this.mistake('new Map(): canvasContextAttributes.preserveDrawingBuffer', __DEV__ ? '[map-jr-gl] new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.' : '');
         this.unsupported('The option logoPosition', !o.logoPosition);
         // (Development build) `validateStyle: false` skips the check of the style, as in MapLibre GL JS (#1748, #2121). `setStyle` can override it for one style.
         if (__DEV__) this.noValidate = this.noValidateMap = o.validateStyle === false;
@@ -540,19 +536,16 @@ export class Map extends CoreMap {
         if (o.anisotropicFilterPitch != null) this.setAnisotropicFilterPitch(o.anisotropicFilterPitch);
         // The drag handlers of MapLibre GL JS take options that this library does not read (#673): one warning each.
         const dragOptions = (name: string, used: boolean, todo: string) => {
-            if (!used || this.warned.has(name)) return;
-            const message = `[map-jr-gl] ${name} has no effect: the drag handlers here have no options. ${todo}.`;
-            if (this.strict) throw new Error(message);
-            this.warned.add(name); console.warn(message);
+            if (used) this.mistake(name, __DEV__ ? `[map-jr-gl] ${name} has no effect: the drag handlers here have no options. ${todo}.` : '');
         };
         for (const k of ['dragPan', 'dragRotate'] as const) {
-            dragOptions(`new Map(): an object as the option ${k}`, typeof o[k] == 'object' && o[k] !== null, 'Remove it, or pass true');
+            dragOptions(`new Map(): an object as the option ${k}`, typeof o[k] == 'object' && o[k] !== null, __DEV__ ? 'Remove it, or pass true' : '');
             const handler = this[k], on = handler.enable.bind(handler);
-            handler.enable = (options?: unknown) => { dragOptions(`map.${k}.enable(options)`, typeof options == 'object' && options !== null, 'Call enable() with no argument'); on(); };
+            handler.enable = (options?: unknown) => { dragOptions(`map.${k}.enable(options)`, typeof options == 'object' && options !== null, __DEV__ ? 'Call enable() with no argument' : ''); on(); };
         }
-        dragOptions('new Map(): the option rotateSpeed', o.rotateSpeed !== undefined && o.rotateSpeed !== 0.8, 'Remove it; the speed is fixed at 0.8');
-        dragOptions('new Map(): the option pitchSpeed', o.pitchSpeed !== undefined && o.pitchSpeed !== -0.5, 'Remove it; the speed is fixed at -0.5');
-        dragOptions('new Map(): the option aroundCenter: false', o.aroundCenter === false, 'Remove it; the map always rotates around the center');
+        dragOptions('new Map(): the option rotateSpeed', o.rotateSpeed !== undefined && o.rotateSpeed !== 0.8, __DEV__ ? 'Remove it; the speed is fixed at 0.8' : '');
+        dragOptions('new Map(): the option pitchSpeed', o.pitchSpeed !== undefined && o.pitchSpeed !== -0.5, __DEV__ ? 'Remove it; the speed is fixed at -0.5' : '');
+        dragOptions('new Map(): the option aroundCenter: false', o.aroundCenter === false, __DEV__ ? 'Remove it; the map always rotates around the center' : '');
         if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         if (typeof o.bearingSnap == 'number') this.bearingSnap = o.bearingSnap;
         // As in MapLibre GL JS, a gesture (a drag, a wheel zoom, a pinch, a rotate or a tilt) that ends with the map
@@ -748,7 +741,7 @@ export class Map extends CoreMap {
             if (this.unclamped) o = {...o, elevation: +o.elevation!};
             else {
                 o = {...o, elevation: undefined};
-                if (!this.warned.has('jump-elevation')) { this.warned.add('jump-elevation'); console.warn('[map-jr-gl] jumpTo(): the map center is clamped to the ground, which replaces "elevation" in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
+                if (__DEV__ && !this.warned.has('jump-elevation')) { this.warned.add('jump-elevation'); console.warn('[map-jr-gl] jumpTo(): the map center is clamped to the ground, which replaces "elevation" in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
             }
         }
         return this.camera(eventData, () => super.jumpTo(this.snapped(o)));
@@ -957,7 +950,7 @@ export class Map extends CoreMap {
     getFeatureState(feature: FeatureIdentifier) { return this.hasId(feature, 'getFeatureState') ? super.getFeatureState(feature) : {}; }
     private hasId(f: FeatureIdentifier, name: string): f is FeatureIdentifier & {id: string | number} {
         if (f.id != null) return true;
-        if (!this.warned.has(name)) this.warned.add(name), console.warn(`[map-jr-gl] ${name}(): the feature has no "id". Give the source features an id, or set "promoteId" on the source.`);
+        if (__DEV__ && !this.warned.has(name)) this.warned.add(name), console.warn(`[map-jr-gl] ${name}(): the feature has no "id". Give the source features an id, or set "promoteId" on the source.`);
         return false;
     }
     /**
@@ -1025,7 +1018,7 @@ export class Map extends CoreMap {
         // At once: the last answer of the engine for this source and these options, in any view (see `sourceAnswers`).
         const key = JSON.stringify([sourceId, options.sourceLayer, options.filter]), turn = this.sourceTurn.get(sourceId);
         let now: QueriedFeature[] = this.sourceAnswers.get(key)?.found ?? [];
-        if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets); } catch { /* the promise has the complete result or the error */ }
+        if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets, this.featureStates[sourceId]); } catch { /* the promise has the complete result or the error */ }
         let awaited = false;
         const result = features(now), had = now.length, all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
             if (turn === this.sourceTurn.get(sourceId)) {
@@ -1075,7 +1068,7 @@ export class Map extends CoreMap {
         if (sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
             const mine = sets.filter(s => s.source === id);
             const data = mine.length && spec.type === 'geojson' && this.geoData(id);
-            if (data) try { const found = sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine); now = now.filter(f => f.source !== id || own.has(id)); own.add(id); now.push(...found); } catch { /* the promise has the complete result or the error */ }
+            if (data) try { const found = sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine, this.featureStates[id]); now = now.filter(f => f.source !== id || own.has(id)); own.add(id); now.push(...found); } catch { /* the promise has the complete result or the error */ }
         }
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.

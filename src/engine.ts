@@ -1,6 +1,6 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
+import {compileFor, IMAGE_OR, mergeFeatureState, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
@@ -162,7 +162,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -618,7 +618,7 @@ export class Engine {
     /** What the tile workers last got from `setStyle` and `setContours`: they get it again only when it changes. */
     private sentRules?: string;
     private sentContours?: string;
-    /** The global state of this map (see `MapStates`). The tile builders have the feature state. */
+    /** The states of this map (see `MapStates`). The tile builders have the feature state too; the engine reads it for the size of a circle in a query. */
     private states: MapStates = {g: {}, f: {}};
 
     /**
@@ -737,7 +737,7 @@ export class Engine {
             if (!key.startsWith(source + '|')) continue;
             // Tiles on screen or still loading are rebuilt in place once they can be; canceling loads here
             // would starve a map that is being moved while its data updates.
-            if (t.state === 'loading' || t.used >= this.frameNo - 1) { t.stale = true; t.rev = ++this.tilesVersion; } else this.dropTile(key, t);
+            if (t.state === 'loading' || t.used >= this.frameNo - 1) { t.stale = t.reload = true; t.rev = ++this.tilesVersion; } else this.dropTile(key, t);
         }
     }
 
@@ -992,6 +992,7 @@ export class Engine {
             }
             case 'featureState':
                 for (const b of this.backends) b.setFeatureState(c.source, c.states, c.replace);
+                mergeFeatureState(this.states.f, c.source, c.states, c.replace);
                 // The tile workers keep the state for a layer that reads it later. Tiles are built again only when a
                 // layer of the source reads feature state now. (A frame comes in each case: it reports `idle` to the page.)
                 if (this.sourceSigs.get(c.source)?.[1].includes('"feature-state"')) for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { t.stale = true; t.rev = ++this.tilesVersion; }
@@ -1142,7 +1143,7 @@ export class Engine {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
-            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f), circle.pitch!))) return false;
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));
@@ -1455,6 +1456,9 @@ export class Engine {
         this.tapTile(key, fresh ? 'expired' : 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         if (fresh) t.stale = false;
+        // A reload of new data or of an expired tile reports the tile once it is there; a rebuild for another zoom or style does not.
+        const report = fresh || t.reload;
+        t.reload = false;
         const src = this.style.sources[source];
         (src.type === 'raster-dem'
             ? backend.loadElevation({id: req, url: tileURL(src, id.z, id.x, id.y, this.dpr), encoding: src.encoding ?? 'mapbox'}).then(dem => (st.expires = dem?.expires, dem ? this.elevationTile(dem, source, id, key, t, src.encoding ?? 'mapbox') : this.demGone(source, key, t)))
@@ -1469,6 +1473,7 @@ export class Engine {
             t.gl = gl;
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
+            if (report && this.tellLoads) this.emit({type: 'tileLoaded', key});
             this.invalidate();
         }, err => {
             t.rebuilding = false;
@@ -1987,12 +1992,11 @@ export class Engine {
     }
 
     /**
-     * `icon-translate` as an offset on the screen from the point (ax, ay) at Mercator x, y (0 to 1). On the globe the
-     * point is moved in tile units and projected again, as the GPU draws it (see `drawIcons`); in Mercator the offset is in pixels.
+     * `icon-translate` as an offset on the screen from the point (ax, ay) at Mercator x, y (0 to 1). The point is moved
+     * in tile units and projected again, as the GPU draws it (see `drawIcons`).
      */
     private iconMove(L: CompiledLayer, x: number, y: number, ax: number, ay: number): [number, number] {
         const tr = this.tr, t = L.p.iconTranslate.eval(tr.zoom), a = L.p.iconTranslateAnchor.eval(tr.zoom);
-        if (!tr.globeness) return screenTranslate(t, a, tr.bearing);
         const [mx, my] = mapTranslate(t, a, tr.bearing), ws = tr.worldSize;
         if (!mx && !my) return [0, 0];
         const [px, py] = tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, (x + mx / ws) * EXTENT, (y + my / ws) * EXTENT);
@@ -2138,12 +2142,18 @@ export class Engine {
             // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
             // feature, an icon can reach as far as its corner and its offset in each direction.)
             size *= tr.pitch ? 4 : 1;
-            // (On the globe icon-translate moves each icon by its own amount on the screen (see `iconMove`): the reach
-            // covers twice the move in pixels, and no move.)
-            const move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), tr.bearing).map(v => tr.globeness ? 2 * v : v) as [number, number];
-            const [x0, y0, x1, y1] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180, pad, undefined, move);
-            const far = Math.hypot(w, h) * size + Math.hypot(x0 + x1, y0 + y1) / 2 + 64 * size + 2 * pad, [mx, my] = tr.globeness ? move : [0, 0];
-            reach = each ? [-far, -far, far, far] : [Math.min(x0, x0 - mx), Math.min(y0, y0 - my), Math.max(x1, x1 - mx), Math.max(y1, y1 - my)];
+            // (On the globe or a pitched map icon-translate moves each icon by its own amount on the screen (see
+            // `iconMove`): the reach covers no move, twice the move in pixels and, on a pitched map, the move at the
+            // bottom corners of the view, where the ground is nearest and a move is largest.)
+            const move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), tr.bearing);
+            const moves = !tr.globeness && !tr.pitch ? [move] : [[0, 0], move.map(v => 2 * v), ...(tr.globeness ? [] : [0, tr.width].map(px => this.iconMove(L, ...tr.screenToMerc(px, tr.height), px, tr.height)))];
+            let far = 0, r = [Infinity, Infinity, -Infinity, -Infinity];
+            for (const m of moves) {
+                const [x0, y0, x1, y1] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180, pad, undefined, m as [number, number]);
+                far = Math.max(far, Math.hypot(w, h) * size + Math.hypot(x0 + x1, y0 + y1) / 2 + 64 * size + 2 * pad);
+                r = [Math.min(r[0], x0), Math.min(r[1], y0), Math.max(r[2], x1), Math.max(r[3], y1)];
+            }
+            reach = each ? [-far, -far, far, far] : r as [number, number, number, number];
         }
         this.reaches.set(L.id, {at, reach});
         return reach;
