@@ -2502,6 +2502,29 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find an icon that collision hid, with both renderers (#2181)',
             ['main', 'worker'].every(r => hiddenIcons[r].join() === 'A,A'), JSON.stringify(hiddenIcons));
+        // Of two identical lines with an icon each, whose icons collide, the hidden one is not found over the view, and the
+        // shown one is found on its icon and not along the whole line: MapLibre GL JS finds only placed symbols (#2243).
+        const hiddenLineIcons = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const line = name => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: [[-30, 0], [30, 0]]}});
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line('A'), line('B')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': 250, 'icon-image': 'sq'}}]}});
+                m.addImage('sq', {width: 32, height: 32, data: new Uint8Array(32 * 32 * 4).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const all = await m.queryRenderedFeatures({layers: ['t']}), a = m.project([-30, 0]), b = m.project([30, 0]);
+                let found = 0, points = 0;
+                for (let x = a.x + 5; x < b.x; x += 10, points++) if ((await m.queryRenderedFeatures([x, a.y], {layers: ['t']})).length) found++;
+                out[renderer] = {all: all.length, found, points};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds a line with an icon only on its shown icon, with both renderers (#2243)',
+            ['main', 'worker'].every(r => hiddenLineIcons[r].all >= 1 && hiddenLineIcons[r].found >= 2 && hiddenLineIcons[r].found <= 12), JSON.stringify(hiddenLineIcons));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
