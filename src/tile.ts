@@ -53,6 +53,8 @@ export interface Batch {
     featMask?: number;
     /** Circles: `stroke` at the next zoom, present only when it changes; the shader mixes the two by `u_zt`. */
     stroke1?: Uint8Array;
+    /** Lines whose `line-width`, `line-gap-width` or `line-offset` depends on the feature: the largest of each in pixels (the offset without its sign), for the choice of tiles of a query (`QuerySet.most`). */
+    most?: number[];
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
     cap?: string;
@@ -148,7 +150,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
-    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number}
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number; /** See `Batch.most`. */ most?: number[]}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number; etag?: string;
     /** A part that the tile could not use (the cut for the globe): the message of its failure. */ fault?: string }
@@ -364,6 +366,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const dz = (i: number, now: number, lo = -Infinity) => deltas[i]?.push(Math.max(lo, nextProps[i].eval(z1, ctx.f)) - now);
             const stroke1: number[] | null = ddStroke && (moves(p.strokeColor) || moves(p.strokeOpacity)) ? [] : null;
             let grows = false;
+            const most = [0, 0, 0];
             const progress: number[] | null = line && L.ramp ? [] : null;
             const scalarProp = line ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
             for (const f of fs) {
@@ -394,11 +397,13 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 if (scalarProp?.dd) {
                     const now = scalarProp.eval(zs, f), then = scalarProp.eval(z1, f);
                     scalar.push(now); scalar1.push(then);
+                    most[0] = Math.max(most[0], now, then);
                     if (then !== now) grows = true;
                 }
                 if (line) {
                     const o = p.offset.dd ? p.offset.eval(zs, f) : 0, bl = p.blur.dd ? Math.max(0, p.blur.eval(zs, f)) : 0, g = p.gap.dd ? Math.max(0, p.gap.eval(zs, f)) : 0;
                     if (p.offset.dd) offset.push(o);
+                    most[1] = Math.max(most[1], g), most[2] = Math.max(most[2], Math.abs(o));
                     feats[0]?.push(bl); feats[1]?.push(g);
                     dz(0, o); dz(1, bl, 0); dz(2, g, 0);
                 }
@@ -421,6 +426,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (progress) batch.progress = Float32Array.from(progress);
             if (scalarProp?.dd) batch[line ? 'width' : 'radius'] = Float32Array.from(scalar);
             if (scalarProp?.dd && grows) batch[line ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
+            if (line && (scalarProp!.dd || p.gap.dd || p.offset.dd)) batch.most = most;
             if (offset.length) batch.offset = Float32Array.from(offset);
             if (ddStroke) batch.stroke = Uint8Array.from(stroke);
             if (ddSb) batch.sb = Float32Array.from(sb);
@@ -983,7 +989,7 @@ function tessellateLine(b: Batch): GLBatch | null {
         view.setFloat32(o + 12, v[i * 6 + 5], true);
     }
     const each = <T extends Uint8Array | Float32Array>(a?: T) => perVertex(a, feats, featEnds.length);
-    return {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx), color: b.progress ? Uint8Array.from(color) : each(b.color), width: each(b.width), width1: each(b.width1), feat: each(b.feat), featMask: b.featMask};
+    return {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx), color: b.progress ? Uint8Array.from(color) : each(b.color), width: each(b.width), width1: each(b.width1), feat: each(b.feat), featMask: b.featMask, most: b.most};
 }
 
 /** `globe`: the tile is built for a map that can show the globe (see `tessellate`), with the code of the cut. */
