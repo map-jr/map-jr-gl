@@ -176,11 +176,14 @@ async function run() {
         const order = w.getLayersOrder().join();
         // (isStyleLoaded() stays true through the move, as in MapLibre GL JS, where a custom layer does not change it: no
         // `style.load` follows the move, so code that waits for one after a false would wait for ever; #1992.)
-        let notLoaded = 0;
-        const sampler = setInterval(() => { if (!w.isStyleLoaded()) notLoaded++; }, 5);
+        // (The false window is a few ms: a timer of 5 ms can miss it. A message loop samples between every two tasks.)
+        let notLoaded = 0, sampling = true;
+        const ch = new MessageChannel();
+        ch.port1.onmessage = () => { if (!w.isStyleLoaded()) notLoaded++; if (sampling) ch.port2.postMessage(0); };
+        ch.port2.postMessage(0);
         await new Promise(r => w.once('idle', r));
         await wait(300);
-        clearInterval(sampler);
+        sampling = false; ch.port1.close();
         const [inside, covered] = await colours(w, [[-10, 0], [12, 0]]);
         w.jumpTo({zoom: 1.6});
         out.worker.push({renderer: renderer ?? 'default', before, after: w.renderer, errors, events, order, adds, sameGl: !!gl && gl === w.getCanvas().getContext('webgl2'), inside, covered,
