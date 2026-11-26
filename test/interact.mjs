@@ -3606,9 +3606,9 @@ for (const mode of renderers) {
         check(`[${mode}] a source that fails: one error with the URL, the other layers are drawn and load fires`,
             failed.oneSource.seen.filter(s => s.startsWith('error')).length === 1 && failed.oneSource.seen[0].includes('/no-such-tilejson.json') && failed.oneSource.seen.includes('load') && failed.oneSource.loaded && failed.oneSource.drawn > 0, JSON.stringify(failed.oneSource));
         check(`[${mode}] a first style that fails says the URL and the status, and setStyle with a good style then loads the map`,
-            /^error: \[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 \/no-such-style\.json 404$/.test(failed.afterFailure.firstError) && failed.afterFailure.seen.includes('load') && failed.afterFailure.loaded && failed.afterFailure.styleLoaded, JSON.stringify(failed.afterFailure));
+            /^error: \[map-jr-gl\] E63 https:\/\/map-jr\.org\/e\/63 style="\/no-such-style\.json" status=404$/.test(failed.afterFailure.firstError) && failed.afterFailure.seen.includes('load') && failed.afterFailure.loaded && failed.afterFailure.styleLoaded, JSON.stringify(failed.afterFailure));
         check(`[${mode}] setStyle with a URL that fails: an error event, no rejected promise, and the map keeps its style`,
-            failed.badStyle.seen.length === 1 && /^error: \[map-jr-gl\] E63 \S+ \S*no-such-style\.json 404$/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
+            failed.badStyle.seen.length === 1 && /^error: \[map-jr-gl\] E63 \S+ style="\S*no-such-style\.json" status=404$/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
         check(`[${mode}] addSource with no tiles and no url: one error that names the source, and later changes of the style work`,
             failed.badSource.seen.length === 1 && failed.badSource.seen[0] === 'error: [map-jr-gl] E10063 https://map-jr.org/e/10063 source="bad"' && failed.badSource.later > 0, JSON.stringify(failed.badSource));
         check(`[${mode}] maplibre-compat: remove() with queries that nobody awaits gives no unhandled rejection (#787)`, failed.forgotten.length === 0, failed.forgotten.join(' | '));
@@ -4716,7 +4716,7 @@ for (const mode of renderers) {
                 for (let i = 0; i < 300 && !(m.renderer === 'main' && m.areTilesLoaded()); i++) { await new Promise(r => setTimeout(r, 100)); if (!toMain && m.renderer === 'main') toMain = performance.now() - start; }
                 console.warn = warn;
                 delete document.hidden; // (the property of the test: the one of the browser is on the prototype)
-                const out = {renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /^\[map-jr-gl\] E798 \S+ the WebGL context was lost/.test(w)).length,
+                const out = {renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /^\[map-jr-gl\] E798 \S+ why="the WebGL context was lost"/.test(w)).length,
                     waited: secondLoss && firstLoss ? Math.round(secondLoss - firstLoss) : null, toMain: Math.round(toMain), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
                 m.remove(); el.remove();
                 return out;
