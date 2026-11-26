@@ -65,11 +65,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **Use the subagent type `worker`** (`.claude/agents/worker.md`, added on 2026-11-26) for every subagent that runs
   code: workers, reviews, triage (it runs a command for each premise) and checks on `main` (they write a short
   Playwright script). Use the built-in types `Explore` or `Plan` only for a search that reads and runs nothing: they
-  cannot write a file. These types load fewer tool definitions than `general-purpose` (47,400 tokens for `Plan`
-  against 69,000; `worker` is not measured yet). The first coordinator that uses `worker` measures it with a run that
-  only replies, and writes the number into `docs/agents/subagent-models.md`.
-- **Spend tokens on the work, not on context.** A subagent starts with about 69,000 tokens of context (the system prompt, the
-  tools and `CLAUDE.md`) before any work, the same on every model. Its later steps read that context from the prompt
+  cannot write a file. These types load fewer tool definitions than `general-purpose` (16,400 tokens for `worker`
+  and 47,400 for `Plan`, against 69,000).
+- **Spend tokens on the work, not on context.** A subagent of the type `general-purpose` starts with about 69,000 tokens of
+  context (the system prompt, the tools and `CLAUDE.md`) before any work, the same on every model, and one of the type
+  `worker` with about 16,400. Its later steps read that context from the prompt
   cache, which costs a twentieth of new input on Opus 5.5 and Sonnet 5.5, so the cost of a subagent is mostly what it
   reads new (files, logs, command output) and what it writes. Therefore:
   - send a follow-up to the worker that has the context rather than start a new one. A subagent's cache lives five
