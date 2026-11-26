@@ -41,7 +41,9 @@ pnpm install
 `dist/<entry>.dev.js`, and `exports` of `package.json` names it under the `development` condition. The two builds
 differ in the constant `__DEV__` only (`define` in `build.mjs`): with `__DEV__` true, `src/host.ts` loads the checks
 for common mistakes (`src/mistakes.ts`), and `src/compat-map.ts`, `src/maplibre-compat.ts` and `src/controls-more.ts`
-keep the warnings of the compat entry for mistakes and for options with no effect (#2133). A chunk that is the same in both builds is one file in `dist/`. The size
+keep the warnings of the compat entry for mistakes and for options with no effect (#2133). The shared map chunk keeps
+its warnings for a mistake of configuration or a call with no effect behind `__DEV__` too (`src/map.ts`,
+`src/loader.ts`, `src/protocols.ts`); its warnings for a logic error at run time are in both builds. A chunk that is the same in both builds is one file in `dist/`. The size
 budgets measure the production build. `test/host.mjs` imports `dist/map-jr-gl.dev.js` for its checks of mistakes and
 `dist/map-jr-gl.js` for the check that the production build does not request the file of the checks. The standalone
 file of the main API is built with `__DEV__` true, and the checks are inside it.

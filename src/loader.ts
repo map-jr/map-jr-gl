@@ -6,7 +6,8 @@ import {LOSE_CONTEXT} from './gl-names.ts';
 import {globeStops} from './geo.ts';
 
 declare const __WORKER_SRC__: string; // the worker's source, embedded only in the standalone build
-declare const __VERSION__: string; // the version of package.json, set by the build
+declare const __VERSION__: string;
+declare const __DEV__: boolean; // true in the development build (dist/*.dev.js) // the version of package.json, set by the build
 
 let canDraw: boolean | undefined;
 /**
@@ -62,7 +63,7 @@ export function configure(options: LoadOptions) {
     Object.assign(defaults, options);
     // (A new workerUrl or createWorker makes the next map start a new pool, which takes the new count.)
     const n = options.tileWorkers;
-    if (n !== undefined && pool && pool.key === poolKey({}) && pool.count !== n && !warnedCount) {
+    if (__DEV__ && n !== undefined && pool && pool.key === poolKey({}) && pool.count !== n && !warnedCount) {
         warnedCount = true;
         console.warn(`[map-jr-gl] configure(): tileWorkers: ${n} has no effect while a map uses the ${pool.count} tile workers that exist. Call configure() before the first map is created, or destroy every map first.`);
     }

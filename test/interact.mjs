@@ -1192,16 +1192,22 @@ for (const mode of renderers) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
-    // A protocol named "pmtiles" (the pmtiles library's) is not used, because the library reads pmtiles:// itself: it warns once (#250).
+    // A protocol named "pmtiles" (the pmtiles library's) is not used, because the library reads pmtiles:// itself: the
+    // development build warns once (#250), and the production build does not warn (#2133).
     const pmWarns = await page.evaluate(async () => {
-        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), warns = [], warn = console.warn;
-        console.warn = (...a) => { warns.push(String(a[0])); };
-        try { mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('other', async () => ({data: ''})); }
-        finally { console.warn = warn; mod.removeProtocol('pmtiles'); mod.removeProtocol('other'); }
-        return warns.filter(w => w.includes('addProtocol'));
+        const out = {};
+        for (const file of ['map-jr-gl-maplibre-compat.dev.js', 'map-jr-gl-maplibre-compat.js']) {
+            const mod = await import('/dist/' + file), warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            try { mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('other', async () => ({data: ''})); }
+            finally { console.warn = warn; mod.removeProtocol('pmtiles'); mod.removeProtocol('other'); }
+            out[file] = warns.filter(w => w.includes('addProtocol'));
+        }
+        return out;
     });
-    check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
-        pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
+    const pmDev = pmWarns['map-jr-gl-maplibre-compat.dev.js'];
+    check(`[${mode}] addProtocol('pmtiles') warns once in the development build that the library reads pmtiles:// itself, and not in the production build`,
+        pmDev.length === 1 && pmDev[0].startsWith('[map-jr-gl]') && pmDev[0].includes('pmtiles://') && pmWarns['map-jr-gl-maplibre-compat.js'].length === 0, JSON.stringify(pmWarns));
     // #603: a protocol gets the request of a raster or raster-dem tile with the type `image` and an `accept` header, as in
     // MapLibre GL JS, and it can answer with an ImageBitmap, an HTMLImageElement or the bytes of an image file.
     const drawn = await page.evaluate(async () => {

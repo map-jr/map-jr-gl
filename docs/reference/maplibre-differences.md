@@ -178,7 +178,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Camera
 
 - **MapLibre GL JS:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60). Roll. Field of view.
-- **This library:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 180 and writes one warning, where MapLibre GL JS throws an error. The map center is on the ground unless `setCenterClampedToGround(false)` and then `setCenterElevation` or the option `elevation` of `jumpTo` give it a height, as in MapLibre GL JS (`easeTo` and `flyTo` do not read `elevation`, as in MapLibre GL JS 6.17): above a pitch of 90 a camera that is below the ground sees the map from below. No roll. `setVerticalFieldOfView` sets the field of view in degrees from 0.1 to 150, as in MapLibre GL JS, and the default is 36.87. The main API (`@map-jr/map-jr-gl`) has no field of view option and keeps the default. Padding is available.
+- **This library:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 180, and the development build writes one warning, where MapLibre GL JS throws an error. The map center is on the ground unless `setCenterClampedToGround(false)` and then `setCenterElevation` or the option `elevation` of `jumpTo` give it a height, as in MapLibre GL JS (`easeTo` and `flyTo` do not read `elevation`, as in MapLibre GL JS 6.17): above a pitch of 90 a camera that is below the ground sees the map from below. No roll. `setVerticalFieldOfView` sets the field of view in degrees from 0.1 to 150, as in MapLibre GL JS, and the default is 36.87. The main API (`@map-jr/map-jr-gl`) has no field of view option and keeps the default. Padding is available.
 
 ### Miter joins longer than about 2
 
@@ -200,7 +200,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** Without the option `pixelRatio`, the canvas follows `devicePixelRatio` with no limit. A
   `pixelRatio` of 0, a negative number or `NaN` is used as it is, with no message.
 - **This library (`@map-jr/map-jr-gl/maplibre-compat`):** Without the option, the canvas follows `devicePixelRatio` up
-  to 3. A `pixelRatio` that is not a number above 0 writes a warning, and the map follows `devicePixelRatio`.
+  to 3. A `pixelRatio` that is not a number above 0 makes the map follow `devicePixelRatio`, and the development build writes a warning.
 
 ### The lowest zoom
 
@@ -359,7 +359,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Requests
 
 - **MapLibre GL JS:** The `transformRequest` option and `addProtocol`.
-- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. A tile of a `raster` or `raster-dem` source, an image of `loadImage`, of `addImage` with a URL or of an `image` source, and the image of a sprite have the request type `image`, as in MapLibre GL JS, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file. `transformRequest` receives the requests of `loadImage` with the resource type `Image`, as in MapLibre GL JS.
+- This library does the same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in the development build. Remove that call. A tile of a `raster` or `raster-dem` source, an image of `loadImage`, of `addImage` with a URL or of an `image` source, and the image of a sprite have the request type `image`, as in MapLibre GL JS, and the protocol can answer with an `ImageBitmap`, an `HTMLImageElement` or the bytes of an image file. `transformRequest` receives the requests of `loadImage` with the resource type `Image`, as in MapLibre GL JS.
 
 ### `Marker`, `Popup`
 
@@ -448,7 +448,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `strict`
 
 - **MapLibre GL JS:** 
-- **This library:** The constructor option `strict: true` makes each of these warnings and `error` events an error that is thrown. Use it in tests and while you change from MapLibre GL JS. The default is `false`. The warnings of `@map-jr/map-jr-gl/maplibre-compat` for mistakes and for options and methods that have no effect are in the development build only (the `development` export condition, `dist/*.dev.js`), as the checks of the main API are. The production build writes none of them. With `strict: true` the same cases throw in both builds; in the production build the message is `[map-jr-gl] <option or method> has no effect.` and leaves out the advice. A row on this page that says that an option or a call has no effect and warns means the development build for the warning. Other warnings on this page, such as those of `setFeatureState` with a text id or of `maxPitch`, are in both builds.
+- **This library:** The constructor option `strict: true` makes each of these warnings and `error` events an error that is thrown. Use it in tests and while you change from MapLibre GL JS. The default is `false`. The warnings of `@map-jr/map-jr-gl/maplibre-compat` for mistakes and for options and methods that have no effect are in the development build only (the `development` export condition, `dist/*.dev.js`), as the checks of the main API are. The production build writes none of them. With `strict: true` the same cases throw in both builds; in the production build the message is `[map-jr-gl] <option or method> has no effect.` and leaves out the advice. A row on this page that says that an option or a call has no effect and warns means the development build for the warning. The warnings of the map that both entries share for a mistake of configuration (`maxPitch` above 180, a `pixelRatio` that is not a number above 0, `configure({tileWorkers})` after the tile workers exist) or for a call that has no effect (`addProtocol('pmtiles')`) are in the development build only too. Warnings about a logic error at run time, such as those of `setFeatureState` with a text id or of `setCenterElevation(NaN)`, are in both builds.
 
 ### CSS class names
 
