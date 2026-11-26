@@ -115,10 +115,10 @@ test one status:
 | `error` | The test did not end in 8 seconds plus the time of its own waits, or the test threw an error. A method of an operation that the map does not have is such an error. |
 | `skipped` | The run cannot do the test, and does not draw it. The test has the operation `pauseTiles`, or it compares a part of the canvas only (`reportWidth` or `reportHeight`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures` and the run could not download that package. |
 
-[Triage of the symbol render tests](render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
-[Triage of the other render-test groups](render-triage-other.md) does the same for `combinations`, `debug`,
+[Triage of the symbol render tests](development/render-triage-symbols.md) gives the cause of each symbol test of seven groups that is not a match.
+[Triage of the other render-test groups](development/render-triage-other.md) does the same for `combinations`, `debug`,
 `hillshade-*`, `line-dasharray`, `line-gradient`, `line-pattern`, `regressions`, `sky` and `terrain`.
-[Triage of the globe render tests](render-triage-globe.md) does the same for the tests of `projection/globe/`.
+[Triage of the globe render tests](development/render-triage-globe.md) does the same for the tests of `projection/globe/`.
 
 A test can script the map: `metadata.test.operations` of its style is a list of operations, and each operation is
 the name of a method of the map with its arguments, or one of the words in the table below. The run applies them
@@ -466,6 +466,29 @@ texts that start with `[map-jr-gl]`, the texts that `warnOnce`, `refused`, `reje
 the numbered texts of `src/mistakes.ts`. It fails when a placeholder says nothing about what it stands for, when a
 message cannot be classed as a warning or an error, and when the source adds the prefix to a text that the script
 cannot read; the message of the failure says which entry to add to `prefixHelpers`.
+
+## Where a document goes
+
+A document that is not a page of the user docs has one place, by its kind. `pnpm test:consistency` runs
+`scripts/docs-places.mjs`, which fails on a markdown file of `docs/` that is outside these places.
+
+| Kind | Place |
+|---|---|
+| A fault, a decision or a short proposal | Its issue. The body is the current state. |
+| A design that is too long for an issue | `docs/development/design/<issue>-<name>.md`. The pull request that adds it names the issue. |
+| Measurements or a triage table | The pull request. A table that a script or a page of `docs/` reads is a file of `docs/development/`. |
+| A note for contributors (a tool, a process, a format) | `docs/development.md`, or a file of `docs/development/` when it is longer than a section. |
+| The state of a coordinator, or a handoff | The coordination issue. It is never a file. |
+| Scratch (a draft, a log, a plan of one session) | The scratchpad of the session or `.cache/agents/`. It is never committed. |
+| A lesson for agents | A section of `docs/agents/coordinating.md` or `docs/agents/worker-brief.md`. `docs/agents/` gets no new file. |
+
+A design is deleted when its feature ships. The pull request that ships the last part moves what stays true into
+`docs/reference/` and `docs/development.md`, and deletes the file; the history is in git and in the issue. A design
+whose issue is closed as not planned is deleted in the pull request that closes it. After a batch, the coordinator
+lists the files of `docs/development/design/` and files an issue for each one whose issue is closed.
+
+A new markdown file at the root of `docs/`, a new folder of `docs/` and a new file of `docs/agents/` need the owner,
+because each one changes the lists of `scripts/docs-places.mjs`.
 
 ## Helpers for agents
 

@@ -10,6 +10,8 @@ to protect those qualities.
   what kind of work it is. `needs: owner` means do not decide alone: ask.
 - **If you find a fault or a gap while doing something else,** file an issue for it instead of fixing it in the
   same change, unless the fix is a line or two. Nothing should live only in a chat or a notes file.
+- **A working document has one place by its kind** (a design, a triage table, a handoff, scratch): see "Where a
+  document goes" in `docs/development.md`. Do not add a markdown file at the root of `docs/` or to `docs/agents/`.
 - **The owner's messages can arrive late in a long turn.** Read notifications often. When a message arrives,
   answer it and do what it asks before other work.
 - Every few tool calls, give the user a one-line update on where things stand.
