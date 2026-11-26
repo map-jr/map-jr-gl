@@ -2018,8 +2018,23 @@ export class Map {
         };
         // A circle, fill, line or fill extrusion is drawn moved by its `*-translate` (pixels; with the anchor `map` they turn
         // with the bearing), and is found where it is drawn, as in MapLibre GL JS.
-        const shift = (t: unknown, anchor: unknown): [number, number] | undefined => {
-            const [x, y] = Array.isArray(t) && typeof t[0] === 'number' && typeof t[1] === 'number' ? t : [0, 0];
+        // `*-translate` depends on the zoom only (style specification), so the page evaluates it at the zoom of the map:
+        // a literal, `literal`, an `interpolate` or `step` on `zoom`, or a function with `stops`.
+        const atZoom = (v: any): unknown => {
+            const stops: any[] | undefined = Array.isArray(v) ? (v[0] === 'interpolate' && v[2]?.[0] === 'zoom' ? v.slice(3) : v[0] === 'step' && v[1]?.[0] === 'zoom' ? [-Infinity, ...v.slice(2)] : undefined)
+                : Array.isArray(v?.stops) ? v.stops.flat(1) : undefined;
+            if (!stops) return v?.[0] === 'literal' ? v[1] : v;
+            let i = 0;
+            while (i + 2 < stops.length && z >= stops[i + 2]) i += 2;
+            const a = atZoom(stops[i + 1]), b = atZoom(stops[i + 3]);
+            if (v[0] === 'step' || z <= stops[i] || !Array.isArray(a) || !Array.isArray(b)) return a;
+            const type = v[1] ?? ['exponential', v.base ?? 1], d = stops[i + 2] - stops[i], base = type[0] === 'exponential' ? +type[1] : 1;
+            let t = base === 1 ? (z - stops[i]) / d : (base ** (z - stops[i]) - 1) / (base ** d - 1);
+            if (type[0] === 'cubic-bezier') t = bezier(type[1], type[2], type[3], type[4])(t);
+            return a.map((x, k) => x + (b[k] - x) * t);
+        };
+        const shift = (raw: unknown, anchor: unknown): [number, number] | undefined => {
+            const t = atZoom(raw), [x, y] = Array.isArray(t) && typeof t[0] === 'number' && typeof t[1] === 'number' ? t : [0, 0];
             if (!x && !y) return undefined;
             const a = anchor === 'viewport' ? 0 : -this.tr.bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
             return [x * c - y * s, x * s + y * c];
