@@ -42,7 +42,7 @@ export class Popup extends CorePopup {
             if (this.map && this.pointer) this.lngLat = toLngLat(this.map.unproject(this.pointer));
             position();
         };
-        if (options.subpixelPositioning) this.setSubpixelPositioning(true);
+        this.round = options.subpixelPositioning ? Number : Math.round;
         if (options.trackPointer) this.trackPointer();
     }
     setSubpixelPositioning(value: boolean) { this.options.subpixelPositioning = value; this.round = value ? Number : Math.round; this.update(); }
@@ -89,7 +89,7 @@ import {Evented} from './evented.ts';
 export {Evented};
 /** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
 export class Marker extends CoreMarker {
-    constructor(options: MarkerOptions = {}) { super(options); }
+    constructor(options: MarkerOptions = {}) { super(options); this.round = Math.round; }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
     /** The offset as a `Point`, as in MapLibre GL JS. */
