@@ -332,7 +332,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Images that draw themselves
 
 - **MapLibre GL JS:** An image with `render()` (`StyleImageInterface`) gets `onAdd(map, id)`, and `render()` before each frame that uses the image. A `true` result uploads `data` again without a repaint. `setStyle` removes the image and calls `onRemove()`.
-- **This library (`@map-jr/map-jr-gl/maplibre-compat`):** `onAdd(map, id)` runs when the image is added. `render()` runs after each frame that the map draws, also while no layer uses the image, so new pixels show one frame later. A `true` result sends `data` again only when the pixels changed, and the map draws one frame for it, so call `map.triggerRepaint()` to animate, as in MapLibre GL JS. `onRemove()` runs on `removeImage` and on `addImage` with the same name. `remove()` stops the calls of `render()` and does not call `onRemove()`, as in MapLibre GL JS. `setStyle`, also with `diff: false`, keeps the image and does not call `onRemove()`.
+- **This library (`@map-jr/map-jr-gl/maplibre-compat`):** `onAdd(map, id)` runs when the image is added. `render()` runs before each frame that the map draws, also while no layer uses the image, and new pixels show in that frame, as in MapLibre GL JS. A `true` result sends `data` again only when the pixels changed, and the map draws one frame for it, so call `map.triggerRepaint()` to animate, as in MapLibre GL JS. `onRemove()` runs on `removeImage` and on `addImage` with the same name. `remove()` stops the calls of `render()` and does not call `onRemove()`, as in MapLibre GL JS. `setStyle`, also with `diff: false`, keeps the image and does not call `onRemove()`.
 
 ### `easeTo`, `flyTo`
 
@@ -701,7 +701,7 @@ These types differ from MapLibre GL JS:
 | `DragPanOptions`, `DragRotateOptions`, `AroundCenterOptions` | They have no effect and warn once: `enable(options)` of a handler turns it on, and an object as the option `dragPan` or `dragRotate` of `new Map()` counts as `true`. |
 | `UpdateImageOptions` | It has `url` and `coordinates`, and no `image`. |
 | `CanvasSourceSpecification` | The type exists. The library draws canvas sources (see `canvas` in "Source methods"). |
-| `StyleImageInterface` | `data` is RGBA pixels. `render` runs after a frame, not before it. See [Images that draw themselves](#images-that-draw-themselves). |
+| `StyleImageInterface` | `data` is RGBA pixels. See [Images that draw themselves](#images-that-draw-themselves). |
 | `StyleImageData` | It has only `data`, which is what `map.addImage` accepts. |
 | `StyleOptions` | `localIdeographFontFamily` and `globalState` have no effect in `map.setStyle`. For `localIdeographFontFamily`, this is a decision and will stay. `validate` works only in the development build. |
 | `ResourceType` | It is a union of strings and not a `const enum`. It also has `Font`. |

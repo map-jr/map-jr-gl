@@ -646,7 +646,7 @@ for (const mode of renderers) {
     const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
     check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl === '[map-jr-gl] E464 https://map-jr.org/e/464 image="gl"', gl);
-    // #1746: an image with render() (StyleImageInterface) gets onAdd, render after each frame (new pixels when it returns
+    // #1746: an image with render() (StyleImageInterface) gets onAdd, render before each frame (new pixels when it returns
     // true) and onRemove, as in MapLibre GL JS.
     const anim = await page.evaluate(async () => {
         const log = {add: 0, renders: 0, remove: 0, after: 0, id: ''};
@@ -668,6 +668,21 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
+    // #2128: render() of an image runs before the frame, as in MapLibre GL JS, so that its pixels are in that frame. (The
+    // listener of `render` is added before the image: a hook on `render` would run after it.)
+    const before = await page.evaluate(async () => {
+        await new Promise(r => window.map.loaded() && !window.map.isMoving() ? setTimeout(r, 300) : window.map.once('idle', r));
+        const order = [], frame = () => order.push('F');
+        window.map.on('render', frame);
+        let n = 0;
+        await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
+        window.map.triggerRepaint();
+        const t0 = performance.now();
+        while (order.length < 6 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 20));
+        window.map.removeImage('early'); window.map.off('render', frame);
+        return order.join('');
+    });
+    check(`[${mode}] render() of an image runs before each frame (#2128)`, /^(RF)+R?$/.test(before), before);
     // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own; compat entry only).
     if (mode === 'compat') {
         const removed = await page.evaluate(async renderer => {

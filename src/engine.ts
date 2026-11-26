@@ -78,6 +78,9 @@ export type Command =
     | ({type: 'resourceResult'; id: number} & RequestAnswer)
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
     | {type: 'frames'; on: boolean}
+    /** Asks for a `beforeFrame` event before each frame; the frame waits for `frameGo` (images with `render()`, #2128). */
+    | {type: 'beforeFrames'; on: boolean}
+    | {type: 'frameGo'}
     /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
     | {type: 'ping'; n: number}
     /** In a worker: answers with the next frame that is drawn, encoded as an image (a Blob), taken in the same task as the frame (#965). */
@@ -108,6 +111,7 @@ export type EngineEvent =
     /** The layers that the last style hides, also by a `visibility` expression of the global state. */
     | {type: 'hidden'; layers: string[]}
     | {type: 'frame'}
+    | {type: 'beforeFrame'}
     /** The tile workers have indexed the data of the last `geojson` command for this source. The page sends the next data then. */
     | {type: 'geojsonDone'; source: string}
     /** The engine has drawn a frame to its end after the `ping` command with this number. */
@@ -322,6 +326,11 @@ export class Engine {
     private zoomSeen = NaN;
     private contourWait = false;
     private reportFrames = false;
+    /** The page asked for `beforeFrame` (#2128); `preWait`: a frame waits for `frameGo`; `preGo`: `frameGo` came. */
+    private preFrames = false;
+    private preWait = false;
+    private preGo = false;
+    private preEmit = false;
     private drew = false;
     private pinged = 0;
     /** The `snapshot` commands that wait for the next frame. */
@@ -844,7 +853,7 @@ export class Engine {
     command(c: Command) {
         const tr = this.tr;
         // Whatever was asked, report when the map has settled again, so callers can wait on any change.
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'ping' && c.type !== 'tileReport' && c.type !== 'tileLoads') this.wasIdle = false;
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'ping' && c.type !== 'tileReport' && c.type !== 'tileLoads' && c.type !== 'frameGo') this.wasIdle = false;
         // (The page numbers its commands. `idle` and `source` carry the last number, so that the page can tell a report
         // about a state from before its last command.)
         const seq = (c as {seq?: number}).seq;
@@ -1028,6 +1037,13 @@ export class Engine {
                 this.renderer.destroy();
                 return;
             case 'frames': this.reportFrames = c.on; break;
+            case 'beforeFrames': this.preFrames = c.on; if (!c.on) this.preWait = false; break;
+            case 'frameGo':
+                // (In a worker the answer comes in a later task, and the frame that waits is drawn now. On the main thread it
+                // comes inside `emit`, and the frame goes on by itself.)
+                this.preGo = true;
+                if (this.preWait && !this.preEmit) { this.preWait = false; this.frame(performance.now()); }
+                return;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'snapshot': this.shots.push(c); break;
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
@@ -1589,6 +1605,16 @@ export class Engine {
             this.warmed = this.layers;
             this.atlas.warm(this.layers.filter(l => l.type === 'symbol' && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && !l.p.font.dd && (l.p.field.dd || l.p.field.eval(tr.zoom) !== '')).map(l => l.p.font.eval(tr.zoom)));
         }
+        // The page runs `render()` of its images and sends their pixels before the frame, as MapLibre GL JS does (#2128).
+        // A map without such images does not ask, and its frames do not wait.
+        if (this.preFrames && !this.preGo) {
+            if (this.preWait) return;
+            this.preWait = this.preEmit = true;
+            try { this.emit({type: 'beforeFrame'}); } finally { this.preEmit = false; }
+            if (!this.preGo) return;
+            this.preWait = false;
+        }
+        this.preGo = false;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;
