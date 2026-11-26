@@ -145,7 +145,7 @@ function shortenShaderLocals(code, files = [code]) {
 }
 
 /** The files that have shaders. */
-const SHADER_FILES = ['gl.ts', 'terrain.ts', 'globe.ts'];
+const SHADER_FILES = ['gl.ts', 'terrain.ts', 'globe.ts', 'layers-more.ts'];
 
 /**
  * The Vite plugins: the first renames the members in each file of src/ before the file is compiled, and the second

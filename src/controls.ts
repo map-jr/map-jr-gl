@@ -70,8 +70,10 @@ export const CONTROL_CSS = `
 :where(.map-jr-user-location-accuracy-circle){position:absolute;left:0;top:0;border-radius:50%;background:#1da1f233;pointer-events:none}
 .map-jr-ctrl-group :where(.map-jr-ctrl-geolocate-active,.map-jr-ctrl-geolocate-background,.map-jr-ctrl-globe-enabled){color:#33b5e5}.map-jr-ctrl-group :where(.map-jr-ctrl-geolocate-active-error,.map-jr-ctrl-geolocate-background-error){color:#e54e33}
 :where(.map-jr-ctrl-scale){background:rgba(255,255,255,.75);border:1.5px solid var(--map-control-color,#333);border-top:0;padding:0 5px;font-size:10px;box-sizing:border-box;white-space:nowrap}
-/* colorScheme 'dark' (the class map-jr-dark on the container). The variables of the application still win. */
-:where(.map-jr-dark){--map-jr-popup-bg:#2b2b2b;--map-jr-popup-fg:#e6e6e6;--map-jr-popup-ring:0 0 0 1px rgba(255,255,255,.2)}
+` +
+// colorScheme 'dark' (the class map-jr-dark on the container). The variables of the application still win.
+// (The comments of the CSS are comments of the script, so that the built files do not have them.)
+`:where(.map-jr-dark){--map-jr-popup-bg:#2b2b2b;--map-jr-popup-fg:#e6e6e6;--map-jr-popup-ring:0 0 0 1px rgba(255,255,255,.2)}
 :where(.map-jr-dark) .map-jr-ctrl-compass :where(path+path){opacity:.6}
 :where(.map-jr-dark) :where(.map-jr-ctrl){color:var(--map-control-color,#e6e6e6)}
 :where(.map-jr-dark) :where(.map-jr-ctrl-group,.map-jr-ctrl-attrib.map-jr-compact){background:var(--map-control-background,#2b2b2b);box-shadow:0 0 0 1.5px rgba(255,255,255,.15)}
@@ -80,9 +82,10 @@ export const CONTROL_CSS = `
 :where(.map-jr-dark) :where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,rgba(30,30,30,.75));color:var(--map-control-color,#ccc)}
 :where(.map-jr-dark) :where(.map-jr-ctrl-scale){background:rgba(30,30,30,.75);border-color:var(--map-control-color,#ccc)}
 :where(.map-jr-dark) :where(.map-jr-unavailable){color:#aaa;background:#1e1e1e}
-/* The look of the main API (the internal class map-jr-glass, which createMap sets): round, translucent and blurred.
-   A browser without backdrop-filter or CSS nesting keeps the look above. */
-@supports (backdrop-filter:blur(1px)){:where(.map-jr-glass){
+` +
+// The look of the main API (the internal class map-jr-glass, which createMap sets): round, translucent and blurred.
+// A browser without backdrop-filter or CSS nesting keeps the look above.
+`@supports (backdrop-filter:blur(1px)){:where(.map-jr-glass){
 --map-jr-o:.55;--map-jr-rgb:255 255 255;--map-jr-prgb:255 255 255;--map-jr-r:calc(var(--map-control-size,32px)/2);--map-jr-fg:rgb(0 0 0/.62);--map-jr-shadow:0 0 0 1px rgb(0 0 0/.1),0 2px 6px rgb(0 0 0/.12),0 6px 18px rgb(0 0 0/.1);--map-jr-drop:drop-shadow(0 0 .5px rgb(0 0 0/.35));
 --map-jr-a:var(--map-control-opacity,var(--map-jr-o));--map-jr-rr:var(--map-control-radius,var(--map-jr-r));--map-jr-bg:rgb(var(--map-jr-rgb)/var(--map-jr-a));
 --map-jr-popup-bg:rgb(var(--map-jr-prgb)/calc(var(--map-jr-a) + .1));--map-jr-popup-ring:0 0 #0000;--map-jr-popup-radius:calc(var(--map-jr-rr)*.75);
@@ -107,8 +110,9 @@ export const CONTROL_CSS = `
   @media (hover:hover){&:hover{background:color-mix(in oklab,currentColor 16%,transparent)!important}}
   &::before,&::after{content:"";position:absolute;left:6px;top:10.25px;width:10px;height:1.5px;border-radius:1px;background:currentColor;opacity:.8;rotate:45deg}&::after{rotate:-45deg}}
 }}
-/* Touch screens get finger-sized buttons. Kept last so it overrides the sizes above. */
-@media (pointer:coarse){.map-jr-ctrl-group :where(button){width:var(--map-control-size,44px);height:var(--map-control-size,44px)}}
+` +
+// Touch screens get finger-sized buttons. Kept last so it overrides the sizes above.
+`@media (pointer:coarse){.map-jr-ctrl-group :where(button){width:var(--map-control-size,44px);height:var(--map-control-size,44px)}}
 @media (forced-colors:active){:where(.map-jr-ctrl-group,.map-jr-ctrl-attrib,.map-jr-ctrl-scale,.map-jr-popup-content){border:1px solid CanvasText}.map-jr-ctrl :where(button:focus-visible){outline:2px solid Highlight}}
 @media (prefers-contrast:more){:where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,#fff);color:var(--map-control-color,#000)}:where(.map-jr-ctrl-group,.map-jr-ctrl-attrib.map-jr-compact){box-shadow:0 0 0 2px #000}}
 `;

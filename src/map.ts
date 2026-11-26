@@ -1245,8 +1245,9 @@ export class Map {
     declare private pitchWarned?: boolean;
     /**
      * Sets the largest pitch that the user can reach, in degrees. A value above 180 is limited to 180 and warns once.
-     * Above 90 the camera looks up. While the map center is on the ground, the camera is then below the ground and sees
-     * the map from below; give the center a height with `setCenterElevation` to keep the camera above the ground.
+     * Above 90 the camera looks up. The camera stays at or above sea level (above the ground with 3D terrain): a pitch
+     * that would put it lower is reduced, and the zoom changes with it, as in MapLibre GL JS. Give the center a height
+     * with `setCenterElevation` to look up from higher.
      * @param p The pitch. `undefined` or `null` restores the default, 60.
      */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }

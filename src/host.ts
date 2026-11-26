@@ -262,7 +262,7 @@ export interface MapDescription extends MapSetup {
      */
     maxZoom?: number | null;
     /**
-     * The largest pitch of the map in degrees, at most 180, where a pitch above 90 looks up and, unless `centerElevation` lifts the map center above the ground, sees the map from below the ground. A larger value is limited to 180 and warns once. It limits gestures, `view` and `moveTo`.
+     * The largest pitch of the map in degrees, at most 180, where a pitch above 90 looks up. The camera stays at or above sea level (above the ground with 3D terrain): a pitch that would put it lower is reduced, and the zoom changes with it, as in MapLibre GL JS. Give the map center a height with `centerElevation` to look up from higher. A larger value is limited to 180 and warns once. It limits gestures, `view` and `moveTo`.
      * @default 60
      */
     maxPitch?: number | null;
