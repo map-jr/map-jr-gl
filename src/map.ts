@@ -574,7 +574,7 @@ export class Map {
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
             this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
-            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.buffer = undefined; this.jumped = 0;
+            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.buffer = undefined; this.jumped = 0; this.turned = this.reported = 0;
             this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
