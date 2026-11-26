@@ -125,6 +125,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** Each character follows the line. The style sets the largest angle.
 - **This library:** Each character follows the line. A label does not show where the line turns more than about 35 degrees between characters.
 
+### Images in `format` text
+
+- **MapLibre GL JS:** An image that is taller than the text of its line makes the line taller, and `vertical-align` places each section within that height.
+- **This library:** `vertical-align` places each section as in MapLibre GL JS, but a tall image does not make its line taller. The image reaches above the line into the line before it or above the label, and the label's box keeps the height of the text.
+
 ### `fill-sort-key` and `line-sort-key` with a pattern for each feature
 
 - **MapLibre GL JS:** The sort key orders all features of the layer.
@@ -565,7 +570,7 @@ Properties:
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and the corners of an extrusion are sharp. The development build of the main API warns one time for each layer that has a value other than 0.
 - The source property `volatile` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each source that has `volatile: true`.
 - Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
-- `vertical-align` in `format` text. Sizes, fonts, colors and images in `format` text are available. The SVG output of the server draws each line in one size.
+- `vertical-align` in `format` text in the server renderer. Its SVG (`renderToSVG`) draws each line in one size on one baseline.
 
 Layers that the server renderer does not draw:
 
