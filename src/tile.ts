@@ -718,7 +718,7 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                 if (i === bounds[r + 1] - 1 && coords[i * 2] === coords[bounds[r] * 2] && coords[i * 2 + 1] === coords[bounds[r] * 2 + 1]) continue;
                 cx += coords[i * 2]; cy += coords[i * 2 + 1]; cn++;
             }
-            const centroid = () => { for (let i = first; i < count; i++) cen.push(Math.floor(cx / cn), Math.floor(cy / cn)); };
+            const centroid = () => { cen.push(first, count, Math.floor(cx / cn), Math.floor(cy / cn)); };
             const roof = count, cut = globe && globe.cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
             for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
@@ -758,7 +758,10 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
         });
     }
     if (!idx.length) return null;
-    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined, c: Int16Array.from(cen)};
+    // (cen has the first vertex, the end and the centroid of each polygon.)
+    const c = new Int16Array(count * 2);
+    for (let k = 0; k < cen.length; k += 4) for (let i = cen[k]; i < cen[k + 1]; i++) { c[i * 2] = cen[k + 2]; c[i * 2 + 1] = cen[k + 3]; }
+    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined, c};
 }
 
 const ARC_STEP = Math.PI / 5;
