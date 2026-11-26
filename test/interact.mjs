@@ -7214,6 +7214,13 @@ for (const mode of renderers) {
                 const opt = new mod.Popup({animate: false, padding: {top: H}}).setLngLat(mid2).setText('pad').addTo(m);
                 anchors.push(opt.getAnchor()); opt.remove();
                 out.padding = anchors.join();
+                // #2198: near a side at mid height the anchor is `left` or `right` alone, and `padding.bottom` adds `bottom`.
+                const sides = [];
+                for (const x of [4, W - 4]) {
+                    const q = new mod.Popup({animate: false}).setLngLat(m.unproject([x, H / 2])).setText('side').addTo(m);
+                    sides.push(q.getAnchor()); q.setPadding({bottom: H}); sides.push(q.getAnchor()); q.remove();
+                }
+                out.sides = sides.join();
             } finally { console.warn = warn; }
             out.warns = warns.filter(w => w.includes('Popup'));
             return out;
@@ -7221,7 +7228,8 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat but not a touch (#1737), and places itself on fractions of a pixel with subpixelPositioning (#42)',
             options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.touchStays && options.subpixel && !options.warns.length, JSON.stringify(options));
         check('[main] maplibre-compat: Marker places itself on fractions of a pixel with the option subpixelPositioning and setSubpixelPositioning(true), and on whole pixels by default (#1782)', options.markerSubpixel, JSON.stringify(options));
-        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,bottom-right,bottom,top', JSON.stringify(options.padding));
+        check('[main] maplibre-compat: Popup.setPadding and the option padding change the anchor near the padded edges, as in MapLibre GL JS (#1783)', options.padding === 'bottom,top-left,right,bottom,top', JSON.stringify(options.padding));
+        check('[main] maplibre-compat: Popup takes the anchor left or right alone near a side at mid height, and bottom-left or bottom-right with padding.bottom, as in MapLibre GL JS (#2198)', options.sides === 'left,bottom-left,right,bottom-right', JSON.stringify(options.sides));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
