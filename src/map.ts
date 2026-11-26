@@ -761,6 +761,8 @@ export class Map {
         this.beforeFrame = fn ?? undefined;
     }
     private beforeFrame?: (images: string[]) => void;
+    /** Set while the pixels of `render()` are sent: they do not repaint (#2279). */
+    private fromRender = false;
     /** @internal Sends a command to the engine. */
 
     protected post(c: Command, transfer?: Transferable[]) {
@@ -866,7 +868,8 @@ export class Map {
             // not stop, #2278. The pixels are sent at once, so that the main renderer draws them in this frame.)
             if (!this.removed) {
                 try { this.beforeFrame?.(e.images); } catch (error) { queueMicrotask(() => this.fire('error', {error})); }
-                this.sendUpdates();
+                this.fromRender = true;
+                try { this.sendUpdates(); } finally { this.fromRender = false; }
             }
         } else if (e.type === 'frame') {
             if (!this.drew) this.firstRead();
@@ -1940,7 +1943,7 @@ export class Map {
         const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
         if (!variant) { this.imageNames.add(name); this.imageInputs.set(name, [source, options]); }
         this.post({type: 'image', name, w, h, width, height, data, stretchX: options.stretchX?.map(r => scale(r) as [number, number]), stretchY: options.stretchY?.map(r => scale(r) as [number, number]),
-            content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight, sdf: options.sdf, update}, [data.buffer]);
+            content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight, sdf: options.sdf, update, fromRender: this.fromRender || undefined}, [data.buffer]);
         return this;
     }
     /** Removes an image that `addImage` added. */

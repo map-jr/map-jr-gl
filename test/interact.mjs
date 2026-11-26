@@ -687,6 +687,27 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
+    // #2279: new pixels from render() do not repaint, as in MapLibre GL JS: without triggerRepaint() the image does not keep
+    // the map drawing. (A map of its own: the demo map draws for other reasons.)
+    const still = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#123'}}]}, renderer, attributionControl: false});
+        await new Promise(r => m.once('idle', r));
+        let renders = 0, frames = 0;
+        await m.addImage('new-pixels', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; this.data = new Uint8Array(4).fill(renders % 255); return true; }});
+        m.addLayer({id: 'use', type: 'background', paint: {'background-pattern': 'new-pixels', 'background-opacity': 0}});
+        m.triggerRepaint();
+        const t0 = performance.now();
+        while (!renders && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 1000));
+        const r0 = renders;
+        m.on('render', () => frames++);
+        await new Promise(r => setTimeout(r, 1500));
+        m.remove(); el.remove();
+        return {first: r0, renders: renders - r0, frames};
+    }, mode);
+    check(`[${mode}] new pixels of render() do not repaint the map (#2279)`, still.first >= 1 && still.renders <= 3, JSON.stringify(still));
     // #2128: on the main renderer render() of an image runs before the frame, as in MapLibre GL JS, so that its pixels are in
     // that frame (the worker renderer does not wait, by the decision on #2128). (The listener of `render` is added before the
     // image: a hook on `render` would run after it.)
@@ -696,7 +717,7 @@ for (const mode of renderers) {
             const order = [], frame = () => order.push('F');
             window.map.on('render', frame);
             let n = 0;
-            await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
+            await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); window.map.triggerRepaint(); return true; }});
             window.useImage('early');
             window.map.triggerRepaint();
             const t0 = performance.now();
