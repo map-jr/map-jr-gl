@@ -311,6 +311,8 @@ export const tileMerc = (id: TileID): [number, number, number, number] => {
 export const GLOBE_GLSL = `uniform mat4 u_globe; uniform vec4 u_horizon; uniform float u_globeness; uniform vec4 u_tileMerc; uniform float u_cosLat;
 const float GLOBE_PI = 3.141592653589793;
 bool isPole(vec2 t) { return t.y < -32767.5 || t.y > 32766.5; }
+// A pole vertex on the border of its tile (for the clip test, and for the Mercator position in the change to the globe).
+vec2 unpole(vec2 t) { return vec2(t.x, t.y < -32767.5 ? 0.0 : t.y > 32766.5 ? ${EXTENT}.0 : t.y); }
 vec3 toSphere(vec2 t) {
   if (t.y < -32767.5) return vec3(0.0, 1.0, 0.0);
   if (t.y > 32766.5) return vec3(0.0, -1.0, 0.0);
@@ -348,13 +350,11 @@ vec4 toClipTurn(vec2 t, vec2 o, float h) {
 vec4 toClip3D(vec2 t, float h) {
   vec4 g = u_globe * vec4(toSphere(t) * (1.0 + h / 6371008.8), 1.0);
   g.z = g.w - 0.0005 * u_globe[3].w;
-  return u_globeness >= 1.0 ? g : mix(u_matrix * vec4(t, h, 1.0), g, u_globeness);
+  return u_globeness >= 1.0 ? g : mix(u_matrix * vec4(unpole(t), h, 1.0), g, u_globeness);
 }
 float horizonSide(vec2 t) { return dot(toSphere(t), u_horizon.xyz) + u_horizon.w; }
 // A tile unit is shorter toward the poles on the sphere: lines are made wider by as much (MapLibre's projectLineThickness).
 float lineScale(vec2 t) { float e = exp(GLOBE_PI - (u_tileMerc.y + u_tileMerc.w * t.y) * 2.0 * GLOBE_PI); return mix(1.0, (e * e + 1.0) / (2.0 * e) * u_cosLat, u_globeness); }
-// For the clip test, a pole vertex is on the border of its tile.
-vec2 unpole(vec2 t) { return vec2(t.x, t.y < -32767.5 ? 0.0 : t.y > 32766.5 ? ${EXTENT}.0 : t.y); }
 bool shown(vec4 c) { return c.z <= c.w; }
 `;
 

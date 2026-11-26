@@ -15,7 +15,7 @@ import type {CompiledLayer} from './style.ts';
 // On the globe the mesh is put on the sphere as buildings are (toClip3D), and the far side is hidden by horizonSide.
 export const TERRAIN_SHADERS: [string, string] = [`${VS_COMMON} uniform float u_skirt; uniform float u_exag;
 layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog; out float v_side;
-void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z, t = a_pos.xy * ${EXTENT}.0; v_uv = vec2(p.x, 1.0 - p.y); v_side = horizonSide(t); gl_Position = toClip3D(t, a_height * u_exag - a_pos.z * u_skirt);
+void main() { vec2 p = u_part.xy + clamp(a_pos.xy, 0.0, 1.0) * u_part.z, t = a_pos.xy * ${EXTENT}.0; v_uv = vec2(p.x, 1.0 - p.y); v_side = horizonSide(t); gl_Position = toClip3D(t, a_height * u_exag - a_pos.z * u_skirt);
   float w = gl_Position.w; v_fog = clamp(u_fogRange.y * (w - u_fogRange.x) / ((u_fogRange.y - u_fogRange.x) * w), 0.0, 1.0); }`, `
 uniform sampler2D u_drape; in vec2 v_uv; in float v_side; out vec4 o;
 // Fog (the sky of the style, as in MapLibre GL JS): v_fog is the depth of MapLibre's fog matrix, 0 at its near and 1 at its far plane. u_fog has
@@ -211,6 +211,16 @@ export function terrainGrid(this: any) {
         }
     };
     edge(k => k); edge(k => N * (N + 1) + k); edge(k => k * (N + 1)); edge(k => k * (N + 1) + N);
+    const count = idx.length;
+    // On the globe, a row of triangles from the top edge to the north pole and from the bottom edge to the south pole
+    // (y -32768 and 32767 in tile units, see GLOBE_GLSL), drawn for a tile at the edge of the world. A pole vertex
+    // takes the height and the color of the edge vertex under it.
+    for (const [row, y] of [[0, -32768], [N, 32767]]) for (let k = 0; k <= N; k++) {
+        const i = row * (N + 1) + k, j = pos.length / 3;
+        skirt.push(i);
+        pos.push(k / N, y / EXTENT, 0);
+        if (k < N) idx.push(i, i + 1, j, i + 1, j + 1, j);
+    }
     const vao = gl.createVertexArray()!;
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -219,7 +229,7 @@ export function terrainGrid(this: any) {
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
-    return this.grid = {vao, count: idx.length, skirt};
+    return this.grid = {vao, count, pole: N * 6, skirt};
 }
 
 
@@ -356,6 +366,8 @@ export function drawTerrain(this: any, s: Scene) {
         this.placeTile(u, t.id, t.matrix);
         gl.uniform1f(u.u_skirt, 40075016.686 / 2 ** t.id.z / 16 * Math.max(1, s.terrain!.exaggeration));
         gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
+        if (this.globe && t.id.y === 0) gl.drawElements(gl.TRIANGLES, grid.pole, gl.UNSIGNED_SHORT, grid.count * 2);
+        if (this.globe && t.id.y === 2 ** t.id.z - 1) gl.drawElements(gl.TRIANGLES, grid.pole, gl.UNSIGNED_SHORT, (grid.count + grid.pole) * 2);
     }
     for (const [key, mh] of this.meshHeights) if (this.frame - mh.used > 90) { gl.deleteBuffer(mh.buffer); this.meshHeights.delete(key); }
     gl.disable(gl.DEPTH_TEST);
