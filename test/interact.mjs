@@ -4597,6 +4597,31 @@ for (const mode of renderers) {
         check(`[${mode}] the globe with 3D terrain: project() gives the place where a circle is drawn, and queryRenderedFeatures finds it there (#1430)`,
             r.n > 100 && Math.hypot(r.x - r.px, r.y - r.py) < 6 && r.found === 1, JSON.stringify(r));
     }
+    // #1984: on the globe with 3D terrain the area at the pole is drawn, as it is without terrain. The ground is flat
+    // (0 m), so the globe covers the same pixels with and without terrain (before, about 2,500 px at the pole were clear).
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
+            const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+            g.fillStyle = 'rgb(128,0,0)'; g.fillRect(0, 0, 256, 256); // 0 m in the terrarium encoding
+            const red = async terrain => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:400px;z-index:60'}));
+                const style = {version: 8, projection: {type: 'globe'}, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 4}},
+                    ...(terrain ? {terrain: {source: 'dem'}} : {}), layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}]};
+                const map = new mod.Map({container: el, style, center: [0, 80], zoom: 1.5, pitch: 30, renderer, attributionControl: false});
+                try {
+                    await new Promise(r => map.once('idle', r));
+                    const d = await shot(map, 500, 400);
+                    let n = 0;
+                    for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 80 && d[i + 3] > 200) n++;
+                    return n;
+                } finally { map.remove(); el.remove(); }
+            };
+            return {flat: await red(false), terrain: await red(true)};
+        }, mode);
+        check(`[${mode}] the globe with 3D terrain: the area at the pole is drawn (#1984)`, r.flat > 50000 && Math.abs(r.terrain - r.flat) < r.flat * 0.01, JSON.stringify(r));
+    }
     // #670: on a tilted map queryRenderedFeatures finds a circle where it is drawn: smaller far from the camera
     // (circle-pitch-scale: map), and an ellipse on the ground with circle-pitch-alignment: map. Both the array and the promise.
     {
