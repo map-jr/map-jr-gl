@@ -53,11 +53,13 @@ test('a label along a meridian on the globe keeps one size, also when it spans m
 
 test('a label along a line on the globe is hidden when its glyphs are behind the horizon, as in MapLibre GL JS (#1996)', () => {
     // A meridian from 60° S to 30° N, with text on the screen, at zoom 2.5. Its label is at 12° S. Seen from the equator,
-    // the label is drawn. Seen from 20° N, the line under the glyphs is behind the horizon, and the label is hidden.
+    // the label is drawn. Seen from 24° N, the anchor is in front of the horizon, the line under the glyphs is behind it,
+    // and the label is hidden. (Text far from the center is smaller by the perspective ratio (#2201), so with the widths
+    // of `EstimateShaper` the glyphs reach behind the horizon only from about 21° N.)
     const viewport = {'text-pitch-alignment': 'viewport'};
     const front = place(true, [[0, -60], [0, 30]], [0, 0], 2.5, 512, 0, true, viewport);
     assert.equal(front.length, 1, 'seen from the equator, the label is drawn');
-    assert.deepEqual(place(true, [[0, -60], [0, 30]], [0, 20], 2.5, 512, 0, true, viewport), [], 'seen from 20° N, the label is hidden');
+    assert.deepEqual(place(true, [[0, -60], [0, 30]], [0, 24], 2.5, 512, 0, true, viewport), [], 'seen from 24° N, the label is hidden');
 });
 
 test('a label on the globe is drawn when only the far end of the line under it is behind the horizon, as in MapLibre GL JS (#1996)', () => {

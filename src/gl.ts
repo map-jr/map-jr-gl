@@ -420,7 +420,7 @@ out vec2 v_uv; out float v_alpha; out float v_sdf;
 void main() {
   vec4 c = toClip3(a_v.xy, ground(a_v.xy / ${EXTENT}.0));
   float s = mix(a_size.x, a_size.y, u_zt) * u_size, a = u_north + a_angle;
-  // On a tilted map, far icons are smaller and near icons are larger, by half of what the perspective does (as for labels).
+  // On a tilted map or the globe, far icons are smaller and near icons are larger, by half of what the perspective does (as for labels).
   if (u_persp > 0.0) s *= min(4.0, 0.5 + 0.5 * u_persp / c.w);
   // (icon-offset and the shift of icon-anchor turn with the icon, as in placeLabels.)
   mat2 turn = mat2(cos(a), sin(a), -sin(a), cos(a));
@@ -936,7 +936,7 @@ export class GLRenderer {
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
                     gl.uniform1f(u.u_north, p.iconAlign.eval(zoom) === 'map' ? -tr.bearing * Math.PI / 180 : 0);
                     // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)
-                    gl.uniform1f(u.u_persp, tr.pitch && !L.fixedSize ? tr.cameraDistance : 0);
+                    gl.uniform1f(u.u_persp, (tr.pitch || tr.globeness) && !L.fixedSize ? tr.cameraDistance : 0);
                     gl.uniform1f(u.u_dpr, this.dpr);
                     gl.uniform2f(u.u_offset, offset[0], offset[1]);
                     gl.uniform2f(u.u_anchor, anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0, anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0);
