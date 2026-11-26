@@ -33,7 +33,7 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
                     if (now !== added || !slot.parentNode) return; // removed (or added again) while the file loaded
                     real = make(m, mine as O, instance);
                     slot.replaceWith(real.onAdd(map));
-                }, e => console.error(`[map-jr-gl] The control "${name}" could not be loaded. Check that the files of the library are served.`, e));
+                }, e => console.error(`[map-jr-gl] E160 The control "${name}" could not be loaded. Check that the files of the library are served.`, e));
                 return slot;
             },
             onRemove(map: Map) { added++; slot.remove(); real?.onRemove(map); real = undefined; },
@@ -134,7 +134,7 @@ export const styles = spec('styles', (m, o: StylesOptions, instance) => new m.St
  */
 export const custom = (options: {key: string; position?: ControlPosition} & ({element: HTMLElement} | Control)): ControlSpec => {
     const {key, position} = options;
-    if (__DEV__ && (typeof key !== 'string' || !('element' in options || 'onAdd' in options))) throw new Error('[map-jr-gl] custom(): write custom({key: "my-control", element}) or custom({key: "my-control", onAdd(map) { return element; }, onRemove() {}}).');
+    if (__DEV__ && (typeof key !== 'string' || !('element' in options || 'onAdd' in options))) throw new Error('[map-jr-gl] E216 custom(): write custom({key: "my-control", element}) or custom({key: "my-control", onAdd(map) { return element; }, onRemove() {}}).');
     return {key: 'custom:' + key, position, create: () => 'element' in options ? {
         onAdd: () => { options.element.classList.add('map-jr-ctrl', 'maplibregl-ctrl'); return options.element; },
         onRemove: () => options.element.remove(),

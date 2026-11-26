@@ -190,10 +190,10 @@ destroy(): void
 closing animation of a popup, and it does not call `onClose`. After `destroy`:
 
 - [`queryFeatures`](#queryfeatures), [`querySource`](#querysource) and [`queryElevation`](#queryelevation) reject with
-  `[map-jr-gl] The query has no answer: the map was removed.` A query that was pending when `destroy` was called does
+  `[map-jr-gl] E10022 The query has no answer: the map was removed.` A query that was pending when `destroy` was called does
   not become an unhandled rejection.
-- [`toBlob`](#toblob) rejects with `[map-jr-gl] toBlob(): the map was removed before its image was taken.`
-- [`once`](#once) rejects with `[map-jr-gl] once("idle"): the map was removed.`, with the type that it waits for.
+- [`toBlob`](#toblob) rejects with `[map-jr-gl] E10044 toBlob(): the map was removed before its image was taken.`
+- [`once`](#once) rejects with `[map-jr-gl] E484 once("idle"): the map was removed.`, with the type that it waits for.
 - [`watchFeatures`](#watchfeatures) and [`watchSource`](#watchsource) no longer call their listeners.
 - [`setFeatureState`](#setfeaturestate) and [`removeFeatureState`](#removefeaturestate) have no effect.
 
@@ -961,7 +961,7 @@ const map = createMap('map', {
 await map.once('idle');
 ```
 
-The promise rejects with `[map-jr-gl] once("idle"): the map was removed.` when the map is destroyed before the event,
+The promise rejects with `[map-jr-gl] E484 once("idle"): the map was removed.` when the map is destroyed before the event,
 or when `once` is called after `destroy`.
 
 ## `container`
@@ -972,7 +972,7 @@ or when `once` is called after `destroy`.
 
 When the browser takes the WebGL context away, the map starts again on a new canvas and fires
 [`webglcontextlost`](events.md#a-lost-webgl-context). A query that is pending then rejects with
-`[map-jr-gl] The query has no answer: the map lost its WebGL context. Ask again.` The rejection is not handled for the
+`[map-jr-gl] E10022 The query has no answer: the map lost its WebGL context. Ask again.` The rejection is not handled for the
 application: catch it where a query can be pending. A query that is called again waits for the new context.
 
 ## See also

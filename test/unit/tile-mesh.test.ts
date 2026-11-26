@@ -19,5 +19,5 @@ test('createTileMesh matches MapLibre GL JS for every option', () => {
 test('createTileMesh takes 32-bit indices when the mesh needs them, and throws for "16bit"', () => {
     assert.deepEqual(bytes(compat.createTileMesh({granularity: 300})), bytes(theirs({granularity: 300})));
     assert.equal(compat.createTileMesh({granularity: 300}).uses32bitIndices, true);
-    assert.throws(() => compat.createTileMesh({granularity: 300}, '16bit'), /\[map-jr-gl\] createTileMesh\(\)/);
+    assert.throws(() => compat.createTileMesh({granularity: 300}, '16bit'), /\[map-jr-gl\] E1465 createTileMesh\(\)/);
 });

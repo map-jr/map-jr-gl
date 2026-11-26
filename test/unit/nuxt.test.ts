@@ -52,5 +52,5 @@ test('options of the module, such as the key mapJr of nuxt.config, give one warn
         mod.setup({style: 'x'}, {options: {}});
     } finally { console.warn = warn; }
     assert.equal(seen.length, 1);
-    assert.match(seen[0], /^\[map-jr-gl\] nuxt\.config: .*has no options, so it ignores "style"\./);
+    assert.match(seen[0], /^\[map-jr-gl\] E1241 nuxt\.config: .*has no options, so it ignores "style"\./);
 });

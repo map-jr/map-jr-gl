@@ -8,7 +8,7 @@ export class GPUInitializationError extends Error {
     readonly statusMessage: string | null;
     constructor(requestedAttributes: WebGLContextAttributes | string = {}, creationEvent?: {statusMessage?: string} | null, options?: ErrorOptions) {
         const own = typeof requestedAttributes == 'string', status = creationEvent?.statusMessage || null;
-        super(own ? requestedAttributes : '[map-jr-gl] The map cannot start: WebGL2 is not available' + (status ? ` (${status}).` : '.'), options);
+        super(own ? requestedAttributes : '[map-jr-gl] E10205 The map cannot start: WebGL2 is not available' + (status ? ` (${status}).` : '.'), options);
         this.name = 'GPUInitializationError';
         this.requestedAttributes = own ? {} : requestedAttributes;
         this.statusMessage = status;

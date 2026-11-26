@@ -204,8 +204,8 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     const badSources = Object.keys(style.sources ?? {}).filter(sourceId => !isObject(style.sources[sourceId]));
     const badLayers = Array.isArray(style.layers) ? style.layers.flatMap((l: unknown, index: number) => isObject(l) ? [] : [index]) : [];
     if (badSources.length || badLayers.length) {
-        for (const sourceId of badSources) bad(new Error(`[map-jr-gl] The source "${sourceId}" is not an object. Give it an object with "type", or remove it from "sources".`));
-        for (const index of badLayers) bad(new Error(`[map-jr-gl] The layer at index ${index} of "layers" is not an object. Give it an object with "id" and "type", or remove it.`));
+        for (const sourceId of badSources) bad(new Error(`[map-jr-gl] E1613 The source "${sourceId}" is not an object. Give it an object with "type", or remove it from "sources".`));
+        for (const index of badLayers) bad(new Error(`[map-jr-gl] E11613 The layer at index ${index} of "layers" is not an object. Give it an object with "id" and "type", or remove it.`));
         style = {...style, sources: Object.fromEntries(Object.entries(style.sources ?? {}).filter(([, s]) => isObject(s))), layers: style.layers.filter(isObject)};
     }
     // The sources are asked for at the same time: each TileJSON, GeoJSON file or archive header is a request of its own.
@@ -232,15 +232,15 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') return;
         if (!raw.tiles && !raw.url) {
             // (Reported one time for the source object to each map, not again for each change of the style; #855.)
-            badOnce(raw, () => new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`));
+            badOnce(raw, () => new Error(`[map-jr-gl] E10063 The source "${name}" has no "tiles" and no "url". Give it one of them.`));
             return;
         }
         // An empty tile (HTTP 204, or no tile in a PMTiles archive) is blank, as in MapLibre GL JS 6.17, which does not read
         // `emptyResponse`. The value "missing" warns one time for each source object (#1695).
-        if (raw.emptyResponse === 'missing' && !noMissing.has(raw)) { noMissing.add(raw); console.warn(`[map-jr-gl] The source "${name}": "emptyResponse": "missing" has no effect, and an empty tile draws nothing, as in MapLibre GL JS. Remove "emptyResponse".`); }
+        if (raw.emptyResponse === 'missing' && !noMissing.has(raw)) { noMissing.add(raw); console.warn(`[map-jr-gl] E1695 The source "${name}": "emptyResponse": "missing" has no effect, and an empty tile draws nothing, as in MapLibre GL JS. Remove "emptyResponse".`); }
         if (raw.type === 'vector' && raw.encoding === 'mlt') {
             // MapLibre Tiles are not decoded (#1436): the source is left out, and reported one time for the source object (#1438).
-            badOnce(raw, () => new Error(`[map-jr-gl] The source "${name}" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`));
+            badOnce(raw, () => new Error(`[map-jr-gl] E1438 The source "${name}" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".`));
             return;
         }
         let src = raw;
@@ -283,7 +283,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (!dem || dem.type !== 'raster-dem') { bad(new Error(`Contour source "${sourceId}" needs "source" to name a raster-dem source`)); continue; }
         const zooms = Object.keys(raw.thresholds ?? {}).map(Number);
         // (A style can come from the compat entry or a URL, so this is not a check of `src/mistakes.ts`.)
-        if (!zooms.length && !noThresholds.has(raw)) { noThresholds.add(raw); console.warn(`[map-jr-gl] The contour source "${sourceId}" has no "thresholds", so it draws no lines. Give it intervals for each zoom level, for example "thresholds": {"11": [200, 1000], "14": [50, 200]}.`); }
+        if (!zooms.length && !noThresholds.has(raw)) { noThresholds.add(raw); console.warn(`[map-jr-gl] E1612 The contour source "${sourceId}" has no "thresholds", so it draws no lines. Give it intervals for each zoom level, for example "thresholds": {"11": [200, 1000], "14": [50, 200]}.`); }
         sources[sourceId] = {
             type: 'contour', tiles: [`contour://${sourceId}/{z}/{x}/{y}`], minzoom: Math.max(0, Math.min(...zooms, 24)), maxzoom: raw.maxzoom ?? 15, tileSize: 512, attribution: dem.attribution,
             contour: {
@@ -295,7 +295,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     const unsupported = new Set<string>();
     // (A layer whose `ref` names no layer, or a layer with `ref`, is left out with a message, one time for each map and layer object, #1814.)
     const layers: LayerJSON[] = derefLayers(style.layers).filter(l => {
-        if (l.ref !== undefined) return badOnce(l, () => new Error(`[map-jr-gl] The layer "${l.id}": "ref" names "${l.ref}", which is no layer without "ref". Name such a layer, or give "type" and "source".`)), false;
+        if (l.ref !== undefined) return badOnce(l, () => new Error(`[map-jr-gl] E2033 The layer "${l.id}": "ref" names "${l.ref}", which is no layer without "ref". Name such a layer, or give "type" and "source".`)), false;
         const ok = !!l.implementation || LAYER_TYPES.has(l.type) && (l.type === 'background' || !!sources[l.source!]);
         if (!ok && !LAYER_TYPES.has(l.type)) unsupported.add(l.type);
         return ok;

@@ -20,7 +20,7 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
     });
 }
 /** The error of a request that failed: it names the resource, the URL (cut, because it comes from a style) and the reason. */
-export const requestError = (what: string, url: string, reason: unknown, cause?: unknown) => new Error(`[map-jr-gl] the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause});
+export const requestError = (what: string, url: string, reason: unknown, cause?: unknown) => new Error(`[map-jr-gl] E1163 the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause});
 /** The error of a response with an HTTP error status. */
 export const httpError = (what: string, url: string, status: number) => requestError(what, url, 'HTTP ' + status);
 /**
@@ -53,7 +53,7 @@ function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: strin
 export function withTimeout(f: typeof fetch, ms = 30000): typeof fetch {
     return (input, init) => {
         const ac = new AbortController(), outer = init?.signal;
-        const timer = setTimeout(() => ac.abort(new Error(`[map-jr-gl] the request to ${input} did not finish within ${ms} ms.`)), ms), done = () => clearTimeout(timer);
+        const timer = setTimeout(() => ac.abort(new Error(`[map-jr-gl] E415 the request to ${input} did not finish within ${ms} ms.`)), ms), done = () => clearTimeout(timer);
         ac.signal.addEventListener('abort', done);
         // An abort by the caller (a tile that is no longer needed) still ends the request.
         if (outer) outer.aborted ? ac.abort(outer.reason) : outer.addEventListener('abort', () => ac.abort(outer.reason));

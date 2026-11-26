@@ -53,7 +53,7 @@ test('tileZoomOffset: -2 at zoom 10 fetches tiles of zoom 12, and the source max
 });
 
 test('tileZoomOffset: a value that is not a whole number rejects with a message', async () => {
-    await assert.rejects(render({tileZoomOffset: 1.5}), /^Error: \[map-jr-gl\] tileZoomOffset: 1\.5 is not a whole number\. Write for example tileZoomOffset: 2/);
+    await assert.rejects(render({tileZoomOffset: 1.5}), /^Error: \[map-jr-gl\] E985 tileZoomOffset: 1\.5 is not a whole number\. Write for example tileZoomOffset: 2/);
 });
 
 test('tileZoomOffset: with 2 a filter sees the zoom of the render, not of the tiles (#991)', async () => {
