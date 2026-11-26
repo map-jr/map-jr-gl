@@ -607,13 +607,23 @@ export class Map extends CoreMap {
     private animated = new globalThis.Map<string, StyleImageInterface>();
     private dropAnimated(name: string) {
         const image = this.animated.get(name);
+        this.sentPixels.delete(name);
         if (!image || !this.animated.delete(name)) return;
         if (!this.animated.size) this.off('render', this.renderImages);
         image.onRemove?.();
     }
     private renderImages = () => {
-        for (const [name, image] of this.animated) if (image.render?.() && this.hasImage(name)) this.updateImage(name, image);
+        // (Pixels that did not change are not sent: each image sent to the engine makes it draw a frame, so a `render` that
+        // returns true without a change would keep the map from `idle`.)
+        for (const [name, image] of this.animated) {
+            if (!image.render?.() || !this.hasImage(name)) continue;
+            const data = image.data, last = this.sentPixels.get(name);
+            if (last && last.length === data.length && last.every((v, i) => v === data[i])) continue;
+            this.sentPixels.set(name, data.slice());
+            this.updateImage(name, image);
+        }
     };
+    private sentPixels = new globalThis.Map<string, Uint8Array | Uint8ClampedArray>();
     private async styleImage(name: string) {
         if (!await (await this.imagesFor)?.(name)) await this.resolver?.(name);
     }
