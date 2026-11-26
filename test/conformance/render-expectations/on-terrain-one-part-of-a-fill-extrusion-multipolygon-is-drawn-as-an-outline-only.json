@@ -1,7 +1,0 @@
-{
-  "label": "on terrain, one part of a fill-extrusion MultiPolygon is drawn as an outline only",
-  "decision": "later",
-  "issue": 1821,
-  "reason": "On terrain, one part of a fill-extrusion MultiPolygon is drawn as an outline only.",
-  "pattern": "^(terrain/fill-extrusion-multipolygon)$"
-}
