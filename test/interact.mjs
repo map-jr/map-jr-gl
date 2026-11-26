@@ -2668,6 +2668,41 @@ for (const mode of renderers) {
         check('[main] compat: at DPR 2 the soft edge of a line and of the inner edge of a gap is one device pixel, as in MapLibre GL JS (#2063)',
             r.line.dpr === 2 && partial(r.line) <= 1 && r.line.out[0] < 12 && partial(r.gap) <= 2 && r.gap.out[0] > 243, JSON.stringify(r));
     }
+    // #2144: a square cap does not lengthen the dashes of a line, as in MapLibre GL JS (its line atlas draws butt dashes for
+    // every cap but round). Away from the ends of the line, the middle row of a dashed line with a square cap has as many
+    // dark pixels as with a butt cap, within 10%, at DPR 1 and 2. (The phase differs: as in MapLibre, the distance along
+    // the line starts at the end of the cap.) Before the fix each dash was the line width longer, about 50% more dark.
+    if (mode === 'main') {
+        const rows = {};
+        for (const dpr of [1, 2]) {
+            const pg = await browser.newPage({viewport: {width: 400, height: 300}, deviceScaleFactor: dpr});
+            await pg.goto(page.url());
+            rows[dpr] = await pg.evaluate(async () => {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const row = async cap => {
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:100px'}));
+                    const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8,
+                        sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-100, 0], [100, 0]]}}}}, layers: [
+                            {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                            {id: 'l', type: 'line', source: 'l', layout: {'line-cap': cap}, paint: {'line-color': '#000', 'line-width': 6, 'line-dasharray': [2, 2]}}]}});
+                    await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                    m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                    const cv = m.getCanvas(), c = Object.assign(document.createElement('canvas'), {width: cv.width, height: cv.height}).getContext('2d');
+                    c.drawImage(cv, 0, 0);
+                    // (The green of the middle row, without the quarter of the width at each end.)
+                    const d = c.getImageData(cv.width >> 2, cv.height >> 1, cv.width >> 1, 1).data, out = [];
+                    for (let i = 1; i < d.length; i += 4) out.push(d[i]);
+                    m.remove(); el.remove();
+                    return out;
+                };
+                const square = await row('square'), butt = await row('butt');
+                return {square: square.filter(g => g < 128).length, butt: butt.filter(g => g < 128).length};
+            });
+            await pg.close();
+        }
+        check('[main] compat: a square cap does not lengthen the dashes of a dashed line, as in MapLibre GL JS (#2144)',
+            [1, 2].every(d => rows[d].butt > 0 && Math.abs(rows[d].square - rows[d].butt) <= rows[d].butt * 0.1), JSON.stringify(rows));
+    }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
     if (mode === 'main') {

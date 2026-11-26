@@ -233,10 +233,9 @@ void main() {
     float px = fw * u_zf; // screen pixels for each dash unit
     float gap = min(min(outside(t, 0.0, u_dash.x), outside(t, period, period + u_dash.x)),
                     min(outside(t, second, second + u_dash.z), outside(t, second - period, second - period + u_dash.z))) * px;
-    // Each dash has the cap of the line: a round or square cap makes it longer by half the line width.
-    // (The round cap takes the smaller coverage, not the product, so that the sides of a dash are not softened twice.)
+    // A round cap makes each dash longer by half the line width. As in MapLibre GL JS, a square cap does not: its
+    // dashes end as butt dashes. (The round cap takes the smaller coverage, so that the sides are not softened twice.)
     if (u_cap == 1) a = min(a, c.a * clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0));
-    else if (u_cap == 2) a *= clamp(0.5 + w * 0.5 - gap, 0.0, 1.0);
     else {
       // Butt caps: the signed distance to the dash end, so that the end is smooth over one pixel.
       float inDash = t < second ? min(t, u_dash.x - t) : min(t - second, second + u_dash.z - t);
@@ -1389,7 +1388,7 @@ export class GLRenderer {
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
                         const cap = L.p.cap.dd ? 'butt' : L.p.cap.eval(zoom);
-                        gl.uniform1i(u.u_cap, cap === 'round' ? 1 : cap === 'square' ? 2 : 0);
+                        gl.uniform1i(u.u_cap, cap === 'round' ? 1 : 0);
                         const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
                         gl.uniform2f(u.u_patSize, L.ramp ? -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
                         if (L.ramp) {
