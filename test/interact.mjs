@@ -1915,6 +1915,30 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures finds turned text on its box with text-padding added before the turn (#1734)',
             turned.plain > 10 && turned.padded - turned.plain >= 13 && turned.padded - turned.plain <= 15.5, JSON.stringify(turned));
+        // On a map with bearing 45, text with `text-rotate` 45 and `text-rotation-alignment` map is boxed at 45 degrees, and
+        // that box is turned by the bearing, as in MapLibre GL JS: half of its width is about (width + height) / 2. Text at
+        // 90 degrees that faces the viewport is drawn the same way and keeps a box of half its height (#2037).
+        const withBearing = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+            const point = (x, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [x, 0]}});
+            const layer = (id, rotate, align) => ({id, type: 'symbol', source: 'p', filter: ['==', ['get', 'name'], id], layout: {'text-field': 'Turned', 'text-size': 16, 'text-rotate': rotate, 'text-rotation-alignment': align, 'text-padding': 0, 'text-allow-overlap': true}});
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, bearing: 45, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(-30, 'a'), point(30, 'b')]}}},
+                layers: [layer('a', 45, 'map'), layer('b', 90, 'viewport')]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const reach = async (lng, id) => {
+                const c = m.project([lng, 0]);
+                let x = 0;
+                while (x < 150 && (await m.queryRenderedFeatures([c.x + x + 1, c.y], {layers: [id]})).length) x++;
+                return x;
+            };
+            const out = {map: await reach(-30, 'a'), viewport: await reach(30, 'b')};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds map-aligned turned text on a map with bearing on the box of MapLibre GL JS (#2037)',
+            withBearing.viewport > 3 && withBearing.map - withBearing.viewport >= 15, JSON.stringify(withBearing));
         // A line too short for its label shows no text, and a query does not find it anywhere along the line. With a
         // `symbol-spacing` that leaves one label, the line is found only on the glyphs of that label. (The lines lie inside one
         // tile, and the spacing is shorter than the line: see the Found lines of #1916.)
