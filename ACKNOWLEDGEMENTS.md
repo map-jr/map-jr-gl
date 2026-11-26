@@ -28,7 +28,8 @@ BSD-3-Clause.
   (`perspectiveRatioCutoff`) follow MapLibre GL JS (BSD-3-Clause). The code is new.
 - An image source whose corners are not convex follows `calculateImageWarp`, `getMesh` and `hasWrongWindingOrder` of
   `image_source.ts` in MapLibre GL JS 6.17 (BSD-3-Clause): the picture is stretched bilinearly on a grid of 16 x 16
-  cells, and the parts that the stretch turns over are not drawn. The code in `src/gl.ts` is new.
+  cells, and the parts that the stretch turns over are not drawn. A convex image source whose foreshortening is above 4
+  is blended toward that bilinear stretch by the ramp of `bilinearBlend`. The code in `src/gl.ts` is new.
 - The anchors of labels along a line (`symbol-placement: line`) follow `clipLine`, `getAnchors`, `resample`, `checkMaxAngle`
   and `anchorIsTooClose` of MapLibre GL JS (BSD-3-Clause): the offset of the first anchor, the spacing, the fit of the
   label on the line and the largest bend under it. The code in `src/placement.ts` is new.
