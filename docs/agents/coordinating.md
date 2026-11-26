@@ -109,6 +109,12 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   turn of its own after the owner had answered. The owner has seen a question end early before, perhaps after another
   kind of notice, and this was not reproduced. If a question ends with no answer, go on with the work that does not
   need the answer and ask again later. No answer is not a yes: a pull request that waits for the owner stays open.
+- **Do not ask the owner between 23:00 and 07:00 New York time** (the owner, 2026-11-26): the owner is usually asleep
+  then. Read the time with `TZ=America/New_York date`. In those hours, go on with the work that does not need the
+  answer, keep each open decision in its issue or pull request, and ask after 07:00.
+- **The setting `askUserQuestionTimeout`** (user settings; `10m` on the owner's Mac since 2026-11-26) closes a question
+  that nobody answers. Read in the documentation of Claude Code and not tested: its timer does not start while the
+  session is connected to Remote Control, and a cloud session does not read the user settings.
 - **Read the time after a question in a later message.** A command in the same message as the question runs at once
   and not after the answer: both runs of 2026-11-26 seemed to be answered after 4 seconds for this reason.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
