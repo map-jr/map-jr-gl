@@ -989,8 +989,8 @@ export class GLRenderer {
             const L = s.layers[li];
             if (L.type !== 'symbol' || !L.visible || zoom < L.minzoom || zoom >= L.maxzoom) continue;
             let u: Record<string, WebGLUniformLocation> | undefined;
-            // On the globe, icon-translate moves the point by tile units before it is projected, as in MapLibre GL JS.
-            const move = this.globe ? mapTranslate(L.p.iconTranslate.eval(zoom), L.p.iconTranslateAnchor.eval(zoom), tr.bearing) : [0, 0];
+            // icon-translate moves the point by tile units before it is projected, as in MapLibre GL JS (#2021).
+            const move = mapTranslate(L.p.iconTranslate.eval(zoom), L.p.iconTranslateAnchor.eval(zoom), tr.bearing);
             for (const it of s.items.get(L.source!) ?? []) {
                 const b = it.tile.icons?.[L.id];
                 if (!b || !(b.counts[0] + b.counts[1])) continue;
@@ -1005,7 +1005,7 @@ export class GLRenderer {
                 b.fresh = false; b.seen = angle;
                 if (!u) {
                     u = this.use('icon', tr);
-                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = this.globe ? [0, 0] : screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];
+                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = [0, 0], color = p.iconColor.eval(zoom) as number[];
                     gl.uniform1f(u.u_size, p.iconSize.dd ? 1 : p.iconSize.eval(zoom));
                     gl.uniform1f(u.u_opacity, p.iconOpacity.dd ? 1 : p.iconOpacity.eval(zoom));
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)

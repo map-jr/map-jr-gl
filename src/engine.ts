@@ -1992,12 +1992,11 @@ export class Engine {
     }
 
     /**
-     * `icon-translate` as an offset on the screen from the point (ax, ay) at Mercator x, y (0 to 1). On the globe the
-     * point is moved in tile units and projected again, as the GPU draws it (see `drawIcons`); in Mercator the offset is in pixels.
+     * `icon-translate` as an offset on the screen from the point (ax, ay) at Mercator x, y (0 to 1). The point is moved
+     * in tile units and projected again, as the GPU draws it (see `drawIcons`).
      */
     private iconMove(L: CompiledLayer, x: number, y: number, ax: number, ay: number): [number, number] {
         const tr = this.tr, t = L.p.iconTranslate.eval(tr.zoom), a = L.p.iconTranslateAnchor.eval(tr.zoom);
-        if (!tr.globeness) return screenTranslate(t, a, tr.bearing);
         const [mx, my] = mapTranslate(t, a, tr.bearing), ws = tr.worldSize;
         if (!mx && !my) return [0, 0];
         const [px, py] = tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, (x + mx / ws) * EXTENT, (y + my / ws) * EXTENT);
@@ -2141,12 +2140,18 @@ export class Engine {
             // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
             // feature, an icon can reach as far as its corner and its offset in each direction.)
             size *= tr.pitch ? 4 : 1;
-            // (On the globe icon-translate moves each icon by its own amount on the screen (see `iconMove`): the reach
-            // covers twice the move in pixels, and no move.)
-            const move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), tr.bearing).map(v => tr.globeness ? 2 * v : v) as [number, number];
-            const [x0, y0, x1, y1] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180, pad, undefined, move);
-            const far = Math.hypot(w, h) * size + Math.hypot(x0 + x1, y0 + y1) / 2 + 64 * size + 2 * pad, [mx, my] = tr.globeness ? move : [0, 0];
-            reach = each ? [-far, -far, far, far] : [Math.min(x0, x0 - mx), Math.min(y0, y0 - my), Math.max(x1, x1 - mx), Math.max(y1, y1 - my)];
+            // (On the globe or a pitched map icon-translate moves each icon by its own amount on the screen (see
+            // `iconMove`): the reach covers no move, twice the move in pixels and, on a pitched map, the move at the
+            // bottom corners of the view, where the ground is nearest and a move is largest.)
+            const move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), tr.bearing);
+            const moves = !tr.globeness && !tr.pitch ? [move] : [[0, 0], move.map(v => 2 * v), ...(tr.globeness ? [] : [0, tr.width].map(px => this.iconMove(L, ...tr.screenToMerc(px, tr.height), px, tr.height)))];
+            let far = 0, r = [Infinity, Infinity, -Infinity, -Infinity];
+            for (const m of moves) {
+                const [x0, y0, x1, y1] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180, pad, undefined, m as [number, number]);
+                far = Math.max(far, Math.hypot(w, h) * size + Math.hypot(x0 + x1, y0 + y1) / 2 + 64 * size + 2 * pad);
+                r = [Math.min(r[0], x0), Math.min(r[1], y0), Math.max(r[2], x1), Math.max(r[3], y1)];
+            }
+            reach = each ? [-far, -far, far, far] : r as [number, number, number, number];
         }
         this.reaches.set(L.id, {at, reach});
         return reach;
