@@ -729,7 +729,7 @@ for (const renderer of renderers) {
             return message;
         }, renderer);
         check(`[${renderer}] queryElevation without a raster-dem source rejects with a [map-jr-gl] message that says to add one (#1214)`,
-            noDem.startsWith('[map-jr-gl] E11214 queryElevation()') && noDem.includes('raster-dem'), noDem);
+            (renderer === 'worker' ? noDem === '[map-jr-gl] E11214 https://map-jr.org/e/11214' : noDem.startsWith('[map-jr-gl] E11214 queryElevation()') && noDem.includes('raster-dem')), noDem);
 
         // #1213: the option `source` of queryElevation reads the named raster-dem source, and an unknown one rejects.
         const named = await page.evaluate(async renderer => {
@@ -744,7 +744,7 @@ for (const renderer of renderers) {
             return out;
         }, renderer);
         check(`[${renderer}] queryElevation reads the raster-dem source that the option source names, and rejects for an unknown one (#1213)`,
-            named[0] === 1000 && named[1] === 2000 && String(named[2]).includes('"none"'), JSON.stringify(named));
+            named[0] === 1000 && named[1] === 2000 && (renderer === 'worker' ? named[2] === '[map-jr-gl] E1214 https://map-jr.org/e/1214 source="none"' : String(named[2]).includes('"none"')), JSON.stringify(named));
 
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
@@ -3048,19 +3048,20 @@ for (const renderer of renderers) {
             await new Promise(r => setTimeout(r, 500));
             host.destroy();
             const half = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries: [{label: 'A', style: red}], preview: {center: [0, 0]}})]});
-            await until(() => warns.some(w => w.includes('preview has')), 5000);
+            await until(() => warns.some(w => w.startsWith('[map-jr-gl] E11560 ')), 5000);
             half.destroy();
             el.remove();
             console.warn = warn;
-            const mine = warns.filter(w => /^\[map-jr-gl\] E\d+ styles\(\):/.test(w));
-            out.labels = mine.filter(w => w.includes('no picture')).map(w => w.match(/"([^"]+)"/)[1]).join(',');
+            // (The production file prints the code, its link, the label and the reason, #2148.)
+            const mine = warns.filter(w => /^\[map-jr-gl\] E1?1560 https:\/\/map-jr\.org\/e\/1?1560\b/.test(w));
+            out.labels = mine.filter(w => w.startsWith('[map-jr-gl] E1560 ')).map(w => w.match(/ label="([^"]*)"/)[1]).join(',');
             out.text = mine.join(' | ');
-            out.half = mine.some(w => w.includes('preview has "center" without "zoom"'));
+            out.half = mine.some(w => w === '[map-jr-gl] E11560 https://map-jr.org/e/11560');
             return out;
         }, renderer);
         check(`[${renderer}] a picture of styles() that fails warns once with the label and the reason, later pictures draw, a style of addProtocol has a picture, and a preview with center and no zoom warns`,
-            pictureFaults.pics === '-,-,-,-,img,img' && pictureFaults.labels === 'Throws,Number,Missing,Hangs' && /threw "boom"/.test(pictureFaults.text) && /returned 42/.test(pictureFaults.text)
-            && /HTTP 404/.test(pictureFaults.text) && /did not answer in 20 s/.test(pictureFaults.text) && pictureFaults.half, JSON.stringify(pictureFaults));
+            pictureFaults.pics === '-,-,-,-,img,img' && pictureFaults.labels === 'Throws,Number,Missing,Hangs' && /threw \\"boom\\"/.test(pictureFaults.text) && /returned 42/.test(pictureFaults.text)
+            && /answered HTTP 404/.test(pictureFaults.text) && /did not answer in 20 s/.test(pictureFaults.text) && pictureFaults.half, JSON.stringify(pictureFaults));
         // A request of a style that fails warns with one prefix, and removing styles() while a style request hangs aborts it
         // and removes the hidden box at once (#1507).
         const styleRequest = await page.evaluate(async renderer => {
@@ -3078,7 +3079,7 @@ for (const renderer of renderers) {
             const before = boxes();
             host.destroy();
             await new Promise(r => setTimeout(r, 200));
-            const out = {before, after: boxes(), aborted, warning: warns.find(w => w.includes('"Fails"')) ?? ''};
+            const out = {before, after: boxes(), aborted, warning: warns.find(w => w.startsWith('[map-jr-gl] E1560 https://map-jr.org/e/1560 label="Fails" reason="')) ?? ''};
             out.prefixes = out.warning.split('[map-jr-gl]').length - 1;
             el.remove();
             console.warn = warn;
@@ -3507,7 +3508,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
             return errors;
         });
         check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
-            got.length === 1 && got[0].startsWith('[map-jr-gl] E495 the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
+            got.length === 1 && got[0] === '[map-jr-gl] E495 https://map-jr.org/e/495' && !rejections.length, JSON.stringify({got, rejections}));
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -3601,7 +3602,7 @@ for (const renderer of ['worker', 'main']) {
                     return errors;
                 }, renderer);
                 check(`[${renderer}] a part of the worker that does not load: the map reports one error that names the file (#79)`,
-                    failed.length === 1 && /\[map-jr-gl\] E(21846|31846) The worker could not load/.test(failed[0]) && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
+                    failed.length === 1 && /^\[map-jr-gl\] E(21846|31846) https:\/\/map-jr\.org\/e\/\1 /.test(failed[0]) && failed[0].includes('map-jr-gl-worker-geojson.js'), JSON.stringify(failed));
             } finally { await other.close(); }
             // The globe (#2075): the tile workers cut its tiles with the part `subdivide`. When that part does not load, the
             // map reports it once and draws its vector tiles without the cut. After setProjection to the globe, the page
@@ -3705,7 +3706,7 @@ for (const renderer of ['main', 'worker']) {
             await run('noSources', {version: 8, layers: good.layers});
             return {results, unhandled};
         }, renderer);
-        const said = /^\[map-jr-gl\] E539 The style has no list "layers"/;
+        const said = /^\[map-jr-gl\] E539 https:\/\/map-jr\.org\/e\/539$/;
         for (const [name, r] of Object.entries(out.results)) {
             if (name === 'noSources') check(`[${renderer}] a style with no "sources" is drawn without an error`, r.first === '' && r.idle && r.second === '', JSON.stringify(r));
             else check(`[${renderer}] a style that is not a style (${name}): one error of the map that names "layers", and update() with a good style draws`,
@@ -3847,8 +3848,8 @@ for (const renderer of renderers) {
             el.remove();
             return left;
         });
-        const said = warnings.filter(w => w.startsWith('[map-jr-gl] E97 The container already has a map.')).length, mark = warnings.indexOf('mark');
-        check('a second map in one element gets a warning, and a map after destroy() does not', said === 1 && mark >= 0 && warnings.findIndex(w => w.startsWith('[map-jr-gl] E97 The container already has a map.')) > mark && twice === 0, JSON.stringify({warnings, twice}));
+        const said = warnings.filter(w => w === '[map-jr-gl] E97 https://map-jr.org/e/97').length, mark = warnings.indexOf('mark');
+        check('a second map in one element gets a warning, and a map after destroy() does not', said === 1 && mark >= 0 && warnings.findIndex(w => w === '[map-jr-gl] E97 https://map-jr.org/e/97') > mark && twice === 0, JSON.stringify({warnings, twice}));
     } catch (e) { check('removed while loading: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -3993,7 +3994,7 @@ for (const renderer of renderers) {
         await page.evaluate(async () => { window.host.update({...window.spec, fonts: {'Test Square Regular': '/test-fonts/square.ttf', 'Test Gone Regular': '/test-fonts/missing.ttf'}}); await new Promise(r => setTimeout(r, 200)); await window.settle(); });
         const after = await dark(), errors = await page.evaluate(() => window.errors);
         await page.evaluate(() => window.host.destroy());
-        const failed = errors.some(m => /^\[map-jr-gl\] E1163 the request for the font http:\/\/[^ ]+\/test-fonts\/missing\.ttf failed: HTTP 404\. The labels use the next font of their "text-font" instead of "Test Gone Regular"\.$/.test(m));
+        const failed = errors.some(m => /^\[map-jr-gl\] E10494 https:\/\/map-jr\.org\/e\/10494 font="Test Gone Regular" E1163 https:\/\/map-jr\.org\/e\/1163 what="font" url="http:\/\/[^ "]+\/test-fonts\/missing\.ttf" reason="HTTP 404"$/.test(m));
         // (The squares of the font fill much more of the label than the letters of a font of the device.)
         check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name and the HTTP status (#1193)',
             asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));
@@ -4040,6 +4041,11 @@ for (const [build, file] of [['the development build, and the file of the checks
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
             const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, interactiveLayers: ['nope']});
             const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
+            // (Two more messages: one that the source builds with the name of the method, and one with the name of the
+            // method before its code. The production build prints the code, the link and the values, #2148.)
+            let noStyle = '';
+            try { lib.createMap(document.createElement('div'), {}); } catch (e) { noStyle = e.message; }
+            const notCluster = await host.clusterLeaves('nope', 1).then(() => '', e => e.message);
             // (An unknown option of an overlay warns only with the checks, #1647.)
             const ov = host.overlay(document.createElement('div'), {lngLat: [-74.0065, 40.7085], lnglat: [3, 3]});
             ov.update({lngLat: [-74.0065, 40.7085], colour: 'red'}); ov.patch({Anchor: 'top'}); ov.remove();
@@ -4047,11 +4053,17 @@ for (const [build, file] of [['the development build, and the file of the checks
             await new Promise(r => setTimeout(r, 1200));
             const drawn = (await host.queryFeatures(undefined, {radius: 5})).length;
             host.destroy(); el.remove(); console.warn = log;
-            return {said, unhandled, place, drawn};
+            return {said, unhandled, place, drawn, noStyle, notCluster};
         }, file);
         lost.asked = asked.length;
-        check(`${build}: the map draws with no warning, a wrong place of a query is refused with a short message, no rejection is unhandled, and ${file === 'map-jr-gl.js' ? 'the file of the checks is not requested' : 'the file of the checks was requested'}`,
-            (file === 'map-jr-gl.js' ? asked.length === 0 : asked.length > 0) && lost.said.length === 0 && lost.drawn > 0 && lost.place === '[map-jr-gl] E9 queryFeatures(): the place is not {x, y} or [lng, lat].' && !lost.unhandled.length, JSON.stringify(lost));
+        const production = file === 'map-jr-gl.js';
+        check(`${build}: the map draws with no warning, a wrong place of a query is refused with a short message, no rejection is unhandled, and ${production ? 'the file of the checks is not requested' : 'the file of the checks was requested'}`,
+            (production ? asked.length === 0 : asked.length > 0) && lost.said.length === 0 && lost.drawn > 0 && !lost.unhandled.length
+            && lost.place === (production ? '[map-jr-gl] E9 https://map-jr.org/e/9' : '[map-jr-gl] E9 queryFeatures(): the place is not {x, y} or [lng, lat].'), JSON.stringify(lost));
+        check(`${build}: a message prints ${production ? 'its code, the link to the page of the code and its values, and not its text (#2148)' : 'its code and its full text (#2148)'}`,
+            production ? lost.noStyle === '[map-jr-gl] E57 https://map-jr.org/e/57 method="createMap"' && lost.notCluster === '[map-jr-gl] clusterLeaves(): E217 https://map-jr.org/e/217 id="nope"'
+                : lost.noStyle === '[map-jr-gl] E57 createMap(): the description has no "style". Pass the URL of a style or a style object as "style".'
+                && lost.notCluster === '[map-jr-gl] clusterLeaves(): E217 "nope" is not a GeoJSON source of the style.', JSON.stringify(lost));
     } catch (e) { check(`${build}: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -4125,7 +4137,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             console.warn = warn;
             return out;
         }, [entry, renderer]);
-        const text = '[map-jr-gl] E20017 The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and show other content when it returns false.';
+        const text = '[map-jr-gl] E20017 https://map-jr.org/e/20017 message="WebGL2 is not available"';
         check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
             able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
             && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
@@ -4155,7 +4167,7 @@ for (const other of [true, false]) {
             console.warn = warn;
             return {said, loaded};
         });
-        const text = `[map-jr-gl] E10017 The worker file is version 0.0.1 and the page file is version ${version}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`;
+        const text = `[map-jr-gl] E10017 https://map-jr.org/e/10017 workerVersion="0.0.1" pageVersion="${version}"`;
         check(other ? 'a worker file of another version: two maps give one warning with both versions, and they load' : 'the worker file of the same version: no warning',
             two.loaded.join() === 'true,true' && (other ? changed > 0 && two.said.length === 1 && two.said[0] === text : two.said.length === 0), JSON.stringify({...two, changed}));
     } catch (e) { check(`the version of the worker file (${other ? 'another' : 'the same'}): the test run was completed`, false, String(e.message).split('\n')[0]); }
@@ -4651,9 +4663,10 @@ for (const status of [404, 403, 503]) {
             return errors;
         });
         const of = s => errors.filter(e => e.source === s), most = map => Math.max(...map.values());
-        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 The source "${s}": E1163 the request for the tile http`));
+        // (The production build prints the codes, their links and the values, #2148.)
+        const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 https://map-jr.org/e/2106 source="${s}" E1163 https://map-jr.org/e/1163 what="tile" url="http`));
         check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
-            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('failed: HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
+            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('.png" reason="HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
             seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
     } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
@@ -4684,7 +4697,7 @@ for (const status of [404, 403, 503]) {
         const most = seen.size ? Math.max(...seen.values()) : 0;
         check('a raster-dem tile that cannot be decoded is requested once and gives one error with the source, and the map is idle (#2109)',
             seen.size > 0 && most === 1 && got.errors.length === seen.size && got.idle
-            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 The source "dem": E1163 the request for the tile http') && e.message.includes('PNG or WebP')),
+            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 source="dem" E1163 https://map-jr.org/e/1163 what="tile" url="http') && e.message.includes('PNG or WebP')),
             JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
     await page.close();

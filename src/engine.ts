@@ -791,8 +791,9 @@ export class Engine {
                 set.add(await face.load());
             } catch (err) {
                 // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
-                const m = (err as Error).message, rest = `The labels use the next font of their "text-font" instead of "${f.name ?? f.family}".`;
-                this.emit({type: 'error', message: m.startsWith('[map-jr-gl]') ? `${m}. ${rest}` : `[map-jr-gl] E494 fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
+                const m = (err as Error).message, font = f.name ?? f.family;
+                if (m.startsWith('[map-jr-gl]')) this.emit({type: 'error', message: m.replace(/^\[map-jr-gl\] /, `[map-jr-gl] E10494 The labels use the next font of their "text-font" instead of "${font}". `)});
+                else this.emit({type: 'error', message: `[map-jr-gl] E494 fonts: the font "${font}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
             }
         })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
     }
