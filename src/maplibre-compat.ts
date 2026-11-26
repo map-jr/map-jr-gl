@@ -13,7 +13,7 @@ import {Marker as CoreMarker, Popup as CorePopup, type MarkerOptions, type Popup
 /** Options of MapLibre GL JS that `Marker` and `Popup` accept with no effect: each warns once per page. */
 const noEffect: Record<string, 1> = {};
 const accepted = (type: string, options: Record<string, unknown>, names: string[]) => {
-    for (const n of names) if (options[n] !== undefined && !noEffect[n]) {
+    if (__DEV__) for (const n of names) if (options[n] !== undefined && !noEffect[n]) {
         noEffect[n] = 1;
         console.warn(`[map-jr-gl] ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/reference/maplibre-differences.md.`);
     }
@@ -151,7 +151,7 @@ export const getVersion = () => __VERSION__;
 let warned = 0;
 export const setWorkerUrl = (url: string) => {
     if (/maplibre-gl[^/]*worker/i.test(String(url))) {
-        if (!warned++) console.warn('[map-jr-gl] setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.');
+        if (__DEV__ && !warned++) console.warn('[map-jr-gl] setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.');
         return;
     }
     workerUrl = url; set({workerUrl: url});

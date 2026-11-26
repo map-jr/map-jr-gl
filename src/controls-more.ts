@@ -293,7 +293,7 @@ export class GlobeControl implements Control {
 export class LogoControl implements Control {
     private el?: HTMLElement;
     constructor(public options: {compact?: boolean} = {}) {
-        if (options.compact !== undefined) noEffect('LogoControl', 'compact', ' This library has no logo. Remove the option.');
+        if (__DEV__ && options.compact !== undefined) noEffect('LogoControl', 'compact', ' This library has no logo. Remove the option.');
     }
     onAdd() { return this.el = document.createElement('div'); }
     onRemove() { this.el?.remove(); }
@@ -385,7 +385,8 @@ export class GeolocateControl extends Evented implements Control {
         this.el?.remove(); this.map = undefined;
     }
 }
-// (Warnings are once per page, as the other warnings for options with no effect.)
+declare const __DEV__: boolean;
+// (Warnings are once per page, as the other warnings for options with no effect. Development build only, #2133.)
 const warned: Record<string, 1> = {};
 /** One warning for an option of a control that is accepted and has no effect. */
 function noEffect(control: string, option: string, instead = '') {
