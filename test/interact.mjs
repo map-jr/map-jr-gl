@@ -1778,7 +1778,7 @@ for (const mode of renderers) {
         sized.tilted.join() === 'by-data:1,by-zoom:1' && sized.tiltedNow.join() === 'by-data:1,by-zoom:1', JSON.stringify(sized));
 
     // A circle whose center lies in the next tile is found at its edge, as in MapLibre (#2024): the choice of tiles grows
-    // by the largest radius of the layer, from a constant or the zoom (a size from the data: #2190). Circles of 170 pixels 150 pixels east
+    // by the largest radius of the layer, from a constant or the zoom (a size from the data: below). Circles of 170 pixels 150 pixels east
     // of a tile edge are queried 15 pixels west of it, flat and with pitch 45.
     const neighbor = await page.evaluate(async renderer => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -1805,6 +1805,35 @@ for (const mode of renderers) {
         neighbor.source.now === 1 && neighbor.source.later === 1, JSON.stringify(neighbor.source));
     check(`[${mode}] queryRenderedFeatures: a large circle whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2024)`,
         [0, 45].every(p => neighbor[p].now === 'const,zoom' && neighbor[p].later === 'const,zoom'), JSON.stringify(neighbor));
+
+    // A circle whose size comes from the data reaches as far as its largest size in the data, as MapLibre takes the largest
+    // value of each bucket (`getMaximumPaintValue`; #2190). A circle of 700 pixels from `get`, and one of 10 pixels with
+    // a stroke of 690 pixels from `get`, and one of 700 pixels from the state of a promoted id, 600 pixels east of a tile edge, are queried 15 pixels west of it, flat and with pitch 45.
+    const farData = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+        const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const b = m.project([0, 0]), pt = m.unproject([b.x + 600, b.y]);
+        m.addSource('s', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {r: 700}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'radius', type: 'circle', source: 's', paint: {'circle-radius': ['get', 'r']}});
+        m.addLayer({id: 'stroke', type: 'circle', source: 's', paint: {'circle-radius': 10, 'circle-stroke-width': ['-', ['get', 'r'], 10]}});
+        // (A size from the feature state of a source with `promoteId`.)
+        m.addSource('p', {type: 'geojson', promoteId: 'key', data: {type: 'Feature', properties: {key: 'a'}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
+        m.addLayer({id: 'state', type: 'circle', source: 'p', paint: {'circle-radius': ['coalesce', ['feature-state', 'r'], 5]}});
+        m.setFeatureState({source: 'p', id: 'a'}, {r: 700});
+        await new Promise(r => m.once('idle', r));
+        const out = {};
+        for (const pitch of [0, 45]) {
+            m.jumpTo({pitch});
+            const c = m.project([0, 0]), q = [c.x - 15, c.y];
+            out[pitch] = {now: [...m.queryRenderedFeatures(q)].map(f => f.layer.id).sort().join(), later: (await m.queryRenderedFeatures(q)).map(f => f.layer.id).sort().join()};
+        }
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] queryRenderedFeatures: a circle of 700 pixels from the data whose center lies in the next tile is found at its edge, flat and tilted, also in the array at once (#2190)`,
+        [0, 45].every(p => farData[p].now === 'radius,state,stroke' && farData[p].later === 'radius,state,stroke'), JSON.stringify(farData));
 
     // A circle with a radius far larger than the map is found on a tilted map, as in MapLibre (#2230): the rectangle
     // that chooses the tiles is cut to the canvas and one tile. Ten circles, pitch 60, a point and a box.

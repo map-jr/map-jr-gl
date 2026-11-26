@@ -4736,7 +4736,7 @@ for (const status of [404, 403, 503]) {
         // (The production build prints the codes, their links and the values, #2148.)
         const named = s => of(s).every(e => e.message.startsWith(`[map-jr-gl] E2106 https://map-jr.org/e/2106 source="${s}" E1163 https://map-jr.org/e/1163 what="tile" url="http`));
         check('a raster tile that answers HTTP 500 gives one error for each tile, with the prefix and the source (#2099)',
-            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('.png" reason="HTTP 500. ')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
+            seen.five.size > 0 && of('five').length === seen.five.size && named('five') && of('five').every(e => e.message.includes('.png" reason="HTTP 500"')), JSON.stringify({tiles: seen.five.size, errors: of('five').slice(0, 2)}));
         check('a raster tile that cannot be decoded gives one error for each tile, with the prefix and the source, and is requested once (#2099)',
             seen.png.size > 0 && of('png').length === seen.png.size && named('png') && most(seen.png) === 1, JSON.stringify({tiles: seen.png.size, most: seen.png.size && most(seen.png), errors: of('png').slice(0, 2)}));
     } catch (e) { check('the test of raster tiles that fail was completed', false, String(e.message).split('\n')[0]); }
@@ -4767,7 +4767,7 @@ for (const status of [404, 403, 503]) {
         const most = seen.size ? Math.max(...seen.values()) : 0;
         check('a raster-dem tile that cannot be decoded is requested once and gives one error with the source, and the map is idle (#2109)',
             seen.size > 0 && most === 1 && got.errors.length === seen.size && got.idle
-            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 source="dem" E1163 https://map-jr.org/e/1163 what="tile" url="http') && e.message.includes('PNG or WebP')),
+            && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 source="dem" E1163 https://map-jr.org/e/1163 what="tile" url="http') && e.message.includes('reason="undecodable image"')),
             JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
