@@ -854,7 +854,7 @@ the focus returns to the element of the map that had it before.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `lngLat` **required** | `Position` | | The position of the element, `[lng, lat]`. |
-| `anchor` | `Anchor` | `'center'` | The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
+| `anchor` | `Anchor` | `'center'` for a marker; for a popup, chosen by the position | The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
 | `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
 | `popup` | `boolean` | `false` | Whether the element is shown in a box with a tip that points to the position (a popup). |
 | `onClose` | `() => void` | | Called when the user closes the popup. |
@@ -863,6 +863,11 @@ the focus returns to the element of the map that had it before.
 | `onDrag` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, at each move of a drag. |
 | `onDragEnd` | `(lngLat: Position) => void` | | Called with the position where the element was dropped, `[lng, lat]`. |
 <!-- ref:OverlayOptions:end -->
+
+Without `anchor`, an element that is not a popup has `'center'` at the position. A popup chooses its anchor each time
+it moves, as MapLibre GL JS does: `'top'` near the top edge of the map, `'bottom'` near the bottom edge or when it is
+near no edge, and `'left'` or `'right'` near a side. The two parts join into a corner, such as `'top-left'`. An
+`anchor` that you set keeps the popup on that side.
 
 An option that is not in this table has no effect. In the development build (the `development` export condition,
 `dist/*.dev.js`), `overlay`, `update` and `patch` warn once for each such option on each map, and the warning lists the

@@ -334,7 +334,7 @@ const popupOpen = ref(true);
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `lngLat` **required** | `[number, number]` | | The position of the content, `[lng, lat]`. |
-| `anchor` | `Anchor` | `'center'` | The part of the content that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
+| `anchor` | `Anchor` | `'center'` for a marker; for a popup, chosen by the position | The part of the content that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
 | `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
 | `popup` | `boolean` | `false` | Whether the content is shown in a box with a tip that points to the position (a popup). |
 | `onClose` | `() => void` | | Called when the user closes the popup, as the listener `@close`. |
