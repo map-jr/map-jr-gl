@@ -9,24 +9,26 @@ const ring = (wiggle: number) => Array.from({length: N}, (_, i) => {
     const a = i / N * 2 * Math.PI, r = 5 + wiggle * Math.sin(i * 0.7);
     return [10 + r * Math.cos(a), 45 + r * Math.sin(a) * 0.7];
 });
+/** A rough ring that crosses the edges of a tile many times within one run of vertices. */
+let seed = 1;
+const random = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+const rough = Array.from({length: 2000}, (_, i) => {
+    const a = i / 2000 * 2 * Math.PI, r = 3 * (1 + 0.3 * Math.sin(i * 0.37) + 0.1 * (random() - 0.5));
+    return [10 + r * Math.cos(a) + 0.3 * (random() - 0.5), 45 + r * Math.sin(a) * 0.7 + 0.3 * (random() - 0.5)];
+});
 const sources = (o: {tolerance?: number}) => {
     const poly = ring(0.01), line = ring(0.02);
     return [
         prepareSource({type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[...poly, poly[0]]]}}, o),
         prepareSource({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: line}}, o),
+        prepareSource({type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[...rough, rough[0]]]}}, o),
     ];
 };
-/** The geometry of each feature. A polygon ring starts at its smallest vertex: the clip can start a ring at another vertex of the same ring. */
+/** The geometry of each feature, with each ring starting at the same vertex: a line along a polygon outline starts its dashes there. */
 const geometry = (out: ReturnType<typeof sliceGeoJSON>) => Object.values(out)[0]?.features.map(f => {
     const c: number[] = [], e: number[] = [];
     f.geometry(4096, c, e);
-    if (f.type !== 3) return [c, e];
-    return e.map((end, i) => {
-        const r = c.slice(i ? e[i - 1] * 2 : 0, end * 2);
-        let s = 0;
-        for (let j = 2; j < r.length; j += 2) if (r[j] < r[s] || r[j] === r[s] && r[j + 1] < r[s + 1]) s = j;
-        return [...r.slice(s), ...r.slice(0, s)];
-    });
+    return [c, e];
 });
 
 test('a tile gives the same geometry as a slice that reads every vertex', () => {
@@ -35,7 +37,7 @@ test('a tile gives the same geometry as a slice that reads every vertex', () => 
         const all = {...src, features: src.features.map(f => ({...f}))};
         sliceGeoJSON(src, 0, 0, 0);
         (all.features[0] as any).runs = [new Float64Array((src.features[0] as any).runs[0].length).map((_, i) => i % 4 < 2 ? -Infinity : Infinity)];
-        for (const z of [3, 6, 9]) {
+        for (const z of [3, 6, 9, 10, 12]) {
             const n = 2 ** z, xa = Math.floor(mercX(4) * n), xb = Math.floor(mercX(16) * n), ya = Math.floor(mercY(50) * n), yb = Math.floor(mercY(40) * n);
             const step = Math.max(1, Math.floor((xb - xa) / 12));
             for (let x = xa; x <= xb; x += step) for (let y = ya; y <= yb; y += step) assert.deepEqual(geometry(sliceGeoJSON(src, z, x, y)), geometry(sliceGeoJSON(all, z, x, y)), `${z}/${x}/${y}`);

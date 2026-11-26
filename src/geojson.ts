@@ -335,14 +335,16 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
             const d = f.type === 2 && metrics ? (f.dist ??= [])[ri] ??= lengths(r) : null, skip: boolean[] = [];
             // A run of vertices that lies wholly past one edge of the tile (by more than a tile unit) keeps only its
             // first and last kept vertex. The edges into the tile stay the same, and each clip step drops the vertices
-            // between them, so the result is the same (#1888).
+            // between them, so the result is the same (#1888). A run past the top or the bottom edge is skipped only
+            // when it lies within the left and right edges: the clip of a polygon cuts at x first, and a run that crosses
+            // x = lo or x = hi there would leave other points on that edge, so the ring would start or turn elsewhere.
             const runs = d || f.type === 1 || r.length < RUN * 8 ? null : (f.runs ??= [])[ri] ??= runBoxes(r), m1 = 1 / EXTENT / n;
             let to = -1;
             for (let i = 0; i < r.length; i = to < 0 ? i + 2 : to * 2, to = -1) {
                 const v = i / 2;
                 if (runs && v % RUN === 1) {
                     const c = (v - 1) / RUN * 4;
-                    if (runs[c + 2] + w < x0 - m1 || runs[c] + w > x1 + m1 || runs[c + 3] < y0 - m1 || runs[c + 1] > y1 + m1) {
+                    if (runs[c + 2] + w < x0 - m1 || runs[c] + w > x1 + m1 || (runs[c + 3] < y0 - m1 || runs[c + 1] > y1 + m1) && runs[c] + w > x0 + m1 && runs[c + 2] + w < x1 - m1) {
                         let s = v, e = Math.min(v - 1 + RUN, r.length / 2 - 1);
                         if (keep) { while (s < e && keep[s] <= sqTol) s++; while (e > s && keep[e] <= sqTol) e--; }
                         if (s < e) { to = e; i = s * 2; }
