@@ -18,7 +18,7 @@ const alpha = (name: string, a: number) => a < 0.999 ? ` ${name}="${num(a)}"` : 
  * Path data for one feature, or '' when nothing of it would be visible. `box` is the viewport in tile units;
  * `minSize` and `tol` (quantized units) drop features and vertices too small to see at this scale.
  */
-function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number): string {
+function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number, cap?: Cap): string {
     const {coords, ringEnds, featEnds} = b.geom, k = b.geom.half ? 0.5 : 1;
     let d = '';
     for (let r = f ? featEnds[f - 1] : 0; r < featEnds[f]; r++) {
@@ -30,19 +30,40 @@ function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: n
         }
         if (x1 < box[0] || y1 < box[1] || x0 > box[2] || y0 > box[3]) continue;
         if ((x1 - x0) / Q < minSize && (y1 - y0) / Q < minSize) continue;
-        let px = 0, py = 0, ring = '', n = 0;
+        let px = 0, py = 0, ring = '', n = 0, len = 0, sx = 0, sy = 0, ax = 0, ay = 0, bx = 0, by = 0;
         for (let i = start; i < end; i++) {
             const x = Math.round(coords[i * 2] * k / Q), y = Math.round(coords[i * 2 + 1] * k / Q);
             if (i === start) { ring = `M${x} ${y}`; n = 1; } else if (i === end - 1 ? (x !== px || y !== py) : Math.abs(x - px) + Math.abs(y - py) > tol) {
                 const dx = x - px, dy = y - py;
                 ring += dy === 0 ? `h${dx}` : dx === 0 ? `v${dy}` : `l${dx} ${dy}`;
-                n++;
+                if (n++ === 1) { sx = px; sy = py; ax = x; ay = y; }
+                len += Math.hypot(dx, dy); bx = px; by = py;
             } else continue;
             px = x; py = y;
         }
         if (n >= (close ? 3 : 2)) d += close ? ring + 'z' : ring;
+        if (cap && n >= 2 && !close) cap.e += capEnds(cap, sx, sy, ax, ay, bx, by, px, py, len);
     }
     return d;
+}
+
+/** The extra length of a square cap (path units), the dash pattern in pixels, pixels for each path unit, and the extension paths. */
+interface Cap {half: number; pat: number[]; px: number; e: string}
+
+/**
+ * MapLibre GL JS extends the two ends of a line with a square cap by half the width, and draws the dashes with butt
+ * ends: the start is always in a dash, and the end is in a dash when the length of the line ends inside one (#2177).
+ * The extensions are butt-ended segments, drawn without a dash pattern.
+ */
+function capEnds(c: Cap, sx: number, sy: number, ax: number, ay: number, bx: number, by: number, ex: number, ey: number, len: number): string {
+    const seg = (x: number, y: number, tx: number, ty: number) => {
+        const l = Math.hypot(tx - x, ty - y) || 1;
+        return `M${+(x + (x - tx) * c.half / l).toFixed(2)} ${+(y + (y - ty) * c.half / l).toFixed(2)}L${x} ${y}`;
+    };
+    const pat = c.pat.length % 2 ? [...c.pat, ...c.pat] : c.pat, period = pat.reduce((t, v) => t + v, 0);
+    let at = period > 0 ? len * c.px % period : 0, i = 0;
+    while (i < pat.length - 1 && at >= pat[i]) at -= pat[i++];
+    return seg(sx, sy, ax, ay) + (i % 2 ? '' : seg(ex, ey, bx, by));
 }
 
 export interface SVGScene {
@@ -144,8 +165,10 @@ export function renderSVG(s: SVGScene): string {
                 const key = fill ? `fill="${col}"${alpha('fill-opacity', a)}${outline}`
                     : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
                         (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
-                const d = pathData(b, f, fill, box, minSize, tol);
+                const cap = dash && b.cap === 'square' ? {half: w / 2 * unitsPerPx, pat: dash.map(d => d * Math.max(w, 0.5)), px: it.scale * Q, e: ''} : undefined;
+                const d = pathData(b, f, fill, box, minSize, tol, cap);
                 if (d) groups.set(key, (groups.get(key) ?? '') + d);
+                if (cap?.e) { const k2 = `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}`; groups.set(k2, (groups.get(k2) ?? '') + cap.e); }
             }
             if (!groups.size) continue;
             const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
