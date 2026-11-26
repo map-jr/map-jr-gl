@@ -531,7 +531,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `unproject`
 
 - **MapLibre GL JS:** A point of the screen gives the position where its line of sight meets the plane of the map center, or with 3D terrain the first ground along it. Above the horizon that position is behind the camera.
-- **This library:** The same in Mercator: the positions agree within 0.0001° at pitch 60 to 85 and 100 to 120, above, at and below the horizon. From pitch 89.5 to 90.1 they differ by up to 0.005°. With 3D terrain, a point below the horizon gives the nearest ground along the line of sight, which can differ from MapLibre GL JS near the horizon. `getBounds` takes the top corners of the screen at the horizon when the horizon is in view, as MapLibre GL JS does. With 3D terrain, `getBounds` takes the four corners on the plane at the height of the map center, as MapLibre GL JS does, so a mountain at the top of the screen can be partly outside the box.
+- **This library:** The same in Mercator: the positions agree within 0.0001° at pitch 60 to 120, above, at and below the horizon. With 3D terrain, a point below the horizon gives the nearest ground along the line of sight, which can differ from MapLibre GL JS near the horizon. `getBounds` takes the top corners of the screen at the horizon when the horizon is in view, as MapLibre GL JS does. With 3D terrain, `getBounds` takes the four corners on the plane at the height of the map center, as MapLibre GL JS does, so a mountain at the top of the screen can be partly outside the box.
 
 ### The root property `sky`, `setSky`, `getSky`
 

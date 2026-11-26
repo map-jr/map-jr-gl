@@ -1161,6 +1161,27 @@ test('transform: unproject gives the point of MapLibre GL JS above, at and below
     }
 });
 
+test('transform: unproject gives the point of MapLibre GL JS near a pitch of 90 (#1907)', () => {
+    const t = new Transform(); t.width = 1024; t.height = 768; t.maxPitch = 180;
+    // Values of MapLibre GL JS 6.17 (MercatorTransform.screenPointToLocation) for x = 300, center -74.006, 40.7085, zoom 14.
+    // At a pitch of 90 the camera is on the ground, and every ray meets the ground at the camera.
+    const cases: [number, number, number, number][] = [
+        [89.5, 0, -74.005755, 40.670004], [89.5, 200, -74.005474, 40.668845], [89.5, 384, -74.015098, 40.7085],
+        [89.5, 450, -74.007203, 40.675969], [89.5, 600, -74.006405, 40.672679], [89.5, 767, -74.006233, 40.671971],
+        [89.9, 0, -74.005952, 40.670816], [89.9, 200, -74.005899, 40.670599], [89.9, 384, -74.015098, 40.7085],
+        [89.9, 450, -74.006269, 40.672122], [89.9, 600, -74.006084, 40.671359], [89.9, 767, -74.006048, 40.671209],
+        [90, 0, -74.006, 40.671013], [90, 200, -74.006, 40.671013], [90, 384, -74.006, 40.671013],
+        [90, 450, -74.006, 40.671013], [90, 600, -74.006, 40.671013], [90, 767, -74.006, 40.671013],
+        [90.1, 0, -74.006047, 40.671208], [90.1, 200, -74.006098, 40.671418], [90.1, 384, -74.015098, 40.7085],
+        [90.1, 450, -74.005714, 40.669835], [90.1, 600, -74.005915, 40.670661], [90.1, 767, -74.005952, 40.670815],
+    ];
+    for (const [pitch, y, lng, lat] of cases) {
+        t.set([-74.006, 40.7085], 14, 0, pitch);
+        const [a, b] = t.unproject(300, y, true);
+        close(a, lng, 1e-5); close(b, lat, 1e-5);
+    }
+});
+
 test('transform: above a pitch of 90 the camera looks up, and screen positions invert on both sides of the ground (#897)', () => {
     const t = new Transform(); t.width = 512; t.height = 512; t.maxPitch = 180;
     // Through the tile matrix (what the GPU draws) and back with screenToMerc: the point must come back.
