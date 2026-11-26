@@ -397,9 +397,10 @@ void main() {
 #endif
   // A point of the picture is the mix of the corners divided by their weights, so that the grid of the globe follows the
   // perspective too: a straight line of the picture stays straight in Mercator, as in MapLibre GL JS.
-  // A strongly foreshortened picture is blended toward the bilinear stretch (u_blend, see cornerWeights).
+  // A strongly foreshortened picture is blended toward the bilinear stretch (u_blend, see cornerWeights). The weight is
+  // mixed with the constant u_q.x, the weight of the first corner, so that an unblended picture keeps the exact weight q.
   vec4 w = vec4((1.0 - ap.x) * (1.0 - ap.y), ap.x * (1.0 - ap.y), ap.x * ap.y, (1.0 - ap.x) * ap.y), b = w / u_q;
-  float q = 1.0 / (b.x + b.y + b.z + b.w), r = mix(q / u_q.x, 1.0, u_blend);
+  float q = 1.0 / (b.x + b.y + b.z + b.w), r = mix(q, u_q.x, u_blend);
   v_uvq = vec3(ap * r, r);
   v_tile = mix((b.x * u_corners[0] + b.y * u_corners[1] + b.z * u_corners[2] + b.w * u_corners[3]) * q,
     w.x * u_corners[0] + w.y * u_corners[1] + w.z * u_corners[2] + w.w * u_corners[3], u_blend);
