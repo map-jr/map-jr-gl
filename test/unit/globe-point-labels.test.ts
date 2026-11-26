@@ -81,3 +81,36 @@ test('on the globe without pitch, an icon without text on the ground has the col
     assert.equal(shown(false), 2, 'Mercator shows both icons');
     assert.equal(shown(true), 2, 'the globe shows both icons');
 });
+
+test('on the globe each corner of an icon on the ground goes through the sphere at its own place (#2194)', () => {
+    // A 40-pixel icon at 45° N, 60° E on a globe at zoom 2 that looks at 0°, 0°: off the center the icon is a trapezoid.
+    // The corners are taken as the renderer draws them (the center of the icon, the first order of its frame and the
+    // second order, see `iconQuads` in gl.ts), and each must be where the sphere has its point, as in MapLibre GL JS.
+    // `shift` is the center of the icon from its anchor, in pixels of the icon.
+    const corners = (extra: object, shift: number[]) => {
+        const layer = compileLayer({id: 'i', type: 'symbol', source: 'g', layout: {
+            'icon-image': 'a', 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map', ...extra}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [60, 45]}} as any), 0, 0, 0);
+        const labels = buildTile(data, 0, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 512; tr.height = 512;
+        tr.globe = globe; tr.globeStops = [0, 1];
+        tr.set([0, 0], 2, 0, 0);
+        const items = renderItems(tr, [id], () => ({labels})), it = items[0] as any;
+        const icons = () => ({x: 0, y: 0, width: 40, height: 40, pixelRatio: 1} as any);
+        const p = (placeLabels as any)(tr, items, [layer], new EstimateShaper(), new CollisionGrid(), icons)[0];
+        const f: number[] = p.icon.frame, l = p.src;
+        assert.equal(f.length, 10, 'the frame has a second order on the globe');
+        // A pixel of the icon is this many tile units at the anchor (MapLibre GL JS's `getPitchedTextCorrection`).
+        const g = Math.cosh(Math.PI * (1 - 2 * l.y / 4096)) * Math.cos(tr.lat * Math.PI / 180), unit = g / it.scale;
+        return [[-20, -20], [20, -20], [-20, 20], [20, 20]].map(([u, v]) => {
+            const [sx, sy] = tr.projectTile(it.id, l.x + (shift[0] + u) * unit, l.y + (shift[1] + v) * unit);
+            const qx = p.icon.x + u * f[0] + v * f[2] + f[4] * u * u + f[6] * u * v + f[8] * v * v, qy = p.icon.y + u * f[1] + v * f[3] + f[5] * u * u + f[7] * u * v + f[9] * v * v;
+            return Math.hypot(qx - sx, qy - sy);
+        });
+    };
+    const centered = corners({}, [0, 0]), shifted = corners({'icon-anchor': 'bottom', 'icon-offset': [30, 0]}, [30, -20]);
+    assert.ok(centered.every(d => d < 0.3), `the corners of a centered icon are off by ${centered.map(d => d.toFixed(2))} pixels`);
+    // (The frame of an icon away from its anchor is the one at its center: with the frame of the anchor its corners were off by up to 4 pixels.)
+    assert.ok(shifted.every(d => d < 1), `the corners of an icon away from its anchor are off by ${shifted.map(d => d.toFixed(2))} pixels`);
+});
