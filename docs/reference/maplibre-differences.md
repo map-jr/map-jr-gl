@@ -178,7 +178,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Camera
 
 - **MapLibre GL JS:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60). Roll. Field of view.
-- **This library:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 180 and writes one warning, where MapLibre GL JS throws an error. The map center is on the ground unless `setCenterClampedToGround(false)` and `setCenterElevation` give it a height, as in MapLibre GL JS: above a pitch of 90 a camera that is below the ground sees the map from below. No roll. `setVerticalFieldOfView` sets the field of view in degrees from 0.1 to 150, as in MapLibre GL JS, and the default is 36.87. The main API (`@map-jr/map-jr-gl`) has no field of view option and keeps the default. Padding is available.
+- **This library:** Tilt to 180 degrees with `maxPitch: 180` (the default `maxPitch` is 60, as in MapLibre GL JS). A larger `maxPitch` stops at 180 and writes one warning, where MapLibre GL JS throws an error. The map center is on the ground unless `setCenterClampedToGround(false)` and then `setCenterElevation` or the option `elevation` of `jumpTo` give it a height, as in MapLibre GL JS (`easeTo` and `flyTo` do not read `elevation`, as in MapLibre GL JS 6.17): above a pitch of 90 a camera that is below the ground sees the map from below. No roll. `setVerticalFieldOfView` sets the field of view in degrees from 0.1 to 150, as in MapLibre GL JS, and the default is 36.87. The main API (`@map-jr/map-jr-gl`) has no field of view option and keeps the default. Padding is available.
 
 ### Miter joins longer than about 2
 

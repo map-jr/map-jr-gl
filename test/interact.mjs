@@ -7110,6 +7110,38 @@ for (const mode of renderers) {
     });
     check('compat: setCenterElevation lasts after setCenterClampedToGround(false), and warns once while the center is clamped',
         JSON.stringify(elevated) === JSON.stringify({clamped: [true, 0, 1], held: [false, 10000, 95], back: [true, 0]}), JSON.stringify(elevated));
+    // jumpTo({elevation}) gives the center its height as MapLibre GL JS does: it lasts after setCenterClampedToGround(false)
+    // and the ground replaces it while the center is clamped. easeTo does not read `elevation` in MapLibre GL JS 6.17 (#1852).
+    const camElevation = {};
+    for (const lib of ['ml', 'jr']) {
+        camElevation[lib] = await page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ca8'}}]}, center: [35.38, 31.55], zoom: 10, attributionControl: false});
+            await new Promise(r => m.once('load', r));
+            const idle = () => new Promise(r => { m.once('idle', r); m.triggerRepaint(); });
+            const warn = console.warn; console.warn = () => {};
+            m.jumpTo({elevation: 3000});
+            await idle();
+            const out = [Math.round(m.getCenterElevation())];
+            m.setCenterClampedToGround(false); m.setCenterElevation(2000);
+            m.jumpTo({zoom: 11, elevation: 3000});
+            out.push(Math.round(m.getCenterElevation()));
+            await idle();
+            out.push(Math.round(m.getCenterElevation()));
+            m.easeTo({zoom: 12, elevation: 500, duration: 50});
+            await new Promise(r => m.once('moveend', r)); await idle();
+            out.push(Math.round(m.getCenterElevation()));
+            m.easeTo({zoom: 13, elevation: 500, duration: 0});
+            await idle();
+            out.push(Math.round(m.getCenterElevation()));
+            console.warn = warn; m.remove(); el.remove();
+            return out;
+        }, lib);
+    }
+    check('compat: jumpTo with elevation sets the height of the center as in MapLibre GL JS, and easeTo does not read it',
+        JSON.stringify(camElevation.jr) === JSON.stringify(camElevation.ml) && camElevation.jr[2] === 3000, JSON.stringify(camElevation));
     // setVerticalFieldOfView changes the camera as in MapLibre GL JS: clamped to 0.1 to 150, with the move events, and
     // a wider view reaches further at the top of the screen (#1709).
     const fov = await page.evaluate(async () => {

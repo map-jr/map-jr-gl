@@ -742,7 +742,17 @@ export class Map extends CoreMap {
      * As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom,
      * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls flyTo) keeps it.
      */
-    jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(this.snapped(o))); }
+    jumpTo(o: CameraInput, eventData?: EventData) {
+        // `elevation` is the height of the center, as with setCenterElevation: it lasts only after setCenterClampedToGround(false) (#1852).
+        if (o.elevation !== undefined) {
+            if (this.unclamped) o = {...o, elevation: +o.elevation!};
+            else {
+                o = {...o, elevation: undefined};
+                if (!this.warned.has('jump-elevation')) { this.warned.add('jump-elevation'); console.warn('[map-jr-gl] jumpTo(): the map center is clamped to the ground, which replaces "elevation" in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
+            }
+        }
+        return this.camera(eventData, () => super.jumpTo(this.snapped(o)));
+    }
     easeTo(o: EaseToOptions, eventData?: EventData) {
         return this.camera(eventData, () => super.easeTo(this.snapped(o)));
     }
