@@ -23,6 +23,8 @@ export async function checkCustomLayers(page, check, label = '[main]') {
     check(`${label} maplibre-compat: with the worker renderer (asked for, and the default), the first custom layer moves the map to the main thread; onAdd runs once with its context, the layer draws, and the camera, image, feature state, sky, marker and listeners stay (#1730), and isStyleLoaded() stays true (#1992)`,
         r.worker.length === 2 && r.worker.every(w => w.after === 'main' && !w.errors.length && !w.events.length && w.order === 'bg,red,top' && w.adds === 1 && w.sameGl && w.inside === 'red' && w.covered === 'blue'
             && w.camera === '2,1,10' && w.image && w.state && w.sky && w.marker && w.moves > 0 && w.notLoaded === 0), JSON.stringify(r.worker));
+    check(`${label} maplibre-compat: a context lost before the first frame after the move to the main thread for a custom layer restarts the map once more, and it draws (#1993)`,
+        !r.retry.errors.length && r.retry.events === 'webglcontextlost,webglcontextrestored' && r.retry.renderer === 'main' && r.retry.renders > 0, JSON.stringify(r.retry));
     const m = r.mercator;
     check(`${label} maplibre-compat: MercatorCoordinate gives the values of MapLibre GL JS`,
         near(m.origin[0], 0.5) && near(m.origin[1], 0.5) && m.origin[2] === 0 && near(m.ny[0], 0.29444444444444445) && near(m.ny[1], 0.3760277015186852) && near(m.ny[2], 3.295078460614361e-6)
@@ -189,6 +191,28 @@ async function run() {
         out.worker.push({renderer: renderer ?? 'default', before, after: w.renderer, errors, events, order, adds, sameGl: !!gl && gl === w.getCanvas().getContext('webgl2'), inside, covered,
             camera: [w.getCenter().lng, w.getCenter().lat, w.getBearing()].map(v => Math.round(v * 100) / 100).join(), image: w.hasImage('dot'), state: w.getFeatureState({source: 'g', id: 1}).hover === true,
             sky: w.getSky()?.['sky-color'] === '#123456', marker: w.getContainer().contains(marker.getElement()), moves, notLoaded});
+        const e = w.getContainer(); w.remove(); e.remove();
+    }
+    // #1993: the move for a custom layer is not a lost context, so it does not use up the one restart after a loss.
+    // (The context of the new canvas is lost at once, before the engine on this thread draws its first frame.)
+    {
+        const w = make('worker'), errors = [], events = [];
+        w.on('error', e => errors.push(e.error.message));
+        for (const type of ['webglcontextlost', 'webglcontextrestored']) w.on(type, () => events.push(type));
+        await new Promise(r => w.once('load', r));
+        const get = HTMLCanvasElement.prototype.getContext;
+        let armed = true, renders = 0;
+        HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+            const gl = get.call(this, kind, ...rest);
+            if (armed && gl && /webgl/.test(kind)) { armed = false; gl.getExtension('WEBGL_lose_context').loseContext(); }
+            return gl;
+        };
+        try {
+            w.addLayer({id: 'retry', type: 'custom', render() { renders++; }}, 'top');
+            const until = Date.now() + 15000;
+            while (Date.now() < until && !errors.length && !(events.length === 2 && renders)) await wait(100);
+        } finally { HTMLCanvasElement.prototype.getContext = get; }
+        out.retry = {errors, events: events.join(), renderer: w.renderer, renders};
         const e = w.getContainer(); w.remove(); e.remove();
     }
     const c = mod.MercatorCoordinate.fromLngLat([-74, 40.7], 100);

@@ -548,6 +548,8 @@ export class Map {
     }
 
     private restarted = false;
+    /** A restart for a lost context ran: the next loss before a first frame is an error. A move for a custom layer does not count (#1993). */
+    private retried = false;
     private restarting = false;
     /** The restart moves the engine to this thread for a custom layer (see `toMainThread`). */
     private movingToMain = false;
@@ -560,6 +562,7 @@ export class Map {
     private async restart(main?: boolean, quiet?: boolean) {
         if (this.restarting || this.removed) return;
         this.restarting = this.restarted = true;
+        if (!quiet) this.retried = true;
         this.movingToMain = !!quiet;
         if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
         this.watchTurn++;
@@ -663,14 +666,14 @@ export class Map {
      * already and fails before its first frame, or does not draw in its time, is an error.
      */
     private contextLost(silent?: boolean) {
-        if (__DEV__) this.note('contextLost()', {silent: !!silent, removed: this.removed, restarting: this.restarting, restarted: this.restarted, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
+        if (__DEV__) this.note('contextLost()', {silent: !!silent, removed: this.removed, restarting: this.restarting, retried: this.retried, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
         if (this.removed) return;
         // (The new engine lost its context while `restart` still waits, for the images for example.)
         if (this.restarting) return void setTimeout(() => this.contextLost(silent), 1000);
         const worker = this.renderer === 'worker', now = Date.now(), drew = this.drew && !silent, toMain = worker && (!drew || now - this.lostAt < 10000);
         this.lostAt = now;
-        if (__DEV__) this.note('decision', drew || worker || !this.restarted ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
-        if (drew || worker || !this.restarted) {
+        if (__DEV__) this.note('decision', drew || worker || !this.retried ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
+        if (drew || worker || !this.retried) {
             if (toMain) this.fellBack('the WebGL context was lost');
             this.restart(toMain);
         } else {
