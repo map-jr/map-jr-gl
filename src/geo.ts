@@ -323,7 +323,9 @@ export class Transform {
      */
     screenToMerc(px: number, py: number, z = this.flatZ, exact = false): [number, number] {
         if (this.globeness) return this.globe!.toMerc(this, px, py, this.elevation + z / this.pixelsPerMetre);
-        z = this.apart(z);
+        // `exact` takes the plane itself, as MapLibre GL JS does: near a pitch of 90 a plane moved by `apart` gives
+        // another point (#1907). A camera in the plane sees it as a line, and a ray along it gives the camera.
+        if (!exact) z = this.apart(z);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
         const sx = px - this.cx, cp = Math.cos(p), sp = Math.sin(p), floor = d * Math.min(0.02, 0.1 * Math.abs(cp)), under = this.underside(z);
         // Invert the perspective for a point on that plane. Above the horizon there is no ground: a point there is taken
@@ -331,7 +333,8 @@ export class Transform {
         // A camera below the plane sees it above the line of `underside`, and a point below that line is taken on it.
         const sy = exact ? py - this.cy : under !== null ? Math.min(py - this.cy, under) : Math.max(py - this.cy, -this.horizon());
         const denom = exact ? cp * d + sy * sp || 1e-9 : under !== null ? Math.min(cp * d + sy * sp, -floor) : Math.max(cp * d + sy * sp, floor);
-        const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
+        const along = exact && Math.abs(denom) < 1e-9 * d && Math.abs(cp * d - z) < 1e-9 * d;
+        const ry = along ? d * sp : (sy * (d - z * cp) + d * z * sp) / denom, rx = along ? 0 : sx * (d - ry * sp - z * cp) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
     }
 
