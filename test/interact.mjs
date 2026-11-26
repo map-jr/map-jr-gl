@@ -294,6 +294,29 @@ for (const mode of renderers) {
             return result;
         }, mode);
         check(`[${mode}] the globe: queryRenderedFeatures finds an icon moved by icon-translate where it is drawn (#1822)`, moved.drawn[1] > 220 && moved.drawn[1] < 245 && moved.atDrawn === 1 && moved.atScreen === 0, JSON.stringify(moved));
+        // On a pitched Mercator map icon-translate moves the point in tile units, as in MapLibre GL JS: [0, 60] at pitch 60
+        // moves the icon about 27 pixels down the screen, not 60 (#2021). The anchor `viewport` does the same.
+        const pitched = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            for (const anchor of ['map', 'viewport']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60'}));
+                const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 45]}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}, {id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'sq', 'icon-allow-overlap': true}, paint: {'icon-translate': [0, 60], 'icon-translate-anchor': anchor}}]};
+                const map = new mod.Map({container: el, style, center: [10, 45], zoom: 12, pitch: 60, renderer, attributionControl: false});
+                map.addImage('sq', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).map((_, i) => i % 4 === 0 ? 0 : 255)});
+                await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+                const bmp = await createImageBitmap(await map.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, k = bmp.width / 400;
+                let sx = 0, sy = 0, n = 0;
+                for (let i = 0; i < d.length; i += 4) if (d[i] < 60 && d[i + 2] > 200) { sx += (i / 4) % bmp.width; sy += Math.floor(i / 4 / bmp.width); n++; }
+                const x = sx / n / k, y = sy / n / k, found = async (px, py) => (await map.queryRenderedFeatures([[px - 2, py - 2], [px + 2, py + 2]], {layers: ['i']})).length;
+                out[anchor] = {drawn: [Math.round(x), Math.round(y)], atDrawn: await found(x, y), atPixels: await found(200, 260)};
+                map.remove(); el.remove();
+            }
+            return out;
+        }, mode);
+        check(`[${mode}] a pitched Mercator map: icon-translate moves an icon in tile units, and queryRenderedFeatures finds it there (#2021)`, Object.values(pitched).every(m => Math.abs(m.drawn[0] - 200) < 3 && m.drawn[1] > 220 && m.drawn[1] < 245 && m.atDrawn === 1 && m.atPixels === 0), JSON.stringify(pitched));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();

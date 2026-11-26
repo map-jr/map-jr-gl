@@ -1,5 +1,5 @@
 import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
-import {screenTranslate, mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
+import {mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
 import {anchors as lineAnchors, justification, type LabelSrc} from './tile.ts';
 import {BASELINE, EM, type Shaped, type Shaper} from './text.ts';
 import {CollisionGrid} from './collision.ts';
@@ -399,10 +399,10 @@ export function placeLabels(
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
     const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
-    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. On the globe the
-    // point is moved by tile units and projected again, as in MapLibre GL JS, so the offset follows the curve of the sphere.
+    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. The point is moved
+    // by tile units and projected again, as in MapLibre GL JS, so the offset shrinks with the distance on a pitched map
+    // and follows the curve of the sphere on the globe (#2021).
     const translateAt = (it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, t: unknown, anchor: unknown): [number, number] => {
-        if (!tr.globeness) return screenTranslate(t, anchor, tr.bearing);
         const [mx, my] = mapTranslate(t, anchor, tr.bearing);
         if (!mx && !my) return [0, 0];
         const [px, py] = tr.projectTile(it.id, x + mx / it.scale, y + my / it.scale);
