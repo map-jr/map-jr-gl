@@ -144,7 +144,7 @@ export const zoomCurveError = (e: unknown): string => {
  * expression MapLibre GL JS rejects for its ["zoom"] (see `zoomCurveError`), once for each layer, property and value on
  * the map (`reported`). The property is named as in MapLibre's error of `setPaintProperty` (#1087). It does the same,
  * once for each layer and property, for a property that the style specification does not have for the type of the layer (#1139).
- * Unless `noValidate` (the option `validate: false`), it does the same for a required field that is missing (`validateStyle`, #1748). */
+ * Unless `noValidate` (the map option `validateStyle: false`), it does the same for a required field that is missing (`validateStyle`, #1748). */
 export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: any[]} | undefined, reported: Set<string>, report: (error: Error) => void, noValidate?: boolean) {
     if (!noValidate) validateStyle(style, (where, why) => { const key = where + ' ' + why; if (!reported.has(key)) { reported.add(key); report(new Error(mistake(1748, where, why))); } });
     for (const l of style?.layers ?? []) for (const g of ['paint', 'layout']) for (const k in l?.[g]) {
