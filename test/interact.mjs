@@ -1795,6 +1795,14 @@ for (const mode of renderers) {
     // react-map-gl 8 drives `onMouseEnter` and `cursor` with `queryRenderedFeatures(e.point, {layers})`, read at once in
     // its `mousemove` listener (#195). One move of the mouse onto features of tiles must reach the enter state.
     {
+        // (The point is one where an awaited query finds a feature, so that the check does not depend on a thin line
+        // within 3 pixels, which neither this library nor MapLibre GL JS finds; #2003.)
+        const spot = await page.evaluate(async () => {
+            const m = window.map, c = m.getCanvas(), layers = m.getStyle().layers.filter(l => l.source && l.type !== 'raster').map(l => l.id);
+            for (let d = 0; d < 200; d += 10) for (const [dx, dy] of [[-70 - d, -30], [-70 + d, -30], [-70, -30 - d], [-70, -30 + d]])
+                if ((await m.queryRenderedFeatures([c.clientWidth / 2 + dx, c.clientHeight / 2 + dy], {layers})).length) return [dx, dy];
+            return [-70, -30];
+        });
         await page.evaluate(() => {
             const m = window.map, layers = m.getStyle().layers.filter(l => l.source && l.type !== 'raster').map(l => l.id);
             window.hover = {enter: 0, moves: 0};
@@ -1802,7 +1810,7 @@ for (const mode of renderers) {
             m.on('mousemove', window.hoverMove);
         });
         const box = await page.locator('canvas').first().boundingBox();
-        await page.mouse.move(box.x + box.width / 2 - 70, box.y + box.height / 2 - 30);
+        await page.mouse.move(box.x + box.width / 2 + spot[0], box.y + box.height / 2 + spot[1]);
         await page.waitForTimeout(1500);
         const hover = await page.evaluate(() => { window.map.off('mousemove', window.hoverMove); return window.hover; });
         check(`[${mode}] react-map-gl hover: a mousemove listener that reads queryRenderedFeatures with layers at once gets the features`, hover.enter === 1, JSON.stringify(hover));
