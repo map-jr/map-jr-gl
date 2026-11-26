@@ -853,6 +853,8 @@ export class Map {
                 this.loadedEvents(e.source);
             }
         } else if (e.type === 'idle') {
+            // (The engine has run every command up to e.seq: a turn that left the camera as it was gets no camera report.)
+            if (e.seq > this.reported) this.reported = e.seq;
             // (A report from before the last command: the engine sends another after that command.)
             // (While a style of `setStyle` loads, the map is not idle: its `idle` comes after that style; #1167.)
             if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting || this.styleLoading) return;

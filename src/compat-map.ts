@@ -564,6 +564,8 @@ export class Map extends CoreMap {
             if (this.tr.bearing !== 0) this.snapToNorth();
         };
         this.on('moveend', end);
+        // (A rotate drag that ends where it started has no camera report: its turn counts as done at `idle`.)
+        this.on('idle', end);
         for (const type of ['pointerup', 'touchend'] as const) {
             // (The lift marks a gesture too, because its moves can come with no frame and so no `move` before it, #1954.)
             // (On the worker renderer the camera of the last moves can come after the lift: the snap waits for its `moveend`, #2152.)

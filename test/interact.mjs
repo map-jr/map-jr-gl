@@ -6299,12 +6299,22 @@ for (const mode of renderers) {
             wait(200);
             fire('up', 276.4, 0);
             await new Promise(r => setTimeout(r, 2500));
-            const out = {ends, bearing: +m.getBearing().toFixed(1)};
+            // A rotate drag that ends where it started gives no camera report, and an ease after it to -3 does not snap
+            // north (#2152).
+            const bearing = +m.getBearing().toFixed(1), snapEnds = [...ends];
+            m.jumpTo({bearing: -24}); await new Promise(r => setTimeout(r, 300));
+            fire('down', 250, 2);
+            for (let k = 1; k <= 4; k++) { wait(10); fire('move', 250 + (k % 2) * 3, 2); }
+            wait(200); fire('up', 250, 0);
+            await new Promise(r => setTimeout(r, 1500));
+            m.easeTo({bearing: -3, duration: 100});
+            await new Promise(r => setTimeout(r, 1500));
+            const out = {ends: snapEnds, bearing, eased: +m.getBearing().toFixed(1)};
             m.remove(); el.remove();
             return out;
         }, renderer);
         check('[main] maplibre-compat: a rotate drag whose moves come with no frame between them and that ends within bearingSnap of north turns north, as in MapLibre GL JS (#1954)',
-            Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0), JSON.stringify(m1954));
+            Object.values(m1954).every(r => r.ends.length >= 2 && Math.abs(r.ends.at(-2)) > 0.5 && Math.abs(r.ends.at(-2)) < 7 && r.ends.at(-1) === 0 && r.bearing === 0 && r.eased === -3), JSON.stringify(m1954));
         // #479: the inertia of a pan goes as far as in MapLibre GL JS (served at /ml/), after a fast drag and after a slow one
         // whose moves are more than 60 ms apart. (The distance is how far the map goes after `dragend`, in pixels.)
         const m479 = {};
