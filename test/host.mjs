@@ -3672,6 +3672,46 @@ for (const renderer of ['worker', 'main']) {
                 check(`[${renderer}] the part layers does not load: the map reports one error, is idle and draws its other layers (#2215)`,
                     missing.idle && missing.errors.length === 1 && /layers/.test(missing.errors[0]) && missing.centre.slice(0, 3).every(v => v > 250), JSON.stringify(missing));
             } finally { await rare.close(); }
+            // A hillshade on 3D terrain whose part `layers` comes after the pictures of the ground tiles were drawn (#2215):
+            // the pictures are drawn again with the hillshade. The same for a hillshade that `update()` adds after load, and
+            // on the globe. Each picture is compared with the one where the part comes at once.
+            const shade = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                const run = (mode) => shade.evaluate(async ({renderer, mode}) => {
+                    const lib = await import('/dist/map-jr-gl.js'), errors = [];
+                    // (Terrarium heights that rise from west to east in steps: the hillshade has slopes to shade.)
+                    const dc = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), cg = dc.getContext('2d');
+                    for (let x = 0; x < 256; x++) { cg.fillStyle = `rgb(${128 + (x >> 3)},${(x * 37) & 255},0)`; cg.fillRect(x, 0, 1, 256); }
+                    const hill = {id: 'hs', type: 'hillshade', source: 'dem', paint: {'hillshade-shadow-color': '#000', 'hillshade-highlight-color': '#000', 'hillshade-accent-color': '#000', 'hillshade-exaggeration': 1}};
+                    const style = (withHill) => ({version: 8, ...mode === 'globe' ? {projection: {type: 'globe'}} : {},
+                        sources: {dem: {type: 'raster-dem', tiles: [dc.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10}}, terrain: {source: 'dem'},
+                        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, ...withHill ? [hill] : []]});
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                    const view = mode === 'globe' ? {center: [7.7, 46], zoom: 3, pitch: 40} : {center: [7.7, 46], zoom: 10, pitch: 60};
+                    const host = lib.createMap(el, {style: style(mode !== 'update'), initialView: view, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    const until = async (f, ms) => { for (let t = 0; t < ms && !f(); t += 50) await new Promise(r => setTimeout(r, 50)); return f(); };
+                    let idle = await until(() => host.state.get().idle, 15000);
+                    if (mode === 'update') { host.update({style: style(true), initialView: view}); await until(() => !host.state.get().idle, 1000); idle = await until(() => host.state.get().idle, 15000); }
+                    const bmp = await createImageBitmap(await host.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                    g.drawImage(bmp, 0, 0);
+                    const px = g.getImageData(0, 0, bmp.width, bmp.height).data;
+                    let dark = 0;
+                    for (let i = 0; i < px.length; i += 4) if (px[i] < 200) dark++;
+                    host.destroy(); el.remove();
+                    return {idle, dark, errors};
+                }, {renderer, mode});
+                const modes = ['load', 'update', 'globe'], soon = {};
+                await shade.goto(origin + '/bench');
+                for (const m of modes) soon[m] = await run(m);
+                await shade.context().route(/map-jr-gl-(worker-layers|layers-more-[\w-]+)\.js/, async route => { const res = await route.fetch(); await new Promise(r => setTimeout(r, 1500)); await route.fulfill({response: res}); });
+                for (const m of modes) {
+                    // (A new page: it has not loaded the part.)
+                    await shade.goto(origin + '/bench');
+                    const late = await run(m);
+                    check(`[${renderer}] a hillshade on 3D terrain (${m}) whose part layers comes 1.5 s late draws as when it comes at once (#2215)`,
+                        late.idle && soon[m].idle && !late.errors.length && soon[m].dark > 500 && Math.abs(late.dark - soon[m].dark) < soon[m].dark * 0.05, JSON.stringify({soon: soon[m], late}));
+                }
+            } finally { await shade.close(); }
             // 3D terrain whose part comes late (#1849): the tiles of the flat layers are requested while the part loads,
             // and do not wait for it (they did, behind the elevation tiles, by more than 3 s).
             if (renderer === 'worker') {

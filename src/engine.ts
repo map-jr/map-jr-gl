@@ -699,9 +699,10 @@ export class Engine {
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
         // The layer types whose code loads on demand: it is part of the first complete picture, as the sprite is (#2215).
+        // When it arrives, the pictures of the 3D terrain that were drawn without these layers are stale.
         if (!this.layerLoad && style.layers.some(l => RARE_LAYERS.test(l.type))) {
             this.spritePending++;
-            this.layerLoad = part('layers').then(m => { this.layerCode = m; }, err => { if (!this.lost) this.emit({type: 'error', message: String(err.message)}); })
+            this.layerLoad = part('layers').then(m => { this.layerCode = m; this.styleVersion++; }, err => { if (!this.lost) this.emit({type: 'error', message: String(err.message)}); })
                 .finally(() => { this.spritePending--; this.invalidate(); });
         }
         // 3D terrain: its code starts to load with the style, in parallel with the first elevation tiles (#1849).
