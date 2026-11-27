@@ -336,8 +336,14 @@ function squaresInView(tr: Transform, id: TileID, k: number, cover: Map<number, 
     return [...out];
 }
 
-/** How many squares a side `squaresInView` cuts the tile of the line label `l` into. */
-const squares = (l: LabelSrc, maxZoom: number) => l.tz === undefined ? 1 : Math.min(l.ov!, 2 ** Math.max(0, Math.floor(maxZoom) - 4 - l.tz));
+/**
+ * How many times a tile of the line label `l` is smaller on the screen than a tile of the level `level`: on the globe
+ * this library loads tiles of a lower level than MapLibre GL JS (see `covering` in globe.ts), and MapLibre GL JS lays out
+ * the anchors in tiles of the level of the map (#2078). 1 without a level, or for a tile of that level or deeper.
+ */
+const lift = (l: LabelSrc, level?: number) => level === undefined || l.tz === undefined ? 1 : 2 ** Math.max(0, level - l.tz - Math.log2(l.ov!));
+/** How many squares a side `squaresInView` cuts the tile of the line label `l` into (`f`: see `lift`). */
+const squares = (l: LabelSrc, maxZoom: number, f = 1) => l.tz === undefined ? 1 : Math.min(l.ov! * f, 2 ** Math.max(0, Math.floor(maxZoom) - 4 - l.tz));
 
 /** The most labels that the anchors along the lines of one tile layer make. Tiles come from other parties, and a line of many short turns with a small `symbol-spacing` could otherwise make millions. */
 export const MAX_LINE_ANCHORS = 20000;
@@ -397,22 +403,25 @@ function anchorDistances(c: number[], spacing: number, length: number, glyph: nu
  * The labels at the anchors of the line labels of one tile layer, for one shaper (one map), with the `generation` of
  * the shaper that they were found at. `final` is false while a glyph file or an icon was missing.
  */
-const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; maxZoom: number; inView: string; final: boolean; out: LabelSrc[]}>();
+const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; maxZoom: number; level?: number; inView: string; final: boolean; out: LabelSrc[]}>();
 /**
  * The labels of a tile with each line label (`LabelSrc.line`) made into one label at each of its anchors. The anchors
  * need the width of the label, which is known only here: a label whose glyph file is on its way has none yet, and is
  * placed when the file has arrived (the engine places the labels again then). The result is kept until the shaper has
  * new glyphs or images. (The cache holds no state of a map: its key is the label array of a tile, which belongs to one
  * map, and the entry names its shaper.) `maxZoom` is the `maxZoom` of the map, which decides into which squares
- * MapLibre GL JS cuts an over-zoomed tile (see `squaresInView`).
+ * MapLibre GL JS cuts an over-zoomed tile (see `squaresInView`). On the globe, `level` is the level of the tiles that
+ * MapLibre GL JS shows at the zoom of the map: a tile of a lower level is cut into squares of that level, each with the
+ * spacing of a tile of its own, so that `symbol-spacing` is as wide on the screen as in MapLibre GL JS.
  */
-export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup, maxZoom = 22, view?: (k: number) => number[]): LabelSrc[] {
+export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup, maxZoom = 22, view?: (k: number) => number[], level?: number): LabelSrc[] {
     if (!labels.some(l => l.line)) return labels;
     const generation = shaper.generation ?? 0;
     let done = alongLine.get(labels);
-    // (The squares in view of the first line label; the same for every label of the tile.)
-    const first = labels.find(l => l.line)!, k0 = squares(first, maxZoom), shown = view && k0 > 1 ? view(k0) : null, inView = shown ? shown.join() : '';
-    if (done && done.final && done.shaper === shaper && done.generation === generation && done.maxZoom === maxZoom && done.inView === inView) return done.out;
+    // (The squares in view of the first line label; the same for every label of the tile. The tile cover of the globe
+    // has no tiles of the level of a lifted tile, so all of its squares are taken.)
+    const first = labels.find(l => l.line)!, f0 = lift(first, level), k0 = squares(first, maxZoom, f0), shown = view && k0 > 1 && f0 === 1 ? view(k0) : null, inView = shown ? shown.join() : '';
+    if (done && done.final && done.shaper === shaper && done.generation === generation && done.maxZoom === maxZoom && done.level === level && done.inView === inView) return done.out;
     const out: LabelSrc[] = [], seen = new Map<string, Map<number, number[]>>();
     let final = true, made = 0;
     for (const l of labels) {
@@ -421,21 +430,22 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
         if (shaped?.wait) { final = false; continue; }
         const meta = l.icon ? icons?.(l.icon.name) : undefined;
         if (l.icon && !meta) final = false;
-        // As in MapLibre GL JS, the wider of text and icon, scaled as text of `text-size` one zoom level in.
-        const scale = l.tpr! * l.size1 / EM, length = Math.max(shaped?.width ?? 0, meta ? meta.width / meta.pixelRatio : 0) * scale;
+        // As in MapLibre GL JS, the wider of text and icon, scaled as text of `text-size` one zoom level in. (A tile of a
+        // lower level on the globe has `f` times as many pixels in a tile unit: see `lift`.)
+        const f = lift(l, level), spacing = l.lineSpacing! / f, scale = l.tpr! / f * l.size1 / EM, length = Math.max(shaped?.width ?? 0, meta ? meta.width / meta.pixelRatio : 0) * scale;
         // An over-zoomed tile is cut into squares as in MapLibre GL JS: `k` a side, each with the over-scaling `ov / k`.
-        const ov = l.ov!, k = squares(l, maxZoom), size = EXTENT / k, c = l.line;
+        const ov = l.ov! * f, k = squares(l, maxZoom, f), size = EXTENT / k, c = l.line;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (let i = 0; i < c.length; i += 2) minX = Math.min(minX, c[i]), maxX = Math.max(maxX, c[i]), minY = Math.min(minY, c[i + 1]), maxY = Math.max(maxY, c[i + 1]);
         for (const sq of shown ?? Array.from({length: k * k}, (_, i) => i)) {
             const x0 = Math.floor(sq / k) * size, y0 = sq % k * size;
             if (maxX < x0 || minX > x0 + size || maxY < y0 || minY > y0 + size) continue;
             // As in MapLibre GL JS, the same text is not repeated within half of `symbol-spacing` in the square (looked up in a grid of that size).
-            const repeat = Math.max(1, l.lineSpacing! / 2), tk = l.text && l.text + '\0' + sq, cells = tk ? seen.get(tk) ?? new Map<number, number[]>() : null;
+            const repeat = Math.max(1, spacing / 2), tk = l.text && l.text + '\0' + sq, cells = tk ? seen.get(tk) ?? new Map<number, number[]>() : null;
             if (cells) seen.set(tk, cells);
             for (const part of clipLine(l.line, x0, y0, size, k)) {
                 if (made >= MAX_LINE_ANCHORS) break;
-                const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
+                const ds = anchorDistances(part, spacing, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
                 if (!ds.length) continue;
                 for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds, k)) {
                     if (cells) {
@@ -457,7 +467,7 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
             }
         }
     }
-    alongLine.set(labels, {shaper, generation, maxZoom, inView, final, out});
+    alongLine.set(labels, {shaper, generation, maxZoom, level, inView, final, out});
     return out;
 }
 
@@ -495,7 +505,7 @@ export function placeLabels(
         // The labels of a layer with `symbol-sort-key` are placed in the order of the key over all tiles, as in MapLibre:
         // a label does not win only because its tile comes first.
         let runs: {it: typeof items[0]; labels: LabelSrc[]; no: number}[] = [];
-        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons, tr.maxZoom, k => squaresInView(tr, it.id, k, cover)), no: itemNo}); }
+        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons, tr.maxZoom, k => squaresInView(tr, it.id, k, cover), tr.globeness ? Math.floor(tr.zoom) : undefined), no: itemNo}); }
         if (runs.length > 1 && (L.p.sortKey.dd || L.p.sortKey.eval(tr.zoom) !== 0)) {
             const all: typeof runs = [];
             for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
