@@ -68,7 +68,9 @@ export async function page() {
     .map(url => `<link rel="preload" as="fetch" crossorigin href="${url}">`)
     .join('\n');
   return `<!doctype html>
+<head>
 ${preload}
+</head>
 <div id="map"
   style="position: relative; width: 800px; height: 500px">${html}</div>
 <script type="module">
