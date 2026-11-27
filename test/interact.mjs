@@ -9162,12 +9162,15 @@ for (const mode of renderers) {
 // the building of #2287 in the tile of zoom 14 to the north) is read from the neighbor tile, as in MapLibre GL JS: the
 // texture of an elevation tile has a border of 2 pixels from its neighbors. Clamped to the last row of its own tile, the
 // ground was 2 pixels too far north on a slope, and the roof line stood 6 px above that of MapLibre GL JS (#2319).
+// The same building on the real ground (mapterhorn) has walls that stand partly above the ground: only the outside of
+// a wall is drawn, as in MapLibre GL JS (`CullFaceMode.backCCW`). The inside of the side walls showed below the near
+// corners, down to 26 px below the lowest edge of MapLibre GL JS (#2341).
 {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
-    const roofLine = async lib => {
+    const roofLine = async (lib, tiles = 'dem2319://{z}/{x}/{y}') => {
         await page.goto(origin + '/?renderer=main&nomarkers');
         await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
-        await page.evaluate(async lib => {
+        await page.evaluate(async ([lib, tiles]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
             if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
             // A slope that rises 50 m for each 100 m to the north.
@@ -9184,7 +9187,7 @@ for (const mode of renderers) {
             });
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'map2319', style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9;background:#fff'}));
             const poly = {type: 'Polygon', coordinates: [[[7.766, 46.0075], [7.774, 46.0075], [7.774, 46.0125], [7.766, 46.0125], [7.766, 46.0075]]]};
-            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem2319://{z}/{x}/{y}'], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [tiles], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
                     {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': 40, 'fill-extrusion-vertical-gradient': false}}],
                 terrain: {source: 'dem', exaggeration: 1}};
@@ -9193,25 +9196,25 @@ for (const mode of renderers) {
             const m = new mod.Map(opts);
             await new Promise(r => m.once('load', r));
             await new Promise(r => { const t = setTimeout(r, 8000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
-        }, lib);
-        // The topmost red pixel of each column.
+        }, [lib, tiles]);
+        // The topmost and the lowest red pixel of each column.
         const png = (await page.locator('#map2319').screenshot()).toString('base64');
         return page.evaluate(async png => {
             const bm = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
             const g = new OffscreenCanvas(bm.width, bm.height).getContext('2d'); g.drawImage(bm, 0, 0);
-            const d = g.getImageData(0, 0, bm.width, bm.height).data, top = [];
+            const d = g.getImageData(0, 0, bm.width, bm.height).data, top = [], bottom = [];
             for (let x = 0; x < bm.width; x++) {
-                let t = -1;
-                for (let y = 0; y < bm.height && t < 0; y++) { const k = (y * bm.width + x) * 4; if (d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90) t = y; }
-                top.push(t);
+                let t = -1, b = -1;
+                for (let y = 0; y < bm.height; y++) { const k = (y * bm.width + x) * 4; if (d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90) { if (t < 0) t = y; b = y; } }
+                top.push(t); bottom.push(b);
             }
-            return top;
+            return {top, bottom};
         }, png);
     };
     try {
-        const ml = await roofLine('ml');
+        const {top: ml} = await roofLine('ml');
         for (const mode of renderers) {
-            const ours = await roofLine(mode);
+            const {top: ours} = await roofLine(mode);
             // (The middle three fifths of the building: at its corners the roof line is a slanted edge.)
             const cols = ml.map((t, x) => t >= 0 ? x : -1).filter(x => x >= 0), a = cols[0], w = cols.at(-1) - a;
             let off = 0, at = -1;
@@ -9219,6 +9222,16 @@ for (const mode of renderers) {
             check(`[${mode}] 3D terrain: a building whose centroid lies past the edge of its elevation tile stands on the ground of the neighbor tile, as in MapLibre GL JS (#2319)`, cols.length > 100 && off <= 1, JSON.stringify({off, at, ours: ours[at], ml: ml[at], columns: cols.length}));
         }
     } catch (e) { check('[main] 3D terrain: the check of the ground past the edge of an elevation tile ran (#2319)', false, String(e.message).split('\n')[0]); }
+    try {
+        const real = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp', {bottom: ml} = await roofLine('ml', real);
+        for (const mode of renderers) {
+            const {bottom: ours} = await roofLine(mode, real);
+            // (All columns of the building, the corners too.)
+            let off = 0, at = -1;
+            ml.forEach((b, x) => { if (b >= 0 && Math.abs(ours[x] - b) > off) off = Math.abs(ours[x] - b), at = x; });
+            check(`[${mode}] 3D terrain: the inside of the walls of a building on a slope is not drawn, so its lowest edge is that of MapLibre GL JS (#2341)`, ml.filter(b => b >= 0).length > 100 && off <= 3, JSON.stringify({off, at, ours: ours[at], ml: ml[at]}));
+        }
+    } catch (e) { check('[main] 3D terrain: the check of the walls of a building on the real ground ran (#2341)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer
