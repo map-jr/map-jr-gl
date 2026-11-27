@@ -39,13 +39,9 @@ void main() {
   v_ex = s * a_corner * u_corner;
   float r = u_radius + a_radius.x + u_zt * a_radius.y; // a radius for each feature is a_radius, and u_radius is then 0
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
-#ifdef GLOBE
-  // On the globe the bump lies on the sphere, as in MapLibre GL JS (see tessellate): r is in pixels at the center of the view.
+  // The bump lies on the map, as in MapLibre GL JS: r is in pixels at the center of the view, so at pitch the bump is
+  // foreshortened and shrinks with distance. On the globe it lies on the sphere (see tessellate).
   vec4 c = toClipTurn(a_pos, v_ex * r / u_scale, 0.0);
-#else
-  vec4 c = toClip(a_pos);
-  c.xy += v_ex * r * vec2(2.0, -2.0) / u_view * c.w;
-#endif
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
 uniform float u_intensity; in vec2 v_ex; in float v_w; out vec4 o;

@@ -761,7 +761,19 @@ export function placeLabels(
                     bw *= r; bh *= r;
                     // (On the globe without pitch, the box lies on the ground only with text on the ground (`flat`): as in
                     // MapLibre GL JS, `text-pitch-alignment` decides it, so a box does not change at the switch to Mercator.)
-                    const box = line && !unturned || (iflat && (!!tr.pitch || flat)) ? boxAround(qx, qy, bw, bh, held.ang, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, rot + bt, ic.padding, bt) : boxAround(qx, qy, bw, bh, rot + bt, ic.padding, bt);
+                    let box = line && !unturned || (iflat && (!!tr.pitch || flat)) ? boxAround(qx, qy, bw, bh, held.ang, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, rot + bt, ic.padding, bt) : boxAround(qx, qy, bw, bh, rot + bt, ic.padding, bt);
+                    if (unturned && !iflat && l.flat) {
+                        // As in MapLibre GL JS, `text-pitch-alignment` decides whether the box lies on the ground, also for an icon
+                        // that `icon-pitch-alignment` stands up (#2461): the box at the point, turned by `icon-rotate`, has its size
+                        // on the ground (`flatSize`) and goes through the ground at the anchor, so it is lower on a tilted map.
+                        // (The offset of the box from the anchor is turned by `icon-rotate` alone: the frame on the ground has the bearing.
+                        // The padding is added on the ground before the turn, as at a point.)
+                        const [pt, pr, pb, pl] = ic.padding, g = flatSize(tr, depth) / (L.fixedSize ? 1 : persp), w0 = iw * g + pl + pr, h0 = ih * g + pt + pb;
+                        const c = Math.cos(rot), sn = Math.sin(rot), ux = held.bx - cx, uy = held.by - cy, bc = Math.cos(base), bs = Math.sin(base);
+                        const ox = (ux * bc + uy * bs) * g + ((pr - pl) * c - (pb - pt) * sn) / 2, oy = (uy * bc - ux * bs) * g + ((pr - pl) * sn + (pb - pt) * c) / 2;
+                        const [f, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, bt - north), ox, oy);
+                        box = quadBox(f, cx + px, cy + py, w0 * Math.abs(c) + h0 * Math.abs(sn), w0 * Math.abs(sn) + h0 * Math.abs(c), 0);
+                    }
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, merc, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
