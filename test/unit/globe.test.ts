@@ -278,3 +278,20 @@ test('globe: the rays of the halo (#888) go through the place of the globe under
         assert.ok(Math.abs(mercX(lng) - mx) < 1e-9 && Math.abs(mercY(lat) - my) < 1e-9, `${x},${y}`);
     }
 });
+
+test('globe: frame() is kept while the view is the same and is rebuilt when any number of the view changes (#2339)', () => {
+    const tr = make([10, 20], 2, 15, 30), f = globe.frame(tr);
+    assert.equal(globe.frame(tr), f);
+    const changes: Array<(t: typeof tr) => void> = [
+        t => { t.width = 801; }, t => { t.height = 601; }, t => { t.lng += 1; }, t => { t.lat += 1; }, t => { t.zoom += 0.5; },
+        t => { t.bearing += 1; }, t => { t.pitch += 1; }, t => { t.elevation = 100; },
+        ...[0, 1, 2, 3].map(i => (t: typeof tr) => { t.padding = t.padding.map((v, j) => j === i ? 50 : v) as typeof t.padding; }),
+    ];
+    for (const change of changes) {
+        const other = make([10, 20], 2, 15, 30), g = globe.frame(other);
+        change(other);
+        assert.notEqual(globe.frame(other), g, String(change));
+    }
+    // Two transforms keep their own frames.
+    assert.notEqual(globe.frame(make([10, 20], 2, 15, 30)), f);
+});

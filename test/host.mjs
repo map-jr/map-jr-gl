@@ -3952,6 +3952,55 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the test of the parts of the worker was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The CSS color names (#72): the worker file has no table of them. A worker asks the browser for a name and gets the
+// value of the table of MapLibre GL JS (here the table of the part `colors`) for each of the 148 names, and refuses
+// the system colors and `currentcolor`. A tile worker without `OffscreenCanvas` (Safari before 16.4, WebKit on Windows)
+// loads the part before it builds a tile, and draws a name of the style and a name of the data.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const parts = [];
+        page.context().on('request', r => { const m = /map-jr-gl-worker-(\w+)\.js/.exec(r.url()); if (m) parts.push(m[1]); });
+        await page.goto(origin + '/bench');
+        const names = await page.evaluate(() => new Promise(resolve => {
+            const files = ['map-jr-gl-worker.js', 'map-jr-gl-worker-colors.js'].map(f => JSON.stringify(`${location.origin}/dist/${f}`));
+            const code = `importScripts(${files.join()}); const table = MapJrPart.NAMED, p = MapJrWorker.parseColor, wrong = [], refused = [];
+                for (const name in table) if (JSON.stringify(p(name)) !== JSON.stringify(p(table[name])) || JSON.stringify(p(name.toUpperCase())) !== JSON.stringify(p(table[name]))) wrong.push(name + '=' + JSON.stringify(p(name)));
+                for (const name of ['canvas', 'buttontext', 'highlight', 'currentcolor', 'window', 'menu', 'redd']) if (p(name) !== null) refused.push(name);
+                postMessage({count: Object.keys(table).length, wrong, refused, canvas: typeof OffscreenCanvas});`;
+            const w = new Worker(URL.createObjectURL(new Blob([code], {type: 'text/javascript'})));
+            w.onmessage = e => { if (e.data.count !== undefined) { resolve(e.data); w.terminate(); } };
+            w.onerror = e => { e.preventDefault(); resolve({error: e.message}); };
+        }));
+        check('[worker] each of the 148 CSS color names gives the value of the table in a worker that asks the browser, and system colors are not colors (#72)',
+            names.count === 148 && names.canvas === 'function' && !names.wrong?.length && !names.refused?.length, JSON.stringify(names));
+        parts.length = 0;
+        const fallback = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), errors = [];
+            const url = URL.createObjectURL(new Blob([`delete self.OffscreenCanvas; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`], {type: 'text/javascript'}));
+            lib.configure({createWorker: () => new Worker(url)});
+            const square = (x, c) => ({type: 'Feature', properties: {c}, geometry: {type: 'Polygon', coordinates: [[[x - 40, -40], [x, -40], [x, 40], [x - 40, 40], [x - 40, -40]]]}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+            const host = lib.createMap(el, {style: {version: 8, sources: {sq: {type: 'geojson', data: {type: 'FeatureCollection', features: [square(0, 'RebeccaPurple'), square(40, 'x')]}}}, layers: [
+                {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                {id: 'data', type: 'fill', source: 'sq', filter: ['==', ['get', 'c'], 'RebeccaPurple'], paint: {'fill-color': ['to-color', ['get', 'c']]}},
+                {id: 'style', type: 'fill', source: 'sq', filter: ['==', ['get', 'c'], 'x'], paint: {'fill-color': ['match', ['get', 'c'], 'x', 'darkorange', 'black']}}]},
+            initialView: {center: [0, 0], zoom: 1}, renderer: 'main', attribution: false, onError: e => errors.push(e.message)});
+            const idle = await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 10000); });
+            const bmp = await createImageBitmap(await host.toBlob()), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            g.drawImage(bmp, 0, 0);
+            const at = x => Array.from(g.getImageData(Math.round(bmp.width * x), bmp.height >> 1, 1, 1).data).slice(0, 3).join();
+            const out = {idle, errors, data: at(0.3), style: at(0.7)};
+            host.destroy(); el.remove(); lib.configure({createWorker: undefined});
+            return out;
+        });
+        // (#663399 is rebeccapurple, #ff8c00 darkorange. Chromium alone shows the requests of a worker to Playwright.)
+        check('[main] a tile worker without OffscreenCanvas loads the part colors and draws a color name of the data and one of the style (#72)',
+            fallback.idle && !fallback.errors.length && fallback.data === '102,51,153' && fallback.style === '255,140,0' && (browserName !== 'chromium' || parts.includes('colors')),
+            JSON.stringify({fallback, parts}));
+    } catch (e) { check('the test of the CSS color names was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A style that is not a style (#539): an error of the map (`onError`) that says what is missing, no error
 // of the page, and the map draws the next style. Each style is given as an object and as the answer of a URL.
 for (const renderer of ['main', 'worker']) {
@@ -4280,6 +4329,35 @@ for (const renderer of renderers) {
         check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name and the HTTP status (#1193)',
             asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));
     } catch (e) { check('fonts of the description: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The text-color of a format section on a label along a line (#2173).
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const line = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-30, 0], [30, 0]]}}]};
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const host = lib.createMap(el, {style, attribution: false, initialView: {center: [0, 0], zoom: 3}, fonts: {'Test Square Regular': '/test-fonts/square.ttf'},
+                sources: {l: {type: 'geojson', data: line}},
+                layers: [{id: 'label', type: 'symbol', source: 'l', layout: {'symbol-placement': 'line', 'text-field': ['format', 'AAAA', {'text-color': '#f00'}, 'BBBB', {'text-color': '#00f'}], 'text-font': ['Test Square Regular'], 'text-size': 30}, paint: {'text-color': '#000'}}]});
+            await new Promise(r => { const t = setTimeout(r, 15000); host.state.subscribe(s => s.idle, v => { if (v) { clearTimeout(t); setTimeout(r, 300); } }); });
+            window.host = host;
+        });
+        const png = await page.screenshot();
+        const n = await page.evaluate(async b64 => {
+            const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+            const c = Object.assign(document.createElement('canvas'), {width: img.width, height: img.height}).getContext('2d'); c.drawImage(img, 0, 0);
+            const d = c.getImageData(0, 0, img.width, img.height).data; let red = 0, blue = 0;
+            for (let i = 0; i < d.length; i += 4) { if (d[i] > 200 && d[i + 1] < 60 && d[i + 2] < 60) red++; if (d[i + 2] > 200 && d[i] < 60 && d[i + 1] < 60) blue++; }
+            return {red, blue};
+        }, png.toString('base64'));
+        await page.evaluate(() => window.host.destroy());
+        check('format sections: the text-color of a section is drawn on a label along a line (#2173)', n.red > 200 && n.blue > 200, JSON.stringify(n));
+    } catch (e) { check('format sections on a line label: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // The action and the store for Svelte, called as Svelte calls them (they do not need the Svelte package).

@@ -198,6 +198,8 @@ export class Map extends CoreMap {
     /** The controls on the map, in the order they were added. vue-maplibre-gl reads this private member of MapLibre GL JS. */
     get _controls() { return this.added = (this.added ?? []).filter(c => this.hasControl(c)); }
     declare private added?: Parameters<CoreMap['addControl']>[0][];
+    /** The request manager of MapLibre GL JS, with the one member that wrappers read: `@watergis/maplibre-gl-export` passes `_transformRequestFn` to the map that it draws. */
+    get _requestManager() { return {_transformRequestFn: this.transformRequest}; }
     // ---- Accepted, with no effect ----
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
     // value. They are here so that such code does not stop. A value that this library cannot do gives one warning.
@@ -640,8 +642,10 @@ export class Map extends CoreMap {
         }
         return super.addImage(...args);
     }
-    /** Replaces the pixels of an image added earlier and keeps its options. An image of another size fires an `error` event and changes nothing, as in MapLibre GL JS. Returns a promise of the map; MapLibre GL JS returns the map. */
+    /** Replaces the pixels of an image added earlier and keeps its options. An image of another size, or a name that has no image, fires an `error` event and changes nothing, as in MapLibre GL JS. Returns a promise of the map; MapLibre GL JS returns the map. */
     updateImage(name: string, image: Parameters<CoreMap['addImage']>[1]) {
+        // (An unknown name fires an `error` with the text of MapLibre GL JS and changes nothing; the main API throws; #2417.)
+        if (!this.imageInputs.has(name)) { this.fire('error', {error: new Error('The map has no image with that id. If you are adding a new image use `map.addImage(...)` instead.')}); return Promise.resolve(this); }
         const size = (i?: unknown) => { const {width, height, naturalWidth, naturalHeight} = (i ?? {}) as Record<string, number>; return [naturalWidth ?? width, naturalHeight ?? height]; };
         const [width, height] = size(this.imageInputs.get(name)?.[0]), [newWidth, newHeight] = size(image);
         if (width >= 0 && newWidth >= 0 && (width !== newWidth || height !== newHeight)) { this.fire('error', {error: ((method: string) => new Error(`[map-jr-gl] E2242 ${method}("${name}"): the image is ${width}×${height}, but the new one is ${newWidth}×${newHeight}. Pass an image of the same size, or call removeImage() and then addImage().`))('updateImage')}); return Promise.resolve(this); }
@@ -679,7 +683,7 @@ export class Map extends CoreMap {
         this.imagesSeen = given;
         for (const name of this.styleImageNames) this.removeImage(name);
         this.styleImageNames.clear();
-        this.imagesFor = given == null ? undefined : import('./compat-style-images.ts').then(m => live() ? m.compatImages(this, this.rawStyle, this.styleImageNames, live, (n, s, o) => super.addImage(n, s, o)) : undefined,
+        this.imagesFor = given == null ? undefined : import('./compat-style-images.ts').then(m => live() ? m.compatImages({hasImage: n => this.imageNames.has(n), fire: (t: string, e: Record<string, unknown>) => this.fire(t, e)}, this.rawStyle, this.styleImageNames, live, (n, s, o) => super.addImage(n, s, o)) : undefined,
             () => { if (live()) this.fire('error', {error: new Error('[map-jr-gl] E764 the style: the code for metadata["map-jr:images"] did not load, so the map has no images of the style. Serve the files of the library together.')}); });
     }
 
@@ -816,6 +820,18 @@ export class Map extends CoreMap {
         this.moved((ease ? parts.flatMap((s, i) => i > 1 ? [...axes.map(a => a + s), 'moveend'] : ['move' + s, ...axes.map(a => a + s)]) : ['movestart', 'move', ...axes.flatMap(a => parts.map(s => a + s)), 'moveend']).map(t => [t, data]));
         return this;
     }
+    /**
+     * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`. A
+     * gesture is not stopped here, as with `jumpTo`. The reports of the engine up to this command fire no events.
+     */
+    override stop() {
+        super.stop();
+        if (!this.gesturing?.()) {
+            this.hushed = this.jumped; this.seen = undefined; this.hushedAt = [this.tr.lng, this.tr.lat, this.tr.zoom, this.tr.bearing, this.tr.pitch];
+            this.halt();
+        }
+        return this;
+    }
     /** The command of the last jump and its camera: the engine's reports up to that command, or with that camera after
      * other commands, fire no events, because the jump fired them during the call (#2340). (After a restart of the engine,
      * whose commands count from 0 again, only the camera counts.) */
@@ -835,8 +851,21 @@ export class Map extends CoreMap {
         try { for (let e; (e = list.shift());) this.fire(e[0], {...e[1]}); } finally { this.waiting = undefined; }
     }
     easeTo(o: EaseToOptions, eventData?: EventData) {
-        return this.camera(eventData, () => super.easeTo(this.snapped(o)));
+        return this.interrupting(() => this.camera(eventData, () => super.easeTo(this.snapped(o))));
     }
+    /**
+     * As `scheduleSegment` of MapLibre GL JS, an animation that starts while another runs ends the old movement during
+     * the call, with its end events, and fires `movestart` for the new one. A gesture is not stopped, and a nested call
+     * (`fitBounds` calls `flyTo`) leaves this to the outer call.
+     */
+    private interrupting(f: () => this) {
+        if (this.nested || this.gesturing?.() || !this.isMoving()) return f();
+        this.halt();
+        this.interrupted = true;
+        try { return f(); } finally { this.interrupted = false; }
+    }
+    private interrupted = false;
+    protected override easeStarted() { if (this.interrupted) this.begin(); }
     /**
      * Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`.
      * The zoom fits the box as seen from above, turned by `bearing`. As in MapLibre GL JS, `offset` moves the fitted view and then the move, so it counts twice. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.
@@ -869,7 +898,7 @@ export class Map extends CoreMap {
     private gesturing?: () => boolean;
     private nested = 0;
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
-        return this.camera(eventData, () => super.flyTo(this.snapped(o)));
+        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(o))));
     }
     /** Sets the padding in CSS pixels: the space at the edges that other things cover, such as a side panel. The map center moves to the middle of the rest. */
     setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }
@@ -1062,8 +1091,8 @@ export class Map extends CoreMap {
         }
         return {pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1], data};
     }
-    /** Returns the names of the images that the map has. */
-    listImages() { return [...this.imageNames]; }
+    /** Returns the names of the images that the map has: the icons of the sprites of the style (`<id>:name` for a sprite that is not `default`) and the images that `addImage` added. */
+    listImages() { return [...new Set([...this.spriteNames, ...this.imageNames])]; }
     /** Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. */
     async loadImage(url: string) {
         const res = await this.fetchAs('Image')(url).catch(e => { throw ajax(e); });

@@ -316,7 +316,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Private members that wrappers read
 
 - **MapLibre GL JS:** `Marker._map`, `Marker._lngLat`, `Map._controls` are internal fields.
-- **This library:** `Marker._map`, `Marker._lngLat` and `Map._controls` exist as read-only getters with the same values. `map.style` exists before the style has loaded (with `_loaded` `false`), has `updateImage` (svelte-maplibre-gl reads it), and has `_loaded`, and `tileManagers` (also named `sourceCaches`, as in MapLibre GL JS 5) with one entry for each source; the entry has only `_source` with `id`, `type` and `vectorLayerIds`, the ids of `vector_layers` of the TileJSON of a vector source (Maputnik reads them). `map.style.projection.subdivisionGranularity` has `fill`, `line`, `tile` and `stencil`, each with `getGranularityForZoomLevel(z)`, and `circle`, with the values of MapLibre GL JS 6.17 for the projection of the style (the example page "Add a custom layer with tiles to a globe" reads it); the map draws a custom layer only while the projection is Mercator. `map.transform` and `getTransformForUpdate()` (also `_getTransformForUpdate()`, and `_stop(true)`, which is `stop()`) give a copy of the camera with `center`, `zoom`, `bearing`, `pitch`, `roll` (always 0), `elevation` and `isPaddingEqual`, which svelte-maplibre-gl reads. Other private members do not exist.
+- **This library:** `Marker._map`, `Marker._lngLat` and `Map._controls` exist as read-only getters with the same values. `map.style` exists before the style has loaded (with `_loaded` `false`), has `updateImage` (svelte-maplibre-gl reads it), and has `_loaded`, and `tileManagers` (also named `sourceCaches`, as in MapLibre GL JS 5) with one entry for each source; the entry has only `_source` with `id`, `type` and `vectorLayerIds`, the ids of `vector_layers` of the TileJSON of a vector source (Maputnik reads them). `map.style.projection.subdivisionGranularity` has `fill`, `line`, `tile` and `stencil`, each with `getGranularityForZoomLevel(z)`, and `circle`, with the values of MapLibre GL JS 6.17 for the projection of the style (the example page "Add a custom layer with tiles to a globe" reads it); the map draws a custom layer only while the projection is Mercator. `map.transform` and `getTransformForUpdate()` (also `_getTransformForUpdate()`, and `_stop(true)`, which is `stop()`) give a copy of the camera with `center`, `zoom`, `bearing`, `pitch`, `roll` (always 0), `elevation` and `isPaddingEqual`, which svelte-maplibre-gl reads. `map._requestManager` has one member, `_transformRequestFn`, the function of `transformRequest` or `null` (`@watergis/maplibre-gl-export` reads it); it has no `transformRequest` method. Other private members do not exist.
 
 ### TypeScript types
 
@@ -332,6 +332,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - MapLibre GL JS accepts images and pixel data.
 - This library accepts the same, and also an SVG string or a URL. It returns a promise.
+
+### `addImage` with a name that exists
+
+- **MapLibre GL JS:** `addImage` keeps the image that has the name and fires an `error` event with the message `An image named "a" already exists.`. The new image is not stored, but its `onAdd(map, id)` still runs. `updateImage` replaces an image.
+- **This library (`@map-jr/map-jr-gl/maplibre-compat`):** `addImage` replaces the image and fires no `error` event. When the old image has `onRemove()`, it runs before `onAdd(map, id)` of the new image. This holds on the main and the worker renderer.
 
 ### `addImage` with pixels of the wrong length
 
@@ -414,7 +419,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - MapLibre GL JS replaces the pixels of an image in place and keeps its options. New pixels of another size fire an `error` event, and the image stays as it was. A name that has no image also fires an `error` event. Pixels with the wrong number of values raise no error, and the image becomes blank.
 - This library replaces the pixels in place and keeps the options, as MapLibre GL JS does, and the icons keep their places. It accepts a URL and an SVG string as `addImage` does, and it returns a promise. Pixels, ImageData and drawables are sent to the map at the end of the task, so of several calls in one task only the last is drawn.
 - New pixels of another size fire an `error` event (E2242) and the image stays as it was, as in MapLibre GL JS. The size is compared when the first image was pixels, a canvas, an image element or a bitmap.
-- Pixels with the wrong number of values throw E2233 from the call, and the image stays as it was. A name that has no image throws `There is no image with ID "name"`, where MapLibre GL JS fires an `error` event.
+- Pixels with the wrong number of values throw E2233 from the call, and the image stays as it was. A name that has no image fires an `error` event with the text of MapLibre GL JS ("The map has no image with that id…") and changes nothing, as in MapLibre GL JS.
 
 ### `getImage`
 

@@ -37,13 +37,13 @@ export function sphere(mx: number, my: number): V3 {
 
 /** What one frame needs: the matrix from the unit sphere to clip space, the camera (in radii), and the plane of the horizon. */
 export interface GlobeFrame { m: number[]; cam: V3; horizon: [number, number, number, number]; radius: number }
-const frames = new WeakMap<Transform, {key: string; f: GlobeFrame}>();
+const frames = new WeakMap<Transform, {key: number[]; f: GlobeFrame}>();
 
 /** The globe of a transform as it is now (kept until the camera or the size changes). */
 export function frame(tr: Transform): GlobeFrame {
-    const key = [tr.width, tr.height, tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, ...tr.padding].join();
-    const kept = frames.get(tr);
-    if (kept?.key === key) return kept.f;
+    const p = tr.padding, kept = frames.get(tr), k = kept?.key;
+    if (k && k[0] === tr.width && k[1] === tr.height && k[2] === tr.lng && k[3] === tr.lat && k[4] === tr.zoom && k[5] === tr.bearing && k[6] === tr.pitch && k[7] === tr.elevation && k[8] === p[0] && k[9] === p[1] && k[10] === p[2] && k[11] === p[3]) return kept!.f;
+    const key = [tr.width, tr.height, tr.lng, tr.lat, tr.zoom, tr.bearing, tr.pitch, tr.elevation, p[0], p[1], p[2], p[3]];
     // The radius in pixels: the scale at the center of the view is that of Mercator at the same zoom (as in MapLibre).
     // (Past the edge of Mercator the radius stays that of 85.05°, as MapLibre's planetScaleAtLatitude does.)
     const R = tr.worldSize / (2 * PI * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD)), d = tr.cameraDistance, w = tr.width, h = tr.height;

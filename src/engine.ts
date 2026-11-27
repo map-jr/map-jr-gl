@@ -9,7 +9,7 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {boxAround, CollisionGrid, flatSize, FULL_CLIP, groundCorners, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, movedCenter, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import {globeBuild, overlaps, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
@@ -101,6 +101,8 @@ export type EngineEvent =
         /** The number of the last command that the engine has applied (see `seq` in map.ts). */
         seq?: number}
     | {type: 'idle'; seq: number}
+    /** The names of the icons of the style's sprites, with the prefix `<id>:` for a sheet that is not `default`. */
+    | {type: 'icons'; names: string[]}
     /** The tiles of a source for the view are all loaded, or are no longer all loaded. */
     | {type: 'source'; source: string; loaded: boolean; /** The version of the source that the page gave (see the `style` command). */ v: number}
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
@@ -732,7 +734,7 @@ export class Engine {
             this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message), ...failed(err)})).finally(() => { this.spritePending--; this.invalidate(); });
         } else if (!style.sprite && this.spriteUrl) {
             // (A style without a sprite: the icons of the sprite before are not drawn any more.)
-            this.spriteUrl = ''; this.sprite = null;
+            this.spriteUrl = ''; this.sprite = null; this.emit({type: 'icons', names: []});
             this.iconsRev++; this.iconsAll = true; this.styleVersion++;
         }
         const faces = JSON.stringify(style.fonts ?? []);
@@ -821,6 +823,7 @@ export class Engine {
         }
         this.renderer.setIcons(all ?? loaded[0].image, width, height);
         this.sprite = {icons, image: '', width, height};
+        this.emit({type: 'icons', names: Object.keys(icons)});
         this.iconsRev++; this.iconsAll = true;
         this.styleVersion++;
         this.invalidate();
@@ -1227,7 +1230,7 @@ export class Engine {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!, icons.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
-            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, ...movedCenter(this.tr, circle, mercX(lng), mercY(lat)), c.box, circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));

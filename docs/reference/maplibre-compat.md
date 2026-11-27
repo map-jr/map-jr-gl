@@ -135,6 +135,7 @@ library" names a member that MapLibre GL JS does not have.
 | `addSource` | `(id: string, source: object) => Map` | Adds a source to the style, as in MapLibre GL JS. |
 | `removeSource` | `(id: string) => Map` | Removes a source from the style, as in MapLibre GL JS. |
 | `jumpTo` | `(o: CameraInput, eventData?: EventData \| undefined) => Map` | Moves the camera to a view without an animation, as in MapLibre GL JS. |
+| `stop` | `() => Map` | As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`. |
 | `fitBounds` | `(bounds: LngLatBoundsInput, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`. |
 | `fitScreenCoordinates` | `(p0: PointLike, p1: PointLike, bearing: number, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`. |
 | `flyTo` | `(o: Omit<CameraOptions, 'padding'> & {padding?: PaddingInput} & object & `[`FlyOptions`](map.md#flyoptions)`, eventData?: EventData \| undefined) => Map` | Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17. The `object` has the members `duration`, `around`, `essential`, `offset` and `easing`. |
@@ -181,7 +182,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setFeatureState` | `(feature: FeatureIdentifier, state: Record<string, unknown>) => Map` | Merges `state` into the feature state of one feature. |
 | `getFeatureState` | `(feature: FeatureIdentifier) => Record<string, unknown>` | Returns the feature state of one feature. |
 | `getImage` | `(name: string) => object \| undefined` | Returns `{data, pixelRatio, sdf}` and the other options of an image that `addImage` added, or `undefined`. |
-| `listImages` | `() => string[]` | Returns the names of the images that the map has. |
+| `listImages` | `() => string[]` | Returns the names of the images that the map has: the icons of the sprites of the style (`<id>:name` for a sprite that is not `default`) and the images that `addImage` added. |
 | `loadImage` | `(url: string) => Promise<{data: ImageBitmap}>` | Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. |
 | `querySourceFeatures` | `(sourceId: string, options?: QuerySourceFeatureOptions) => GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>` | Returns the features of a source in the tiles of the present view, as an array that is also a promise; MapLibre GL JS returns only the array. |
 | [`queryRenderedFeatures`](#queryrenderedfeatures) | `(geometry?: PointLike \| [PointLike, PointLike] \| RenderedQueryOptions, options?: RenderedQueryOptions) => MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]>` | Returns the features that the style layers draw at a point or in a box of the screen, the top layer first, as an array that is also a promise; MapLibre GL JS returns only the array. |
@@ -212,7 +213,6 @@ library" names a member that MapLibre GL JS does not have.
 | `unproject` | `(point: {x: number; y: number} \| [number, number]) => LngLat` | Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. |
 | `isLocationOccluded` | `(lngLat: LngLatLike) => boolean` | Only in this library: whether the far side of the globe hides a position from the camera. |
 | `getBounds` | `() => LngLatBounds` | Returns the smallest box that contains the visible map. |
-| `stop` | `() => Map` | Stops the animation of the camera, where it is. |
 | `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Sets whether copies of the world are drawn beside it, as in MapLibre GL JS. |
 | `getRenderWorldCopies` | `() => boolean` | Returns whether copies of the world are drawn beside it. |
 | `setMinZoom` | `(z?: number \| null \| undefined) => Map` | Sets the smallest zoom level that the user can reach. |
@@ -250,7 +250,7 @@ library" names a member that MapLibre GL JS does not have.
 | `removeControl` | `(control: Control) => Map` | Removes a control that `addControl` added. |
 | `hasControl` | `(control: Control) => boolean` | Whether the map has this control. |
 | `addFonts` | `(faces: FontFaces) => Map` | Only in this library: loads more web fonts for labels after the map is created. |
-| `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
+| `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name: an image that `addImage` added or an icon of a sprite of the style (`<id>:name` for a sprite that is not `default`). |
 | `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| `[`FeatureOptions`](map.md#featureoptions)`, o?: `[`FeatureOptions`](map.md#featureoptions)`) => Promise<`[`RenderedFeature`](types.md#renderedfeature)`[]>` | Only in this library: returns a promise of the features that the style layers draw, the top one first. |
 | `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| `[`SourceOptions`](map.md#sourceoptions)`, o?: `[`SourceOptions`](map.md#sourceoptions)`) => Promise<`[`QueriedFeature`](types.md#queriedfeature)`[]>` | Only in this library: returns a promise of the features of the tile data of the source `sourceId`. |
 | `queryElevation` | `(at: LngLatLike \| {x: number; y: number}, options?: {source?: string; zoom?: number}) => Promise<number \| null>` | Only in this library: returns a promise of the elevation of the ground in meters at a position, from the raster-dem source of the style, or `null` where it has no data. |
