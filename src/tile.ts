@@ -860,9 +860,10 @@ function tessellateLine(b: Batch): GLBatch | null {
     let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
         if (b.progress) {
-            // The place along the whole line goes in the color's red and green bytes, as one 16-bit number.
-            const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 65535);
-            color.push(t >> 8, t & 255, 0, 255);
+            // The place along the whole line goes in the color's red, green and blue bytes, as one 24-bit number, so that
+            // the steps of a `step` gradient a millionth of the line apart stay apart (#1808).
+            const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 16777215);
+            color.push(t >> 16, t >> 8 & 255, t & 255, 255);
             // The dashes of a line with a gradient: MapLibre measures such a line as 16383 tile units from end to
             // end, whatever its length. The same is done here, so that the dashes are those of MapLibre.
             dist = part * 16383.5;

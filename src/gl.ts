@@ -219,7 +219,7 @@ void main() {
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur; uniform mat3 u_screen;
 in float v_blur; in float v_gap; in float v_aa;
-uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
+uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize; uniform highp sampler2D u_stops;
 uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
 // How far t is outside the part from..to of a period p, which repeats. A part of length 0 is far, unless keep.
@@ -263,8 +263,13 @@ void main() {
     return;
   }
   if (u_patSize.x < 0.0) {
-    // line-gradient: the color comes from a ramp, by the place along the whole line (see tessellateLine).
-    o = texture(u_img, vec2((v_color.r * 65280.0 + v_color.g * 255.0) / 65535.0, 0.5)) * a;
+    // line-gradient: the color comes from a ramp, by the place along the whole line (see tessellateLine). A step
+    // gradient (u_patSize.x is -2) takes the color of the last of its stops at or below that place (see \`steps\`).
+    float t = dot(v_color.rgb, vec3(16711680.0, 65280.0, 255.0)) / 16777215.0;
+    if (u_patSize.x > -1.5) { o = texture(u_img, vec2(t, 0.5)) * a; return; }
+    int l = 0, r = textureSize(u_stops, 0).x;
+    while (r - l > 1) { int m = (l + r) / 2; if (t < texelFetch(u_stops, ivec2(m, 0), 0).r) r = m; else l = m; }
+    o = texelFetch(u_img, ivec2(l, 0), 0) * a;
     return;
   }
   o = vec4(c.rgb * a, a);
@@ -1378,8 +1383,9 @@ export class GLRenderer {
                         const cap = L.p.cap.dd ? 'butt' : L.p.cap.eval(zoom);
                         gl.uniform1i(u.u_cap, cap === 'round' ? 1 : 0);
                         const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
-                        gl.uniform2f(u.u_patSize, L.ramp ? -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
+                        gl.uniform2f(u.u_patSize, L.ramp ? L.steps ? -2 : -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
                         if (L.ramp) {
+                            if (L.steps) { gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.steps)); gl.uniform1i(u.u_stops, 3); }
                             gl.activeTexture(gl.TEXTURE0);
                             gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.ramp));
                             gl.uniform1i(u.u_img, 0);
@@ -1628,7 +1634,7 @@ export class GLRenderer {
     private dropRamps(layers: CompiledLayer[]) {
         if (layers === this.rampLayers) return;
         this.rampLayers = layers;
-        const keep = new Set(layers.flatMap(L => [L.ramp, L.relief]));
+        const keep = new Set(layers.flatMap(L => [L.ramp, L.relief, L.steps]));
         for (const [pixels, tex] of this.ramps) if (!keep.has(pixels)) { this.gl.deleteTexture(tex); this.ramps.delete(pixels); }
     }
     private declare floatTargets?: boolean;

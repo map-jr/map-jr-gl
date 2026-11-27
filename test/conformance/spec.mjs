@@ -42,7 +42,7 @@ if (Object.keys(SPEC).length < 10) { console.error('FAIL: could not read the lis
 // Properties that the code reads outside `SPEC`: [layer type or group ('*' for each layer type), name, inputs, file, pattern].
 const OTHER = [
     ['*', 'visibility', ['global-state'], 'style.ts', /compileProp\(l\.layout\.visibility, 'string', 'visible'\)/],
-    ['line', 'line-gradient', ['line-progress'], 'style.ts', /l\.paint\['line-gradient'\]/],
+    ['line', 'line-gradient', ['line-progress'], 'style.ts', /l\.paint\?\.\['line-gradient'\]/],
     ['heatmap', 'heatmap-color', ['heatmap-density'], 'style.ts', /l\.paint\?\.\['heatmap-color'\]/],
     // (Only an `interpolate` expression gives stops; see `relief` in src/style.ts.)
     ['color-relief', 'color-relief-color', ['elevation'], 'style.ts', /l\.paint\?\.\['color-relief-color'\]/],
