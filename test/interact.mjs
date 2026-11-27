@@ -2236,7 +2236,8 @@ for (const mode of renderers) {
             ours.down === 'down' && ours.up === 'up' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
     // A line layer over a polygon draws its rings, so a query finds it near a ring and not inside the polygon, and a
-    // (#2094). The square has a ring of 4 pixels; its east side is queried at its middle and 15 pixels to the west.
+    // `line-offset` moves the rings too, as in MapLibre GL JS 6.17 (#2094, #2095). The square has a ring of 4 pixels; its
+    // east side is queried at its middle, 15 pixels to the west and 15 pixels to the east.
     {
         const run = lib => page.evaluate(async ([lib, mode]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
@@ -2248,11 +2249,12 @@ for (const mode of renderers) {
                 layers: [
                     {id: 'fill', type: 'fill', source: 'p'},
                     {id: 'ring', type: 'line', source: 'p', paint: {'line-width': 4}},
+                    {id: 'off', type: 'line', source: 'p', paint: {'line-width': 4, 'line-offset': 15}},
                 ]}});
             await new Promise(r => m.once('idle', r));
             const e = m.project([20, 10]), c = m.project([10, 10]), only = (pt, id) => [...new Set([...m.queryRenderedFeatures(pt, {layers: [id]})].map(f => f.layer.id))].join();
             const out = {};
-            for (const id of ['ring']) for (const [name, pt] of Object.entries({inside: [c.x, c.y], edge: [e.x, e.y], west: [e.x - 15, e.y], east: [e.x + 15, e.y]})) {
+            for (const id of ['ring', 'off']) for (const [name, pt] of Object.entries({inside: [c.x, c.y], edge: [e.x, e.y], west: [e.x - 15, e.y], east: [e.x + 15, e.y]})) {
                 out[`${id}-${name}`] = only(pt, id);
                 out[`later-${id}-${name}`] = [...new Set((await m.queryRenderedFeatures(pt, {layers: [id]})).map(f => f.layer.id))].join();
             }
@@ -2260,8 +2262,8 @@ for (const mode of renderers) {
             return out;
         }, [lib, mode]);
         const ours = await run('ours'), ml = await run('ml');
-        check(`[${mode}] queryRenderedFeatures: a line layer over a polygon finds the ring and not the inside, as MapLibre GL JS (#2094)`,
-            ours['ring-inside'] === '' && ours['ring-edge'] === 'ring' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+        check(`[${mode}] queryRenderedFeatures: a line layer over a polygon finds the ring and not the inside, and line-offset moves the ring, as MapLibre GL JS (#2094, #2095)`,
+            ours['ring-inside'] === '' && ours['ring-edge'] === 'ring' && (ours['off-west'] === 'off') !== (ours['off-east'] === 'off') && ours['off-edge'] === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
 
     // #2217: with line-offset, a miter join longer than 2 (line-miter-limit 4, a turn of 133 degrees, miter 2.5) moves

@@ -197,7 +197,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
                 const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
-                const offset = size && f.type === 2 ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
+                const offset = size && (f.type === 2 || set.ring) ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
                 // A line layer draws the rings of a polygon as lines (closed), so it finds them near the ring only.
                 let tc: number[] = c, te = ends;
                 const ring = set.ring && f.type === 3;
