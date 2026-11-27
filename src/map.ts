@@ -485,7 +485,7 @@ export class Map {
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
                 this.fellBack(e.data.message);
-                const at = performance.now(), fresh = this.canvas.cloneNode() as HTMLCanvasElement;
+                const fresh = this.canvas.cloneNode() as HTMLCanvasElement;
                 this.canvas.replaceWith(fresh);
                 for (const fn of this.inputCleanup.splice(0)) fn();
                 this.canvas = fresh;
@@ -510,7 +510,7 @@ export class Map {
                     this.templates.clear();
                     for (const [name, [source, options]] of this.imageInputs) this.putImage(name, source, options);
                     // (The worker drew nothing, so an animation that the page started went nowhere; #777.)
-                    this.resumeEase(at);
+                    this.resumeEase();
                     this.bindInput();
                 }, error => this.fire('error', {error}));
             };
@@ -572,7 +572,6 @@ export class Map {
         if (!quiet) this.retried = true;
         this.movingToMain = !!quiet;
         if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
-        const at = performance.now();
         this.watchTurn++;
         if (!quiet) this.fire('webglcontextlost');
         // (A move for a custom layer keeps the queries that the old engine has not answered: the new engine answers them
@@ -599,7 +598,7 @@ export class Map {
             // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
             // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
             this.restyle(true);
-            this.resumeEase(at);
+            this.resumeEase();
             this.templates.clear(); // (as after a fall back; #882)
             for (const [name, [source, options]] of this.imageInputs) await this.putImage(name, source, options);
             for (const p of asked) if (p.sent && [...this.pending.values()].includes(p)) this.post(p.sent);
@@ -622,12 +621,16 @@ export class Map {
 
     /**
      * A new engine (after a fall back or a restart) runs the last `easeTo` for the time that is left; #777, #807. An
-     * `easeTo` that still ran when the old engine stopped (at `since`) and whose time ran out during a slow start ends
-     * at its target at once, and not where the old engine stopped (#1757).
+     * `easeTo` whose end the old engine did not report runs, also when its time ran out, and then ends at its target at
+     * once, and not where the old engine stopped: the browser can report the lost context seconds after the engine
+     * stopped drawing, and the start can be slow (#1757).
      */
-    private resumeEase(since = performance.now()) {
-        const ease = this.eased, end = ease ? ease.at + (ease.c as {duration: number}).duration : 0;
-        if (end > since) this.post({...ease!.c, duration: Math.max(1, end - performance.now())} as Command);
+    private resumeEase() {
+        const ease = this.eased;
+        if (!ease) return;
+        const c = {...ease.c, duration: Math.max(1, ease.at + (ease.c as {duration: number}).duration - performance.now())} as Command;
+        this.post(c);
+        this.eased = {c, at: performance.now()};
     }
 
     /** The engine of the last start has drawn a frame. */
@@ -842,6 +845,8 @@ export class Map {
             const turned = e.bearing !== was.bearing, tilted = e.pitch !== was.pitch;
             this.seen = {zoom: e.zoom, bearing: e.bearing, pitch: e.pitch};
             if (e.seq !== undefined) this.reported = e.seq;
+            // (The engine has ended the last `easeTo`, or a later command stopped it: a new engine does not run it again; #1757.)
+            if (!e.moving && this.eased && (e.seq ?? 0) >= ((this.eased.c as {seq?: number}).seq ?? 0)) this.eased = undefined;
             // (A report from before the last jumpTo would move the camera back for a frame: the needle of the compass and
             // getBearing() stepped back during a fast drag of the compass with the worker renderer, #548.)
             if ((e.seq ?? this.jumped) >= this.jumped) Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation, padding: e.padding});
