@@ -203,7 +203,7 @@ const map = createMap('map', {
 
 | Type | What it is |
 |---|---|
-| `MapPointer` | The argument of [`onClick`](description.md#onclick). |
+| `MapPointer` | The argument of [`onClick`](description.md#onclick), of `onHover` in React, of the event `hover` in Vue and of the event `map-hover` of `<map-jr>`. |
 | [`FeaturePlace`](map.md#featureplace) | A point, a position or a box of the screen, for a query. |
 | [`FeatureOptions`](map.md#featureoptions), [`SourceOptions`](map.md#sourceoptions) | The options of the queries. |
 | [`MoveToOptions`](map.md#movetooptions), [`FlyOptions`](map.md#flyoptions) | The argument of `moveTo` and its flight. |

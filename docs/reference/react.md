@@ -55,7 +55,7 @@ lists.
 |---|---|---|---|
 | `mapStyle` **required** | [`MapDescription`](description.md#mapdescription)`['style']` | | The style: a style object, the URL of a style, or `{light, dark}`. |
 | `onViewChange` | `(view: `[`View`](state.md#view)`) => void` | | Called with the first view once, before `load`, and then with the new view at each change of the view. |
-| `onHover` | `(features: `[`RenderedFeature`](types.md#renderedfeature)`[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
+| `onHover` | `(event: MapPointer) => void` | | Called when the features of `interactiveLayers` under the pointer change, with the features (the top one first) and the position of the pointer. |
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
 | `onError` | `(error: Error, info: MapErrorInfo) => void` | | Called with each error of the map. |
