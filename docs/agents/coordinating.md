@@ -238,15 +238,22 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 
   When `main` has had a merge since the CI of a branch ran, and that merge changed one of the following, update the
   branch (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/<n>/update-branch`) and merge on the new CI:
-  - the build or a script (`build.mjs`, `scripts/`);
+  - the build, or a script that the build or a check of the branch runs (`build.mjs`, and the scripts of `pnpm build`,
+    `pnpm test` and `pnpm test:consistency`, such as `scripts/messages.mjs` and `scripts/size-check.mjs`);
   - the messages, the description or the reference;
   - a file of `src/` that the branch also changes;
-  - the harness of a suite (its helpers, its start or its options), or a check that the branch also changes.
+  - the harness of a suite (its helpers, `demo/serve.mjs`, its start or its options), or a check that the branch also
+    changes.
 
   A merge that only adds or changes a check of another feature in `test/interact.mjs` or `test/host.mjs` needs no
   update (the owner, 2026-11-26, #2301). Before this decision, each such merge restarted the CI of every open branch.
   From 21:35 to 23:10 UTC on 2026-11-26, five merges of one coordinator restarted the four runs of another
   coordinator five times each.
+
+  A merge that only changes a script that no check of the branch runs needs no update either: the tools of
+  `scripts/agents/` and the reports (`scripts/status.mjs`, `scripts/timeline.mjs`). The same holds for
+  `scripts/ci-paths.mjs` when the branch changes `src/`, because every job of `CI` runs then, and its `--check` in
+  `pnpm test:consistency` reads only the files that the browser jobs read (the owner, 2026-11-27, #2360).
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
   (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
