@@ -290,6 +290,28 @@ for (const mode of renderers) {
             kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first && kept.before > 0 && kept.filterNow === kept.before && kept.filterIdle === 0 && kept.again === kept.before && kept.otherData === kept.before && kept.refreshed === 0, JSON.stringify(kept));
     }
 
+    // As in MapLibre GL JS, a layer that is hidden, or whose filter changes, keeps the features it was drawn with for a query
+    // until the tiles have loaded again (idle); then the query answers with the new values (#2364).
+    {
+        const stale = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:50'}));
+            const m = new mod.Map({container: el, style, center: [10, 45], zoom: 3, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); }), out = {};
+            const id = style.layers.find(l => l.type === 'fill').id, q = async () => (await m.queryRenderedFeatures(undefined, {layers: [id]})).length;
+            await idle(); out.before = await q();
+            m.setLayoutProperty(id, 'visibility', 'none'); out.hiddenNow = await q();
+            await idle(); out.hiddenIdle = await q();
+            m.setLayoutProperty(id, 'visibility', 'visible'); await idle(); out.shown = await q();
+            m.setFilter(id, ['==', ['get', 'no-such-property'], 1]); out.filterNow = await q();
+            await idle(); out.filterIdle = await q();
+            m.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] compat: queryRenderedFeatures after setLayoutProperty visibility and setFilter answers with the old values until idle (#2364)`,
+            stale.before > 0 && stale.hiddenNow === stale.before && stale.hiddenIdle === 0 && stale.shown === stale.before && stale.filterNow === stale.before && stale.filterIdle === 0, JSON.stringify(stale));
+    }
+
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
     // a point where `project` says, turns under a drag as in MapLibre GL JS, and turns into Mercator at zoom 12.
     // A second map on the page with Mercator is not affected.

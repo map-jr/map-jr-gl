@@ -951,6 +951,7 @@ export class Map {
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedEvents(sourceId);
             }
             // (As in MapLibre GL JS, a video that plays, or a canvas source that plays, keeps the map from `idle`. A pause sends a frame, and then `idle` fires.)
+            if (this.queryStale.size) { this.queryStale.clear(); this.staleCleared(); }
             if (!this.videos || !this.videos.playing()) this.fire('idle');
         } else if (e.type === 'heights') {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
@@ -1868,15 +1869,30 @@ export class Map {
     setPaintProperty(layerId: string, name: string, value: unknown) { return this.setProp('paint', layerId, name, value); }
     /** Sets the value of a layout property of a style layer. */
     setLayoutProperty(layerId: string, name: string, value: unknown) {
-        if (name === 'visibility') this.toggled.add(layerId);
+        if (name === 'visibility') { this.toggled.add(layerId); this.keepForQuery(layerId); }
         return this.setProp('layout', layerId, name, value);
+    }
+    /**
+     * The visibility and the filter that a layer had before the last `setLayoutProperty` of `visibility` or `setFilter`, until the next
+     * `idle`. MapLibre GL JS answers `queryRenderedFeatures` from the tiles that are drawn, which are built with the old
+     * values until the source reloads, so the query keeps using them until then (#2364).
+     */
+    private queryStale = new globalThis.Map<string, {visibility: unknown; filter: unknown}>();
+    /** @internal Only the compat entry keeps the old values (MapLibre GL JS behavior); the main API answers with the current ones. */
+    protected keepsOldQuery = false;
+    /** @internal Called when the old values of the queries are dropped at `idle`. */
+    protected staleCleared() {}
+    private keepForQuery(id: string) {
+        if (!this.keepsOldQuery) return;
+        const l = this.rawStyle?.layers.find((l: any) => l.id === id);
+        if (l && !this.queryStale.has(id)) this.queryStale.set(id, {visibility: l.layout?.visibility, filter: l.filter});
     }
     /** The layers that the page has hidden or shown. Their tiles are built also while they are hidden: the next change is at once. */
     private toggled = new Set<string>();
     /** The layers that the engine hides after the last style, as it reported them (#1032). */
     private hidden = new Set<string>();
     /** Sets the filter of a style layer. */
-    setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
+    setFilter(layerId: string, filter: unknown) { this.keepForQuery(layerId); return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
     /**
      * Adds the style sheet of the container, the controls and the message of `cannotShow` to the root node of the
@@ -2159,9 +2175,10 @@ export class Map {
             const a = anchor === 'viewport' ? 0 : -this.tr.bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
             return [x * c - y * s, x * s + y * c];
         };
-        const sets = layers.filter(l => l.source && (!only || only.has(l.id)) && l.layout?.visibility !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)
+        const was = (l: any) => this.queryStale.get(l.id);
+        const sets = layers.filter(l => l.source && (!only || only.has(l.id)) && (was(l) ? was(l)!.visibility : l.layout?.visibility) !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
-            layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
+            layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: was(l) ? was(l)!.filter : l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 1), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
             size: size(l),
