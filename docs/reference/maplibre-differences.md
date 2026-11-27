@@ -237,6 +237,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A tile outside the bounds is not requested.
 - This library does the same, for bounds in the style and in the TileJSON. Not for the bounds in the header of a PMTiles file.
 
+### An image source with a corner past longitude 180
+
+- **MapLibre GL JS:** A corner of `coordinates` with a longitude above 180 (or below -180) fails. The map throws an error such as `x=16, y=8, z=4 outside of bounds` and never fires `idle`.
+- **This library (both entries):** The image is drawn at the longitudes that the corners give, past the antimeridian, and the map does not throw. A page that also runs with MapLibre GL JS keeps each corner within -180 to 180, and covers an area across the antimeridian with two image sources, one on each side of it.
+
 ### An image tile that the server does not have (404)
 
 - **MapLibre GL JS:** The nearest tile above it is drawn in its place.
@@ -643,12 +648,12 @@ The table counts the 138 public methods of the MapLibre `Map` class in the entry
 | Available | 134 | 97.1% |
 | Accepted, with no effect | 4 | 2.9% |
 | Not available | 0 | 0.0% |
-| Only in this library | 12 |  |
+| Only in this library | 13 |  |
 | Internal to MapLibre GL JS, not counted | 15 |  |
 
 - **Available:** `addControl`, `addImage`, `addLayer`, `addSource`, `addSprite`, `areTilesLoaded`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `cameraForBounds`, `coveringTiles`, `easeTo`, `fire`, `fitBounds`, `fitScreenCoordinates`, `flyTo`, `getAnisotropicFilterPitch`, `getBearing`, `getBounds`, `getCameraTargetElevation`, `getCanvas`, `getCanvasContainer`, `getCenter`, `getCenterClampedToGround`, `getCenterElevation`, `getContainer`, `getFeatureState`, `getFilter`, `getFontFaces`, `getGlobalState`, `getGlyphs`, `getImage`, `getLayer`, `getLayersOrder`, `getLayoutProperty`, `getLight`, `getMaxBounds`, `getMaxPitch`, `getMaxZoom`, `getMinPitch`, `getMinZoom`, `getPadding`, `getPaintProperty`, `getPitch`, `getPixelRatio`, `getProjection`, `getRenderWorldCopies`, `getRoll`, `getSky`, `getSource`, `getSprite`, `getStyle`, `getStyleUrl`, `getTerrain`, `getVerticalFieldOfView`, `getZoom`, `getZoomSnap`, `hasControl`, `hasImage`, `isMoving`, `isRotating`, `isSourceLoaded`, `isStyleLoaded`, `isZooming`, `jumpTo`, `listImages`, `listens`, `loadImage`, `loaded`, `moveLayer`, `off`, `on`, `once`, `panBy`, `panTo`, `project`, `queryRenderedFeatures`, `querySourceFeatures`, `queryTerrainElevation`, `redraw`, `refreshTiles`, `remove`, `removeControl`, `removeFeatureState`, `removeImage`, `removeLayer`, `removeSource`, `removeSprite`, `resetNorth`, `resetNorthPitch`, `resize`, `rotateTo`, `setAnisotropicFilterPitch`, `setBearing`, `setCenter`, `setEventedParent`, `setFeatureState`, `setFilter`, `setFontFaces`, `setGlobalStateProperty`, `setGlyphs`, `setLayerZoomRange`, `setLayoutProperty`, `setLight`, `setMaxBounds`, `setMaxPitch`, `setMaxZoom`, `setMinPitch`, `setMinZoom`, `setMissingStyleImageResolver`, `setPadding`, `setPaintProperty`, `setPitch`, `setPixelRatio`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setSourceTileLodParams`, `setSprite`, `setStyle`, `setTerrain`, `setTransformCameraUpdate` (with `renderer: 'main'`), `setTransformConstrain`, `setTransformRequest`, `setZoom`, `setZoomSnap`, `snapToNorth`, `stop`, `triggerRepaint`, `unproject`, `updateImage`, `zoomIn`, `zoomOut`, `zoomTo`
 - **Accepted, with no effect** (a value that the library cannot do gives one warning): `setCenterClampedToGround`, `setCenterElevation`, `setRoll`, `setVerticalFieldOfView`
-- **Only in this library:** `addFonts`, `getAttributions`, `getTransformForUpdate`, `isLocationOccluded`, `isPitching`, `isRolling`, `queryElevation`, `queryFeatures`, `querySource`, `setCursor`, `toBlob`, `turnPending`
+- **Only in this library:** `addFonts`, `getAttributions`, `getTransformForUpdate`, `halt`, `isLocationOccluded`, `isPitching`, `isRolling`, `queryElevation`, `queryFeatures`, `querySource`, `setCursor`, `toBlob`, `turnPending`
 - **Not available:** none
 - **Internal to MapLibre GL JS, not counted** (the declaration tags the method `@internal`, or only the class `Camera` has it, which the package does not export): `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `captureRotationPivot`, `clampCenterToGround`, `getTransformForUpdate`, `holdElevation`, `isPitching`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`
 <!-- api:end -->
