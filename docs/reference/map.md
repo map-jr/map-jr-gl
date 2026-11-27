@@ -855,10 +855,11 @@ the focus returns to the element of the map that had it before.
 |---|---|---|---|
 | `lngLat` **required** | `Position` | | The position of the element, `[lng, lat]`. |
 | `anchor` | `Anchor` | `'center'` for a marker; for a popup, chosen by the position | The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
-| `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
+| `offset` | `PopupOffset` | | A distance in CSS pixels from the position, to the right and down. |
 | `popup` | `boolean` | `false` | Whether the element is shown in a box with a tip that points to the position (a popup). |
 | `onClose` | `() => void` | | Called when the user closes the popup. |
 | `closeButton` | `boolean` | true when `onClose` is set, else false | Whether the popup has a button to close it. |
+| `closeOnClick` | `boolean` | `false` | Whether a click on the map closes the popup. |
 | `draggable` | `boolean` | `false` | Whether the user can drag the element. |
 | `onDragStart` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, when a drag starts. |
 | `onDrag` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, at each move of a drag. |
@@ -869,6 +870,19 @@ Without `anchor`, an element that is not a popup has `'center'` at the position.
 it moves, as MapLibre GL JS does: `'top'` near the top edge of the map, `'bottom'` near the bottom edge or when it is
 near no edge, and `'left'` or `'right'` near a side. The two parts join into a corner, such as `'top-left'`. An
 `anchor` that you set keeps the popup on that side.
+
+`offset` of a marker is a pair, `[x, y]`. `offset` of a popup is a pair, one number, or an object with a pair for each
+anchor. The type is `PopupOffset`, as in `Popup` of `@map-jr/map-jr-gl/maplibre-compat`.
+
+One number moves the popup away from the position on the side that it has, so that `offset: 16` keeps 16 pixels from
+the position on every side, also when the popup chooses its own anchor. An object such as `{bottom: [0, -16], top: [0, 16]}` gives the pair
+for the anchor that the popup has, and a side that it leaves out has `[0, 0]`. A marker with an offset that is not a
+pair warns in the development build and has no offset.
+
+`closeButton` and `closeOnClick` are options of a popup. A popup has a close button when `closeButton` is `true`, and
+by default when `onClose` is set. With `closeOnClick: true`, a click on the map closes the popup and calls `onClose`.
+The click that opens the popup does not close it. By default a click on the map leaves the popup open, where
+`Popup` of the compat entry closes on a click.
 
 An option that is not in this table has no effect. In the development build (the `development` export condition,
 `dist/*.dev.js`), `overlay`, `update` and `patch` warn once for each such option on each map, and the warning lists the

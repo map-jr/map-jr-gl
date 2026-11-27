@@ -2640,7 +2640,7 @@ for (const renderer of renderers) {
             } finally { console.warn = log; }
             return said; });
         check(`[${renderer}] an unknown option of overlay(), update() and patch() gives one warning for each option, which names the option and the known options`,
-            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, closeButton, draggable, onDragStart, onDrag, onDragEnd.'
+            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, closeButton, closeOnClick, draggable, onDragStart, onDrag, onDragEnd.'
             && overlayUnknown[1].startsWith('[map-jr-gl] E1647 update(): "colour" is not an option of an overlay, so it has no effect. The options are')
             && overlayUnknown[2].startsWith('[map-jr-gl] E1647 patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
@@ -2860,6 +2860,38 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] a popup of overlay() with closeButton has a button without onClose and the button closes it, closeButton: false takes the button of onClose away, and patch() adds it`,
             closeButton.shown.withButton && !closeButton.shown.plain && !closeButton.shown.off && closeButton.shown.byClose && closeButton.closed && closeButton.others && closeButton.patched && closeButton.closes === 0, JSON.stringify(closeButton));
+        // #214: `offset` of a popup takes a number and a pair for each anchor, and `closeOnClick` closes it at a click on the map, not at the click that opens it.
+        const popupOffset = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), lngLat = t.host.state.get().view.center, made = [];
+            const top = async options => {
+                const el = document.createElement('div'); el.textContent = 'x';
+                made.push(t.host.overlay(el, {lngLat, popup: true, anchor: 'bottom', ...options}));
+                await wait(300);
+                return el.closest('.map-jr-popup-content').getBoundingClientRect().top;
+            };
+            const zero = await top({}), number = await top({offset: 20}), pair = await top({offset: [0, -10]}), perAnchor = await top({offset: {bottom: [0, -30], top: [0, 5]}}), otherSide = await top({offset: {top: [0, 5]}});
+            const el = document.createElement('div'); el.textContent = 'y';
+            const warned = [], log = console.warn;
+            console.warn = m => { warned.push(String(m)); log(m); };
+            // (The check of the development build loads on demand.)
+            try { made.push(t.host.overlay(el, {lngLat, offset: 20})); await wait(500); } finally { console.warn = log; }
+            for (const o of made) o.remove();
+            return {up: [zero - number, zero - pair, zero - perAnchor, zero - otherSide].map(v => Math.round(v)), warned};
+        });
+        check(`[${renderer}] a popup of overlay() takes offset as a number, a pair, and a pair for each anchor, and a marker with a number warns`,
+            popupOffset.up.join() === '20,10,30,0' && popupOffset.warned.length === 1 && popupOffset.warned[0].includes('E214') && popupOffset.warned[0].includes('overlay()'), JSON.stringify(popupOffset));
+        const closeOnClick = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), lngLat = t.host.state.get().view.center, closes = [];
+            const make = (name, options) => { const el = document.createElement('div'); el.textContent = name; const o = t.host.overlay(el, {lngLat, popup: true, anchor: 'bottom', onClose: () => closes.push(name), ...options}); return {el, o}; };
+            window.t.pops = {on: make('on', {closeOnClick: true}), off: make('off', {})};
+            await wait(300);
+            return {openAtOnce: window.t.pops.on.el.isConnected};
+        });
+        await page.mouse.click(30, 30);
+        await page.waitForFunction(() => !window.t.pops.on.el.isConnected, null, {timeout: 5000}).catch(() => {});
+        const closedByClick = await page.evaluate(() => { const p = window.t.pops, r = {on: !p.on.el.isConnected, off: p.off.el.isConnected}; p.on.o.remove(); p.off.o.remove(); return r; });
+        check(`[${renderer}] a popup of overlay() with closeOnClick stays open at the click that opens it and closes at a click on the map, and without it stays open`,
+            closeOnClick.openAtOnce && closedByClick.on && closedByClick.off, JSON.stringify({closeOnClick, closedByClick}));
         // #866: a popup of overlay() that opens from a key press on the map takes the focus, and Escape returns it to the
         // map. A popup that opens from a click leaves the focus where it is.
         await page.evaluate(() => {

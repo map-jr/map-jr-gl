@@ -335,12 +335,15 @@ const popupOpen = ref(true);
 |---|---|---|---|
 | `lngLat` **required** | `[number, number]` | | The position of the content, `[lng, lat]`. |
 | `anchor` | `Anchor` | `'center'` for a marker; for a popup, chosen by the position | The part of the content that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
-| `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
+| `offset` | `PopupOffset` | | A distance in CSS pixels from the position, to the right and down. |
 | `popup` | `boolean` | `false` | Whether the content is shown in a box with a tip that points to the position (a popup). |
 | `onClose` | `() => void` | | Called when the user closes the popup, as the listener `@close`. |
 | `closeButton` | `boolean` | true when `onClose` is set, else false | Whether the popup has a button to close it. |
+| `closeOnClick` | `boolean` | `false` | Whether a click on the map closes the popup. |
 | `draggable` | `boolean` | `false` | Whether the user can drag the content. |
 <!-- ref:VueMapOverlayProps:end -->
+
+The props `offset`, `closeButton` and `closeOnClick` take the values of the same options of [`overlay`](map.md#overlayoptions).
 
 | Event | Value | When |
 |---|---|---|
