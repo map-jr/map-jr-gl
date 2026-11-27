@@ -1223,11 +1223,24 @@ export class GLRenderer {
             if (L.type === 'background' && L.p.pattern.eval(zoom) != null) {
                 const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
                 if (!place) continue;
-                // Screen position -> world pixels at zoom Z, about the map center (pitch is ignored for backgrounds).
+                gl.bindVertexArray(this.quad);
+                if (tr.pitch > 0) {
+                    // On a pitched map the pattern lies on the ground in perspective: it is drawn tile by tile over the
+                    // tiles that cover the view, as in MapLibre GL JS. (The unit quad is scaled to a tile.)
+                    for (const id of tr.tileCover(0, Z)) {
+                        const px = 512 * 2 ** (Z - id.z), m = tr.tileMatrix4(id);
+                        for (let i = 0; i < 8; i++) m[i] *= EXTENT;
+                        const u = place([px, 0, 0, 0, px, 0, id.x * px, id.y * px, 1]);
+                        gl.uniformMatrix4fv(u.u_matrix, false, m);
+                        gl.uniform4f(u.u_clip, -1, -1, 2, 2);
+                        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                    }
+                    continue;
+                }
+                // Screen position -> world pixels at zoom Z, about the map center.
                 const k = 2 ** -fade, b = tr.bearing * Math.PI / 180, cos = Math.cos(b) * k, sin = Math.sin(b) * k, w = tr.width, h = tr.height;
                 const cx = mercX(tr.lng) * 512 * 2 ** Z, cy = mercY(tr.lat) * 512 * 2 ** Z;
                 const u = place([cos * w, sin * w, 0, -sin * h, cos * h, 0, cx - (cos * w - sin * h) / 2, cy - (sin * w + cos * h) / 2, 1]);
-                gl.bindVertexArray(this.quad);
                 gl.uniformMatrix4fv(u.u_matrix, false, [2, 0, 0, 0, 0, -2, 0, 0, 0, 0, 1, 0, -1, 1, 0, 1]);
                 gl.uniform4f(u.u_clip, -1, -1, 2, 2);
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

@@ -14,7 +14,7 @@
 "background-pattern/@2x": "match",
 "background-pattern/literal": "match",
 "background-pattern/missing": "match",
-"background-pattern/pitch": "differ",
+"background-pattern/pitch": "match",
 "background-pattern/rotated": "match",
 "background-pattern/zoomed": "match",
 "basic-v9/z0": "match",
