@@ -961,26 +961,25 @@ for (const mode of renderers) {
         await window.twoFingers([[450, 400], [550, 400]], [[450, 320], [550, 320]]); // both fingers up together
         out.tilt = window.cam();
         window.map.jumpTo({pitch: 0, zoom: 14});
-        // Waits for an animation to end. A fixed time is not sufficient when software rendering is slow. With
-        // `expect`, it also waits until the zoom is near that value: under load the worker can report the start of
-        // an animation later than two quiet samples, and the zoom then still reads the old value.
+        // Waits until the engine has run every command (the map reports its tiles loaded only for the newest command)
+        // and, with `expect`, until the zoom is near that value (a double tap starts its ease after the listeners of
+        // dblclick). A fixed time is not sufficient when software rendering is slow (#2375).
         const still = async (expect) => {
-            await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, z = window.cam().zoom; i < 40 && (quiet < 2 || (expect !== undefined && Math.abs(z - expect) >= 0.02)); i++) {
-                await new Promise(r => setTimeout(r, 150));
-                const now = window.cam().zoom;
-                quiet = Math.abs(now - z) < 1e-6 && !window.map.isMoving() ? quiet + 1 : 0;
-                z = now;
+            for (let i = 0; i < 300; i++) {
+                await new Promise(r => setTimeout(r, 50));
+                if (window.map.areTilesLoaded() && !window.map.isMoving() && (expect === undefined || Math.abs(window.cam().zoom - expect) < 0.02)) break;
             }
         };
-        const tap = async (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); await new Promise(r => setTimeout(r, 60)); };
-        await tap(500, 350); await tap(500, 350);
+        // The two taps of a double tap are sent in one task: a timer between them can last longer than the 300 ms of a
+        // double tap on a loaded runner.
+        const tap = (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); };
+        tap(500, 350); tap(500, 350);
         await still(15);
         out.doubleTap = window.cam();
         window.touch('pointerdown', 11, 450, 350); window.touch('pointerdown', 12, 550, 350); window.touch('pointerup', 11, 450, 350); window.touch('pointerup', 12, 550, 350);
         await still(14);
         out.twoFingerTap = window.cam();
-        await tap(500, 350);
+        tap(500, 350);
         window.touch('pointerdown', 11, 500, 350);
         for (let y = 350; y <= 450; y += 10) { window.touch('pointermove', 11, 500, y); await new Promise(r => setTimeout(r, 16)); }
         window.touch('pointerup', 11, 500, 450);
