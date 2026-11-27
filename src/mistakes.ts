@@ -199,7 +199,8 @@ export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: 
  * number and its minimum and maximum, a boolean, an array and its length; see scripts/style-spec-values.mjs), and
  * the types of each expression of a paint or layout property (`expressionErrors` of src/expr-check.ts). The values of each
  * source are checked by `sourceValues` of src/style-spec-values.ts (its `type`, the type of each property, an unknown
- * property and the coordinates of an image or video).
+ * property and the coordinates of an image or video), and a source of type `canvas` is an error, as in MapLibre. The values of
+ * `icon-image`, `text-field` and `text-variable-anchor-offset` are checked whether or not they are expressions.
  */
 export function validateStyle(style: {sources?: Record<string, any>; layers?: any[]} | undefined, found: (where: string, why: string) => void) {
     const need = (where: string, o: any, k: string) => { if (o[k] === undefined) found(where, `missing required property "${k}"`); };
@@ -213,8 +214,8 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
         const where = 'sources.' + id;
         const t = s.type, dem = t === 'raster-dem', custom = s.encoding === 'custom';
         if (!t) { found(where, '"type" is required'); continue; }
-        // (A canvas source is left to its own step of #1748.)
-        if (!sourceTypes.includes(t)) { if (t !== 'canvas') checkValue(where + '.type', t, '!e' + sourceTypes.join(), found); continue; }
+        if (t === 'canvas') { found(where, 'Please use runtime APIs to add canvas sources, rather than including them in stylesheets.'); continue; }
+        if (!sourceTypes.includes(t)) { checkValue(where + '.type', t, '!e' + sourceTypes.join(), found); continue; }
         if (t === 'geojson') need(where, s, 'data');
         else if (t === 'video' || t === 'image') { if (t === 'video') need(where, s, 'urls'); need(where, s, 'coordinates'); }
         for (const k in s) {
@@ -250,12 +251,20 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
             const v = l[g][k], c = values[`${g} ${l.type} ${k}`], e = values[`${g}= ${l.type} ${k}`], at = `${where}.${g}.${k}`;
             // (An expression of a property that takes one gets the type check of src/expr-check.ts, step 3 of #1748.)
             // (An expression too deep for the stack is left to the map, which reports what it cannot draw.)
-            if (e && Array.isArray(v) && typeof v[0] === 'string' && operators.split(' ').includes(v[0])) { try { for (const r of expressionErrors(v, e, g === 'layout')) found(at + r.key, r.error); } catch { /* see above */ } }
+            // (A value of a property of an image, formatted text or anchor offsets is checked whatever it is, as MapLibre does: a number for `icon-image`, an array that is not an expression for `text-field`, or an odd array for `text-variable-anchor-offset`. A function, an object with "stops", is left out.)
+            const isExpression = Array.isArray(v) && typeof v[0] === 'string' && operators.split(' ').includes(v[0]);
+            if (e && e[0] === 'v' && !isExpression) { if (v !== null && (typeof v !== 'object' || Array.isArray(v))) anchorOffsets(at, v, values['layout symbol text-anchor'], found); }
+            else if (e && ('if'.includes(e[0]) ? Array.isArray(v) || (v !== null && typeof v !== 'object') : isExpression)) { try { for (const r of expressionErrors(v, e, g === 'layout')) found(at + r.key, r.error); } catch { /* see above */ } }
             else if (c) checkValue(at, v, c, found);
             if (g === 'layout' && k === 'text-font' && Array.isArray(v) && operators.split(' ').includes(v[0]) && !outputDefined(v) && !(e && expressionErrors(v, e, true).some(r => !r.error.startsWith('"feature-state"')))) found(at, 'Invalid data expression for "text-font". Output values must be contained as literals within the expression.');
         }
         if (l.filter !== undefined) validateFilter(where + '.filter', l.filter, found);
     });
+}
+/** MapLibre's `validateVariableAnchorOffsetCollection`: the value `v` of `text-variable-anchor-offset` that is not an expression is a non-empty array of an even length, with an anchor and an offset of two numbers in turn. `anchors` is the code of the enum of `text-anchor`. */
+function anchorOffsets(where: string, v: any, anchors: string, found: (where: string, why: string) => void) {
+    if (!Array.isArray(v) || !v.length || v.length % 2) return found(where, 'variableAnchorOffsetCollection requires a non-empty array of even length');
+    for (let i = 0; i < v.length; i += 2) { checkValue(`${where}[${i}]`, v[i], anchors, found); checkValue(`${where}[${i + 1}]`, v[i + 1], '!a2', found); }
 }
 /** Whether every output of the expression `e` is a literal, as `outputDefined` of MapLibre's expressions says (the `text-font` check). MapLibre folds a constant expression to a literal. */
 function outputDefined(e: any): boolean {

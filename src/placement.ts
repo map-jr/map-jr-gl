@@ -45,6 +45,8 @@ export interface PlacedIcon {
     corners?: number[];
     /** Drawn without the perspective ratio (see `CompiledLayer.fixedSize`). */
     fixedSize?: boolean;
+    /** The `icon-translate` and `icon-translate-anchor` of the placement (see `moveLabel`). */
+    tt?: unknown[];
     /** Set for distance-field icons, which are drawn in this color. */
     color?: number[];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
@@ -79,6 +81,8 @@ export interface Placed {
      * keep their places on the line, which have the ratio, and only each glyph drops it.
      */
     fixedSize?: boolean;
+    /** The `text-translate` and `text-translate-anchor` of the placement, for text that it moved (see `moveLabel`). */
+    tt?: unknown[];
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
     key: string;
     /** The id of the symbol layer of the label, so that its text is drawn in the place of that layer. */
@@ -171,14 +175,37 @@ export function quadBox(f: number[], x: number, y: number, w: number, h: number,
 const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (let i = 0; i < f.length; i += 2) { const x = f[i], y = f[i + 1]; to[i] = x * c - y * s; to[i + 1] = x * s + y * c; } };
 
 /**
+ * A `*-translate` (`t`: the value and its anchor) as an offset on the screen from the anchor (ax, ay) of the point (x, y)
+ * of the tile `id`. The point is moved by tile units and projected again, as in MapLibre GL JS, so the offset shrinks
+ * with the distance on a pitched map and follows the curve of the sphere on the globe (#2021).
+ */
+function translateAt(tr: Transform, id: TileID, x: number, y: number, ax: number, ay: number, t: unknown[]): [number, number] {
+    const [mx, my] = mapTranslate(t[0], t[1], tr.bearing), k = 2 ** id.z * EXTENT / tr.worldSize;
+    if (!mx && !my) return [0, 0];
+    const [px, py] = tr.projectTile(id, x + mx * k, y + my * k);
+    return [px - ax, py - ay];
+}
+/**
+ * How far a translate that changed since the placement (`was`, now `t`) moves the label `p` whose anchor is at (ax, ay).
+ * A transition of `text-translate` or `icon-translate` moves what is drawn in each frame, as MapLibre GL JS applies them
+ * when it draws. The boxes for collisions keep the translate of the placement until the next one, as in MapLibre GL JS (#2478).
+ */
+function moved(tr: Transform, p: Placed, ax: number, ay: number, was: unknown[] | undefined, t: unknown[] | undefined): [number, number] {
+    const a = was?.[0] as number[] | undefined, b = t?.[0] as number[] | undefined;
+    if (!was || !t || was[1] === t[1] && a?.[0] === b?.[0] && a?.[1] === b?.[1]) return [0, 0];
+    const [x0, y0] = translateAt(tr, p.tile, p.src.x, p.src.y, ax, ay, was), [x1, y1] = translateAt(tr, p.tile, p.src.x, p.src.y, ax, ay, t);
+    return [x1 - x0, y1 - y0];
+}
+/**
  * Moves the drawn copy `d` of the placed label `p` with the camera between placements: its anchor is now at (ax, ay)
  * and at the distance `depth` from the camera, and the map has turned by `turn` radians since the placement.
  * On a tilted map a label that comes nearer to the camera grows and one that goes away shrinks, in each frame, as at
  * its next placement (#914): without that its size changed in a step at each placement while the map panned. Text
  * that lies on the ground takes the whole perspective of the ground, less what its size on the ground takes away.
+ * `now` has the `text-translate` and the `icon-translate` of the layer in this frame, each with its anchor (see `moved`).
  * Returns whether the copy is turned.
  */
-export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: number, depth: number, turn: number, turned: boolean): boolean {
+export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: number, depth: number, turn: number, turned: boolean, now: (unknown[] | undefined)[] = []): boolean {
     const grow = perspective(tr, depth) / perspective(tr, p.depth);
     const far = depth > 0 ? p.depth / depth : 1, k = p.fixedSize ? p.frame || p.ground ? far : 1
         : p.ground ? far / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
@@ -190,7 +217,8 @@ export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: n
     const rotate = !!turn && (!p.src.upright || (!p.shaped && !!p.icon && !p.src.icon!.upright));
     const tc = rotate ? Math.cos(turn) * k : k, ts = rotate ? Math.sin(turn) * k : 0, gc = rotate ? Math.cos(turn) : 1, gs = rotate ? Math.sin(turn) : 0;
     const ox = p.x - p.ax, oy = p.y - p.ay;
-    d.x = ax + ox * tc - oy * ts; d.y = ay + ox * ts + oy * tc; d.angle = p.angle + (rotate ? turn : 0);
+    const [tx, ty] = moved(tr, p, ax, ay, p.tt, now[0]);
+    d.x = ax + ox * tc - oy * ts + tx; d.y = ay + ox * ts + oy * tc + ty; d.angle = p.angle + (rotate ? turn : 0);
     const curve = p.curve, ground = p.ground, dc = d.curve, dg = d.ground;
     // (Ground text: the size above gives the length of the glyphs, and the triples of `ground` only their direction.)
     const cc = gc * kc, cs = gs * kc;
@@ -201,7 +229,8 @@ export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: n
         // (The icon's offset from the anchor grows as the icon does, which is not as its text does: see `fixedSize`.)
         const ix = p.icon.x - p.ax, iy = p.icon.y - p.ay;
         const ig = p.icon.fixedSize ? p.icon.frame ? (depth > 0 ? p.depth / depth : 1) : 1 : p.icon.frame ? flatGrow(tr, p.depth, depth) : grow;
-        d.icon.x = ax + (ix * gc - iy * gs) * ig; d.icon.y = ay + (ix * gs + iy * gc) * ig; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
+        const [mx, my] = moved(tr, p, ax, ay, p.icon.tt, now[1]);
+        d.icon.x = ax + (ix * gc - iy * gs) * ig + mx; d.icon.y = ay + (ix * gs + iy * gc) * ig + my; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
         d.icon.w = p.icon.w * ig; d.icon.h = p.icon.h * ig;
         if (p.icon.frame && d.icon.frame && (rotate || turned)) turnFrame(p.icon.frame, d.icon.frame, gc, gs);
         // (A stretched icon: the odd entries of its pairs are screen pixels.)
@@ -491,18 +520,11 @@ export function placeLabels(
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
     const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
-    // A `*-translate` as an offset on the screen from the anchor (ax, ay) of the point (x, y) of a tile. The point is moved
-    // by tile units and projected again, as in MapLibre GL JS, so the offset shrinks with the distance on a pitched map
-    // and follows the curve of the sphere on the globe (#2021).
-    const translateAt = (it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, t: unknown, anchor: unknown): [number, number] => {
-        const [mx, my] = mapTranslate(t, anchor, tr.bearing);
-        if (!mx && !my) return [0, 0];
-        const [px, py] = tr.projectTile(it.id, x + mx / it.scale, y + my / it.scale);
-        return [px - ax, py - ay];
-    };
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
+        // (The translates are paint properties: their values are the ones at the zoom of the map, not of the tile.)
+        const tt = [L.p.translate.eval(tr.zoom), L.p.translateAnchor.eval(tr.zoom)], itt = [L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom)];
         before?.(L);
         // The same text is a duplicate only in its own layer (the same feature from two tiles, or a road name that
         // repeats). Two layers can show the same text at one point, as in MapLibre.
@@ -651,8 +673,7 @@ export function placeLabels(
                         textAngle = turned;
                         candidates = candidates.map(([dx, dy]) => [dx * c - dy * sn, dx * sn + dy * c]);
                     }
-                    // (The translate is a paint property: its value is the one at the zoom of the map, not of the tile.)
-                    const [mx, my] = translateAt(it, l.x, l.y, ax, ay, L.p.translate.eval(tr.zoom), L.p.translateAnchor.eval(tr.zoom));
+                    const [mx, my] = translateAt(tr, it.id, l.x, l.y, ax, ay, tt);
                     if (mx || my) {
                         candidates = candidates.map(([dx, dy]) => [dx + mx, dy + my]);
                     }
@@ -668,7 +689,7 @@ export function placeLabels(
                 const ic = meta && l.icon, iflat = (!!tr.pitch || tr.globeness > 0) && !!ic && ic.flat && ic.fit === 'none';
                 const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (L.fixedSize ? 1 : iflat ? flatSize(tr, depth) : persp) : 0;
                 // Where the icon goes and its size, for text centered at (tx, ty).
-                const sprite = meta, move = ic ? translateAt(it, l.x, l.y, ax, ay, L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom)) : [0, 0];
+                const sprite = meta, move = ic ? translateAt(tr, it.id, l.x, l.y, ax, ay, itt) : [0, 0];
                 const iconAt = (fit: string, tx: number, ty: number) => {
                     const ic = l.icon!, meta = sprite!;
                     let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
@@ -810,7 +831,7 @@ export function placeLabels(
                     }
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, merc, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity, color: meta.sdf ? ic.color : undefined, k: isize / meta.pixelRatio};
+                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, merc, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, tt: itt, opacity: ic.opacity, color: meta.sdf ? ic.color : undefined, k: isize / meta.pixelRatio};
                     } else if (!(hasText && (textBox || bent) && ic.optional)) continue; // (a required icon that is not placed drops its text too, as in MapLibre)
                 }
                 // As in MapLibre GL JS (`u_is_offset`), the text of a layer with `icon-offset` is drawn without the perspective
@@ -836,7 +857,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor, fixedSize: fixed || undefined});
+                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor, fixedSize: fixed || undefined, tt: textBox ? tt : undefined});
             }
         }
         if (drawByY && out.length - first > 1) {
