@@ -1226,7 +1226,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (styled && !restyled && differ(next.fonts, before?.fonts)) {
             const changed: FontFaces = {};
             for (const name in next.fonts) if (differ(next.fonts[name], before?.fonts?.[name])) changed[name] = next.fonts[name];
-            map.addFonts(fontFaces(absolute(changed)));
+            map.addFonts(absolute(changed));
         }
         // (Before the view: a view past the antimeridian is constrained by the new setting.)
         if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) { map.setRenderWorldCopies(next.renderWorldCopies ?? true); map.jumpTo({}); }
