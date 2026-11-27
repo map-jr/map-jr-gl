@@ -626,6 +626,48 @@ for (const mode of renderers) {
             check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
         }
+        // An easeTo or flyTo during a drag fires movestart inside the call, and the drag goes on: the ease fires moveend, and
+        // the release fires dragend and a second moveend, as in MapLibre GL JS (#2469). (The zoom events wait for #2474.)
+        const dragEase = (lib, second, early) => page.evaluate(async ([lib, renderer, second, early]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [], c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
+            for (const t of ['movestart', 'dragstart', 'dragend', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            const send = (type, [x, y]) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true, view: window};
+                c.dispatchEvent(lib === 'ml' ? new MouseEvent(type.replace('pointer', 'mouse'), o) : new PointerEvent(type, o));
+            };
+            send('pointerdown', [100, 100]); await frame();
+            for (let i = 1; i < 8; i++) { send('pointermove', [100 + i * 8, 100]); await frame(); }
+            await new Promise(r => setTimeout(r, 200));
+            log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 3000 : 300}); log.push('|ret');
+            // (`early`: the pointer lifts while the ease still runs.)
+            // (It waits for the first `move` of the ease, not for a time: the report of the engine can come late. When the ease
+            // has ended by then, the attempt is void and the caller tries again.)
+            if (early) {
+                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('move'); i++) await new Promise(r => setTimeout(r, 25));
+                if (log.slice(log.indexOf('|call')).includes('moveend')) { m.remove(); el.remove(); return 'RETRY'; }
+            } else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 100));
+            send('pointerup', [200, 120]);
+            if (early) for (let i = 0; i < 200 && log.slice(log.indexOf('|call')).filter(t => t === 'moveend').length < 2; i++) await new Promise(r => setTimeout(r, 25));
+            else await new Promise(r => setTimeout(r, 600));
+            m.remove(); el.remove();
+            return log.slice(log.indexOf('|call')).join(' ');
+        }, [lib, mode, second, early]).catch(e => String(e));
+        for (const second of ['easeTo', 'flyTo']) {
+            const ours = await dragEase('ours', second), ml = await dragEase('ml', second);
+            check(`[${mode}] ${second} during a drag fires movestart inside the call and moveend, dragend and moveend after it, as in MapLibre GL JS (#2469)`,
+                ours === ml && ml === '|call movestart |ret move moveend dragend moveend', JSON.stringify({ours, ml}));
+            // The release during the ease fires the `moveend` of the drag, and the ease goes on without a second `movestart`.
+            const attempt = async lib => { let out; for (let i = 0; i < 4 && (i === 0 || out === 'RETRY'); i++) out = await dragEase(lib, second, true); return out; };
+            const earlyOurs = await attempt('ours'), earlyMl = await attempt('ml');
+            check(`[${mode}] ${second} during a drag, released while it runs, fires dragend and moveend and then the rest of the ease with no second movestart, as in MapLibre GL JS (#2469)`,
+                earlyOurs === earlyMl && earlyMl === '|call movestart |ret move dragend moveend move moveend', JSON.stringify({earlyOurs, earlyMl}));
+        }
         // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
         // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
         const resizeOrder = lib => page.evaluate(async ([lib, renderer]) => {
