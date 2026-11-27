@@ -253,7 +253,7 @@ function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined,
 async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
-    if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] E1640 server render: the options have ${o.center == null && o.zoom == null ? 'no "center" and no "zoom"' : o.center == null ? '"zoom" but no "center"' : '"center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
+    if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] ${o.center == null && o.zoom == null ? 'E1640 server render: the options have no "center" and no "zoom"' : o.center == null ? 'E11640 server render: the options have "zoom" but no "center"' : 'E21640 server render: the options have "center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
     // The size is written into the markup as it is: a string could add attributes, and NaN gives a size of NaN (#1668).
     for (const name of ['width', 'height'] as const) {
         const size: unknown = o[name];
@@ -498,7 +498,7 @@ export async function renderElement(description: MapDescription, options: Elemen
     }
     if (d.nonce) attrs.push(`nonce="${quote(d.nonce)}"`);
     for (const name in attributes) {
-        if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(`[map-jr-gl] E30826 renderElement(): "${name}" is not the name of an attribute${/^on/i.test(name) ? ' that the element can have: an event handler attribute runs script' : ''}. Give names such as "id", "class" or "style".`);
+        if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(/^on/i.test(name) ? `[map-jr-gl] E50826 renderElement(): "${name}" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".` : `[map-jr-gl] E30826 renderElement(): "${name}" is not the name of an attribute. Give names such as "id", "class" or "style".`);
         if (name !== 'style') attrs.push(`${name}="${quote(attributes[name])}"`);
     }
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden;' + (attributes.style ?? ''))}"`);

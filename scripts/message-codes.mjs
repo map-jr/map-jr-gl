@@ -65,6 +65,7 @@ const valueNames = [
     ['expr.ts', 583, "JSON.stringify({locale: l, 'min-fraction-digits': mn, 'max-fraction-digits': mx, currency: cur, unit: u})", 'options'],
     ['gpu-error.ts', 10205, "status ? ` (${status}).` : '.'", 'status'],
     ['host.ts', 20121, 'name', 'image'],
+    ['host.ts', 50121, 'name', 'image'],
     ['loader.ts', 1630, 'n', 'tileWorkers'],
     ['loader.ts', 10017, "v ?? 'unknown'", 'workerVersion'],
     ['loader.ts', 10017, '__VERSION__', 'pageVersion'],
