@@ -606,9 +606,11 @@ A key that the object leaves out is on, and `false` turns that gesture off, so `
 except the wheel zoom. `true` and `false` keep their meaning.
 
 ```js
-// Entry: @map-jr/map-jr-gl
-map.update({
-  ...description,
+import {createMap} from '@map-jr/map-jr-gl';
+
+createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   interactive: {scrollZoom: false, dragRotate: false},
 });
 ```
