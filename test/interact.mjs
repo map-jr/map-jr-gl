@@ -732,6 +732,28 @@ for (const mode of renderers) {
         return calls;
     }, mode).catch(e => String(e));
     check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
+    // #2309: setStyle with diff: false drops the images that addImage added, with no onRemove and no more render(), as MapLibre GL JS 6.17 does; the default diff keeps them.
+    const swap = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const style = {version: 8, sources: {}, layers: []};
+        const m = new mod.Map({container: el, style, renderer, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const calls = {removed: 0, rendered: 0};
+        await m.addImage('drawn', {width: 1, height: 1, data: new Uint8Array(4), render() { calls.rendered++; return false; }, onRemove() { calls.removed++; }});
+        await m.addImage('plain', {width: 1, height: 1, data: new Uint8Array(4)});
+        // (A style equal to this one fires no event with `diff`, so the two styles below differ.)
+        const wait = () => Promise.race([new Promise(r => m.once('style.load', r)), new Promise(r => setTimeout(r, 10000))]);
+        const bg = id => ({...style, layers: [{id, type: 'background'}]});
+        let w = wait(); m.setStyle(bg('a'), {diff: true}); await w;
+        const kept = [m.hasImage('drawn'), m.hasImage('plain')];
+        w = wait(); m.setStyle(bg('b'), {diff: false}); await w;
+        await new Promise(r => setTimeout(r, 300));
+        const out = {kept, dropped: [m.hasImage('drawn'), m.hasImage('plain')], names: m.listImages(), ...calls};
+        m.remove(); el.remove();
+        return out;
+    }, mode).catch(e => String(e));
+    check(`[${mode}] setStyle drops the images of addImage with diff: false and keeps them with diff, without onRemove (#2309)`, swap.kept?.every(Boolean) && swap.dropped?.every(h => !h) && !swap.names?.includes('drawn') && !swap.names?.includes('plain') && swap.removed === 0, JSON.stringify(swap));
     // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
     // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
     const size = await page.evaluate(async () => {
