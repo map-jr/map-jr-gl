@@ -245,8 +245,12 @@ See [Show the first view before the script runs](../guide/server-rendering.md#sh
 ## `MapOverlay`
 
 `MapOverlay` places its React children at a position of the map, as a marker or a popup. Use it inside `MapJr`. Its
-props are the options of [`overlay`](map.md#overlay) of the map ([`OverlayOptions`](map.md#overlayoptions)), and `children`. The map
+props are the options of [`overlay`](map.md#overlay) of the map ([`OverlayOptions`](map.md#overlayoptions)), `children` and `color`. The map
 applies the props of each render.
+
+Without `children` (or with children that render nothing), `MapOverlay` shows the default pin (`defaultPin` of the main API, 27 by 41 pixels, with its tip at the
+position when `anchor` is `"bottom"`). The prop `color` is a CSS color for that pin and has the default `'#3fb1ce'`.
+`color` has no effect when there are children.
 
 With `closeButton` or `onClose`, the popup has a button that closes it, and a popup cannot be dragged. After a drag, the element
 stays where the user dropped it until `lngLat` changes. To keep the position, set it in
