@@ -3244,6 +3244,26 @@ for (const mode of renderers) {
         check('[main] queryRenderedFeatures on the globe without pitch finds point text with text-pitch-alignment map where it is drawn, with both renderers (#2012)',
             Object.values(globePoint).every(r => r.drawn[2] - r.drawn[0] > 30 && r.drawn[2] - r.drawn[0] < 200 && r.x[0] >= r.drawn[0] - 10 && r.x[1] <= r.drawn[2] + 10 && r.y[0] >= r.drawn[1] - 10 && r.y[1] <= r.drawn[3] + 10 && r.x[1] - r.x[0] > 30),
             JSON.stringify(globePoint));
+        // On the globe at pitch 50 the top corners of the canvas are off the sphere, at latitude 51, and the middle of the
+        // top edge shows latitude 66: a query of the whole view finds the label at 60 that is drawn there, as a query at
+        // its point does (#2446). (The tiles were asked with the rectangle around the four corners only.)
+        const globeTop = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:600px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 30], zoom: 2, pitch: 50, attributionControl: false, fadeDuration: 0, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [[0, 45], [0, 60]].map(c => ({type: 'Feature', properties: {lat: c[1]}, geometry: {type: 'Point', coordinates: c}}))}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'HH', 'text-size': 24, 'text-pitch-alignment': 'map', 'text-allow-overlap': true}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const p = m.project([0, 60]);
+                out[renderer] = {all: (await m.queryRenderedFeatures({layers: ['t']})).map(f => f.properties.lat).sort(), atPoint: (await m.queryRenderedFeatures([p.x, p.y], {layers: ['t']})).length, corner: Math.round(m.unproject([0, 0]).lat)};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures of the whole view on the globe at pitch 50 finds a label near the top edge that is past the latitude of the corners, with both renderers (#2446)',
+            Object.values(globeTop).every(r => r.all.join() === '45,60' && r.atPoint === 1 && r.corner < 60), JSON.stringify(globeTop));
         // On the globe each corner of an icon on the ground goes through the sphere at its own place, as in MapLibre GL JS
         // 6.17 (served at /ml/): a red icon of 40 pixels off the center has the width and the height of MapLibre's within
         // 1.5 pixels (2 and 3 pixels more with one frame at the anchor, #2194). With `icon-offset` neither has the
