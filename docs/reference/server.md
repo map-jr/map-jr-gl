@@ -320,6 +320,41 @@ The buttons of the markup do nothing until the map takes over. The
 
 **Returns** a promise of the HTML as a string. The promise rejects in the cases of [`renderToSVG`](#rendertosvg).
 
+## `firstViewOptions`
+
+```ts
+firstViewOptions(
+  description: MapDescription,
+  options?: DescriptionRenderOptions,
+): FirstViewOptions
+```
+
+Turns a description (`MapDescription`) into the options of [`renderFirstView`](#renderfirstview), so that a page
+passes its description once: `renderFirstView(firstViewOptions(description))`. The function reads the same fields as
+[`renderElement`](#renderelement) and the Vue component do:
+
+- the view: `initialView` and `view`, with the `bounds` of `initialView` when `view` is not set;
+- the content: `style`, `images`, `sources`, `layers`, `terrain`, `sprite`, `data`, `fontFamily`, `colorScheme` and
+  `globalState`;
+- the first view: `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection` and `attribution`.
+
+A field that is `null` counts as not set. Without a view, the center is `[0, 0]` and the zoom is `0`. The result is
+a plain object, so `{...firstViewOptions(description), timeout: 3000}` changes an option. The function does not
+render and does not check the style.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `description` **required** | `MapDescription` | | The description of the map, as for `createMap`. |
+| `options` | `DescriptionRenderOptions` | | The options that the description does not give. See the next table. |
+
+`DescriptionRenderOptions` has the options of [`RenderOptions`](#renderoptions) that the description does not give
+(`timeout`, `overrides`, `label` and the others), and these:
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `width`, `height` | `number` | `800`, `500` | The size in CSS pixels that the element has on most screens. |
+| `attribution` | `string \| string[]` | the attribution of the sources | The credits as HTML. `attribution: false` of the description still shows none. |
+
 ## `renderElement`
 
 ```ts

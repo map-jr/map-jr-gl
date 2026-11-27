@@ -13,7 +13,6 @@ import {FORWARDED, type Forwarded} from './map-events.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
-import type {LngLatBoundsInput} from './lnglat.ts';
 
 /** A description whose fields are the objects behind Vue's reactive objects (a reactive object cannot go to a worker). */
 function unwrapped(spec: MapDescription): MapDescription {
@@ -516,7 +515,7 @@ const MapJrComponent = defineComponent({
         // @ts-ignore: `import.meta.env` is Vite's, and it must stay written out in full for Vite to replace it
         if (!import.meta.env || import.meta.env.SSR) onServerPrefetch(async () => {
             if (!props.ssr) return;
-            const view = {...props.initialView, ...props.view}, fit = !props.view && props.initialView?.bounds, o = props.ssr === true ? {} : props.ssr;
+            const o = props.ssr === true ? {} : props.ssr;
             // A render that fails does not fail the page (#706): the page is sent without the first view, and the map
             // draws in the browser as it does without the `ssr` prop.
             try {
@@ -524,10 +523,12 @@ const MapJrComponent = defineComponent({
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
-            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) as LngLatBoundsInput : undefined, padding: props.initialView?.fitPadding, fitMaxZoom: props.initialView?.fitMaxZoom, width: o.width ?? 800, height: o.height ?? 500,
-                images: props.images ? toRaw(props.images) as Record<string, string> : undefined, overrides: o.overrides, sources: toRaw(props.sources) ?? undefined, layers: toRaw(props.layers) ?? undefined, terrain: toRaw(props.terrain), sprite: props.sprite ? toRaw(props.sprite) : undefined, data: props.data ? toRaw(props.data) : undefined, timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, tileZoomOffset: o.tileZoomOffset, fontFamily: props.fontFamily ?? undefined, label: o.label ?? props.locale?.['Map.Title'], attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light', globalState: props.globalState && toRaw(props.globalState),
-                controls: controls.value ?? [], locale: props.locale && toRaw(props.locale), nonce: props.nonce, minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection && toRaw(props.projection),
-                attributionOptions: typeof props.attribution === 'object' ? toRaw(props.attribution) : undefined});
+            // (The props are the fields of the description, with `mapStyle` for `style`.)
+            first.value = await server.renderFirstView(server.firstViewOptions(unwrapped({
+                style: props.mapStyle, initialView: props.initialView, view: props.view, images: props.images, sources: props.sources, layers: props.layers, terrain: props.terrain, sprite: props.sprite, data: props.data,
+                fontFamily: props.fontFamily, attribution: props.attribution, colorScheme: props.colorScheme, globalState: props.globalState, controls: controls.value ?? [], locale: props.locale, nonce: props.nonce,
+                minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection,
+            } as MapDescription), o as import('./server.ts').DescriptionRenderOptions));
             } catch (cause) {
                 const error = new Error(`[map-jr-gl] E706 <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
                 console.error(error.message);

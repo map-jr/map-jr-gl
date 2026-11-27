@@ -1881,6 +1881,14 @@ Unsupported expression "<op>"
 new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
 ```
 
+## E2358
+
+`Error` `Server renderer`
+
+```text
+firstViewOptions(): the description is missing or is not an object. Pass the description of the map, an object with a "style", for example firstViewOptions({style, initialView: {center: [0, 0], zoom: 2}}).
+```
+
 ## E2404
 
 `Warning` `Server renderer`
