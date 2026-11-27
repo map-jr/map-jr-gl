@@ -27,6 +27,7 @@ import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
 import {parseAst} from 'vite';
 import {LINK, productionNames} from './message-codes.mjs';
+import {paragraphProblems, paragraphText, readParagraphs} from './message-paragraphs.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mode = ['--check', '--write', '--json'].find(m => process.argv.includes(m));
@@ -383,22 +384,9 @@ const production = (code, x) => /development build only|server renderer/.test(en
  * The paragraph goes on in each `//` line that follows directly, and it ends at a line that is not a `//` comment, at an empty
  * `//` line, or at the next `// E<code>:` line. The lines are joined with one space. The build drops comments, so a paragraph adds no bytes.
  */
-const paragraphs = new Map();
-for (const file of files) {
-    let open = null;
-    for (const line of readFileSync(path.join(root, 'src', file), 'utf8').split('\n')) {
-        const start = line.match(/^\s*\/\/ E(\d+): ?(.*)$/), more = line.match(/^\s*\/\/ (\S.*)$/);
-        if (start) { open = {code: +start[1], parts: [start[2].trim()], file}; (paragraphs.get(open.code) ?? paragraphs.set(open.code, []).get(open.code)).push(open); }
-        else if (open && more) open.parts.push(more[1].trim());
-        else open = null;
-    }
-}
-for (const [code, list] of paragraphs) {
-    if (!byCode.has(code)) problems.push(`${list[0].file}: the comment "// E${code}: ..." is a paragraph for a code that no message of src/ has. Use the code of the message that it explains.`);
-    else if (list.length > 1) problems.push(`E${code} has ${list.length} paragraphs (${list.map(x => x.file).join(', ')}). Keep one comment "// E${code}: ..." in src/.`);
-    for (const x of list) if (!x.parts.join('').length) problems.push(`${x.file}: the comment "// E${code}:" has no text. Write the paragraph after the colon.`);
-}
-const paragraphOf = code => { const x = paragraphs.get(code)?.[0]; return x ? x.parts.join(' ').trim() + '\n\n' : ''; };
+const paragraphs = readParagraphs(files.map(f => [f, readFileSync(path.join(root, 'src', f), 'utf8')]));
+problems.push(...paragraphProblems(paragraphs, code => byCode.has(code)));
+const paragraphOf = code => { const x = paragraphs.get(code)?.[0]; return x ? paragraphText(x) + '\n\n' : ''; };
 const sections = new Map();
 for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + paragraphOf(code) + production(code, x) + (production(code, x) ? '`Development build`\n\n' : '') + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
 for (const [code, section] of before) if (!byCode.has(code)) sections.set(code, isRemoved(section) ? section : section.replace(/\n\n/, `\n\nRemoved after ${pkg.version}.\n\n`));
