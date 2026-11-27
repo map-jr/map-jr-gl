@@ -1634,6 +1634,28 @@ for (const renderer of renderers) {
             editChecked.before?.length === 2 && editChecked.all.length === 2 && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1139 the circle layer "p-dot", paint property "circle-colr":'))
             && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1057 the layer "p-dot", paint property "circle-radius":')), JSON.stringify(editChecked));
 
+        // 3d2. A new style object that update() edits is checked for its zoom curves (#1765), and a layer of update() whose
+        // `before` names no layer warns at the call (#1766).
+        const editedStyle = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const spec = {style, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec);
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            await new Promise(r => setTimeout(r, 300));
+            host.update({...spec, style: {...style, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff', 'background-opacity': ['*', 0.5, ['zoom']]}}]}});
+            await new Promise(r => setTimeout(r, 500));
+            const curve = said.filter(w => /E1057/.test(w)).length;
+            host.update({...spec, layers: [{id: 'added', type: 'background', before: 'nope', paint: {'background-color': '#eee'}}]});
+            await new Promise(r => setTimeout(r, 500));
+            console.warn = warn; host.destroy(); el.remove();
+            return {curve, before: said.filter(w => /E5 /.test(w) && /"nope"/.test(w))};
+        }, renderer);
+        check(`[${renderer}] update() with an edited style object warns for a zoom curve, and a layer with a before that names no layer warns, in the development build (#1765, #1766)`,
+            editedStyle.curve === 1 && editedStyle.before.length === 1, JSON.stringify(editedStyle));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -1924,6 +1946,21 @@ for (const renderer of renderers) {
             first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] E20121 images: the image "lost" did not load.'),
             JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
 
+        // Raw pixels of the wrong length are E2233 (#2241), and the image that is right stays.
+        const badPixels = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            t.imageErrors.length = 0;
+            t.host.update(t.spec = {...t.spec, onError: e => t.imageErrors.push(e.message), images: {square: t.square('#00f'), short: {width: 2, height: 2, data: new Uint8Array(3)}}});
+            for (let i = 0; i < 50 && !t.imageErrors.length; i++) await wait(100);
+            const out = {errors: [...t.imageErrors], has: t.host._map.hasImage('square')};
+            const {images: _, ...rest} = t.spec;
+            t.host.update(t.spec = rest);
+            return out;
+        });
+        check(`[${renderer}] raw pixels of the wrong length give onError the message E2233, and the other images stay`,
+            badPixels.errors.length === 1 && badPixels.errors[0].startsWith('[map-jr-gl] E2233 addImage("short"): the data has 3 values, but an image of 2×2 needs 16') && badPixels.has,
+            JSON.stringify(badPixels));
+
         // Images of the style in metadata["map-jr:images"] (#495): drawn, replaced by an image of `images` with the same
         // name, kept by an update of `images`, removed with the style, and bounded. A URL goes through transformRequest.
         await page.evaluate(() => {
@@ -1986,6 +2023,36 @@ for (const renderer of renderers) {
         check(`[${renderer}] a sprite of the description: added to the sprite of the style and named id:name, a sprite that does not load is an error, and the sprite goes with the field`,
             ofSprite === '#80f' && spriteGone.some(e => e.includes('test-sprite-495/missing')) && !withoutSprite.includes('#80f'),
             JSON.stringify({ofSprite, spriteGone, withoutSprite}));
+
+        // #1194: a change of `sprite` alone loads the new sprite files only. The style is not requested again, and a layer that
+        // the application added to the map stays (a restyle removes it).
+        await page.route(/\/test-sprite-1194\//, route => {
+            if (route.request().url().includes('.json')) return route.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 40, height: 40, pixelRatio: 1}})});
+            route.fulfill({contentType: 'image/png', body: solidPNG(40, route.request().url().includes('/b.png') ? [0x00, 0xff, 0x00] : [0x88, 0x00, 0xff])});
+        });
+        await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300});
+            const spot = {sources: {spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [{id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'pins:box', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
+            t.host.update(t.spec = {...t.spec, style: '/style.json', ...spot, sprite: [{id: 'pins', url: '/test-sprite-1194/a'}]});
+            for (let i = 0; i < 100 && !(t.host._map.getStyle()?.sprite && t.host._map.areTilesLoaded()); i++) await wait(100);
+            t.host._map.addLayer({id: 'app-added', type: 'background', paint: {'background-opacity': 0}});
+        });
+        const asked1194 = [], on1194 = r => asked1194.push(new URL(r.url()).pathname);
+        page.on('request', on1194);
+        const spriteOnly = await page.evaluate(async () => {
+            const t = window.t;
+            t.host.update(t.spec = {...t.spec, sprite: [{id: 'pins', url: '/test-sprite-1194/b'}]});
+            await new Promise(r => setTimeout(r, 1500));
+            return {kept: !!t.host._map.getLayer('app-added')};
+        });
+        page.off('request', on1194);
+        spriteOnly.asked = asked1194;
+        const spriteSwapped = await shows('#0f0');
+        check(`[${renderer}] a change of sprite alone draws the new sprite and does not load the style again (#1194)`,
+            spriteSwapped === '#0f0' && spriteOnly.kept && !spriteOnly.asked.some(u => u.includes('style.json')) && spriteOnly.asked.some(u => u.includes('/b.')),
+            JSON.stringify({spriteSwapped, spriteOnly}));
+        await page.evaluate(() => { const t = window.t, {sprite: _s, sources: _a, layers: _b, ...rest} = t.spec; t.host.update(t.spec = {...rest, style: t.style}); });
 
         // #1199: an image of metadata["map-jr:images"] takes the place of the sprite image of the same name, and an image
         // of `images` of the description takes the place of both.
@@ -2620,7 +2687,7 @@ for (const renderer of renderers) {
             } finally { console.warn = log; }
             return said; });
         check(`[${renderer}] an unknown option of overlay(), update() and patch() gives one warning for each option, which names the option and the known options`,
-            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, draggable, onDragStart, onDrag, onDragEnd.'
+            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, closeButton, closeOnClick, draggable, onDragStart, onDrag, onDragEnd.'
             && overlayUnknown[1].startsWith('[map-jr-gl] E1647 update(): "colour" is not an option of an overlay, so it has no effect. The options are')
             && overlayUnknown[2].startsWith('[map-jr-gl] E1647 patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
@@ -2818,6 +2885,60 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map (also from a button in the content), and a popup without onClose stays open`,
             escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen && escape.innerFocused && escape.innerFocus, JSON.stringify(escape));
+        // #1152: `closeButton` gives a popup of overlay() a close button without `onClose`, and `false` takes the button of `onClose` away.
+        const closeButton = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const lngLat = t.host.state.get().view.center, made = [];
+            const popup = options => { const el = document.createElement('div'); el.textContent = 'x'; made.push(t.host.overlay(el, {lngLat, popup: true, ...options})); return el; };
+            const has = el => !!el.closest('.map-jr-popup-content')?.querySelector('button');
+            let closes = 0;
+            const withButton = popup({closeButton: true}), plain = popup({}), off = popup({closeButton: false, onClose() { closes++; }}), byClose = popup({onClose() { closes++; }});
+            await wait(300);
+            const shown = {withButton: has(withButton), plain: has(plain), off: has(off), byClose: has(byClose)};
+            withButton.closest('.map-jr-popup-content').querySelector('button').click();
+            await wait(500);
+            const closed = !withButton.isConnected, others = plain.isConnected;
+            const ov = made[1];
+            ov.patch({closeButton: true});
+            await wait(300);
+            const patched = has(plain);
+            for (const o of made) o.remove();
+            return {shown, closed, others, patched, closes};
+        });
+        check(`[${renderer}] a popup of overlay() with closeButton has a button without onClose and the button closes it, closeButton: false takes the button of onClose away, and patch() adds it`,
+            closeButton.shown.withButton && !closeButton.shown.plain && !closeButton.shown.off && closeButton.shown.byClose && closeButton.closed && closeButton.others && closeButton.patched && closeButton.closes === 0, JSON.stringify(closeButton));
+        // #214: `offset` of a popup takes a number and a pair for each anchor, and `closeOnClick` closes it at a click on the map, not at the click that opens it.
+        const popupOffset = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), lngLat = t.host.state.get().view.center, made = [];
+            const top = async options => {
+                const el = document.createElement('div'); el.textContent = 'x';
+                made.push(t.host.overlay(el, {lngLat, popup: true, anchor: 'bottom', ...options}));
+                await wait(300);
+                return el.closest('.map-jr-popup-content').getBoundingClientRect().top;
+            };
+            const zero = await top({}), number = await top({offset: 20}), pair = await top({offset: [0, -10]}), perAnchor = await top({offset: {bottom: [0, -30], top: [0, 5]}}), otherSide = await top({offset: {top: [0, 5]}});
+            const el = document.createElement('div'); el.textContent = 'y';
+            const warned = [], log = console.warn;
+            console.warn = m => { warned.push(String(m)); log(m); };
+            // (The check of the development build loads on demand.)
+            try { made.push(t.host.overlay(el, {lngLat, offset: 20})); await wait(500); } finally { console.warn = log; }
+            for (const o of made) o.remove();
+            return {up: [zero - number, zero - pair, zero - perAnchor, zero - otherSide].map(v => Math.round(v)), warned};
+        });
+        check(`[${renderer}] a popup of overlay() takes offset as a number, a pair, and a pair for each anchor, and a marker with a number warns`,
+            popupOffset.up.join() === '20,10,30,0' && popupOffset.warned.length === 1 && popupOffset.warned[0].includes('E214') && popupOffset.warned[0].includes('overlay()'), JSON.stringify(popupOffset));
+        const closeOnClick = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), lngLat = t.host.state.get().view.center, closes = [];
+            const make = (name, options) => { const el = document.createElement('div'); el.textContent = name; const o = t.host.overlay(el, {lngLat, popup: true, anchor: 'bottom', onClose: () => closes.push(name), ...options}); return {el, o}; };
+            window.t.pops = {on: make('on', {closeOnClick: true}), off: make('off', {})};
+            await wait(300);
+            return {openAtOnce: window.t.pops.on.el.isConnected};
+        });
+        await page.mouse.click(30, 30);
+        await page.waitForFunction(() => !window.t.pops.on.el.isConnected, null, {timeout: 5000}).catch(() => {});
+        const closedByClick = await page.evaluate(() => { const p = window.t.pops, r = {on: !p.on.el.isConnected, off: p.off.el.isConnected}; p.on.o.remove(); p.off.o.remove(); return r; });
+        check(`[${renderer}] a popup of overlay() with closeOnClick stays open at the click that opens it and closes at a click on the map, and without it stays open`,
+            closeOnClick.openAtOnce && closedByClick.on && closedByClick.off, JSON.stringify({closeOnClick, closedByClick}));
         // #866: a popup of overlay() that opens from a key press on the map takes the focus, and Escape returns it to the
         // map. A popup that opens from a click leaves the focus where it is.
         await page.evaluate(() => {
@@ -4789,6 +4910,36 @@ for (const status of [404, 403, 503]) {
             && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 source="dem" E1163 https://map-jr.org/e/1163 what="tile" url="http') && e.message.includes('reason="undecodable image"')),
             JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The tile workers start from a blob: URL, and a request from such a worker sends no Referer unless it names one.
+// OpenStreetMap answers a tile request without one with its "Access blocked" image (#2347). A raster tile and an
+// elevation tile send what a fetch of the page sends, as in MapLibre GL JS, on both renderers: the page's URL to the
+// same origin, its origin to another origin (127.0.0.1), and nothing under <meta name="referrer" content="no-referrer">.
+for (const renderer of renderers) for (const [name, host, meta] of [['the same origin', origin, ''], ['another origin', origin.replace('localhost', '127.0.0.1'), ''], ['another origin under no-referrer', origin.replace('localhost', '127.0.0.1'), 'no-referrer']]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = {raster: [], dem: [], page: []}, png = solidPNG(256, [1, 134, 160]);
+        await page.goto(`${origin}/bench?ref2347`);
+        await page.route(/\/ref-2347\/(raster|dem|page)\//, async route => {
+            const req = route.request();
+            seen[new URL(req.url()).pathname.split('/')[2]].push((await req.allHeaders()).referer ?? null);
+            route.fulfill({status: 200, contentType: 'image/png', headers: {'access-control-allow-origin': '*'}, body: png});
+        });
+        await page.evaluate(async ([renderer, host, meta]) => {
+            if (meta) document.head.append(Object.assign(document.createElement('meta'), {name: 'referrer', content: meta}));
+            await fetch(`${host}/ref-2347/page/0/0/0.png`);
+            const lib = await import('/dist/map-jr-gl.js'), tiles = kind => [`${host}/ref-2347/${kind}/{z}/{x}/{y}.png`];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = lib.createMap(el, {style: {version: 8, sources: {r: {type: 'raster', tiles: tiles('raster'), tileSize: 256}, dem: {type: 'raster-dem', tiles: tiles('dem'), tileSize: 256, maxzoom: 10}},
+                terrain: {source: 'dem'}, layers: [{id: 'r', type: 'raster', source: 'r'}]}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false});
+            await m.once('idle');
+            m.destroy();
+        }, [renderer, host, meta]);
+        const want = host === origin ? page.url() : meta ? null : `${origin}/`;
+        check(`[${renderer}] a raster tile and an elevation tile fetched in a tile worker send the Referer that a fetch of the page sends, to ${name} (#2347)`,
+            seen.page[0] === want && seen.raster.length > 0 && seen.dem.length > 0 && [...seen.raster, ...seen.dem].every(r => r === want), JSON.stringify({want, page: seen.page, raster: seen.raster.slice(0, 2), dem: seen.dem.slice(0, 2)}));
+    } catch (e) { check(`[${renderer}] the test of the Referer of tile requests to ${name} was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // A tile that a custom protocol rejects is asked for once (#652): the loader is called once for each tile in 6 s.

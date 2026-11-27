@@ -36,8 +36,8 @@ These differences change the code of most applications:
 - The camera has no roll. `setRoll` has no effect.
 - The map has no private members of MapLibre GL JS, such as `map.transform` and `map.painter`.
 - The production build does not validate the style. The development build checks the required fields of the layers
-  and sources, the types of the values and the types of expressions, and fires `error` with the text of MapLibre GL JS;
-  the map option `validateStyle: false` turns that check off. The library does not draw a layer type
+  and sources, the types of the values (the values of sources included) and the types of expressions, and fires
+  `error` with the text of MapLibre GL JS; the map option `validateStyle: false` turns that check off. The library does not draw a layer type
   that it does not support, and an expression that it does not support returns `null`: see
   [The style is not validated](../migrate/from-maplibre.md#the-style-is-not-validated).
 - When the browser cannot start WebGL2, the constructor does not throw a `GPUInitializationError`. The map fires
@@ -59,8 +59,8 @@ available, and of the types that differ.
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
 These options of MapLibre GL JS have no effect: `canvasContextAttributes` other than `antialias`, `logoPosition`,
-`fadeDuration` other than 300, `pitchWithRotate: false`, and
-`projection` other than `'mercator'`.
+`fadeDuration` other than 300, `pitchWithRotate: false`, `terrainSkirtLength`, `localIdeographFontFamily` (also in the
+options of `setStyle`), and `projection` other than `'mercator'`.
 
 The option `pixelRatio` sets the number of canvas pixels for each CSS pixel, as in MapLibre GL JS. Without it, the map
 follows `devicePixelRatio`, up to 3. A value that is not a number above 0 writes a warning, and the map follows
@@ -171,7 +171,6 @@ library" names a member that MapLibre GL JS does not have.
 | `getFilter` | `(layerId: string) => unknown` | Returns the filter of a style layer, or `undefined` when it has none. |
 | `moveLayer` | `(id: string, beforeId?: string \| undefined) => Map` | Moves a style layer below the layer `beforeId`, or to the top when `beforeId` is left out. |
 | `getSprite` | `() => {id: string; url: string}[]` | Returns the sprites of the style as `{id, url}` objects. |
-| `setSprite` | `(url: string \| {id: string; url: string}[] \| null) => Map` | Replaces the sprites of the style, or removes them with `null`. |
 | `addSprite` | `(id: string, url: string) => Map` | Adds a sprite sheet with an id and a URL to the style, as in MapLibre GL JS. |
 | `removeSprite` | `(id: string) => Map` | Removes the sprite sheet with this id from the style. |
 | `getGlyphs` | `() => string \| null` | Returns the URL of the glyph files of the style, or `null` when the style has none. |
@@ -237,6 +236,7 @@ library" names a member that MapLibre GL JS does not have.
 | `getGlobalState` | `() => Record<string, unknown>` | The values `global-state` expressions read: the style's `state` defaults with anything set since. |
 | `setGlobalStateProperty` | `(name: string, value: unknown) => Map` | Sets one global state value (`null` or `undefined` returns it to the style's default); layers that read it update. |
 | `setTerrain` | `(terrain: {source: string; exaggeration?: number} \| null) => Map` | Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). |
+| `setSprite` | `(url: string \| {id: string; url: string}[] \| null) => Map` | Replaces the sprites of the style, or removes them with `null`. |
 | `getTerrain` | `() => {source: string; exaggeration?: number} \| null` | Returns the `terrain` of the style, or `null` when the map has no 3D terrain. |
 | `setLight` | `(light: {anchor?: 'map' \| 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) => Map` | Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), color and intensity. |
 | `setSky` | `(sky?: Record<string, unknown> \| null \| undefined) => Map` | Sets the sky above the horizon and the fog on 3D terrain (the `sky` of the style); `null` removes them. |

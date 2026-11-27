@@ -151,6 +151,23 @@ export function partsComing(o: LoadOptions, workers: {postMessage(m: unknown): v
 }
 
 /**
+ * The page's URL and its referrer policy, for the requests of the workers (#2347). A worker from a `blob:` URL sends no
+ * Referer, and Chromium does not give it the policy of a `<meta name="referrer">`. The policy is that of the last such
+ * element with a valid value (of the old values, only `never` is read). A `Referrer-Policy` header of the page cannot be
+ * read here: Chromium then sends the requests of the workers under the default policy, and Firefox and WebKit apply the
+ * header (docs/guide/loading.md).
+ */
+export function pageReferrer(): [string, string] | undefined {
+    if (!globalThis.document) return;
+    let rp = '';
+    for (const m of document.querySelectorAll<HTMLMetaElement>('meta[name=referrer]')) {
+        const v = m.content.trim().toLowerCase().replace(/^never$/, 'no-referrer') as ReferrerPolicy;
+        try { if (v) new Request(location.href, {referrerPolicy: v}), rp = v; } catch { /* not a policy */ }
+    }
+    return [location.href, rp];
+}
+
+/**
  * The worker file, fetched once and kept as a blob URL so that the start-up workers share one request (#325). The URL
  * is revoked 10 s after the last worker that uses it has started or failed, never while a worker still loads it (#782).
  */
@@ -263,7 +280,7 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
             ids = workers.map(() => ++channels);
             // (The parts that the page fetches for this style go to each worker when they arrive; the worker waits for them.)
             const coming = partsComing(o, workers);
-            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming}, [ch.port1]); return ch.port2; });
+            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming, ref: pageReferrer()}, [ch.port1]); return ch.port2; });
             return ports;
         },
         // WebKit can hold a message on the port of a worker that has been idle for a few seconds for about a second
