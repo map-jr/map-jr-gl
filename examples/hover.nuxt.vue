@@ -27,7 +27,7 @@ const layers = [{
     'circle-stroke-width': 2, 'circle-stroke-color': '#fff',
   },
 }];
-// The features under the pointer, from `features` of the event `hover`.
+// The features under the pointer, from the event `hover`.
 const hover = ref([]);
 </script>
 
@@ -35,6 +35,6 @@ const hover = ref([]);
   <!-- With `hover-state`, the map gives the top feature of `interactive-layers` under the pointer the feature state
        `hover: true`, and removes it when the pointer leaves the feature. -->
   <MapJr :map-style="style" :initial-view="{center: NYC, zoom: 13.6}" :data="data" :layers="layers" :interactive-layers="['landings']" hover-state
-    :attribution="{compact: true}" @hover="hover = $event.features" />
+    :attribution="{compact: true}" @hover="hover = $event" />
   <p>{{ hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.' }}</p>
 </template>

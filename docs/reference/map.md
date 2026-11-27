@@ -23,7 +23,7 @@ map.moveTo({zoom: 15, duration: 500});
 | Name | Type | Description |
 |---|---|---|
 | [`update`](#update) | `(spec: `[`MapDescription`](description.md#mapdescription)`) => void` | Applies a new description to the map. |
-| [`patch`](#patch) | `(part: Partial<Omit<`[`MapDescription`](description.md#mapdescription)`, 'data' \| 'images'>> & {data?: Record<string, GeoJSON \| string \| null>; images?: Record<string, ImageInput \| null>}) => void` | Applies the fields of `part` and keeps the other fields of the current description. |
+| [`patch`](#patch) | `(part: Partial<Omit<`[`MapDescription`](description.md#mapdescription)`, 'data' \| 'images'>> & {data?: Record<string, GeoJSON \| string \| null>; images?: Record<string, ImageInput \| null> \| null}) => void` | Applies the fields of `part` and keeps the other fields of the current description. |
 | [`description`](#description) (read only) | `Readonly<`[`MapDescription`](description.md#mapdescription)`>` | The description of the last `createMap`, `update` or `patch`. |
 | [`getResolvedDescription`](#getresolveddescription) | `() => `[`MapDescription`](description.md#mapdescription) | Returns the description with `style` as a copy of the style that the map loaded and `globalState` as the global state in effect. |
 | [`destroy`](#destroy) | `() => void` | Removes the map, its controls and its overlays from the page. |
@@ -116,14 +116,14 @@ GL JS. This holds for `update`, `patch`, and in the compat entry for `setPaintPr
 patch(
   part: Partial<Omit<MapDescription, 'data' | 'images'>> & {
     data?: Record<string, GeoJSON | string | null>;
-    images?: Record<string, ImageInput | null>;
+    images?: Record<string, ImageInput | null> | null;
   },
 ): void
 ```
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `part` **required** | `Partial<Omit<`[`MapDescription`](description.md#mapdescription)`, 'data' \| 'images'>> & {data?: Record<string, GeoJSON \| string \| null>; images?: Record<string, ImageInput \| null>}` | | The fields to change. |
+| `part` **required** | `Partial<Omit<`[`MapDescription`](description.md#mapdescription)`, 'data' \| 'images'>> & {data?: Record<string, GeoJSON \| string \| null>; images?: Record<string, ImageInput \| null> \| null}` | | The fields to change. |
 
 **Returns:** `void`.
 <!-- ref:MapInstance.patch:end -->

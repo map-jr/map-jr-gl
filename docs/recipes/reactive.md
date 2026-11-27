@@ -234,7 +234,7 @@ const hover = ref([]);
     :layers="layers"
     :interactive-layers="['park', 'water']"
     :attribution="{compact: true}"
-    @hover="hover = $event.features"
+    @hover="hover = $event"
   />
   <p>
     zoom {{ view.zoom.toFixed(2) }} · under the pointer:
@@ -314,7 +314,7 @@ export default function Reactive() {
         layers={layers}
         interactiveLayers={['park', 'water']}
         attribution={{compact: true}}
-        onHover={e => setHover(e.features)}
+        onHover={setHover}
       />
       <p>
         zoom {view.zoom.toFixed(2)} · under the pointer:{' '}

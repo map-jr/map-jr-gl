@@ -159,7 +159,7 @@ Each event of the map is a `CustomEvent` that bubbles, named `map-` and the name
 | `map-load` | The map, once, when the style and the first tiles have loaded. |
 | `map-idle` | `null`, each time the camera is still and nothing loads. |
 | `map-click` | `{point, lngLat, features}`, with the features of `interactive-layers` at the point. |
-| `map-hover` | `{point, lngLat, features}`, when the features under the pointer change. `features` are the top one first. The position is that of the pointer, or its last one over the map after it has left. |
+| `map-hover` | The features of `interactive-layers` under the pointer, the top one first, when they change. |
 | `map-viewchange` | The view, `{center, zoom, bearing, pitch, bounds}`: once with the first view before `map-load`, and then at each change of the view. |
 | `map-colorschemechange` | The `colorScheme` that the control `colorScheme()` set. |
 | `map-error` | Each error of the map, an `Error`. When the error belongs to a source, such as a tile or a GeoJSON URL that does not load, the `Error` has the property `sourceId` with the id of that source. |

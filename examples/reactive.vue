@@ -22,7 +22,7 @@ const hover = ref([]);
 </script>
 
 <template>
-  <MapJr :map-style="style" v-model:view="view" :images="images" :data="data" :layers="layers" :interactive-layers="['park', 'water']" :attribution="{compact: true}" @hover="hover = $event.features" />
+  <MapJr :map-style="style" v-model:view="view" :images="images" :data="data" :layers="layers" :interactive-layers="['park', 'water']" :attribution="{compact: true}" @hover="hover = $event" />
   <p>zoom {{ view.zoom.toFixed(2) }} · under the pointer: {{ hover[0]?.layer.id ?? 'nothing' }}</p>
   <button @click="shown = !shown">{{ shown ? 'Remove markers' : 'Add markers' }}</button>
   <button @click="view.pitch = view.pitch ? 0 : 50">Tilt</button>

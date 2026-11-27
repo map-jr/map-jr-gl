@@ -32,10 +32,9 @@ export default function Hover() {
   const [hover, setHover] = useState([]);
   // With `hoverState`, the map gives the top feature of `interactiveLayers` under the pointer the feature state
   // `hover: true`, and removes it when the pointer leaves the feature.
-  // `onHover` gets the features under the pointer as `features`, with the position of the pointer.
   return <>
     <MapJr mapStyle={style} initialView={{center: NYC, zoom: 13.6}} data={data} layers={layers} interactiveLayers={['landings']} hoverState
-      attribution={{compact: true}} onHover={e => setHover(e.features)} />
+      attribution={{compact: true}} onHover={setHover} />
     <p>{hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.'}</p>
   </>;
 }

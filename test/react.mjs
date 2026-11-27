@@ -81,7 +81,7 @@ import {createRoot, hydrateRoot} from 'react-dom/client';
 import {MapJr, MapOverlay, MapImage, useMapState} from '/dist/react.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {dragged: [], loads: 0, views: 0, clicks: [], hovers: [], closed: 0, renders: 0, moves: [], asked: [], objectRenders: 0, objectZooms: new Set()};
+const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {dragged: [], loads: 0, views: 0, clicks: [], closed: 0, renders: 0, moves: [], asked: [], objectRenders: 0, objectZooms: new Set()};
 function Zoom() { const zoom = useMapState(s => s.view.zoom); return h('p', {id: 'zoom'}, zoom === undefined ? '' : zoom.toFixed(1)); }
 // (A selector that returns a new object at each call: one render for each change of the zoom, #1263.)
 const ZoomObject = memo(function ZoomObject() { const part = useMapState(s => ({z: s.view.zoom})); t.objectRenders++; if (part) t.objectZooms.add(part.z); return h('i', {id: 'zoom-object'}, part ? part.z.toFixed(1) : ''); });
@@ -97,7 +97,7 @@ function App({ssr}) {
         ? h(MapJr, {ref: map, mapStyle: style, initialView: view, images, ...markers, controls: [navigation()], onLoad: () => t.loads++},
             h(MapImage, {name: 'hydrated', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('rect', {width: 8, height: 8, fill: color}))))
         : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images: {...images, ...more}, ...markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
-            onClick: e => t.clicks.push(e), onHover: e => t.hovers.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
+            onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
             // An image that the style asks for and the map does not have: the application adds it to the prop images.
             onStyleimagemissing: e => { t.asked.push(e.id); setMore(more => ({...more, [e.id]: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'})); }},
             h(Zoom), h(ZoomObject), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')), h(MapOverlay, {lngLat: [-74.002, 40.7095], anchor: 'bottom', color: '#d6453d'}),
@@ -209,10 +209,6 @@ try {
     await page.mouse.click(400, 250); await page.waitForTimeout(800);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click calls onClick, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
-    // The event of hover has the features and the position of the pointer, as the click has (#215).
-    for (const [x, y] of [[450, 300], [300, 200], [600, 400], [200, 450], [700, 150]]) { await page.mouse.move(x, y); await page.waitForTimeout(400); }
-    const hovered = await page.evaluate(() => { const h = window.t.hovers.find(e => e.features?.length); return {count: window.t.hovers.length, features: !!h, point: typeof h?.point?.x === 'number' && typeof h.point.y === 'number', lngLat: h?.lngLat?.length === 2, array: Array.isArray(window.t.hovers[0])}; });
-    check('browser: onHover is called with the features and the position of the pointer, not with the array of features', hovered.features && hovered.point && hovered.lngLat && !hovered.array, JSON.stringify(hovered));
     // A component without the prop terrain gives `undefined` to the description, which keeps the terrain of the style; `null` would make the map flat (#1104).
     const unsetTerrain = await page.evaluate(() => { const d = t.map.current.description; return d.terrain === undefined ? 'undefined' : JSON.stringify(d.terrain); });
     check('browser: without the prop terrain, the description has terrain undefined, so the map keeps the terrain of the style (#1104)', unsetTerrain === 'undefined', unsetTerrain);
