@@ -35,6 +35,13 @@ export interface PlacedIcon {
     halo?: number[]; haloReach?: number; /** How far the halo's edge is blurred, as a part of the distance field (0 to 0.99). */ haloBlur?: number;
     /** An icon that lies on the ground of a tilted map: see `Placed.frame`. Its angle is then the angle of the first pair. */
     frame?: number[];
+    /**
+     * An icon on the ground of the globe: the Mercator position of its center and the Mercator steps of one pixel of the
+     * icon across and down (x, y pairs), from which the engine projects its corners (`corners`).
+     */
+    merc?: number[];
+    /** An icon on the ground of the globe in this frame: see `groundCorners`. It takes the place of `frame` in drawing. */
+    corners?: number[];
     /** Drawn without the perspective ratio (see `CompiledLayer.fixedSize`). */
     fixedSize?: boolean;
     /** Set for distance-field icons, which are drawn in this color. */
@@ -112,11 +119,13 @@ const heightAt = (tr: Transform, it: RenderItem<unknown>, x: number, y: number) 
     const n = 2 ** it.id.z;
     return tr.heightAt ? tr.heightAt((it.id.x + x / EXTENT) / n, (it.id.y + y / EXTENT) / n) : undefined;
 };
+/** How much longer a step at the row `y` of the tile is on the globe than in Mercator: see `groundFrame`. */
+const globeStep = (tr: Transform, it: RenderItem<unknown>, y: number) =>
+    1 + tr.globeness * (Math.cosh(Math.PI * (1 - 2 * (it.id.y + y / EXTENT) / 2 ** it.id.z)) * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1);
 function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, angle: number): number[] {
     // On the globe a step in the tile is shorter on the sphere by the cosine of the latitude: as in MapLibre GL JS
     // (`getPitchedTextCorrection`), the step grows by the cosine at the center over that at (x, y), mixed by the globeness.
-    const n = 2 ** it.id.z, g = 1 + tr.globeness * (Math.cosh(Math.PI * (1 - 2 * (it.id.y + y / EXTENT) / n)) * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1);
-    const e = 16, d = e / it.scale * g, c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
+    const e = 16, d = e / it.scale * globeStep(tr, it, y), c = Math.cos(angle) * d, s = Math.sin(angle) * d, m = heightAt(tr, it, x, y);
     const P = (u: number, v: number) => tr.projectTile(it.id, x + u * c - v * s, y + u * s + v * c, m), [fx, fy] = P(1, 0), [qx, qy] = P(0, 1);
     const f = [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
     if (!tr.globeness) return f;
@@ -189,6 +198,24 @@ export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: n
         for (const [from, to] of [[p.icon.gx, d.icon.gx], [p.icon.gy, d.icon.gy]]) if (from && to) for (let i = 1; i < from.length; i += 2) to[i] = from[i] * ig;
     }
     return rotate;
+}
+/**
+ * The corners of the icon of the placed label `p` on the ground of the globe, whose anchor is now at the distance
+ * `depth`: x, y on the screen and the side of the horizon (`side` of globe.ts) for the top left, top right, bottom left
+ * and bottom right corner. As in MapLibre GL JS each corner goes through the sphere on its own, and the horizon cuts
+ * the icon where the side is negative (#2297). Between placements the icon keeps its size on the ground (`flatSize`).
+ */
+export function groundCorners(tr: Transform, p: Placed, depth: number): number[] {
+    const i = p.icon!, m = i.merc!, n = 2 ** p.tile.z, ax = (p.tile.x + p.src.x / EXTENT) / n, ay = (p.tile.y + p.src.y / EXTENT) / n;
+    const k = i.fixedSize ? 1 : flatSize(tr, depth) / flatSize(tr, p.depth), cx = ax + (m[0] - ax) * k, cy = ay + (m[1] - ay) * k, out: number[] = [];
+    // (The corners take the height of the anchor, as the points of `groundFrame` do.)
+    const h = tr.heightAt?.(ax, ay);
+    for (let c = 0; c < 4; c++) {
+        const x = (c & 1 ? i.w : -i.w) / 2 * k, y = (c & 2 ? i.h : -i.h) / 2 * k, mx = cx + x * m[2] + y * m[4], my = cy + x * m[3] + y * m[5];
+        const [sx, sy] = tr.projectTile(p.tile, (mx * n - p.tile.x) * EXTENT, (my * n - p.tile.y) * EXTENT, h);
+        out.push(sx, sy, tr.globe!.side(tr, mx, my));
+    }
+    return out;
 }
 /**
  * Sizes one axis of an icon so that its content range [c0, c1] (image pixels) becomes `target` screen pixels long,
@@ -686,7 +713,7 @@ export function placeLabels(
                     // (An icon that is fitted to text on a line turns over with the text when `text-keep-upright` keeps the text
                     // upright. Another icon turns over by `icon-keep-upright`.)
                     const along = (fit !== 'none' ? l.keepUpright : ic.keepUpright) && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
-                    let angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180, iframe: number[] | undefined;
+                    let angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180, iframe: number[] | undefined, merc: number[] | undefined;
                     let bx = ix, by = iy, bw = iw, bh = ih;
                     if (fit === 'none') {
                         // As in MapLibre GL JS, `icon-offset` and the shift of `icon-anchor` belong to the picture: they turn
@@ -696,8 +723,14 @@ export function placeLabels(
                         let a = Math.cos(angle), b = Math.sin(angle), c = -b, d = a;
                         if (iflat) {
                             // Along a line, the angle from the line on the screen becomes the angle from the line on the ground.
-                            // (On the globe the frame is the one at the center of the icon: see `frameAt`.)
-                            const [g, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, angle - (line && !ic.upright ? lineAngle - l.angle! : north)), ox, oy);
+                            // (On the globe the frame is the one at the center of the icon: see `frameAt`. The icon is drawn
+                            // between its corners, which `groundCorners` projects in each frame from `merc`.)
+                            const ga = angle - (line && !ic.upright ? lineAngle - l.angle! : north), [g, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, ga), ox, oy);
+                            if (tr.globeness) {
+                                // (A pixel of the icon is that many units of the tile along the angle `ga`, as in `groundFrame`.)
+                                const n = 2 ** it.id.z, k = globeStep(tr, it, l.y) / it.scale / EXTENT / n, cx = Math.cos(ga) * k, sx = Math.sin(ga) * k;
+                                merc = [(it.id.x + l.x / EXTENT) / n + ox * cx - oy * sx, (it.id.y + l.y / EXTENT) / n + ox * sx + oy * cx, cx, sx, -sx, cx];
+                            }
                             iframe = [a, b, c, d] = g;
                             angle = Math.atan2(b, a); bw = iw * Math.hypot(a, b); bh = ih * Math.hypot(c, d);
                             bx = ix - ox + px; by = iy - oy + py;
@@ -714,7 +747,7 @@ export function placeLabels(
                     const box = line || (iflat && (!!tr.pitch || flat)) ? boxAround(qx, qy, bw, bh, angle, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
+                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, merc, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
                             haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};

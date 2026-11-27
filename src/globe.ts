@@ -80,11 +80,14 @@ export function toScreen(tr: Transform, mx: number, my: number, metres: number, 
     return [(x / w + 1) / 2 * tr.width, (1 - y / w) / 2 * tr.height, w];
 }
 
-/** Whether the horizon hides a Mercator position (with a margin of `slack` radii). */
-export function hidden(tr: Transform, mx: number, my: number, slack = 0): boolean {
+/** The side of the horizon of a Mercator position, in radii: negative where the horizon hides it. */
+export function side(tr: Transform, mx: number, my: number): number {
     const h = frame(tr).horizon;
-    return dot(sphere(mx, my), h) + h[3] < -slack;
+    return dot(sphere(mx, my), h) + h[3];
 }
+
+/** Whether the horizon hides a Mercator position (with a margin of `slack` radii). */
+export const hidden = (tr: Transform, mx: number, my: number, slack = 0) => side(tr, mx, my) < -slack;
 
 /**
  * The bounds of what the globe shows [west, south, east, north], as MapLibre GL JS gives them: points along the
