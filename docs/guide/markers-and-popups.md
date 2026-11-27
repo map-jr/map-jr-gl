@@ -699,17 +699,11 @@ show(`Drag the pin. It is at ${at(marker.getLngLat())}`);
 <script setup>
 // The map fills its parent element, so give the parent a height.
 import {ref} from 'vue';
-import {defaultPin} from '@map-jr/map-jr-gl';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const pin = ref([-74.0065, 40.7085]);
 const moving = ref(false);
-// The default pin of Marker, as an element that the overlay shows. The tip of
-// the pin is at the position.
-const addPin = el => {
-  if (el && !el.firstChild) el.append(defaultPin({color: '#d6453d'}));
-};
 </script>
 
 <template>
@@ -719,12 +713,13 @@ const addPin = el => {
     :attribution="{compact: true}"
   >
     <!--
-      The new position comes with dragend. The pin stays where it was dropped
-      until lng-lat changes.
+      Without content, MapOverlay shows the default pin. The new position comes
+      with dragend. The pin stays where it was dropped until lng-lat changes.
     -->
     <MapOverlay
       :lng-lat="pin"
       anchor="bottom"
+      color="#d6453d"
       draggable
       @dragstart="moving = true"
       @dragend="
@@ -733,9 +728,7 @@ const addPin = el => {
           moving = false;
         }
       "
-    >
-      <div :ref="addPin"></div>
-    </MapOverlay>
+    />
     <p class="note">
       {{
         moving ? 'Moving' : `Pin at ${pin[0].toFixed(5)}, ${pin[1].toFixed(5)}`
@@ -750,16 +743,10 @@ const addPin = el => {
 ```jsx [React]
 // The map fills its parent element, so give the parent a height.
 import {useState} from 'react';
-import {defaultPin} from '@map-jr/map-jr-gl';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
-// The default pin of Marker, as an element that the overlay shows. The tip of
-// the pin is at the position.
-const addPin = el => {
-  if (el && !el.firstChild) el.append(defaultPin({color: '#d6453d'}));
-};
 
 export default function Draggable() {
   const [pin, setPin] = useState(NYC);
@@ -770,19 +757,18 @@ export default function Draggable() {
       initialView={{center: NYC, zoom: 14}}
       attribution={{compact: true}}
     >
-      {/* The new position comes with onDragEnd. The pin stays where it was dropped until lngLat changes. */}
+      {/* Without children, MapOverlay shows the default pin. The new position comes with onDragEnd. The pin stays where it was dropped until lngLat changes. */}
       <MapOverlay
         lngLat={pin}
         anchor="bottom"
+        color="#d6453d"
         draggable
         onDragStart={() => setMoving(true)}
         onDragEnd={p => {
           setPin(p);
           setMoving(false);
         }}
-      >
-        <div ref={addPin} />
-      </MapOverlay>
+      />
       <p className="note">
         {moving
           ? 'Moving'

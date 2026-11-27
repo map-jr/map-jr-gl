@@ -8,7 +8,7 @@
 import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 declare const __DEV__: boolean;
-import {makeMap, type MapEvents, type MapInstance, type MapOverlay as Overlay, type MapPointer, type MapDescription, type MapErrorInfo, type MapState, type OverlayOptions, type View} from './host.ts';
+import {makeMap, defaultPin, type MapEvents, type MapInstance, type MapOverlay as Overlay, type MapPointer, type MapDescription, type MapErrorInfo, type MapState, type OverlayOptions, type View} from './host.ts';
 import type {RenderedFeature} from './map.ts';
 
 type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
@@ -135,7 +135,7 @@ export const MapJr = forwardRef<MapInstance | null, MapJrProps>(function MapJr(p
  * Places its React content at a position of the map, as a marker or a popup, inside `MapJr`. The props are the
  * options of `overlay` (`OverlayOptions`). For many points, a symbol layer in the prop `layers` renders much faster.
  */
-export function MapOverlay({children, ...options}: OverlayOptions & {children?: ReactNode}) {
+export function MapOverlay({children, color, ...options}: OverlayOptions & {children?: ReactNode; /** The color of the default pin, a CSS color. A `MapOverlay` with no children shows the default pin (`defaultPin` of the main API), and `color` has an effect only then. @default `'#3fb1ce'` */ color?: string}) {
     const host = useContext(Host), [el] = useState(() => typeof document === 'undefined' ? null : document.createElement('div')), overlay = useRef<Overlay | null>(null);
     const last = useRef(options);
     last.current = options;
@@ -146,6 +146,13 @@ export function MapOverlay({children, ...options}: OverlayOptions & {children?: 
         return () => { overlay.current = null; o.remove(); };
     }, [host, el]);
     useEffect(() => { overlay.current?.update(now()); });
+    const bare = children == null || children === false;
+    useEffect(() => {
+        if (!el || !bare) return;
+        const pin = defaultPin({color});
+        el.append(pin);
+        return () => pin.remove();
+    }, [el, bare, color]);
     return el && host ? createPortal(children, el) : null;
 }
 

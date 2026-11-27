@@ -142,6 +142,11 @@ export const MapOverlay = defineComponent({
          * @default false
          */
         draggable: Boolean,
+        /**
+         * The color of the default pin, a CSS color. A `MapOverlay` with no content shows the default pin (`defaultPin` of the main API), and `color` has an effect only then.
+         * @default `'#3fb1ce'`
+         */
+        color: String,
     },
     emits: ['close', 'dragstart', 'drag', 'dragend'],
     setup(props, {slots, emit}) {
@@ -155,6 +160,14 @@ export const MapOverlay = defineComponent({
             if (overlay) overlay.update(o); else { overlay = map.overlay(element, o); shown.value = true; }
         }, {flush: 'post', immediate: true});
         onBeforeUnmount(() => { overlay?.remove(); overlay = null; });
+        // Without content, the element shows the default pin. (Loaded with the map code, which the page loads anyway.)
+        let pin: HTMLElement | undefined;
+        watch([el, () => props.color, () => !slots.default], async ([element, color, bare]) => {
+            pin?.remove(); pin = undefined;
+            if (!element || !bare) return;
+            const made = (await import('./host.ts')).defaultPin({color});
+            if (el.value === element && !pin) element.append(pin = made);
+        }, {flush: 'post', immediate: true});
         // (Not shown until it is on the map: on a server, and before the map has started, it has no position.)
         // The visibility is Vue state, so a re-render with fallthrough attributes does not hide the content again (#161).
         // The style is an object: Vue then sets and removes only `display`, and keeps the `position` and the transform
