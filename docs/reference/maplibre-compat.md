@@ -139,6 +139,7 @@ library" names a member that MapLibre GL JS does not have.
 | `fitBounds` | `(bounds: LngLatBoundsInput, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`. |
 | `fitScreenCoordinates` | `(p0: PointLike, p1: PointLike, bearing: number, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`. |
 | `flyTo` | `(o: Omit<CameraOptions, 'padding'> & {padding?: PaddingInput} & object & `[`FlyOptions`](map.md#flyoptions)`, eventData?: EventData \| undefined) => Map` | Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17. The `object` has the members `duration`, `around`, `essential`, `offset` and `easing`. |
+| `resize` | `(eventData?: EventData \| undefined) => Map` | Reads the size of the container again and resizes the map to it. |
 | `setPadding` | `(padding: PaddingInput, eventData?: EventData \| undefined) => Map` | Sets the padding in CSS pixels: the space at the edges that other things cover, such as a side panel. |
 | `getPadding` | `() => {top: number; right: number; bottom: number; left: number}` | Returns the padding of the map in CSS pixels, as `{top, right, bottom, left}`. |
 | `setCenter` | `(center: LngLatLike, eventData?: EventData \| undefined) => Map` | Moves the map center to a position without an animation, as in MapLibre GL JS. |
@@ -230,7 +231,6 @@ library" names a member that MapLibre GL JS does not have.
 | `isStyleLoaded` | `() => boolean` | Whether the style has loaded. |
 | `areTilesLoaded` | `() => boolean` | Whether the tiles of the current view have loaded. |
 | `triggerRepaint` | `() => void` | Draws the map again in the next frame. |
-| `resize` | `() => Map` | Reads the size of the container again and resizes the map to it. |
 | `setProjection` | `(projection?: ProjectionSpecification \| null \| undefined) => Map` | Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for the default (Mercator). |
 | `getProjection` | `() => ProjectionSpecification \| undefined` | The projection of the style as it was given (`undefined` when the style has none), as in MapLibre GL JS. |
 | `removeFeatureState` | `(target: {source: string; sourceLayer?: string; id?: string \| number}, key?: string \| undefined) => Map` | Removes one key of a feature's state, a feature's whole state (no `key`), or all state of a source (no `id`). |

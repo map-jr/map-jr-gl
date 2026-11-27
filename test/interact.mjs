@@ -490,6 +490,27 @@ for (const mode of renderers) {
             check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
         }
+        // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
+        // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
+        const resizeOrder = lib => page.evaluate(async ([lib, renderer]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => setTimeout(r, 500));
+            const log = [];
+            for (const t of ['movestart', 'move', 'resize', 'moveend']) m.on(t, () => log.push(t));
+            log.push('|same'); m.resize(); log.push('|ret');
+            await new Promise(r => setTimeout(r, 500));
+            log.push('|width'); el.style.width = '300px'; m.resize(); log.push('|ret');
+            await new Promise(r => setTimeout(r, 800));
+            m.remove(); el.remove();
+            return log.join(' ');
+        }, [lib, mode]).catch(e => String(e));
+        const resizeOurs = await resizeOrder('ours'), resizeMl = await resizeOrder('ml');
+        check(`[${mode}] resize() fires movestart, move, resize and moveend inside the call, as in MapLibre GL JS (#2395)`,
+            resizeOurs === resizeMl && resizeMl.startsWith('|same movestart move resize moveend |ret |width movestart move resize moveend |ret'), JSON.stringify({resizeOurs, resizeMl}));
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {

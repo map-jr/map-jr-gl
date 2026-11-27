@@ -958,7 +958,7 @@ export class Map {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs, labels: e.labels});
         } else if (e.type === 'resized') {
             this.buffer = [...e.buffer, performance.now() + 1000];
-            this.fire('resize');
+            if (!this.fireResize) this.fire('resize');
         } else if (e.type === 'result') {
             const p = this.pending.get(e.id);
             this.pending.delete(e.id);
@@ -1375,6 +1375,8 @@ export class Map {
     triggerRepaint() { this.post({type: 'repaint'}); }
 
     /** Reads the size of the container again and resizes the map to it. Call it after a change of the size that the map does not see. */
+    /** @internal The compat entry fires `resize` in `resize()`, so the report of the engine fires nothing. */
+    protected fireResize = false;
     resize() {
         this.measure();
         this.post({type: 'resize', width: this.tr.width, height: this.tr.height, dpr: this.dpr});
