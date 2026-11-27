@@ -505,6 +505,14 @@ The production build prints this:
 setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.
 ```
 
+## E214
+
+A warning of the main API (development build only).
+
+```text
+<call>: a marker takes "offset" as a pair, [x, y], so a number or an object with a pair for each anchor has no effect. Write a pair, or add "popup: true".
+```
+
 ## E216
 
 An error of both entries.
@@ -923,6 +931,14 @@ A warning of the main API (development build only).
 
 ```text
 <where>: "<property>" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.
+```
+
+## E654
+
+An error of the server renderer.
+
+```text
+The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.
 ```
 
 ## E685
@@ -1643,6 +1659,14 @@ The production build prints this:
 addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
 ```
 
+## E2272
+
+A warning of the main API (development build only).
+
+```text
+new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
+```
+
 ## E10017
 
 A warning of both entries.
@@ -1929,6 +1953,14 @@ A warning of the main API (development build only).
 
 ```text
 <layer>: "color-relief-color" has <stops> stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.
+```
+
+## E10654
+
+A warning of the server renderer.
+
+```text
+server render: the source "<source>": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).
 ```
 
 ## E10826
