@@ -181,7 +181,7 @@ export interface StylePair {
 export interface SpriteInput {
     /** The prefix of the images of this sprite: a layer writes `id:name`. */
     id: string;
-    /** The URL of the sprite without a file extension. The map requests `url + '.json'` and `url + '.png'`. */
+    /** The URL of the sprite without a file extension. The map requests `url.json` and `url.png`, or `url@2x.json` and `url@2x.png` on a screen with a pixel ratio above 1. */
     url: string;
 }
 
