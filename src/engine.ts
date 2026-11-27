@@ -2027,7 +2027,9 @@ export class Engine {
         this.lastFrameAt = began;
         this.wasIdle = idle;
         const st = this.stats, end = performance.now();
-        st.frames++; st.cpu += end - began;
+        // (The code of the queries also starts to load after the second frame, so that the first query of a busy main thread does not wait for the three requests in a row; #2342.)
+        if (++st.frames === 2 && !this.partsSent.has('query')) this.needQueries().catch(() => {});
+        st.cpu += end - began;
         if (!st.since) st.since = began;
         else if (end - st.since >= 1000) {
             this.emit({type: 'stats', fps: st.frames / ((end - st.since) / 1000), frameMs: st.cpu / st.frames, labels: labels.length});
