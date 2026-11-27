@@ -3,7 +3,8 @@ export {InteractionHandler, type RenderedFeature, type PointLike, type FeatureOp
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';
 export {LngLat, LngLatBounds, type LngLatInput, type LngLatBoundsInput} from './lnglat.ts';
 export type {Anchor} from './markers.ts';
-export type {FeatureQuery, FontSource} from './engine.ts';
+export type {FeatureQuery} from './engine.ts';
+export type {FontFaces} from './resolve.ts';
 export type {QueriedFeature} from './query.ts';
 export type {LngLatLike} from './geo.ts';
 export {AttributionControl, type Control, type ControlPosition} from './controls.ts';
