@@ -333,6 +333,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - MapLibre GL JS accepts images and pixel data.
 - This library accepts the same, and also an SVG string or a URL. It returns a promise.
 
+### `addImage` with a name that exists
+
+- **MapLibre GL JS:** `addImage` keeps the image that has the name and fires an `error` event with the message `An image named "a" already exists.`. The new image is not stored, but its `onAdd(map, id)` still runs. `updateImage` replaces an image.
+- **This library (`@map-jr/map-jr-gl/maplibre-compat`):** `addImage` replaces the image and fires no `error` event. When the old image has `onRemove()`, it runs before `onAdd(map, id)` of the new image. This holds on the main and the worker renderer.
+
 ### `addImage` with pixels of the wrong length
 
 - **MapLibre GL JS:** `addImage` throws a `RangeError` at once when `data` does not have `width × height × 4` values (`mismatched image size`), and it does not call `onAdd` or `render()`. A `Uint8ClampedArray` or an `ImageData` is not checked.
