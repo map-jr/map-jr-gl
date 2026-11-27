@@ -11,6 +11,7 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, part, type PopupOffset} from './overlays.ts';
+export {defaultPin} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
@@ -1268,7 +1269,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         // (`fitPadding` is space for this one fit; the padding of the map belongs to the description.)
         // (The old names of the two options of a fit are left out, so that `padding` does not reach the camera; #1147.)
         if ('padding' in view || 'maxZoom' in view) { check(1147, name + '()', view); const {padding: _p, maxZoom: _m, ...rest} = view as MoveToOptions & {padding?: unknown; maxZoom?: unknown}; view = rest; }
-        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding: fitPadding, maxZoom: fitMaxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
+        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding: fitPadding, maxZoom: fitMaxZoom, bearing: view.bearing}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
         else if (fitPadding !== undefined || fitMaxZoom !== undefined) check(7);
         if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
     };

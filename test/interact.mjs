@@ -148,6 +148,38 @@ for (const mode of renderers) {
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
+    // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
+    // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
+    {
+        const kept = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:50'}));
+            const m = new mod.Map({container: el, style, center: [10, 45], zoom: 3, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); }), out = {};
+            await idle();
+            await m.queryRenderedFeatures(); // (the engine answers; the array of the next call has the answer)
+            out.first = m.queryRenderedFeatures().length;
+            const water = style.layers.find(l => l.type === 'fill');
+            m.setPaintProperty(water.id, 'fill-color', '#f00'); out.paint = m.queryRenderedFeatures().length;
+            await idle();
+            m.setStyle(JSON.parse(JSON.stringify(style)), {diff: true}); out.diff = m.queryRenderedFeatures().length;
+            // As in MapLibre GL JS, a filter takes effect when the tiles have loaded again: the array is the old one at once, and the new one after idle.
+            const ids = [water.id], q = () => m.queryRenderedFeatures(undefined, {layers: ids});
+            await idle(); await q(); out.before = q().length;
+            m.setFilter(water.id, ['==', ['get', 'no-such-property'], 1]); out.filterNow = q().length;
+            await idle(); out.filterIdle = q().length;
+            // Data of another source drops only the answers that named that source; `refreshTiles` of the source drops its answers.
+            m.setFilter(water.id, null); await idle(); await q(); out.again = q().length;
+            m.addSource('other', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+            m.getSource('other').setData({type: 'FeatureCollection', features: []}); out.otherData = q().length;
+            m.refreshTiles?.(Object.keys(style.sources).find(k => style.sources[k].type === 'vector')); out.refreshed = q().length;
+            m.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff, and after setData of another source (#817)`,
+            kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first && kept.before > 0 && kept.filterNow === kept.before && kept.filterIdle === 0 && kept.again === kept.before && kept.otherData === kept.before && kept.refreshed === 0, JSON.stringify(kept));
+    }
+
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
     // a point where `project` says, turns under a drag as in MapLibre GL JS, and turns into Mercator at zoom 12.
     // A second map on the page with Mercator is not affected.
@@ -615,6 +647,10 @@ for (const mode of renderers) {
         const filtered = await all([2.2945, 48.8584], {zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
         // `queryFeatures` gives what the style layers draw (#12), as `queryRenderedFeatures` does. MapLibre has no radius,
         // so the comparison sets `radius: 0` (the default of `queryFeatures` is 3, #1150).
+        // (The point is inside buildings. The center of the frames check above is inside a polygon of class path, which only a
+        // line layer draws, and a line layer finds a polygon at its rings only, #2094.)
+        window.map.jumpTo({center: [-74.0065, 40.7085]});
+        await new Promise(r => window.map.once('idle', r));
         const c = window.map.getCenter(), at = window.map.project(c), key = f => f.layer.id + ' ' + f.id;
         const drawn = await window.map.queryFeatures(c, {radius: 0}), same = await window.map.queryRenderedFeatures([at.x, at.y]);
         const wide = await window.map.queryFeatures({x: at.x, y: at.y}, {radius: 40}), box = await window.map.queryRenderedFeatures([[at.x - 40, at.y - 40], [at.x + 40, at.y + 40]]);
@@ -906,14 +942,9 @@ for (const mode of renderers) {
                 await new Promise(r => setTimeout(r, 16));
             }
             window.touch('pointerup', 11, ...to[0]); window.touch('pointerup', 12, ...to[1]);
-            // Wait until the camera has not changed for some time: in a worker the gesture is applied a little later.
-            await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, last = ''; i < 40 && quiet < 2; i++) {
-                await new Promise(r => setTimeout(r, 100));
-                const now = JSON.stringify(window.cam());
-                quiet = now === last ? quiet + 1 : 0;
-                last = now;
-            }
+            // Wait for the real state: the gesture is applied a little later in a worker, and a turn that ends near north snaps to it (#1324).
+            await new Promise(r => setTimeout(r));
+            for (let i = 0; i < 100 && !(window.map.areTilesLoaded() && !window.map.isMoving()); i++) await new Promise(r => setTimeout(r, 50));
         };
         window.cam = () => ({zoom: window.map.getZoom(), bearing: window.map.getBearing(), pitch: window.map.getPitch()});
     });
@@ -930,26 +961,25 @@ for (const mode of renderers) {
         await window.twoFingers([[450, 400], [550, 400]], [[450, 320], [550, 320]]); // both fingers up together
         out.tilt = window.cam();
         window.map.jumpTo({pitch: 0, zoom: 14});
-        // Waits for an animation to end. A fixed time is not sufficient when software rendering is slow. With
-        // `expect`, it also waits until the zoom is near that value: under load the worker can report the start of
-        // an animation later than two quiet samples, and the zoom then still reads the old value.
+        // Waits until the engine has run every command (the map reports its tiles loaded only for the newest command)
+        // and, with `expect`, until the zoom is near that value (a double tap starts its ease after the listeners of
+        // dblclick). A fixed time is not sufficient when software rendering is slow (#2375).
         const still = async (expect) => {
-            await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, z = window.cam().zoom; i < 40 && (quiet < 2 || (expect !== undefined && Math.abs(z - expect) >= 0.02)); i++) {
-                await new Promise(r => setTimeout(r, 150));
-                const now = window.cam().zoom;
-                quiet = Math.abs(now - z) < 1e-6 && !window.map.isMoving() ? quiet + 1 : 0;
-                z = now;
+            for (let i = 0; i < 300; i++) {
+                await new Promise(r => setTimeout(r, 50));
+                if (window.map.areTilesLoaded() && !window.map.isMoving() && (expect === undefined || Math.abs(window.cam().zoom - expect) < 0.02)) break;
             }
         };
-        const tap = async (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); await new Promise(r => setTimeout(r, 60)); };
-        await tap(500, 350); await tap(500, 350);
+        // The two taps of a double tap are sent in one task: a timer between them can last longer than the 300 ms of a
+        // double tap on a loaded runner.
+        const tap = (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); };
+        tap(500, 350); tap(500, 350);
         await still(15);
         out.doubleTap = window.cam();
         window.touch('pointerdown', 11, 450, 350); window.touch('pointerdown', 12, 550, 350); window.touch('pointerup', 11, 450, 350); window.touch('pointerup', 12, 550, 350);
         await still(14);
         out.twoFingerTap = window.cam();
-        await tap(500, 350);
+        tap(500, 350);
         window.touch('pointerdown', 11, 500, 350);
         for (let y = 350; y <= 450; y += 10) { window.touch('pointermove', 11, 500, y); await new Promise(r => setTimeout(r, 16)); }
         window.touch('pointerup', 11, 500, 450);
@@ -1819,6 +1849,30 @@ for (const mode of renderers) {
         easeLost.events.includes('webglcontextrestored') && easeLost.events.filter(e => e === 'moveend').length === 1 && Math.abs(easeLost.lng - 20) < 1e-6 && Math.abs(easeLost.lat - 10) < 1e-6 && Math.abs(easeLost.zoom - 4) < 1e-6, JSON.stringify(easeLost));
     }
 
+    // A lost WebGL context during an `easeTo`, and a restart that takes longer than the time that is left (a loaded
+    // machine): the camera still ends at the target, and not where the old engine stopped (#1757). The page is busy for
+    // 1500 ms at the loss, which is longer than the 1000 ms of the ease.
+    if (mode === 'main') {
+        const slow = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, center: [0, 0], zoom: 2, attributionControl: false, renderer: 'main'});
+            await new Promise(r => m.once('load', r));
+            const events = [];
+            for (const type of ['webglcontextlost', 'webglcontextrestored', 'moveend']) m.on(type, () => events.push(type));
+            m.once('webglcontextlost', () => { const end = performance.now() + 1500; while (performance.now() < end); });
+            m.easeTo({center: [20, 10], zoom: 4, duration: 1000});
+            setTimeout(() => m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(), 200);
+            for (let i = 0; i < 100 && !events.includes('moveend'); i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 500));
+            const c = m.getCenter(), out = {events, lng: c.lng, lat: c.lat, zoom: m.getZoom()};
+            m.remove(); el.remove();
+            return out;
+        });
+        check(`[${mode}] a lost WebGL context during an easeTo and a restart slower than the ease: the camera ends at the target (#1757)`,
+            slow.events.includes('webglcontextrestored') && slow.events.filter(e => e === 'moveend').length === 1 && Math.abs(slow.lng - 20) < 1e-6 && Math.abs(slow.lat - 10) < 1e-6 && Math.abs(slow.zoom - 4) < 1e-6, JSON.stringify(slow));
+    }
+
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter(), p = m.project(c);
@@ -2235,6 +2289,37 @@ for (const mode of renderers) {
         check(`[${mode}] queryRenderedFeatures: a line with line-offset, also from a property, is found where it is drawn, as MapLibre GL JS, also in the array at once (#2001)`,
             ours.down === 'down' && ours.up === 'up' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
+    // A line layer over a polygon draws its rings, so a query finds it near a ring and not inside the polygon, and a
+    // `line-offset` moves the rings too, as in MapLibre GL JS 6.17 (#2094, #2095). The square has a ring of 4 pixels; its
+    // east side is queried at its middle, 15 pixels to the west and 15 pixels to the east.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const m = new mod.Map({container: el, renderer: mode, center: [10, 10], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: square}},
+                layers: [
+                    {id: 'fill', type: 'fill', source: 'p'},
+                    {id: 'ring', type: 'line', source: 'p', paint: {'line-width': 4}},
+                    {id: 'off', type: 'line', source: 'p', paint: {'line-width': 4, 'line-offset': 15}},
+                ]}});
+            await new Promise(r => m.once('idle', r));
+            const e = m.project([20, 10]), c = m.project([10, 10]), only = (pt, id) => [...new Set([...m.queryRenderedFeatures(pt, {layers: [id]})].map(f => f.layer.id))].join();
+            const out = {};
+            for (const id of ['ring', 'off']) for (const [name, pt] of Object.entries({inside: [c.x, c.y], edge: [e.x, e.y], west: [e.x - 15, e.y], east: [e.x + 15, e.y]})) {
+                out[`${id}-${name}`] = only(pt, id);
+                out[`later-${id}-${name}`] = [...new Set((await m.queryRenderedFeatures(pt, {layers: [id]})).map(f => f.layer.id))].join();
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a line layer over a polygon finds the ring and not the inside, and line-offset moves the ring, as MapLibre GL JS (#2094, #2095)`,
+            ours['ring-inside'] === '' && ours['ring-edge'] === 'ring' && (ours['off-west'] === 'off') !== (ours['off-east'] === 'off') && ours['off-edge'] === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // #2217: with line-offset, a miter join longer than 2 (line-miter-limit 4, a turn of 133 degrees, miter 2.5) moves
     // twice the offset along the miter, as MAX_OFFSET_MITER_LENGTH of MapLibre GL JS does. Before, it moved the full
     // miter, and the tip reached about 4 px farther. (The bisector of the corner lies near a diagonal of the tile, so
