@@ -122,14 +122,36 @@ function shortenShaderNames(code, files = [code]) {
  * The local names in the shaders (variables, parameters, functions and the values that go from the vertex shader to the
  * fragment shader) get short names. Only the GLSL text changes: the template strings of src/gl.ts that hold GLSL, and
  * in them not the `${...}` parts, which are JavaScript. A name is changed only when the GLSL declares it with a type
- * and without `uniform`, so the names that JavaScript uses (the uniforms) and the names of GLSL itself stay.
+ * and without `uniform`, so the names that JavaScript uses (the uniforms) and the names of GLSL itself stay. The later
+ * names of a declaration of several variables (`float a = 1.0, b = 2.0;`) are local names too, unless a name is also
+ * called somewhere (`b(`), as a function of GLSL is.
  */
-function shortenShaderLocals(code, files = [code]) {
+export function shortenShaderLocals(code, files = [code]) {
     const isShader = text => /void main|uniform |\bfloat /.test(text), literal = /`((?:[^`\\]|\\.)*)`/gs, hole = /(\$\{[^}]*\})/;
-    const declared = /\b(uniform\s+)?(?:(?:highp|mediump|lowp)\s+)?(?:float|int|bool|vec[234]|ivec[234]|mat[234]|sampler2D)\s+([A-Za-z_]\w*)\s*(?=[=;,)(\[])/g;
+    const type = '(?:(?:highp|mediump|lowp)\\s+)?(?:float|int|bool|vec[234]|ivec[234]|mat[234]|sampler2D)';
+    const declared = new RegExp(`\\b(uniform\\s+)?${type}\\s+([A-Za-z_]\\w*)\\s*(?=[=;,)(\\[])`, 'g'), statement = new RegExp(`^\\s*(?:const\\s+)?${type}\\s+[A-Za-z_]\\w*`);
     const count = new Map(), kept = new Set(['main']);
-    const texts = files.flatMap(f => [...f.matchAll(literal)].map(m => m[1])).filter(isShader).flatMap(text => text.split(hole).filter((_, i) => i % 2 === 0));
+    const shaders = files.flatMap(f => [...f.matchAll(literal)].map(m => m[1])).filter(isShader);
+    const texts = shaders.flatMap(text => text.split(hole).filter((_, i) => i % 2 === 0));
     for (const text of texts) for (const m of text.matchAll(declared)) if (m[1]) kept.add(m[2]); else count.set(m[2], 0);
+    // (The later names of a declaration: each statement of a shader, with its comments gone and a `${...}` part as one
+    // value, is split at the commas that are outside parentheses and brackets.)
+    const later = new Set(), called = new Set();
+    for (const text of shaders.map(t => t.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '').replace(/\$\{[^}]*\}/g, '0'))) {
+        for (const m of text.matchAll(/([A-Za-z_]\w*)\s*\(/g)) called.add(m[1]);
+        for (const s of text.split(/[;{}]/)) {
+            if (!statement.test(s)) continue;
+            let depth = 0, start = 0;
+            const pieces = [];
+            for (let i = 0; i < s.length; i++) {
+                if ('(['.includes(s[i])) depth++; else if (')]'.includes(s[i])) depth--;
+                else if (s[i] === ',' && depth === 0) { pieces.push(s.slice(start, i)); start = i + 1; }
+            }
+            pieces.push(s.slice(start));
+            for (const p of pieces.slice(1)) { const m = /^\s*([A-Za-z_]\w*)\s*(?:[=[]|$)/.exec(p); if (m) later.add(m[1]); }
+        }
+    }
+    for (const name of later) if (!called.has(name) && !count.has(name)) count.set(name, 0);
     for (const name of [...count.keys()]) if (kept.has(name) || name.length < 3 || /^[uav]\d|^gl_/.test(name)) count.delete(name);
     for (const text of texts) for (const word of text.match(/[A-Za-z_]\w*/g) ?? []) if (count.has(word)) count.set(word, count.get(word) + 1);
     const taken = new Set(files.join('\n').match(/[A-Za-z_$][\w$]*/g)), letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', short = new Map();

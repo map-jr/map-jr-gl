@@ -1866,6 +1866,19 @@ export class GLRenderer {
             f[o] = x; f[o + 1] = y; f[o + 2] = u; f[o + 3] = v; f[o + 4] = alpha;
             f[o + 5] = tint[0]; f[o + 6] = tint[1]; f[o + 7] = tint[2]; f[o + 8] = tint[3]; o += 9;
         };
+        /**
+         * One triangle of an icon on the ground of the globe, as x, y, u, v and the side of the horizon at each corner (see
+         * `groundCorners`): the part on the hidden side is cut off, as MapLibre GL JS cuts it with the plane of the horizon.
+         */
+        const cut = (t: number[][], alpha: number, tint: number[]) => {
+            const q: number[][] = [];
+            for (let k = 0; k < 3; k++) {
+                const a = t[k], b = t[(k + 1) % 3];
+                if (a[4] >= 0) q.push(a);
+                if (a[4] >= 0 !== b[4] >= 0) q.push(a.map((v, j) => v + (b[j] - v) * a[4] / (a[4] - b[4])));
+            }
+            for (let k = 1; k + 1 < q.length; k++) for (const v of [q[0], q[k], q[k + 1]]) vertex(v[0], v[1], v[2], v[3], alpha, tint);
+        };
         const plain = [0, 0, 0, -1];
         for (const {icon: i, opacity} of labels) {
             if (!i || !!i.custom !== custom || !(opacity > 0)) continue;
@@ -1879,7 +1892,12 @@ export class GLRenderer {
             // MapLibre GL JS draws it where it falls.
             const ox = i.angle === 0 && !i.color ? snap(i.x - hw) - (i.x - hw) : 0, oy = i.angle === 0 && !i.color ? snap(i.y - hh) - (i.y - hh) : 0;
             const x = i.x + ox, y = i.y + oy;
-            room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * 54);
+            // (On the globe a point of the icon is between its corners, which `groundCorners` projected: x, y and the side.)
+            const gc = i.corners, at = (px: number, py: number) => {
+                const tx = px / i.w + 0.5, ty = py / i.h + 0.5;
+                return [0, 1, 2].map(k => { const top = gc![k] + (gc![3 + k] - gc![k]) * tx; return top + (gc![6 + k] + (gc![9 + k] - gc![6 + k]) * tx - top) * ty; });
+            };
+            room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * (gc ? 108 : 54));
             // A halo is the same picture drawn first, in the halo color and out to a lower level of the distance field.
             for (let pass = i.halo ? 0 : 1; pass < 2; pass++) {
                 const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) + 100 * Math.round(i.haloBlur! * 100) : 0);
@@ -1887,6 +1905,12 @@ export class GLRenderer {
                     // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
                     const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;
                     const u0 = sx + gx[a], u1 = sx + gx[a + 2], v0 = sy + gy[b], v1 = sy + gy[b + 2];
+                    if (gc) {
+                        const c = (px: number, py: number, u: number, v: number) => { const [x, y, s] = at(px, py); return [x, y, u, v, s]; };
+                        const c10 = c(x1, y0, u1, v0), c01 = c(x0, y1, u0, v1);
+                        cut([c(x0, y0, u0, v0), c10, c01], alpha, tint); cut([c10, c(x1, y1, u1, v1), c01], alpha, tint);
+                        continue;
+                    }
                     const p00x = x + x0 * cos + y0 * nx + second(fr, 0, x0, y0), p00y = y + x0 * sin + y0 * ny + second(fr, 1, x0, y0), p10x = x + x1 * cos + y0 * nx + second(fr, 0, x1, y0), p10y = y + x1 * sin + y0 * ny + second(fr, 1, x1, y0);
                     const p01x = x + x0 * cos + y1 * nx + second(fr, 0, x0, y1), p01y = y + x0 * sin + y1 * ny + second(fr, 1, x0, y1), p11x = x + x1 * cos + y1 * nx + second(fr, 0, x1, y1), p11y = y + x1 * sin + y1 * ny + second(fr, 1, x1, y1);
                     vertex(p00x, p00y, u0, v0, alpha, tint); vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);
