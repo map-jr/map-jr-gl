@@ -110,7 +110,7 @@ export class TouchZoomRotateHandler extends InteractionHandler {
 }
 
 /** The `transformRequest` function of MapLibre. `resourceType` is `Tile`, `Style`, `Source`, `SpriteJSON`, `SpriteImage`, `Image`, `Glyphs` or `Font`. */
-export type RequestTransform = (url: string, resourceType?: ResourceType) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials} | undefined;
+export type RequestTransform = (url: string, resourceType?: ResourceType) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials; referrerPolicy?: ReferrerPolicy} | undefined;
 
 /** The changes that `updateData` of a GeoJSON source takes, as in MapLibre. */
 export interface GeoJSONDiff {
@@ -1016,7 +1016,7 @@ export class Map {
         const image = kind === 'RasterTile' || kind === 'Image' || kind === 'SpriteImage';
         if (kind === 'RasterTile') kind = 'Tile';
         const t = this.transformRequest?.(url, kind as ResourceType), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
-        if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
+        if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials, referrerPolicy: t?.referrerPolicy};
         // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
         const ac = new AbortController(), stop = () => ac.abort();
         if (this.removed || signal?.aborted) stop();
@@ -1931,6 +1931,7 @@ export class Map {
                 const a = await this.answer(source, 'Image');
                 if (a.data instanceof ImageBitmap) pic = a.data;
                 else {
+                    img.referrerPolicy = a.referrerPolicy ?? '';
                     img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
                     img.src = a.data ? URL.createObjectURL(new Blob([a.data])) : a.url!;
                 }
