@@ -1584,6 +1584,8 @@ export class Map {
         if (!terrain) { this.tr.heightAt = undefined; if (!this.centreHeld) this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
+    /** Replaces the sprites of the style, or removes them with `null`. */
+    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
     /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
     /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), color and intensity. */
