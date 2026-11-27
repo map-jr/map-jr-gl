@@ -150,7 +150,7 @@ export class StylesControl implements Control {
         const entries = this.options.entries ?? [];
         if (!instance) { console.warn('[map-jr-gl] E1519 styles(): the control works only in the controls of a map of the main API (createMap).'); return el; }
         const p = this.options.preview;
-        if (p && (p.center === undefined) !== (p.zoom === undefined)) console.warn(`[map-jr-gl] E11560 styles(): preview has "${p.center === undefined ? 'zoom' : 'center'}" without "${p.center === undefined ? 'center' : 'zoom'}", so the pictures show the view of the map. Give both "center" and "zoom", or neither.`);
+        if (p && (p.center === undefined) !== (p.zoom === undefined)) console.warn(p.center === undefined ? '[map-jr-gl] E11560 styles(): preview has "zoom" without "center", so the pictures show the view of the map. Give both "center" and "zoom", or neither.' : '[map-jr-gl] E21560 styles(): preview has "center" without "zoom", so the pictures show the view of the map. Give both "center" and "zoom", or neither.');
         if (!entries.length) console.warn('[map-jr-gl] E11519 styles(): "entries" is empty. Write styles({entries: [{label: "Streets", style: "https://…/style.json"}, …]}).');
         const add = (parent: HTMLElement, entry: StyleEntry, text: string, scheme?: Scheme) => {
             const b = parent.appendChild(document.createElement('button')), i = this.items.length;

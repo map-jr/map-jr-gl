@@ -1129,7 +1129,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             const spec = v && typeof v === 'object' && 'image' in v ? v : null;
             // (An image that does not load is an error of the map, and the map goes on without it.)
             const p = map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
-                if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] E20121 ${Object.hasOwn(wantedImages ?? {}, name) ? 'images' : 'the style'}: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
+                if (alive && images.get(name) === key) map.fire('error', {error: new Error(Object.hasOwn(wantedImages ?? {}, name) ? `[map-jr-gl] E20121 images: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.` : `[map-jr-gl] E50121 the style: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
             });
             adding.set(name, p);
         }

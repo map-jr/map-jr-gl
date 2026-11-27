@@ -210,6 +210,20 @@ for (const file of files) {
 
     /** A root of a message: climbs from a piece to the whole `+` chain that it belongs to. */
     const rootOf = node => { let n = node; while (n.parent && (n.parent.type === 'BinaryExpression' && n.parent.operator === '+' || n.parent.type === 'ConditionalExpression' && n.parent.test !== n || n.parent.type === 'LogicalExpression' && n.parent.right === n)) n = n.parent; return n; };
+    /**
+     * The codes whose text is chosen by a `? :` between words (a number, a punctuation mark or a value does not count). Each case
+     * needs a message and a code of its own. The choice of the build (`__DEV__ ? full : short`) and a text that has another
+     * code in each branch are not cases of one code. (A condition with the word `__DEV__` is not read: its branch is not a case.)
+     */
+    const mixedCodes = (top, variants) => {
+        if (!/\?/.test(text(top)) || /__DEV__/.test(text(top))) return [];
+        const byCode = new Map();
+        for (const v of variants) {
+            const code = v.match(/E(\d+) /)?.[1];
+            if (code) byCode.set(code, (byCode.get(code) ?? new Set()).add(bare(v).replace(/<[^>]*>/g, '').replace(/[^a-z]/gi, '')));
+        }
+        return [...byCode].filter(([, words]) => words.size > 1).map(([code]) => code);
+    };
     const seen = new Set();
     const visit = node => {
         if (!node || typeof node.type !== 'string') return;
@@ -225,7 +239,10 @@ for (const file of files) {
                     if (!variants.length) {
                         const fn = functionOf(top) || 'file';
                         if (!prefixHelpers.has(`${file} ${fn}`)) problems.push(`${file}: "${text(top).slice(0, 70)}" adds the prefix to a text that the script cannot read. Add "${file} ${fn}" to prefixHelpers in scripts/messages.mjs.`);
-                    } else for (const v of variants) add(top, v);
+                    } else {
+                        for (const code of mixedCodes(top, variants)) problems.push(`${file}: E${code} has one text that a "? :" chooses between two cases. Split it into one message for each case, each with a code of its own, so that the code says which case happened.`);
+                        for (const v of variants) add(top, v);
+                    }
                 }
             }
         }

@@ -743,19 +743,17 @@ for (const mode of renderers) {
         return {frames, errors: errors.filter(e => e === 'boom').length};
     });
     check(`[${mode}] a throw of render() fires error and does not stop the frames (#2278)`, hookFaults.frames >= 3 && hookFaults.errors >= 3, JSON.stringify(hookFaults));
-    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own; compat entry only).
-    if (mode === 'compat') {
-        const removed = await page.evaluate(async renderer => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
-            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
-            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
-            let calls = 0;
-            await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
-            m.remove(); el.remove();
-            return calls;
-        }, mode).catch(e => String(e));
-        check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
-    }
+    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own on the compat entry, in each renderer).
+    const removed = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+        let calls = 0;
+        await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
+        m.remove(); el.remove();
+        return calls;
+    }, mode).catch(e => String(e));
+    check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
     // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
     // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
     const size = await page.evaluate(async () => {
@@ -955,7 +953,7 @@ for (const mode of renderers) {
         m.on('click', ['missing-layer', 'zones-fill'], e => window.arrayEvents.push('click:' + e.features[0].properties.name));
         m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
-        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E278 https://map-jr.org/e/278 type="mouseenter"' ? 'message' : error.message); }
+        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E10278 https://map-jr.org/e/10278 type="mouseenter"' ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
         const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
@@ -3328,6 +3326,40 @@ for (const mode of renderers) {
         check('[main] compat: at DPR 2 the soft edge of a line and of the inner edge of a gap is one device pixel, as in MapLibre GL JS (#2063)',
             r.line.dpr === 2 && partial(r.line) <= 1 && r.line.out[0] < 12 && partial(r.gap) <= 2 && r.gap.out[0] > 243, JSON.stringify(r));
     }
+    // #2064: on a pitched map the soft edge of a line is as wide on the screen as MapLibre GL JS draws it (v_gamma_scale),
+    // whichever way the line runs. Near the camera at a pitch of 60, line-blur 5 and the antialiasing fade each edge over
+    // 6 screen pixels: the near edge of a line across the view and the edge of a line toward the camera have 7 to 9
+    // partly covered pixels each, with and without a gap, as in MapLibre GL JS 6.17. Before the fix the line across the
+    // view, which the pitch draws thinner, had 4 (and the line toward the camera 5 or 6).
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            // The partly covered pixels from the edge of the canvas inward, up to the first fully dark pixel: down the
+            // middle column from the bottom for the line across the view, and along the row of that line from the right
+            // for the line toward the camera.
+            const edges = async gap => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:240px;height:240px'}));
+                const line = coordinates => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}});
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 16, pitch: 60, style: {version: 8,
+                    sources: {l: {type: 'geojson', data: {type: 'FeatureCollection', features: [line([[-0.01, -0.0012], [-0.0004, -0.0012]]), line([[0, -0.01], [0, 0.01]])]}}}, layers: [
+                        {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'l', type: 'line', source: 'l', paint: {'line-color': '#000', 'line-width': 30, 'line-blur': 5, 'line-gap-width': gap}}]}});
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                const cv = m.getCanvas(), c = Object.assign(document.createElement('canvas'), {width: cv.width, height: cv.height}).getContext('2d');
+                c.drawImage(cv, 0, 0);
+                const g = (x, y) => c.getImageData(x, y, 1, 1).data[1];
+                const run = (x, y, dx, dy) => { let n = 0; while (x >= 0 && y >= 0 && g(x, y) > 243) { x += dx; y += dy; } for (; x >= 0 && y >= 0 && g(x, y) >= 12; x += dx, y += dy) n++; return {n, x, y}; };
+                const across = run(cv.width >> 2, cv.height - 1, 0, -1), toward = run(cv.width - 1, across.y - 3, -1, 0);
+                m.remove(); el.remove();
+                return {across: across.n, toward: toward.n, y: across.y};
+            };
+            return {line: await edges(0), gap: await edges(4)};
+        });
+        const same = e => e.across >= 6 && e.toward >= 6 && Math.abs(e.across - e.toward) <= 1;
+        check('[main] compat: on a pitched map the soft edge of a line is as wide on the screen whichever way the line runs, as in MapLibre GL JS (#2064)',
+            same(r.line) && same(r.gap), JSON.stringify(r));
+    }
     // #2144: a square cap does not lengthen the dashes of a line, as in MapLibre GL JS (its line atlas draws butt dashes for
     // every cap but round). Away from the ends of the line, the middle row of a dashed line with a square cap has as many
     // dark pixels as with a butt cap, within 10%, at DPR 1 and 2. (The phase differs: as in MapLibre, the distance along
@@ -4394,7 +4426,7 @@ for (const mode of renderers) {
         // an unroute, and its 404 is a page error, #517.)
         await page.unroute('**/test-255.json');
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
-            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E255 https://map-jr.org/e/255 id="r"', JSON.stringify(r));
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E10255 https://map-jr.org/e/10255 id="r"', JSON.stringify(r));
     }
     // Raster tiles are fetched and decoded in the tile workers, and the thread that draws only sends the images to the
     // GPU (#2068). In WebKit a decode runs on the thread that asks for it, and decodes on the thread that draws held its
