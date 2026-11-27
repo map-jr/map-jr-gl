@@ -1688,7 +1688,7 @@
 "text-variable-anchor/top-bottom-left-right": "near",
 "text-variable-anchor/translate-variants/base": "near",
 "text-variable-anchor/translate-variants/pitched": "near",
-"text-variable-anchor/translate-variants/pitched-and-rotated": "near",
+"text-variable-anchor/translate-variants/pitched-and-rotated": "match",
 "text-variable-anchor/translate-variants/rotated": "match",
 "text-writing-mode/line_label/chinese": "near",
 "text-writing-mode/line_label/chinese-punctuation": "near",
