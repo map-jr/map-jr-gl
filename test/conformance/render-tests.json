@@ -1399,7 +1399,7 @@
 "terrain/fill-extrusion-multiple": "match",
 "terrain/fill-extrusion-multipolygon": "match",
 "terrain/fill-extrusion-vertical-gradient": "match",
-"terrain/fill-extrusion-vertical-gradient-pattern": "near",
+"terrain/fill-extrusion-vertical-gradient-pattern": "match",
 "terrain/fill-outline": "match",
 "terrain/fog": "match",
 "terrain/fog-no-sky-blend": "match",
