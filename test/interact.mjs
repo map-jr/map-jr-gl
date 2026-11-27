@@ -5228,8 +5228,8 @@ for (const mode of renderers) {
             const draggedPlain = make({dragPan: true, rotateSpeed: 0.8, pitchSpeed: -0.5, aroundCenter: true});
             draggedPlain.dragPan.enable(); draggedPlain.dragRotate.enable(true);
             out.drag.push(warnings.splice(0).length);
-            // An option that is not an option of MapLibre GL JS warns once with the closest name (#2272); terrainSkirtLength (#1788) and localIdeographFontFamily (#1789) have no effect and warn once.
-            const unknown = make({fooBarBaz: 1, fadeDuraton: 5, terrainSkirtLength: 'none', localIdeographFontFamily: 'monospace'});
+            // A misspelled option of MapLibre GL JS warns once with the closest name, and the props of a wrapper (react-map-gl) do not warn (#2272); terrainSkirtLength (#1788) and localIdeographFontFamily (#1789) have no effect and warn once.
+            const unknown = make({children: [], initialViewState: {zoom: 1}, mapLib: 1, mapStyle: 'x', onLoad: () => {}, fadeDuraton: 5, terrainSkirtLength: 'none', localIdeographFontFamily: 'monospace'});
             unknown.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: false});
             unknown.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: false});
             const own = warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] '));
@@ -5258,9 +5258,9 @@ for (const mode of renderers) {
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
-        check('[main] maplibre-compat: an unknown option of new Map() warns once with the closest name, and terrainSkirtLength and localIdeographFontFamily (also of setStyle) warn once (#2272, #1788, #1789)',
-            quiet.unknown.own.length === 5 && quiet.unknown.plain === 0 && /"fooBarBaz" is not an option of the map/.test(quiet.unknown.own[0]) && !/Did you mean/.test(quiet.unknown.own[0])
-            && /"fadeDuraton" is not an option.* Did you mean "fadeDuration"\?/.test(quiet.unknown.own[1])
+        check('[main] maplibre-compat: a misspelled option of new Map() warns once with the closest name, the props of a wrapper do not warn, and terrainSkirtLength and localIdeographFontFamily (also of setStyle) warn once (#2272, #1788, #1789)',
+            quiet.unknown.own.length === 4 && quiet.unknown.plain === 0 && quiet.unknown.own.filter(w => /E2272/.test(w)).length === 1
+            && /"fadeDuraton" is not an option.* Did you mean "fadeDuration"\?/.test(quiet.unknown.own[0])
             && quiet.unknown.own.filter(w => /terrainSkirtLength has no effect/.test(w)).length === 1 && quiet.unknown.own.filter(w => /localIdeographFontFamily has no effect/.test(w)).length === 1
             && quiet.unknown.own.filter(w => /localIdeographFontFamily of setStyle has no effect/.test(w)).length === 1, JSON.stringify(quiet.unknown));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',

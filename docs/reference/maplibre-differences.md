@@ -599,7 +599,7 @@ Other:
 
 - Projections other than `mercator`, `globe` and `vertical-perspective` (`addProjection`)
 - The map option `terrainSkirtLength` of `@map-jr/map-jr-gl/maplibre-compat` has no effect. MapLibre GL JS 6.17 reads it (`"auto"` by default, `"none"` or a length in meters) for the skirts at the edges of terrain tiles.
-- An option of `new Map()` of `@map-jr/map-jr-gl/maplibre-compat` that is not an option of MapLibre GL JS 6.17 or of this library has no effect. The development build suggests the closest known name for a misspelled option.
+- An option of `new Map()` of `@map-jr/map-jr-gl/maplibre-compat` that is not an option of MapLibre GL JS 6.17 or of this library has no effect. The development build suggests the known name for a misspelled option, and it says nothing for a name that is not close to one (wrappers pass their own props).
 - The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option has no effect and warns once: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it, so `setRTLTextPlugin` is accepted and does nothing. This is a decision and will stay.
 - The debug drawing of MapLibre GL JS: collision boxes, padding lines, tile borders and the overdraw view (`showCollisionBoxes`, `showPadding`, `showTileBoundaries`, `showOverdrawInspector`). This is a decision and will stay.

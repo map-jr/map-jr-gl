@@ -1651,10 +1651,6 @@ A warning of the main API (development build only).
 new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
 ```
 
-```text
-new Map(): "<member>" is not an option of the map, so it has no effect. Check the spelling against the options of MapLibre GL JS, or remove "<member>".
-```
-
 ## E10017
 
 A warning of both entries.

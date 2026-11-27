@@ -61,7 +61,7 @@ texts[1712] = () => 'style: the root property "centerAltitude" has no effect, as
 texts[648] = (where, property) => `${where}: "${property}" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.`;
 texts[20648] = source => `${source}: "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`;
 texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
-texts[2272] = (name, near) => `new Map(): "${name}" is not an option of the map, so it has no effect.${near ? ` Did you mean "${near}"?` : ''} Check the spelling against the options of MapLibre GL JS, or remove "${name}".`;
+texts[2272] = (name, near) => `new Map(): "${name}" is not an option of the map, so it has no effect. Did you mean "${near}"? Check the spelling against the options of MapLibre GL JS, or remove "${name}".`;
 texts[40] = scheme => `colorScheme: ${scheme} is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
 texts[46] = (missing, used) => `style: the pair has no "${missing}", so the map uses "${used}" in both color schemes. Give both "light" and "dark".`;
@@ -105,9 +105,9 @@ export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) {
 const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
 /** The fields of `MapDescription` (and of `MapSetup`). `pnpm test:consistency` compares the list with src/host.ts. Other fields warn (#524). */
 const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'style', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'renderWorldCopies', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale']);
-/** The options of the compat `new Map()`: those of MapLibre GL JS 6.17 (`MapOptions`) and those of this library. Other names warn (#2272). */
+/** The options of the compat `new Map()`: those of MapLibre GL JS 6.17 (`MapOptions`) and those of this library. A name that is close to one of them warns (#2272); other names do not, because a wrapper passes its own props. */
 const mapOptions = 'hash interactive container bearingSnap zoomSnap attributionControl maplibreLogo logoPosition canvasContextAttributes refreshExpiredTiles maxBounds scrollZoom minZoom maxZoom minPitch maxPitch anisotropicFilterPitch boxZoom dragRotate dragPan keyboard doubleClickZoom touchZoomRotate touchPitch cooperativeGestures trackResize center elevation zoom bearing pitch roll renderWorldCopies maxTileCacheSize maxTileCacheZoomLevels transformRequest transformCameraUpdate transformConstrain locale fadeDuration crossSourceCollisions collectResourceTiming clickTolerance bounds fitBoundsOptions localIdeographFontFamily style pitchWithRotate rollEnabled rotateSpeed pitchSpeed reduceMotion pixelRatio validateStyle globalState transformStyle maxCanvasSize cancelPendingTileRequestsWhileZooming centerClampedToGround terrainSkirtLength zoomLevelsToOverscale aroundCenter projection glyphs renderer fontFamily fonts antialias nonce startPadding wake workerUrl createWorker tileWorkers strict'.split(' ');
-/** The warning for the option `name` of `new Map()` when it is not a known option, or ''. It names the closest known option when the two differ by few letters. */
+/** The warning for the option `name` of `new Map()` when it is not a known option but differs by few letters from one, or ''. Other names give no warning (react-map-gl and other wrappers pass their own props). */
 export const unknownMapOption = (name: string): string => {
     if (mapOptions.includes(name)) return '';
     const distance = (a: string, b: string) => {
@@ -121,7 +121,7 @@ export const unknownMapOption = (name: string): string => {
     };
     let near = '', best = Math.max(2, Math.floor(name.length / 4)) + 1;
     for (const k of mapOptions) { const d = distance(name.toLowerCase(), k.toLowerCase()); if (d < best) { best = d; near = k; } }
-    return mistake(2272, name, near);
+    return near ? mistake(2272, name, near) : '';
 };
 /** The options of `overlay()` (`OverlayOptions`). `pnpm test:consistency` compares the list with src/host.ts. Other options warn (#1647). */
 const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
