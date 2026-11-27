@@ -871,6 +871,23 @@ for (const mode of renderers) {
         return calls;
     }, mode).catch(e => String(e));
     check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
+    // #2234: a second addImage with the name of an image replaces it, calls onRemove of the old image and fires no error. MapLibre GL JS
+    // 6.17 keeps the old image and fires "already exists"; the owner decided on 2026-11-26 to keep the difference.
+    const again = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+        const log = [], errors = [];
+        m.on('error', e => errors.push(String(e.error?.message)));
+        const make = n => ({width: 1, height: 1, data: new Uint8Array([n, 0, 0, 255]), onAdd() { log.push('onAdd' + n); }, onRemove() { log.push('onRemove' + n); }, render: () => false});
+        await m.addImage('twice', make(1));
+        await m.addImage('twice', make(2));
+        const red = m.getImage('twice')?.data?.data?.[0];
+        m.remove(); el.remove();
+        return {log, errors, red};
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] a second addImage with an existing name replaces the image, calls onRemove of the old one and fires no error (#2234)`,
+        JSON.stringify(again.log) === '["onAdd1","onRemove1","onAdd2"]' && again.errors?.length === 0 && again.red === 2, JSON.stringify(again));
     // #2309: setStyle with diff: false drops the images that addImage added, with no onRemove and no more render(), as MapLibre GL JS 6.17 does; the default diff keeps them.
     const swap = await page.evaluate(async renderer => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
