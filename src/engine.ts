@@ -1938,7 +1938,7 @@ export class Engine {
         // (The `text-translate` and `icon-translate` of each symbol layer in this frame, for `moveLabel`.)
         const moves = new Map<string, unknown[][]>(), movesOf = (id: string) => {
             let m = moves.get(id);
-            if (!m) { const L = this.layers.find(l => l.id === id), z = tr.zoom; moves.set(id, m = L ? [[L.p.translate.eval(z), L.p.translateAnchor.eval(z)], [L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z)]] : []); }
+            if (!m) { const L = this.layers.find(l => l.id === id), z = tr.zoom; moves.set(id, m = L?.type === 'symbol' ? [[L.p.translate.eval(z), L.p.translateAnchor.eval(z)], [L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z)]] : []); }
             return m;
         };
         for (const [key, st] of this.labels) {
