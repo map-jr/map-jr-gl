@@ -50,3 +50,35 @@ test('the compat entry reports the error text of MapLibre GL JS once for each la
     assert.equal(errors[0], '[map-jr-gl] E11139 layers.c.paint.circle-colour: unknown property "circle-colour". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "circle-color".');
     assert.ok(errors[2].startsWith('[map-jr-gl] E11139 layers.l.layout.lineCap: unknown property "lineCap".'), errors[2]);
 });
+
+// A property in the wrong group: the map reads `paint ?? layout`, and MapLibre GL JS rejects the style (#1683).
+const wrong = {layers: [
+    {id: 'f', type: 'fill', source: 's', paint: {'fill-color': 'red', visibility: 'none'}},
+    {id: 't', type: 'symbol', source: 's', paint: {'text-field': 'a'}, layout: {'text-color': 'red', 'text-size': 12}},
+    {id: 'n', type: 'line', source: 's', paint: {'line-color': 'red'}, layout: {'line-color': 'red', 'line-cap': 'round'}},
+]};
+const moveTo = (g: string) => `this is a ${g} property. The map reads it here all the same, but MapLibre GL JS rejects the style. Move it to "${g}".`;
+
+test('the main API warns for a property in the wrong group, once each', () => {
+    const warnings: string[] = [], warn = console.warn;
+    console.warn = (m: string) => { warnings.push(m); };
+    try {
+        const c = {map: {}, warned: new Set<string>(), spec: () => ({}), ready: () => false} as unknown as Checked;
+        check(c, 4, wrong);
+        assert.deepEqual(warnings.filter(w => w.includes(' property "')), [
+            `[map-jr-gl] E1683 the fill layer "f", paint property "visibility": ${moveTo('layout')}`,
+            `[map-jr-gl] E1683 the symbol layer "t", paint property "text-field": ${moveTo('layout')}`,
+            `[map-jr-gl] E1683 the symbol layer "t", layout property "text-color": ${moveTo('paint')}`,
+            `[map-jr-gl] E1683 the line layer "n", layout property "line-color": ${moveTo('paint')}`,
+        ]);
+    } finally { console.warn = warn; }
+});
+
+test('the compat entry reports a property in the wrong group with the error text of MapLibre GL JS', () => {
+    const errors: string[] = [];
+    zoomCurveErrors(wrong, new Set(), e => errors.push(e.message));
+    const mine = errors.filter(e => e.includes('E11683'));
+    assert.equal(mine.length, 4, JSON.stringify(errors));
+    assert.ok(mine[0].startsWith('[map-jr-gl] E11683 layers.f.paint.visibility: unknown property "visibility". '), mine[0]);
+    assert.ok(mine[3].startsWith('[map-jr-gl] E11683 layers.n.layout.line-color: unknown property "line-color". '), mine[3]);
+});
