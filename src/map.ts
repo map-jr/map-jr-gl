@@ -60,7 +60,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
      */
     fonts?: FontFaces;
     interactive?: boolean;
-    /** Changes a request before the library makes it, as in MapLibre: a new URL, headers or credentials. */
+    /** Changes a request before the library makes it, as in MapLibre: a new URL, headers, credentials or a referrer policy. */
     transformRequest?: RequestTransform | null;
     /** Each kind of interaction can be off from the start, as in MapLibre. */
     dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
@@ -110,7 +110,7 @@ export class TouchZoomRotateHandler extends InteractionHandler {
 }
 
 /** The `transformRequest` function of MapLibre. `resourceType` is `Tile`, `Style`, `Source`, `SpriteJSON`, `SpriteImage`, `Image`, `Glyphs` or `Font`. */
-export type RequestTransform = (url: string, resourceType?: ResourceType) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials} | undefined;
+export type RequestTransform = (url: string, resourceType?: ResourceType) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials; referrerPolicy?: ReferrerPolicy} | undefined;
 
 /** The changes that `updateData` of a GeoJSON source takes, as in MapLibre. */
 export interface GeoJSONDiff {
@@ -985,8 +985,9 @@ export class Map {
         return this;
     }
     off(type: string, a: string | string[] | Listener, b?: Listener) {
-        const layers = typeof a === 'string' ? [a] : Array.isArray(a) ? a : null, key = String(layers);
-        if (layers) this.layerListeners = this.layerListeners.filter(l => !(l.type === type && String(l.layers) === key && l.fn === b));
+        const layers = typeof a === 'string' ? [a] : Array.isArray(a) ? a : null;
+        // As in MapLibre GL JS: the first listener with the same ids (in any order) and function goes, and only that one.
+        if (layers) { const i = this.layerListeners.findIndex(l => l.type === type && l.fn === b && l.layers.length === layers.length && l.layers.every(id => layers.includes(id))); if (i >= 0) this.layerListeners.splice(i, 1); }
         else this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== a);
         return this;
     }
@@ -1016,7 +1017,7 @@ export class Map {
         const image = kind === 'RasterTile' || kind === 'Image' || kind === 'SpriteImage';
         if (kind === 'RasterTile') kind = 'Tile';
         const t = this.transformRequest?.(url, kind as ResourceType), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
-        if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
+        if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials, referrerPolicy: t?.referrerPolicy};
         // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
         const ac = new AbortController(), stop = () => ac.abort();
         if (this.removed || signal?.aborted) stop();
@@ -1931,6 +1932,7 @@ export class Map {
                 const a = await this.answer(source, 'Image');
                 if (a.data instanceof ImageBitmap) pic = a.data;
                 else {
+                    img.referrerPolicy = a.referrerPolicy ?? '';
                     img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
                     img.src = a.data ? URL.createObjectURL(new Blob([a.data])) : a.url!;
                 }
