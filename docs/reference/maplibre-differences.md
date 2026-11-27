@@ -118,7 +118,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - This library takes the weight and style words out of each name (`Open Sans Bold` is the family `Open Sans`, where MapLibre GL JS asks for a family named `Open Sans Bold`).
 - This library quotes every name except a CSS generic family keyword (MapLibre GL JS leaves nearly every name unquoted, and a name that is not a valid CSS identifier, such as one that starts with a digit, makes the font string invalid).
 - This library tries `fontFamily` after the list, where MapLibre GL JS tries `sans-serif`.
-- MapLibre GL JS uses `localIdeographFontFamily` alone for ideographs of the default font stack; the option `localIdeographFontFamily` of `new Map()` and of the options of `setStyle` (`@map-jr/map-jr-gl/maplibre-compat`) has no effect, and this library draws them with the same family list. A value other than the default `"sans-serif"` writes one warning in the development build. This is a decision and will stay.
+- MapLibre GL JS uses `localIdeographFontFamily` alone for ideographs of the default font stack. This library draws them with the same family list, so the option `localIdeographFontFamily` of `new Map()` and of `setStyle` (`@map-jr/map-jr-gl/maplibre-compat`) has no effect. This is a decision and will stay.
 
 ### Text on lines
 
@@ -598,8 +598,8 @@ Layers that the server renderer does not draw:
 Other:
 
 - Projections other than `mercator`, `globe` and `vertical-perspective` (`addProjection`)
-- The map option `terrainSkirtLength` of `@map-jr/map-jr-gl/maplibre-compat`. MapLibre GL JS 6.17 reads it (`"auto"` by default, `"none"` or a length in meters) for the skirts at the edges of terrain tiles. The option has no effect here, and a value other than `"auto"` writes one warning in the development build.
-- An option of `new Map()` of `@map-jr/map-jr-gl/maplibre-compat` that neither MapLibre GL JS 6.17 nor this library has has no effect. The development build writes one warning for each, with the closest known name (`fadeDuraton` gives "Did you mean `fadeDuration`?"). The production build writes none.
+- The map option `terrainSkirtLength` of `@map-jr/map-jr-gl/maplibre-compat` has no effect. MapLibre GL JS 6.17 reads it (`"auto"` by default, `"none"` or a length in meters) for the skirts at the edges of terrain tiles.
+- An option of `new Map()` of `@map-jr/map-jr-gl/maplibre-compat` that is not an option of MapLibre GL JS 6.17 or of this library has no effect. The development build suggests the closest known name for a misspelled option.
 - The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option has no effect and warns once: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it, so `setRTLTextPlugin` is accepted and does nothing. This is a decision and will stay.
 - The debug drawing of MapLibre GL JS: collision boxes, padding lines, tile borders and the overdraw view (`showCollisionBoxes`, `showPadding`, `showTileBoundaries`, `showOverdrawInspector`). This is a decision and will stay.
