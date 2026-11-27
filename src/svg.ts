@@ -111,7 +111,7 @@ export function renderSVG(s: SVGScene): string {
             continue;
         }
         // A layer that draws nothing at this zoom writes nothing (a data-driven value is checked per feature below).
-        if (opacity <= 0 || L.type === 'line' && (!p.width.dd && p.width.eval(zoom) <= 0 || uniform && uniform[3] <= 0)) continue;
+        if (opacity <= 0 && L.type !== 'circle' || L.type === 'line' && (!p.width.dd && p.width.eval(zoom) <= 0 || uniform && uniform[3] <= 0)) continue;
         if (L.type === 'fill' && uniform && uniform[3] <= 0 && !((p.outline?.eval(zoom) as RGBA | undefined)?.[3]! > 0)) continue;
         for (const it of s.items.get(L.source!) ?? []) {
             if ('href' in it.tile) {
@@ -134,10 +134,11 @@ export function renderSVG(s: SVGScene): string {
             };
             if (b.type === 'circle') {
                 const sw = p.strokeWidth.eval(zoom), sc = p.strokeColor.eval(zoom) as RGBA;
-                const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * opacity)}` : '';
+                const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * (p.strokeOpacity.dd ? 1 : p.strokeOpacity.eval(zoom)))}` : '';
                 const {coords, ringEnds, featEnds} = b.geom;
                 for (let f = 0, r = 0; f < n; f++) {
                     const [col, a] = styleOf(f), radius = (b.radius ? b.radius[f] : p.radius.eval(zoom)) + sw / 2;
+                    if (a <= 0 && !stroke) { r = featEnds[f]; continue; }
                     for (; r < featEnds[f]; r++) {
                         const i = ringEnds[r] - 1, tx = coords[i * 2], ty = coords[i * 2 + 1];
                         if (tx < it.clip[0] || ty < it.clip[1] || tx >= it.clip[2] || ty >= it.clip[3]) continue;
