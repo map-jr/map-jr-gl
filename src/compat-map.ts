@@ -617,7 +617,7 @@ export class Map extends CoreMap {
         }
         return super.addImage(...args);
     }
-    /** As MapLibre GL JS: an image of another size fires an `error` event and changes nothing (#2242). */
+    /** Replaces the pixels of an image added earlier and keeps its options. An image of another size fires an `error` event and changes nothing, as in MapLibre GL JS. Returns a promise of the map; MapLibre GL JS returns the map. */
     updateImage(name: string, image: Parameters<CoreMap['addImage']>[1]) {
         const size = (i?: unknown) => { const {width, height, naturalWidth, naturalHeight} = (i ?? {}) as Record<string, number>; return [naturalWidth ?? width, naturalHeight ?? height]; };
         const [width, height] = size(this.imageInputs.get(name)?.[0]), [newWidth, newHeight] = size(image);

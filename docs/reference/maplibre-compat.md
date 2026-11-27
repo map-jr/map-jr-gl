@@ -125,6 +125,7 @@ library" names a member that MapLibre GL JS does not have.
 | `fire` | `(type: string \| {type: string}, data?: Record<string, unknown>) => void \| PromiseLike<unknown>` | Calls the listeners of the event `type` with `data` as the event, as in MapLibre GL JS. |
 | `setMissingStyleImageResolver` | `(resolver: ((id: string) => void \| Promise<void>) \| null) => Map` | Sets a function that supplies images on demand, as in MapLibre GL JS. |
 | [`addImage`](#addimage) | `(name: string, source: string \| ImageData \| object \| CanvasImageSource, options?: ImageOptions \| undefined) => Promise<Map>` | Makes an image available to `icon-image` under `name`, and returns a promise of the map; MapLibre GL JS returns the map. The `object` has the members `width`, `height` and `data`. |
+| `updateImage` | `(name: string, image: string \| ImageData \| {width: number; height: number; data: Uint8Array<ArrayBufferLike> \| Uint8ClampedArray<ArrayBufferLike>} \| CanvasImageSource) => Promise<Map>` | Replaces the pixels of an image added earlier and keeps its options. |
 | `removeImage` | `(name: string) => Map` | Removes an image that `addImage` added. |
 | `addControl` | `(control: Control, position?: ControlPosition \| undefined) => Map` | Adds a control to a corner of the map, as in MapLibre GL JS. |
 | `addLayer` | `(layer: AddLayerObject, beforeId?: string \| undefined) => Map` | Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS. |
@@ -249,7 +250,6 @@ library" names a member that MapLibre GL JS does not have.
 | `removeControl` | `(control: Control) => Map` | Removes a control that `addControl` added. |
 | `hasControl` | `(control: Control) => boolean` | Whether the map has this control. |
 | `addFonts` | `(fonts: FontSource[]) => Map` | Only in this library: loads more web fonts for labels after the map is created. |
-| `updateImage` | `(name: string, source: string \| ImageData \| {width: number; height: number; data: Uint8Array<ArrayBufferLike> \| Uint8ClampedArray<ArrayBufferLike>} \| CanvasImageSource) => Promise<Map>` | Replaces the pixels of an image added earlier, keeps its options (stretch, content, sdf) and returns a promise of the map; MapLibre GL JS returns the map. |
 | `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
 | `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| `[`FeatureOptions`](map.md#featureoptions)`, o?: `[`FeatureOptions`](map.md#featureoptions)`) => Promise<`[`RenderedFeature`](types.md#renderedfeature)`[]>` | Only in this library: returns a promise of the features that the style layers draw, the top one first. |
 | `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| `[`SourceOptions`](map.md#sourceoptions)`, o?: `[`SourceOptions`](map.md#sourceoptions)`) => Promise<`[`QueriedFeature`](types.md#queriedfeature)`[]>` | Only in this library: returns a promise of the features of the tile data of the source `sourceId`. |
