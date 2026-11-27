@@ -4282,6 +4282,35 @@ for (const renderer of renderers) {
     } catch (e) { check('fonts of the description: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The text-color of a format section on a label along a line (#2173).
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const line = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-30, 0], [30, 0]]}}]};
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const host = lib.createMap(el, {style, attribution: false, initialView: {center: [0, 0], zoom: 3}, fonts: {'Test Square Regular': '/test-fonts/square.ttf'},
+                sources: {l: {type: 'geojson', data: line}},
+                layers: [{id: 'label', type: 'symbol', source: 'l', layout: {'symbol-placement': 'line', 'text-field': ['format', 'AAAA', {'text-color': '#f00'}, 'BBBB', {'text-color': '#00f'}], 'text-font': ['Test Square Regular'], 'text-size': 30}, paint: {'text-color': '#000'}}]});
+            await new Promise(r => { const t = setTimeout(r, 15000); host.state.subscribe(s => s.idle, v => { if (v) { clearTimeout(t); setTimeout(r, 300); } }); });
+            window.host = host;
+        });
+        const png = await page.screenshot();
+        const n = await page.evaluate(async b64 => {
+            const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+            const c = Object.assign(document.createElement('canvas'), {width: img.width, height: img.height}).getContext('2d'); c.drawImage(img, 0, 0);
+            const d = c.getImageData(0, 0, img.width, img.height).data; let red = 0, blue = 0;
+            for (let i = 0; i < d.length; i += 4) { if (d[i] > 200 && d[i + 1] < 60 && d[i + 2] < 60) red++; if (d[i + 2] > 200 && d[i] < 60 && d[i + 1] < 60) blue++; }
+            return {red, blue};
+        }, png.toString('base64'));
+        await page.evaluate(() => window.host.destroy());
+        check('format sections: the text-color of a section is drawn on a label along a line (#2173)', n.red > 200 && n.blue > 200, JSON.stringify(n));
+    } catch (e) { check('format sections on a line label: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The action and the store for Svelte, called as Svelte calls them (they do not need the Svelte package).
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
