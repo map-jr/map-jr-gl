@@ -343,16 +343,18 @@ void main() {
     // Buildings: roofs and walls with a height in meters and a baked light level.
     extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; layout(location=3) in vec2 a_centroid; out vec4 v_color; out vec2 v_p; out float v_side;
-uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
+uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec3 u_hb; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
 void main() {
   // The light model of MapLibre. A face is brighter when it looks at the light; a dark color is made brighter by
   // more than a light color. Walls are darker near the ground (the vertical gradient).
   bool roof = a_v.w < 0.0; float other = floor(a_v.w / ${WALL_OTHER}.0), rest = a_v.w - other * ${WALL_OTHER}.0, t = rest >= ${WALL_TOP}.0 ? 1.0 : 0.0, angle = rest - t * ${WALL_TOP}.0 - ${Math.PI};
-  float base = t > 0.5 ? other : max(a_v.z, 0.0), height = t > 0.5 ? max(a_v.z, 0.0) : other;
+  float base = t > 0.5 ? other : max(a_v.z, 0.0), height = t > 0.5 ? max(a_v.z, 0.0) : other, z = a_v.z;
+  // (The height and the base of the layer, when the tile has 1 and 0 for them: see Batch.lift.)
+  if (u_hb.x > 0.5) { height = u_hb.y; base = min(u_hb.z, height); z = roof || t > 0.5 ? height : base; }
   vec3 normal = roof ? vec3(0.0, 0.0, 1.0) : vec3(cos(angle), sin(angle), 0.0);
   // fill-extrusion-pattern: the image lies flat on the roof and runs along the ring on the walls, as in MapLibre,
   // and the light alone sets the shade.
-  v_p = (u_pat * vec3(roof ? a_v.xy : vec2(a_ed, max(a_v.z, 0.0) * u_hf), 1.0)).xy;
+  v_p = (u_pat * vec3(roof ? a_v.xy : vec2(a_ed, max(z, 0.0) * u_hf), 1.0)).xy;
   // (As in MapLibre, a translucent color is multiplied by its alpha and then drawn solid; only the opacity of the layer shows through.)
   vec4 c = u_pattern > 0.5 ? vec4(1.0, 1.0, 1.0, u_color.a) : vec4(a_color.rgb * a_color.a * u_color.rgb, u_color.a);
   float value = u_pattern > 0.5 ? 0.5 : dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -364,7 +366,7 @@ void main() {
   v_side = horizonSide(a_v.xy);
   // On 3D terrain the whole polygon stands on the ground at its centroid, and a base of 0 reaches 10 m lower, so that
   // the walls go into a slope (as in MapLibre GL JS).
-  gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_centroid / ${EXTENT}.0) - (u_exag != 0.0 && !roof && t < 0.5 && a_v.z <= 0.0 ? 10.0 : 0.0));
+  gl_Position = toClip3D(a_v.xy, z + ground(a_centroid / ${EXTENT}.0) - (u_exag != 0.0 && !roof && t < 0.5 && z <= 0.0 ? 10.0 : 0.0));
 }`, `
 uniform float u_pattern; in vec4 v_color; in vec2 v_p; in float v_side; out vec4 o; ${PATTERN_GLSL}
 // (Buildings are not cut at the edge of the tile, as in MapLibre GL JS. The piece of a building in the buffer of a tile
@@ -526,7 +528,7 @@ interface IconBuffers {
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
-    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
+    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string; /** See `Batch.lift`. */ lift?: boolean;
     /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
 export interface GLTile {
@@ -845,7 +847,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1300,7 +1302,7 @@ export class GLRenderer {
             }
             let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
-            const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
+            const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [], hb = extrude ? [L.p.height, L.p.base].map(q => q.dd ? 0 : Math.max(0, q.eval(zoom))) : [];
             let patImg: Parameters<typeof bindImage>[1] | undefined;
             if (extrude) {
                 // The fill-extrusion layers of a frame share one depth buffer, as in MapLibre GL JS, so the roof of one
@@ -1403,6 +1405,7 @@ export class GLRenderer {
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
                 if (extrude) {
+                    gl.uniform3f(u.u_hb, +!!b.lift, hb[0], hb[1]);
                     // Depth first, color second: translucent buildings then blend once, with the nearest surface only.
                     gl.colorMask(false, false, false, false);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
@@ -1415,6 +1418,7 @@ export class GLRenderer {
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(b.vao);
                         if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
+                        gl.uniform3f(u.u_hb, +!!b.lift, hb[0], hb[1]);
                         gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                     });
                 } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
