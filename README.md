@@ -53,19 +53,19 @@ uses the same renderer and has its own tests in a browser.
 <!-- status:start -->
 These figures are written by `pnpm status`. They compare this library with MapLibre GL JS 6.17.0. The file [docs/status.json](docs/status.json) has the same figures.
 
-Unit tests: 525 pass and 0 fail.
+Unit tests: 549 pass and 0 fail.
 
 Sizes, in KB (gzip). The page script of MapLibre GL JS includes its CSS. The page script of this library is the file of the entry and the files that it imports when it loads.
 
 | File | Map Jr. GL | MapLibre GL JS | Share |
 |---|---:|---:|---:|
-| Page script of `@map-jr/map-jr-gl` | 49.1 | 300.1 | 16.4% |
-| Page script of `@map-jr/map-jr-gl/maplibre-compat` | 58.4 | 300.1 | 19.5% |
-| Worker file | 82.3 | 145.0 | 56.7% |
-| Page script and worker file of `@map-jr/map-jr-gl` | 131.4 | 445.1 | 29.5% |
-| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 140.7 | 445.1 | 31.6% |
+| Page script of `@map-jr/map-jr-gl` | 49.4 | 300.1 | 16.5% |
+| Page script of `@map-jr/map-jr-gl/maplibre-compat` | 58.7 | 300.1 | 19.6% |
+| Worker file | 83.8 | 145.0 | 57.8% |
+| Page script and worker file of `@map-jr/map-jr-gl` | 133.2 | 445.1 | 29.9% |
+| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 142.5 | 445.1 | 32.0% |
 | Hard line for the page script and the worker file | 148.4 | 445.1 | 33.3% |
-| Server renderer | 59.4 |  |  |
+| Server renderer | 60.2 |  |  |
 
 Compatibility with MapLibre GL JS, tested with the entry `@map-jr/map-jr-gl/maplibre-compat`:
 
@@ -77,8 +77,8 @@ Compatibility with MapLibre GL JS, tested with the entry `@map-jr/map-jr-gl/mapl
 | MapLibre plugins, run in a browser | 16 | 16 | 100.0% | [Plugins that were run](docs/ecosystem.md#plugins-that-were-run) |
 | Plugins and frameworks, read from npm | 23 | 27 | 85.2% | [Each package](docs/ecosystem.md#each-package) |
 | Example pages of the MapLibre documentation | 122 | 142 | 85.9% | [Example pages](docs/ecosystem.md#the-example-pages-of-maplibre-gl-js) |
-| MapLibre render tests, the same | 1367 | 1758 | 77.8% | [Render tests](docs/development.md#render-tests) |
-| MapLibre render tests, the same or near | 1631 | 1758 | 92.8% | [Render tests](docs/development.md#render-tests) |
+| MapLibre render tests, the same | 1384 | 1758 | 78.7% | [Render tests](docs/development.md#render-tests) |
+| MapLibre render tests, the same or near | 1635 | 1758 | 93.0% | [Render tests](docs/development.md#render-tests) |
 <!-- status:end -->
 
 The library is new. Read [MapLibre differences](docs/reference/maplibre-differences.md) before you use it in production.
@@ -175,46 +175,40 @@ Each task has a page of the guide or a recipe, with the code of each entry and a
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-26 (commit 3f544f1), next to MapLibre GL JS 6.17.0. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-27 (commit 8a80e44), next to MapLibre GL JS 6.17.0. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
 
 Load to idle, in milliseconds. A ratio below 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 1219 | 578 | 0.47 |
-| macOS, WebKit | 1638 | 719 | 0.44 |
-| Linux, Chromium | 663 | 485 | 0.73 |
-| Linux, Firefox | 1316 | 573 | 0.44 |
-| Linux, WebKit | 2596 | 898 | 0.35 |
-| Windows, Chromium | 1276 | 1028 | 0.81 |
-| Windows, Firefox | 1246 | 622 | 0.50 |
-| Windows, WebKit | 1887 | 978 | 0.52 |
+| macOS, Chromium | 1274 | 706 | 0.55 |
+| macOS, WebKit | 1828 | 921 | 0.50 |
+| Linux, Firefox | 1324 | 645 | 0.49 |
+| Windows, Chromium | 1282 | 921 | 0.72 |
+| Windows, Firefox | 1161 | 846 | 0.73 |
+| Windows, WebKit | 1015 | 629 | 0.62 |
 
 Frames per second while the map moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 30 | 27 | 0.87 |
-| macOS, WebKit | 54 | 50 | 0.93 |
-| Linux, Chromium | 9 | 9 | 1.03 |
-| Linux, Firefox | 19 | 60 | 3.13 |
-| Linux, WebKit | 11 | 10 | 0.90 |
-| Windows, Chromium | 19 | 13 | 0.70 |
-| Windows, Firefox | 27 | 15 | 0.56 |
-| Windows, WebKit | 13 | 10 | 0.73 |
+| macOS, Chromium | 27 | 26 | 0.99 |
+| macOS, WebKit | 49 | 53 | 1.07 |
+| Linux, Firefox | 18 | 60 | 3.35 |
+| Windows, Chromium | 17 | 10 | 0.61 |
+| Windows, Firefox | 23 | 11 | 0.46 |
+| Windows, WebKit | 18 | 15 | 0.84 |
 
 Frames per second while a map with 10,000 markers moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 2 | 22 | 13.07 |
-| macOS, WebKit | 4 | 54 | 13.54 |
-| Linux, Chromium | 3 | 11 | 4.15 |
-| Linux, Firefox | 8 | 44 | 5.48 |
-| Linux, WebKit | 2 | 13 | 6.30 |
-| Windows, Chromium | 2 | 27 | 15.49 |
-| Windows, Firefox | 6 | 28 | 4.47 |
-| Windows, WebKit | 3 | 14 | 5.59 |
+| macOS, Chromium | 2 | 21 | 8.59 |
+| macOS, WebKit | 3 | 53 | 17.59 |
+| Linux, Firefox | 6 | 44 | 7.93 |
+| Windows, Chromium | 2 | 37 | 24.45 |
+| Windows, Firefox | 5 | 25 | 4.75 |
+| Windows, WebKit | 4 | 24 | 5.52 |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the tables to compare the
