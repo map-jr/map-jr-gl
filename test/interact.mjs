@@ -7848,7 +7848,9 @@ for (const mode of renderers) {
         const moving = await zoomSoon({});
         await page.emulateMedia({reducedMotion: 'reduce'});
         const reduced = await zoomSoon({}), essential = await zoomSoon({essential: true});
-        await page.emulateMedia({reducedMotion: null});
+        // (Back to the default of Playwright: `null` would bring back the setting of the system, which asks for less
+        // motion on some CI runners, for every check after this one; #2326.)
+        await page.emulateMedia({reducedMotion: 'no-preference'});
         await page.evaluate(() => { window.a11yMap.remove(); window.a11yEl.remove(); });
         check('[main] the canvas has the role and the name of a map, and the frame of the map shows the keyboard focus', before.role === 'region' && before.label === 'Map' && !before.outline && /2px solid/.test(focused) && !blurred, JSON.stringify({before, focused, blurred}));
         check('[main] a marker with a popup is a button that Enter and the space bar work; the fullscreen button says what it does',
@@ -8220,8 +8222,10 @@ for (const mode of renderers) {
             out.push(Math.round(m.getCenterElevation()));
             await idle();
             out.push(Math.round(m.getCenterElevation()));
+            // (The listener comes first: with "reduce motion" MapLibre GL JS jumps and fires moveend during the call; #2326.)
+            const moved = new Promise(r => m.once('moveend', r));
             m.easeTo({zoom: 12, elevation: 500, duration: 50});
-            await new Promise(r => m.once('moveend', r)); await idle();
+            await moved; await idle();
             out.push(Math.round(m.getCenterElevation()));
             m.easeTo({zoom: 13, elevation: 500, duration: 0});
             await idle();
