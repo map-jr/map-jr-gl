@@ -1762,6 +1762,10 @@ for (const mode of renderers) {
     const tap = await page.evaluate(async () => {
         const m = window.map, c = m.getCanvas(), r = {}, x = c.clientWidth / 2 - 70, y = c.clientHeight / 2 + 50;
         m.once('click', e => { r.ms = Math.round(performance.now() - r.t0); r.found = [...m.queryRenderedFeatures(e.point)].filter(f => f.sourceLayer).length; });
+        // Tiles of the tap must be loaded before the tap (#2487): wait for them, and for a frame, without a query that would
+        // fill the answers that the tap is to get by itself.
+        for (let i = 0; i < 100 && !(m.areTilesLoaded() && !m.isMoving()); i++) await new Promise(f => setTimeout(f, 100));
+        await new Promise(f => requestAnimationFrame(() => f()));
         await new Promise(f => setTimeout(f, 500)); r.t0 = performance.now(); window.touch('pointerdown', 11, x, y); await new Promise(f => setTimeout(f, 80)); window.touch('pointerup', 11, x, y);
         await new Promise(f => setTimeout(f, 1000)); delete r.t0;
         // The tap lands on a pin, so the demo opens a popup there that would cover the clicks of the tests below.
@@ -1786,16 +1790,22 @@ for (const mode of renderers) {
     await settle(page);
     // #7: `click` and `contextmenu` reach a map listener within 300 ms of the pointer event (the bounded wait for the
     // features), not after a query of any length.
+    // The library's wait is a timer of 300 ms that it starts in the handler of the pointer event. The page starts a timer of
+    // 300 ms after it, when the same event reaches `window` (bubbling), so that the library's timer fires first in any
+    // load: a loaded machine delays both timers and a single wait for the features is not counted as late (#2486). A
+    // listener that runs after the page's timer has waited for longer than 300 ms.
     await page.evaluate(() => {
-        window.late = {}; const t = {};
+        window.late = {};
         for (const [dom, ev] of [['pointerup', 'click'], ['contextmenu', 'contextmenu']]) {
-            window.addEventListener(dom, () => { t[ev] = performance.now(); }, {once: true, capture: true});
-            window.map.once(ev, () => { window.late[ev] = Math.round(performance.now() - t[ev]); });
+            window.addEventListener(dom, () => { setTimeout(() => { window.late[ev + 'Ref'] = performance.now(); }, 300); }, {once: true});
+            window.map.once(ev, () => { window.late[ev] = performance.now(); });
         }
     });
-    await page.mouse.click(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.waitForTimeout(500);
-    const lateness = await page.evaluate(() => window.late);
-    check(`[${mode}] click and contextmenu: a map listener runs within 300 ms of the pointer event`, lateness.click <= 330 && lateness.contextmenu <= 330, JSON.stringify(lateness));
+    await page.mouse.click(500, 350); await page.mouse.click(500, 350, {button: 'right'});
+    await page.waitForFunction(() => ['click', 'contextmenu'].every(ev => window.late[ev + 'Ref'] > 0), null, {timeout: 10000}).catch(() => {});
+    const lateness = await page.evaluate(() => { const l = window.late; return {click: l.click, clickRef: l.clickRef, contextmenu: l.contextmenu, contextmenuRef: l.contextmenuRef}; });
+    check(`[${mode}] click and contextmenu: a map listener runs within 300 ms of the pointer event`,
+        ['click', 'contextmenu'].every(ev => lateness[ev] !== undefined && lateness[ev + 'Ref'] > 0 && lateness[ev] <= lateness[ev + 'Ref']), JSON.stringify(lateness));
     await settle(page);
 
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
