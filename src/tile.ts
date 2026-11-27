@@ -721,6 +721,17 @@ export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
 const buffer = (c: ArrayLike<number>, i: number, j: number) => c[i * 2] === c[j * 2] && (c[i * 2] < 0 || c[i * 2] > EXTENT) || c[i * 2 + 1] === c[j * 2 + 1] && (c[i * 2 + 1] < 0 || c[i * 2 + 1] > EXTENT);
 
 /**
+ * Whether the points s to e of a ring all lie on one side outside the tile, in its buffer. MapLibre GL JS draws no such
+ * polygon and no walls of such a ring (`isEntirelyOutside`): the next tile draws them, and here their centroid would lie
+ * past the elevation tile under this tile (#2287).
+ */
+const outside = (c: ArrayLike<number>, s: number, e: number) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = s; i < e; i++) x0 = Math.min(x0, c[i * 2]), x1 = Math.max(x1, c[i * 2]), y0 = Math.min(y0, c[i * 2 + 1]), y1 = Math.max(y1, c[i * 2 + 1]);
+    return x1 < 0 || y1 < 0 || x0 > EXTENT || y0 > EXTENT;
+};
+
+/**
  * Buildings: a roof at the feature's height and a wall under every edge. Each vertex says which way its face looks, for
  * the light. With `globe`, the roof is cut as a fill is (without the caps at the poles) and each wall is cut where its
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
@@ -738,6 +749,7 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
         };
         eachPolygon(b.geom, f, (p0, p1, holes) => {
             let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
+            if (outside(coords, 0, bounds[1])) return;
             // On 3D terrain, MapLibre GL JS lifts each polygon by the ground at its centroid (the mean of its points,
             // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
             // The centroid is that of the piece of the polygon in this tile, as in MapLibre GL JS, so it lies in the
@@ -767,6 +779,7 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
             const out = area >= 0 ? 1 : -1;
             for (let r = 0; r + 1 < bounds.length; r++) {
                 const s = p0 + bounds[r], e = p0 + bounds[r + 1], n = e - s, dist: number[] = [];
+                if (outside(coords, s, e)) continue;
                 // For fill-extrusion-pattern: the distance along the ring where each wall starts, counted from the
                 // corner where MapLibre GL JS starts, so that the image on the walls lines up as it does there.
                 for (let k = 1, d = 0; b.ed && k <= n; k++) {
