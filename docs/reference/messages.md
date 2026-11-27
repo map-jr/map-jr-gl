@@ -505,6 +505,14 @@ The production build prints this:
 setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.
 ```
 
+## E214
+
+A warning of the main API (development build only).
+
+```text
+<call>: a marker takes "offset" as a pair, [x, y], so a number or an object with a pair for each anchor has no effect. Write a pair, or add "popup: true".
+```
+
 ## E216
 
 An error of both entries.
@@ -1649,6 +1657,14 @@ The production build prints this:
 
 ```text
 addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
+```
+
+## E2272
+
+A warning of the main API (development build only).
+
+```text
+new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
 ```
 
 ## E10017

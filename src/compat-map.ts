@@ -7,7 +7,7 @@ import type {QueriedFeature} from './query.ts';
 import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {Evented} from './evented.ts';
-import {zoomCurveErrors} from './mistakes.ts';
+import {zoomCurveErrors, unknownMapOption} from './mistakes.ts';
 import {httpError, withCode} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
@@ -532,9 +532,13 @@ export class Map extends CoreMap {
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
         if (context?.preserveDrawingBuffer)
             this.mistake('new Map(): canvasContextAttributes.preserveDrawingBuffer', __DEV__ ? '[map-jr-gl] E387 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.' : '');
+        if (__DEV__) for (const k in o) { const text = unknownMapOption(k); if (text) this.mistake('new Map(): the option ' + k, text); }
         this.unsupported('The option logoPosition', !o.logoPosition);
         // (Development build) `validateStyle: false` skips the check of the style, as in MapLibre GL JS (#1748, #2121). `setStyle` can override it for one style.
         if (__DEV__) this.noValidate = this.noValidateMap = o.validateStyle === false;
+        // (MapLibre GL JS reads these two: they change the skirts of terrain tiles and the font of ideographs. Their defaults are "auto" and "sans-serif".)
+        if (__DEV__) this.unsupported('The option terrainSkirtLength', o.terrainSkirtLength === undefined || o.terrainSkirtLength === 'auto');
+        if (__DEV__) this.unsupported('The option localIdeographFontFamily', o.localIdeographFontFamily === undefined || o.localIdeographFontFamily === 'sans-serif');
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
@@ -726,6 +730,7 @@ export class Map extends CoreMap {
         this.styleUrl = typeof style === 'string' ? style : null;
         // (Development build) As in MapLibre GL JS, `validate` of this call wins over the option `validateStyle` of `new Map()` (#1748).
         if (__DEV__) this.noValidate = options.validate === undefined ? this.noValidateMap : !options.validate;
+        if (__DEV__) this.unsupported('The option localIdeographFontFamily of setStyle', options.localIdeographFontFamily === undefined || options.localIdeographFontFamily === 'sans-serif');
         const own = options.transformStyle, diff = options.diff !== false;
         // As in MapLibre GL JS 6.17, a new style without `diff` has an image manager of its own: the images that `addImage` added are
         // gone, with no `onRemove()` and no more `render()`, and a layer that uses one fires `styleimagemissing` (#2309).

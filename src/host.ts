@@ -10,7 +10,7 @@ import {Map, logError, type FeatureOptions, type FeaturePlace, type SourceOption
 export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
-import {Marker, Popup, part} from './overlays.ts';
+import {Marker, Popup, part, type PopupOffset} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
@@ -418,15 +418,29 @@ export interface OverlayOptions {
      * @default `'center'` for a marker; for a popup, chosen by the position
      */
     anchor?: Anchor;
-    /** A distance in CSS pixels from the position, to the right and down. */
-    offset?: [number, number];
+    /**
+     * A distance in CSS pixels from the position, to the right and down. A marker takes a pair, `[x, y]`. A popup also takes one
+     * number, which moves it away from the position on the side that it has, and an object that has a pair for each anchor
+     * (`{bottom: [0, -16], top: [0, 16]}`), so that a popup that chooses its own anchor keeps its distance on every side.
+     */
+    offset?: PopupOffset;
     /**
      * Whether the element is shown in a box with a tip that points to the position (a popup).
      * @default false
      */
     popup?: boolean;
-    /** Called when the user closes the popup. With it, the popup has a button to close it. */
+    /** Called when the user closes the popup. With it, and without `closeButton`, the popup has a button to close it. */
     onClose?: () => void;
+    /**
+     * Whether the popup has a button to close it. The button closes the popup, so `onClose` is not needed for that.
+     * @default true when `onClose` is set, else false
+     */
+    closeButton?: boolean;
+    /**
+     * Whether a click on the map closes the popup. The click that opens the popup does not close it.
+     * @default false
+     */
+    closeOnClick?: boolean;
     /**
      * Whether the user can drag the element. A popup cannot be dragged. To keep a dropped element in place across updates, pass its
      * new position to `lngLat` in `onDragEnd`.
@@ -1359,13 +1373,13 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             let now = o;
             const make = () => {
                 if (!now.popup) {
-                    const m = new Marker({element, anchor: now.anchor, offset: now.offset, draggable: now.draggable}).setLngLat(now.lngLat).addTo(map);
+                    const m = new Marker({element, anchor: now.anchor, offset: Array.isArray(now.offset) ? now.offset : undefined, draggable: now.draggable}).setLngLat(now.lngLat).addTo(map);
                     // (The callbacks of the latest options run, so that a framework can pass a new function each render.)
                     const at = (): Position => { const p = m.getLngLat(); return [p.lng, p.lat]; };
                     m.on('dragstart', () => now.onDragStart?.(at())); m.on('drag', () => now.onDrag?.(at())); m.on('dragend', () => now.onDragEnd?.(at()));
                     return m;
                 }
-                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
+                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: now.closeButton ?? !!now.onClose, closeOnClick: !!now.closeOnClick}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 // (`destroy()` closes the popup with the map. That is not the user's close, so `onClose` does not run.)
                 p.on('close', () => { if (alive && made === p) now.onClose?.(); });
                 // (Escape or the button then returns the focus to the element that had it, else to the map.)
@@ -1375,7 +1389,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             };
             let made: Marker | Popup | null = make();
             const set = (next: OverlayOptions) => {
-                const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
+                const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || JSON.stringify(next.offset) !== JSON.stringify(now.offset) || (next.closeButton ?? !!next.onClose) !== (now.closeButton ?? !!now.onClose) || !!next.closeOnClick !== !!now.closeOnClick;
                 // (Only a new position moves the element: a render during or after a drag that passes the same
                 // `lngLat` again leaves it where the user put it.)
                 const moved = String(next.lngLat) !== String(now.lngLat);

@@ -61,6 +61,7 @@ texts[1712] = () => 'style: the root property "centerAltitude" has no effect, as
 texts[648] = (where, property) => `${where}: "${property}" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.`;
 texts[20648] = source => `${source}: "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.`;
 texts[685] = problem => `locale: ${problem}. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.`;
+texts[2272] = (name, near) => `new Map(): "${name}" is not an option of the map, so it has no effect. Did you mean "${near}"? Check the spelling against the options of MapLibre GL JS, or remove "${name}".`;
 texts[40] = scheme => `colorScheme: ${scheme} is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
 texts[46] = (missing, used) => `style: the pair has no "${missing}", so the map uses "${used}" in both color schemes. Give both "light" and "dark".`;
@@ -78,6 +79,7 @@ texts[1195] = (control, custom) => custom
     : `controls: ${control}() is in the list twice with the same options, so the map adds it once. Remove the second ${control}().`;
 /** The option of an overlay that `option` is with another case of its letters, such as `lngLat` for `lnglat`. */
 const overlayOption = (option: string) => overlayOptions.find(k => k.toLowerCase() === option.toLowerCase());
+texts[214] = call => `${call}: a marker takes "offset" as a pair, [x, y], so a number or an object with a pair for each anchor has no effect. Write a pair, or add "popup: true".`;
 texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.`;
@@ -104,8 +106,26 @@ export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) {
 const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
 /** The fields of `MapDescription` (and of `MapSetup`). `pnpm test:consistency` compares the list with src/host.ts. Other fields warn (#524). */
 const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'style', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'renderWorldCopies', 'centerElevation', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale']);
+/** The options of the compat `new Map()`: those of MapLibre GL JS 6.17 (`MapOptions`) and those of this library. A name that is close to one of them warns (#2272); other names do not, because a wrapper passes its own props. */
+const mapOptions = 'hash interactive container bearingSnap zoomSnap attributionControl maplibreLogo logoPosition canvasContextAttributes refreshExpiredTiles maxBounds scrollZoom minZoom maxZoom minPitch maxPitch anisotropicFilterPitch boxZoom dragRotate dragPan keyboard doubleClickZoom touchZoomRotate touchPitch cooperativeGestures trackResize center elevation zoom bearing pitch roll renderWorldCopies maxTileCacheSize maxTileCacheZoomLevels transformRequest transformCameraUpdate transformConstrain locale fadeDuration crossSourceCollisions collectResourceTiming clickTolerance bounds fitBoundsOptions localIdeographFontFamily style pitchWithRotate rollEnabled rotateSpeed pitchSpeed reduceMotion pixelRatio validateStyle globalState transformStyle maxCanvasSize cancelPendingTileRequestsWhileZooming centerClampedToGround terrainSkirtLength zoomLevelsToOverscale aroundCenter projection glyphs renderer fontFamily fonts antialias nonce startPadding wake workerUrl createWorker tileWorkers strict'.split(' ');
+/** The warning for the option `name` of `new Map()` when it is not a known option but differs by few letters from one, or ''. Other names give no warning (react-map-gl and other wrappers pass their own props). */
+export const unknownMapOption = (name: string): string => {
+    if (mapOptions.includes(name)) return '';
+    const distance = (a: string, b: string) => {
+        let row = Array.from({length: b.length + 1}, (_, i) => i);
+        for (let i = 1; i <= a.length; i++) {
+            const next = [i];
+            for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j]! + 1, next[j - 1]! + 1, row[j - 1]! + +(a[i - 1] !== b[j - 1]));
+            row = next;
+        }
+        return row[b.length]!;
+    };
+    let near = '', best = Math.max(2, Math.floor(name.length / 4)) + 1;
+    for (const k of mapOptions) { const d = distance(name.toLowerCase(), k.toLowerCase()); if (d < best) { best = d; near = k; } }
+    return near ? mistake(2272, name, near) : '';
+};
 /** The options of `overlay()` (`OverlayOptions`). `pnpm test:consistency` compares the list with src/host.ts. Other options warn (#1647). */
-const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
+const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'closeButton', 'closeOnClick', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
 const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
 /** MapLibre GL JS's error for the expression `e` of a property when `e` uses ["zoom"] where MapLibre does not accept it,
@@ -431,7 +451,12 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     } else if (kind === 9) warn(30, a, (map.getSource(b) as {type?: string} | undefined)?.type ?? 'geojson');
     else if (kind === 7) warn(23);
     // (Each unknown option warns once for each map, whichever of overlay(), update() and patch() gave it first.)
-    else if (kind === 1647) { for (const k in b) if (!overlayOptions.includes(k) && !c.warned.has('1647 ' + k)) { c.warned.add('1647 ' + k); console.warn(mistake(1647, k, a)); } }
+    else if (kind === 1647) {
+        for (const k in b) if (!overlayOptions.includes(k) && !c.warned.has('1647 ' + k)) { c.warned.add('1647 ' + k); console.warn(mistake(1647, k, a)); }
+        // (`overlay()` and `update()` have the complete options. A marker takes a pair only: another form of `offset` has no effect.)
+        const o = b as {popup?: boolean; offset?: unknown};
+        if (a !== 'patch()' && !o.popup && o.offset !== undefined && !Array.isArray(o.offset) && !c.warned.has('214')) { c.warned.add('214'); console.warn(mistake(214, a)); }
+    }
     else if (kind === 1190) warn(1190);
     else if (kind === 1147) { for (const k of ['padding', 'maxZoom']) if (k in b) warn(1147, a, k); }
     else {
