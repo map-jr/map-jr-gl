@@ -152,7 +152,7 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoo
 layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur; layout(location=8) in float a_gap;
 layout(location=9) in float a_offset1; layout(location=10) in float a_blur1; layout(location=11) in float a_gap1;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
-uniform float u_cam; uniform float u_dpr;
+uniform float u_dpr;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw; out float v_blur; out float v_gap; out float v_aa;
 void main() {
   vec4 a_v = vec4(a_packed.xy * 0.5, a_packed.zw / 8192.0); /* positions in halves of a tile unit: see tessellateLine */ vec2 a_sd = vec2(a_side, a_dist);
@@ -172,11 +172,15 @@ void main() {
   // bisector: see the flipbevel of tessellateLine.
   float off = u_offset + a_offset / 8.0 + u_zt * a_offset1;
   if (sa > 15360.5 && sa < 16383.5) { float u = sa - 15872.0; k = (abs(u) - 1.0) / 510.0; c = sign(u) * (1.0 - k) * 2.0 / length(a_v.zw); }
-  vec2 e = sa > 16383.5 ? vec2(cos(t), sin(t)) : a_v.zw * abs(side);
-  v_tile = a_v.xy + (e * v_hw + (a_v.zw * (side == 0.0 ? k : side * k) + c * vec2(a_v.w, -a_v.z)) * off) / u_scale * lineScale(a_v.xy);
+  float ls = lineScale(a_v.xy) / u_scale;
+  vec2 e = sa > 16383.5 ? vec2(cos(t), sin(t)) : a_v.zw * abs(side), o = a_v.xy + (a_v.zw * (side == 0.0 ? k : side * k) + c * vec2(a_v.w, -a_v.z)) * off * ls;
+  v_tile = o + e * v_hw * ls;
   gl_Position = toClip(v_tile);
-  // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
-  v_persp = gl_Position.w / u_cam;
+  // As v_gamma_scale of MapLibre GL JS: the pixels of the width that one pixel of the screen spans across the line here,
+  // so that the soft edge stays one screen pixel wide where a tilted view draws the line thinner (far, or seen edge on)
+  // or wider. (The middle of a fan measures along its normal.)
+  e = (side == 0.0 ? a_v.zw : e) * v_hw; vec4 q = toClip(o + e * ls);
+  v_persp = length(e) / length((q.xy - toClip(o).xy) / q.w * u_view * 0.5);
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
 in float v_blur; in float v_gap; in float v_aa;
