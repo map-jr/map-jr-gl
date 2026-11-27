@@ -26,6 +26,9 @@ test('fill-extrusion paint and fill-outline-color need no new tiles, unless a va
     const x = (paint: object) => ({id: 'x', type: 'fill-extrusion', source: 'v', paint});
     assert.ok(same(x({'fill-extrusion-color': '#000', 'fill-extrusion-opacity': 1, 'fill-extrusion-height': 10, 'fill-extrusion-base': 0}), x({'fill-extrusion-color': '#f00', 'fill-extrusion-opacity': 0.5, 'fill-extrusion-height': 20, 'fill-extrusion-base': 5})));
     assert.ok(!same(x({'fill-extrusion-height': 10}), x({'fill-extrusion-height': ['get', 'h']})));
+    // A constant base next to a height for each feature is in the tile with it, so a change of it builds the tiles again.
+    assert.ok(!same(x({'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0}), x({'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 10})));
+    assert.ok(!same(x({'fill-extrusion-height': 5, 'fill-extrusion-base': ['get', 'b']}), x({'fill-extrusion-height': 50, 'fill-extrusion-base': ['get', 'b']})));
     const fill = (paint: object) => ({id: 'f', type: 'fill', source: 'v', paint});
     assert.ok(same(fill({'fill-outline-color': '#000'}), fill({'fill-outline-color': '#f00'})));
 });
