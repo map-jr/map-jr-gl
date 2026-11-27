@@ -1935,6 +1935,12 @@ export class Engine {
         const labels: Placed[] = [];
         let fading = false;
         const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, at: [number, number, number] = [0, 0, 0], far = tr.depthRange()[1];
+        // (The `text-translate` and `icon-translate` of each symbol layer in this frame, for `moveLabel`.)
+        const moves = new Map<string, unknown[][]>(), movesOf = (id: string) => {
+            let m = moves.get(id);
+            if (!m) { const L = this.layers.find(l => l.id === id), z = tr.zoom; moves.set(id, m = L ? [[L.p.translate.eval(z), L.p.translateAnchor.eval(z)], [L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z)]] : []); }
+            return m;
+        };
         for (const [key, st] of this.labels) {
             if (st.opacity !== st.target) {
                 st.opacity = fadeStep(st.opacity, st.target, dt, this.fade, !this.wentIdle);
@@ -1959,7 +1965,7 @@ export class Engine {
             labels.push(d);
             // (Text along a line, and a symbol at a point that is aligned with the map, turn with the map between
             // placements; otherwise they would hold the old angle and then snap, which reads as rocking while the map rotates.)
-            st.turned = moveLabel(tr, p, d, q[0], q[1], q[2], turn, !!st.turned);
+            st.turned = moveLabel(tr, p, d, q[0], q[1], q[2], turn, !!st.turned, movesOf(p.layer));
             if (p.icon?.merc) d.icon!.corners = globeness ? groundCorners(tr, p, q[2]) : undefined;
         }
         if (this.iconsRev !== this.iconsDone) {
