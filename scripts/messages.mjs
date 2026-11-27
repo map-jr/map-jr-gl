@@ -338,7 +338,7 @@ for (const [code, section] of before) if (isRemoved(section) && byCode.has(code)
     problems.push(`the code E${code} was removed (see docs/reference/messages.md), and a message of src/ uses it again. Give the message the number of its issue.`);
 // The entry of a text of src/mistakes.ts is the entry that calls the function that raises it: a code that every raising
 // function of src/mistakes.ts shares with the imports of compat-*.ts or maplibre-compat.ts (and with no other file) belongs to
-// the compat entry. (A raise is a call `mistake(N`, `warnOnce(N` or a literal with `E<N> `, outside comments.)
+// the compat entry. (A raise is a call `mistake(N`, `warnOnce(N`, `warn(N` or a literal with `E<N> `, outside comments.)
 const compatNames = new Set();
 for (const f of readdirSync(path.join(root, 'src')).filter(f => /^(compat-|maplibre-compat)/.test(f)))
     for (const m of readFileSync(path.join(root, 'src', f), 'utf8').matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/mistakes\.ts'/g)) for (const n of m[1].split(',')) compatNames.add(n.trim().split(/\s+as\s+/)[0]);
@@ -353,7 +353,7 @@ const compatCodes = (() => {
         const decl = line.match(/^(?:export\s+)?(?:async\s+)?(?:function|const|let)\s+(\w+)/);
         if (decl) name = decl[1];
         if (/^\s*(\*|\/\/|\/\*)/.test(line)) continue;
-        for (const m of line.matchAll(/\b(?:mistake|warnOnce)\((\d+)\b|\[map-jr-gl\] E(\d+) /g)) { const c = +(m[1] ?? m[2]); (raisedBy.get(c) ?? raisedBy.set(c, new Set()).get(c)).add(name); }
+        for (const m of line.matchAll(/\b(?:mistake|warnOnce|warn)\((\d+)\b|\[map-jr-gl\] E(\d+) /g)) { const c = +(m[1] ?? m[2]); (raisedBy.get(c) ?? raisedBy.set(c, new Set()).get(c)).add(name); }
     }
     return new Set([...raisedBy].filter(([, names]) => [...names].every(n => compatNames.has(n) && !otherNames.has(n))).map(([c]) => c));
 })();

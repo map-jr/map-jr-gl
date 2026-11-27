@@ -1073,7 +1073,7 @@ setSourceTileLodParams: there is no source "<sourceId>". Add the source first, o
 
 ## E1057
 
-An error of the compat entry (development build only).
+An error of the main API (development build only).
 
 ```text
 <where>: <reason> The map draws it, but MapLibre GL JS rejects the style. Write ["zoom"] only as the input of one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.
