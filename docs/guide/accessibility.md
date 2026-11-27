@@ -75,7 +75,8 @@ To move the focus into such a popup, give an element of its content `tabindex="0
   a few places, use [`overlay`](markers-and-popups.md) in `@map-jr/map-jr-gl` or `Marker` in
   `@map-jr/map-jr-gl/maplibre-compat`, which are elements of the page.
 - **The server renderer draws one image.** A screen reader reads its label and not the names on it. Pass a `label`
-  that says what the map shows, such as "Map of the hotels in Bern". Without it, the SVG says "Map". An image of `renderToImage` has no label: set the `alt` text where the page shows it.
+  that says what the map shows, such as "Map of the hotels in Bern". The `ssr` prop of the Vue component passes no
+  label, so its SVG says "Map". An image of `renderToImage` has no label: set the `alt` text where the page shows it.
 - **A page with `dir="rtl"` shows the unit of the scale before the number,** for example "km 100", as MapLibre GL JS
   does. To show "100 km", add the CSS rule `.map-jr-ctrl-scale { direction: ltr; }`.
 

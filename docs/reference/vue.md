@@ -30,7 +30,7 @@ flex or grid container. A parent with only `min-height` gives the map a height o
 
 ### Props
 
-Each prop sets the field of the description with the same name, except `mapStyle`, which sets `style`, and `firstView`.
+Each prop sets the field of the description with the same name, except `mapStyle`, which sets `style`, and `ssr`.
 See [the description](description.md) for what each field does. In a template, write a prop in kebab-case
 (`initial-view`) or in camelCase. The props `renderer`, `fontFamily`, `interactive`, `antialias`, `nonce`, `attribution`
 and `hash` are read only when the map is created. To change one of them, create the component again, for example with a
@@ -73,7 +73,7 @@ new `key`.
 | `nonce` | `string \| null` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| {compact?: boolean; customAttribution?: string \| string[]} \| null` | | The options of the built-in attribution, or `false` to hide it. |
 | `hash` | `string \| boolean \| null` | `false` | Whether the view is kept in the hash of the URL; a string is the name of the parameter. |
-| [`firstView`](#firstview) | `string` | | The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
+| [`ssr`](#ssr) | `boolean \| `[`MapJrSSROptions`](server.md#the-ssr-prop-of-mapjr) | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
 <!-- ref:VueMapJrProps:end -->
 
 ### `mapStyle`
@@ -219,47 +219,12 @@ const controls = [
 </template>
 ```
 
-### `firstView`
+### `ssr`
 
-`firstView` shows a first view that a server rendered, before the map in the browser has drawn. Its value is the
-HTML that [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server` returns. On the server,
-`MapJr` renders its element with this HTML inside, and the map removes the HTML when it has loaded the tiles of its
-first view. Without `firstView`, the server renders an empty element, and the map starts in it in the browser.
-
-The component reads the prop on its first render only. In the browser, leave the prop empty: `MapJr` keeps the HTML
-that the page from the server has, so the page does not carry the HTML twice, and Vue reports no hydration mismatch.
-
-```vue
-<script setup>
-import {onServerPrefetch, ref} from 'vue';
-import {MapJr} from '@map-jr/map-jr-gl/vue';
-
-const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const view = {center: [-74.0065, 40.7085], zoom: 13.6};
-// Set on the server only: in the browser, MapJr keeps the HTML of the page.
-const firstView = ref();
-// The check keeps the server renderer out of the files for the browser.
-if (import.meta.env.SSR)
-  onServerPrefetch(async () => {
-    const {renderFirstView} = await import('@map-jr/map-jr-gl/server');
-    firstView.value = await renderFirstView({
-      style,
-      ...view,
-      width: 800,
-      height: 500,
-    }).catch(() => '');
-  });
-</script>
-
-<template>
-  <div style="height: 500px">
-    <MapJr :map-style="style" :initial-view="view" :first-view="firstView" />
-  </div>
-</template>
-```
-
-See [Show the first view before the script runs](../guide/server-rendering.md#show-the-first-view-before-the-script-runs)
-for the options of the render and how the page shows it.
+With `ssr`, the server renders the first view of the map as SVG into the page, and the map replaces the SVG when it
+has drawn its first frame. See [The `ssr` prop of `<MapJr>`](server.md#the-ssr-prop-of-mapjr) for the options and
+the props that the server render uses. Without `ssr`, the server renders an empty element, and the map starts in it
+in the browser.
 
 ### Events
 
@@ -468,7 +433,7 @@ const layers = [
 - The SVG is not in the page, so a `<style>` or an `id` inside it has no effect on the page.
 - An image of `MapImage` overrides the image of the prop `images` with the same name. When two `MapImage` have
   one name, the map uses the image of the one that was mounted last.
-- The HTML of [`firstView`](#firstview) has the image only when `renderFirstView` was given it in `images`.
+- The server render of [`ssr`](#ssr) does not draw the image.
 
 ## `useMapJr`
 

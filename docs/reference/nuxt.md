@@ -12,31 +12,13 @@ export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 
 ```vue nuxt
 <!-- app/pages/index.vue (pages/index.vue in Nuxt 3) -->
-<script setup>
-const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const view = {center: [-74.0065, 40.7085], zoom: 13.6};
-// Set on the server only: in the browser, MapJr keeps the HTML of the page.
-const firstView = ref();
-// The check keeps the server renderer out of the files for the browser.
-if (import.meta.server)
-  onServerPrefetch(async () => {
-    const {renderFirstView} = await import('@map-jr/map-jr-gl/server');
-    firstView.value = await renderFirstView({
-      style,
-      ...view,
-      width: 800,
-      height: 400,
-    }).catch(() => '');
-  });
-</script>
-
 <template>
   <div style="height: 400px">
     <LazyMapJr
       hydrate-on-visible
-      :map-style="style"
-      :initial-view="view"
-      :first-view="firstView"
+      ssr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}"
       :controls="[navigationControl()]"
     />
   </div>
@@ -77,10 +59,10 @@ export default defineNuxtConfig({
 
 `LazyMapJr` is `MapJr` with the code of the map in a file of its own. With `hydrate-on-visible`, the browser loads
 that file and starts the map when the map comes into view, so a page with a map far down loads no map code before
-then. With the prop [`first-view`](vue.md#firstview), as in the page above, the page shows the first view from the server at once. Without the prop, the page has an empty element until the map starts.
+then. With the prop [`ssr`](vue.md#ssr), the page shows the first view from the server at once.
 
-The Nitro server
-fetches the style and the tiles for `renderFirstView` while it renders the page, within the
+The Nitro server then
+fetches the style and the tiles while it renders the page, within the
 [limits for requests](server.md#limits-for-requests) of the server renderer: see
 [Server rendering](../guide/server-rendering.md). A route that Nuxt does not render on the server (`ssr: false`)
 has no first view, and the map starts in the browser.
@@ -166,5 +148,5 @@ Vitest without Nuxt, the `vi.mock` call is the same, and `mount` of `@vue/test-u
 ## See also
 
 - [Vue](vue.md) for the props, events and slots of the components.
-- [The `firstView` prop of the components](server.md#the-firstview-prop-of-the-components) for the first view from the server.
+- [The `ssr` prop of `<MapJr>`](server.md#the-ssr-prop-of-mapjr) for the first view from the server.
 - [Controls](../guide/controls.md) for the options of each control.

@@ -935,8 +935,6 @@ locale: <problem>. Pass an object of strings by the keys of MapLibre GL JS, such
 
 ## E706
 
-Removed after 0.11.0.
-
 An error of the Vue component.
 
 The production build prints this:

@@ -126,46 +126,9 @@ after each change. In a component, read it with `$`: `$live.view.zoom`.
 
 ## A first view from the server
 
-The action has no option for a first view from the server, because Svelte runs an action in the browser only. Put
-the HTML that [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server` returns into the element
-of the action with `{@html}`, as the prop `firstView` of the Vue and React components does. The element needs a
-`position` that is not `static`. The map removes the HTML when it has loaded the tiles of its first view.
-
-```js
-// src/routes/+page.server.js of SvelteKit
-import {renderFirstView} from '@map-jr/map-jr-gl/server';
-
-export async function load() {
-  const firstView = await renderFirstView({
-    style: 'https://styles.map-jr.org/1/elevation-zero.json',
-    center: [-74.0065, 40.7085],
-    zoom: 13.6,
-    width: 800,
-    height: 500,
-  }).catch(() => '');
-  return {firstView};
-}
-```
-
-```svelte
-<!-- src/routes/+page.svelte -->
-<script>
-  import {mapJr} from '@map-jr/map-jr-gl/svelte';
-
-  let {data} = $props();
-  const description = {
-    style: 'https://styles.map-jr.org/1/elevation-zero.json',
-    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
-  };
-</script>
-
-<div use:mapJr={{description}} style="position: relative; height: 500px">
-  {@html data.firstView}
-</div>
-```
-
-SvelteKit sends the data of `load` to the browser, so the page contains the HTML of the first view twice. See
-[Server rendering](../guide/server-rendering.md) for the options of the render.
+The entry has no option for server rendering. [`renderFirstView`](server.md#renderfirstview) of
+`@map-jr/map-jr-gl/server` returns the HTML of a first view, and [Server rendering](../guide/server-rendering.md)
+shows how a page uses it.
 
 ## See also
 

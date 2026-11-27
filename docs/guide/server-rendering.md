@@ -75,59 +75,18 @@ export async function page() {
 
 ```vue [Vue]
 <script setup>
-import {onServerPrefetch, ref} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
-
-const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const view = {center: [-74.0065, 40.7085], zoom: 13.6};
-// Set on the server only. In the browser, MapJr keeps the HTML that the page
-// from the server has, so the page does not carry it twice.
-const firstView = ref();
-// The check keeps the server renderer out of the files for the browser.
-if (import.meta.env.SSR)
-  onServerPrefetch(async () => {
-    const {renderFirstView} = await import('@map-jr/map-jr-gl/server');
-    // A failed render must not fail the page: the map then draws in the
-    // browser.
-    firstView.value = await renderFirstView({
-      style,
-      ...view,
-      width: 800,
-      height: 500,
-    }).catch(() => '');
-  });
 </script>
 
 <template>
   <div style="height: 500px">
-    <MapJr :map-style="style" :initial-view="view" :first-view="firstView" />
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}"
+      :ssr="{width: 800, height: 500}"
+    />
   </div>
 </template>
-```
-
-**React**
-
-```jsx [React]
-// app/page.jsx, a server component of Next.js
-import {renderFirstView} from '@map-jr/map-jr-gl/server';
-import {MapJr} from '@map-jr/map-jr-gl/react';
-
-const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const view = {center: [-74.0065, 40.7085], zoom: 13.6};
-
-export default async function Page() {
-  const firstView = await renderFirstView({
-    style,
-    ...view,
-    width: 800,
-    height: 500,
-  }).catch(() => '');
-  return (
-    <div style={{height: 500}}>
-      <MapJr mapStyle={style} initialView={view} firstView={firstView} />
-    </div>
-  );
-}
 ```
 
 **`<map-jr>`**
@@ -142,20 +101,8 @@ export default async function Page() {
 MAP
 ```
 
-The Vue and React components take the HTML as the prop `firstView`, of type `string` (see
-[The `firstView` prop of the components](../reference/server.md#the-firstview-prop-of-the-components)). Each component
-reads the prop on its first render only. Without it, the server renders an empty element and the map draws in the
-browser.
-
-- In Vue, `onServerPrefetch` runs before the server renders the children of the component, so `MapJr` gets the HTML.
-  In the browser the prop stays empty, and `MapJr` keeps the HTML that the page has.
-  The check `import.meta.env.SSR` (`import.meta.server` in Nuxt) keeps `@map-jr/map-jr-gl/server` out of the files for
-  the browser.
-- The built files of `@map-jr/map-jr-gl/react` start with `'use client'`, so a server component of Next.js imports
-  `MapJr` from the entry and needs no client file of its own. Next.js sends the props of a client component to the
-  browser, so the page contains the HTML of `firstView` twice.
-- The action of `@map-jr/map-jr-gl/svelte` runs in the browser only, so it has no such option. Put the HTML into the
-  element of the action (`{@html firstView}`), as in the main API.
+The Vue component renders the first view on the server when it has the [`ssr` prop](../reference/server.md#the-ssr-prop-of-mapjr).
+Without the `ssr` prop, the server renders an empty element and the map draws in the browser.
 
 For `<map-jr>`, [`renderElement`](../reference/server.md#renderelement) returns the element with its attributes and
 the first view inside it. This function returns `page.html` with the element in place of its last line, `MAP`. Your server sends
@@ -183,12 +130,43 @@ export async function page() {
 }
 ```
 
+With React, call `renderFirstView` on the server and pass the HTML to the `firstView` prop of `<MapJr>`. The
+built files of `@map-jr/map-jr-gl/react` start with `'use client'`, so a server component of Next.js imports `MapJr`
+from the entry and needs no client file of its own:
+
+```jsx
+// app/page.jsx, a server component
+import {renderFirstView} from '@map-jr/map-jr-gl/server';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const view = {center: [-74.0065, 40.7085], zoom: 13.6};
+
+export default async function Page() {
+  const firstView = await renderFirstView({
+    style,
+    ...view,
+    width: 800,
+    height: 500,
+  }).catch(() => '');
+  return (
+    <div style={{height: 500}}>
+      <MapJr mapStyle={style} initialView={view} firstView={firstView} />
+    </div>
+  );
+}
+```
+
+The adapter for Svelte has no server rendering. Put the HTML of `renderFirstView` into the element of the map
+(`{@html firstView}`), as in the main API.
+
 Two things go wrong most often:
 
 - The server and the map have different styles or views. The page then shows one map and replaces it with
   another. Pass the server the same `style`, `sources`, `layers`, `data`, `images`, `colorScheme` and `globalState` as the map. Pass
   `center`, `zoom` and `bearing` of `initialView` as options of the same names, and its `bounds`, `fitPadding` and
-  `fitMaxZoom` as `bounds`, `padding` and `fitMaxZoom`. `renderElement` passes all of them itself.
+  `fitMaxZoom` as `bounds`, `padding` and `fitMaxZoom`. The Vue component
+  and `renderElement` pass all of them themselves.
 - The element of the map has no `position`. The first view is positioned at `inset: 0`, so the element needs
   `position: relative` or another position that is not `static`. The Vue and React components and `<map-jr>` set it.
 
@@ -233,10 +211,10 @@ const firstView = await renderFirstView({
 });
 ```
 
-`renderElement` does this with the `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection` and
-`attribution` of the description, and no option is needed. With `renderFirstView`, pass the same fields
-(`attribution: false` of the description is `attribution: false` there, and its other `attribution` options are
-`attributionOptions`).
+The Vue component and `renderElement` do this with the `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection`
+and `attribution` of the description, and no option is needed. With React or Svelte, pass the same fields to
+`renderFirstView` (`attribution: false` of the description is `attribution: false` there, and its other
+`attribution` options are `attributionOptions`).
 
 - The scale has the length that it has at the center of the first view. The compass shows the bearing of the view.
 - A button of the first view does nothing until the map takes over. When the map never takes over (the style does not
@@ -289,10 +267,12 @@ cannot be loaded. A tile with the status 404 or 204 is an empty tile, and the re
 returns a part of a map. Catch the error and send the page without the first view: the map then draws in the browser
 as it does without a server.
 
-`renderElement` does this itself, and it writes the error to the console of the server.
+The Vue component and `renderElement` do this themselves. They write the error to the console of the server, and
+the Vue component also emits it as `error` when it has a listener for `error`.
 
 A host that does not answer delays the page by 10 seconds for one request and by 30 seconds at most for a render.
-For a page that a visitor waits for, set a smaller [`timeout`](../reference/server.md#limits-for-requests).
+For a page that a visitor waits for, set a smaller [`timeout`](../reference/server.md#limits-for-requests). In the
+Vue component, set it in the `ssr` prop: `:ssr="{timeout: 3000}"`.
 
 ```js
 import {renderFirstView} from '@map-jr/map-jr-gl/server';

@@ -44,7 +44,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `nonce` | `string \| null` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| {compact?: boolean; customAttribution?: string \| string[]} \| null` | | The options of the built-in attribution, or `false` to hide it. |
 | `hash` | `string \| boolean \| null` | `false` | Whether the view is kept in the hash of the URL; a string is the name of the parameter. |
-| `firstView` | `string` | | The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
+| `ssr` | `boolean \| `[`MapJrSSROptions`](../../docs/reference/server.md#the-ssr-prop-of-mapjr) | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
 <!-- ref:VueMapJrProps:end -->
 
 ## `ReactMapJrProps`
