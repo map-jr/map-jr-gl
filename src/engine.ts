@@ -101,6 +101,8 @@ export type EngineEvent =
         /** The number of the last command that the engine has applied (see `seq` in map.ts). */
         seq?: number}
     | {type: 'idle'; seq: number}
+    /** The names of the icons of the style's sprites, with the prefix `<id>:` for a sheet that is not `default`. */
+    | {type: 'icons'; names: string[]}
     /** The tiles of a source for the view are all loaded, or are no longer all loaded. */
     | {type: 'source'; source: string; loaded: boolean; /** The version of the source that the page gave (see the `style` command). */ v: number}
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
@@ -732,7 +734,7 @@ export class Engine {
             this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message), ...failed(err)})).finally(() => { this.spritePending--; this.invalidate(); });
         } else if (!style.sprite && this.spriteUrl) {
             // (A style without a sprite: the icons of the sprite before are not drawn any more.)
-            this.spriteUrl = ''; this.sprite = null;
+            this.spriteUrl = ''; this.sprite = null; this.emit({type: 'icons', names: []});
             this.iconsRev++; this.iconsAll = true; this.styleVersion++;
         }
         const faces = JSON.stringify(style.fonts ?? []);
@@ -821,6 +823,7 @@ export class Engine {
         }
         this.renderer.setIcons(all ?? loaded[0].image, width, height);
         this.sprite = {icons, image: '', width, height};
+        this.emit({type: 'icons', names: Object.keys(icons)});
         this.iconsRev++; this.iconsAll = true;
         this.styleVersion++;
         this.invalidate();

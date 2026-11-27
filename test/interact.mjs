@@ -469,6 +469,27 @@ for (const mode of renderers) {
         const stopOurs = await stopOrder('ours'), stopMl = await stopOrder('ml');
         check(`[${mode}] stop() during an easeTo fires moveend inside the call and no move after it, as in MapLibre GL JS (#2393)`,
             stopOurs === stopMl && stopMl === '|stop moveend |stopret', JSON.stringify({stopOurs, stopMl}));
+        // An easeTo or flyTo during a running ease ends the old movement and starts the new one inside the call, as in MapLibre GL JS (#2392).
+        const easeOrder = (lib, second) => page.evaluate(async ([lib, renderer, second]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            m.easeTo({center: [20, 50], duration: 2000});
+            await new Promise(r => setTimeout(r, 500));
+            log.push('|call2'); m[second]({center: [30, 55], duration: 1000}); log.push('|ret2');
+            await new Promise(r => setTimeout(r, 1500));
+            m.remove(); el.remove();
+            return log.slice(log.indexOf('|call2')).join(' ');
+        }, [lib, mode, second]).catch(e => String(e));
+        for (const second of ['easeTo', 'flyTo']) {
+            const ours = await easeOrder('ours', second), ml = await easeOrder('ml', second);
+            check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
+                ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
+        }
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {
@@ -3609,6 +3630,22 @@ for (const mode of renderers) {
         }, [mode, fall]);
         check(`[${mode}${fall ? ', fell back' : ''}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of the style wins over the sprite image of the same name (#1199), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
             (!fall || r.renderer === 'main') && r.pin === '255,0,0' && r.box === '255,0,255' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
+    }
+    // #2381: hasImage and listImages count the icons of the sprites, with the prefix of the id for a sheet that is not `default`.
+    {
+        await page.route(/\/sprite2381\//, r => r.request().url().includes('.json') ? r.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 4, height: 4, pixelRatio: 1}})}) : r.fulfill({contentType: 'image/png', body: solidPNG(4, [255, 0, 0])}));
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const o = location.origin + '/sprite2381/';
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, style: {version: 8, sprite: [{id: 'default', url: o + 'd'}, {id: 'a', url: o + 'a'}], sources: {}, layers: []}});
+            const read = () => [m.hasImage('box'), m.hasImage('a:box'), m.hasImage('zz'), m.listImages().join('+')].join();
+            const t0 = performance.now(); let v = read();
+            while (!v.startsWith('true') && performance.now() - t0 < 20000) { await new Promise(res => setTimeout(res, 100)); v = read(); }
+            m.setStyle({version: 8, sources: {}, layers: []});
+            const t1 = performance.now(); while (m.hasImage('box') && performance.now() - t1 < 20000) await new Promise(res => setTimeout(res, 100));
+            const out = [v, read()]; m.remove(); el.remove(); return out;
+        }, mode);
+        check(`[${mode}] compat: hasImage and listImages count the icons of the sprites, and a style without a sprite removes them (#2381)`, r[0] === 'true,true,false,box+a:box' && r[1] === 'false,false,false,', JSON.stringify(r));
     }
     // #591: the textures of colour ramps (heatmap, line-gradient, color-relief) are deleted when their layer goes. The
     // probe counts live textures whose image is one pixel high (only ramps are), in the page or in the drawing worker.
