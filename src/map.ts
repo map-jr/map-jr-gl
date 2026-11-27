@@ -485,7 +485,7 @@ export class Map {
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
                 this.fellBack(e.data.message);
-                const fresh = this.canvas.cloneNode() as HTMLCanvasElement;
+                const at = performance.now(), fresh = this.canvas.cloneNode() as HTMLCanvasElement;
                 this.canvas.replaceWith(fresh);
                 for (const fn of this.inputCleanup.splice(0)) fn();
                 this.canvas = fresh;
@@ -510,7 +510,7 @@ export class Map {
                     this.templates.clear();
                     for (const [name, [source, options]] of this.imageInputs) this.putImage(name, source, options);
                     // (The worker drew nothing, so an animation that the page started went nowhere; #777.)
-                    this.resumeEase();
+                    this.resumeEase(at);
                     this.bindInput();
                 }, error => this.fire('error', {error}));
             };
@@ -572,6 +572,7 @@ export class Map {
         if (!quiet) this.retried = true;
         this.movingToMain = !!quiet;
         if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
+        const at = performance.now();
         this.watchTurn++;
         if (!quiet) this.fire('webglcontextlost');
         // (A move for a custom layer keeps the queries that the old engine has not answered: the new engine answers them
@@ -598,7 +599,7 @@ export class Map {
             // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
             // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
             this.restyle(true);
-            this.resumeEase();
+            this.resumeEase(at);
             this.templates.clear(); // (as after a fall back; #882)
             for (const [name, [source, options]] of this.imageInputs) await this.putImage(name, source, options);
             for (const p of asked) if (p.sent && [...this.pending.values()].includes(p)) this.post(p.sent);
@@ -621,13 +622,12 @@ export class Map {
 
     /**
      * A new engine (after a fall back or a restart) runs the last `easeTo` for the time that is left; #777, #807. An
-     * `easeTo` that has not ended (`settle` forgets it) and whose time ran out ends at its target at once, and not where
-     * the old engine stopped: the time can run out during a slow start, or before the loss is seen, while the page is
-     * blocked (#1757).
+     * `easeTo` that still ran when the old engine stopped (at `since`) and whose time ran out during a slow start ends
+     * at its target at once, and not where the old engine stopped (#1757).
      */
-    private resumeEase() {
-        const ease = this.eased;
-        if (ease) this.post({...ease.c, duration: Math.max(1, ease.at + (ease.c as {duration: number}).duration - performance.now())} as Command);
+    private resumeEase(since = performance.now()) {
+        const ease = this.eased, end = ease ? ease.at + (ease.c as {duration: number}).duration : 0;
+        if (end > since) this.post({...ease!.c, duration: Math.max(1, end - performance.now())} as Command);
     }
 
     /** The engine of the last start has drawn a frame. */
@@ -2209,7 +2209,6 @@ export class Map {
     /** Ends a movement: the end events of zoom, rotate and pitch, then `moveend`. */
     private settle() {
         this.moving = false;
-        this.eased = undefined; // (the ease, if one ran, has ended: a restart does not run it again)
         if (this.zooming) { this.zooming = false; this.fire('zoomend'); }
         if (this.rotating) { this.rotating = false; this.fire('rotateend'); }
         if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
