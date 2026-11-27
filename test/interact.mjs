@@ -646,6 +646,23 @@ for (const mode of renderers) {
     const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
     check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl === '[map-jr-gl] E464 https://map-jr.org/e/464 image="gl"', gl);
+    // #2236: render() runs only for an image that a layer uses, as in MapLibre GL JS. The checks below use each image in a
+    // transparent background layer (`useImage`).
+    const unused = await page.evaluate(async () => {
+        const m = window.map, frame = () => frames++;
+        window.useImage = (name, on = true) => on ? m.addLayer({id: 'use-' + name, type: 'background', paint: {'background-pattern': name, 'background-opacity': 0}}) : m.removeLayer('use-' + name);
+        let renders = 0, frames = 0;
+        m.on('render', frame);
+        await m.addImage('unused', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; return false; }});
+        const t0 = performance.now();
+        while (frames < 5 && performance.now() - t0 < 20000) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 50)); }
+        const before = renders;
+        window.useImage('unused');
+        while (renders < 2 && performance.now() - t0 < 20000) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 50)); }
+        window.useImage('unused', false); m.removeImage('unused'); m.off('render', frame);
+        return {frames, before, used: renders - before};
+    });
+    check(`[${mode}] render() of an image that no layer uses is not called (#2236)`, unused.frames >= 5 && unused.before === 0 && unused.used >= 2, JSON.stringify(unused));
     // #1746: an image with render() (StyleImageInterface) gets onAdd, render before each frame (new pixels when it returns
     // true) and onRemove, as in MapLibre GL JS.
     const anim = await page.evaluate(async () => {
@@ -653,18 +670,20 @@ for (const mode of renderers) {
         const image = {width: 2, height: 2, data: new Uint8Array(16), onAdd(m, id) { log.add++; log.id = id; }, onRemove() { log.remove++; },
             render() { log.renders++; this.data = new Uint8Array(16).fill(log.renders % 255); window.map.triggerRepaint(); return true; }};
         await window.map.addImage('pulse', image);
+        window.useImage('pulse');
         const t0 = performance.now();
         while (log.renders < 3 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 50));
-        window.map.removeImage('pulse');
+        window.useImage('pulse', false); window.map.removeImage('pulse');
         const n = log.renders;
         window.map.triggerRepaint();
         await new Promise(r => setTimeout(r, 300));
         log.after = log.renders - n;
         // An image whose render() returns true and whose code does not repaint lets the map reach idle.
         await window.map.addImage('still', {width: 1, height: 1, data: new Uint8Array(4), render: () => true});
+        window.useImage('still');
         window.map.triggerRepaint();
         log.idle = await new Promise(r => { window.map.once('idle', () => r(true)); setTimeout(() => r(false), 3000); });
-        window.map.removeImage('still');
+        window.useImage('still', false); window.map.removeImage('still');
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
@@ -678,10 +697,11 @@ for (const mode of renderers) {
             window.map.on('render', frame);
             let n = 0;
             await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
+            window.useImage('early');
             window.map.triggerRepaint();
             const t0 = performance.now();
             while (order.length < 6 && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 20));
-            window.map.removeImage('early'); window.map.off('render', frame);
+            window.useImage('early', false); window.map.removeImage('early'); window.map.off('render', frame);
             return order.join('');
         });
         check(`[${mode}] render() of an image runs before each frame (#2128)`, /^(RF)+R?$/.test(renderOrder), renderOrder);
@@ -691,28 +711,27 @@ for (const mode of renderers) {
         const m = window.map, order = [], errors = [], frame = () => order.push('F'), err = e => errors.push(String(e.error?.message));
         m.on('render', frame); m.on('error', err);
         await m.addImage('throws', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('T'); throw new Error('boom'); }});
+        window.useImage('throws');
         // (It waits for three frames after the throws, not for a fixed time: a loaded runner draws fewer frames in it.)
         const count = () => [order.filter(o => o === 'F').length, errors.filter(e => e === 'boom').length];
         const t0 = performance.now();
         while ((count()[0] < 3 || count()[1] < 3) && performance.now() - t0 < 20000) { m.triggerRepaint(); await new Promise(r => setTimeout(r, 100)); }
         const frames = count()[0];
-        m.removeImage('throws'); m.off('render', frame); m.off('error', err);
+        window.useImage('throws', false); m.removeImage('throws'); m.off('render', frame); m.off('error', err);
         return {frames, errors: errors.filter(e => e === 'boom').length};
     });
     check(`[${mode}] a throw of render() fires error and does not stop the frames (#2278)`, hookFaults.frames >= 3 && hookFaults.errors >= 3, JSON.stringify(hookFaults));
-    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own; compat entry only).
-    if (mode === 'compat') {
-        const removed = await page.evaluate(async renderer => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
-            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
-            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
-            let calls = 0;
-            await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
-            m.remove(); el.remove();
-            return calls;
-        }, mode).catch(e => String(e));
-        check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
-    }
+    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own on the compat entry, in each renderer).
+    const removed = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+        let calls = 0;
+        await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
+        m.remove(); el.remove();
+        return calls;
+    }, mode).catch(e => String(e));
+    check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
     // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
     // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
     const size = await page.evaluate(async () => {
@@ -2729,17 +2748,18 @@ for (const mode of renderers) {
             JSON.stringify(globePoint));
         // On the globe each corner of an icon on the ground goes through the sphere at its own place, as in MapLibre GL JS
         // 6.17 (served at /ml/): a red icon of 40 pixels off the center has the width and the height of MapLibre's within
-        // 1.5 pixels (2 and 3 pixels more with one frame at the anchor, #2194). (`icon-offset` takes the perspective ratio
-        // away in both, as MapLibre's `u_is_offset` does: this library has none at pitch 0 on the globe yet, #2201.)
+        // 1.5 pixels (2 and 3 pixels more with one frame at the anchor, #2194). With `icon-offset` neither has the
+        // perspective ratio (MapLibre's `u_is_offset`). Without it the icon is larger on the ground by the ratio, also at
+        // pitch 0 (it was 4 to 6 pixels smaller without the ratio, #2012).
         const globeIcon = await page.evaluate(async () => {
             const out = {};
-            for (const lib of ['ml', 'mjr']) for (const at of [[60, 45], [-50, 50]]) {
+            for (const lib of ['ml', 'mjr']) for (const at of [[60, 45], [-50, 50]]) for (const offset of [true, false]) {
                 const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
                 if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:512px'}));
                 const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, canvasContextAttributes: {preserveDrawingBuffer: true}, style: {version: 8, projection: {type: 'globe'},
                     sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}}},
-                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', 'icon-offset': [0, 0], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map'}}]}});
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', ...offset ? {'icon-offset': [0, 0]} : {}, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map'}}]}});
                 const red = new Uint8Array(40 * 40 * 4);
                 for (let i = 0; i < red.length; i += 4) red.set([255, 0, 0, 255], i);
                 m.addImage('red', {width: 40, height: 40, data: red});
@@ -2751,13 +2771,13 @@ for (const mode of renderers) {
                     const i = (y * bmp.width + x) * 4;
                     if (d[i] > 200 && d[i + 1] < 100 && d[i + 2] < 100) box.splice(0, 4, Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x + 1), Math.max(box[3], y + 1));
                 }
-                out[`${lib} ${at}`] = [(box[2] - box[0]) / k, (box[3] - box[1]) / k];
+                out[`${lib} ${at}${offset ? ' offset' : ''}`] = [(box[2] - box[0]) / k, (box[3] - box[1]) / k];
                 m.remove(); el.remove();
             }
             return out;
         });
-        check('[main] on the globe an icon on the ground off the center has the width and the height of MapLibre GL JS within 1.5 pixels (#2194)',
-            ['60,45', '-50,50'].every(at => globeIcon['ml ' + at].every((v, i) => v > 10 && Math.abs(v - globeIcon['mjr ' + at][i]) <= 1.5)), JSON.stringify(globeIcon));
+        check('[main] on the globe an icon on the ground off the center has the width and the height of MapLibre GL JS within 1.5 pixels, with and without icon-offset (#2194, #2012)',
+            ['60,45', '-50,50', '60,45 offset', '-50,50 offset'].every(at => globeIcon['ml ' + at].every((v, i) => v > 10 && Math.abs(v - globeIcon['mjr ' + at][i]) <= 1.5)), JSON.stringify(globeIcon));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.

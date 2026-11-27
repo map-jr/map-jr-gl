@@ -93,9 +93,10 @@ export const tooFar = (tr: Transform, depth: number, far: number) => !!tr.pitch 
 export const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
 /**
  * The size of a symbol that lies on the ground, at the distance `depth`, in pixels of the ground for each pixel of its
- * size. As in MapLibre GL JS a far symbol is larger on the ground, by half of what the perspective takes away.
+ * size. As in MapLibre GL JS a far symbol is larger on the ground, by half of what the perspective takes away. On the
+ * globe this is so also at pitch 0, because the sphere away from the center is farther from the camera (#2012).
  */
-export const flatSize = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * depth / tr.cameraDistance) : 1;
+export const flatSize = (tr: Transform, depth: number) => (tr.pitch || tr.globeness) && depth > 0 ? Math.min(4, 0.5 + 0.5 * depth / tr.cameraDistance) : 1;
 /** How much a symbol on the ground grows on the screen when its anchor moves from the distance `from` to `to`. */
 const flatGrow = (tr: Transform, from: number, to: number) => flatSize(tr, to) / flatSize(tr, from) * (to > 0 ? from / to : 1);
 /**

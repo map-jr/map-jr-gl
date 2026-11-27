@@ -39,6 +39,20 @@ test('point text that is aligned with the map lies on the sphere of the globe wi
     assert.ok(!place(60, 'viewport')?.frame, 'text aligned with the viewport stays flat on the screen');
 });
 
+test('point text on the ground of the globe without pitch is larger far from the center, by the perspective ratio (#2012)', () => {
+    // As in MapLibre GL JS (`perspective_ratio` with `u_pitch_with_map`): the size on the ground grows by half of the
+    // distance from the camera over the distance to the center, also at pitch 0, where the sphere at 60° N is farther away.
+    const mid = place(0), high = place(60);
+    const tr = new Transform();
+    tr.width = 512; tr.height = 512;
+    tr.globe = globe; tr.globeStops = [0, 1];
+    tr.set([0, 0], 1, 0, 0);
+    const [, , depth] = tr.projectTile(id, high.src.x, high.src.y), ratio = 0.5 + 0.5 * depth / tr.cameraDistance;
+    assert.ok(ratio > 1.05, `the point at 60° N is farther than the center: ${ratio}`);
+    assert.ok(Math.abs(mid.size - 16) < 0.01, `at the center the text has its size: ${mid.size}`);
+    assert.ok(Math.abs(high.size / mid.size - ratio) < 0.01, `at 60° N the size is ${high.size}, and ${16 * ratio} is expected`);
+});
+
 /** The placed icon (20 pixels, no text) of a point at `lat`, as in `place` (#2174). */
 function placeIcon(lat: number, pitchAlignment = 'map'): any {
     const layer = compileLayer({id: 'i', type: 'symbol', source: 'g', layout: {
