@@ -615,6 +615,10 @@ for (const mode of renderers) {
         const filtered = await all([2.2945, 48.8584], {zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
         // `queryFeatures` gives what the style layers draw (#12), as `queryRenderedFeatures` does. MapLibre has no radius,
         // so the comparison sets `radius: 0` (the default of `queryFeatures` is 3, #1150).
+        // (The point is inside buildings. The center of the frames check above is inside a polygon of class path, which only a
+        // line layer draws, and a line layer finds a polygon at its rings only, #2094.)
+        window.map.jumpTo({center: [-74.0065, 40.7085]});
+        await new Promise(r => window.map.once('idle', r));
         const c = window.map.getCenter(), at = window.map.project(c), key = f => f.layer.id + ' ' + f.id;
         const drawn = await window.map.queryFeatures(c, {radius: 0}), same = await window.map.queryRenderedFeatures([at.x, at.y]);
         const wide = await window.map.queryFeatures({x: at.x, y: at.y}, {radius: 40}), box = await window.map.queryRenderedFeatures([[at.x - 40, at.y - 40], [at.x + 40, at.y + 40]]);
