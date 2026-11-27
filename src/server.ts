@@ -11,12 +11,15 @@ import {controlsMarkup} from './server-controls.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
 import type {AttributionOptions, ColorScheme, ControlSpec, MapDescription, SpriteInput} from './host.ts';
 import {unset, type Given} from './unset.ts';
-import {compileFor, pickImage} from './expr.ts';
+import {compileFor, pickImage, useColorNames} from './expr.ts';
+import {NAMED} from './color-names.ts';
 import {styleImages, STYLE_IMAGES} from './style-images.ts';
 import type {ImageDecoder} from './exact-pixels.ts';
 import {httpError} from './requests.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
+// The server has no canvas to ask for the value of a color name: it takes the table (#72).
+useColorNames(NAMED);
 
 /**
  * The view of `renderToSVG`, `renderFirstView` and `renderToImage`: `center` and `zoom`, or `bounds` to fit. With

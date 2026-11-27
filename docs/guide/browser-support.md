@@ -44,6 +44,7 @@ The worker renderer draws the map in a worker, and the main-thread renderer draw
 | Main-thread renderer | WebGL2 on the page | The container shows "This browser cannot show the map." (a bar over the first view, when the page has one). |
 | Tile workers | A page that is allowed to start workers | The map builds the tiles on the main thread and writes a warning. |
 | 3D terrain | `OffscreenCanvas` in a worker | The terrain is flat: in WebKit on Windows, the height at the center of the benchmark page is 0 m, and 10 m elsewhere. Elevation queries still return heights. |
+| CSS color names in tile workers, such as `"red"` in a style or in the properties of a feature | `OffscreenCanvas` with a 2d context in a worker | Each tile worker loads the table of the names, `map-jr-gl-worker-colors.js`, before it builds its first tile. The colors are the same. |
 
 The map also changes to the main thread after it started, when the worker loses its WebGL context before its first
 frame, loses it twice in 10 seconds, or draws nothing in the 5 seconds after its start. With `renderer: 'worker'`, it

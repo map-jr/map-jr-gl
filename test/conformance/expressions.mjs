@@ -12,13 +12,14 @@ const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, 
 // here, delete the folder in .cache, and set the floor (--min) in package.json again.
 const commit = 'f94442fd4c768a40f1896630ccb64dd50067d94b';
 if (!existsSync(repo)) execSync(`git init -q "${repo}" && git -C "${repo}" fetch -q --depth 1 https://github.com/maplibre/maplibre-style-spec.git ${commit} && git -C "${repo}" checkout -q FETCH_HEAD`, {stdio: 'inherit'});
-await build({entryPoints: [path.join(root, 'src/expr.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
+// (Node has no canvas to ask for the value of a color name: each bundle takes the table, src/color-names.ts.)
+await build({stdin: {contents: "export * from './src/expr.ts'; import {useColorNames} from './src/expr.ts'; import {NAMED} from './src/color-names.ts'; useColorNames(NAMED);", resolveDir: root, loader: 'ts'}, bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
 const {compileExpr, compileProp, parseColor, compileFor, pickImage, geo} = await import(path.join(root, '.cache/expr.mjs'));
 // The code of "within" and "distance", which the tile builder loads on demand (src/within.ts, #1707).
 await build({entryPoints: [path.join(root, 'src/within.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/within.mjs'), logLevel: 'error'});
 geo.code = await import(path.join(root, '.cache/within.mjs'));
 // The type check of the development build (#1748): the fixtures that expect a compile error run against it.
-await build({stdin: {contents: "export {expressionErrors} from './src/expr-check.ts'; export {zoomCurveError} from './src/mistakes.ts';", resolveDir: root, loader: 'ts'},
+await build({stdin: {contents: "export {expressionErrors} from './src/expr-check.ts'; export {zoomCurveError} from './src/mistakes.ts'; import {useColorNames} from './src/expr.ts'; import {NAMED} from './src/color-names.ts'; useColorNames(NAMED);", resolveDir: root, loader: 'ts'},
     bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr-check.mjs'), logLevel: 'error', define: {__DEV__: 'true'}});
 const {expressionErrors, zoomCurveError} = await import(path.join(root, '.cache/expr-check.mjs'));
 const {expressionCode} = await import('../../scripts/style-spec-values.mjs');
