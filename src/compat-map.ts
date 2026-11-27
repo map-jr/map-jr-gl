@@ -817,7 +817,7 @@ export class Map extends CoreMap {
         return this;
     }
     /**
-     * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move` (#2393). A
+     * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`. A
      * gesture is not stopped here, as with `jumpTo`. The reports of the engine up to this command fire no events.
      */
     override stop() {
