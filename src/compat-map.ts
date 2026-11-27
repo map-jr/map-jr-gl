@@ -640,8 +640,10 @@ export class Map extends CoreMap {
         }
         return super.addImage(...args);
     }
-    /** Replaces the pixels of an image added earlier and keeps its options. An image of another size fires an `error` event and changes nothing, as in MapLibre GL JS. Returns a promise of the map; MapLibre GL JS returns the map. */
+    /** Replaces the pixels of an image added earlier and keeps its options. An image of another size, or a name that has no image, fires an `error` event and changes nothing, as in MapLibre GL JS. Returns a promise of the map; MapLibre GL JS returns the map. */
     updateImage(name: string, image: Parameters<CoreMap['addImage']>[1]) {
+        // (An unknown name fires an `error` with the text of MapLibre GL JS and changes nothing; the main API throws; #2417.)
+        if (!this.imageInputs.has(name)) { this.fire('error', {error: new Error('The map has no image with that id. If you are adding a new image use `map.addImage(...)` instead.')}); return Promise.resolve(this); }
         const size = (i?: unknown) => { const {width, height, naturalWidth, naturalHeight} = (i ?? {}) as Record<string, number>; return [naturalWidth ?? width, naturalHeight ?? height]; };
         const [width, height] = size(this.imageInputs.get(name)?.[0]), [newWidth, newHeight] = size(image);
         if (width >= 0 && newWidth >= 0 && (width !== newWidth || height !== newHeight)) { this.fire('error', {error: ((method: string) => new Error(`[map-jr-gl] E2242 ${method}("${name}"): the image is ${width}×${height}, but the new one is ${newWidth}×${newHeight}. Pass an image of the same size, or call removeImage() and then addImage().`))('updateImage')}); return Promise.resolve(this); }
@@ -814,6 +816,18 @@ export class Map extends CoreMap {
         this.hushed = this.jumped; this.seen = undefined;
         this.moveData = undefined;
         this.moved((ease ? parts.flatMap((s, i) => i > 1 ? [...axes.map(a => a + s), 'moveend'] : ['move' + s, ...axes.map(a => a + s)]) : ['movestart', 'move', ...axes.flatMap(a => parts.map(s => a + s)), 'moveend']).map(t => [t, data]));
+        return this;
+    }
+    /**
+     * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`. A
+     * gesture is not stopped here, as with `jumpTo`. The reports of the engine up to this command fire no events.
+     */
+    override stop() {
+        super.stop();
+        if (!this.gesturing?.()) {
+            this.hushed = this.jumped; this.seen = undefined; this.hushedAt = [this.tr.lng, this.tr.lat, this.tr.zoom, this.tr.bearing, this.tr.pitch];
+            this.halt();
+        }
         return this;
     }
     /** The command of the last jump and its camera: the engine's reports up to that command, or with that camera after

@@ -1,6 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {fontsMistake, mistake} from '../../src/mistakes.ts';
+import {fontFaces} from '../../src/resolve.ts';
+
+test('fontFaces gives no font for a value that is not an object of font faces (#2422)', () => {
+    for (const wrong of [['a.woff2'], 'ab.woff2', 5, true, null, undefined]) assert.deepEqual(fontFaces(wrong as never), []);
+    assert.equal(fontFaces({'Open Sans': '/a.woff2'}).length, 1);
+});
 
 test('fontsMistake accepts an object of font faces and gives what was written for another shape (#2265)', () => {
     assert.equal(fontsMistake(undefined), '');

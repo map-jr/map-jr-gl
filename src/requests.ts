@@ -5,7 +5,7 @@
 /** What a thread knows about the page's request functions: if there is a transform, and which protocols are registered. */
 export interface RequestRules { transform: boolean; protocols: string[] }
 /** The page's answer for one request: where and how to fetch it, or the data itself (from a protocol). */
-export interface RequestAnswer { url?: string; headers?: Record<string, string>; credentials?: RequestCredentials; data?: ArrayBuffer | ImageBitmap; error?: string }
+export interface RequestAnswer { url?: string; headers?: Record<string, string>; credentials?: RequestCredentials; referrerPolicy?: ReferrerPolicy; data?: ArrayBuffer | ImageBitmap; error?: string }
 /** The options of a request for an image tile (`raster`, `raster-dem`). */
 export type ImageInit = RequestInit & {image?: boolean};
 export type Ask = (url: string, kind: string, signal?: AbortSignal | null) => Promise<RequestAnswer>;
@@ -42,7 +42,7 @@ function fetchRules(rules: () => RequestRules | undefined, ask: Ask, kind: strin
         if (a.error) throw Object.assign(new Error(r.protocols.includes(url.slice(0, url.indexOf(':'))) ? `the protocol rejected it: ${a.error}` : `transformRequest threw: ${a.error}`), {final: true});
         // (A response cannot hold an image that a protocol returned: `fetchTile` reads it from the member `image`.)
         if (a.data) return a.data instanceof ArrayBuffer ? new Response(a.data) : Object.assign(new Response(), {image: a.data});
-        return fetch(a.url ?? url, {...init, headers: {...a.headers, ...(init?.headers as Record<string, string> | undefined)}, credentials: a.credentials});
+        return fetch(a.url ?? url, {...init, headers: {...a.headers, ...(init?.headers as Record<string, string> | undefined)}, credentials: a.credentials, referrerPolicy: a.referrerPolicy ?? init?.referrerPolicy});
     };
 }
 

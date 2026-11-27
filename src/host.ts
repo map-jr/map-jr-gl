@@ -345,7 +345,7 @@ export interface MapDescription extends MapSetup {
     padding?: PaddingInput | null;
     /**
      * A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. It receives the
-     * URL and the resource type, and returns `{url, headers, credentials}`, or `undefined` to send the request unchanged.
+     * URL and the resource type, and returns `{url, headers, credentials, referrerPolicy}`, or `undefined` to send the request unchanged.
      * Without this field, the map sends every request unchanged.
      */
     transformRequest?: RequestTransform | null;

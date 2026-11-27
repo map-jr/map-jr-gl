@@ -424,6 +424,25 @@ for (const mode of renderers) {
         const edgeOurs = await edgeDrag('ours'), edgeMl = await edgeDrag('ml');
         check(`[${mode}] the globe: the pointer moves of one frame turn the globe once, and a drag near its edge ends where MapLibre GL JS ends (#479)`,
             edgeOurs.length === 2 && edgeMl.length === 2 && Math.hypot(edgeOurs[0] - edgeMl[0], edgeOurs[1] - edgeMl[1]) < 0.1, JSON.stringify({edgeOurs, edgeMl}));
+        // stop() during an easeTo ends the movement inside the call, with moveend and no move, as in MapLibre GL JS (#2393).
+        const stopOrder = lib => page.evaluate(async ([lib, renderer]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            m.easeTo({center: [20, 50], duration: 2000});
+            await new Promise(r => setTimeout(r, 500));
+            log.push('|stop'); m.stop(); log.push('|stopret');
+            await new Promise(r => setTimeout(r, 500));
+            m.remove(); el.remove();
+            return log.slice(log.indexOf('|stop')).join(' ');
+        }, [lib, mode]).catch(e => String(e));
+        const stopOurs = await stopOrder('ours'), stopMl = await stopOrder('ml');
+        check(`[${mode}] stop() during an easeTo fires moveend inside the call and no move after it, as in MapLibre GL JS (#2393)`,
+            stopOurs === stopMl && stopMl === '|stop moveend |stopret', JSON.stringify({stopOurs, stopMl}));
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {
@@ -3301,6 +3320,23 @@ for (const mode of renderers) {
         check('maplibre-compat: on returns a Subscription (with and without a layer id) whose unsubscribe() removes the listener, and once with a listener returns the map (#675)',
             r.notMap && String(r.keys) === 'unsubscribe' && String(r.layerKeys) === 'unsubscribe' && r.once && r.onceLayer && String(r.heard) === 'on,once', JSON.stringify(r));
     }
+    // #1902: `off` and `unsubscribe` of a layer listener remove the first match only, and compare the layer ids without their order (as MapLibre GL JS 6.17).
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const m = new mod.Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}}), f = () => {};
+            const s = m.on('click', ['a', 'b'], f); m.on('click', ['a', 'b'], f);
+            s.unsubscribe(); const afterOne = m.listens('click');
+            m.off('click', ['b', 'a'], f); const afterReordered = m.listens('click');
+            m.on('click', ['a', 'b'], f); m.off('click', ['a'], f); const subsetKept = m.listens('click');
+            m.off('click', ['b', 'a'], f);
+            m.remove(); el.remove();
+            return {afterOne, afterReordered, subsetKept, end: true};
+        });
+        check('maplibre-compat: unsubscribe() of a layer listener added twice removes one, and off() matches layer ids in any order, not a subset (#1902)',
+            r.afterOne === true && r.afterReordered === false && r.subsetKept === true, JSON.stringify(r));
+    }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
         const r = await page.evaluate(async () => {
@@ -3904,13 +3940,15 @@ for (const mode of renderers) {
             m.on('error', e => errors.push(String(e.error?.message)));
             await m.updateImage('sq', square(24, 0, 255, 0));
             const resized = await centre(blue);
+            let thrown = null;
+            try { await m.updateImage('nope', square(16, 0, 0, 0)); } catch (e) { thrown = String(e.message); }
             await m.updateImage('dot', square(16, 255, 255, 255));
             const sdf = m.getImage('dot')?.sdf;
             m.remove(); el.remove();
-            return {before, after, resized, sdf, errors};
+            return {before, after, resized, sdf, errors, thrown};
         }, mode);
-        check(`[${mode}] compat: updateImage draws the new pixels, keeps the options of the image, and an image of another size is an error that changes nothing (#949, #2242)`,
-            r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[2] > 200 && r.resized[0] < 60 && r.sdf === true && r.errors?.length === 1 && r.errors[0].startsWith('[map-jr-gl] E2242 https://map-jr.org/e/2242 '), JSON.stringify(r));
+        check(`[${mode}] compat: updateImage draws the new pixels, keeps the options of the image, and an image of another size or of an unknown name is an error that changes nothing (#949, #2242, #2417)`,
+            r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[2] > 200 && r.resized[0] < 60 && r.sdf === true && r.errors?.length === 2 && r.errors[0].startsWith('[map-jr-gl] E2242 https://map-jr.org/e/2242 ') && r.errors[1] === 'The map has no image with that id. If you are adding a new image use `map.addImage(...)` instead.' && r.thrown === null, JSON.stringify(r));
     }
     // #1434: a video source draws the frames of its video, and `play`, `pause` and `getVideo` work as in MapLibre GL JS.
     // The video is made here: half a second of red, then half a second of blue. Its code loads only with a video source.

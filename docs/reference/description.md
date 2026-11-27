@@ -672,8 +672,10 @@ The space around `bounds` for one fit is `fitPadding` of [`initialView`](#initia
 `transformRequest` changes the requests of the map, for example to add an `Authorization` header.
 
 The map calls the function with the URL of a request and the kind of resource. The function returns
-`{url, headers, credentials}`, or `undefined` to leave the request unchanged. The signature is that of
-`transformRequest` of MapLibre GL JS.
+`{url, headers, credentials, referrerPolicy}`, or `undefined` to leave the request unchanged. Only `url` is required.
+`headers` are added to the request, `credentials` is the `credentials` option of `fetch`, and `referrerPolicy` is the
+`referrerPolicy` option of `fetch`, for example `'no-referrer'`. It applies to every kind of resource. The signature is
+that of `transformRequest` of MapLibre GL JS.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
