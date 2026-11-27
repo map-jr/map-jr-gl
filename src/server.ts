@@ -507,11 +507,13 @@ export async function renderElement(description: MapDescription, options: Elemen
         if (text !== undefined && readAttribute(kind, text) !== undefined) attrs.push(text ? `${attributeOf(field)}="${quote(text)}"` : attributeOf(field));
     }
     if (d.nonce) attrs.push(`nonce="${quote(d.nonce)}"`);
+    let extra = '';
     for (const name in attributes) {
         if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(/^on/i.test(name) ? `[map-jr-gl] E50826 renderElement(): "${name}" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".` : `[map-jr-gl] E30826 renderElement(): "${name}" is not the name of an attribute. Give names such as "id", "class" or "style".`);
-        if (name !== 'style') attrs.push(`${name}="${quote(attributes[name])}"`);
+        // (Names of attributes are not case sensitive: `Style` and `style` are one attribute, and a browser ignores the second.)
+        if (name.toLowerCase() === 'style') extra += ';' + attributes[name]; else attrs.push(`${name}="${quote(attributes[name])}"`);
     }
-    attrs.push(`style="${quote('display:block;position:relative;overflow:hidden;' + (attributes.style ?? ''))}"`);
+    attrs.push(`style="${quote('display:block;position:relative;overflow:hidden' + extra)}"`);
     let first = '';
     try {
         first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
