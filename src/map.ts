@@ -245,6 +245,8 @@ export class Map {
     private removed = false;
     private beforeStyle: (() => void)[] = [];
     protected imageNames = new Set<string>();
+    /** The icons of the sprites of the style (`hasImage` and `listImages` count them, as MapLibre GL JS does; #2381). */
+    protected spriteNames: string[] = [];
     /** A count for each image name. It goes up when the image is added or removed, so that an image that was still loading knows that it is too late. */
     private imageTurns = new globalThis.Map<string, number>();
     /** The images that are SVG templates, by name. `count` is the number of variants that the engine asked for. */
@@ -897,6 +899,8 @@ export class Map {
                 this.loadedSources.add(e.source);
                 this.loadedEvents(e.source);
             }
+        } else if (e.type === 'icons') {
+            this.spriteNames = e.names;
         } else if (e.type === 'idle') {
             // (The engine has run every command up to e.seq: a turn that left the camera as it was gets no camera report.)
             if (e.seq > this.reported) this.reported = e.seq;
@@ -2001,8 +2005,8 @@ export class Map {
         this.updates.clear();
         for (const [name, source] of list) if (!this.removed && this.imageNames.has(name)) this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
     }
-    /** Whether the map has an image with this name. */
-    hasImage(name: string) { return this.imageNames.has(name); }
+    /** Whether the map has an image with this name: an image that `addImage` added or an icon of a sprite of the style (`<id>:name` for a sprite that is not `default`). */
+    hasImage(name: string) { return this.imageNames.has(name) || this.spriteNames.includes(name); }
     /**
      * Sets a function that supplies images on demand, as in MapLibre GL JS. When a style asks for an `icon-image` nothing provides, the resolver is called with
      * its name and may call `addImage` (it can be async). This is how generated icons such as highway shields work:
