@@ -57,6 +57,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
      * `font-faces` of the style and of `fonts` of the description. A style's `text-font` of "Open Sans Semibold" then
      * renders in that family at weight 600. Fonts are loaded on
      * the rendering thread, so they work with worker rendering, which cannot see fonts loaded by the page's CSS.
+     * A relative URL is read against the page.
      */
     fonts?: FontFaces;
     interactive?: boolean;
@@ -459,7 +460,7 @@ export class Map {
         this.checkProjection();
         const tr = this.tr;
         const engineOptions = {
-            style: {...this.resolved, rasterFade: this.rasterFade()}, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: fontFaces(o.fonts),
+            style: {...this.resolved, rasterFade: this.rasterFade()}, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: fontFaces(o.fonts, document.baseURI),
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, worldCopies: tr.worldCopies, antialias: o.antialias,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
@@ -1881,7 +1882,7 @@ export class Map {
 
     // ---- fonts and images ----
     /** Only in this library: loads more web fonts for labels after the map is created. See the option `fonts`. */
-    addFonts(faces: FontFaces) { const fonts = fontFaces(faces); this.fontsAdded.push(...fonts); this.post({type: 'fonts', fonts}); return this; }
+    addFonts(faces: FontFaces) { const fonts = fontFaces(faces, document.baseURI); this.fontsAdded.push(...fonts); this.post({type: 'fonts', fonts}); return this; }
     /** What `addFonts` was given: a new engine gets it again. */
     private fontsAdded: FontSource[] = [];
 

@@ -1785,6 +1785,27 @@ for (const mode of renderers) {
         check(`fonts: the option and addFonts of the compat Map take an object of font faces and fetch each file (#1191)`,
             asked.includes('/fonts1191/a.ttf') && asked.includes('/fonts1191/b.ttf'), JSON.stringify(asked));
     }
+    // #2356: a relative URL of `fonts` and of `addFonts` is made absolute against the page, as the worker renderer cannot do it.
+    if (mode === 'main') {
+        const asked = [], errors = [];
+        const {squareFont} = await import('./fixtures/square-font.mjs');
+        await page.route(/\/fonts2356\//, route => { asked.push(new URL(route.request().url()).pathname); route.fulfill({status: 200, contentType: 'font/ttf', body: squareFont()}); });
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:99'}));
+            const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}}, layers: [{id: 'label', type: 'symbol', source: 'p', layout: {'text-field': 'Ab', 'text-font': ['F2356a Regular', 'F2356b Regular']}}]};
+            const m = new mod.Map({container: el, style, center: [0, 0], zoom: 2, renderer: 'worker', fonts: {'F2356a Regular': 'fonts2356/a.ttf'}});
+            m.on('error', e => window.errors2356 = [...(window.errors2356 ?? []), String(e.error?.message ?? e.message)]);
+            await new Promise(r => m.once('load', r));
+            m.addFonts({'F2356b Regular': 'fonts2356/b.ttf'});
+            await new Promise(r => setTimeout(r, 1500));
+            m.remove(); el.remove();
+        });
+        errors.push(...await page.evaluate(() => window.errors2356 ?? []));
+        await page.unroute(/\/fonts2356\//);
+        check(`fonts: a relative URL of the option and of addFonts of the compat Map is fetched on the worker renderer (#2356)`,
+            asked.includes('/fonts2356/a.ttf') && asked.includes('/fonts2356/b.ttf') && !errors.length, JSON.stringify({asked, errors}));
+    }
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
