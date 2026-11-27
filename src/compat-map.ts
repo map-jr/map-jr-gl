@@ -899,11 +899,8 @@ export class Map extends CoreMap {
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
         return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(o))));
     }
-    private observedOnce = false;
-    protected override observed() {
+    protected override observed(first: boolean) {
         // As in MapLibre GL JS, the first call of the observer is for the size that the map has, and does nothing.
-        const first = !this.observedOnce;
-        this.observedOnce = true;
         if (first && this.container.clientWidth === this.tr.width && this.container.clientHeight === this.tr.height) return;
         this.resize();
     }
