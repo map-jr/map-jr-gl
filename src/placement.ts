@@ -74,8 +74,9 @@ export interface Placed {
      */
     frame?: number[];
     /**
-     * Text at a point of a layer with `icon-offset`: drawn without the perspective ratio, as in MapLibre GL JS, while its
-     * collision box and the box that queries find keep the ratio (see `CompiledLayer.fixedSize`).
+     * Text of a layer with `icon-offset`: drawn without the perspective ratio, as in MapLibre GL JS, while its collision
+     * box and the box that queries find keep the ratio (see `CompiledLayer.fixedSize`). Along a line (`curve`) the glyphs
+     * keep their places on the line, which have the ratio, and only each glyph drops it.
      */
     fixedSize?: boolean;
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
@@ -179,16 +180,21 @@ const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (le
  */
 export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: number, depth: number, turn: number, turned: boolean): boolean {
     const grow = perspective(tr, depth) / perspective(tr, p.depth);
-    const k = p.fixedSize ? p.frame ? (depth > 0 ? p.depth / depth : 1) : 1
-        : p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
+    const far = depth > 0 ? p.depth / depth : 1, k = p.fixedSize ? p.frame || p.ground ? far : 1
+        : p.ground ? far / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
     d.size = p.size * k;
+    // (The glyphs of text along a line of a layer with `icon-offset` keep the ratio in their places on the line, which
+    // move as the glyphs of a layer without it do. Each glyph keeps its start point near its place, a fraction of a
+    // pixel off until the next placement.)
+    const kc = p.fixedSize && p.curve ? p.ground ? far / grow : grow : k;
     const rotate = !!turn && (!p.src.upright || (!p.shaped && !!p.icon && !p.src.icon!.upright));
     const tc = rotate ? Math.cos(turn) * k : k, ts = rotate ? Math.sin(turn) * k : 0, gc = rotate ? Math.cos(turn) : 1, gs = rotate ? Math.sin(turn) : 0;
     const ox = p.x - p.ax, oy = p.y - p.ay;
     d.x = ax + ox * tc - oy * ts; d.y = ay + ox * ts + oy * tc; d.angle = p.angle + (rotate ? turn : 0);
     const curve = p.curve, ground = p.ground, dc = d.curve, dg = d.ground;
     // (Ground text: the size above gives the length of the glyphs, and the triples of `ground` only their direction.)
-    if (curve && dc) for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; dc[i] = cx * tc - cy * ts; dc[i + 1] = cx * ts + cy * tc; dc[i + 2] = curve[i + 2] + (rotate ? turn : 0); }
+    const cc = gc * kc, cs = gs * kc;
+    if (curve && dc) for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; dc[i] = cx * cc - cy * cs; dc[i + 1] = cx * cs + cy * cc; dc[i + 2] = curve[i + 2] + (rotate ? turn : 0); }
     if (p.frame && d.frame && (rotate || turned)) turnFrame(p.frame, d.frame, gc, gs);
     if (ground && dg && (rotate || turned)) for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; dg[i] = ground[i]; dg[i + 1] = cx * gc - cy * gs; dg[i + 2] = cx * gs + cy * gc; }
     if (p.icon && d.icon) {
@@ -581,14 +587,18 @@ export function placeLabels(
                         // its size on the ground takes half of that away again, so far text stays readable.)
                         // (On the globe the text lies on the sphere also without tilt, as in MapLibre GL JS: a path that is
                         // straight in the tile is a curve there, and its points joined on the screen bend too sharply.)
-                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, (tr.pitch || tr.globeness) && l.flat ? s / persp / persp : 0);
+                        // (In a layer with `icon-offset` each glyph drops the perspective ratio, as in MapLibre GL JS
+                        // (`u_is_offset`), and keeps its place on the line, which has the ratio (#2188). On the ground the
+                        // glyph has the size of the text then, and else the size of the text without the ratio.)
+                        const ground = !!(tr.pitch || tr.globeness) && l.flat, fit = L.fixedSize ? ground ? persp : 1 / persp : 1;
+                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, ground ? s / persp / persp : 0, fit);
                         if (!curved) continue;
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
                         // (Its boxes go into the grid after its icon is placed: as in MapLibre, an icon is not blocked by its own text.)
                         bentBoxes = l.ignore ? [] : curved.boxes;
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha};
+                        bent = {x: ax, y: ay, angle: 0, size: (curved.ground ? size / persp / persp : size) * fit, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha, fixedSize: L.fixedSize || undefined};
                         // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
                         if (!meta) { for (const b of bentBoxes) grid.insert(...b); out.push(bent); continue; }
                     } else if (line && !l.upright) {
@@ -807,7 +817,7 @@ export function placeLabels(
                 // ratio, and so is an icon that `icon-text-fit` stretches around it. Their collision boxes above keep the ratio:
                 // the drawn text, its offset from the anchor and the fitted icon shrink toward the anchor by the ratio (#2057).
                 let fixed = false;
-                if (L.fixedSize && textBox && !line && !twin) {
+                if (L.fixedSize && textBox && !twin) {
                     // (A fitted icon faces the screen, also around text on the ground, so it drops the ratio of the screen.)
                     const r = flat ? flatSize(tr, depth) : persp;
                     fixed = true;
@@ -839,10 +849,11 @@ export function placeLabels(
 
 /**
  * Lays one line of text along a label's path. Returns each glyph's start point (relative to the anchor) and angle, plus
- * collision circles, or null when the text does not fit or the line bends too sharply to read.
+ * collision circles, or null when the text does not fit or the line bends too sharply to read. `fit` scales each glyph
+ * about its place on the line, for a glyph drawn at another size than the one that places it.
  */
 function followLine(
-    tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, flat = 0,
+    tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, flat = 0, fit = 1,
 ): {curve: number[]; ground?: number[]; boxes: Circle[]} | null {
     const path = l.path!, n = path.length / 2;
     // On the globe the ground has the scale of the sphere at the anchor (MapLibre GL JS's `getPitchedTextCorrection`):
@@ -900,7 +911,7 @@ function followLine(
         if (!Number.isNaN(last)) { let d = angle - last; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6 * (l.maxAngle ?? 45) / 45) return null; }
         last = angle;
         if (!k) { bx = -dy; by = dx; }
-        curve.push(cx - dx * a / 2 + bx * shift - ax, cy - dy * a / 2 + by * shift - ay, angle);
+        curve.push(cx + (bx * shift - dx * a / 2) * fit - ax, cy + (by * shift - dy * a / 2) * fit - ay, angle);
         if (k) ground.push(Math.hypot(dx, dy), bx, by);
         mids.push(cx, cy);
         pen += a + spacing;

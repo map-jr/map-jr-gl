@@ -136,7 +136,8 @@ function textBoxes(this: any, layer: string) {
             // (Each glyph starts at its point of `curve`, which lies `shift` pixels across the line, and its box is
             // centered on the line, as its collision box is. On a tilted map `ground` gives the length on the
             // screen of one pixel of text along the line, and the direction of one pixel across it.)
-            const g = p.ground, r = h / 2 + p.src.padding, shift = (p.src.offset[1] + BASELINE) * p.size, advances = p.shaped.lines[0].advances;
+            // (Text of a layer with `icon-offset` has glyphs without the perspective ratio, and its boxes keep it: see `Placed.fixedSize`.)
+            const g = p.ground, fit = p.fixedSize ? g ? perspective(this.tr, at[2]) : 1 / perspective(this.tr, at[2]) : 1, r = h / fit / 2 + p.src.padding, shift = (p.src.offset[1] + BASELINE) * p.size, advances = p.shaped.lines[0].advances;
             for (let i = 0; i < p.curve.length / 3; i++) {
                 const a = p.curve[i * 3 + 2], len = advances[i] * s * (g ? g[i * 3] : 1) / 2;
                 const cx = x + p.curve[i * 3] + Math.cos(a) * len - (g ? g[i * 3 + 1] : -Math.sin(a)) * shift, cy = y + p.curve[i * 3 + 1] + Math.sin(a) * len - (g ? g[i * 3 + 2] : Math.cos(a)) * shift;
