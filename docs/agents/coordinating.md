@@ -240,10 +240,19 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   branch (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/<n>/update-branch`) and merge on the new CI:
   - the build, or a script that the build or a check of the branch runs (`build.mjs`, and the scripts of `pnpm build`,
     `pnpm test` and `pnpm test:consistency`, such as `scripts/messages.mjs` and `scripts/size-check.mjs`);
-  - the messages, the description or the reference;
-  - a file of `src/` that the branch also changes;
   - the harness of a suite (its helpers, `demo/serve.mjs`, its start or its options), or a check that the branch also
-    changes.
+    changes;
+  - the same function of `src/` as the branch, or lines near its change (read the hunks of both and
+    `git merge-tree`).
+
+  When the merge changed only the messages, the description, the reference, or another function of a file of `src/`
+  that the branch also changes, test the merge tree instead of updating the branch. Merge the branch into
+  `origin/main` in a temporary worktree, and run `pnpm build`, `pnpm test:unit` and `pnpm test:consistency` on it
+  before you merge. Update the branch when one of them fails. This is the update rule of both lanes coordinators (the
+  owner, 2026-11-27, #2255).
+
+  The full rule restarted the CI of other branches too often. On 2026-11-27, a series of ten open pull requests
+  restarted five runs of about 25 minutes after each merge of `src/map.ts` or `src/host.ts`.
 
   A merge that only adds or changes a check of another feature in `test/interact.mjs` or `test/host.mjs` needs no
   update (the owner, 2026-11-26, #2301). Before this decision, each such merge restarted the CI of every open branch.
