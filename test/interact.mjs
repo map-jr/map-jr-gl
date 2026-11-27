@@ -8514,6 +8514,60 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     } catch (e) { check('[main] 3D terrain: the check of getBounds at a high pitch ran (#898)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// 3D terrain: a fill-extrusion polygon that lies wholly in the buffer of a tile is drawn only by the tile that holds it, as
+// in MapLibre GL JS (`isEntirelyOutside`). A tile of zoom 10 to the north holds the north edge of this building in its
+// buffer. It drew a copy that stood on the ground at the edge of its elevation tile, kilometers up the slope, so the copy
+// floated above the roof (#2287).
+for (const mode of renderers) {
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + `/?renderer=${mode}&nomarkers`);
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    try {
+        await page.evaluate(async ([mode]) => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            // A slope that rises 3 m for each 100 m to the north.
+            try { mod.removeProtocol('dem2287'); } catch { /* not added yet */ }
+            mod.addProtocol('dem2287', async request => {
+                const [z, x, y] = request.url.slice(10).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(512, 512), g = c.getContext('2d'), img = g.createImageData(512, 512);
+                for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
+                    const my = (y + (j + 0.5) / 512) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                    const v = 2000 + (lat - 46.01) * 110540 * 0.03 + 32768, k = (j * 512 + i) * 4;
+                    img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                return {data: await (await c.convertToBlob()).arrayBuffer()};
+            });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'map2287', style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9;background:#fff'}));
+            const poly = {type: 'Polygon', coordinates: [[[7.766, 46.0075], [7.774, 46.0075], [7.774, 46.0125], [7.766, 46.0125], [7.766, 46.0075]]]};
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem2287://{z}/{x}/{y}'], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': 40, 'fill-extrusion-vertical-gradient': false}}],
+                terrain: {source: 'dem', exaggeration: 1}};
+            const m = new mod.Map({container: el, renderer: mode, style, center: [7.77, 46.01], zoom: 15, pitch: 65, attributionControl: false});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => { const t = setTimeout(r, 8000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
+        }, [mode]);
+        // Each column of the picture crosses the building once: a copy above the roof makes a second run of red pixels.
+        const png = (await page.locator('#map2287').screenshot()).toString('base64');
+        const roof = await page.evaluate(async png => {
+            const bm = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
+            const g = new OffscreenCanvas(bm.width, bm.height).getContext('2d'); g.drawImage(bm, 0, 0);
+            const d = g.getImageData(0, 0, bm.width, bm.height).data;
+            const count = [];
+            for (let x = 0; x < bm.width; x++) {
+                let n = 0, was = false;
+                for (let y = 0; y < bm.height; y++) { const k = (y * bm.width + x) * 4, red = d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90; if (red && !was) n++; was = red; }
+                count.push(n);
+            }
+            // (The middle three fifths of the building: at its corners a wall can stand apart from the roof.)
+            const cols = count.map((n, x) => n ? x : -1).filter(x => x >= 0), a = cols[0], w = cols.at(-1) - a, columns = cols.length;
+            const runs = Math.max(...count.slice(Math.round(a + w / 5), Math.round(a + w * 4 / 5)));
+            return {runs, columns};
+        }, png);
+        check(`[${mode}] 3D terrain: a tile that holds a building only in its buffer draws no copy of it above the roof (#2287)`, roof.columns > 100 && roof.runs === 1, JSON.stringify(roof));
+    } catch (e) { check(`[${mode}] 3D terrain: the check of a building in the buffer of a tile ran (#2287)`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer
 // after 1.5 s, which is more than the half second for which an incomplete picture held `idle` back before. One tile
 // fails, and `idle` still comes.

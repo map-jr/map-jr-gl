@@ -23,8 +23,6 @@ interface Prepared {
     dist?: Float64Array[];
     /** Made when a ring is first sliced: the bounding box of each run of `RUN` vertices, so a tile skips the runs outside it. */
     runs?: Float64Array[];
-    /** Polygons: for each ring, the centroid of its polygon (x, y; see `SlicedFeature.geometry`). */
-    cen?: number[];
 }
 const RUN = 32;
 /** For each run of `RUN` vertices (the last vertex of a run is the first of the next): min x, min y, max x, max y. */
@@ -41,12 +39,7 @@ export interface SlicedFeature {
     type: number; id?: number | string; properties: Record<string, any>;
     /** The place of the feature in the data of the source at this zoom level. It is the same in every tile, so a query can tell that two tiles hold one feature. */
     index?: number;
-    /**
-     * `cen` gets, for each ring of a polygon, the centroid of the whole polygon in the units of the tile: the mean of the
-     * points of its rings, as MapLibre GL JS takes it. Every tile that holds a piece of the polygon has the same point, so
-     * that on 3D terrain all the pieces of a building stand at one height (#2185).
-     */
-    geometry(extent: number, coords: number[], ringEnds: number[], cen?: number[]): number;
+    geometry(extent: number, coords: number[], ringEnds: number[]): number;
 }
 
 /** The options of a GeoJSON source that change its features: clusters of points, and which property is the id. */
@@ -221,7 +214,7 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
         pts.forEach((p, i) => { r[i * 2] = mercX(p[0]); r[i * 2 + 1] = mercY(Math.max(-85.051129, Math.min(85.051129, p[1]))); });
         return r;
     };
-    const add = (f: any, type: 1 | 2 | 3, rings: Float64Array[], cen?: number[]) => {
+    const add = (f: any, type: 1 | 2 | 3, rings: Float64Array[]) => {
         const bbox: Prepared['bbox'] = [Infinity, Infinity, -Infinity, -Infinity];
         for (const r of rings) for (let i = 0; i < r.length; i += 2) {
             bbox[0] = Math.min(bbox[0], r[i]); bbox[1] = Math.min(bbox[1], r[i + 1]); bbox[2] = Math.max(bbox[2], r[i]); bbox[3] = Math.max(bbox[3], r[i + 1]);
@@ -230,30 +223,26 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
         // A string `id` of digits that is a safe integer becomes the number, as in MapLibre GL JS ('012' gives 12); any
         // other string stays the string (#528). An id from `promoteId` is kept as it is.
         const n = typeof id === 'string' && !promoteId && /^\d+$/.test(id) ? +id : NaN;
-        if (rings.length) out.push({type, id: Number.isSafeInteger(n) ? n : typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox, cen});
+        if (rings.length) out.push({type, id: Number.isSafeInteger(n) ? n : typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
     const open = (r: number[][]) => ring(r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r.slice(0, -1) : r);
     // The rings of polygons, wound as geojson-vt `rewind` in MapLibre GL JS winds them: each outer ring with a negative
     // and each hole with a positive signed area in mercator units (y down), so that `eachPolygon` of tile.ts reads ring 0
     // of each polygon as outer and the others as holes, whatever their winding in the input (#1821, #2171). A reversed
     // ring keeps its first point first, as the reversal of a closed ring in geojson-vt does.
-    const polygons = (f: any, ps: number[][][][]) => {
-        const out: Float64Array[] = [], cen: number[] = [];
-        for (const p of ps) {
-            let sx = 0, sy = 0, sn = 0;
-            p.forEach((pts, i) => {
-                const r = open(pts);
-                let a = 0;
-                for (let k = 0, j = r.length - 2; k < r.length; j = k, k += 2) a += (r[k] - r[j]) * (r[k + 1] + r[j + 1]), sx += r[k], sy += r[k + 1], sn++;
-                if (i ? a < 0 : a > 0) for (let k = 2, m = r.length; k < m; k += 2, m -= 2) {
-                    const x = r[k], y = r[k + 1];
-                    r[k] = r[m - 2]; r[k + 1] = r[m - 1]; r[m - 2] = x; r[m - 1] = y;
-                }
-                out.push(r);
-            });
-            p.forEach(() => cen.push(sx / sn, sy / sn));
-        }
-        add(f, 3, out, cen);
+    const polygons = (ps: number[][][][]) => {
+        const out: Float64Array[] = [];
+        for (const p of ps) p.forEach((pts, i) => {
+            const r = open(pts);
+            let a = 0;
+            for (let k = 0, j = r.length - 2; k < r.length; j = k, k += 2) a += (r[k] - r[j]) * (r[k + 1] + r[j + 1]);
+            if (i ? a < 0 : a > 0) for (let k = 2, m = r.length; k < m; k += 2, m -= 2) {
+                const x = r[k], y = r[k + 1];
+                r[k] = r[m - 2]; r[k + 1] = r[m - 1]; r[m - 2] = x; r[m - 1] = y;
+            }
+            out.push(r);
+        });
+        return out;
     };
     const walk = (f: any, g: any) => {
         if (!g) return;
@@ -265,8 +254,8 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
             case 'MultiLineString': add(f, 2, c.map(ring)); break;
             // Closing points are dropped: rings are implicitly closed, as in vector tiles. A ring without a closing
             // point keeps its last point, as in MapLibre GL JS.
-            case 'Polygon': polygons(f, [c]); break;
-            case 'MultiPolygon': polygons(f, c); break;
+            case 'Polygon': add(f, 3, polygons([c])); break;
+            case 'MultiPolygon': add(f, 3, polygons(c)); break;
             case 'GeometryCollection': for (const part of g.geometries) walk(f, part); break;
         }
     };
@@ -346,13 +335,12 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
     for (const w of [0, -1, 1]) for (let index = 0; index < features.length; index++) {
         const f = features[index];
         if (f.bbox[2] + w < x0 || f.bbox[0] + w > x1 || f.bbox[3] < y0 || f.bbox[1] > y1) continue;
-        const rings: number[][] = [], cen: number[] = [];
+        const rings: number[][] = [];
         const feature = (rings: number[][], properties: Record<string, unknown>) => out.push({
             type: f.type, id: f.id, index, properties,
-            geometry(extent, coords, ringEnds, c) {
+            geometry(extent, coords, ringEnds) {
                 const k = extent / EXTENT;
                 for (const r of rings) { for (const v of r) coords.push(v * k); ringEnds.push(coords.length / 2); }
-                for (const v of cen) c?.push(v * k);
                 return rings.length;
             },
         });
@@ -396,10 +384,7 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
                 continue;
             }
             if (f.type === 1) { if (pts[0] >= -BUFFER && pts[0] <= EXTENT + BUFFER && pts[1] >= -BUFFER && pts[1] <= EXTENT + BUFFER) rings.push(pts); } else if (f.type === 2) rings.push(...clipLine(pts, -BUFFER, EXTENT + BUFFER).filter(p => p.length >= 4));
-            else {
-                pts = clipRing(pts, -BUFFER, EXTENT + BUFFER);
-                if (pts.length >= 6) rings.push(pts.map(Math.round)), cen.push(((f.cen![ri * 2] + w) * n - x) * EXTENT, (f.cen![ri * 2 + 1] * n - y) * EXTENT);
-            }
+            else { pts = clipRing(pts, -BUFFER, EXTENT + BUFFER); if (pts.length >= 6) rings.push(pts.map(Math.round)); }
         }
         if (!rings.length) continue;
         feature(rings, f.properties);
