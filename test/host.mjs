@@ -3762,14 +3762,17 @@ for (const renderer of ['worker', 'main']) {
         const terrain = await run('terrain'), afterTerrain = parts.splice(0);
         const within = await run('within'), afterWithin = parts.splice(0);
         const seen = browserName === 'chromium';
+        // Every map loads the part `query` (#2342) after its second frame, in each thread: the tile workers, and the engine worker with the worker renderer. The other parts are counted without it.
+        const others = list => list.filter(p => p !== 'query'), queries = list => list.filter(p => p === 'query').length;
+        const queryOnce = list => queries(list) >= 1 && queries(list) <= 4;
         // 3D terrain (#1849): the engine loads the part for elevation data. In an engine worker that is the file of the part,
         // which the page fetches once with the style; an engine on the page imports the chunk of the same part instead.
         check(`[${renderer}] the parts of the worker: a map with 3D terrain loads the part dem (${renderer === 'worker' ? 'one request of the file' : 'its chunk, not the file'}) and is idle with the height of the ground (#1849)`,
-            terrain.idle.every(Boolean) && !terrain.errors.length && terrain.ground === 1000 && (!seen || (renderer === 'worker' ? afterTerrain.length === 1 && afterTerrain[0] === 'dem' : afterTerrain.length === 0)),
+            terrain.idle.every(Boolean) && !terrain.errors.length && terrain.ground === 1000 && (!seen || queryOnce(afterTerrain) && (renderer === 'worker' ? others(afterTerrain).length === 1 && others(afterTerrain)[0] === 'dem' : others(afterTerrain).length === 0)),
             JSON.stringify({terrain, afterTerrain}));
-        check(`[${renderer}] the parts of the worker: a map of vector tiles requests none, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
+        check(`[${renderer}] the parts of the worker: a map of vector tiles requests none but the part query, and two maps with a GeoJSON source request the GeoJSON part once in each tile worker and draw it (#79)`,
             vector.idle.every(Boolean) && !vector.errors.length && geojson.idle.every(Boolean) && !geojson.errors.length && geojson.centre[2] > 200 && geojson.centre[0] < 50 &&
-            (!seen || (afterVector.length === 0 && afterGeoJSON.length >= 1 && afterGeoJSON.length <= 4 && afterGeoJSON.every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
+            (!seen || (others(afterVector).length === 0 && queryOnce(afterVector) && queryOnce(afterGeoJSON) && others(afterGeoJSON).length >= 1 && others(afterGeoJSON).length <= 4 && others(afterGeoJSON).every(p => p === 'geojson'))), JSON.stringify({vector, afterVector, geojson, afterGeoJSON}));
         // `within` and `distance` (#1707): a style that uses one loads their part, and its tiles wait for it.
         check(`[${renderer}] the parts of the worker: two maps whose style uses "within" load the part within and draw its result (#1707)`,
             within.idle.every(Boolean) && !within.errors.length && within.centre[2] > 200 && within.centre[1] < 50 && (!seen || afterWithin.includes('within')), JSON.stringify({within, afterWithin}));
