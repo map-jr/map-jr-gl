@@ -1528,8 +1528,8 @@ export default function Hover() {
   the option `id`. For GeoJSON of your own, give each feature an `id`, or declare the source with `promoteId` or
   `generateId: true`.
 - [`state.hover`](../reference/state.md#mapstate) lists the features of `interactiveLayers` under the pointer, the top
-  one first. Vue has it in `features` of the event `hover`, React in `features` of the argument of `onHover`, Svelte in [`mapState`](../reference/svelte.md#mapstate)
-  and `<map-jr>` in `detail.features` of the event `map-hover`.
+  one first. Vue has it in `features` of the event `hover`, React in `features` of the argument of `onHover`, Svelte in
+  [`mapState`](../reference/svelte.md#mapstate) and `<map-jr>` in `detail.features` of the event `map-hover`.
 - In the compat entry, the code sets the state itself with `setFeatureState` on `mousemove` and `mouseleave` of the
   layer, as in MapLibre GL JS.
 
