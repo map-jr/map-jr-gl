@@ -1523,6 +1523,7 @@ A font file that does not load is reported to `onError`, for example
 the main API and an option of `Map` in the compat entry. Its default is `"Noto Sans", "Helvetica Neue", Arial,
 sans-serif`. The map reads it only when it is created: to change it, destroy the map and create a new one.
 
+- In the compat entry, the option `fonts` of `Map` and the method `addFonts` take the same object as `fonts` of the main API. The array of `{family, src, weight}` of earlier versions is removed.
 - An entry of `fonts` overrides the entry with the same name in the `font-faces` of the style.
 - A relative URL in `fonts` is resolved against the URL of the page. A relative URL in the style is resolved against
   the URL of the style.

@@ -1634,6 +1634,25 @@ for (const mode of renderers) {
         check(`[${mode}] addProtocol: a range of glyphs and a font file have the request type arrayBuffer, as in MapLibre GL JS (#1675)`,
             r.glyphs === 'arrayBuffer' && r.font === 'arrayBuffer', JSON.stringify(r));
     }
+    // #1191: the option `fonts` and `addFonts` of the compat `Map` take an object of font faces by `text-font` name, as `fonts` of the main API.
+    if (mode === 'main') {
+        const asked = [];
+        await page.route(/\/fonts1191\//, route => { asked.push(new URL(route.request().url()).pathname); route.fulfill({status: 404, body: ''}); });
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:99'}));
+            const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}}, layers: [{id: 'label', type: 'symbol', source: 'p', layout: {'text-field': 'Ab', 'text-font': ['F1191a Regular', 'F1191b Regular']}}]};
+            const m = new mod.Map({container: el, style, center: [0, 0], zoom: 2, renderer: 'main', fonts: {'F1191a Regular': '/fonts1191/a.ttf'}});
+            m.on('error', () => {});
+            await new Promise(r => m.once('load', r));
+            m.addFonts({'F1191b Regular': '/fonts1191/b.ttf'});
+            await new Promise(r => setTimeout(r, 1500));
+            m.remove(); el.remove();
+        });
+        await page.unroute(/\/fonts1191\//);
+        check(`fonts: the option and addFonts of the compat Map take an object of font faces and fetch each file (#1191)`,
+            asked.includes('/fonts1191/a.ttf') && asked.includes('/fonts1191/b.ttf'), JSON.stringify(asked));
+    }
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
