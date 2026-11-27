@@ -1674,7 +1674,7 @@ An error of the compat entry.
 The production build prints this:
 
 ```text
-[map-jr-gl] E2242 https://map-jr.org/e/2242 image=… width=… height=… newWidth=… newHeight=…
+[map-jr-gl] E2242 https://map-jr.org/e/2242 method=… image=… width=… height=… newWidth=… newHeight=…
 ```
 
 ```text
