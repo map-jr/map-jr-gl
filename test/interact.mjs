@@ -6314,6 +6314,35 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] the globe with 3D terrain: the area at the pole is drawn (#1984)`, r.flat > 50000 && Math.abs(r.terrain - r.flat) < r.flat * 0.01, JSON.stringify(r));
     }
+    // #2013: with 3D terrain on flat ground (0 m), fill-translate draws as without terrain: a square across the corner of
+    // four tiles is moved 100 px down the screen (anchor viewport, bearing 45, pitch 30, a zoom between levels), whole.
+    // Before, the picture of each ground tile moved it by pixels of the picture and along the axes of the map (75 px off).
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
+            const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+            g.fillStyle = 'rgb(128,0,0)'; g.fillRect(0, 0, 256, 256); // 0 m in the terrarium encoding
+            const blue = async terrain => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:400px;z-index:60'}));
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 4},
+                    sq: {type: 'geojson', data: {type: 'Polygon', coordinates: [[[-6, -6], [6, -6], [6, 6], [-6, 6], [-6, -6]]]}}},
+                    ...(terrain ? {terrain: {source: 'dem'}} : {}), layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-antialias': false, 'fill-translate': [0, 100], 'fill-translate-anchor': 'viewport'}}]};
+                const map = new mod.Map({container: el, style, center: [0, 8], zoom: 2.4, bearing: 45, pitch: 30, renderer, attributionControl: false, fadeDuration: 0});
+                try {
+                    await new Promise(r => map.once('idle', r));
+                    const d = await shot(map, 500, 400);
+                    let n = 0, sx = 0, sy = 0;
+                    for (let i = 0; i < d.length; i += 4) if (d[i + 2] > 200 && d[i] < 60 && d[i + 1] < 60) { n++; sx += (i / 4) % 500; sy += Math.floor(i / 4 / 500); }
+                    return {n, x: Math.round(sx / n), y: Math.round(sy / n)};
+                } finally { map.remove(); el.remove(); }
+            };
+            return {flat: await blue(false), terrain: await blue(true)};
+        }, mode);
+        check(`[${mode}] 3D terrain: fill-translate across a tile edge draws as without terrain, whole and in the same place (#2013)`,
+            r.flat.n > 1000 && Math.abs(r.terrain.n - r.flat.n) < r.flat.n * 0.03 && Math.hypot(r.terrain.x - r.flat.x, r.terrain.y - r.flat.y) < 2, JSON.stringify(r));
+    }
     // #670: on a tilted map queryRenderedFeatures finds a circle where it is drawn: smaller far from the camera
     // (circle-pitch-scale: map), and an ellipse on the ground with circle-pitch-alignment: map. Both the array and the promise.
     {

@@ -585,6 +585,10 @@ export interface TerrainTile {
     signature: string;
     /** The direction of the light in the picture (a step of the map's bearing), for relief that is lit from the viewer's side. */
     light: number;
+    /** For each source with a layer that fill-translate or line-translate moves: this tile and its neighbors. */
+    around: Map<string, RenderItem<GLTile>[]>;
+    /** The zoom (and the bearing, with the anchor viewport) that the translation in the picture depends on; empty without one. */
+    shift: string;
     /** Whether everything the picture needs has loaded; a finished picture is not replaced by a partial one. */
     complete: boolean;
     /**
@@ -652,6 +656,8 @@ export class GLRenderer {
     private globePrograms: Partial<Record<ProgramName, Program>> = {};
     /** The globe of the frame that is being drawn, if any (see `Scene.globe`). */
     private globe?: Scene['globe'];
+    /** While the picture of a ground tile is drawn: its `around` (see TerrainTile). */
+    private around?: TerrainTile['around'];
     /** The part of the globe (globe.ts), once a frame has shown the globe: the renderer takes the code of its shaders from it. */
     private globeCode?: typeof import('./globe.ts');
     /** The grid that raster, hillshade and background tiles are drawn on with the globe, in tile units: see `globeGrid`. */
@@ -1262,7 +1268,7 @@ export class GLRenderer {
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 continue;
             }
-            const items = bySource.get(L.source!);
+            let items = bySource.get(L.source!);
             if (!items) continue;
             if (L.type === 'raster' || L.type === 'hillshade' || L.type === 'color-relief') {
                 if (L.type !== 'raster' && !s.layerCode) continue;
@@ -1315,7 +1321,12 @@ export class GLRenderer {
             }
             // fill-translate, line-translate and fill-extrusion-translate move the layer by screen pixels. The anchor
             // says if the direction turns with the map (the default) or stays fixed on the screen.
-            const [tx, ty] = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? mapTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing) : [0, 0];
+            let [tx, ty] = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? mapTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), pass === 'ground' ? s.tr.bearing : tr.bearing) : [0, 0];
+            // In the picture of a ground tile (3D terrain), the translation is in pixels of the map, not of the picture,
+            // and the neighbor tiles are drawn too: each tile keeps the part that is its own before the move, so that the
+            // moved parts meet at the edges (#2013). The picture has no bearing, so the bearing of the map turns the anchor viewport.
+            const translated = pass === 'ground' && (tx || ty) ? this.around?.get(L.source!) : undefined;
+            if (translated) { const k = 2 ** (zoom - s.tr.zoom); tx *= k; ty *= k; items = translated; }
             const moved = (it: RenderItem<GLTile>) => moveTile(it, tx, ty);
             // On the globe the shaders take the point on the sphere from the tile position, so the tile is moved there
             // too, by the same tile units (MapLibre GL JS adds the translation to the position before projectTile).
@@ -1325,9 +1336,9 @@ export class GLRenderer {
             // On the globe a tile of the first or the last row also owns the cap of its pole, as the tile mask of MapLibre GL
             // JS does (`extendToNorthPole`): a line that is clamped to 85.05° keeps the half of its width past the edge (#2307).
             const clipTo = (u: Record<string, WebGLUniformLocation>, it: RenderItem<GLTile>) => {
-                gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items[0].matrix4, target));
-                const [x0, y0, x1, y1] = it.clip, {y, z} = it.id;
-                gl.uniform4fv(u.u_clip, this.globe ? [x0, y || y0 ? y0 : -1e6, x1, y < 2 ** z - 1 || y1 < EXTENT ? y1 : 1e6] : clipIn(items[0].id, it.id, it.clip));
+                gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items![0].matrix4, target));
+                const [x0, y0, x1, y1] = it.clip, {y, z} = it.id, sx = translated ? tx / items![0].scale : 0, sy = translated ? ty / items![0].scale : 0;
+                gl.uniform4fv(u.u_clip, this.globe ? [x0, y || y0 ? y0 : -1e6, x1, y < 2 ** z - 1 || y1 < EXTENT ? y1 : 1e6] : clipIn(items![0].id, it.id, it.clip).map((v, i) => v + (i % 2 ? sy : sx)));
             };
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {
@@ -1669,7 +1680,7 @@ export class GLRenderer {
         gl.uniform4fv(u.u_unpack, dem.unpack);
     }
 
-    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; /** When the picture was last made. */ at?: number; light?: number; /** Made at half the size while the camera moved. */ rough?: boolean}>();
+    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; /** When the picture was last made. */ at?: number; light?: number; shift?: string; /** Made at half the size while the camera moved. */ rough?: boolean}>();
     private frame = 0;
     private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
     private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();

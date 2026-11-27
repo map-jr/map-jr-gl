@@ -1,7 +1,0 @@
-{
-  "label": "*-translate on the globe",
-  "decision": "later",
-  "issue": 1822,
-  "reason": "With 3D terrain, fill-translate and line-translate are drawn into the picture of each ground tile, so a translated shape is cut at the edge of its tile, and the anchor viewport moves it as the anchor map does.",
-  "pattern": "^projection/globe/terrain/(fill|line)-translate$"
-}
