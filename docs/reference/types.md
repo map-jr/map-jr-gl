@@ -207,7 +207,7 @@ const map = createMap('map', {
 | [`FeaturePlace`](map.md#featureplace) | A point, a position or a box of the screen, for a query. |
 | [`FeatureOptions`](map.md#featureoptions), [`SourceOptions`](map.md#sourceoptions) | The options of the queries. |
 | [`MoveToOptions`](map.md#movetooptions), [`FlyOptions`](map.md#flyoptions) | The argument of `moveTo` and its flight. |
-| [`OverlayOptions`](map.md#overlayoptions), [`MapOverlay`](map.md#mapoverlay), `Anchor` | The options and the result of `overlay`. |
+| [`OverlayOptions`](map.md#overlayoptions), [`MapOverlay`](map.md#mapoverlay), `Anchor`, `PopupOffset` | The options and the result of `overlay`. |
 | [`Readable`](state.md#readable), [`Store`](exports.md#createstore) | The stores of `map.state` and of `createStore`. |
 | `ControlSpec` | A control for [`controls`](description.md#controls). |
 | `ImageInput`, `ImageSource`, `ImageOptions` | An image for [`images`](description.md#images). |

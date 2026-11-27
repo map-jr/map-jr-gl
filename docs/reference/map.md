@@ -871,8 +871,8 @@ it moves, as MapLibre GL JS does: `'top'` near the top edge of the map, `'bottom
 near no edge, and `'left'` or `'right'` near a side. The two parts join into a corner, such as `'top-left'`. An
 `anchor` that you set keeps the popup on that side.
 
-`offset` of a marker is a pair, `[x, y]`. `offset` of a popup is a pair, one number, or an object with a pair for each
-anchor. The type `PopupOffset` is the same as `Offset` of `@map-jr/map-jr-gl/maplibre-compat`, which `Popup` takes.
+`offset` of a marker is a pair, `[x, y]`. `offset` of a popup is a pair, a point `{x, y}`, one number, or an object with a pair
+for each anchor. The type `PopupOffset` is the same as `Offset` of `@map-jr/map-jr-gl/maplibre-compat`, which `Popup` takes.
 
 One number moves the popup away from the position on the side that it has, so that `offset: 16` keeps 16 pixels from
 the position on every side, also when the popup chooses its own anchor. An object such as
