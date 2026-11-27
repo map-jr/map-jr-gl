@@ -59,7 +59,7 @@ export interface RenderOptionsBase {
      */
     bearing?: number;
     /**
-     * The pitch of the view in degrees. The server renderer draws every view flat (see #395), so a value other than 0 has no effect and warns.
+     * Has no effect, because the server render draws every view flat. A value other than 0 writes a warning.
      * @default 0
      */
     pitch?: number;

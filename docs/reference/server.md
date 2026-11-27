@@ -63,7 +63,7 @@ that get their view later, and for an `interface` that adds members: an `interfa
 | `center` | `LngLatLike` | | The center of the view, `[lng, lat]`. |
 | `zoom` | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
-| `pitch` | `number` | `0` | The pitch of the view in degrees. |
+| `pitch` | `number` | `0` | Has no effect, because the server render draws every view flat. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
 | `fitMaxZoom` | `number \| null` | `maxZoom` of `renderFirstView`, else 22 | The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description. |
