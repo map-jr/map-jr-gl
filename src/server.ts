@@ -504,6 +504,7 @@ const warnedAttributes = new Set<string>();
  * to show, and the options of the render, such as `timeout` or `overrides`.
  */
 export function firstViewOptions(description: MapDescription, options: DescriptionRenderOptions = {}): FirstViewOptions {
+    if (!description || typeof description !== 'object' || Array.isArray(description)) throw new Error(`[map-jr-gl] E2358 firstViewOptions(): the description is missing or is not an object. Pass the description of the map, an object with a "style", for example firstViewOptions({style, initialView: {center: [0, 0], zoom: 2}}).`);
     const d = unset(description) as Given & Record<string, unknown>, view: Record<string, unknown> = {...d.initialView, ...d.view};
     const {width = 800, height = 500, attribution, ...rest} = options;
     // Like the map, a `view` takes the place of the `initialView`, bounds included.

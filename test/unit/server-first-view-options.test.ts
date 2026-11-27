@@ -38,3 +38,13 @@ test('renderFirstView(firstViewOptions(description)) renders what renderElement 
     const element = await renderElement(description, {width: 100, height: 80});
     assert.ok(element.endsWith(`${first}</map-jr>`), 'the element holds the same first view');
 });
+
+test('a missing or non-object description throws a message that says what to pass (#2358)', () => {
+    for (const bad of [undefined, null, 'https://example.com/style.json', [], 5]) {
+        assert.throws(() => firstViewOptions(bad as any), {message: /^\[map-jr-gl\] E2358 firstViewOptions\(\): the description is .*Pass the description of the map/});
+    }
+});
+
+test('a description with no style is reported by renderFirstView', async () => {
+    await assert.rejects(renderFirstView(firstViewOptions({} as any)), {message: /^\[map-jr-gl\] E/});
+});
