@@ -553,7 +553,7 @@ interface IconBuffers {
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
-    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string; /** See `Batch.lift`. */ lift?: boolean;
+    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string; /** See `Batch.dash`. */ dash?: number[]; /** See `Batch.lift`. */ lift?: boolean;
     /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
 export interface GLTile {
@@ -872,7 +872,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, dash: b.dash, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1435,6 +1435,8 @@ export class GLRenderer {
                     bindImage(u, img);
                     if (b.type === 'line') gl.uniform2f(u.u_patSize, img.width / img.pixelRatio, img.height / img.pixelRatio);
                 }
+                // The dasharray of a batch of a line-dasharray with a value for each feature (#1807).
+                if (b.dash) gl.uniform4f(u.u_dash, b.dash[0] ?? 0, b.dash[1] ?? 0, b.dash[2] ?? 0, b.dash[3] ?? 0);
                 this.placeTile(u, it.id, m, sh);
                 if (b.type === 'fill' || b.type === 'line') clipTo(u, it); else gl.uniform4fv(u.u_clip, it.clip);
                 gl.bindVertexArray(b.vao);

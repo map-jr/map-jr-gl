@@ -1760,13 +1760,17 @@ The layer "<id>": "ref" names "<ref>", which is no layer without "ref". Name suc
 `Production build`
 
 ```text
-[map-jr-gl] E2040 https://map-jr.org/e/2040 id=… type=… maxRuns=…
+[map-jr-gl] E2040 https://map-jr.org/e/2040 id=… type=… maxRuns=… grouped=…
 ```
 
 `Development build`
 
 ```text
-layer "<id>": in the order of "<type>-sort-key", the features of a tile form more than <MAX_RUNS> runs with the same "<type>-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.
+layer "<id>": in the order of "<type>-sort-key", the features of a tile form more than <MAX_RUNS> runs with the same "line-dasharray", so the key orders the features only within each value. Give the features of one value keys next to each other, or make a layer for each value.
+```
+
+```text
+layer "<id>": in the order of "<type>-sort-key", the features of a tile form more than <MAX_RUNS> runs with the same "<type>-pattern", so the key orders the features only within each value. Give the features of one value keys next to each other, or make a layer for each value.
 ```
 
 ## E2047

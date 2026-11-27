@@ -79,6 +79,8 @@ export interface Batch {
     ed?: boolean;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
     pat?: string;
+    /** A `line-dasharray` with a value for each feature: the dasharray of the features of this batch (see `patternKey`; empty for a solid line). */
+    dash?: number[];
     /** The points of a heatmap layer. */
     heat?: boolean;
 }
@@ -151,7 +153,7 @@ export interface IconBatch {
 /** `z`: the zoom that the sizes of the tile were found at, when it is not the zoom of the tile (see `buildTile`). */
 export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** When the fetched tile is out of date, and its `ETag` (see `TileFetchState`). */ expires?: number; etag?: string }
 
-export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
+export type GLBatch = {/** See `Batch.pat` and `Batch.dash`. */ pat?: string; dash?: number[]} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** See `Batch.lift`. */ lift?: boolean; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number; /** See `Batch.most`. */ most?: number[]}
@@ -338,20 +340,24 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         }
         // fill-pattern, line-pattern and fill-extrusion-pattern with a value for each feature: the features of each image
         // are a batch of their own, drawn with that image (a feature with no image is not drawn, as in MapLibre GL JS).
+        // A line-dasharray with a value for each feature (and no such pattern, which replaces the dashes) makes a batch for
+        // each dasharray in the same way, found at the zoom of the tile (#1807).
         // With a sort key, each run of features with the same image is a batch, so that the batches keep the order of the key.
         // Each batch is a draw call in each frame, so above MAX_RUNS runs in a tile the features of each image are one batch
         // again, and the key orders them only within the image (#1445).
         let groups: [string, typeof features][] = [];
         const byName = new Map<string, typeof features>();
-        if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) {
+        const byPattern = (L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd, byDash = !byPattern && L.type === 'line' && p.dash.dd;
+        if (byPattern || byDash) {
             for (const f of features) {
                 ctx.f = f;
-                const name = String(p.pattern.eval(zs, f) ?? ''), last = groups[groups.length - 1];
+                const name = byDash ? JSON.stringify(p.dash.eval(zs, f) ?? []) : String(p.pattern.eval(zs, f) ?? ''), last = groups[groups.length - 1];
                 if (!name) continue;
                 byName.get(name)?.push(f) ?? byName.set(name, [f]);
                 if (sortKey) last?.[0] === name ? last[1].push(f) : groups.push([name, [f]]);
             }
-            if (groups.length > MAX_RUNS) warnOnce(`E2040 layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
+            const grouped = byDash ? 'line-dasharray' : L.type + '-pattern';
+            if (groups.length > MAX_RUNS) warnOnce(`E2040 layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${grouped}", so the key orders the features only within each value. Give the features of one value keys next to each other, or make a layer for each value.`);
             if (!sortKey || groups.length > MAX_RUNS) groups = [...byName];
         } else groups.push(['', features]);
         let k = 0;
@@ -440,7 +446,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); batch.lift = lift || undefined; if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
             if (line) { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
-            if (pat) batch.pat = pat;
+            if (byDash) batch.dash = JSON.parse(pat); else if (pat) batch.pat = pat;
             if (heat) batch.heat = true;
             out.layers[patternKey(L.id, k++)] = batch;
         }
@@ -1031,6 +1037,7 @@ export function toGL(ir: TileIR, globe?: GlobeCut): {tile: TileGL; transfer: Arr
         const g = tessellate(b, globe);
         if (!g) continue;
         if (b.pat) g.pat = b.pat;
+        if (b.dash) g.dash = b.dash;
         // (The batches of the images of a layer are numbered again without gaps: one that has no triangles is left out.)
         const base = id.split('\0')[0], k = next[base] ?? 0;
         next[base] = k + 1;
