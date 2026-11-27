@@ -481,9 +481,13 @@ export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 
     /**
      * More attributes of the element, by name, for example `{id: 'map', class: 'map', style: 'height:400px'}`. The text of
      * `style` is appended to `display:block;position:relative;overflow:hidden`. A name that starts with `on` throws.
+     * An entry whose name the element already has, from the description or from an earlier entry, is left out. Names are compared without letter case.
      */
     attributes?: Record<string, string>;
 }
+
+// The names that `renderElement` warned about, once per process; it holds no state of a map.
+const warnedAttributes = new Set<string>();
 
 /**
  * Renders the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description, with the first view as its content.
@@ -511,7 +515,10 @@ export async function renderElement(description: MapDescription, options: Elemen
     for (const name in attributes) {
         if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(/^on/i.test(name) ? `[map-jr-gl] E50826 renderElement(): "${name}" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".` : `[map-jr-gl] E30826 renderElement(): "${name}" is not the name of an attribute. Give names such as "id", "class" or "style".`);
         // (Names of attributes are not case sensitive: `Style` and `style` are one attribute, and a browser ignores the second.)
-        if (name.toLowerCase() === 'style') extra += ';' + attributes[name]; else attrs.push(`${name}="${quote(attributes[name])}"`);
+        // (An attribute that the description already writes, or that an earlier entry wrote, keeps its first value: a browser ignores the second one (#2404).)
+        const lower = name.toLowerCase(), attribute = name;
+        if (lower === 'style') extra += ';' + attributes[name]; else if (!attrs.some(a => a.split(/[=\s]/, 1)[0].toLowerCase() === lower)) attrs.push(`${name}="${quote(attributes[name])}"`);
+        else if (!warnedAttributes.has(lower)) { warnedAttributes.add(lower); console.warn(`[map-jr-gl] E2404 renderElement(): attributes.${attribute} is dropped, because the element already has the attribute "${lower}" from the description or from an earlier entry. Remove it from attributes or change the description.`); }
     }
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden' + extra)}"`);
     let first = '';

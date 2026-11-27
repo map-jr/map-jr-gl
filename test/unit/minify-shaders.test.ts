@@ -1,6 +1,7 @@
 // The plugin minify-shaders of build.mjs: comments and whitespace go from the GLSL templates of src/gl.ts, and nothing else changes (#902).
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 // @ts-expect-error a script without type declarations
 import {minifyShaders} from '../../scripts/minify-shaders.mjs';
 
@@ -27,7 +28,7 @@ test('spaces go from around + and - unless the other side is + or - too, and num
 
 test('declarations of uniforms, inputs and outputs of the same type that follow each other become one (#2075)', () => {
     const code = 'const s = `uniform vec4 u_a; uniform float u_b; uniform vec4 u_c[4]; in vec2 v_x; flat in vec4 v_y; in vec2 v_z; layout(location=0) in vec2 a_p; layout(location=1) in vec2 a_q; uniform highp sampler2D u_d; uniform highp sampler2D u_e; uniform vec2 u_n[${N}]; uniform vec2 u_m; out vec4 o; void main() { float a; float b; }`;';
-    assert.equal(apply(code), 'const s = `uniform vec4 u_a,u_c[4];uniform float u_b;in vec2 v_x,v_z;flat in vec4 v_y;layout(location=0)in vec2 a_p;layout(location=1)in vec2 a_q;uniform highp sampler2D u_d,u_e;uniform vec2 u_n[${N}];uniform vec2 u_m;out vec4 o;void main(){float a;float b;}`;');
+    assert.equal(apply(code), 'const s = `uniform vec4 u_a,u_c[4];uniform float u_b;in vec2 v_x,v_z;flat in vec4 v_y;L(0)vec2 a_p;L(1)vec2 a_q;uniform highp sampler2D u_d,u_e;uniform vec2 u_n[${N}];uniform vec2 u_m;out vec4 o;void main(){float a;float b;}`;');
 });
 
 test('a run of declarations at the start of a template, after a line break, is merged too (#2215)', () => {
@@ -38,4 +39,11 @@ test('a run of declarations at the start of a template, after a line break, is m
 test('a block comment goes from a shader, and a block comment in a line comment goes with that line (#2342)', () => {
     const code = 'const vs = `uniform float u_a; /* the halves of\na unit */ void main() { // a /* b\n    gl_Position = vec4(u_a); }`;';
     assert.equal(apply(code), 'const vs = `uniform float u_a;void main(){gl_Position=vec4(u_a);}`;');
+});
+
+test('an input with a location is written with the macro L of HEAD in src/gl.ts, which gives back the same text (#2342)', () => {
+    const code = 'const vs = `layout(location=0) in vec2 a_pos; layout(location=12) in float a_w; void main() { gl_Position = vec4(a_pos, a_w, 1.0); }`;';
+    assert.equal(apply(code), 'const vs = `L(0)vec2 a_pos;L(12)float a_w;void main(){gl_Position=vec4(a_pos,a_w,1.);}`;');
+    const head = /const HEAD = '([^']*)'/.exec(readFileSync(new URL('../../src/gl.ts', import.meta.url), 'utf8'))?.[1] ?? '';
+    assert.match(head, /\\n#define L\(n\) layout\(location=n\) in\\n/);
 });
