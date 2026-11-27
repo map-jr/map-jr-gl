@@ -346,6 +346,26 @@ try {
     await page.mouse.click(400, 250); await page.waitForTimeout(600);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click is an event of the component, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
+    // `interactive` as an object (#2412): the prop takes `{scrollZoom: false}` as well as a boolean.
+    await page.evaluate(async () => {
+        const {createApp, h, ref} = await import('vue'), {MapJr} = await import('/dist/vue.js');
+        const gestures = ref({scrollZoom: false}), map = ref(null);
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'gestures', style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+        createApp({render: () => h(MapJr, {ref: map, mapStyle: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, interactive: gestures.value})}).mount(el);
+        window.g = {gestures, map};
+        await new Promise(r => { const i = setInterval(() => { if (map.value?.state.get().idle) { clearInterval(i); r(); } }, 100); });
+    });
+    const gz = () => page.evaluate(() => window.g.map.value.state.get().view.zoom), gc = () => page.evaluate(() => window.g.map.value.state.get().view.center);
+    const gWheel = async () => { const z = await gz(); await page.mouse.move(450, 300); await page.mouse.wheel(0, -300); await page.waitForTimeout(900); return Math.abs(await gz() - z) > 0.05; };
+    const gDrag = async () => { const [x, y] = await gc(); await page.mouse.move(450, 300); await page.mouse.down(); await page.mouse.move(600, 400, {steps: 8}); await page.mouse.up(); await page.waitForTimeout(500); const [x2, y2] = await gc(); return Math.abs(x - x2) + Math.abs(y - y2) > 1e-5; };
+    const objectOff = {wheel: await gWheel(), drag: await gDrag()};
+    await page.evaluate(() => { window.g.gestures.value = {dragPan: false}; }); await page.waitForTimeout(300);
+    const dragOff = {wheel: await gWheel(), drag: await gDrag()};
+    await page.evaluate(() => { window.g.gestures.value = true; }); await page.waitForTimeout(300);
+    const allOn = {wheel: await gWheel(), drag: await gDrag()};
+    await page.evaluate(() => document.querySelector('#gestures').remove());
+    check('browser: the prop interactive takes an object of gestures: {scrollZoom: false} stops the wheel and keeps the drag, {dragPan: false} the reverse, and true turns both on (#2412)',
+        !objectOff.wheel && objectOff.drag && dragOff.wheel && !dragOff.drag && allOn.wheel && allOn.drag, JSON.stringify({objectOff, dragOff, allOn}));
     // The event `error`: a component with a listener gets each error; without a listener the map writes it to the console.
     const failing = await page.evaluate(async () => {
         const {createApp, h} = await import('vue'), {MapJr} = await import('/dist/vue.js'), wait = ms => new Promise(r => setTimeout(r, ms));
