@@ -470,7 +470,7 @@
 "heatmap-radius/default": "match",
 "heatmap-radius/function": "match",
 "heatmap-radius/literal": "match",
-"heatmap-radius/pitch30": "differ",
+"heatmap-radius/pitch30": "match",
 "heatmap-weight/default": "match",
 "heatmap-weight/identity-property-function": "match",
 "heatmap-weight/literal": "match",
