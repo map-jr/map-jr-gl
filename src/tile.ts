@@ -433,7 +433,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (ddSb) batch.sb = Float32Array.from(sb);
             if (stroke1?.some((c, i) => c !== stroke[i])) batch.stroke1 = Uint8Array.from(stroke1);
             interleaveFeat(batch, feats);
-            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); batch.lift = lift; if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
+            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); batch.lift = lift || undefined; if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
             if (line) { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
             if (pat) batch.pat = pat;
