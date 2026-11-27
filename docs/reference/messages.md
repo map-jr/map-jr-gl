@@ -589,10 +589,6 @@ The production build prints this:
 getSource("<id>").setUrl(url): "url" must be a string.
 ```
 
-```text
-getSource("<id>").setTiles(tiles): "tiles" must be an array of URL strings.
-```
-
 ## E259
 
 An error of the compat entry.
@@ -647,10 +643,6 @@ The production build prints this:
 
 ```text
 on("<type>"): the listener after the layer id is not a function.
-```
-
-```text
-on("<type>"): the second argument is neither a layer id, an array of layer ids nor a listener.
 ```
 
 ## E294
@@ -1413,14 +1405,6 @@ An error of the server renderer.
 server render: the options have no "center" and no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
 ```
 
-```text
-server render: the options have "zoom" but no "center", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
-```
-
-```text
-server render: the options have "center" but no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
-```
-
 ## E1647
 
 A warning of the main API (development build only).
@@ -1847,6 +1831,34 @@ A warning of the main API (development build only).
 <member> is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.
 ```
 
+## E10255
+
+An error of the compat entry.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E10255 https://map-jr.org/e/10255 id=…
+```
+
+```text
+getSource("<id>").setTiles(tiles): "tiles" must be an array of URL strings.
+```
+
+## E10278
+
+An error of both entries.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E10278 https://map-jr.org/e/10278 type=…
+```
+
+```text
+on("<type>"): the second argument is neither a layer id, an array of layer ids nor a listener.
+```
+
 ## E10387
 
 A warning of both entries.
@@ -1974,15 +1986,11 @@ An error of both entries.
 The production build prints this:
 
 ```text
-[map-jr-gl] E11452 https://map-jr.org/e/11452 id=… problem=…
+[map-jr-gl] E11452 https://map-jr.org/e/11452 id=… key=…
 ```
 
 ```text
 The canvas source "<id>": the page has no <canvas> with the id "<key>". Give the id of a <canvas> of the page, or the element.
-```
-
-```text
-The canvas source "<id>": "canvas" is not a <canvas> element. Give the id of a <canvas> of the page, or the element.
 ```
 
 ## E11510
@@ -2027,18 +2035,6 @@ The production build prints this:
 styles(): preview has "zoom" without "center", so the pictures show the view of the map. Give both "center" and "zoom", or neither.
 ```
 
-```text
-styles(): preview has "zoom" without "zoom", so the pictures show the view of the map. Give both "center" and "zoom", or neither.
-```
-
-```text
-styles(): preview has "center" without "center", so the pictures show the view of the map. Give both "center" and "zoom", or neither.
-```
-
-```text
-styles(): preview has "center" without "zoom", so the pictures show the view of the map. Give both "center" and "zoom", or neither.
-```
-
 ## E11613
 
 An error of both entries.
@@ -2051,6 +2047,14 @@ The production build prints this:
 
 ```text
 The layer at index <index> of "layers" is not an object. Give it an object with "id" and "type", or remove it.
+```
+
+## E11640
+
+An error of the server renderer.
+
+```text
+server render: the options have "zoom" but no "center", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
 ```
 
 ## E11846
@@ -2106,10 +2110,6 @@ The production build prints this:
 ```
 
 ```text
-The map cannot be shown: <message>. Call supported() before you make a map, and show other content when it returns false.
-```
-
-```text
 The map cannot be shown: <message>.
 ```
 
@@ -2161,10 +2161,6 @@ The production build prints this:
 
 ```text
 images: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.
-```
-
-```text
-the style: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.
 ```
 
 ## E20129
@@ -2225,6 +2221,42 @@ The production build prints this:
 setCenterElevation(<meters>): the height is not a number. Pass a number of meters, or null to put the center on the ground.
 ```
 
+## E21452
+
+An error of both entries.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E21452 https://map-jr.org/e/21452 id=…
+```
+
+```text
+The canvas source "<id>": "canvas" is not a <canvas> element. Give the id of a <canvas> of the page, or the element.
+```
+
+## E21560
+
+A warning of both entries.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E21560 https://map-jr.org/e/21560
+```
+
+```text
+styles(): preview has "center" without "zoom", so the pictures show the view of the map. Give both "center" and "zoom", or neither.
+```
+
+## E21640
+
+An error of the server renderer.
+
+```text
+server render: the options have "center" but no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
+```
+
 ## E21846
 
 An error of both entries.
@@ -2251,6 +2283,20 @@ The production build prints this:
 
 ```text
 Workers are unavailable (<message>); running on the main thread. If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.
+```
+
+## E30017
+
+An error of both entries.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E30017 https://map-jr.org/e/30017 message=…
+```
+
+```text
+The map cannot be shown: <message>. Call supported() before you make a map, and show other content when it returns false.
 ```
 
 ## E30025
@@ -2292,10 +2338,6 @@ MapImage "<image name>" has no image: its content has no <svg> element. Write an
 ## E30826
 
 An error of the server renderer.
-
-```text
-renderElement(): "<attribute name>" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".
-```
 
 ```text
 renderElement(): "<attribute name>" is not the name of an attribute. Give names such as "id", "class" or "style".
@@ -2365,6 +2407,28 @@ An error of the server renderer.
 
 ```text
 server render: the request to <first> was redirected more than 5 times.
+```
+
+## E50121
+
+An error of the main API.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E50121 https://map-jr.org/e/50121 image=…
+```
+
+```text
+the style: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.
+```
+
+## E50826
+
+An error of the server renderer.
+
+```text
+renderElement(): "<attribute name>" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".
 ```
 
 ## E60025
