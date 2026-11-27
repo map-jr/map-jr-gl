@@ -1310,6 +1310,10 @@ export class GLRenderer {
                 gl.clear(s.terrain || this.extrusionDepth ? gl.STENCIL_BUFFER_BIT : gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
                 this.extrusionDepth = true;
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+                // Only the front faces are drawn, as in MapLibre GL JS: the inside of a wall that floats above the ground
+                // of 3D terrain does not show (#2341). The roof and the outside of each wall wind clockwise on the screen
+                // (see tessellateExtrusion), so the faces that WebGL calls front faces are the ones left out.
+                gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT);
             }
             draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it), sh = shift(it);
@@ -1448,6 +1452,7 @@ export class GLRenderer {
                 gl.depthMask(true);
                 gl.disable(gl.STENCIL_TEST);
                 gl.disable(gl.DEPTH_TEST);
+                gl.disable(gl.CULL_FACE);
             }
         }
 
