@@ -717,38 +717,52 @@ export function placeLabels(
                     // (An icon that is fitted to text on a line turns over with the text when `text-keep-upright` keeps the text
                     // upright. Another icon turns over by `icon-keep-upright`.)
                     const along = (fit !== 'none' ? l.keepUpright : ic.keepUpright) && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
-                    let angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180, iframe: number[] | undefined, merc: number[] | undefined;
-                    let bx = ix, by = iy, bw = iw, bh = ih;
-                    if (fit === 'none') {
-                        // As in MapLibre GL JS, `icon-offset` and the shift of `icon-anchor` belong to the picture: they turn
-                        // with it (`icon-rotate`, the line, the map) and, on the ground, go through the ground with it.
-                        // (`icon-translate` is already on the screen.)
-                        const ox = ix - move[0] - ax, oy = iy - move[1] - ay;
-                        let a = Math.cos(angle), b = Math.sin(angle), c = -b, d = a;
-                        if (iflat) {
-                            // Along a line, the angle from the line on the screen becomes the angle from the line on the ground.
-                            // (On the globe the frame is the one at the center of the icon: see `frameAt`. The icon is drawn
-                            // between its corners, which `groundCorners` projects in each frame from `merc`.)
-                            const ga = angle - (line && !ic.upright ? lineAngle - l.angle! : north), [g, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, ga), ox, oy);
-                            if (tr.globeness) {
-                                // (A pixel of the icon is that many units of the tile along the angle `ga`, as in `groundFrame`.)
-                                const n = 2 ** it.id.z, k = globeStep(tr, it, l.y) / it.scale / EXTENT / n, cx = Math.cos(ga) * k, sx = Math.sin(ga) * k;
-                                merc = [(it.id.x + l.x / EXTENT) / n + ox * cx - oy * sx, (it.id.y + l.y / EXTENT) / n + ox * sx + oy * cx, cx, sx, -sx, cx];
-                            }
-                            iframe = [a, b, c, d] = g;
-                            angle = Math.atan2(b, a); bw = iw * Math.hypot(a, b); bh = ih * Math.hypot(c, d);
-                            bx = ix - ox + px; by = iy - oy + py;
-                        } else { bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1); }
-                    }
+                    let angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180;
+                    // (The icon turned to `ang` on the screen, which is `ga` from the x axis of the tile on the ground: its center,
+                    // its size and its angle on the screen, and on the ground its frame.)
+                    const turnTo = (ang: number, ga: number) => {
+                        let bx = ix, by = iy, bw = iw, bh = ih, iframe: number[] | undefined, merc: number[] | undefined;
+                        if (fit === 'none') {
+                            // As in MapLibre GL JS, `icon-offset` and the shift of `icon-anchor` belong to the picture: they turn
+                            // with it (`icon-rotate`, the line, the map) and, on the ground, go through the ground with it.
+                            // (`icon-translate` is already on the screen.)
+                            const ox = ix - move[0] - ax, oy = iy - move[1] - ay;
+                            let a = Math.cos(ang), b = Math.sin(ang), c = -b, d = a;
+                            if (iflat) {
+                                // (On the globe the frame is the one at the center of the icon: see `frameAt`. The icon is drawn
+                                // between its corners, which `groundCorners` projects in each frame from `merc`.)
+                                const [g, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, ga), ox, oy);
+                                if (tr.globeness) {
+                                    // (A pixel of the icon is that many units of the tile along the angle `ga`, as in `groundFrame`.)
+                                    const n = 2 ** it.id.z, k = globeStep(tr, it, l.y) / it.scale / EXTENT / n, cx = Math.cos(ga) * k, sx = Math.sin(ga) * k;
+                                    merc = [(it.id.x + l.x / EXTENT) / n + ox * cx - oy * sx, (it.id.y + l.y / EXTENT) / n + ox * sx + oy * cx, cx, sx, -sx, cx];
+                                }
+                                iframe = [a, b, c, d] = g;
+                                ang = Math.atan2(b, a); bw = iw * Math.hypot(a, b); bh = ih * Math.hypot(c, d);
+                                bx = ix - ox + px; by = iy - oy + py;
+                            } else { bx = ix + ox * (a - 1) + oy * c; by = iy + ox * b + oy * (d - 1); }
+                        }
+                        return {bx, by, bw, bh, ang, iframe, merc};
+                    };
+                    // (Along a line, the angle from the line on the screen becomes the angle from the line on the ground.)
+                    const rot = ic.rotate * Math.PI / 180, drawn = turnTo(angle, angle - (line && !ic.upright ? lineAngle - l.angle! : north));
+                    const {bx, by, iframe, merc} = drawn;
+                    angle = drawn.ang;
+                    // As in MapLibre GL JS, the collision box of an icon along a line is not turned with the line: it is the box
+                    // that the icon would have at a point (#1774). (An icon that `icon-text-fit` stretches around text along the
+                    // line keeps the box in the direction of the text.)
+                    const unturned = line && fit === 'none', base = ic.upright ? 0 : north;
+                    const held = unturned ? turnTo(base + rot, base + rot - north) : drawn, bt = unturned ? l.upright ? 0 : north : bturn;
+                    let {bw, bh} = held;
                     // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
                     // (`L.fixedSize`, a layer with `icon-offset`): the box and its offset from the anchor grow with it. An icon
                     // that `icon-text-fit` stretches has its size from the text, which has the ratio already.
                     const r = L.fixedSize && fit === 'none' ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
-                    const qx = cx + (bx - cx) * r, qy = cy + (by - cy) * r;
+                    const qx = cx + (held.bx - cx) * r, qy = cy + (held.by - cy) * r;
                     bw *= r; bh *= r;
                     // (On the globe without pitch, the box lies on the ground only with text on the ground (`flat`): as in
                     // MapLibre GL JS, `text-pitch-alignment` decides it, so a box does not change at the switch to Mercator.)
-                    const box = line || (iflat && (!!tr.pitch || flat)) ? boxAround(qx, qy, bw, bh, angle, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn) : boxAround(qx, qy, bw, bh, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn);
+                    const box = line && !unturned || (iflat && (!!tr.pitch || flat)) ? boxAround(qx, qy, bw, bh, held.ang, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, rot + bt, ic.padding, bt) : boxAround(qx, qy, bw, bh, rot + bt, ic.padding, bt);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, merc, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity, color: meta.sdf ? ic.color : undefined, k: isize / meta.pixelRatio};

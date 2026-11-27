@@ -1364,7 +1364,7 @@
 "symbol-geometry/polygon": "match",
 "symbol-height-offset/collision-with-grounded-symbol": "near",
 "symbol-height-offset/elevated-symbol-above-horizon": "match",
-"symbol-placement/line": "differ",
+"symbol-placement/line": "match",
 "symbol-placement/line-center": "near",
 "symbol-placement/line-center-buffer": "near",
 "symbol-placement/line-center-upperright": "near",
