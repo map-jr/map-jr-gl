@@ -2106,6 +2106,7 @@ export class Map {
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 1), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
             size: size(l),
+            ring: l.type === 'line',
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
             translate: /^(circle|fill|line|fill-extrusion)$/.test(l.type) ? shift(l.paint?.[`${l.type}-translate`], l.paint?.[`${l.type}-translate-anchor`]) : undefined,
