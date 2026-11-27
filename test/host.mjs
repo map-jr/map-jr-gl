@@ -1656,6 +1656,31 @@ for (const renderer of renderers) {
         check(`[${renderer}] update() with an edited style object warns for a zoom curve, and a layer with a before that names no layer warns, in the development build (#1765, #1766)`,
             editedStyle.curve === 1 && editedStyle.before.length === 1, JSON.stringify(editedStyle));
 
+        // 3d3. A layer whose `before` names a later layer of the same list warns in update() as in createMap (#2354).
+        const forward = await page.evaluate(async renderer => {
+            const t = window.t, said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const layers = [{id: 'first', type: 'background', before: 'later', paint: {'background-color': '#eee'}}, {id: 'later', type: 'background', paint: {'background-color': '#ddd'}}];
+            const spec = {style, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const make = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            const count = () => said.filter(w => /E5 /.test(w) && /"later"/.test(w)).length;
+            const el1 = make(), h1 = t.lib.createMap(el1, {...spec, layers});
+            await idle(h1); await new Promise(r => setTimeout(r, 500));
+            const created = count(), order1 = h1._map.getStyle().layers.map(l => l.id).join();
+            h1.destroy(); el1.remove(); said.length = 0;
+            const el2 = make(), h2 = t.lib.createMap(el2, spec);
+            await idle(h2); await new Promise(r => setTimeout(r, 300));
+            h2.update({...spec, layers});
+            await new Promise(r => setTimeout(r, 500));
+            const updated = count(), order2 = h2._map.getStyle().layers.map(l => l.id).join();
+            console.warn = warn; h2.destroy(); el2.remove();
+            return {created, updated, order1, order2};
+        }, renderer);
+        check(`[${renderer}] a layer with a before that names a later layer of the same list warns once in update() and is placed as in createMap, in the development build (#2354)`,
+            forward.created === 1 && forward.updated === 1 && forward.order1 === forward.order2, JSON.stringify(forward));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
