@@ -232,8 +232,9 @@ function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[]
             const [x0, y0, x1, y1] = groundIconBox.call(this, L, f, image.width / image.pixelRatio, image.height / image.pixelRatio, turn, mercX(lng), mercY(lat), depth, align === 'map'), [mx, my] = this.iconMove(L, mercX(lng), mercY(lat), x, y);
             return x0 + mx <= box[2] && x1 + mx >= box[0] && y0 + my <= box[3] && y1 + my >= box[1];
         }
-        // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)
-        const size = L.p.iconSize.eval(z, f) * (depth > 0 && !L.fixedSize ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
+        // (The box has the perspective ratio also for a layer with `icon-offset`, whose icon is drawn without it, as the
+        // collision box of MapLibre GL JS has: see `CompiledLayer.fixedSize` (#2168).)
+        const size = L.p.iconSize.eval(z, f) * (depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
         // (An icon is found on its collision box, with `icon-padding`, as in MapLibre GL JS.)
         const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f, this.iconMove(L, mercX(lng), mercY(lat), x, y));
         return x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1];

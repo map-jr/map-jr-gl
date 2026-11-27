@@ -2378,10 +2378,11 @@ for (const renderer of renderers) {
             padded.default === '10' && padded.ten === '10110' && padded.left === '100' && padded.expression === '10', JSON.stringify(padded));
 
         // The same question with `icon-offset` (#2029). The offset turns with `icon-rotate`: with a turn of 90 degrees an
-        // offset of 40 pixels up puts the icon 40 pixels to the right. A layer with `icon-offset` has no perspective ratio
-        // on a tilted map, so the icon of 40 pixels near the bottom of the map, with the default icon-padding of 2 pixels and
-        // the radius of 3 pixels of the question, is found within 25 pixels of its point and not 27 pixels from it (with the
-        // ratio, 1.24 there, the box reached 29.8 pixels).
+        // offset of 40 pixels up puts the icon 40 pixels to the right. A layer with `icon-offset` draws its icon without the
+        // perspective ratio of a tilted map, and its collision box keeps the ratio, as in MapLibre GL JS (#2168). Near the
+        // bottom of the map the ratio is 1.24, so the icon of 40 pixels, with the default icon-padding of 2 pixels and the
+        // radius of 3 pixels of the question, is found 27 pixels from its point and not 33 pixels from it (without the
+        // ratio the box reached 25 pixels).
         const offsetReach = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
             const found = async (icon, places, pitch = 0) => {
@@ -2393,14 +2394,14 @@ for (const renderer of renderers) {
                 return out.join('');
             };
             // At the turned place of the icon, and at the place where the offset would put it without the turn.
-            const turned = [[490, 300], [450, 260]], tilted = [[450 + 15, 550], [450 + 27, 550]];
+            const turned = [[490, 300], [450, 260]], tilted = [[450 + 27, 550], [450 + 33, 550]];
             const rotate = {'icon-rotate': 90, 'icon-offset': [0, -40], 'icon-ignore-placement': true}, still = {'icon-offset': [0, 0], 'icon-ignore-placement': true};
             const out = {turned: await found(rotate, turned), turnedPlaced: await found({...rotate, 'symbol-sort-key': 1}, turned),
                 tilted: await found(still, tilted, 60), tiltedPlaced: await found({...still, 'symbol-sort-key': 1}, tilted, 60)};
             t.host.moveTo({bearing: 0, pitch: 0});
             return out;
         });
-        check(`[${renderer}] a question for drawn features finds an icon with icon-offset where it is drawn: the offset turns with icon-rotate, and on a tilted map the box has no perspective ratio`,
+        check(`[${renderer}] a question for drawn features finds an icon with icon-offset where it is drawn: the offset turns with icon-rotate, and on a tilted map the box has the perspective ratio of its collision box`,
             offsetReach.turned === '10' && offsetReach.turnedPlaced === '10' && offsetReach.tilted === '10' && offsetReach.tiltedPlaced === '10', JSON.stringify(offsetReach));
 
         // A feature of a symbol layer with text only is found on the box of its text, as in MapLibre GL JS, and not near
@@ -2463,6 +2464,32 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] the space of an icon from a buffer has icon-padding added before icon-rotate turns it, as in MapLibre GL JS`,
             turnedSpace.left === '1' && turnedSpace.above === '0', JSON.stringify(turnedSpace));
+
+        // The space of an icon from a buffer whose layer has `icon-offset` has the perspective ratio of a tilted map, as its
+        // collision box has in placement and in MapLibre GL JS, though the icon is drawn without it (#2168). At pitch 60 near
+        // the bottom of the map the ratio is 1.24: the square of 40 pixels takes 24.8 pixels on each side of its point, and
+        // the square of a layer below, 47 pixels to the right, overlaps it and is hidden (without the ratio it showed from
+        // 44.8 pixels on). At 52 pixels it shows.
+        const tiltedSpace = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            t.host.moveTo({bearing: 0, pitch: 60}); await wait(300);
+            const shown = async gap => {
+                const data = {type: 'FeatureCollection', features: [{type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject({x: 450, y: 550})}},
+                    {type: 'Feature', id: 2, properties: {}, geometry: {type: 'Point', coordinates: t.host.unproject({x: 450 + gap, y: 550})}}]};
+                t.host.update(t.spec = {...t.spec, images: {square: t.square('#f0f')}, style: {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data}}, layers: [...t.style.layers.filter(l => l.type !== 'symbol'),
+                    {id: 'spot-below', type: 'symbol', source: 'spot', filter: ['==', ['id'], 2], layout: {'icon-image': 'square', 'icon-padding': 0}},
+                    {id: 'spot-icon', type: 'symbol', source: 'spot', filter: ['==', ['id'], 1], layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-offset': [0, 0], 'icon-padding': 0}}]}});
+                await wait(300); await t.settle();
+                return (await t.host.queryFeatures({x: 450 + gap, y: 550}, {layers: ['spot-below']})).length;
+            };
+            const out = {near: await shown(47), far: await shown(52)};
+            const {images: _, ...rest} = t.spec;
+            t.host.update(t.spec = {...rest, style: t.style});
+            t.host.moveTo({bearing: 0, pitch: 0});
+            return out;
+        });
+        check(`[${renderer}] the space of an icon from a buffer with icon-offset has the perspective ratio of a tilted map, as its collision box in MapLibre GL JS`,
+            tiltedSpace.near === 0 && tiltedSpace.far === 1, JSON.stringify(tiltedSpace));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
