@@ -11,6 +11,8 @@ prints in quotes, and a number without. The section of each code gives the names
 in both builds. The server renderer (`@map-jr/map-jr-gl/server`) and the standalone files print the full
 text.
 
+Each section starts with tags for the kind of the message (`Error` or `Warning`), for its entry, and for `Development build only` where the message exists only in the development build. Where the two builds print different text, the section shows the text of each build under a label, `Production build` or `Development build`.
+
 An error of the library that has a code in its message also carries the code in its field `code`, such as
 `error.code === 'E63'`. The field is set when the error is thrown, when a promise rejects with it, and in the
 `event.error` of an `error` event.
@@ -25,7 +27,7 @@ it was removed, and the code is not used again.
 <!-- messages:start -->
 ## E0
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <call>: the container has height 0, so the map shows nothing. Give the container a height in CSS.
@@ -33,7 +35,7 @@ A warning of the main API (development build only).
 
 ## E1
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 interactiveLayers: the style has no layer "<layer id>". Write the id of a layer of the style or of "layers".
@@ -41,7 +43,7 @@ interactiveLayers: the style has no layer "<layer id>". Write the id of a layer 
 
 ## E2
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 the layer "<layer id>" uses the source "<source id>", which the map does not have. A key of "data" makes a source only while it is in "data": keep "<source id>" in "data", or remove the layer.
@@ -49,7 +51,7 @@ the layer "<layer id>" uses the source "<source id>", which the map does not hav
 
 ## E3
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 queryFeatures(): the style has no layer "<layer id>". In "layers" of the query, write the id of a layer of the style or of "layers" of the description.
@@ -57,7 +59,7 @@ queryFeatures(): the style has no layer "<layer id>". In "layers" of the query, 
 
 ## E4
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 querySource(): the style has no source "<source id>". Write the id of a source of the style or of "sources".
@@ -65,7 +67,7 @@ querySource(): the style has no source "<source id>". Write the id of a source o
 
 ## E5
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 layers: the layer "<layer id>" has before: "<before id>", but the style has no layer "<before id>", so the layer goes on top. Write the id of a layer of the style.
@@ -73,7 +75,7 @@ layers: the layer "<layer id>" has before: "<before id>", but the style has no l
 
 ## E6
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 layers: the layer "<layer id>" uses the source "<source id>", which the style does not have. Add "<source id>" to "sources", or give its GeoJSON as "<source id>" in "data".
@@ -81,7 +83,7 @@ layers: the layer "<layer id>" uses the source "<source id>", which the style do
 
 ## E8
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 update(): "<option>" changed, but it is read only when the map is made. To move the map, change "view" or call moveTo().
@@ -93,13 +95,15 @@ update(): "<option>" changed, but it is read only when the map is made. To chang
 
 ## E9
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E9 https://map-jr.org/e/9
 ```
+
+`Development build`
 
 ```text
 queryFeatures(): the place is not {x, y} or [lng, lat].
@@ -111,13 +115,17 @@ queryFeatures(): <place> is not a place. Write a point of the screen {x, y}, a p
 
 ## E10
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+The first argument of `querySource()` is the id of a source of the style, as a string. The call does not throw: the returned promise rejects with this error, so a call without `await` or `.catch()` shows it as an unhandled rejection.
+
+`Production build`
 
 ```text
 [map-jr-gl] E10 https://map-jr.org/e/10
 ```
+
+`Development build`
 
 ```text
 querySource(): the first argument is not the id of a source.
@@ -129,7 +137,7 @@ querySource(): <first argument> is not the id of a source. Write querySource("id
 
 ## E11
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 querySource(): "<option>" has an effect only in a query at a point or a position. This query ignores it.
@@ -137,7 +145,7 @@ querySource(): "<option>" has an effect only in a query at a point or a position
 
 ## E12
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 querySource(): "<option>" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).
@@ -149,7 +157,7 @@ queryFeatures(): "<option>" is not an option of queryFeatures, which finds what 
 
 ## E13
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <method>(): "radius" has an effect only in a query at a point or a position. This query ignores it.
@@ -157,7 +165,7 @@ A warning of the main API (development build only).
 
 ## E14
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 images: a layer gives the parameter "<parameter>" to the image "<image id>", but that image has no slot {{<parameter>}}, so the parameter has no effect. Write {{<parameter>}} in the SVG of "<image id>" in "images", or remove the parameter.
@@ -165,7 +173,7 @@ images: a layer gives the parameter "<parameter>" to the image "<image id>", but
 
 ## E20
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.
@@ -173,7 +181,7 @@ The description has "glyphs". That field was removed and has no effect: the map 
 
 ## E21
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 points(): the record <record> has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.
@@ -181,7 +189,7 @@ points(): the record <record> has no position of two finite numbers, so it is le
 
 ## E22
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 globalState: the value of "<key>" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.
@@ -189,7 +197,7 @@ globalState: the value of "<key>" is not JSON (a function, a class instance, NaN
 
 ## E23
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 moveTo(): "fitPadding" and "fitMaxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.
@@ -197,13 +205,15 @@ moveTo(): "fitPadding" and "fitMaxZoom" have an effect only with "bounds", so th
 
 ## E24
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E24 https://map-jr.org/e/24 url=…
 ```
+
+`Development build`
 
 ```text
 the request to <to> was aborted.
@@ -211,7 +221,7 @@ the request to <to> was aborted.
 
 ## E25
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: "<option name>" is <option value>. Pass a number that is 0 (no limit) or more.
@@ -219,7 +229,7 @@ server render: "<option name>" is <option value>. Pass a number that is 0 (no li
 
 ## E30
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for the source.
@@ -231,7 +241,7 @@ hoverState: a feature of the layer "<layer id>" has no id, so it gets no feature
 
 ## E40
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 colorScheme: <scheme> is not a color scheme, so the map uses the light colors. Write 'auto', 'light' or 'dark'.
@@ -239,13 +249,15 @@ colorScheme: <scheme> is not a color scheme, so the map uses the light colors. W
 
 ## E42
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E42 https://map-jr.org/e/42
 ```
+
+`Development build`
 
 ```text
 Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.
@@ -253,13 +265,15 @@ Map: the option locale is not an object. Pass an object such as {"NavigationCont
 
 ## E44
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E44 https://map-jr.org/e/44 mime=… err=…
 ```
+
+`Development build`
 
 ```text
 toBlob(): the browser could not encode the image as <mime>. <err>
@@ -267,7 +281,7 @@ toBlob(): the browser could not encode the image as <mime>. <err>
 
 ## E45
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.
@@ -275,7 +289,7 @@ style: the object is not a style, because it has no "version" and "layers", and 
 
 ## E46
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 style: the pair has no "<missing>", so the map uses "<used>" in both color schemes. Give both "light" and "dark".
@@ -283,13 +297,15 @@ style: the pair has no "<missing>", so the map uses "<used>" in both color schem
 
 ## E52
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E52 https://map-jr.org/e/52
 ```
+
+`Development build`
 
 ```text
 Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.
@@ -297,7 +313,7 @@ Map: the option glyphs was removed and has no effect; the map loads the glyph fi
 
 ## E55
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 sprite: <sprite> is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".
@@ -305,13 +321,15 @@ sprite: <sprite> is not a list of sprites. Write a list of {id, url}, for exampl
 
 ## E57
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E57 https://map-jr.org/e/57 method=…
 ```
+
+`Development build`
 
 ```text
 <method>(): the description has no "style". <fix>
@@ -331,13 +349,17 @@ patch(): the description has no "style". Do not set "style" to undefined.
 
 ## E63
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+The map reads the style from the URL that the option `style` (or `setStyle()`) gives, and the server answered with a status that is not 2xx. The error has the fields `status` and `url`. A request that gets no answer at all (for example a timeout, which is E415) has another code.
+
+`Production build`
 
 ```text
 [map-jr-gl] E63 https://map-jr.org/e/63 style=… status=…
 ```
+
+`Development build`
 
 ```text
 Style <style>: HTTP <status>
@@ -345,13 +367,15 @@ Style <style>: HTTP <status>
 
 ## E65
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E65 https://map-jr.org/e/65 container=…
 ```
+
+`Development build`
 
 ```text
 createMap(): the container is <container>. In a framework, make the map after the element is mounted.
@@ -359,13 +383,15 @@ createMap(): the container is <container>. In a framework, make the map after th
 
 ## E70
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E70 https://map-jr.org/e/70 id=…
 ```
+
+`Development build`
 
 ```text
 addLayer: the style has a layer with the id "<id>" already. Remove that layer first, or use another id.
@@ -373,13 +399,15 @@ addLayer: the style has a layer with the id "<id>" already. Remove that layer fi
 
 ## E90
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E90 https://map-jr.org/e/90 key=…
 ```
+
+`Development build`
 
 ```text
 <key> has no effect.
@@ -387,13 +415,15 @@ The production build prints this:
 
 ## E97
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E97 https://map-jr.org/e/97
 ```
+
+`Development build`
 
 ```text
 The container already has a map. Remove that map first: remove(), or destroy() in the main API.
@@ -401,13 +431,15 @@ The container already has a map. Remove that map first: remove(), or destroy() i
 
 ## E110
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E110 https://map-jr.org/e/110
 ```
+
+`Development build`
 
 ```text
 The WebGL context was lost again. Call remove() and create the map again later.
@@ -415,13 +447,15 @@ The WebGL context was lost again. Call remove() and create the map again later.
 
 ## E121
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E121 https://map-jr.org/e/121 image=…
 ```
+
+`Development build`
 
 ```text
 the style: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.
@@ -429,13 +463,15 @@ the style: the image "<image name>" did not load. Give an SVG document or the UR
 
 ## E129
 
-A warning of the React component.
+`Warning` `React component`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E129 https://map-jr.org/e/129 image=…
 ```
+
+`Development build`
 
 ```text
 MapImage "<image name>" is not inside MapJr, so no map gets the image. Put it into the children of MapJr.
@@ -443,13 +479,15 @@ MapImage "<image name>" is not inside MapJr, so no map gets the image. Put it in
 
 ## E160
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E160 https://map-jr.org/e/160 control=…
 ```
+
+`Development build`
 
 ```text
 The control "<control name>" could not be loaded. Check that the files of the library are served.
@@ -457,13 +495,15 @@ The control "<control name>" could not be loaded. Check that the files of the li
 
 ## E205
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E205 https://map-jr.org/e/205
 ```
+
+`Development build`
 
 ```text
 map.painter does not exist in @map-jr/map-jr-gl/maplibre-compat. To check for WebGL, use supported(); a failed start fires "error" with a GPUInitializationError.
@@ -471,7 +511,7 @@ map.painter does not exist in @map-jr/map-jr-gl/maplibre-compat. To check for We
 
 ## E206
 
-A warning of the compat entry (development build only).
+`Warning` `Compat entry` `Development build only`
 
 ```text
 <member> is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. <advice>
@@ -479,13 +519,15 @@ A warning of the compat entry (development build only).
 
 ## E208
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E208 https://map-jr.org/e/208 method=…
 ```
+
+`Development build`
 
 ```text
 <method>(): the feature has no "id". Give the source features an id, or set "promoteId" on the source.
@@ -493,13 +535,15 @@ The production build prints this:
 
 ## E210
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E210 https://map-jr.org/e/210
 ```
+
+`Development build`
 
 ```text
 setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.
@@ -507,7 +551,7 @@ setTransformCameraUpdate: the function changed the camera of a movement. This li
 
 ## E214
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <call>: a marker takes "offset" as a pair, [x, y], so a number or an object with a pair for each anchor has no effect. Write a pair, or add "popup: true".
@@ -515,13 +559,15 @@ A warning of the main API (development build only).
 
 ## E216
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E216 https://map-jr.org/e/216
 ```
+
+`Development build`
 
 ```text
 custom(): write custom({key: "my-control", element}) or custom({key: "my-control", onAdd(map) { return element; }, onRemove() {}}).
@@ -529,13 +575,15 @@ custom(): write custom({key: "my-control", element}) or custom({key: "my-control
 
 ## E217
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] <method>(): E217 https://map-jr.org/e/217 id=…
 ```
+
+`Development build`
 
 ```text
 <method>(): "<id>" is not a GeoJSON source of the style.
@@ -543,13 +591,15 @@ The production build prints this:
 
 ## E238
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E238 https://map-jr.org/e/238 projection=…
 ```
+
+`Development build`
 
 ```text
 The style has the projection <t>, which is not supported, so the map uses "mercator".
@@ -557,13 +607,15 @@ The style has the projection <t>, which is not supported, so the map uses "merca
 
 ## E241
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E241 https://map-jr.org/e/241
 ```
+
+`Development build`
 
 ```text
 setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.
@@ -571,13 +623,15 @@ setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library ca
 
 ## E242
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E242 https://map-jr.org/e/242 message=…
 ```
+
+`Development build`
 
 ```text
 The map could not copy data to its workers (<message>). Pass plain objects (toRaw() in Vue).
@@ -585,13 +639,15 @@ The map could not copy data to its workers (<message>). Pass plain objects (toRa
 
 ## E255
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E255 https://map-jr.org/e/255 id=…
 ```
+
+`Development build`
 
 ```text
 getSource("<id>").setUrl(url): "url" must be a string.
@@ -599,13 +655,15 @@ getSource("<id>").setUrl(url): "url" must be a string.
 
 ## E259
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E259 https://map-jr.org/e/259
 ```
+
+`Development build`
 
 ```text
 addControl(): the argument is not a control. Pass an object with onAdd and onRemove methods.
@@ -613,13 +671,15 @@ addControl(): the argument is not a control. Pass an object with onAdd and onRem
 
 ## E269
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E269 https://map-jr.org/e/269 pos=…
 ```
+
+`Development build`
 
 ```text
 addControl(): "<pos>" is not a position. Write "top-left", "top-right", "bottom-left" or "bottom-right".
@@ -627,13 +687,15 @@ addControl(): "<pos>" is not a position. Write "top-left", "top-right", "bottom-
 
 ## E277
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E277 https://map-jr.org/e/277 url=… megabytes=…
 ```
+
+`Development build`
 
 ```text
 PMTiles <url>: the server ignores Range requests, so each tile would download the whole file (<file size> MB). Serve the file from a server that supports Range requests.
@@ -641,13 +703,15 @@ PMTiles <url>: the server ignores Range requests, so each tile would download th
 
 ## E278
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E278 https://map-jr.org/e/278 type=…
 ```
+
+`Development build`
 
 ```text
 on("<type>"): the listener after the layer id is not a function.
@@ -655,13 +719,15 @@ on("<type>"): the listener after the layer id is not a function.
 
 ## E294
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E294 https://map-jr.org/e/294 source=… id=…
 ```
+
+`Development build`
 
 ```text
 setFeatureState(): the source "<source>" is not GeoJSON, and the id "<id>" is a string. Feature state on a vector source needs the numeric id of the feature in the tile, or "promoteId" on the source.
@@ -669,13 +735,15 @@ setFeatureState(): the source "<source>" is not GeoJSON, and the id "<id>" is a 
 
 ## E316
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E316 https://map-jr.org/e/316
 ```
+
+`Development build`
 
 ```text
 addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.
@@ -683,13 +751,15 @@ addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not us
 
 ## E387
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E387 https://map-jr.org/e/387
 ```
+
+`Development build`
 
 ```text
 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.
@@ -697,13 +767,15 @@ new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the
 
 ## E415
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E415 https://map-jr.org/e/415 input=… ms=…
 ```
+
+`Development build`
 
 ```text
 the request to <input> did not finish within <ms> ms.
@@ -711,13 +783,15 @@ the request to <input> did not finish within <ms> ms.
 
 ## E463
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E463 https://map-jr.org/e/463
 ```
+
+`Development build`
 
 ```text
 new Map(): the option projection has no effect, as in MapLibre GL JS 6.17. Put "projection": {"type": "globe"} into the style, or call map.setProjection({type: "globe"}) after the style has loaded.
@@ -725,13 +799,15 @@ new Map(): the option projection has no effect, as in MapLibre GL JS 6.17. Put "
 
 ## E464
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E464 https://map-jr.org/e/464 image=…
 ```
+
+`Development build`
 
 ```text
 addImage("<image name>"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.
@@ -739,13 +815,15 @@ addImage("<image name>"): images that draw themselves with WebGL (renderWithWebG
 
 ## E469
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E469 https://map-jr.org/e/469 id=…
 ```
+
+`Development build`
 
 ```text
 addLayer: the layer "<id>" has a source object, and the style has a source with the id "<id>" already. Remove that source first, or pass source: "<id>".
@@ -753,13 +831,15 @@ addLayer: the layer "<id>" has a source object, and the style has a source with 
 
 ## E484
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E484 https://map-jr.org/e/484 type=…
 ```
+
+`Development build`
 
 ```text
 once("<type>"): the map was removed.
@@ -767,13 +847,15 @@ once("<type>"): the map was removed.
 
 ## E487
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E487 https://map-jr.org/e/487 id=… type=…
 ```
+
+`Development build`
 
 ```text
 data: the source "<id>" has the type "<type>", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.
@@ -781,13 +863,15 @@ data: the source "<id>" has the type "<type>", and only a GeoJSON source takes d
 
 ## E494
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E494 https://map-jr.org/e/494 font=… url=… reason=…
 ```
+
+`Development build`
 
 ```text
 fonts: the font "<font>" did not load from <src> (<m>). The labels use the next font of their "text-font".
@@ -795,13 +879,15 @@ fonts: the font "<font>" did not load from <src> (<m>). The labels use the next 
 
 ## E495
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E495 https://map-jr.org/e/495
 ```
+
+`Development build`
 
 ```text
 the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.
@@ -809,13 +895,15 @@ the style: the code for the images in metadata["map-jr:images"] did not load, an
 
 ## E503
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] <method>(): E503 https://map-jr.org/e/503 options=…
 ```
+
+`Development build`
 
 ```text
 <method>(): the third argument is <options>. Pass {limit, offset}, for example clusterLeaves(sourceId, clusterId, {limit: 50, offset: 100}).
@@ -823,7 +911,7 @@ The production build prints this:
 
 ## E524
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 the description has no field "<field>", so the map ignores it. Check the spelling against MapDescription in docs/reference/description.md, or remove "<field>".
@@ -831,13 +919,15 @@ the description has no field "<field>", so the map ignores it. Check the spellin
 
 ## E539
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E539 https://map-jr.org/e/539
 ```
+
+`Development build`
 
 ```text
 The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.
@@ -845,13 +935,15 @@ The style has no list "layers". Give a style object with "version", "sources" an
 
 ## E541
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E541 https://map-jr.org/e/541
 ```
+
+`Development build`
 
 ```text
 colorScheme(): the control works only in the controls of a map of the main API (createMap).
@@ -859,13 +951,15 @@ colorScheme(): the control works only in the controls of a map of the main API (
 
 ## E566
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E566 https://map-jr.org/e/566 id=…
 ```
+
+`Development build`
 
 ```text
 getSource("<id>").setClusterOptions(options): "options" must be an object with cluster, clusterMaxZoom or clusterRadius.
@@ -873,13 +967,15 @@ getSource("<id>").setClusterOptions(options): "options" must be an object with c
 
 ## E569
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E569 https://map-jr.org/e/569 method=…
 ```
+
+`Development build`
 
 ```text
 hillshade-method: <hillshade method> is not a method, and the layer uses "standard". Write "standard", "basic", "combined", "igor" or "multidirectional".
@@ -887,13 +983,15 @@ hillshade-method: <hillshade method> is not a method, and the layer uses "standa
 
 ## E583
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E583 https://map-jr.org/e/583 options=… message=…
 ```
+
+`Development build`
 
 ```text
 number-format: Intl.NumberFormat does not accept the options <options> (<message>). The expression gives the number as plain text. Pass a BCP 47 locale, an ISO 4217 currency and a unit that Intl.NumberFormat supports.
@@ -901,13 +999,15 @@ number-format: Intl.NumberFormat does not accept the options <options> (<message
 
 ## E590
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E590 https://map-jr.org/e/590 source=…
 ```
+
+`Development build`
 
 ```text
 The source "<source name>": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).
@@ -915,7 +1015,7 @@ The source "<source name>": "redFactor", "greenFactor", "blueFactor" and "baseSh
 
 ## E645
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <layer>: "color-relief-color" is not an "interpolate" expression, so the layer draws nothing, as in MapLibre GL JS. Write ["interpolate", ["linear"], ["elevation"], elevation, color, ...].
@@ -927,7 +1027,7 @@ A warning of the main API (development build only).
 
 ## E648
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <where>: "<property>" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.
@@ -935,7 +1035,7 @@ A warning of the main API (development build only).
 
 ## E654
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.
@@ -943,7 +1043,7 @@ The style has no list "layers". Give a style object with "version", "sources" an
 
 ## E685
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 locale: <problem>. Pass an object of strings by the keys of MapLibre GL JS, such as {"NavigationControl.ZoomIn": "Zoom avant"}.
@@ -951,13 +1051,15 @@ locale: <problem>. Pass an object of strings by the keys of MapLibre GL JS, such
 
 ## E706
 
-An error of the Vue component.
+`Error` `Vue component`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E706 https://map-jr.org/e/706 message=…
 ```
+
+`Development build`
 
 ```text
 <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: <cause>
@@ -965,13 +1067,15 @@ The production build prints this:
 
 ## E764
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E764 https://map-jr.org/e/764
 ```
+
+`Development build`
 
 ```text
 the style: the code for metadata["map-jr:images"] did not load, so the map has no images of the style. Serve the files of the library together.
@@ -979,13 +1083,15 @@ the style: the code for metadata["map-jr:images"] did not load, so the map has n
 
 ## E798
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E798 https://map-jr.org/e/798 why=…
 ```
+
+`Development build`
 
 ```text
 Worker rendering unavailable, using the main thread: <why>
@@ -993,7 +1099,7 @@ Worker rendering unavailable, using the main thread: <why>
 
 ## E826
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <map-jr>: the attribute <attribute> cannot be read, so the element ignores it. Write a number, for example zoom="11".
@@ -1009,13 +1115,15 @@ A warning of the main API (development build only).
 
 ## E893
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E893 https://map-jr.org/e/893 pitch=… maxPitch=…
 ```
+
+`Development build`
 
 ```text
 maxPitch <p>: the pitch stops at <MAX_PITCH>. Pass <MAX_PITCH> or less.
@@ -1023,13 +1131,15 @@ maxPitch <p>: the pitch stops at <MAX_PITCH>. Pass <MAX_PITCH> or less.
 
 ## E897
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E897 https://map-jr.org/e/897
 ```
+
+`Development build`
 
 ```text
 setCenterElevation(): the map center is clamped to the ground, which replaces the height in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.
@@ -1037,7 +1147,7 @@ setCenterElevation(): the map center is clamped to the ground, which replaces th
 
 ## E985
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 tileZoomOffset: <dz> is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.
@@ -1045,13 +1155,15 @@ tileZoomOffset: <dz> is not a whole number. Write for example tileZoomOffset: 2 
 
 ## E1020
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1020 https://map-jr.org/e/1020
 ```
+
+`Development build`
 
 ```text
 setTransformConstrain has no effect: the function needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
@@ -1059,13 +1171,15 @@ setTransformConstrain has no effect: the function needs the map to draw on the m
 
 ## E1021
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1021 https://map-jr.org/e/1021 sourceId=…
 ```
+
+`Development build`
 
 ```text
 setSourceTileLodParams: there is no source "<sourceId>". Add the source first, or leave out the ID for all sources.
@@ -1073,7 +1187,7 @@ setSourceTileLodParams: there is no source "<sourceId>". Add the source first, o
 
 ## E1057
 
-An error of the main API (development build only).
+`Error` `Main API` `Development build only`
 
 ```text
 <where>: <reason> The map draws it, but MapLibre GL JS rejects the style. Write ["zoom"] only as the input of one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.
@@ -1081,7 +1195,7 @@ An error of the main API (development build only).
 
 ## E1139
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <where>: a layer of this type has no such property in the style specification, so the map ignores it. Write "<near>".
@@ -1093,7 +1207,7 @@ A warning of the main API (development build only).
 
 ## E1144
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 update(): this is the description object that the map already has, so a field that you changed in it has no effect. Write a new object for each change, for example map.update({...description, data: {...description.data, points}}), or call map.patch({...}).
@@ -1101,7 +1215,7 @@ update(): this is the description object that the map already has, so a field th
 
 ## E1147
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <target>: "<option>" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit<option>". "<option>" of the description applies to the map for good.
@@ -1109,7 +1223,7 @@ A warning of the main API (development build only).
 
 ## E1148
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <call>: the description has both "view" and "initialView.bounds". "view" wins, so the map does not fit "initialView.bounds". Remove "view" to fit the bounds, or remove "bounds" from "initialView".
@@ -1117,7 +1231,7 @@ A warning of the main API (development build only).
 
 ## E1151
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <MapJr>: the template ref has no method "<method>" until the map has loaded. Call it from @load or later, or use useMapInstance() in a component inside MapJr.
@@ -1125,13 +1239,15 @@ A warning of the main API (development build only).
 
 ## E1163
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1163 https://map-jr.org/e/1163 what=… url=… reason=…
 ```
+
+`Development build`
 
 ```text
 the request for the <resource> <url>... failed: <reason>
@@ -1143,7 +1259,7 @@ the request for the <resource> <url> failed: <reason>
 
 ## E1189
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 sources: the GeoJSON source "<source id>" has no "data", and "data" of the description has no key "<source id>", so the source has no features. Give the source its own "data", or write the features as "data: {<source id>: geojson}".
@@ -1151,7 +1267,7 @@ sources: the GeoJSON source "<source id>" has no "data", and "data" of the descr
 
 ## E1190
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 update(): "view" is a view that the map reported earlier, so the map does not move. The map ignores such a view so that a slow application does not pull it back while the user moves it. To return to a stored view, call moveTo(view).
@@ -1159,7 +1275,7 @@ update(): "view" is a view that the map reported earlier, so the map does not mo
 
 ## E1195
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 controls: two custom() controls have the key "<control>", so the map adds only the first. Give each custom() control its own "key".
@@ -1171,13 +1287,15 @@ controls: <control>() is in the list twice with the same options, so the map add
 
 ## E1214
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1214 https://map-jr.org/e/1214 source=…
 ```
+
+`Development build`
 
 ```text
 queryElevation(): the style has no "raster-dem" source "<source>". Name a source of type "raster-dem".
@@ -1185,13 +1303,15 @@ queryElevation(): the style has no "raster-dem" source "<source>". Name a source
 
 ## E1241
 
-A warning of the module for Nuxt.
+`Warning` `Module for Nuxt`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1241 https://map-jr.org/e/1241 keys=…
 ```
+
+`Development build`
 
 ```text
 nuxt.config: the module @map-jr/map-jr-gl/nuxt has no options, so it ignores <keys>. Remove the key "mapJr" and the options of the module in "modules", and set the props of <MapJr> instead.
@@ -1199,13 +1319,15 @@ nuxt.config: the module @map-jr/map-jr-gl/nuxt has no options, so it ignores <ke
 
 ## E1245
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1245 https://map-jr.org/e/1245 pitch=… maxPitch=…
 ```
+
+`Development build`
 
 ```text
 setMinPitch(<p>): the pitch must be between 0 and the largest pitch, <maxPitch>. Pass a value in that range, or raise the largest pitch with setMaxPitch first.
@@ -1213,7 +1335,7 @@ setMinPitch(<p>): the pitch must be between 0 and the largest pitch, <maxPitch>.
 
 ## E1258
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <map-jr>: the attribute <attribute>="false" switches the option off all the same, because an attribute that is there takes effect, whatever its value. To keep the option on, remove <attribute>.
@@ -1225,7 +1347,7 @@ A warning of the main API (development build only).
 
 ## E1300
 
-A warning of the server renderer.
+`Warning` `Server renderer`
 
 ```text
 the server render draws no image "<imageName>", because <cause>. The map loads it in the browser.
@@ -1233,13 +1355,15 @@ the server render draws no image "<imageName>", because <cause>. The map loads i
 
 ## E1438
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1438 https://map-jr.org/e/1438 source=…
 ```
+
+`Development build`
 
 ```text
 The source "<source name>" has encoding "mlt". MapLibre Tiles are not supported; use tiles with encoding "mvt".
@@ -1247,13 +1371,15 @@ The source "<source name>" has encoding "mlt". MapLibre Tiles are not supported;
 
 ## E1448
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1448 https://map-jr.org/e/1448 id=…
 ```
+
+`Development build`
 
 ```text
 The video source "<id>" could not load any of its "urls". Check the URLs, and that a server of another origin sends CORS headers.
@@ -1261,13 +1387,15 @@ The video source "<id>" could not load any of its "urls". Check the URLs, and th
 
 ## E1452
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1452 https://map-jr.org/e/1452 id=… width=… height=…
 ```
+
+`Development build`
 
 ```text
 The canvas source "<id>": the canvas is <width> × <height> pixels. Give it a width and a height above 0.
@@ -1275,13 +1403,15 @@ The canvas source "<id>": the canvas is <width> × <height> pixels. Give it a wi
 
 ## E1465
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1465 https://map-jr.org/e/1465
 ```
+
+`Development build`
 
 ```text
 createTileMesh(): the granularity is too large for 16-bit indices. Pass a smaller granularity, or "32bit".
@@ -1289,13 +1419,15 @@ createTileMesh(): the granularity is too large for 16-bit indices. Pass a smalle
 
 ## E1519
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1519 https://map-jr.org/e/1519
 ```
+
+`Development build`
 
 ```text
 styles(): the control works only in the controls of a map of the main API (createMap).
@@ -1303,13 +1435,15 @@ styles(): the control works only in the controls of a map of the main API (creat
 
 ## E1560
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1560 https://map-jr.org/e/1560 label=… reason=…
 ```
+
+`Development build`
 
 ```text
 styles(): no picture for "<label>": <reason>.
@@ -1317,7 +1451,7 @@ styles(): no picture for "<label>": <reason>.
 
 ## E1582
 
-A warning of the server renderer.
+`Warning` `Server renderer`
 
 ```text
 renderToImage(): "inlineImages" has no effect, because the image always embeds raster tiles and icons. Remove "inlineImages".
@@ -1325,13 +1459,15 @@ renderToImage(): "inlineImages" has no effect, because the image always embeds r
 
 ## E1593
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1593 https://map-jr.org/e/1593 type=…
 ```
+
+`Development build`
 
 ```text
 Skipping unsupported layer types: <type>
@@ -1339,13 +1475,15 @@ Skipping unsupported layer types: <type>
 
 ## E1612
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1612 https://map-jr.org/e/1612 sourceId=…
 ```
+
+`Development build`
 
 ```text
 The contour source "<sourceId>" has no "thresholds", so it draws no lines. Give it intervals for each zoom level, for example "thresholds": {"11": [200, 1000], "14": [50, 200]}.
@@ -1353,13 +1491,15 @@ The contour source "<sourceId>" has no "thresholds", so it draws no lines. Give 
 
 ## E1613
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1613 https://map-jr.org/e/1613 sourceId=…
 ```
+
+`Development build`
 
 ```text
 The source "<sourceId>" is not an object. Give it an object with "type", or remove it from "sources".
@@ -1367,13 +1507,15 @@ The source "<sourceId>" is not an object. Give it an object with "type", or remo
 
 ## E1618
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1618 https://map-jr.org/e/1618 list=…
 ```
+
+`Development build`
 
 ```text
 Skipping unsupported layer types: <list>
@@ -1381,13 +1523,15 @@ Skipping unsupported layer types: <list>
 
 ## E1621
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1621 https://map-jr.org/e/1621 ratio=…
 ```
+
+`Development build`
 
 ```text
 The option pixelRatio is <ratio>. Give a number above 0, or leave it out to follow devicePixelRatio.
@@ -1395,13 +1539,15 @@ The option pixelRatio is <ratio>. Give a number above 0, or leave it out to foll
 
 ## E1630
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1630 https://map-jr.org/e/1630 tileWorkers=… count=…
 ```
+
+`Development build`
 
 ```text
 configure(): tileWorkers: <n> has no effect while a map uses the <count> tile workers that exist. Call configure() before the first map is created, or destroy every map first.
@@ -1409,13 +1555,15 @@ configure(): tileWorkers: <n> has no effect while a map uses the <count> tile wo
 
 ## E1634
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1634 https://map-jr.org/e/1634
 ```
+
+`Development build`
 
 ```text
 The workers sent 200 different warnings. Later ones are not shown.
@@ -1423,7 +1571,7 @@ The workers sent 200 different warnings. Later ones are not shown.
 
 ## E1640
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the options have no "center" and no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
@@ -1431,7 +1579,7 @@ server render: the options have no "center" and no "zoom", and no "bounds". Pass
 
 ## E1647
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <call>: "<option>" is not an option of an overlay, so it has no effect. Write "<option>". The options are <overlay options>.
@@ -1443,7 +1591,7 @@ A warning of the main API (development build only).
 
 ## E1670
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: "<option name>" is <size>. Pass the <option name> in CSS pixels as a number greater than 0, for example <option name>: 800.
@@ -1463,7 +1611,7 @@ server render: "<option name>" is <size>. Pass the <option name> in CSS pixels a
 
 ## E1683
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <where>: this is a <group> property. The map reads it here all the same, but MapLibre GL JS rejects the style. Move it to "<group>".
@@ -1471,7 +1619,7 @@ A warning of the main API (development build only).
 
 ## E1692
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <layer>: "symbol-avoid-edges" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.
@@ -1479,13 +1627,15 @@ A warning of the main API (development build only).
 
 ## E1695
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1695 https://map-jr.org/e/1695 source=…
 ```
+
+`Development build`
 
 ```text
 The source "<source name>": "emptyResponse": "missing" has no effect, and an empty tile draws nothing, as in MapLibre GL JS. Remove "emptyResponse".
@@ -1493,13 +1643,15 @@ The source "<source name>": "emptyResponse": "missing" has no effect, and an emp
 
 ## E1709
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1709 https://map-jr.org/e/1709 fov=…
 ```
+
+`Development build`
 
 ```text
 setVerticalFieldOfView(<fov>): the field of view is not a number. Pass degrees from 0.1 to 150.
@@ -1507,7 +1659,7 @@ setVerticalFieldOfView(<fov>): the field of view is not a number. Pass degrees f
 
 ## E1712
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.
@@ -1515,7 +1667,7 @@ style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, w
 
 ## E1748
 
-An error of the compat entry (development build only).
+`Error` `Compat entry` `Development build only`
 
 ```text
 <where>: <why>. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.
@@ -1523,13 +1675,15 @@ An error of the compat entry (development build only).
 
 ## E1846
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1846 https://map-jr.org/e/1846
 ```
+
+`Development build`
 
 ```text
 workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain, with a globe or with a heatmap, hillshade or color-relief layer cannot draw it, and no map can answer a query of features. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.
@@ -1537,13 +1691,15 @@ workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because 
 
 ## E1855
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E1855 https://map-jr.org/e/1855 option=… todo=…
 ```
+
+`Development build`
 
 ```text
 <member> has no effect: the drag handlers here have no options. <todo>.
@@ -1551,13 +1707,15 @@ The production build prints this:
 
 ## E2004
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2004 https://map-jr.org/e/2004 layer=… source=…
 ```
+
+`Development build`
 
 ```text
 removeSource: the layer "<id>" uses the source "<id>". Remove the layer first.
@@ -1565,13 +1723,15 @@ removeSource: the layer "<id>" uses the source "<id>". Remove the layer first.
 
 ## E2011
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2011 https://map-jr.org/e/2011 pitch=…
 ```
+
+`Development build`
 
 ```text
 setAnisotropicFilterPitch(<pitch>): the pitch is not from 0 to 180. Pass degrees from 0 to 180, or null for the default (20).
@@ -1579,13 +1739,15 @@ setAnisotropicFilterPitch(<pitch>): the pitch is not from 0 to 180. Pass degrees
 
 ## E2033
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2033 https://map-jr.org/e/2033 id=… ref=…
 ```
+
+`Development build`
 
 ```text
 The layer "<id>": "ref" names "<ref>", which is no layer without "ref". Name such a layer, or give "type" and "source".
@@ -1593,13 +1755,15 @@ The layer "<id>": "ref" names "<ref>", which is no layer without "ref". Name suc
 
 ## E2040
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2040 https://map-jr.org/e/2040 id=… type=… maxRuns=…
 ```
+
+`Development build`
 
 ```text
 layer "<id>": in the order of "<type>-sort-key", the features of a tile form more than <MAX_RUNS> runs with the same "<type>-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.
@@ -1607,13 +1771,15 @@ layer "<id>": in the order of "<type>-sort-key", the features of a tile form mor
 
 ## E2047
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2047 https://map-jr.org/e/2047 source=… interval=…
 ```
+
+`Development build`
 
 ```text
 The contour source "<source>" has the interval <interval> in "thresholds", so it draws no lines at the zooms of that interval. Give intervals greater than 0.
@@ -1621,13 +1787,15 @@ The contour source "<source>" has the interval <interval> in "thresholds", so it
 
 ## E2106
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2106 https://map-jr.org/e/2106 source=…
 ```
+
+`Development build`
 
 ```text
 The source "<source>":
@@ -1635,13 +1803,15 @@ The source "<source>":
 
 ## E2145
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2145 https://map-jr.org/e/2145 member=…
 ```
+
+`Development build`
 
 ```text
 <member> has no effect: this library does not have that feature.
@@ -1649,13 +1819,15 @@ The production build prints this:
 
 ## E2148
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2148 https://map-jr.org/e/2148 op=…
 ```
+
+`Development build`
 
 ```text
 Unsupported expression "<op>"
@@ -1663,13 +1835,15 @@ Unsupported expression "<op>"
 
 ## E2233
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2233 https://map-jr.org/e/2233 method=… image=… length=… width=… height=… expected=…
 ```
+
+`Development build`
 
 ```text
 <method>("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
@@ -1677,13 +1851,15 @@ The production build prints this:
 
 ## E2242
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E2242 https://map-jr.org/e/2242 method=… image=… width=… height=… newWidth=… newHeight=…
 ```
+
+`Development build`
 
 ```text
 <method>("<image name>"): the image is <width>×<height>, but the new one is <newWidth>×<newHeight>. Pass an image of the same size, or call removeImage() and then addImage().
@@ -1691,7 +1867,7 @@ The production build prints this:
 
 ## E2265
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <call>: <faces> is not an object of font faces, so the map loads no font from it. Write an object by "text-font" name, such as {"Open Sans": "https://example.com/open-sans.woff2"}, or {"Open Sans": [{"url": "https://example.com/open-sans-latin.woff2", "unicode-range": ["U+0000-00FF"]}]}.
@@ -1699,7 +1875,7 @@ A warning of the main API (development build only).
 
 ## E2272
 
-A warning of the compat entry (development build only).
+`Warning` `Compat entry` `Development build only`
 
 ```text
 new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
@@ -1707,7 +1883,7 @@ new Map(): "<member>" is not an option of the map, so it has no effect. Did you 
 
 ## E2404
 
-A warning of the server renderer.
+`Warning` `Server renderer`
 
 ```text
 renderElement(): attributes.<attribute> is dropped, because the element already has the attribute "<lower>" from the description or from an earlier entry. Remove it from attributes or change the description.
@@ -1727,7 +1903,7 @@ interactive: "<gesture>" is not a gesture, so it has no effect. Write one of dra
 
 ## E2434
 
-A warning of the server renderer.
+`Warning` `Server renderer`
 
 ```text
 server render: the layer "<layerId>" is not drawn, because the server render does not draw <kind>. The map draws it in the browser. To leave it out of the server render without this warning, set overrides: {"<layerId>": {hidden: true}}.
@@ -1735,13 +1911,15 @@ server render: the layer "<layerId>" is not drawn, because the server render doe
 
 ## E10017
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10017 https://map-jr.org/e/10017 workerVersion=… pageVersion=…
 ```
+
+`Development build`
 
 ```text
 The worker file is version <worker version> and the page file is version <__VERSION__>. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass `workerUrl` with the URL of that file.
@@ -1749,13 +1927,15 @@ The worker file is version <worker version> and the page file is version <__VERS
 
 ## E10022
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10022 https://map-jr.org/e/10022 why=…
 ```
+
+`Development build`
 
 ```text
 The query has no answer: the map <why>.
@@ -1763,7 +1943,7 @@ The query has no answer: the map <why>.
 
 ## E10025
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: "allowHosts" is <allowHosts>. Pass a list of host names without a scheme, a port or a path, for example ["tiles.example.com"].
@@ -1771,13 +1951,15 @@ server render: "allowHosts" is <allowHosts>. Pass a list of host names without a
 
 ## E10042
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10042 https://map-jr.org/e/10042
 ```
+
+`Development build`
 
 ```text
 GeolocateControl: the code of trackUserLocation could not be loaded. Check that the files of the library are served.
@@ -1785,13 +1967,15 @@ GeolocateControl: the code of trackUserLocation could not be loaded. Check that 
 
 ## E10044
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10044 https://map-jr.org/e/10044
 ```
+
+`Development build`
 
 ```text
 toBlob(): the map was removed before its image was taken.
@@ -1799,13 +1983,15 @@ toBlob(): the map was removed before its image was taken.
 
 ## E10045
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10045 https://map-jr.org/e/10045 id=…
 ```
+
+`Development build`
 
 ```text
 addLayer: the custom layer "<id>" has no method render. Add render(gl, args).
@@ -1813,13 +1999,15 @@ addLayer: the custom layer "<id>" has no method render. Add render(gl, args).
 
 ## E10063
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10063 https://map-jr.org/e/10063 source=…
 ```
+
+`Development build`
 
 ```text
 The source "<source name>" has no "tiles" and no "url". Give it one of them.
@@ -1827,13 +2015,15 @@ The source "<source name>" has no "tiles" and no "url". Give it one of them.
 
 ## E10065
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10065 https://map-jr.org/e/10065 container=…
 ```
+
+`Development build`
 
 ```text
 createMap(): no element with the id "<container>".
@@ -1841,13 +2031,15 @@ createMap(): no element with the id "<container>".
 
 ## E10070
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10070 https://map-jr.org/e/10070 id=… source=…
 ```
+
+`Development build`
 
 ```text
 addLayer: the layer "<id>" names the source "<source>", which the style does not have. Add the source first.
@@ -1855,13 +2047,15 @@ addLayer: the layer "<id>" names the source "<source>", which the style does not
 
 ## E10090
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10090 https://map-jr.org/e/10090 control=… option=… instead=…
 ```
+
+`Development build`
 
 ```text
 <control>: the option <option> has no effect.<instead>
@@ -1869,13 +2063,15 @@ The production build prints this:
 
 ## E10121
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10121 https://map-jr.org/e/10121
 ```
+
+`Development build`
 
 ```text
 The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)
@@ -1883,13 +2079,15 @@ The texture of the images is full, so this image and the images after it are not
 
 ## E10129
 
-A warning of the React component.
+`Warning` `React component`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10129 https://map-jr.org/e/10129 image=…
 ```
+
+`Development build`
 
 ```text
 MapImage "<image name>" has no image: its content has no <svg> element. Give an <svg> element as the content, or the URL of an image as "src".
@@ -1897,13 +2095,15 @@ MapImage "<image name>" has no image: its content has no <svg> element. Give an 
 
 ## E10205
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10205 https://map-jr.org/e/10205 status=…
 ```
+
+`Development build`
 
 ```text
 The map cannot start: WebGL2 is not available (<status>).
@@ -1915,7 +2115,7 @@ The map cannot start: WebGL2 is not available.
 
 ## E10206
 
-A warning of the compat entry (development build only).
+`Warning` `Compat entry` `Development build only`
 
 ```text
 <member> is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.
@@ -1923,13 +2123,15 @@ A warning of the compat entry (development build only).
 
 ## E10255
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10255 https://map-jr.org/e/10255 id=…
 ```
+
+`Development build`
 
 ```text
 getSource("<id>").setTiles(tiles): "tiles" must be an array of URL strings.
@@ -1937,13 +2139,15 @@ getSource("<id>").setTiles(tiles): "tiles" must be an array of URL strings.
 
 ## E10278
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10278 https://map-jr.org/e/10278 type=…
 ```
+
+`Development build`
 
 ```text
 on("<type>"): the second argument is neither a layer id, an array of layer ids nor a listener.
@@ -1951,13 +2155,15 @@ on("<type>"): the second argument is neither a layer id, an array of layer ids n
 
 ## E10387
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10387 https://map-jr.org/e/10387
 ```
+
+`Development build`
 
 ```text
 Vite's dependency cache does not contain the worker file. Add optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']} to vite.config and restart the dev server.
@@ -1965,13 +2171,15 @@ Vite's dependency cache does not contain the worker file. Add optimizeDeps: {exc
 
 ## E10494
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10494 https://map-jr.org/e/10494 font=…
 ```
+
+`Development build`
 
 ```text
 The labels use the next font of their "text-font" instead of "<font>".
@@ -1979,13 +2187,15 @@ The labels use the next font of their "text-font" instead of "<font>".
 
 ## E10495
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10495 https://map-jr.org/e/10495 styleImages=…
 ```
+
+`Development build`
 
 ```text
 the style: metadata["map-jr:images"] is not an object of images by name, and the map uses none of them. Write {"name": "<svg ...>"}.
@@ -1993,7 +2203,7 @@ the style: metadata["map-jr:images"] is not an object of images by name, and the
 
 ## E10524
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 the description has no field "extend", so the map ignores it. Write "sources", "layers" and "terrain" at the root of the description.
@@ -2001,13 +2211,15 @@ the description has no field "extend", so the map ignores it. Write "sources", "
 
 ## E10569
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10569 https://map-jr.org/e/10569 lights=… maxLights=…
 ```
+
+`Development build`
 
 ```text
 hillshade: a layer has <n> lights, and the layer draws the first <LIGHTS>. Give lists of at most <LIGHTS> values.
@@ -2015,7 +2227,7 @@ hillshade: a layer has <n> lights, and the layer draws the first <LIGHTS>. Give 
 
 ## E10645
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <layer>: "color-relief-color" has <stops> stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.
@@ -2023,7 +2235,7 @@ A warning of the main API (development build only).
 
 ## E10654
 
-A warning of the server renderer.
+`Warning` `Server renderer`
 
 ```text
 server render: the source "<source>": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).
@@ -2031,7 +2243,7 @@ server render: the source "<source>": "redFactor", "greenFactor", "blueFactor" a
 
 ## E10826
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <map-jr>: the element has no style, so it shows no map. Write the URL of a style in the attribute "map-style", or set the property "mapStyle".
@@ -2039,13 +2251,15 @@ A warning of the main API (development build only).
 
 ## E10897
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E10897 https://map-jr.org/e/10897
 ```
+
+`Development build`
 
 ```text
 jumpTo(): the map center is clamped to the ground, which replaces "elevation" in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.
@@ -2053,7 +2267,7 @@ jumpTo(): the map center is clamped to the ground, which replaces "elevation" in
 
 ## E11139
 
-An error of the compat entry (development build only).
+`Error` `Compat entry` `Development build only`
 
 ```text
 <where>: unknown property "<property>". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "<near>".
@@ -2065,13 +2279,15 @@ An error of the compat entry (development build only).
 
 ## E11214
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E11214 https://map-jr.org/e/11214
 ```
+
+`Development build`
 
 ```text
 queryElevation(): the style has no "raster-dem" source. Add a source of type "raster-dem" to the style.
@@ -2079,13 +2295,15 @@ queryElevation(): the style has no "raster-dem" source. Add a source of type "ra
 
 ## E11452
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E11452 https://map-jr.org/e/11452 id=… key=…
 ```
+
+`Development build`
 
 ```text
 The canvas source "<id>": the page has no <canvas> with the id "<key>". Give the id of a <canvas> of the page, or the element.
@@ -2093,13 +2311,15 @@ The canvas source "<id>": the page has no <canvas> with the id "<key>". Give the
 
 ## E11510
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E11510 https://map-jr.org/e/11510 type=… option=…
 ```
+
+`Development build`
 
 ```text
 <type>: the option <n> has no effect. Remove it; see "What is different" in docs/reference/maplibre-differences.md.
@@ -2107,13 +2327,15 @@ The production build prints this:
 
 ## E11519
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E11519 https://map-jr.org/e/11519
 ```
+
+`Development build`
 
 ```text
 styles(): "entries" is empty. Write styles({entries: [{label: "Streets", style: "https://…/style.json"}, …]}).
@@ -2121,13 +2343,15 @@ styles(): "entries" is empty. Write styles({entries: [{label: "Streets", style: 
 
 ## E11560
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E11560 https://map-jr.org/e/11560
 ```
+
+`Development build`
 
 ```text
 styles(): preview has "zoom" without "center", so the pictures show the view of the map. Give both "center" and "zoom", or neither.
@@ -2135,13 +2359,15 @@ styles(): preview has "zoom" without "center", so the pictures show the view of 
 
 ## E11613
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E11613 https://map-jr.org/e/11613 index=…
 ```
+
+`Development build`
 
 ```text
 The layer at index <index> of "layers" is not an object. Give it an object with "id" and "type", or remove it.
@@ -2149,7 +2375,7 @@ The layer at index <index> of "layers" is not an object. Give it an object with 
 
 ## E11640
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the options have "zoom" but no "center", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
@@ -2157,7 +2383,7 @@ server render: the options have "zoom" but no "center", and no "bounds". Pass "c
 
 ## E11683
 
-An error of the compat entry (development build only).
+`Error` `Compat entry` `Development build only`
 
 ```text
 <where>: unknown property "<property>". The map reads it here all the same, but it is a <group> property, and MapLibre GL JS rejects the style. Move it to "<group>".
@@ -2165,13 +2391,15 @@ An error of the compat entry (development build only).
 
 ## E11846
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E11846 https://map-jr.org/e/11846 partName=… message=…
 ```
+
+`Development build`
 
 ```text
 The page could not load the part of the library for <partName> (<message>). Serve the chunks of the library from the same folder and version as its entry.
@@ -2179,13 +2407,15 @@ The page could not load the part of the library for <partName> (<message>). Serv
 
 ## E12047
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E12047 https://map-jr.org/e/12047 source=… maxCrossings=…
 ```
+
+`Development build`
 
 ```text
 The contour source "<source>" has a tile whose lines cross the cells of its grid more than <MAX_CROSSINGS> times, so that tile has no lines. Check the "encoding" of the raster-dem source ("mapbox" or "terrarium") and the intervals of "thresholds".
@@ -2193,13 +2423,15 @@ The contour source "<source>" has a tile whose lines cross the cells of its grid
 
 ## E12148
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E12148 https://map-jr.org/e/12148 op=…
 ```
+
+`Development build`
 
 ```text
 Unsupported filter "<op>"
@@ -2207,13 +2439,15 @@ Unsupported filter "<op>"
 
 ## E20017
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E20017 https://map-jr.org/e/20017 message=…
 ```
+
+`Development build`
 
 ```text
 The map cannot be shown: <message>.
@@ -2221,7 +2455,7 @@ The map cannot be shown: <message>.
 
 ## E20025
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the host of <url> is not in "allowHosts". Add "<host>" to "allowHosts" if the render can request it.
@@ -2229,13 +2463,15 @@ server render: the host of <url> is not in "allowHosts". Add "<host>" to "allowH
 
 ## E20044
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E20044 https://map-jr.org/e/20044 type=…
 ```
+
+`Development build`
 
 ```text
 toBlob(): the browser could not encode the image as <type>.
@@ -2243,13 +2479,15 @@ toBlob(): the browser could not encode the image as <type>.
 
 ## E20070
 
-An error of the compat entry.
+`Error` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E20070 https://map-jr.org/e/20070 id=…
 ```
+
+`Development build`
 
 ```text
 addSource: the style has a source with the id "<id>" already. Remove that source first, or use another id.
@@ -2257,13 +2495,15 @@ addSource: the style has a source with the id "<id>" already. Remove that source
 
 ## E20121
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E20121 https://map-jr.org/e/20121 image=…
 ```
+
+`Development build`
 
 ```text
 images: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.
@@ -2271,13 +2511,15 @@ images: the image "<image name>" did not load. Give an SVG document or the URL o
 
 ## E20129
 
-A warning of the Vue component.
+`Warning` `Vue component`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E20129 https://map-jr.org/e/20129 image=…
 ```
+
+`Development build`
 
 ```text
 MapImage "<image name>" is not inside MapJr, so no map gets the image. Put it into the content of MapJr.
@@ -2285,13 +2527,15 @@ MapImage "<image name>" is not inside MapJr, so no map gets the image. Put it in
 
 ## E20495
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E20495 https://map-jr.org/e/20495 image=… styleImages=… why=…
 ```
+
+`Development build`
 
 ```text
 the style: the image "<image name>" of metadata["map-jr:images"] is left out, because the style has more than <MAX_STYLE_IMAGES> images. Give an SVG document without references to other files, or the URL of an image.
@@ -2299,7 +2543,7 @@ the style: the image "<image name>" of metadata["map-jr:images"] is left out, be
 
 ## E20648
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <source>: "volatile" has no effect, as in MapLibre GL JS, which does not read it. Remove the property.
@@ -2307,7 +2551,7 @@ A warning of the main API (development build only).
 
 ## E20826
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 <map-jr>: the attribute "map-style" was removed and the element has no "mapStyle", so the map keeps the style that it has. To change the style, give another URL in "map-style" or set "mapStyle".
@@ -2315,13 +2559,15 @@ A warning of the main API (development build only).
 
 ## E20897
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E20897 https://map-jr.org/e/20897 meters=…
 ```
+
+`Development build`
 
 ```text
 setCenterElevation(<meters>): the height is not a number. Pass a number of meters, or null to put the center on the ground.
@@ -2329,13 +2575,15 @@ setCenterElevation(<meters>): the height is not a number. Pass a number of meter
 
 ## E21452
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E21452 https://map-jr.org/e/21452 id=…
 ```
+
+`Development build`
 
 ```text
 The canvas source "<id>": "canvas" is not a <canvas> element. Give the id of a <canvas> of the page, or the element.
@@ -2343,13 +2591,15 @@ The canvas source "<id>": "canvas" is not a <canvas> element. Give the id of a <
 
 ## E21560
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E21560 https://map-jr.org/e/21560
 ```
+
+`Development build`
 
 ```text
 styles(): preview has "center" without "zoom", so the pictures show the view of the map. Give both "center" and "zoom", or neither.
@@ -2357,7 +2607,7 @@ styles(): preview has "center" without "zoom", so the pictures show the view of 
 
 ## E21640
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the options have "center" but no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
@@ -2365,13 +2615,15 @@ server render: the options have "center" but no "zoom", and no "bounds". Pass "c
 
 ## E21846
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E21846 https://map-jr.org/e/21846 partName=…
 ```
+
+`Development build`
 
 ```text
 The worker could not load map-jr-gl-worker-<partName>.js, the part of the worker for <partName>: it has no URL. Set workerUrl to an http(s) URL of map-jr-gl-worker.js.
@@ -2379,13 +2631,15 @@ The worker could not load map-jr-gl-worker-<partName>.js, the part of the worker
 
 ## E22148
 
-A warning of both entries.
+`Warning` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E22148 https://map-jr.org/e/22148 message=…
 ```
+
+`Development build`
 
 ```text
 Workers are unavailable (<message>); running on the main thread. If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.
@@ -2393,13 +2647,15 @@ Workers are unavailable (<message>); running on the main thread. If the worker f
 
 ## E30017
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E30017 https://map-jr.org/e/30017 message=…
 ```
+
+`Development build`
 
 ```text
 The map cannot be shown: <message>. Call supported() before you make a map, and show other content when it returns false.
@@ -2407,7 +2663,7 @@ The map cannot be shown: <message>. Call supported() before you make a map, and 
 
 ## E30025
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the requests took longer than the "timeout" of <total> ms; the request to <first> was not complete. Pass a larger "timeout", or 0 for no limit.
@@ -2415,13 +2671,15 @@ server render: the requests took longer than the "timeout" of <total> ms; the re
 
 ## E30121
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E30121 https://map-jr.org/e/30121 image=… maxVariants=…
 ```
+
+`Development build`
 
 ```text
 The image "<image>" has more than <MAX_VARIANTS> different sets of values for its slots, and the others are not drawn. Give its slots values from a small set.
@@ -2429,13 +2687,15 @@ The image "<image>" has more than <MAX_VARIANTS> different sets of values for it
 
 ## E30129
 
-A warning of the Vue component.
+`Warning` `Vue component`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E30129 https://map-jr.org/e/30129 image=…
 ```
+
+`Development build`
 
 ```text
 MapImage "<image name>" has no image: its content has no <svg> element. Write an <svg> in its slot, or give the URL of an image as "src".
@@ -2443,7 +2703,7 @@ MapImage "<image name>" has no image: its content has no <svg> element. Write an
 
 ## E30826
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 renderElement(): "<attribute name>" is not the name of an attribute. Give names such as "id", "class" or "style".
@@ -2451,13 +2711,15 @@ renderElement(): "<attribute name>" is not the name of an attribute. Give names 
 
 ## E31846
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E31846 https://map-jr.org/e/31846 url=… partName=…
 ```
+
+`Development build`
 
 ```text
 The worker could not load <url>, the part of the worker for <partName>. Serve map-jr-gl-worker-<partName>.js from the same folder and version as map-jr-gl-worker.js.
@@ -2465,13 +2727,15 @@ The worker could not load <url>, the part of the worker for <partName>. Serve ma
 
 ## E32148
 
-A warning of the compat entry.
+`Warning` `Compat entry`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E32148 https://map-jr.org/e/32148 method=… had=… has=…
 ```
+
+`Development build`
 
 ```text
 <method>: the result was used without `await` and was not complete (<had> of <has> features). Tile data is in a worker. Change const features = map.<method>(...); to const features = await map.<method>(...); (this also works in MapLibre GL JS). See "Feature queries" in docs/reference/maplibre-differences.md.
@@ -2479,7 +2743,7 @@ The production build prints this:
 
 ## E40025
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the request to <first> took longer than the "requestTimeout" of <each> ms. Pass a larger "requestTimeout", or 0 for no limit.
@@ -2487,13 +2751,15 @@ server render: the request to <first> took longer than the "requestTimeout" of <
 
 ## E40121
 
-An error of both entries.
+`Error` `Both entries`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E40121 https://map-jr.org/e/40121 image=… message=…
 ```
+
+`Development build`
 
 ```text
 The image "<image>" cannot be drawn with the values of its slots (<message>). Check that the SVG is well-formed, also with a value in each slot.
@@ -2501,7 +2767,7 @@ The image "<image>" cannot be drawn with the values of its slots (<message>). Ch
 
 ## E40826
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: <cause>
@@ -2509,7 +2775,7 @@ renderElement(): the server render failed, and the element has no first view. Th
 
 ## E50025
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the request to <first> was redirected more than 5 times.
@@ -2517,13 +2783,15 @@ server render: the request to <first> was redirected more than 5 times.
 
 ## E50121
 
-An error of the main API.
+`Error` `Main API`
 
-The production build prints this:
+`Production build`
 
 ```text
 [map-jr-gl] E50121 https://map-jr.org/e/50121 image=…
 ```
+
+`Development build`
 
 ```text
 the style: the image "<image name>" did not load. Give an SVG document or the URL of an image that the page can read.
@@ -2531,7 +2799,7 @@ the style: the image "<image name>" did not load. Give an SVG document or the UR
 
 ## E50826
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 renderElement(): "<attribute name>" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".
@@ -2539,7 +2807,7 @@ renderElement(): "<attribute name>" is not the name of an attribute that the ele
 
 ## E60025
 
-An error of the server renderer.
+`Error` `Server renderer`
 
 ```text
 server render: the response of <first> is larger than "maxBytes" (<max> bytes). Pass a larger "maxBytes", or leave the source out of the style.

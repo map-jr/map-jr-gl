@@ -241,6 +241,8 @@ export {CollisionGrid};
 
 
 type Box = [number, number, number, number];
+/** A circle of the grid: its bound and its radius (see `CollisionGrid`). */
+type Circle = [number, number, number, number, number];
 /**
  * `pad` is one number for every side, or [top, right, bottom, left] (`icon-padding`). As in MapLibre GL JS, the padding
  * is added before the box is turned by `angle`.
@@ -334,8 +336,14 @@ function squaresInView(tr: Transform, id: TileID, k: number, cover: Map<number, 
     return [...out];
 }
 
-/** How many squares a side `squaresInView` cuts the tile of the line label `l` into. */
-const squares = (l: LabelSrc, maxZoom: number) => l.tz === undefined ? 1 : Math.min(l.ov!, 2 ** Math.max(0, Math.floor(maxZoom) - 4 - l.tz));
+/**
+ * How many times a tile of the line label `l` is smaller on the screen than a tile of the level `level`: on the globe
+ * this library loads tiles of a lower level than MapLibre GL JS (see `covering` in globe.ts), and MapLibre GL JS lays out
+ * the anchors in tiles of the level of the map (#2078). 1 without a level, or for a tile of that level or deeper.
+ */
+const lift = (l: LabelSrc, level?: number) => level === undefined || l.tz === undefined ? 1 : 2 ** Math.max(0, level - l.tz - Math.log2(l.ov!));
+/** How many squares a side `squaresInView` cuts the tile of the line label `l` into (`f`: see `lift`). */
+const squares = (l: LabelSrc, maxZoom: number, f = 1) => l.tz === undefined ? 1 : Math.min(l.ov! * f, 2 ** Math.max(0, Math.floor(maxZoom) - 4 - l.tz));
 
 /** The most labels that the anchors along the lines of one tile layer make. Tiles come from other parties, and a line of many short turns with a small `symbol-spacing` could otherwise make millions. */
 export const MAX_LINE_ANCHORS = 20000;
@@ -395,22 +403,25 @@ function anchorDistances(c: number[], spacing: number, length: number, glyph: nu
  * The labels at the anchors of the line labels of one tile layer, for one shaper (one map), with the `generation` of
  * the shaper that they were found at. `final` is false while a glyph file or an icon was missing.
  */
-const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; maxZoom: number; inView: string; final: boolean; out: LabelSrc[]}>();
+const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; maxZoom: number; level?: number; inView: string; final: boolean; out: LabelSrc[]}>();
 /**
  * The labels of a tile with each line label (`LabelSrc.line`) made into one label at each of its anchors. The anchors
  * need the width of the label, which is known only here: a label whose glyph file is on its way has none yet, and is
  * placed when the file has arrived (the engine places the labels again then). The result is kept until the shaper has
  * new glyphs or images. (The cache holds no state of a map: its key is the label array of a tile, which belongs to one
  * map, and the entry names its shaper.) `maxZoom` is the `maxZoom` of the map, which decides into which squares
- * MapLibre GL JS cuts an over-zoomed tile (see `squaresInView`).
+ * MapLibre GL JS cuts an over-zoomed tile (see `squaresInView`). On the globe, `level` is the level of the tiles that
+ * MapLibre GL JS shows at the zoom of the map: a tile of a lower level is cut into squares of that level, each with the
+ * spacing of a tile of its own, so that `symbol-spacing` is as wide on the screen as in MapLibre GL JS.
  */
-export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup, maxZoom = 22, view?: (k: number) => number[]): LabelSrc[] {
+export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup, maxZoom = 22, view?: (k: number) => number[], level?: number): LabelSrc[] {
     if (!labels.some(l => l.line)) return labels;
     const generation = shaper.generation ?? 0;
     let done = alongLine.get(labels);
-    // (The squares in view of the first line label; the same for every label of the tile.)
-    const first = labels.find(l => l.line)!, k0 = squares(first, maxZoom), shown = view && k0 > 1 ? view(k0) : null, inView = shown ? shown.join() : '';
-    if (done && done.final && done.shaper === shaper && done.generation === generation && done.maxZoom === maxZoom && done.inView === inView) return done.out;
+    // (The squares in view of the first line label; the same for every label of the tile. The tile cover of the globe
+    // has no tiles of the level of a lifted tile, so all of its squares are taken.)
+    const first = labels.find(l => l.line)!, f0 = lift(first, level), k0 = squares(first, maxZoom, f0), shown = view && k0 > 1 && f0 === 1 ? view(k0) : null, inView = shown ? shown.join() : '';
+    if (done && done.final && done.shaper === shaper && done.generation === generation && done.maxZoom === maxZoom && done.level === level && done.inView === inView) return done.out;
     const out: LabelSrc[] = [], seen = new Map<string, Map<number, number[]>>();
     let final = true, made = 0;
     for (const l of labels) {
@@ -419,21 +430,22 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
         if (shaped?.wait) { final = false; continue; }
         const meta = l.icon ? icons?.(l.icon.name) : undefined;
         if (l.icon && !meta) final = false;
-        // As in MapLibre GL JS, the wider of text and icon, scaled as text of `text-size` one zoom level in.
-        const scale = l.tpr! * l.size1 / EM, length = Math.max(shaped?.width ?? 0, meta ? meta.width / meta.pixelRatio : 0) * scale;
+        // As in MapLibre GL JS, the wider of text and icon, scaled as text of `text-size` one zoom level in. (A tile of a
+        // lower level on the globe has `f` times as many pixels in a tile unit: see `lift`.)
+        const f = lift(l, level), spacing = l.lineSpacing! / f, scale = l.tpr! / f * l.size1 / EM, length = Math.max(shaped?.width ?? 0, meta ? meta.width / meta.pixelRatio : 0) * scale;
         // An over-zoomed tile is cut into squares as in MapLibre GL JS: `k` a side, each with the over-scaling `ov / k`.
-        const ov = l.ov!, k = squares(l, maxZoom), size = EXTENT / k, c = l.line;
+        const ov = l.ov! * f, k = squares(l, maxZoom, f), size = EXTENT / k, c = l.line;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (let i = 0; i < c.length; i += 2) minX = Math.min(minX, c[i]), maxX = Math.max(maxX, c[i]), minY = Math.min(minY, c[i + 1]), maxY = Math.max(maxY, c[i + 1]);
         for (const sq of shown ?? Array.from({length: k * k}, (_, i) => i)) {
             const x0 = Math.floor(sq / k) * size, y0 = sq % k * size;
             if (maxX < x0 || minX > x0 + size || maxY < y0 || minY > y0 + size) continue;
             // As in MapLibre GL JS, the same text is not repeated within half of `symbol-spacing` in the square (looked up in a grid of that size).
-            const repeat = Math.max(1, l.lineSpacing! / 2), tk = l.text && l.text + '\0' + sq, cells = tk ? seen.get(tk) ?? new Map<number, number[]>() : null;
+            const repeat = Math.max(1, spacing / 2), tk = l.text && l.text + '\0' + sq, cells = tk ? seen.get(tk) ?? new Map<number, number[]>() : null;
             if (cells) seen.set(tk, cells);
             for (const part of clipLine(l.line, x0, y0, size, k)) {
                 if (made >= MAX_LINE_ANCHORS) break;
-                const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
+                const ds = anchorDistances(part, spacing, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
                 if (!ds.length) continue;
                 for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds, k)) {
                     if (cells) {
@@ -455,7 +467,7 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
             }
         }
     }
-    alongLine.set(labels, {shaper, generation, maxZoom, inView, final, out});
+    alongLine.set(labels, {shaper, generation, maxZoom, level, inView, final, out});
     return out;
 }
 
@@ -493,7 +505,7 @@ export function placeLabels(
         // The labels of a layer with `symbol-sort-key` are placed in the order of the key over all tiles, as in MapLibre:
         // a label does not win only because its tile comes first.
         let runs: {it: typeof items[0]; labels: LabelSrc[]; no: number}[] = [];
-        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons, tr.maxZoom, k => squaresInView(tr, it.id, k, cover)), no: itemNo}); }
+        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons, tr.maxZoom, k => squaresInView(tr, it.id, k, cover), tr.globeness ? Math.floor(tr.zoom) : undefined), no: itemNo}); }
         if (runs.length > 1 && (L.p.sortKey.dd || L.p.sortKey.eval(tr.zoom) !== 0)) {
             const all: typeof runs = [];
             for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
@@ -557,7 +569,7 @@ export function placeLabels(
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
                 let flatFrames: number[][] | undefined, flatSizes: number[] = [], textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
-                let bent: Placed | undefined, bentBoxes: Box[] = [];
+                let bent: Placed | undefined, bentBoxes: Circle[] = [];
                 const anchors: string[] = [];
                 if (hasText) {
                     const shift = (anchor: string, r: number): [number, number] => [
@@ -749,9 +761,9 @@ export function placeLabels(
                     const {bx, by, iframe, merc} = drawn;
                     angle = drawn.ang;
                     // As in MapLibre GL JS, the collision box of an icon along a line is not turned with the line: it is the box
-                    // that the icon would have at a point (#1774). (An icon that `icon-text-fit` stretches around text along the
-                    // line keeps the box in the direction of the text.)
-                    const unturned = line && fit === 'none', base = ic.upright ? 0 : north;
+                    // that the icon would have at a point (#1774). An icon that `icon-text-fit` stretches around text along the line
+                    // has the box of the icon around the text before the text follows the line (#2462).
+                    const unturned = line, base = ic.upright ? 0 : north;
                     const held = unturned ? turnTo(base + rot, base + rot - north) : drawn, bt = unturned ? l.upright ? 0 : north : bturn;
                     let {bw, bh} = held;
                     // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
@@ -816,11 +828,11 @@ export function placeLabels(
 
 /**
  * Lays one line of text along a label's path. Returns each glyph's start point (relative to the anchor) and angle, plus
- * collision boxes, or null when the text does not fit or the line bends too sharply to read.
+ * collision circles, or null when the text does not fit or the line bends too sharply to read.
  */
 function followLine(
     tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, flat = 0,
-): {curve: number[]; ground?: number[]; boxes: Box[]} | null {
+): {curve: number[]; ground?: number[]; boxes: Circle[]} | null {
     const path = l.path!, n = path.length / 2;
     // On the globe the ground has the scale of the sphere at the anchor (MapLibre GL JS's `getPitchedTextCorrection`):
     // the cosine of the latitude of the anchor over that of the center, mixed with Mercator by the globeness.
@@ -852,7 +864,7 @@ function followLine(
     // under each glyph (in the tile, at its place along the piece) gives nearly the same result without the division.
     const z = 2 ** it.id.z, behind = (u: number, v: number) => !!tr.globeness && tr.globe!.hidden(tr, (it.id.x + u / EXTENT) / z, (it.id.y + v / EXTENT) / z);
     const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centered on the line
-    const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
+    const curve: number[] = [], boxes: Circle[] = [], ground: number[] = [], mids: number[] = [];
     let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
     for (const advance of line.advances) {
         const a = advance * size, mid = pen + a / 2;
@@ -879,9 +891,23 @@ function followLine(
         if (!k) { bx = -dy; by = dx; }
         curve.push(cx - dx * a / 2 + bx * shift - ax, cy - dy * a / 2 + by * shift - ay, angle);
         if (k) ground.push(Math.hypot(dx, dy), bx, by);
-        const r = h / 2 + l.padding;
-        boxes.push([cx - r, cy - r, cx + r, cy + r]);
+        mids.push(cx, cy);
         pen += a + spacing;
+    }
+    // As in MapLibre GL JS (`placeCollisionCircles`), the text takes space as circles of the height of the text and
+    // `text-padding`, on the line from the center of the first glyph to that of the last (inset by a quarter of the
+    // radius at each end), with their centers 2.5 radii apart. (The glyph centers stand for the line between them; the
+    // text has two glyphs or more.)
+    const r = h / 2 + l.padding, along = [0];
+    for (let i = 2; i < mids.length; i += 2) along.push(along[i / 2 - 1] + Math.hypot(mids[i] - mids[i - 2], mids[i + 1] - mids[i - 1]));
+    const length = along[along.length - 1], inset = Math.min(r / 4, length / 2), padded = length - inset * 2;
+    const count = length <= r / 2 ? 1 : Math.ceil(padded / (r * 2.5)) + 1;
+    for (let i = 0, j = 1; i < count; i++) {
+        const d = inset + padded * i / Math.max(count - 1, 1);
+        while (j < along.length - 1 && along[j] < d) j++;
+        const f = along[j] > along[j - 1] ? (d - along[j - 1]) / (along[j] - along[j - 1]) : 0;
+        const x = mids[j * 2 - 2] + (mids[j * 2] - mids[j * 2 - 2]) * f, y = mids[j * 2 - 1] + (mids[j * 2 + 1] - mids[j * 2 - 1]) * f;
+        boxes.push([x - r, y - r, x + r, y + r, r]);
     }
     return {curve, ground: k ? ground : undefined, boxes};
 }

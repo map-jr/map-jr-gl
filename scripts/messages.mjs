@@ -3,13 +3,16 @@
 //   node scripts/messages.mjs --check   fails when a message of src/ cannot be read, has a placeholder that says nothing,
 //                                       cannot be classed as a warning or an error, has no code or the code of another
 //                                       message, uses a code that was removed, or when docs/reference/messages.md differs
-//                                       from what --write makes
+//                                       from what --write makes, or when a paragraph comment `// E<code>: <text>` in src/
+//                                       (see below) is for a code that does not exist or is a second one for its code
 //   node scripts/messages.mjs --write   writes docs/reference/messages.md, and dist/messages.json when dist/ exists
 //   node scripts/messages.mjs --json    writes dist/messages.json only (build.mjs runs this)
 //
 // Each message has a code, `E` and a number, right after the prefix: `[map-jr-gl] E1846 workerUrl: ...`. The source writes
 // the code at the start of the text, and the texts of src/mistakes.ts take their number as their code. A new message takes
 // the number of its issue; a second one for the same issue takes that number plus 10000 (see docs/development/error-codes.md).
+// A code can have a paragraph of explanation (#2484): a comment `// E<code>: <text>` on the lines before the place in src/ that
+// raises it, which continues in the `//` lines that follow. --write puts it in the section of the code. See docs/development.md.
 // A code that leaves src/ stays in docs/reference/messages.md as removed, so that a link in an old log still works, and it
 // is not used again.
 //
@@ -24,6 +27,7 @@ import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
 import {parseAst} from 'vite';
 import {LINK, productionNames} from './message-codes.mjs';
+import {paragraphProblems, paragraphText, readParagraphs} from './message-paragraphs.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mode = ['--check', '--write', '--json'].find(m => process.argv.includes(m));
@@ -363,14 +367,28 @@ const compatCodes = (() => {
 const entryOf = (code, file) => file === 'server.ts' ? 'the server renderer' : file === 'host.ts' ? 'the main API' : file === 'mistakes.ts' ? (sites.some(x => x.alias && x.code === code && x.file === 'host.ts') ? 'the main API' : compatCodes.has(code) ? 'the compat entry (development build only)' : 'the main API (development build only)')
     : /^(compat-|maplibre-compat)/.test(file) ? 'the compat entry' : file === 'vue.ts' ? 'the Vue component' : file === 'nuxt.ts' ? 'the module for Nuxt' : file === 'react.ts' ? 'the React component' : 'both entries';
 const plain = text => text.replace(/\n/g, ' ').replace(/^\[map-jr-gl\] E\d+ /, '').replace(/^\[map-jr-gl\] (<method>\(\): )E\d+ /, '$1').replace(/^\[map-jr-gl\] (\w+\(\): )/, '$1');
+/** The line of tags under a heading: the kind, the entry, and "Development build only". The site shows the inline code of this line as tags (website/build/markdown.ts). */
+const tags = (code, x) => {
+    const entry = entryOf(code, x.file), dev = / \(development build only\)$/.test(entry);
+    const name = entry.replace(/ \(development build only\)$/, '').replace(/^the /, '');
+    return [x.kind, name[0].toUpperCase() + name.slice(1), ...dev ? ['Development build only'] : []].map(t => '`' + t + '`').join(' ');
+};
 // The names of the values that the production build prints for each code (scripts/message-codes.mjs).
 const valueNames = new Map();
 for (const file of files) for (const [code, names] of productionNames(readFileSync(path.join(root, 'src', file), 'utf8'), path.join(root, 'src', file))) valueNames.set(code, names);
 /** What the production build prints for a code, with each value as `name=…`; nothing for a message that production does not have. */
 const production = (code, x) => /development build only|server renderer/.test(entryOf(code, x.file)) ? ''
-    : `The production build prints this:\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
+    : `\`Production build\`\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
+/**
+ * The paragraph of a code (#2484): a comment `// E<code>: <text>` in src/, on the lines before the place that raises the code.
+ * The paragraph goes on in each `//` line that follows directly, and it ends at a line that is not a `//` comment, at an empty
+ * `//` line, or at the next `// E<code>:` line. The lines are joined with one space. The build drops comments, so a paragraph adds no bytes.
+ */
+const paragraphs = readParagraphs(files.map(f => [f, readFileSync(path.join(root, 'src', f), 'utf8')]));
+problems.push(...paragraphProblems(paragraphs, code => byCode.has(code)));
+const paragraphOf = code => { const x = paragraphs.get(code)?.[0]; return x ? paragraphText(x) + '\n\n' : ''; };
 const sections = new Map();
-for (const [code, x] of byCode) sections.set(code, `## E${code}\n\nA${x.kind === 'Error' ? 'n error' : ' warning'} of ${entryOf(code, x.file)}.\n\n` + production(code, x) + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
+for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + paragraphOf(code) + production(code, x) + (production(code, x) ? '`Development build`\n\n' : '') + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
 for (const [code, section] of before) if (!byCode.has(code)) sections.set(code, isRemoved(section) ? section : section.replace(/\n\n/, `\n\nRemoved after ${pkg.version}.\n\n`));
 const page = `# Messages
 
@@ -384,6 +402,8 @@ The development build prints the code and the text. The production build prints 
 prints in quotes, and a number without. The section of each code gives the names. The worker prints the same short form
 in both builds. The server renderer (\`@map-jr/map-jr-gl/server\`) and the standalone files print the full
 text.
+
+Each section starts with tags for the kind of the message (\`Error\` or \`Warning\`), for its entry, and for \`Development build only\` where the message exists only in the development build. Where the two builds print different text, the section shows the text of each build under a label, \`Production build\` or \`Development build\`.
 
 An error of the library that has a code in its message also carries the code in its field \`code\`, such as
 \`error.code === 'E63'\`. The field is set when the error is thrown, when a promise rejects with it, and in the

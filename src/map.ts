@@ -541,7 +541,8 @@ export class Map {
         // (The style of a move to this thread is not new: a `style.load` listener that adds the custom layer would add it twice.)
         if (!this.movingToMain) this.styleEvents(true);
 
-        this.observer = new ResizeObserver(() => { this.styles(); this.resize(); });
+        let seen = false; // (each observer, also that of a restart, starts with a call for the size that the map has)
+        this.observer = new ResizeObserver(() => { this.styles(); this.observed(!seen); seen = true; });
         this.observer.observe(this.container);
         this.bindInput();
         if (o.attributionControl !== false && !this.restarted) {
@@ -958,7 +959,7 @@ export class Map {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs, labels: e.labels});
         } else if (e.type === 'resized') {
             this.buffer = [...e.buffer, performance.now() + 1000];
-            this.fire('resize');
+            if (!this.fireResize) this.fire('resize');
         } else if (e.type === 'result') {
             const p = this.pending.get(e.id);
             this.pending.delete(e.id);
@@ -1383,6 +1384,12 @@ export class Map {
     /** Draws the map again in the next frame. */
     triggerRepaint() { this.post({type: 'repaint'}); }
 
+    /** @internal The container observer calls this; `first` is true for the first call of each observer. The compat entry skips it when the size has not changed, as MapLibre GL JS does. */
+    protected observed(_first: boolean) { this.resize(); }
+    /** @internal Whether an animation that `easeTo` sent runs now, also before the engine reports its first frame. */
+    protected easing() { const e = this.eased; return !!e && performance.now() < e.at + (e.c as {duration: number}).duration; }
+    /** @internal The compat entry fires `resize` in `resize()`, so the report of the engine fires nothing. */
+    protected fireResize = false;
     /** Reads the size of the container again and resizes the map to it. Call it after a change of the size that the map does not see. */
     resize() {
         this.measure();
@@ -1645,6 +1652,9 @@ export class Map {
         if (typeof style !== 'string') made = plain(style);
         else {
             const res = await this.fetchAs('Style')(style);
+            // E63: The map reads the style from the URL that the option `style` (or `setStyle()`) gives, and the server answered with a
+            // status that is not 2xx. The error has the fields `status` and `url`. A request that gets no answer at all (for example
+            // a timeout, which is E415) has another code.
             if (!res.ok) throw Object.assign(new Error(`[map-jr-gl] E63 Style ${style}: HTTP ${res.status}`), {status: res.status, url: style});
             made = await res.json();
         }

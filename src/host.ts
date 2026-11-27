@@ -171,7 +171,7 @@ export interface PointerPosition {
     /** The position under the pointer, `[lng, lat]`. */
     lngLat: [number, number];
 }
-/** The argument of `onClick`: where the user clicked, and the features there. */
+/** The argument of `onClick`, and of `onHover` (React), the event `hover` (Vue) and the event `map-hover` (`<map-jr>`): a position on the map, and the features there. */
 export interface MapPointer {
     /** The point in CSS pixels from the top left corner of the map. */
     point: {x: number; y: number};
@@ -180,6 +180,15 @@ export interface MapPointer {
     /** The features of `interactiveLayers` at the point, the top one first. */
     features: RenderedFeature[];
 }
+
+/**
+ * Calls `fn` with a `MapPointer` each time the features under the pointer change. The position is the one in `state.pointer`,
+ * and when the pointer has left the map it is the last position over the map.
+ */
+export const watchHover = (state: Readable<MapState>, fn: (event: MapPointer) => void) => {
+    let at: PointerPosition = {point: {x: 0, y: 0}, lngLat: [0, 0]};
+    return state.subscribe(s => s.hover, (features, s) => { at = s.pointer ?? at; fn({features, point: {...at.point}, lngLat: [...at.lngLat]}); });
+};
 
 /** The fields of `MapDescription` that add to the parts of the style: `sources`, `layers` and `terrain`. */
 type StyleParts = Pick<Given, 'sources' | 'layers' | 'terrain'>;
@@ -670,11 +679,12 @@ export interface MapInstance {
     update(spec: MapDescription): void;
     /**
      * Applies the fields of `part` and keeps the other fields of the current description. A field of `part` that is `undefined` is removed.
-     * `data` is merged by key: `patch({data: {a: x}})` changes only the source `a`, and a key that is `null` removes the
-     * data of that source. Every other field, `layers` included, is replaced whole.
+     * `data` and `images` are merged by key: `patch({data: {a: x}})` changes only the source `a`, `patch({images: {pin}})`
+     * changes only the image `pin`, and a key that is `null` removes that source data or that image. Every other field,
+     * `layers` included, is replaced whole. `patch({images: null})` removes all images.
      * @param part The fields to change.
      */
-    patch(part: Partial<Omit<MapDescription, 'data'>> & {data?: Record<string, GeoJSON | string | null>}): void;
+    patch(part: Partial<Omit<MapDescription, 'data' | 'images'>> & {data?: Record<string, GeoJSON | string | null>; images?: Record<string, ImageInput | null> | null}): void;
     /** The description of the last `createMap`, `update` or `patch`. To change the map, call `update` or `patch`. */
     readonly description: Readonly<MapDescription>;
     /**
@@ -1325,6 +1335,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         return map.queryFeatures(at as FeaturePlace | undefined, o);
     };
     const querySource = (id: string, at?: FeaturePlace | SourceOptions, o: SourceOptions = {}): Promise<QueriedFeature[]> => {
+        // E10: The first argument of `querySource()` is the id of a source of the style, as a string. The call does not throw: the
+        // returned promise rejects with this error, so a call without `await` or `.catch()` shows it as an unhandled rejection.
         if (typeof id !== 'string') return reject(10, JSON.stringify(id) ?? String(id), 'querySource(): the first argument is not the id of a source.');
         if (isOptions(at)) { o = at as SourceOptions; at = undefined; }
         check(6, at, {...o, id});
@@ -1387,6 +1399,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             if (part.data && typeof part.data === 'object') {
                 next.data = {...now.data};
                 for (const id in part.data) if (part.data[id] == null) delete next.data[id]; else next.data[id] = part.data[id];
+            }
+            // (`images` is merged by key in the same way, #1196.)
+            if (part.images && typeof part.images === 'object') {
+                next.images = {...now.images};
+                for (const id in part.images) if (part.images[id] == null) delete next.images[id]; else next.images[id] = part.images[id];
             }
             complete(next, 'patch', 'Do not set "style" to undefined.');
             if (alive) apply(next, now);

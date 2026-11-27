@@ -1222,6 +1222,33 @@ for (const renderer of renderers) {
         check(`[${renderer}] patch merges data by key, null removes a source, and layers is replaced whole`,
             JSON.stringify(merged) === JSON.stringify({both: [['a', 'b'], true, true], removed: [['b'], false, true, false, true], same: [['b'], false, true], nulls: [['b'], false, false, '']}), JSON.stringify(merged));
 
+        // 3b4. `patch` merges `images` by key, and a key that is `null` removes its image (#1196).
+        const mergedImages = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const svg = c => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10" height="10"><rect width="10" height="10" fill="${c}"/></svg>`;
+            const host = t.lib.createMap(el, {style: t.style, renderer, attribution: false, images: {a: svg('red')}});
+            await new Promise(r => host._map.once('load', r));
+            const has = () => ['a', 'b'].map(id => host._map.hasImage(id));
+            const out = {};
+            await wait(300);
+            out.start = [Object.keys(host.description.images), has()];
+            host.patch({images: {b: svg('blue')}});
+            await wait(300);
+            out.added = [Object.keys(host.description.images), has()];
+            const before = host.description.images.a;
+            host.patch({images: {a: svg('green')}});
+            await wait(300);
+            out.replaced = [Object.keys(host.description.images), host.description.images.a !== before, has()];
+            host.patch({images: {a: null, nothing: null}});
+            await wait(300);
+            out.removed = [Object.keys(host.description.images), has()];
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] patch merges images by key, and null removes an image`,
+            JSON.stringify(mergedImages) === JSON.stringify({start: [['a'], [true, false]], added: [['a', 'b'], [true, true]], replaced: [['a', 'b'], true, [true, true]], removed: [['b'], [false, true]]}), JSON.stringify(mergedImages));
+
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
         const tiles2007 = new Set();
@@ -4390,6 +4417,57 @@ for (const renderer of renderers) {
         check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name and the HTTP status (#1193)',
             asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));
     } catch (e) { check('fonts of the description: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// A changed font of the description wins after a restart of the engine (#1657). The old face of the name is in the first
+// description and in its style, and the file of the old face is slow: it must not draw after the new face has loaded.
+for (const renderer of ['main']) { // (A page cannot lose the context of a worker, so the restart is tested with the main renderer.)
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        const {squareFont} = await import('./fixtures/square-font.mjs');
+        // (The old face has wide spaces between the squares, so that its label is much wider than the label of the new face.)
+        await page.route(/\/test-fonts\//, async route => {
+            const old = route.request().url().includes('old');
+            if (old) await new Promise(r => setTimeout(r, 1500));
+            route.fulfill({status: 200, contentType: 'font/ttf', body: squareFont('Test Square', old ? 3000 : 1100)});
+        });
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const point = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+            window.spec = {style, renderer, attribution: false, initialView: {center: [0, 0], zoom: 2},
+                sources: {p: {type: 'geojson', data: point}},
+                layers: [{id: 'label', type: 'symbol', source: 'p', layout: {'text-field': 'HELLO', 'text-font': ['Test Square Regular'], 'text-size': 20}, paint: {'text-color': '#000'}}]};
+            window.host = lib.createMap(el, {...window.spec, fonts: {'Test Square Regular': '/test-fonts/old.ttf'}});
+            window.settle = () => new Promise(r => { const t = setTimeout(r, 15000); const un = window.host.state.subscribe(s => s.idle, v => { if (v) { clearTimeout(t); setTimeout(r, 300); un?.(); } }); if (window.host.state.get().idle) setTimeout(r, 300); });
+            await window.settle();
+        }, renderer);
+        // The width of the dark pixels in the screenshot.
+        const width = async () => { const png = await page.screenshot(); return page.evaluate(async b64 => {
+            const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+            const c = Object.assign(document.createElement('canvas'), {width: img.width, height: img.height}).getContext('2d'); c.drawImage(img, 0, 0);
+            const d = c.getImageData(0, 0, img.width, img.height).data; let a = 1e9, b = -1;
+            for (let i = 0; i < d.length; i += 4) if (d[i] < 100) { const x = (i / 4) % img.width; a = Math.min(a, x); b = Math.max(b, x); }
+            return b - a;
+        }, png.toString('base64')); };
+        // The first description has the old face (slow), then update() changes the file of the name to the new face.
+        await page.evaluate(async () => { window.host.update({...window.spec, fonts: {'Test Square Regular': '/test-fonts/new1.ttf'}}); await window.settle(); });
+        const wide = await width();
+        const lost = await page.evaluate(async () => {
+            const canvas = document.querySelector('canvas');
+            const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+            if (!gl) return false;
+            gl.getExtension('WEBGL_lose_context').loseContext(); return true;
+        });
+        await page.waitForTimeout(3500);
+        await page.evaluate(() => window.settle());
+        const after = await width();
+        await page.evaluate(() => window.host.destroy());
+        check(`[${renderer}] a font changed with update() draws after a restart of the engine, also when the file of the old face is slow (#1657)`,
+            wide > 0 && after > 0 && Math.abs(after - wide) < 6, JSON.stringify({wide, after, lost}));
+    } catch (e) { check(`[${renderer}] a changed font after a restart: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // The text-color of a format section on a label along a line (#2173).

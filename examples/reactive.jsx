@@ -22,7 +22,7 @@ export default function Reactive() {
 
   return <>
     <MapJr mapStyle={style} view={view} onViewChange={setView} images={images} data={data} layers={layers} interactiveLayers={['park', 'water']}
-      attribution={{compact: true}} onHover={setHover} />
+      attribution={{compact: true}} onHover={e => setHover(e.features)} />
     <p>zoom {view.zoom.toFixed(2)} · under the pointer: {hover[0]?.layer.id ?? 'nothing'}</p>
     <button onClick={() => setShown(!shown)}>{shown ? 'Remove markers' : 'Add markers'}</button>
     <button onClick={() => setView({...view, pitch: view.pitch ? 0 : 50})}>Tilt</button>

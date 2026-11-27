@@ -340,7 +340,8 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
 
 `images` provides the images that the style layers draw, such as the icon of a marker. A symbol layer refers to an
 image in `images` by its name, in `icon-image`. An image here overrides the image of the
-sprite that has the same name.
+sprite that has the same name. [`map.patch`](map.md#patch) merges `images` by key, so `map.patch({images: {pin}})` adds
+or replaces one image and keeps the others, and a key that is `null` removes its image.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';

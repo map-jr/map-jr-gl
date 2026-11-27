@@ -39,8 +39,9 @@
   map.data = data;
   map.layers = layers;
 
-  // The event `map-hover` has the features of `interactive-layers` under the pointer, the top one first.
+  // The event `map-hover` has `features`, the features of `interactive-layers` under the pointer (the top one first), and
+  // the position of the pointer.
   map.addEventListener('map-hover', event => {
-    readout.textContent = event.detail[0]?.properties.name ?? 'Move the pointer over a ferry landing.';
+    readout.textContent = event.detail.features[0]?.properties.name ?? 'Move the pointer over a ferry landing.';
   });
 </script>

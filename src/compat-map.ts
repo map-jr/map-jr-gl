@@ -895,8 +895,26 @@ export class Map extends CoreMap {
     private byHand = false;
     private gesturing?: () => boolean;
     private nested = 0;
+    protected override fireResize = true;
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
         return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(o))));
+    }
+    protected override observed(first: boolean) {
+        // As in MapLibre GL JS, the first call of the observer is for the size that the map has, and does nothing.
+        if (first && this.container.clientWidth === this.tr.width && this.container.clientHeight === this.tr.height) return;
+        this.resize();
+    }
+    /**
+     * Reads the size of the container again and resizes the map to it. As in MapLibre GL JS, it fires `movestart`, `move`,
+     * `resize` and `moveend` during the call, also when the size has not changed, and only `resize` while the map moves.
+     * The observer of the container calls it, so a change of the size fires them once more.
+     * @param eventData Fields that the events carry.
+     */
+    override resize(eventData?: EventData) {
+        super.resize();
+        const still = !this.isMoving() && !this.easing();
+        for (const type of still ? ['movestart', 'move', 'resize', 'moveend'] : ['resize']) this.fire(type, {...eventData});
+        return this;
     }
     /** Sets the padding in CSS pixels: the space at the edges that other things cover, such as a side panel. The map center moves to the middle of the rest. */
     setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }
