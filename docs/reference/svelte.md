@@ -127,7 +127,7 @@ after each change. In a component, read it with `$`: `$live.view.zoom`.
 ## A first view from the server
 
 The entry has no option for server rendering. [`renderFirstView`](server.md#renderfirstview) of
-`@map-jr/map-jr-gl/server` returns the HTML of a first view, and [Server rendering](../guide/server-rendering.md)
+`@map-jr/map-jr-gl/server` returns the HTML of a first view, [`firstViewOptions`](server.md#firstviewoptions) makes its options from the description that the page passes to `mapJr`, and [Server rendering](../guide/server-rendering.md)
 shows how a page uses it.
 
 ## See also

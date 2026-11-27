@@ -495,6 +495,32 @@ export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 
 const warnedAttributes = new Set<string>();
 
 /**
+ * Turns a description into the options of `renderFirstView`, so that a page passes its description once:
+ * `renderFirstView(firstViewOptions(description))`. The view, the style, the images, the sources, the layers, the data,
+ * the controls and the other fields that the first view reads come from the description. The result is a plain object, so
+ * a page can add or replace an option: `{...firstViewOptions(description), timeout: 3000}`.
+ * @param description The description of the map, as for `createMap`. A field that is `null` counts as not set.
+ * @param options What the description does not give: the size of the element (800 by 500 pixels when not set), the credits
+ * to show, and the options of the render, such as `timeout` or `overrides`.
+ */
+export function firstViewOptions(description: MapDescription, options: DescriptionRenderOptions = {}): FirstViewOptions {
+    if (!description || typeof description !== 'object' || Array.isArray(description)) throw new Error(`[map-jr-gl] E2358 firstViewOptions(): the description is missing or is not an object. Pass the description of the map, an object with a "style", for example firstViewOptions({style, initialView: {center: [0, 0], zoom: 2}}).`);
+    const d = unset(description) as Given & Record<string, unknown>, view: Record<string, unknown> = {...d.initialView, ...d.view};
+    const {width = 800, height = 500, attribution, ...rest} = options;
+    // Like the map, a `view` takes the place of the `initialView`, bounds included.
+    const fit = !d.view && d.initialView?.bounds;
+    return {...rest, style: d.style as FirstViewOptions['style'], center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number,
+        bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding, fitMaxZoom: d.initialView?.fitMaxZoom, width, height,
+        images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
+        attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
+        controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, label: rest.label ?? d.locale?.['Map.Title'], nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
+        attributionOptions: d.attribution === false ? undefined : d.attribution as AttributionOptions | undefined};
+}
+
+/** The options of `firstViewOptions`: those of `renderFirstView` that the description does not give. */
+export type DescriptionRenderOptions = Omit<ElementRenderOptions, 'attributes'>;
+
+/**
  * Renders the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description, with the first view as its content.
  * A field that has an attribute of `<map-jr>` and a value that is not an object, such as `zoom` or the URL of a style,
  * becomes that attribute. Set the other fields, such as `layers`, `data` or a style object, as properties of the element in the page, with the same values.
@@ -528,11 +554,8 @@ export async function renderElement(description: MapDescription, options: Elemen
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden' + extra)}"`);
     let first = '';
     try {
-        first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding,
-            width, height, images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
-            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
-            controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, label: rest.label ?? d.locale?.['Map.Title'], nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
-            attributionOptions: d.attribution === false ? undefined : d.attribution as AttributionOptions | undefined});
+        // (The options come from the description; the center, the zoom and the bounds are those that this function worked out above.)
+        first = await renderFirstView({...firstViewOptions(d, {...rest, width, height, attribution}), center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bounds: fit ? fit as LngLatBoundsInput : undefined});
     } catch (cause) {
         console.error(`[map-jr-gl] E40826 renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`);
     }
