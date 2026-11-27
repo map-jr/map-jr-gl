@@ -2007,6 +2007,36 @@ for (const renderer of renderers) {
             ofSprite === '#80f' && spriteGone.some(e => e.includes('test-sprite-495/missing')) && !withoutSprite.includes('#80f'),
             JSON.stringify({ofSprite, spriteGone, withoutSprite}));
 
+        // #1194: a change of `sprite` alone loads the new sprite files only. The style is not requested again, and a layer that
+        // the application added to the map stays (a restyle removes it).
+        await page.route(/\/test-sprite-1194\//, route => {
+            if (route.request().url().includes('.json')) return route.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 40, height: 40, pixelRatio: 1}})});
+            route.fulfill({contentType: 'image/png', body: solidPNG(40, route.request().url().includes('/b.png') ? [0x00, 0xff, 0x00] : [0x88, 0x00, 0xff])});
+        });
+        await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300});
+            const spot = {sources: {spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [{id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'pins:box', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
+            t.host.update(t.spec = {...t.spec, style: '/style.json', ...spot, sprite: [{id: 'pins', url: '/test-sprite-1194/a'}]});
+            for (let i = 0; i < 100 && !(t.host._map.getStyle()?.sprite && t.host._map.areTilesLoaded()); i++) await wait(100);
+            t.host._map.addLayer({id: 'app-added', type: 'background', paint: {'background-opacity': 0}});
+        });
+        const asked1194 = [], on1194 = r => asked1194.push(new URL(r.url()).pathname);
+        page.on('request', on1194);
+        const spriteOnly = await page.evaluate(async () => {
+            const t = window.t;
+            t.host.update(t.spec = {...t.spec, sprite: [{id: 'pins', url: '/test-sprite-1194/b'}]});
+            await new Promise(r => setTimeout(r, 1500));
+            return {kept: !!t.host._map.getLayer('app-added')};
+        });
+        page.off('request', on1194);
+        spriteOnly.asked = asked1194;
+        const spriteSwapped = await shows('#0f0');
+        check(`[${renderer}] a change of sprite alone draws the new sprite and does not load the style again (#1194)`,
+            spriteSwapped === '#0f0' && spriteOnly.kept && !spriteOnly.asked.some(u => u.includes('style.json')) && spriteOnly.asked.some(u => u.includes('/b.')),
+            JSON.stringify({spriteSwapped, spriteOnly}));
+        await page.evaluate(() => { const t = window.t, {sprite: _s, sources: _a, layers: _b, ...rest} = t.spec; t.host.update(t.spec = {...rest, style: t.style}); });
+
         // #1199: an image of metadata["map-jr:images"] takes the place of the sprite image of the same name, and an image
         // of `images` of the description takes the place of both.
         await page.route(/\/test-sprite-1199\//, route => route.request().url().includes('.json')
@@ -2640,7 +2670,7 @@ for (const renderer of renderers) {
             } finally { console.warn = log; }
             return said; });
         check(`[${renderer}] an unknown option of overlay(), update() and patch() gives one warning for each option, which names the option and the known options`,
-            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, draggable, onDragStart, onDrag, onDragEnd.'
+            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, closeButton, closeOnClick, draggable, onDragStart, onDrag, onDragEnd.'
             && overlayUnknown[1].startsWith('[map-jr-gl] E1647 update(): "colour" is not an option of an overlay, so it has no effect. The options are')
             && overlayUnknown[2].startsWith('[map-jr-gl] E1647 patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
@@ -2838,6 +2868,60 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map (also from a button in the content), and a popup without onClose stays open`,
             escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen && escape.innerFocused && escape.innerFocus, JSON.stringify(escape));
+        // #1152: `closeButton` gives a popup of overlay() a close button without `onClose`, and `false` takes the button of `onClose` away.
+        const closeButton = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const lngLat = t.host.state.get().view.center, made = [];
+            const popup = options => { const el = document.createElement('div'); el.textContent = 'x'; made.push(t.host.overlay(el, {lngLat, popup: true, ...options})); return el; };
+            const has = el => !!el.closest('.map-jr-popup-content')?.querySelector('button');
+            let closes = 0;
+            const withButton = popup({closeButton: true}), plain = popup({}), off = popup({closeButton: false, onClose() { closes++; }}), byClose = popup({onClose() { closes++; }});
+            await wait(300);
+            const shown = {withButton: has(withButton), plain: has(plain), off: has(off), byClose: has(byClose)};
+            withButton.closest('.map-jr-popup-content').querySelector('button').click();
+            await wait(500);
+            const closed = !withButton.isConnected, others = plain.isConnected;
+            const ov = made[1];
+            ov.patch({closeButton: true});
+            await wait(300);
+            const patched = has(plain);
+            for (const o of made) o.remove();
+            return {shown, closed, others, patched, closes};
+        });
+        check(`[${renderer}] a popup of overlay() with closeButton has a button without onClose and the button closes it, closeButton: false takes the button of onClose away, and patch() adds it`,
+            closeButton.shown.withButton && !closeButton.shown.plain && !closeButton.shown.off && closeButton.shown.byClose && closeButton.closed && closeButton.others && closeButton.patched && closeButton.closes === 0, JSON.stringify(closeButton));
+        // #214: `offset` of a popup takes a number and a pair for each anchor, and `closeOnClick` closes it at a click on the map, not at the click that opens it.
+        const popupOffset = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), lngLat = t.host.state.get().view.center, made = [];
+            const top = async options => {
+                const el = document.createElement('div'); el.textContent = 'x';
+                made.push(t.host.overlay(el, {lngLat, popup: true, anchor: 'bottom', ...options}));
+                await wait(300);
+                return el.closest('.map-jr-popup-content').getBoundingClientRect().top;
+            };
+            const zero = await top({}), number = await top({offset: 20}), pair = await top({offset: [0, -10]}), perAnchor = await top({offset: {bottom: [0, -30], top: [0, 5]}}), otherSide = await top({offset: {top: [0, 5]}});
+            const el = document.createElement('div'); el.textContent = 'y';
+            const warned = [], log = console.warn;
+            console.warn = m => { warned.push(String(m)); log(m); };
+            // (The check of the development build loads on demand.)
+            try { made.push(t.host.overlay(el, {lngLat, offset: 20})); await wait(500); } finally { console.warn = log; }
+            for (const o of made) o.remove();
+            return {up: [zero - number, zero - pair, zero - perAnchor, zero - otherSide].map(v => Math.round(v)), warned};
+        });
+        check(`[${renderer}] a popup of overlay() takes offset as a number, a pair, and a pair for each anchor, and a marker with a number warns`,
+            popupOffset.up.join() === '20,10,30,0' && popupOffset.warned.length === 1 && popupOffset.warned[0].includes('E214') && popupOffset.warned[0].includes('overlay()'), JSON.stringify(popupOffset));
+        const closeOnClick = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), lngLat = t.host.state.get().view.center, closes = [];
+            const make = (name, options) => { const el = document.createElement('div'); el.textContent = name; const o = t.host.overlay(el, {lngLat, popup: true, anchor: 'bottom', onClose: () => closes.push(name), ...options}); return {el, o}; };
+            window.t.pops = {on: make('on', {closeOnClick: true}), off: make('off', {})};
+            await wait(300);
+            return {openAtOnce: window.t.pops.on.el.isConnected};
+        });
+        await page.mouse.click(30, 30);
+        await page.waitForFunction(() => !window.t.pops.on.el.isConnected, null, {timeout: 5000}).catch(() => {});
+        const closedByClick = await page.evaluate(() => { const p = window.t.pops, r = {on: !p.on.el.isConnected, off: p.off.el.isConnected}; p.on.o.remove(); p.off.o.remove(); return r; });
+        check(`[${renderer}] a popup of overlay() with closeOnClick stays open at the click that opens it and closes at a click on the map, and without it stays open`,
+            closeOnClick.openAtOnce && closedByClick.on && closedByClick.off, JSON.stringify({closeOnClick, closedByClick}));
         // #866: a popup of overlay() that opens from a key press on the map takes the focus, and Escape returns it to the
         // map. A popup that opens from a click leaves the focus where it is.
         await page.evaluate(() => {
@@ -4198,14 +4282,18 @@ for (const [build, file] of [['the development build, and the file of the checks
 }
 
 // A browser without WebGL2, on the page and in the worker: `supported()` says so before a map is made. A map that is
-// made all the same reports one error (`onError`) and puts a message into the container.
-for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker']]) {
+// made all the same reports one error (`onError`) and puts a message into the container. With a first view from the
+// server in the container (`first`), the first view stays and the message is a bar over its top edge (#1386).
+for (const [entry, renderer, first] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker'], ['main API', 'main', true], ['maplibre-compat', 'worker', true]]) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     try {
         await page.goto(`${origin}/bench`);
         const able = await page.evaluate(async () => (await import('/dist/map-jr-gl.js')).supported());
         await page.goto(`${origin}/style.json`); // (a new document: the answer of `supported()` is kept for the page)
-        const none = await page.evaluate(async ([entry, renderer]) => {
+        // (The first view is what `renderFirstView` writes, with the zoom buttons of `navigation()` in its layer of controls.)
+        const firstView = first && await (await import('../dist/server.js')).renderFirstView({style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#2a7'}}]}, center: [0, 0], zoom: 2, width: 400, height: 300,
+            controls: [(await import('../dist/controls.js')).navigation()]});
+        const none = await page.evaluate(async ([entry, renderer, first]) => {
             const get = HTMLCanvasElement.prototype.getContext;
             HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); };
             const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
@@ -4214,6 +4302,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             console.warn = () => {}; // (the map says that it uses the main thread)
             addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+            if (first) el.innerHTML = first;
             const style = await (await fetch('/style.json')).json(), message = () => el.querySelector('.map-jr-unavailable');
             let supported, state, destroy;
             if (entry === 'main API') {
@@ -4235,7 +4324,11 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             for (let i = 0; i < 150 && !errors.length; i++) await wait(100);
             await wait(500);
             const box = message()?.getBoundingClientRect();
-            const out = {supported, errors, ...state(), text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === el.clientWidth && box.height === el.clientHeight && box.width > 800, unhandled};
+            const top = message() && document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+            const out = {supported, errors, ...state(), shows: !first || top === message() && el.querySelector('svg[data-map-jr-ssr]').getBoundingClientRect().height >= el.clientHeight && box.height < el.clientHeight / 2 && box.top === el.getBoundingClientRect().top
+                // (The controls of the first view are above the bar, so that the zoom buttons are whole.)
+                && !!el.querySelector('.map-jr-ssr-layer .map-jr-ctrl-zoom-in') && +getComputedStyle(el.querySelector('.map-jr-ssr-layer .map-jr-ctrl-top-right')).zIndex > +getComputedStyle(message()).zIndex,
+                text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === el.clientWidth && (first || box.height === el.clientHeight) && box.width > 800, unhandled};
             // (The message is the application's to change: a rule of its own style sheet wins over the rule of the library.)
             document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.map-jr-unavailable{display:none}'}));
             out.hidden = !!message() && getComputedStyle(message()).display === 'none';
@@ -4243,12 +4336,12 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             out.after = el.querySelectorAll('.map-jr-unavailable, canvas').length;
             console.warn = warn;
             return out;
-        }, [entry, renderer]);
+        }, [entry, renderer, firstView]);
         const text = '[map-jr-gl] E30017 https://map-jr.org/e/30017 message="WebGL2 is not available"';
-        check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
+        check(`no WebGL2 (${entry}, ${renderer}${first ? ', first view' : ''}): supported() is false, the map reports one error and shows a message in the container${first ? ' over the top of the first view, which stays' : ''}, and removing the map removes the message`,
             able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
-            && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
-    } catch (e) { check(`no WebGL2 (${entry}, ${renderer}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+            && none.children === 0 && none.covers && none.shows && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
+    } catch (e) { check(`no WebGL2 (${entry}, ${renderer}${first ? ", first view" : ""}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 

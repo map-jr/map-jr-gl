@@ -7,7 +7,7 @@ run in. It applies to both entries, `@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/m
 
 | Requirement | Without it |
 |---|---|
-| WebGL2 | `supported()` returns `false`, and the map shows "This browser cannot show the map." in its container. |
+| WebGL2 | `supported()` returns `false`, and the map shows "This browser cannot show the map." in its container. With a first view from the server, the message is a bar over it. |
 | ES modules | The library does not load. The package has no CommonJS build and no build for a classic script. |
 | ES2022 syntax | The built files do not parse. A bundler can compile them for an older browser. |
 
@@ -41,7 +41,7 @@ The worker renderer draws the map in a worker, and the main-thread renderer draw
 | Feature | What it needs | Without it |
 |---|---|---|
 | Worker renderer | `transferControlToOffscreen` on a canvas, and WebGL2 in a worker | The map draws on the main thread. |
-| Main-thread renderer | WebGL2 on the page | The container shows "This browser cannot show the map." |
+| Main-thread renderer | WebGL2 on the page | The container shows "This browser cannot show the map." (a bar over the first view, when the page has one). |
 | Tile workers | A page that is allowed to start workers | The map builds the tiles on the main thread and writes a warning. |
 | 3D terrain | `OffscreenCanvas` in a worker | The terrain is flat: in WebKit on Windows, the height at the center of the benchmark page is 0 m, and 10 m elsewhere. Elevation queries still return heights. |
 

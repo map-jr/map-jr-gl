@@ -743,7 +743,8 @@ export class Map {
     /**
      * No engine could start, usually because the browser has no WebGL2. The container gets a message in place of an
      * empty canvas, and the caller reports the error that this returns. An application changes the message with CSS
-     * (`.map-jr-unavailable`), or avoids it with `supported()`.
+     * (`.map-jr-unavailable`), or avoids it with `supported()`. When the container holds a first view from the server, the
+     * message is a bar at the top and the first view stays.
      */
     private cannotShow(cause: Error) {
         if (!this.unavailable) {
@@ -751,6 +752,10 @@ export class Map {
             const el = this.unavailable = document.createElement('div');
             el.className = 'map-jr-unavailable';
             el.textContent = 'This browser cannot show the map.';
+            // A first view from the server stays: the message is a bar along the top edge, above the picture (the first view
+            // follows the canvas in the container) and below the controls of the first view, which have `z-index: 2`, so
+            // that the picture, its controls and its credits at the bottom stay visible (#1386).
+            if (this.container.querySelector('[data-map-jr-ssr]')) el.style.cssText = 'inset:0 0 auto;z-index:1';
             this.canvas.after(el);
         }
         return new Error(/WebGL2/.test(cause.message) ? `[map-jr-gl] E30017 The map cannot be shown: ${cause.message}. Call supported() before you make a map, and show other content when it returns false.` : `[map-jr-gl] E20017 The map cannot be shown: ${cause.message}.`, {cause});
@@ -1585,6 +1590,8 @@ export class Map {
         if (!terrain) { this.tr.heightAt = undefined; if (!this.centreHeld) this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
+    /** Replaces the sprites of the style, or removes them with `null`. */
+    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
     /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
     /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), color and intensity. */
@@ -2100,6 +2107,7 @@ export class Map {
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 1), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
             size: size(l),
+            ring: l.type === 'line',
             // On a tilted map a circle is tested where the shader draws it (see `circleTouches`).
             pitch: l.type === 'circle' ? [l.paint?.['circle-pitch-alignment'] === 'map', l.paint?.['circle-pitch-scale'] !== 'viewport'] as [boolean, boolean] : undefined,
             translate: /^(circle|fill|line|fill-extrusion)$/.test(l.type) ? shift(l.paint?.[`${l.type}-translate`], l.paint?.[`${l.type}-translate-anchor`]) : undefined,
@@ -2331,7 +2339,7 @@ export class Map {
                         let total = f.angle - g.startAngle;
                         total = Math.atan2(Math.sin(total), Math.cos(total));
                         g.rotating = Math.abs(total) * f.dist / 2 > 25;
-                    } else if (this.touchZoomRotate.rotation) this.post({type: 'rotate', delta: -turn * 180 / Math.PI});
+                    } else if (this.touchZoomRotate.rotation) { const c = {type: 'rotate' as const, delta: -turn * 180 / Math.PI}; this.post(c); this.turned = (c as {seq?: number}).seq!; }
                 }
                 // Until the gesture is decided, keep measuring from where it began so no movement is lost.
                 if (g.mode !== 'undecided') { g.dist = f.dist; g.angle = f.angle; g.mid = f.mid; }

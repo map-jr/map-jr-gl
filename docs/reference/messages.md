@@ -505,6 +505,14 @@ The production build prints this:
 setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.
 ```
 
+## E214
+
+A warning of the main API (development build only).
+
+```text
+<call>: a marker takes "offset" as a pair, [x, y], so a number or an object with a pair for each anchor has no effect. Write a pair, or add "popup: true".
+```
+
 ## E216
 
 An error of both entries.
@@ -1445,6 +1453,14 @@ server render: "<option name>" is <size>. Pass the <option name> in CSS pixels a
 server render: "<option name>" is <size>. Pass the <option name> in CSS pixels as a number greater than 0, for example <option name>: 500.
 ```
 
+## E1683
+
+A warning of the main API (development build only).
+
+```text
+<where>: this is a <group> property. The map reads it here all the same, but MapLibre GL JS rejects the style. Move it to "<group>".
+```
+
 ## E1692
 
 A warning of the main API (development build only).
@@ -1649,6 +1665,14 @@ The production build prints this:
 
 ```text
 addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
+```
+
+## E2272
+
+A warning of the main API (development build only).
+
+```text
+new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
 ```
 
 ## E10017
@@ -2071,6 +2095,14 @@ An error of the server renderer.
 
 ```text
 server render: the options have "zoom" but no "center", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
+```
+
+## E11683
+
+An error of the main API (development build only).
+
+```text
+<where>: unknown property "<property>". The map reads it here all the same, but it is a <group> property, and MapLibre GL JS rejects the style. Move it to "<group>".
 ```
 
 ## E11846

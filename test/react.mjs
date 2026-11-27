@@ -100,7 +100,7 @@ function App({ssr}) {
             onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
             // An image that the style asks for and the map does not have: the application adds it to the prop images.
             onStyleimagemissing: e => { t.asked.push(e.id); setMore(more => ({...more, [e.id]: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'})); }},
-            h(Zoom), h(ZoomObject), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
+            h(Zoom), h(ZoomObject), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')), h(MapOverlay, {lngLat: [-74.002, 40.7095], anchor: 'bottom', color: '#d6453d'}),
             h(MapOverlay, {lngLat: home, draggable: true, onDragStart: p => t.dragged.push('start ' + p.length), onDrag: () => setMore(m => m), onDragEnd: p => { t.dragged.push('end'); setHome(p); }}, h('u', {id: 'drag-pin', style: {display: 'block', width: 16, height: 16}, onClick: () => t.dragged.push('click')})),
             arrow && h(MapImage, {name: 'arrow', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone}))),
             twin && h(MapImage, {name: 'arrow'}, h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z'}))),
@@ -178,6 +178,16 @@ try {
     check('browser: useMapState with a selector that returns a new object renders once for each change and keeps the tree (#1263)', model.object?.text === '15.0' && model.object.renders <= model.object.zooms + 1, JSON.stringify(model.object));
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
         && model.closed === 1 && model.tipGone && model.views > 1 && model.before === 1 && model.after === 0, JSON.stringify(model));
+    // A MapOverlay with no content shows the default pin, in the color of the prop `color`, with its tip at the position.
+    const defaultPin = await page.evaluate(async () => {
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.current, frame = document.getElementById('frame').getBoundingClientRect();
+        host.moveTo({center: [-74.0065, 40.7085], zoom: 14});
+        for (let i = 0; i < 100 && !(document.querySelector('#frame path[fill="#d6453d"]')?.ownerSVGElement.getBoundingClientRect().width && !host.state.get().moving); i++) await wait(50);
+        await wait(200);
+        const svg = document.querySelector('#frame path[fill="#d6453d"]')?.ownerSVGElement, r = svg?.getBoundingClientRect(), q = host.project([-74.002, 40.7095]);
+        return {svg: !!svg, size: r && [Math.round(r.width), Math.round(r.height)], tip: r && Math.abs(r.x + r.width / 2 - frame.x - q.x) < 3 && Math.abs(r.bottom - frame.y - q.y) < 3, count: document.querySelectorAll('#frame path[fill="#d6453d"]').length};
+    });
+    check('browser: a MapOverlay with no content shows the default pin in the color of the prop color, with its tip at the position', defaultPin.svg && defaultPin.size?.join() === '27,41' && defaultPin.tip && defaultPin.count === 1, JSON.stringify(defaultPin));
     // A draggable MapOverlay (#167): a click is a click, onDragStart and onDragEnd get [lng, lat], and renders during the
     // drag (onDrag sets state) do not move it back.
     const dragBox = () => page.evaluate(() => { const r = document.getElementById('drag-pin').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });

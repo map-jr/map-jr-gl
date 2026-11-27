@@ -408,9 +408,9 @@ const map = createMap('map', {
       lngLat: place.geometry.coordinates,
       popup: true,
       offset: [0, -30],
-      onClose: () => {
-        popup = null;
-      },
+      // The button closes the popup. Without `closeButton`, a popup has no
+      // button unless `onClose` is set.
+      closeButton: true,
     });
   },
 });
@@ -614,8 +614,9 @@ Two things often go wrong:
 
 - `features` is empty. In the main API and the adapters, a click reports only the features of the layers in
   `interactiveLayers`.
-- The popup has no button to close it. A popup of `overlay` and of `MapOverlay` has a close button only when
-  `onClose` (`@close` in Vue) is set. The button closes the popup and then calls `onClose`.
+- The popup has no button to close it. A popup of `overlay` and of `MapOverlay` has a close button when
+  `closeButton` is `true`, and by default when `onClose` (`@close` in Vue) is set. The button closes the popup and then
+  calls `onClose`.
 
 ## Put an element of the page on the map, and let the user move it
 
@@ -701,9 +702,6 @@ import {ref} from 'vue';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-// The outline of the pin.
-const pinPath =
-  'M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z';
 const pin = ref([-74.0065, 40.7085]);
 const moving = ref(false);
 </script>
@@ -715,12 +713,13 @@ const moving = ref(false);
     :attribution="{compact: true}"
   >
     <!--
-      The new position comes with dragend. The pin stays where it was dropped
-      until lng-lat changes.
+      Without content, MapOverlay shows the default pin. The new position comes
+      with dragend. The pin stays where it was dropped until lng-lat changes.
     -->
     <MapOverlay
       :lng-lat="pin"
       anchor="bottom"
+      color="#d6453d"
       draggable
       @dragstart="moving = true"
       @dragend="
@@ -729,12 +728,7 @@ const moving = ref(false);
           moving = false;
         }
       "
-    >
-      <svg width="27" height="41" viewBox="0 0 27 41">
-        <path :d="pinPath" fill="#d6453d" />
-        <circle cx="13.5" cy="13.5" r="5.5" fill="#fff" />
-      </svg>
-    </MapOverlay>
+    />
     <p class="note">
       {{
         moving ? 'Moving' : `Pin at ${pin[0].toFixed(5)}, ${pin[1].toFixed(5)}`
@@ -753,9 +747,6 @@ import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
-// The outline of the pin.
-const pinPath =
-  'M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z';
 
 export default function Draggable() {
   const [pin, setPin] = useState(NYC);
@@ -766,22 +757,18 @@ export default function Draggable() {
       initialView={{center: NYC, zoom: 14}}
       attribution={{compact: true}}
     >
-      {/* The new position comes with onDragEnd. The pin stays where it was dropped until lngLat changes. */}
+      {/* Without children, MapOverlay shows the default pin. The new position comes with onDragEnd. The pin stays where it was dropped until lngLat changes. */}
       <MapOverlay
         lngLat={pin}
         anchor="bottom"
+        color="#d6453d"
         draggable
         onDragStart={() => setMoving(true)}
         onDragEnd={p => {
           setPin(p);
           setMoving(false);
         }}
-      >
-        <svg width="27" height="41" viewBox="0 0 27 41">
-          <path d={pinPath} fill="#d6453d" />
-          <circle cx="13.5" cy="13.5" r="5.5" fill="#fff" />
-        </svg>
-      </MapOverlay>
+      />
       <p className="note">
         {moving
           ? 'Moving'

@@ -41,10 +41,13 @@ export function source() {
     const group = g => types.flatMap(t => Object.entries(spec[`${g}_${t}`] ?? {}).map(([k, v]) => code(v) && `${t} ${k} ${code(v)}`).filter(Boolean)).join('|');
     const expressions = g => types.flatMap(t => Object.entries(spec[`${g}_${t}`] ?? {}).filter(([, v]) => v.expression && expressionCode(v)).map(([k, v]) => `${t} ${k} ${expressionCode(v)}`)).join('|');
     const sources = ['vector', 'raster', 'raster-dem', 'geojson', 'video', 'image'].flatMap(t => Object.entries(spec[`source_${t.replace('-', '_')}`]).filter(([k]) => k !== 'type').map(([k, v]) => `${t} ${k} ${sourceCode(v)}`)).join('|');
+    const layout = types.map(t => `${t} ${Object.keys(spec[`layout_${t}`] ?? {}).join(' ')}`).join('|');
     return `// Written by scripts/style-spec-values.mjs from the style specification ${spec.$version} of @maplibre/maplibre-gl-style-spec. Do not edit.
 // Each entry is "<layer type> <property> <code>"; the script says what the codes mean. (Development build only, #1748.)
 export const layerTypes = ${JSON.stringify(types.join(' '))};
 export const operators = ${JSON.stringify(Object.keys(spec.expression_name.values).join(' '))};
+// The names of all layout properties of each layer type, also those that have no code ("<layer type> <names>"); the others are paint (#1683).
+export const layoutNames = ${JSON.stringify(layout)};
 export const paintValues = ${JSON.stringify(group('paint'))};
 export const layoutValues = ${JSON.stringify(group('layout'))};
 // The type and the flags of each property that takes an expression ("<layer type> <property> <type> <flags>").

@@ -18,11 +18,13 @@ const alpha = (name: string, a: number) => a < 0.999 ? ` ${name}="${num(a)}"` : 
  * Path data for one feature, or '' when nothing of it would be visible. `box` is the viewport in tile units;
  * `minSize` and `tol` (quantized units) drop features and vertices too small to see at this scale.
  */
-function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number, cap?: Cap): string {
-    const {coords, ringEnds, featEnds} = b.geom, k = b.geom.half ? 0.5 : 1;
+function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number, cap?: Cap, off = 0): string {
+    const {ringEnds, featEnds} = b.geom, k = b.geom.half ? 0.5 : 1;
+    let coords: ArrayLike<number> = b.geom.coords;
     let d = '';
     for (let r = f ? featEnds[f - 1] : 0; r < featEnds[f]; r++) {
         const start = r ? ringEnds[r - 1] : 0, end = ringEnds[r];
+        if (off) coords = offsetLine(b.geom.coords, start, end, k, off);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (let i = start; i < end; i++) {
             const x = coords[i * 2] * k, y = coords[i * 2 + 1] * k;
@@ -45,6 +47,31 @@ function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: n
         if (cap && n >= 2 && !close) cap.e += capEnds(cap, sx, sy, ax, ay, bx, by, px, py, len);
     }
     return d;
+}
+
+/**
+ * `line-offset`: the points of a line moved by `off` (tile units after `k`; positive is to the right of the direction of
+ * the line). A corner moves along its miter, which is shortened to the normal of the first segment where it would grow too long.
+ * The result is indexed like `coords` (only from `start` to `end` is set).
+ */
+function offsetLine(coords: ArrayLike<number>, start: number, end: number, k: number, off: number): number[] {
+    const out: number[] = [], nx: number[] = [], ny: number[] = [];
+    const m = end - start;
+    for (let i = 0; i < m - 1; i++) {
+        const dx = coords[(start + i + 1) * 2] - coords[(start + i) * 2], dy = coords[(start + i + 1) * 2 + 1] - coords[(start + i) * 2 + 1], l = Math.hypot(dx, dy) || 1;
+        nx.push(-dy / l); ny.push(dx / l);
+    }
+    for (let i = 0; i < m; i++) {
+        const a = Math.max(i - 1, 0), c = Math.min(i, m - 2);
+        let ox = nx[a], oy = ny[a];
+        if (a !== c) {
+            const d = 1 + nx[a] * nx[c] + ny[a] * ny[c];
+            if (d > 0.25) { ox = (nx[a] + nx[c]) / d; oy = (ny[a] + ny[c]) / d; }
+        }
+        const j = (start + i) * 2;
+        out[j] = (coords[j] * k + ox * off) / k; out[j + 1] = (coords[j + 1] * k + oy * off) / k;
+    }
+    return out;
 }
 
 /** The extra length of a square cap (path units), the dash pattern in pixels, pixels for each path unit, and the extension paths. */
@@ -86,6 +113,13 @@ export interface SVGScene {
  * Serializes one frame as a standalone SVG document. Pure string building: runs on any JavaScript server.
  * @internal Used by `renderToSVG` of `@map-jr/map-jr-gl/server`; not exported from any entry.
  */
+/**
+ * Raster tiles sit at fractional pixel positions, and each is clipped at its own edge, so the anti-aliased edges of two neighbors
+ * add up to less than full coverage and a lighter line shows between them (#388). Each tile reaches half a pixel (in image units)
+ * past its right and bottom edge, under the neighbor that is drawn later.
+ */
+const padOf = (m: number[]) => +(1 / (Math.hypot(m[0], m[1]) * Q || 1)).toFixed(3);
+
 export function renderSVG(s: SVGScene): string {
     const {tr} = s, zoom = tr.zoom;
     const defs: string[] = [], body: string[] = [];
@@ -94,13 +128,15 @@ export function renderSVG(s: SVGScene): string {
     const clipIds = new Map<RenderItem<TileIR | TileImage>, string>();
     for (const list of s.items.values()) {
         for (const it of list) {
-            const id = 'c' + clipIds.size, [x0, y0, x1, y1] = it.clip;
+            const id = 'c' + clipIds.size, [x0, y0, x1, y1] = it.clip, pad = 'href' in it.tile ? padOf(it.matrix) : 0;
             clipIds.set(it, id);
-            defs.push(`<clipPath id="${id}"><rect x="${x0 / Q}" y="${y0 / Q}" width="${(x1 - x0) / Q}" height="${(y1 - y0) / Q}"/></clipPath>`);
+            defs.push(`<clipPath id="${id}"><rect x="${x0 / Q}" y="${y0 / Q}" width="${(x1 - x0) / Q + pad}" height="${(y1 - y0) / Q + pad}"/></clipPath>`);
         }
     }
 
+    const marks: [string, number][] = [];
     for (const L of s.layers) {
+        marks.push([L.id, body.length]);
         if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
         if (L.type === 'hillshade' || L.type === 'heatmap' || L.type === 'color-relief') continue; // drawn by the client only for now
         const p = L.p, opacity = p.opacity.dd ? 1 : p.opacity.eval(zoom);
@@ -111,14 +147,14 @@ export function renderSVG(s: SVGScene): string {
             continue;
         }
         // A layer that draws nothing at this zoom writes nothing (a data-driven value is checked per feature below).
-        if (opacity <= 0 || L.type === 'line' && (!p.width.dd && p.width.eval(zoom) <= 0 || uniform && uniform[3] <= 0)) continue;
+        if (opacity <= 0 && L.type !== 'circle' || L.type === 'line' && (!p.width.dd && p.width.eval(zoom) <= 0 || uniform && uniform[3] <= 0)) continue;
         if (L.type === 'fill' && uniform && uniform[3] <= 0 && !((p.outline?.eval(zoom) as RGBA | undefined)?.[3]! > 0)) continue;
         for (const it of s.items.get(L.source!) ?? []) {
             if ('href' in it.tile) {
                 if (L.type === 'raster') {
                     const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
                     body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${alpha('opacity', opacity)}>` +
-                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q}" height="${EXTENT / Q}" preserveAspectRatio="none"${(p.resampling.eval(zoom) ?? p.rasterResampling.eval(zoom)) === 'nearest' ? ' style="image-rendering:pixelated"' : ''}/></g>`);
+                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q + padOf(it.matrix)}" height="${EXTENT / Q + padOf(it.matrix)}" preserveAspectRatio="none"${(p.resampling.eval(zoom) ?? p.rasterResampling.eval(zoom)) === 'nearest' ? ' style="image-rendering:pixelated"' : ''}/></g>`);
                 }
                 continue;
             }
@@ -134,10 +170,11 @@ export function renderSVG(s: SVGScene): string {
             };
             if (b.type === 'circle') {
                 const sw = p.strokeWidth.eval(zoom), sc = p.strokeColor.eval(zoom) as RGBA;
-                const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * opacity)}` : '';
+                const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * (p.strokeOpacity.dd ? 1 : p.strokeOpacity.eval(zoom)))}` : '';
                 const {coords, ringEnds, featEnds} = b.geom;
                 for (let f = 0, r = 0; f < n; f++) {
                     const [col, a] = styleOf(f), radius = (b.radius ? b.radius[f] : p.radius.eval(zoom)) + sw / 2;
+                    if (a <= 0 && !stroke) { r = featEnds[f]; continue; }
                     for (; r < featEnds[f]; r++) {
                         const i = ringEnds[r] - 1, tx = coords[i * 2], ty = coords[i * 2 + 1];
                         if (tx < it.clip[0] || ty < it.clip[1] || tx >= it.clip[2] || ty >= it.clip[3]) continue;
@@ -166,7 +203,7 @@ export function renderSVG(s: SVGScene): string {
                     : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
                         (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
                 const cap = dash && b.cap === 'square' ? {half: w / 2 * unitsPerPx, pat: dash.map(d => d * Math.max(w, 0.5)), px: it.scale * Q, e: ''} : undefined;
-                const d = pathData(b, f, fill, box, minSize, tol, cap);
+                const d = pathData(b, f, fill, box, minSize, tol, cap, fill ? 0 : (b.offset ? b.offset[f] : p.offset.eval(zoom)) / it.scale);
                 if (d) groups.set(key, (groups.get(key) ?? '') + d);
                 if (cap?.e) { const k2 = `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}`; groups.set(k2, (groups.get(k2) ?? '') + cap.e); }
             }
@@ -187,6 +224,15 @@ export function renderSVG(s: SVGScene): string {
         if (!id) { pathIds.set(d, id = 'p' + pathIds.size); defs.push(`<path id="${id}" vector-effect="non-scaling-stroke" d="${d}"/>`); }
         body[i] = `<use href="#${id}" ${attrs}/>`;
     }
+    // Each style layer that drew something is a group with its id in `data-layer`. It is not an `id`: the ids of one
+    // document must be unique, and the clip, path and icon ids above or a second SVG on the same page could repeat it.
+    marks.push(['', body.length]);
+    marks.forEach(([layer, at], k) => {
+        const end = marks[k + 1]?.[1];
+        if (end === undefined || end === at) return;
+        body[at] = `<g data-layer="${escapeXML(layer)}">${body[at]}`;
+        body[end - 1] += '</g>';
+    });
 
     // A symbol on the ground of a tilted map (`Placed.frame`) is drawn with its frame about its center, and others turn by their angle.
     const turn = (x: number, y: number, a: number, f?: number[]) => f

@@ -7,7 +7,7 @@ import type {QueriedFeature} from './query.ts';
 import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {Evented} from './evented.ts';
-import {zoomCurveErrors} from './mistakes.ts';
+import {zoomCurveErrors, unknownMapOption} from './mistakes.ts';
 import {httpError, withCode} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
@@ -532,9 +532,13 @@ export class Map extends CoreMap {
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
         if (context?.preserveDrawingBuffer)
             this.mistake('new Map(): canvasContextAttributes.preserveDrawingBuffer', __DEV__ ? '[map-jr-gl] E387 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.' : '');
+        if (__DEV__) for (const k in o) { const text = unknownMapOption(k); if (text) this.mistake('new Map(): the option ' + k, text); }
         this.unsupported('The option logoPosition', !o.logoPosition);
         // (Development build) `validateStyle: false` skips the check of the style, as in MapLibre GL JS (#1748, #2121). `setStyle` can override it for one style.
         if (__DEV__) this.noValidate = this.noValidateMap = o.validateStyle === false;
+        // (MapLibre GL JS reads these two: they change the skirts of terrain tiles and the font of ideographs. Their defaults are "auto" and "sans-serif".)
+        if (__DEV__) this.unsupported('The option terrainSkirtLength', o.terrainSkirtLength === undefined || o.terrainSkirtLength === 'auto');
+        if (__DEV__) this.unsupported('The option localIdeographFontFamily', o.localIdeographFontFamily === undefined || o.localIdeographFontFamily === 'sans-serif');
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
@@ -726,6 +730,7 @@ export class Map extends CoreMap {
         this.styleUrl = typeof style === 'string' ? style : null;
         // (Development build) As in MapLibre GL JS, `validate` of this call wins over the option `validateStyle` of `new Map()` (#1748).
         if (__DEV__) this.noValidate = options.validate === undefined ? this.noValidateMap : !options.validate;
+        if (__DEV__) this.unsupported('The option localIdeographFontFamily of setStyle', options.localIdeographFontFamily === undefined || options.localIdeographFontFamily === 'sans-serif');
         const own = options.transformStyle, diff = options.diff !== false;
         // As in MapLibre GL JS 6.17, a new style without `diff` has an image manager of its own: the images that `addImage` added are
         // gone, with no `onRemove()` and no more `render()`, and a layer that uses one fires `styleimagemissing` (#2309).
@@ -913,8 +918,6 @@ export class Map extends CoreMap {
     }
     /** Returns the sprites of the style as `{id, url}` objects. A sprite that the style gives as one URL has the id `'default'`. */
     getSprite(): {id: string; url: string}[] { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
-    /** Replaces the sprites of the style, or removes them with `null`. */
-    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
     /** Adds a sprite sheet with an id and a URL to the style, as in MapLibre GL JS. Its images have the names `id:name`. */
     addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
     /** Removes the sprite sheet with this id from the style. */
@@ -1098,7 +1101,7 @@ export class Map extends CoreMap {
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
         const turn = this.turn, move = this.inMove, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
-            this.keep(key, found, turn);
+            this.keep(key, found, turn, sets);
             // A `mousemove` listener read the array (react-map-gl does so for hover): while the pointer has not moved
             // since, that `mousemove` fires again, and the same question then has the answer at once.
             if (move && !awaited && this.summary(found) !== given) { if (move === this.lastMove && !move.again) { move.again = true; this.fire('mousemove', move.data); } return features([...found]); }
@@ -1124,7 +1127,7 @@ export class Map extends CoreMap {
      * the map asks the engine where the pointer rests and when `click`, `dblclick` or `contextmenu` fires; and after a first answer that the
      * caller did not get, the map fires `idle` again.
      */
-    private answers = new globalThis.Map<string, {found: QueriedFeature[]}>();
+    private answers = new globalThis.Map<string, {found: QueriedFeature[]; sources: Set<string>}>();
     private again = false;
     private refired = new Set<string>();
     private sourceEvents = new globalThis.Map<string, Evented>();
@@ -1134,7 +1137,10 @@ export class Map extends CoreMap {
     }
     /** (`turn` counts the changes of data by the page. An answer to a question from before such a change is not kept.) */
     private turn = 0;
-    private forget() { this.answers.clear(); this.turn++; }
+    private forget(sourceId?: string) {
+        if (sourceId) for (const [key, a] of this.answers) { if (a.sources.has(sourceId)) this.answers.delete(key); } else this.answers.clear();
+        this.turn++;
+    }
     /**
      * The last answer of the engine to `querySourceFeatures`, by source and options. A change of the style keeps it (the
      * tile data stays the same); new data of the source (`setData`, `refreshTiles`, a new source) drops it.
@@ -1146,11 +1152,11 @@ export class Map extends CoreMap {
         this.sourceTurn.set(sourceId, {});
         for (const [key, a] of this.sourceAnswers) if (a.sourceId === sourceId) this.sourceAnswers.delete(key);
     }
-    override refreshTiles(sourceId: string) { this.forget(); this.forgetSource(sourceId); return super.refreshTiles(sourceId); }
-    private keep(key: string, found: QueriedFeature[], turn: number) {
+    override refreshTiles(sourceId: string) { this.forget(sourceId); this.forgetSource(sourceId); return super.refreshTiles(sourceId); }
+    private keep(key: string, found: QueriedFeature[], turn: number, sets: {source?: string}[]) {
         if (turn !== this.turn) return;
         this.answers.delete(key);
-        this.answers.set(key, {found});
+        this.answers.set(key, {found, sources: new Set(sets.map(s => s.source!))});
         if (this.answers.size > 64) this.answers.delete(this.answers.keys().next().value!);
     }
     private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
@@ -1177,7 +1183,8 @@ export class Map extends CoreMap {
     private noValidateMap = false;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
-        if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
+        // A change of the style (no `sourceId`) keeps them: the tile data is the same.
+        if (type === 'dataloading' && data.sourceId) { this.forget(data.sourceId as string); this.forgetSource(data.sourceId as string); }
         // The events of a source also go to the listeners on `getSource(id)`, with MapLibre's names on a source.
         const own = {sourcedata: 'data', sourcedataloading: 'dataloading', error: 'error'}[type], ev = this.sourceEvents.get(data.sourceId as string);
         if (type === 'sourcedataloading' && !data.tile) this.dataPending.add(data.sourceId as string);
@@ -1212,7 +1219,7 @@ export class Map extends CoreMap {
             const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box), turn = this.turn;
             if (!sets.length || this.answers.has(key)) return;
             if (!this.asking.has(key)) this.asking.set(key, this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}))
-                .then(found => this.keep(key, found, turn), () => {}).finally(() => this.asking.delete(key)));
+                .then(found => this.keep(key, found, turn, sets), () => {}).finally(() => this.asking.delete(key)));
             return this.asking.get(key);
         };
         if (type === 'mousemove') {

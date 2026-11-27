@@ -5,7 +5,7 @@
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
-import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {Comment, computed, defineComponent, Fragment, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import {earlyMethod, mistake} from './mistakes.ts';
 import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
@@ -114,26 +114,45 @@ export const MapOverlay = defineComponent({
          * @default `'center'` for a marker; for a popup, chosen by the position
          */
         anchor: String as PropType<OverlayOptions['anchor']>,
-        /** A distance in CSS pixels from the position, to the right and down. */
-        offset: Array as unknown as PropType<[number, number]>,
+        /**
+         * A distance in CSS pixels from the position, to the right and down. A marker takes a pair, `[x, y]`. A popup also takes one
+         * number, which moves it away from the position on the side that it has, and an object that has a pair for each anchor
+         * (`{bottom: [0, -16], top: [0, 16]}`), so that a popup that chooses its own anchor keeps its distance on every side.
+         */
+        offset: [Number, Array, Object] as PropType<OverlayOptions['offset']>,
         /**
          * Whether the content is shown in a box with a tip that points to the position (a popup).
          * @default false
          */
         popup: Boolean,
-        /** Called when the user closes the popup, as the listener `@close`. With it, the popup has a button to close it. */
+        /** Called when the user closes the popup, as the listener `@close`. With it, and without `closeButton`, the popup has a button to close it. */
         onClose: Function as PropType<() => void>,
+        /**
+         * Whether the popup has a button to close it. The button closes the popup, so `@close` is not needed for that.
+         * @default true when `onClose` is set, else false
+         */
+        closeButton: {type: Boolean, default: undefined},
+        /**
+         * Whether a click on the map closes the popup. The click that opens the popup does not close it.
+         * @default false
+         */
+        closeOnClick: Boolean,
         /**
          * Whether the user can drag the content. A popup cannot be dragged. The events `dragstart`, `drag` and `dragend` receive `[lng, lat]`.
          * @default false
          */
         draggable: Boolean,
+        /**
+         * The color of the default pin, a CSS color. A `MapOverlay` with no content shows the default pin (`defaultPin` of the main API), and `color` has an effect only then.
+         * @default `'#3fb1ce'`
+         */
+        color: String,
     },
     emits: ['close', 'dragstart', 'drag', 'dragend'],
     setup(props, {slots, emit}) {
         const host = useMapInstance(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
         let overlay: Overlay | null = null;
-        const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose,
+        const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: Array.isArray(props.offset) ? [props.offset[0], props.offset[1]] : props.offset, popup: props.popup, onClose: props.onClose, closeButton: props.closeButton, closeOnClick: props.closeOnClick,
             draggable: props.draggable, onDragStart: p => emit('dragstart', p), onDrag: p => emit('drag', p), onDragEnd: p => emit('dragend', p)});
         // The map starts after this component is there, so the element is put on the map when the two exist.
         watch([host, el, options], ([map, element, o]) => {
@@ -141,11 +160,23 @@ export const MapOverlay = defineComponent({
             if (overlay) overlay.update(o); else { overlay = map.overlay(element, o); shown.value = true; }
         }, {flush: 'post', immediate: true});
         onBeforeUnmount(() => { overlay?.remove(); overlay = null; });
+        // Without content, `MapOverlay` shows the default pin in a placeholder that Vue renders and removes with the slot. (The pin comes from the map code, which the page loads anyway.)
+        const holder = shallowRef<HTMLElement | null>(null);
+        watch([holder, () => props.color], async ([element, color]) => {
+            if (!element) return;
+            const made = (await import('./host.ts')).defaultPin({color});
+            if (holder.value === element) element.replaceChildren(made);
+        }, {flush: 'post', immediate: true});
         // (Not shown until it is on the map: on a server, and before the map has started, it has no position.)
         // The visibility is Vue state, so a re-render with fallthrough attributes does not hide the content again (#161).
         // The style is an object: Vue then sets and removes only `display`, and keeps the `position` and the transform
         // that the overlay writes into the inline style (#243). A string or `undefined` would replace the whole style.
-        return () => h('div', {ref: el, style: {display: shown.value ? undefined : 'none'}}, slots.default?.());
+        // (A slot that renders nothing, such as `v-if` with a false value or `[]`, is empty too.)
+        const blank = (nodes: VNode[] | undefined): boolean => !nodes || nodes.every(n => n.type === Comment || (n.type === Fragment && blank(n.children as VNode[])));
+        return () => {
+            const content = slots.default?.();
+            return h('div', {ref: el, style: {display: shown.value ? undefined : 'none'}}, blank(content) ? [h('div', {ref: holder})] : content);
+        };
     },
 });
 

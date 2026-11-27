@@ -10,7 +10,8 @@ import {Map, logError, type FeatureOptions, type FeaturePlace, type SourceOption
 export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
-import {Marker, Popup, part} from './overlays.ts';
+import {Marker, Popup, part, type PopupOffset} from './overlays.ts';
+export {defaultPin} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
@@ -163,6 +164,28 @@ export type ImageSource = Parameters<Map['addImage']>[1];
  */
 export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
 
+/** The color scheme of the field `colorScheme` of `MapDescription`. `'auto'` follows `prefers-color-scheme` of the browser. */
+export type ColorScheme = 'auto' | 'light' | 'dark';
+
+/** The thread that renders the map, the field `renderer` of `MapSetup`. `'auto'` uses the worker where the browser supports it. */
+export type Renderer = 'auto' | 'worker' | 'main';
+
+/** One style for the light color scheme and one for the dark, the pair form of `style` in `MapDescription`. Each is a style object or the URL of a style. */
+export interface StylePair {
+    /** The style for the light color scheme: a style object or the URL of a style. */
+    light: string | StyleSpecification;
+    /** The style for the dark color scheme: a style object or the URL of a style. */
+    dark: string | StyleSpecification;
+}
+
+/** A sprite of the field `sprite` of `MapDescription`: its `id`, which a layer writes before the image name (`id:name`), and the URL of the sprite without its extension. */
+export interface SpriteInput {
+    /** The prefix of the images of this sprite: a layer writes `id:name`. */
+    id: string;
+    /** The URL of the sprite without a file extension. The map requests `url.json` and `url.png`, or `url@2x.json` and `url@2x.png` on a screen with a pixel ratio above 1. */
+    url: string;
+}
+
 /**
  * The description of a map: one object that states the style, the data, the view and the controls. To change the map, pass a new description to `update`.
  * Every optional field accepts `null` as "not set", the same as leaving the field out, except `terrain`.
@@ -172,7 +195,7 @@ export interface MapDescription extends MapSetup {
      * The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark color scheme.
      * With `{light, dark}`, the map uses the style of the resolved `colorScheme`, and loads the other style when the scheme changes.
      */
-    style: string | StyleSpecification | {light: string | StyleSpecification; dark: string | StyleSpecification};
+    style: string | StyleSpecification | StylePair;
     /**
      * Sources to add to the style, by id. A source here overrides the source of the style that has the same id. A GeoJSON source
      * whose id is a key of `data` needs no `data` of its own: it sets the options of the source, and `data` sets the features.
@@ -220,9 +243,9 @@ export interface MapDescription extends MapSetup {
     images?: Record<string, ImageInput> | null;
     /**
      * Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. A layer
-     * names an image of such a sprite as `id:name` (`pins:hotel`). A change of this field loads the style again.
+     * names an image of such a sprite as `id:name` (`pins:hotel`). A change of this field loads the new sprite only.
      */
-    sprite?: {id: string; url: string}[] | null;
+    sprite?: SpriteInput[] | null;
     /** Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. */
     controls?: ControlSpec[] | null;
     /**
@@ -297,12 +320,12 @@ export interface MapDescription extends MapSetup {
      * browser. The resolved scheme is also the global state `color-scheme` of the style, unless `globalState` sets it.
      * @default 'light'
      */
-    colorScheme?: 'auto' | 'light' | 'dark' | null;
+    colorScheme?: ColorScheme | null;
     /**
      * Called with the new value when the control `colorScheme()` changes `colorScheme`. The map has applied the value
      * already; an application that keeps the description in its state stores it.
      */
-    onColorSchemeChange?: ((colorScheme: 'auto' | 'light' | 'dark') => void) | null;
+    onColorSchemeChange?: ((colorScheme: ColorScheme) => void) | null;
     /**
      * The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL
      * JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. A key that is left out keeps the English text.
@@ -337,7 +360,7 @@ export interface MapSetup {
      * The thread that renders the map. `'worker'` keeps the map smooth while the page is busy, and `'auto'` uses it where the browser supports it.
      * @default 'auto'
      */
-    renderer?: 'auto' | 'worker' | 'main' | null;
+    renderer?: Renderer | null;
     /**
      * The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`.
      * @default '"Noto Sans", "Helvetica Neue", Arial, sans-serif'
@@ -396,15 +419,29 @@ export interface OverlayOptions {
      * @default `'center'` for a marker; for a popup, chosen by the position
      */
     anchor?: Anchor;
-    /** A distance in CSS pixels from the position, to the right and down. */
-    offset?: [number, number];
+    /**
+     * A distance in CSS pixels from the position, to the right and down. A marker takes a pair, `[x, y]`. A popup also takes one
+     * number, which moves it away from the position on the side that it has, and an object that has a pair for each anchor
+     * (`{bottom: [0, -16], top: [0, 16]}`), so that a popup that chooses its own anchor keeps its distance on every side.
+     */
+    offset?: PopupOffset;
     /**
      * Whether the element is shown in a box with a tip that points to the position (a popup).
      * @default false
      */
     popup?: boolean;
-    /** Called when the user closes the popup. With it, the popup has a button to close it. */
+    /** Called when the user closes the popup. With it, and without `closeButton`, the popup has a button to close it. */
     onClose?: () => void;
+    /**
+     * Whether the popup has a button to close it. The button closes the popup, so `onClose` is not needed for that.
+     * @default true when `onClose` is set, else false
+     */
+    closeButton?: boolean;
+    /**
+     * Whether a click on the map closes the popup. The click that opens the popup does not close it.
+     * @default false
+     */
+    closeOnClick?: boolean;
     /**
      * Whether the user can drag the element. A popup cannot be dragged. To keep a dropped element in place across updates, pass its
      * new position to `lngLat` in `onDragEnd`.
@@ -869,7 +906,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     // The sources of the base style: a source of the description with one of these ids replaces it, and only a new style gives it back.
     let baseSources: object = {};
     // The terrain of the base style, which a description without `terrain` gives back without a new style (#1143).
-    let styleTerrain: TerrainSpecification | null = null;
+    let styleTerrain: TerrainSpecification | null = null, styleSprite: unknown;
+    // (A URL of `sprite` that is relative is relative to the page, and the style has its own base.)
+    const absoluteSprites = (sprite: Given['sprite']) => Array.isArray(sprite) ? sprite.map(({id, url}) => ({id, url: new URL(url, document.baseURI).href})) : undefined;
+    // (The sprites of the style with those of the description added, as `extended` has them.)
+    const sprites = (sprite: Given['sprite']) => extended({layers: [], sprite: styleSprite}, {sprite: absoluteSprites(sprite)}).sprite ?? null;
     // The projection of the style itself, which applies when the description has none, and that of the last description.
     let styleProjection: ProjectionSpecification | undefined, wantedProjection = spec.projection;
     // The ids of the GeoJSON sources that keys of `data` made, because the style and `sources` have no source of that id (#487).
@@ -892,6 +933,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         styled = true;
         baseSources = style.sources ?? {};
         styleTerrain = style.terrain ?? null;
+        styleSprite = style.sprite;
         styleProjection = style.projection;
         // (The code for the images of a style is loaded only for a style that has them. After it has loaded, the map must
         // still exist and the style must not have been replaced.)
@@ -912,8 +954,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
         check(4, style, parts(next));
-        // (A URL of `sprite` that is relative is relative to the page, and the style has its own base.)
-        const sprite = Array.isArray(next.sprite) ? next.sprite.map(({id, url}) => ({id, url: new URL(url, document.baseURI).href})) : undefined;
+        const sprite = absoluteSprites(next.sprite);
         const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers), sprite}), wantedData, false, typeError);
         madeData.clear();
         for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
@@ -1156,9 +1197,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) && !(styled && editStyle(next.style, before.style, differ)) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite));
+        const restyled = !!before && (differ(next.style, before.style) && !(styled && editStyle(next.style, before.style, differ)) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite) && !styled);
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else {
+            // (A changed `sprite` goes to `setSprite`, which loads the sprite files only, as the diff of MapLibre GL JS does; #1194.)
+            if (before && differ(next.sprite, before.sprite)) { state.set({idle: false}); map.setSprite(sprites(next.sprite)); }
             // (Layers that went to the map as edits are checked now, as a new style is, and not only when the map is next idle; #1684.)
             // (A new style object that went to the map as edits is checked as a style is: its zoom curves too, #1765. The layers of the description are checked with the style that the map has, so that a `before` that names no layer warns, #1766.)
             if (__DEV__ && before && differ(next.style, before.style)) check(4, styleFor(next.style, styledDark));
@@ -1331,13 +1374,13 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             let now = o;
             const make = () => {
                 if (!now.popup) {
-                    const m = new Marker({element, anchor: now.anchor, offset: now.offset, draggable: now.draggable}).setLngLat(now.lngLat).addTo(map);
+                    const m = new Marker({element, anchor: now.anchor, offset: Array.isArray(now.offset) ? now.offset : undefined, draggable: now.draggable}).setLngLat(now.lngLat).addTo(map);
                     // (The callbacks of the latest options run, so that a framework can pass a new function each render.)
                     const at = (): Position => { const p = m.getLngLat(); return [p.lng, p.lat]; };
                     m.on('dragstart', () => now.onDragStart?.(at())); m.on('drag', () => now.onDrag?.(at())); m.on('dragend', () => now.onDragEnd?.(at()));
                     return m;
                 }
-                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
+                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: now.closeButton ?? !!now.onClose, closeOnClick: !!now.closeOnClick}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 // (`destroy()` closes the popup with the map. That is not the user's close, so `onClose` does not run.)
                 p.on('close', () => { if (alive && made === p) now.onClose?.(); });
                 // (Escape or the button then returns the focus to the element that had it, else to the map.)
@@ -1347,7 +1390,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             };
             let made: Marker | Popup | null = make();
             const set = (next: OverlayOptions) => {
-                const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
+                const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || JSON.stringify(next.offset) !== JSON.stringify(now.offset) || (next.closeButton ?? !!next.onClose) !== (now.closeButton ?? !!now.onClose) || !!next.closeOnClick !== !!now.closeOnClick;
                 // (Only a new position moves the element: a render during or after a drag that passes the same
                 // `lngLat` again leaves it where the user put it.)
                 const moved = String(next.lngLat) !== String(now.lngLat);

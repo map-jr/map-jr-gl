@@ -148,6 +148,38 @@ for (const mode of renderers) {
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
+    // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
+    // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
+    {
+        const kept = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:50'}));
+            const m = new mod.Map({container: el, style, center: [10, 45], zoom: 3, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); }), out = {};
+            await idle();
+            await m.queryRenderedFeatures(); // (the engine answers; the array of the next call has the answer)
+            out.first = m.queryRenderedFeatures().length;
+            const water = style.layers.find(l => l.type === 'fill');
+            m.setPaintProperty(water.id, 'fill-color', '#f00'); out.paint = m.queryRenderedFeatures().length;
+            await idle();
+            m.setStyle(JSON.parse(JSON.stringify(style)), {diff: true}); out.diff = m.queryRenderedFeatures().length;
+            // As in MapLibre GL JS, a filter takes effect when the tiles have loaded again: the array is the old one at once, and the new one after idle.
+            const ids = [water.id], q = () => m.queryRenderedFeatures(undefined, {layers: ids});
+            await idle(); await q(); out.before = q().length;
+            m.setFilter(water.id, ['==', ['get', 'no-such-property'], 1]); out.filterNow = q().length;
+            await idle(); out.filterIdle = q().length;
+            // Data of another source drops only the answers that named that source; `refreshTiles` of the source drops its answers.
+            m.setFilter(water.id, null); await idle(); await q(); out.again = q().length;
+            m.addSource('other', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+            m.getSource('other').setData({type: 'FeatureCollection', features: []}); out.otherData = q().length;
+            m.refreshTiles?.(Object.keys(style.sources).find(k => style.sources[k].type === 'vector')); out.refreshed = q().length;
+            m.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff, and after setData of another source (#817)`,
+            kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first && kept.before > 0 && kept.filterNow === kept.before && kept.filterIdle === 0 && kept.again === kept.before && kept.otherData === kept.before && kept.refreshed === 0, JSON.stringify(kept));
+    }
+
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
     // a point where `project` says, turns under a drag as in MapLibre GL JS, and turns into Mercator at zoom 12.
     // A second map on the page with Mercator is not affected.
@@ -615,6 +647,10 @@ for (const mode of renderers) {
         const filtered = await all([2.2945, 48.8584], {zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
         // `queryFeatures` gives what the style layers draw (#12), as `queryRenderedFeatures` does. MapLibre has no radius,
         // so the comparison sets `radius: 0` (the default of `queryFeatures` is 3, #1150).
+        // (The point is inside buildings. The center of the frames check above is inside a polygon of class path, which only a
+        // line layer draws, and a line layer finds a polygon at its rings only, #2094.)
+        window.map.jumpTo({center: [-74.0065, 40.7085]});
+        await new Promise(r => window.map.once('idle', r));
         const c = window.map.getCenter(), at = window.map.project(c), key = f => f.layer.id + ' ' + f.id;
         const drawn = await window.map.queryFeatures(c, {radius: 0}), same = await window.map.queryRenderedFeatures([at.x, at.y]);
         const wide = await window.map.queryFeatures({x: at.x, y: at.y}, {radius: 40}), box = await window.map.queryRenderedFeatures([[at.x - 40, at.y - 40], [at.x + 40, at.y + 40]]);
@@ -906,14 +942,9 @@ for (const mode of renderers) {
                 await new Promise(r => setTimeout(r, 16));
             }
             window.touch('pointerup', 11, ...to[0]); window.touch('pointerup', 12, ...to[1]);
-            // Wait until the camera has not changed for some time: in a worker the gesture is applied a little later.
-            await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, last = ''; i < 40 && quiet < 2; i++) {
-                await new Promise(r => setTimeout(r, 100));
-                const now = JSON.stringify(window.cam());
-                quiet = now === last ? quiet + 1 : 0;
-                last = now;
-            }
+            // Wait for the real state: the gesture is applied a little later in a worker, and a turn that ends near north snaps to it (#1324).
+            await new Promise(r => setTimeout(r));
+            for (let i = 0; i < 100 && !(window.map.areTilesLoaded() && !window.map.isMoving()); i++) await new Promise(r => setTimeout(r, 50));
         };
         window.cam = () => ({zoom: window.map.getZoom(), bearing: window.map.getBearing(), pitch: window.map.getPitch()});
     });
@@ -930,26 +961,25 @@ for (const mode of renderers) {
         await window.twoFingers([[450, 400], [550, 400]], [[450, 320], [550, 320]]); // both fingers up together
         out.tilt = window.cam();
         window.map.jumpTo({pitch: 0, zoom: 14});
-        // Waits for an animation to end. A fixed time is not sufficient when software rendering is slow. With
-        // `expect`, it also waits until the zoom is near that value: under load the worker can report the start of
-        // an animation later than two quiet samples, and the zoom then still reads the old value.
+        // Waits until the engine has run every command (the map reports its tiles loaded only for the newest command)
+        // and, with `expect`, until the zoom is near that value (a double tap starts its ease after the listeners of
+        // dblclick). A fixed time is not sufficient when software rendering is slow (#2375).
         const still = async (expect) => {
-            await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, z = window.cam().zoom; i < 40 && (quiet < 2 || (expect !== undefined && Math.abs(z - expect) >= 0.02)); i++) {
-                await new Promise(r => setTimeout(r, 150));
-                const now = window.cam().zoom;
-                quiet = Math.abs(now - z) < 1e-6 && !window.map.isMoving() ? quiet + 1 : 0;
-                z = now;
+            for (let i = 0; i < 300; i++) {
+                await new Promise(r => setTimeout(r, 50));
+                if (window.map.areTilesLoaded() && !window.map.isMoving() && (expect === undefined || Math.abs(window.cam().zoom - expect) < 0.02)) break;
             }
         };
-        const tap = async (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); await new Promise(r => setTimeout(r, 60)); };
-        await tap(500, 350); await tap(500, 350);
+        // The two taps of a double tap are sent in one task: a timer between them can last longer than the 300 ms of a
+        // double tap on a loaded runner.
+        const tap = (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); };
+        tap(500, 350); tap(500, 350);
         await still(15);
         out.doubleTap = window.cam();
         window.touch('pointerdown', 11, 450, 350); window.touch('pointerdown', 12, 550, 350); window.touch('pointerup', 11, 450, 350); window.touch('pointerup', 12, 550, 350);
         await still(14);
         out.twoFingerTap = window.cam();
-        await tap(500, 350);
+        tap(500, 350);
         window.touch('pointerdown', 11, 500, 350);
         for (let y = 350; y <= 450; y += 10) { window.touch('pointermove', 11, 500, y); await new Promise(r => setTimeout(r, 16)); }
         window.touch('pointerup', 11, 500, 450);
@@ -2257,6 +2287,37 @@ for (const mode of renderers) {
         check(`[${mode}] queryRenderedFeatures: a line with line-offset, also from a property, is found where it is drawn, as MapLibre GL JS, also in the array at once (#2001)`,
             ours.down === 'down' && ours.up === 'up' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
+    // A line layer over a polygon draws its rings, so a query finds it near a ring and not inside the polygon, and a
+    // `line-offset` moves the rings too, as in MapLibre GL JS 6.17 (#2094, #2095). The square has a ring of 4 pixels; its
+    // east side is queried at its middle, 15 pixels to the west and 15 pixels to the east.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const m = new mod.Map({container: el, renderer: mode, center: [10, 10], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: square}},
+                layers: [
+                    {id: 'fill', type: 'fill', source: 'p'},
+                    {id: 'ring', type: 'line', source: 'p', paint: {'line-width': 4}},
+                    {id: 'off', type: 'line', source: 'p', paint: {'line-width': 4, 'line-offset': 15}},
+                ]}});
+            await new Promise(r => m.once('idle', r));
+            const e = m.project([20, 10]), c = m.project([10, 10]), only = (pt, id) => [...new Set([...m.queryRenderedFeatures(pt, {layers: [id]})].map(f => f.layer.id))].join();
+            const out = {};
+            for (const id of ['ring', 'off']) for (const [name, pt] of Object.entries({inside: [c.x, c.y], edge: [e.x, e.y], west: [e.x - 15, e.y], east: [e.x + 15, e.y]})) {
+                out[`${id}-${name}`] = only(pt, id);
+                out[`later-${id}-${name}`] = [...new Set((await m.queryRenderedFeatures(pt, {layers: [id]})).map(f => f.layer.id))].join();
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a line layer over a polygon finds the ring and not the inside, and line-offset moves the ring, as MapLibre GL JS (#2094, #2095)`,
+            ours['ring-inside'] === '' && ours['ring-edge'] === 'ring' && (ours['off-west'] === 'off') !== (ours['off-east'] === 'off') && ours['off-edge'] === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // #2217: with line-offset, a miter join longer than 2 (line-miter-limit 4, a turn of 133 degrees, miter 2.5) moves
     // twice the offset along the miter, as MAX_OFFSET_MITER_LENGTH of MapLibre GL JS does. Before, it moved the full
     // miter, and the tip reached about 4 px farther. (The bisector of the corner lies near a diagonal of the tile, so
@@ -2927,6 +2988,37 @@ for (const mode of renderers) {
         check('[main] on the globe at pitch 0 an icon that faces the viewer 55 degrees from the center has the size of MapLibre GL JS within 1 pixel, and 40 pixels on Mercator (#2201)',
             globeFacing['ml globe'].every(v => v < 39) && ['main', 'worker', 'overlap'].every(n => globeFacing[n].every((v, i) => Math.abs(v - globeFacing['ml globe'][i]) <= 1))
             && globeFacing.mercator.every((v, i) => v === 40 && globeFacing['ml mercator'][i] === 40), JSON.stringify(globeFacing));
+        // A large icon on the ground far from the center of the globe has each corner where MapLibre GL JS 6.17 projects it:
+        // a red icon of 60 pixels at pitch 40 and one of 100 pixels at pitch 0 have the width and the height of MapLibre's
+        // within 1.5 pixels, with both renderers. (With corners from the frame at the center of the icon, they were 5 to 12
+        // pixels larger, #2297.)
+        const globeBigIcon = await page.evaluate(async () => {
+            const out = {};
+            for (const [lib, renderer] of [['ml', 'main'], ['mjr', 'main'], ['mjr', 'worker']]) for (const [at, pitch, size] of [[[-60, 20], 40, 60], [[-75, 30], 0, 100]]) {
+                const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:512px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 1, pitch, attributionControl: false, fadeDuration: 0, canvasContextAttributes: {preserveDrawingBuffer: true}, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map'}}]}});
+                const red = new Uint8Array(size * size * 4);
+                for (let i = 0; i < red.length; i += 4) red.set([255, 0, 0, 255], i);
+                m.addImage('red', {width: size, height: size, data: red});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await new Promise(r => m.getCanvas().toBlob(r))), k = bmp.width / 512, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, box = [Infinity, Infinity, -Infinity, -Infinity];
+                for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i] > 200 && d[i + 1] < 100 && d[i + 2] < 100) box.splice(0, 4, Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x + 1), Math.max(box[3], y + 1));
+                }
+                out[`${lib} ${renderer} ${at}`] = [(box[2] - box[0]) / k, (box[3] - box[1]) / k];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] on the globe a large icon on the ground far from the center has the width and the height of MapLibre GL JS within 1.5 pixels, with both renderers (#2297)',
+            ['-60,20', '-75,30'].every(at => globeBigIcon['ml main ' + at].every((v, i) => v > 10 && ['main', 'worker'].every(r => Math.abs(v - globeBigIcon[`mjr ${r} ${at}`][i]) <= 1.5))), JSON.stringify(globeBigIcon));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
@@ -5250,6 +5342,15 @@ for (const mode of renderers) {
             const draggedPlain = make({dragPan: true, rotateSpeed: 0.8, pitchSpeed: -0.5, aroundCenter: true});
             draggedPlain.dragPan.enable(); draggedPlain.dragRotate.enable(true);
             out.drag.push(warnings.splice(0).length);
+            // A misspelled option of MapLibre GL JS warns once with the closest name, and the props of a wrapper (react-map-gl) do not warn (#2272); terrainSkirtLength (#1788) and localIdeographFontFamily (#1789) have no effect and warn once.
+            const unknown = make({children: [], initialViewState: {zoom: 1}, mapLib: 1, mapStyle: 'x', onLoad: () => {}, fadeDuraton: 5, terrainSkirtLength: 'none', localIdeographFontFamily: 'monospace'});
+            unknown.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: false});
+            unknown.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: false});
+            const own = warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] '));
+            const knownPlain = make({terrainSkirtLength: 'auto', localIdeographFontFamily: 'sans-serif', centerClampedToGround: true, strict: false});
+            knownPlain.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: 'sans-serif'});
+            out.unknown = {own, plain: warnings.splice(0).length};
+            for (const x of [unknown, knownPlain]) { x.getContainer().remove(); x.remove(); }
             for (const x of [dragged, draggedPlain]) { x.getContainer().remove(); x.remove(); }
             projected.getContainer().remove(); projected.remove();
             // The defaults give no warning.
@@ -5271,6 +5372,11 @@ for (const mode of renderers) {
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
+        check('[main] maplibre-compat: a misspelled option of new Map() warns once with the closest name, the props of a wrapper do not warn, and terrainSkirtLength and localIdeographFontFamily (also of setStyle) warn once (#2272, #1788, #1789)',
+            quiet.unknown.own.length === 4 && quiet.unknown.plain === 0 && quiet.unknown.own.filter(w => /E2272/.test(w)).length === 1
+            && /"fadeDuraton" is not an option.* Did you mean "fadeDuration"\?/.test(quiet.unknown.own[0])
+            && quiet.unknown.own.filter(w => /terrainSkirtLength has no effect/.test(w)).length === 1 && quiet.unknown.own.filter(w => /localIdeographFontFamily has no effect/.test(w)).length === 1
+            && quiet.unknown.own.filter(w => /localIdeographFontFamily of setStyle has no effect/.test(w)).length === 1, JSON.stringify(quiet.unknown));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
             quiet.options.length === 1 && ['E387 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
@@ -8693,6 +8799,69 @@ for (const mode of renderers) {
         }, png);
         check(`[${mode}] 3D terrain: a tile that holds a building only in its buffer draws no copy of it above the roof (#2287)`, roof.columns > 100 && roof.runs === 1, JSON.stringify(roof));
     } catch (e) { check(`[${mode}] 3D terrain: the check of a building in the buffer of a tile ran (#2287)`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// 3D terrain: the ground under a building whose centroid lies past the edge of its elevation tile (here the piece of
+// the building of #2287 in the tile of zoom 14 to the north) is read from the neighbor tile, as in MapLibre GL JS: the
+// texture of an elevation tile has a border of 2 pixels from its neighbors. Clamped to the last row of its own tile, the
+// ground was 2 pixels too far north on a slope, and the roof line stood 6 px above that of MapLibre GL JS (#2319).
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    const roofLine = async lib => {
+        await page.goto(origin + '/?renderer=main&nomarkers');
+        await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+        await page.evaluate(async lib => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            // A slope that rises 50 m for each 100 m to the north.
+            try { mod.removeProtocol('dem2319'); } catch { /* not added yet */ }
+            mod.addProtocol('dem2319', async request => {
+                const [z, x, y] = request.url.slice(10).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(512, 512), g = c.getContext('2d'), img = g.createImageData(512, 512);
+                for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
+                    const my = (y + (j + 0.5) / 512) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                    const v = 2000 + (lat - 46.01) * 110540 * 0.5 + 32768, k = (j * 512 + i) * 4;
+                    img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                return {data: await (await c.convertToBlob()).arrayBuffer()};
+            });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'map2319', style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9;background:#fff'}));
+            const poly = {type: 'Polygon', coordinates: [[[7.766, 46.0075], [7.774, 46.0075], [7.774, 46.0125], [7.766, 46.0125], [7.766, 46.0075]]]};
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem2319://{z}/{x}/{y}'], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': 40, 'fill-extrusion-vertical-gradient': false}}],
+                terrain: {source: 'dem', exaggeration: 1}};
+            const opts = {container: el, style, center: [7.77, 46.01], zoom: 15, pitch: 65, attributionControl: false};
+            if (lib !== 'ml') opts.renderer = lib;
+            const m = new mod.Map(opts);
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => { const t = setTimeout(r, 8000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
+        }, lib);
+        // The topmost red pixel of each column.
+        const png = (await page.locator('#map2319').screenshot()).toString('base64');
+        return page.evaluate(async png => {
+            const bm = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
+            const g = new OffscreenCanvas(bm.width, bm.height).getContext('2d'); g.drawImage(bm, 0, 0);
+            const d = g.getImageData(0, 0, bm.width, bm.height).data, top = [];
+            for (let x = 0; x < bm.width; x++) {
+                let t = -1;
+                for (let y = 0; y < bm.height && t < 0; y++) { const k = (y * bm.width + x) * 4; if (d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90) t = y; }
+                top.push(t);
+            }
+            return top;
+        }, png);
+    };
+    try {
+        const ml = await roofLine('ml');
+        for (const mode of renderers) {
+            const ours = await roofLine(mode);
+            // (The middle three fifths of the building: at its corners the roof line is a slanted edge.)
+            const cols = ml.map((t, x) => t >= 0 ? x : -1).filter(x => x >= 0), a = cols[0], w = cols.at(-1) - a;
+            let off = 0, at = -1;
+            for (let x = Math.round(a + w / 5); x < Math.round(a + w * 4 / 5); x++) if (Math.abs(ours[x] - ml[x]) > off) off = Math.abs(ours[x] - ml[x]), at = x;
+            check(`[${mode}] 3D terrain: a building whose centroid lies past the edge of its elevation tile stands on the ground of the neighbor tile, as in MapLibre GL JS (#2319)`, cols.length > 100 && off <= 1, JSON.stringify({off, at, ours: ours[at], ml: ml[at], columns: cols.length}));
+        }
+    } catch (e) { check('[main] 3D terrain: the check of the ground past the edge of an elevation tile ran (#2319)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer
