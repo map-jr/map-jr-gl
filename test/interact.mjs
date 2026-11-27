@@ -148,6 +148,28 @@ for (const mode of renderers) {
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
+    // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
+    // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
+    {
+        const kept = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:50'}));
+            const m = new mod.Map({container: el, style, center: [10, 45], zoom: 3, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); }), out = {};
+            await idle();
+            await m.queryRenderedFeatures(); // (the engine answers; the array of the next call has the answer)
+            out.first = m.queryRenderedFeatures().length;
+            const water = style.layers.find(l => l.type === 'fill');
+            m.setPaintProperty(water.id, 'fill-color', '#f00'); out.paint = m.queryRenderedFeatures().length;
+            await idle();
+            m.setStyle(JSON.parse(JSON.stringify(style)), {diff: true}); out.diff = m.queryRenderedFeatures().length;
+            m.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff (#817)`,
+            kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first, JSON.stringify(kept));
+    }
+
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
     // a point where `project` says, turns under a drag as in MapLibre GL JS, and turns into Mercator at zoom 12.
     // A second map on the page with Mercator is not affected.

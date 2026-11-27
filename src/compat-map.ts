@@ -1098,7 +1098,7 @@ export class Map extends CoreMap {
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
         const turn = this.turn, move = this.inMove, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
-            this.keep(key, found, turn);
+            this.keep(key, found, turn, sets);
             // A `mousemove` listener read the array (react-map-gl does so for hover): while the pointer has not moved
             // since, that `mousemove` fires again, and the same question then has the answer at once.
             if (move && !awaited && this.summary(found) !== given) { if (move === this.lastMove && !move.again) { move.again = true; this.fire('mousemove', move.data); } return features([...found]); }
@@ -1124,7 +1124,7 @@ export class Map extends CoreMap {
      * the map asks the engine where the pointer rests and when `click`, `dblclick` or `contextmenu` fires; and after a first answer that the
      * caller did not get, the map fires `idle` again.
      */
-    private answers = new globalThis.Map<string, {found: QueriedFeature[]}>();
+    private answers = new globalThis.Map<string, {found: QueriedFeature[]; sources: Set<string>}>();
     private again = false;
     private refired = new Set<string>();
     private sourceEvents = new globalThis.Map<string, Evented>();
@@ -1134,7 +1134,10 @@ export class Map extends CoreMap {
     }
     /** (`turn` counts the changes of data by the page. An answer to a question from before such a change is not kept.) */
     private turn = 0;
-    private forget() { this.answers.clear(); this.turn++; }
+    private forget(sourceId?: string) {
+        if (sourceId) for (const [key, a] of this.answers) { if (a.sources.has(sourceId)) this.answers.delete(key); } else this.answers.clear();
+        this.turn++;
+    }
     /**
      * The last answer of the engine to `querySourceFeatures`, by source and options. A change of the style keeps it (the
      * tile data stays the same); new data of the source (`setData`, `refreshTiles`, a new source) drops it.
@@ -1146,11 +1149,11 @@ export class Map extends CoreMap {
         this.sourceTurn.set(sourceId, {});
         for (const [key, a] of this.sourceAnswers) if (a.sourceId === sourceId) this.sourceAnswers.delete(key);
     }
-    override refreshTiles(sourceId: string) { this.forget(); this.forgetSource(sourceId); return super.refreshTiles(sourceId); }
-    private keep(key: string, found: QueriedFeature[], turn: number) {
+    override refreshTiles(sourceId: string) { this.forget(sourceId); this.forgetSource(sourceId); return super.refreshTiles(sourceId); }
+    private keep(key: string, found: QueriedFeature[], turn: number, sets: {source?: string}[]) {
         if (turn !== this.turn) return;
         this.answers.delete(key);
-        this.answers.set(key, {found});
+        this.answers.set(key, {found, sources: new Set(sets.map(s => s.source!))});
         if (this.answers.size > 64) this.answers.delete(this.answers.keys().next().value!);
     }
     private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
@@ -1177,7 +1180,8 @@ export class Map extends CoreMap {
     private noValidateMap = false;
     private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
-        if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
+        // A change of the style (no `sourceId`) keeps them: the tile data is the same.
+        if (type === 'dataloading' && data.sourceId) { this.forget(data.sourceId as string); this.forgetSource(data.sourceId as string); }
         // The events of a source also go to the listeners on `getSource(id)`, with MapLibre's names on a source.
         const own = {sourcedata: 'data', sourcedataloading: 'dataloading', error: 'error'}[type], ev = this.sourceEvents.get(data.sourceId as string);
         if (type === 'sourcedataloading' && !data.tile) this.dataPending.add(data.sourceId as string);
@@ -1212,7 +1216,7 @@ export class Map extends CoreMap {
             const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box), turn = this.turn;
             if (!sets.length || this.answers.has(key)) return;
             if (!this.asking.has(key)) this.asking.set(key, this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}))
-                .then(found => this.keep(key, found, turn), () => {}).finally(() => this.asking.delete(key)));
+                .then(found => this.keep(key, found, turn, sets), () => {}).finally(() => this.asking.delete(key)));
             return this.asking.get(key);
         };
         if (type === 'mousemove') {
