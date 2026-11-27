@@ -102,8 +102,8 @@ GL JS. This holds for `update`, `patch`, and in the compat entry for `setPaintPr
   moves between the values at the zoom of each frame.
 - These change at once: a value that depends on the feature (`get` or `feature-state`, before or after the change),
   `*-pattern`, `line-dasharray`, and a value of any other type.
-- Symbol layers, fill-extrusion layers and `fill-outline-color` do not transition. A new value shows when their tiles
-  are built again.
+- An icon halo of a symbol layer that had none (`icon-halo-width` from 0, or a first `icon-halo-color`) shows at
+  once, because the tiles of the layer are built again.
 - The map draws a frame for each animation frame until the last transition ends, and `idle` comes after it.
 - `{duration: 0}` in `transition` or in a `*-transition` makes changes instant. In the compat entry, `setStyle` with
   `diff: false` changes every value at once, as in MapLibre GL JS.

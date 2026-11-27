@@ -148,6 +148,46 @@ for (const mode of renderers) {
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
+
+    // Paint transitions of a symbol layer and of a fill-extrusion layer move over the transition and build no tiles again
+    // (#972): `text-color` and `fill-extrusion-height` are read while they move over 12 s (the middle is the first picture with a red above 80). The text is on a black background,
+    // so its largest red is its color; the extrusion (green) is counted in pixels.
+    const layerTransitions = await (async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const stats = async () => page.evaluate(async png => {
+            const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data;
+            let max = 0, n = 0;
+            for (let i = 0; i < d.length; i += 4) { if (d[i] > max) max = d[i]; if (d[i + 1] > 60) n++; }
+            return {max, n};
+        }, (await page.screenshot({clip: {x: 0, y: 0, width: 300, height: 300}})).toString('base64'));
+        const out = {};
+        await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.layerEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:300px;z-index:99999'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-8, -8], [8, -8], [8, 8], [-8, 8], [-8, -8]]]}};
+            const m = window.layerMap = new mod.Map({container: el, renderer, center: [0, 0], zoom: 3, pitch: 60, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {s: {type: 'geojson', data: square}, p: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}},
+                    {id: 'x', type: 'fill-extrusion', source: 's', paint: {'fill-extrusion-color': '#0a0', 'fill-extrusion-height': 0, 'fill-extrusion-height-transition': {duration: 12000, delay: 0}}},
+                    {id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'WWW', 'text-size': 60, 'text-allow-overlap': true, 'text-pitch-alignment': 'viewport'}, paint: {'text-color': '#200', 'text-color-transition': {duration: 12000, delay: 0}}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        await wait(200);
+        out.start = await stats();
+        await page.evaluate(() => { const m = window.layerMap; window.layerIdled = false; m.once('idle', () => window.layerIdled = true); m.setPaintProperty('t', 'text-color', '#f00'); m.setPaintProperty('x', 'fill-extrusion-height', 100000); });
+        for (let i = 0; i < 40; i++) { out.middle = await stats(); if (out.middle.max > 80) break; await wait(200); }
+        await page.waitForFunction(() => window.layerIdled, null, {timeout: 30000});
+        await wait(200);
+        out.end = await stats();
+        await page.evaluate(() => { window.layerMap.remove(); window.layerEl.remove(); });
+        return out;
+    })().catch(e => ({error: String(e)}));
+    check(`[${mode}] paint transitions: text-color and fill-extrusion-height move over their transition (#972)`,
+        layerTransitions.start?.max < 60 && layerTransitions.middle?.max > 80 && layerTransitions.middle.max < 235 && layerTransitions.end.max > 240
+        && layerTransitions.middle.n > layerTransitions.start.n + 100 && layerTransitions.end.n > layerTransitions.middle.n + 100, JSON.stringify(layerTransitions));
+
     // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
     // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
     {

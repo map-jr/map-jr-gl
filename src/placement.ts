@@ -30,9 +30,10 @@ export interface PlacedIcon {
     rect: [number, number, number, number];
     /** For stretchable icons: (source pixel, screen pixel) pairs along each axis, measured from the icon's left/top edge. */
     gx?: number[]; gy?: number[];
+    /** The `icon-opacity` of the feature (1 when it is the same for the layer: the page draws that one at the zoom of the map). */
     opacity: number;
-    /** Distance-field icons with a halo: its color, and how far it reaches as a part of the distance field (0 to 1). */
-    halo?: number[]; haloReach?: number; /** How far the halo's edge is blurred, as a part of the distance field (0 to 0.99). */ haloBlur?: number;
+    /** The size of one pixel of the image on the screen, in pixels of the screen, for the halo of a distance-field icon. */
+    k: number;
     /** An icon that lies on the ground of a tilted map: see `Placed.frame`. Its angle is then the angle of the first pair. */
     frame?: number[];
     /**
@@ -776,10 +777,7 @@ export function placeLabels(
                     }
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, merc, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
-                            // (In the distance field of a sprite, one image pixel is one eighth of the range.)
-                            halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
-                            haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};
+                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, merc, fixedSize: L.fixedSize, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity, color: meta.sdf ? ic.color : undefined, k: isize / meta.pixelRatio};
                     } else if (!(hasText && (textBox || bent) && ic.optional)) continue; // (a required icon that is not placed drops its text too, as in MapLibre)
                 }
                 // As in MapLibre GL JS (`u_is_offset`), the text of a layer with `icon-offset` is drawn without the perspective
