@@ -103,10 +103,11 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
         globe: at('globe', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-globe.js?no-inline', import.meta.url)),
         subdivide: at('subdivide', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-subdivide.js?no-inline', import.meta.url)),
         layers: at('layers', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-layers.js?no-inline', import.meta.url)),
+        query: at('query', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-query.js?no-inline', import.meta.url)),
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;
-        console.warn('[map-jr-gl] E1846 workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain, with a globe or with a heatmap, hillshade or color-relief layer cannot draw it. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
+        console.warn('[map-jr-gl] E1846 workerUrl: the parts of the worker (map-jr-gl-worker-*.js) have no URL, because neither workerUrl nor the module of the library is a URL of a folder. A map with a GeoJSON, contour or PMTiles source, with 3D terrain, with a globe or with a heatmap, hillshade or color-relief layer cannot draw it, and no map can answer a query of features. Set workerUrl to an http(s) URL of map-jr-gl-worker.js, with the parts in the same folder.');
     }
     return out as Record<string, string>;
 }

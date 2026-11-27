@@ -5,7 +5,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {contourTile} from '../../src/contour.ts';
-import {decodeElevation, type DemEncoding} from '../../src/query.ts';
+import {decodeElevation, type DemEncoding} from '../../src/elevation.ts';
 
 // Terrarium pixels of mountains from 500 to 3500 m.
 const P = 512, pixels = new Uint8Array(P * P * 4);

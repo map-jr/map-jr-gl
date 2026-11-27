@@ -156,8 +156,8 @@ const allInOne = {
  */
 const partImport = /(?<=\(\) => )import\('\.\/([\w-]+)\.ts'\)/g;
 // The modules that only a part imports are in the file of that part, and not read from `MapJrWorker`: the part `dem`
-// is the contour lines and 3D terrain (src/dem.ts, #1849).
-const partOwn = /(^\.|\/src)\/(contour|terrain)\.ts$/;
+// is the contour lines and 3D terrain (src/dem.ts, #1849), and the part `query` has the queries of the tiles (src/query.ts, #2342).
+const partOwn = /(^\.|\/src)\/(contour|terrain|query)\.ts$/;
 const workerParts = [...readFileSync('src/parts.ts', 'utf8').matchAll(/^ {4}(\w+): \(\) => import\('\.\/([\w-]+)\.ts'\),$/gm)].map(m => ({name: m[1], file: m[2]}));
 if (!workerParts.length) throw new Error('build.mjs: src/parts.ts has no parts.');
 const splitParts = {
@@ -280,14 +280,14 @@ await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: fal
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM). It draws without WebGL, so of the
 // part `dem` it takes the contour lines and not 3D terrain, which would bring the renderer of WebGL with it (#1849).
-// The parts `globe`, `subdivide` and `layers` are for the WebGL engine and its tiles only, and the server renderer does not contain them (#2006, #2075, #2215).
+// The parts `globe`, `subdivide`, `layers` and `query` are for the WebGL engine and its tiles only, and the server renderer does not contain them (#2006, #2075, #2215, #2342).
 const contourOnly = {
     name: 'server-dem',
     enforce: 'pre',
     transform(code, id) {
         if (!id.endsWith('/src/parts.ts')) return null;
         const edited = new MagicString(code);
-        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"], ["subdivide: () => import('./subdivide.ts')", "subdivide: () => Promise.reject(Error('subdivide'))"], ["layers: () => import('./layers-more.ts')", "layers: () => Promise.reject(Error('layers'))"]]) {
+        for (const [from, to] of [["dem: () => import('./dem.ts')", "dem: () => import('./contour.ts')"], ["globe: () => import('./globe.ts')", "globe: () => Promise.reject(Error('globe'))"], ["subdivide: () => import('./subdivide.ts')", "subdivide: () => Promise.reject(Error('subdivide'))"], ["layers: () => import('./layers-more.ts')", "layers: () => Promise.reject(Error('layers'))"], ["query: () => import('./engine-query.ts')", "query: () => Promise.reject(Error('query'))"]]) {
             const at = code.indexOf(from);
             if (at < 0) throw new Error(`build.mjs: src/parts.ts has no line "${from}".`);
             edited.overwrite(at, at + from.length, to);

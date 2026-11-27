@@ -9,7 +9,7 @@ const src = (f: string) => readFileSync(new URL(`../../src/${f}`, import.meta.ur
 const parts = [...src('parts.ts').matchAll(/^ {4}(\w+): \(\) => import\('\.\/([\w-]+)\.ts'\),$/gm)].map(m => ({name: m[1], file: m[2]}));
 
 test('each part of the worker has its URL on the page, and the worker file exports what the part imports', () => {
-    assert.deepEqual(parts.map(p => p.name), ['geojson', 'dem', 'pmtiles', 'within', 'globe', 'subdivide', 'layers']);
+    assert.deepEqual(parts.map(p => p.name), ['geojson', 'dem', 'pmtiles', 'within', 'globe', 'subdivide', 'layers', 'query']);
     const loader = src('loader.ts'), worker = src('worker.ts');
     const exported = new Set([...worker.matchAll(/^export \{([^}]+)\} from/gm)].flatMap(m => m[1].split(',').map(s => s.trim())));
     for (const {name, file} of parts) {
@@ -17,8 +17,9 @@ test('each part of the worker has its URL on the page, and the worker file expor
         // (A part file reads the modules that it imports from the worker file: a name that is not exported would be undefined.)
         // (A part made of other modules, as dem.ts is, imports what they import.)
         const own = [file, ...[...src(file + '.ts').matchAll(/^export \* from '\.\/([\w-]+)\.ts';$/gm)].map(m => m[1])];
-        for (const m of own.map(f => src(f + '.ts')).join('\n').matchAll(/^import \{([^}]+)\} from '\.\/[\w-]+\.ts';$/gm))
-            for (const n of m[1].split(',').map(s => s.trim().split(' as ')[0]).filter(s => !s.startsWith('type '))) assert.ok(exported.has(n), `worker.ts does not export ${n}, which the part ${name} imports`);
+        // (The import of one of these modules by another, as engine-query.ts imports query.ts, is inside the part file.)
+        for (const m of own.map(f => src(f + '.ts')).join('\n').matchAll(/^import \{([^}]+)\} from '\.\/([\w-]+)\.ts';$/gm))
+            if (!own.includes(m[2])) for (const n of m[1].split(',').map(s => s.trim().split(' as ')[0]).filter(s => !s.startsWith('type '))) assert.ok(exported.has(n), `worker.ts does not export ${n}, which the part ${name} imports`);
     }
 });
 

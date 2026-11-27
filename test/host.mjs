@@ -3883,6 +3883,37 @@ for (const renderer of ['worker', 'main']) {
                 check(`[${renderer}] the part layers does not load: the map reports one error, is idle and draws its other layers (#2215)`,
                     missing.idle && missing.errors.length === 1 && /layers/.test(missing.errors[0]) && missing.centre.slice(0, 3).every(v => v > 250), JSON.stringify(missing));
             } finally { await rare.close(); }
+            // The queries of features are the part `query` (#2342). A map loads it after its first `idle`, and a query
+            // finds the features. When the part does not load, a query rejects with an error that names the file, and
+            // the map stays idle.
+            const asks = await browser.newPage({viewport: {width: 900, height: 600}});
+            try {
+                const asked = [], file = /map-jr-gl-(worker-query|engine-query-[\w-]+)\.js/;
+                asks.context().on('request', r => { if (file.test(r.url())) asked.push(r.url()); });
+                const run = () => asks.evaluate(async renderer => {
+                    const lib = await import('/dist/map-jr-gl.js'), errors = [];
+                    const style = {version: 8, sources: {pt: {type: 'geojson', data: {type: 'Feature', properties: {name: 'a'}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
+                        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'dot', type: 'circle', source: 'pt', paint: {'circle-radius': 10}}]};
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+                    const host = lib.createMap(el, {style, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                    const until = async (f, ms) => { for (let t = 0; t < ms && !f(); t += 50) await new Promise(r => setTimeout(r, 50)); return f(); };
+                    const idle = await until(() => host.state.get().idle, 15000);
+                    const found = await host.queryFeatures({x: 100, y: 75}).then(f => f.map(x => x.properties.name).join(), e => 'rejected: ' + e.message);
+                    const still = host.state.get().idle;
+                    host.destroy(); el.remove();
+                    return {idle, found, still, errors};
+                }, renderer);
+                await asks.goto(origin + '/bench');
+                const answered = await run(), answeredAsked = asked.splice(0);
+                await asks.context().route(file, route => route.fulfill({status: 404, body: ''}));
+                // (A new page: it has not loaded the part.)
+                await asks.goto(origin + '/bench');
+                const missing = await run();
+                check(`[${renderer}] a map loads the part query, and a query finds the feature (#2342)`,
+                    answered.idle && answered.found === 'a' && !answered.errors.length && answeredAsked.length > 0, JSON.stringify({answered, answeredAsked}));
+                check(`[${renderer}] the part query does not load: a query rejects with an error that names the file, and the map stays idle (#2342)`,
+                    missing.idle && missing.still && /^rejected: .*query/.test(missing.found) && !missing.errors.length, JSON.stringify(missing));
+            } finally { await asks.close(); }
             // A hillshade on 3D terrain whose part `layers` comes after the pictures of the ground tiles were drawn (#2215):
             // the pictures are drawn again with the hillshade. The same for a hillshade that `update()` adds after load, and
             // on the globe. Each picture is compared with the one where the part comes at once.
