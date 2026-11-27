@@ -624,8 +624,7 @@ export class Map extends CoreMap {
     }
     private renderImages = (used: string[]) => {
         // (Only the images that the tiles in view or a pattern of a layer use, as in MapLibre GL JS; #2236.)
-        // (Pixels that did not change are not sent: each image sent to the engine makes it draw a frame, so a `render` that
-        // returns true without a change would keep the map from `idle`.)
+        // (Pixels that did not change are not sent: the copy and the upload would be wasted.)
         for (const name of used) {
             const image = this.animated.get(name);
             if (!image?.render?.() || !this.hasImage(name)) continue;
@@ -720,6 +719,7 @@ export class Map extends CoreMap {
     /**
      * As in MapLibre GL JS 6.17: with `diff` (the default), the custom layers stay in the new style, each before the layer
      * that came after it, and get no `onRemove`. With `diff: false` they leave the map, also without `onRemove`.
+     * Without `diff` the images that `addImage` added leave the map too, also without `onRemove`.
      * With `diff`, a style equal to this one (apart from the camera) fires no event, as in MapLibre GL JS 6.17.
      */
     setStyle(style: unknown, options: StyleSwapOptions = {}) {
@@ -727,6 +727,9 @@ export class Map extends CoreMap {
         // (Development build) As in MapLibre GL JS, `validate` of this call wins over the option `validateStyle` of `new Map()` (#1748).
         if (__DEV__) this.noValidate = options.validate === undefined ? this.noValidateMap : !options.validate;
         const own = options.transformStyle, diff = options.diff !== false;
+        // As in MapLibre GL JS 6.17, a new style without `diff` has an image manager of its own: the images that `addImage` added are
+        // gone, with no `onRemove()` and no more `render()`, and a layer that uses one fires `styleimagemissing` (#2309).
+        if (!diff) for (const name of [...this.imageInputs.keys()]) if (!this.styleImageNames.has(name)) { this.dropAnimated(name, false); super.removeImage(name); }
         return super.setStyle(style, !this.customs?.size ? {transformStyle: own, diff} : {diff, transformStyle: (previous: any, next: any) => {
             next = own ? own(previous, next) : next;
             if (options.diff === false) { this.customs!.clear(); this.customLayers?.forget(); return next; }

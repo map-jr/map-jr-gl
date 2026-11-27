@@ -687,6 +687,28 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
+    // #2279: new pixels from render() do not repaint, as in MapLibre GL JS: without triggerRepaint() the image does not keep
+    // the map drawing. (A map of its own: the demo map draws for other reasons. The slow render() makes the pixels arrive
+    // more than 100 ms after the frame, as on a loaded runner, where the frame that follows a pause called render() again.)
+    const still = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#123'}}]}, renderer, attributionControl: false});
+        await new Promise(r => m.once('idle', r));
+        let renders = 0, frames = 0;
+        await m.addImage('new-pixels', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; for (const t = performance.now(); performance.now() - t < 150;); this.data = new Uint8Array(4).fill(renders % 255); return true; }});
+        m.addLayer({id: 'use', type: 'background', paint: {'background-pattern': 'new-pixels', 'background-opacity': 0}});
+        m.triggerRepaint();
+        const t0 = performance.now();
+        while (!renders && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 1000));
+        const r0 = renders;
+        m.on('render', () => frames++);
+        await new Promise(r => setTimeout(r, 1500));
+        m.remove(); el.remove();
+        return {first: r0, renders: renders - r0, frames};
+    }, mode);
+    check(`[${mode}] new pixels of render() do not repaint the map (#2279)`, still.first >= 1 && still.renders <= 3, JSON.stringify(still));
     // #2128: on the main renderer render() of an image runs before the frame, as in MapLibre GL JS, so that its pixels are in
     // that frame (the worker renderer does not wait, by the decision on #2128). (The listener of `render` is added before the
     // image: a hook on `render` would run after it.)
@@ -696,7 +718,7 @@ for (const mode of renderers) {
             const order = [], frame = () => order.push('F');
             window.map.on('render', frame);
             let n = 0;
-            await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
+            await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); window.map.triggerRepaint(); return true; }});
             window.useImage('early');
             window.map.triggerRepaint();
             const t0 = performance.now();
@@ -732,6 +754,28 @@ for (const mode of renderers) {
         return calls;
     }, mode).catch(e => String(e));
     check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
+    // #2309: setStyle with diff: false drops the images that addImage added, with no onRemove and no more render(), as MapLibre GL JS 6.17 does; the default diff keeps them.
+    const swap = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const style = {version: 8, sources: {}, layers: []};
+        const m = new mod.Map({container: el, style, renderer, attributionControl: false});
+        await new Promise(r => m.once('load', r));
+        const calls = {removed: 0, rendered: 0};
+        await m.addImage('drawn', {width: 1, height: 1, data: new Uint8Array(4), render() { calls.rendered++; return false; }, onRemove() { calls.removed++; }});
+        await m.addImage('plain', {width: 1, height: 1, data: new Uint8Array(4)});
+        // (A style equal to this one fires no event with `diff`, so the two styles below differ.)
+        const wait = () => Promise.race([new Promise(r => m.once('style.load', r)), new Promise(r => setTimeout(r, 10000))]);
+        const bg = id => ({...style, layers: [{id, type: 'background'}]});
+        let w = wait(); m.setStyle(bg('a'), {diff: true}); await w;
+        const kept = [m.hasImage('drawn'), m.hasImage('plain')];
+        w = wait(); m.setStyle(bg('b'), {diff: false}); await w;
+        await new Promise(r => setTimeout(r, 300));
+        const out = {kept, dropped: [m.hasImage('drawn'), m.hasImage('plain')], names: m.listImages(), ...calls};
+        m.remove(); el.remove();
+        return out;
+    }, mode).catch(e => String(e));
+    check(`[${mode}] setStyle drops the images of addImage with diff: false and keeps them with diff, without onRemove (#2309)`, swap.kept?.every(Boolean) && swap.dropped?.every(h => !h) && !swap.names?.includes('drawn') && !swap.names?.includes('plain') && swap.removed === 0, JSON.stringify(swap));
     // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
     // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
     const size = await page.evaluate(async () => {
@@ -2804,6 +2848,39 @@ for (const mode of renderers) {
         });
         check('[main] on the globe an icon on the ground off the center has the width and the height of MapLibre GL JS within 1.5 pixels, with and without icon-offset (#2194, #2012)',
             ['60,45', '-50,50', '60,45 offset', '-50,50 offset'].every(at => globeIcon['ml ' + at].every((v, i) => v > 10 && Math.abs(v - globeIcon['mjr ' + at][i]) <= 1.5)), JSON.stringify(globeIcon));
+        // On the globe at pitch 0 an icon that faces the viewer far from the center is smaller by the perspective ratio, as in
+        // MapLibre GL JS 6.17: a red icon of 40 pixels 55 degrees from the center is 37 × 36 pixels there. Without the ratio it
+        // was 40 × 40 (#2201). It is so with both renderers and for an icon that needs no place among the labels
+        // (`icon-allow-overlap`, drawn by the GPU), and on Mercator at pitch 0 the icon keeps its 40 pixels.
+        const globeFacing = await page.evaluate(async () => {
+            const out = {};
+            for (const [name, lib, proj, renderer, overlap] of [['ml globe', 'ml', 'globe', 'main', false], ['ml mercator', 'ml', 'mercator', 'main', false],
+                ['main', 'mjr', 'globe', 'main', false], ['worker', 'mjr', 'globe', 'worker', false], ['overlap', 'mjr', 'globe', 'main', true], ['mercator', 'mjr', 'mercator', 'main', false]]) {
+                const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:512px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, canvasContextAttributes: {preserveDrawingBuffer: true}, style: {version: 8, projection: {type: proj},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: proj === 'globe' ? [55, 0] : [40, 0]}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', ...overlap ? {'icon-allow-overlap': true, 'icon-ignore-placement': true} : {}}}]}});
+                const red = new Uint8Array(40 * 40 * 4);
+                for (let i = 0; i < red.length; i += 4) red.set([255, 0, 0, 255], i);
+                m.addImage('red', {width: 40, height: 40, data: red});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await new Promise(r => m.getCanvas().toBlob(r))), k = bmp.width / 512, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, box = [Infinity, Infinity, -Infinity, -Infinity];
+                for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i] > 200 && d[i + 1] < 100 && d[i + 2] < 100) box.splice(0, 4, Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x + 1), Math.max(box[3], y + 1));
+                }
+                out[name] = [(box[2] - box[0]) / k, (box[3] - box[1]) / k];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] on the globe at pitch 0 an icon that faces the viewer 55 degrees from the center has the size of MapLibre GL JS within 1 pixel, and 40 pixels on Mercator (#2201)',
+            globeFacing['ml globe'].every(v => v < 39) && ['main', 'worker', 'overlap'].every(n => globeFacing[n].every((v, i) => Math.abs(v - globeFacing['ml globe'][i]) <= 1))
+            && globeFacing.mercator.every((v, i) => v === 40 && globeFacing['ml mercator'][i] === 40), JSON.stringify(globeFacing));
         // A large icon on the ground far from the center of the globe has each corner where MapLibre GL JS 6.17 projects it:
         // a red icon of 60 pixels at pitch 40 and one of 100 pixels at pitch 0 have the width and the height of MapLibre's
         // within 1.5 pixels, with both renderers. (With corners from the frame at the center of the icon, they were 5 to 12

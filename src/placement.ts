@@ -89,7 +89,6 @@ export interface Placed {
     opacity: number;
 }
 
-/** The factor of the perspective for the size of labels at a distance `depth` from the camera, as in `placeLabels`. */
 /**
  * Whether a label whose anchor is at the distance `depth` from the camera is too far away to be drawn. On a tilted map
  * a far label is hidden, as with perspectiveRatioCutoff of MapLibre GL JS, and so is one behind the camera or beyond the
@@ -97,7 +96,11 @@ export interface Placed {
  * degrees that is at about 1.2 times the camera distance, so without the far plane labels showed in the sky (#924).
  */
 export const tooFar = (tr: Transform, depth: number, far: number) => !!tr.pitch && !(0.5 + 0.5 * tr.cameraDistance / depth >= 0.6 && depth > 0 && (tr.globeness > 0 || depth <= far));
-export const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
+/**
+ * The factor of the perspective for the size of labels at a distance `depth` from the camera, as in `placeLabels`. On the
+ * globe it applies also at pitch 0, because the sphere away from the center is farther from the camera (#2201).
+ */
+export const perspective = (tr: Transform, depth: number) => (tr.pitch || tr.globeness) && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
 /**
  * The size of a symbol that lies on the ground, at the distance `depth`, in pixels of the ground for each pixel of its
  * size. As in MapLibre GL JS a far symbol is larger on the ground, by half of what the perspective takes away. On the
@@ -528,10 +531,10 @@ export function placeLabels(
                 // (A size that is the same for the layer is found at the zoom of the map. A size for each feature is known at
                 // two levels only, and is mixed between them.)
                 // On a tilted map, labels and icons far from the camera are smaller and near ones are larger, by half of what
-                // the perspective does to the map itself (as in MapLibre).
+                // the perspective does to the map itself (as in MapLibre). On the globe this is so also at pitch 0 (#2201).
                 const ratio = 0.5 + 0.5 * tr.cameraDistance / depth;
                 if (tooFar(tr, depth, far)) continue;
-                const persp = tr.pitch ? Math.min(4, ratio) : 1;
+                const persp = tr.pitch || tr.globeness ? Math.min(4, ratio) : 1;
                 const line = l.angle !== null, flat = (!!tr.pitch || tr.globeness > 0) && l.flat && !line;
                 // As in MapLibre GL JS, `text-rotation-alignment` decides whether every box of the symbol, the icon's too,
                 // is turned by the bearing (#2037).
