@@ -1999,7 +1999,12 @@ export class GLRenderer {
                     const g = glyphs[i];
                     if (!g.w) continue;
                     const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k + (g.dy ?? 0) * s, along = l.ground?.[i * 3] ?? 1;
+                    // Rich text: this glyph has its own color or size. The label's values come back after it.
+                    const keep = [c0, c1, c2, gamma, haloGamma, hedge], gs = g.scale ?? 1;
+                    if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
+                    if (gs !== 1) { gamma /= gs; haloGamma /= gs; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * gs) / SDF_RADIUS); }
                     glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga) * along, Math.sin(ga) * along, x0, y0, x0 + g.w * k, y0 + g.h * k, l.ground?.[i * 3 + 1], l.ground?.[i * 3 + 2]);
+                    [c0, c1, c2, gamma, haloGamma, hedge] = keep;
                 }
                 continue;
             }
