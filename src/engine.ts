@@ -1114,7 +1114,6 @@ export class Engine {
             case 'cameraUpdate': this.cameraUpdate = c.fn; this.cameraUpdated = undefined; break;
             case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
-        this.skipPreFrame = false;
         this.repaint();
     }
 
@@ -1207,9 +1206,12 @@ export class Engine {
     /**
      * A frame that runs no `render()` of images (#2279): it shows pixels that came after a frame, or repeats a frame for
      * WebKit. Otherwise, with slow frames, each such frame would call `render()` again and the map would not go idle.
+     * A repaint for any other reason (a command, a tile that arrives, a timer) makes the planned frame a usual one, which
+     * calls `render()`, as MapLibre GL JS does in every frame (#2315).
      */
-    private extraFrame() { if (!this.scheduled) { this.skipPreFrame = true; this.repaint(); } }
+    private extraFrame() { if (!this.scheduled) { this.repaint(); this.skipPreFrame = true; } }
     repaint() {
+        this.skipPreFrame = false;
         if (this.scheduled) return;
         this.scheduled = true;
         raf(t => { this.scheduled = false; this.frame(t); });
