@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 export const NO_BROWSER = [
     /^docs\//, /\.md$/, /^LICENSE/, /^\.github\/ISSUE_TEMPLATE\//,
     /^scripts\/agents\//, /^test\/types\//, /^test\/unit\//, /^test\/examples\.mjs$/,
-    /^test\/conformance\/(?!render)/, /^website\//, /^\.github\/workflows\/(?!ci\.yml$)/,
+    /^test\/conformance\/(?!render)/, /^website\//, /^\.github\/workflows\/(?!ci\.yml$)/, /^\.claude\//,
 ];
 export const needsBrowser = files => files.some(f => f && !NO_BROWSER.some(re => re.test(f)));
 

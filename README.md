@@ -74,9 +74,9 @@ Compatibility with MapLibre GL JS, tested with the entry `@map-jr/map-jr-gl/mapl
 | MapLibre expression tests | 421 | 583 | 72.2% | [Tests against MapLibre GL JS](docs/development.md#tests-against-maplibre-gl-js) |
 | Methods of the MapLibre `Map` class | 134 | 138 | 97.1% | [Map methods](docs/reference/maplibre-differences.md#map-methods) |
 | Properties of the MapLibre style specification | 235 | 244 | 96.3% | [Tests against MapLibre GL JS](docs/development.md#tests-against-maplibre-gl-js) |
-| MapLibre plugins, run in a browser | 16 | 16 | 100.0% | [Plugins that were run](docs/ecosystem.md#plugins-that-were-run) |
-| Plugins and frameworks, read from npm | 23 | 27 | 85.2% | [Each package](docs/ecosystem.md#each-package) |
-| Example pages of the MapLibre documentation | 122 | 142 | 85.9% | [Example pages](docs/ecosystem.md#the-example-pages-of-maplibre-gl-js) |
+| MapLibre plugins, run in a browser | 16 | 17 | 94.1% | [Plugins that were run](docs/ecosystem.md#plugins-that-were-run) |
+| Plugins and frameworks, read from npm | 26 | 27 | 96.3% | [Each package](docs/ecosystem.md#each-package) |
+| Example pages of the MapLibre documentation | 125 | 142 | 88.0% | [Example pages](docs/ecosystem.md#the-example-pages-of-maplibre-gl-js) |
 | MapLibre render tests, the same | 1384 | 1758 | 78.7% | [Render tests](docs/development.md#render-tests) |
 | MapLibre render tests, the same or near | 1635 | 1758 | 93.0% | [Render tests](docs/development.md#render-tests) |
 <!-- status:end -->

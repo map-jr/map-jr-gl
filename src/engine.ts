@@ -1180,7 +1180,7 @@ export class Engine {
         })};
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
-        const radii = new Map<string, number>(), icons = new Map<string, number[]>(), shown = new Map<string, {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
+        const radii = new Map<string, number>(), icons = new Map<string, {at: number[]; text: string[]}>(), shown = new Map<string, {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
         // (The circle layers of a tilted map, whose features are tested on the screen with `circleTouches`.)
         const pitched = pitchedCircles(this.tr, c.box, c.sets), circles = new Map([...pitched?.circles ?? []].map(s => [s.layer, s]));
         for (const [name, src] of Object.entries(this.style.sources)) {
@@ -2125,13 +2125,13 @@ export class Engine {
 
     /** The points in Mercator (x, y pairs, 0 to 1) of the shown labels of a layer that have their icon drawn. */
     private iconPoints(layer: string) {
-        const out: number[] = [];
+        const out: number[] = [], text: string[] = [];
         for (const [key, {placed: p, target}] of this.labels) {
             if (!target || !p.icon || !key.startsWith(layer + '|')) continue;
             const n = 2 ** p.tile.z;
-            out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n);
+            out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n), text.push(p.src.text);
         }
-        return out;
+        return {at: out, text};
     }
 
     /**
@@ -2140,7 +2140,7 @@ export class Engine {
      * for each glyph, around the piece of the line that the glyph covers.
      */
     private textBoxes(layer: string) {
-        const out: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[] = [], at: [number, number, number] = [0, 0, 0];
+        const out: {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[] = [], at: [number, number, number] = [0, 0, 0];
         for (const [key, {placed: p, target}] of this.labels) {
             if (!target || !p.shaped || !key.startsWith(layer + '|')) continue;
             const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), s = p.size / EM, w = p.shaped.width * s, h = p.shaped.height * s;
@@ -2152,7 +2152,7 @@ export class Engine {
                 for (let i = 0; i < p.curve.length / 3; i++) {
                     const a = p.curve[i * 3 + 2], len = advances[i] * s * (g ? g[i * 3] : 1) / 2;
                     const cx = x + p.curve[i * 3] + Math.cos(a) * len - (g ? g[i * 3 + 1] : -Math.sin(a)) * shift, cy = y + p.curve[i * 3 + 1] + Math.sin(a) * len - (g ? g[i * 3 + 2] : Math.cos(a)) * shift;
-                    out.push({x: cx, y: cy, line: true, box: [cx - r, cy - r, cx + r, cy + r]});
+                    out.push({x: cx, y: cy, ax: x, ay: y, line: true, text: p.src.text, box: [cx - r, cy - r, cx + r, cy + r]});
                 }
                 continue;
             }
@@ -2175,7 +2175,7 @@ export class Engine {
      * (A feature with no point, and a feature with no text and an icon whose image the map does not have, is found
      * within `radius` pixels of its geometry as before.)
      */
-    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[], icons: number[]): boolean {
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[], {at: icons, text: iconTexts}: {at: number[]; text: string[]}): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
         const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
@@ -2188,20 +2188,28 @@ export class Engine {
         if (!points) {
             const text = String(L.p.field.eval(z, f) ?? '');
             if (!g || g.type === 'Point' || g.type === 'MultiPoint' || !image && !text) return true;
-            // (An icon on a line is found where it is drawn, as in MapLibre GL JS: an icon that collision hid is not found, #2243.
-            // The icon belongs to the feature when its point lies on the feature's line.)
+            // (A line with an icon is found where its shown labels are drawn, on their icons and the boxes of their glyphs, as in
+            // MapLibre GL JS: an icon that collision hid is not found, #2243.)
             if (image && (g.type === 'LineString' || g.type === 'MultiLineString')) {
                 const lines = (g.type === 'LineString' ? [g.coordinates] : g.coordinates) as number[][][], size = L.p.iconSize.eval(z, f), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
                 const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f);
                 const screen = lines.map(l => l.map(([lng, lat]) => tr.project(lng, lat)));
-                if (text && this.textOnLine(g, box, texts)) return true;
+                // (A label is the feature's when its text is the feature's text and its point, where its icon is, lies on the
+                // feature's line, as in MapLibre GL JS, where each label belongs to the one feature that made it. A glyph of a
+                // label can lie on another line that the label crosses, and the point of a label of another street can lie on
+                // this line where the two meet.)
+                // (A `{name}` token of the text is replaced as the tiles replace it.)
+                const field = (L.p.field.tokens ? text.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : text).toLowerCase().replace(/\s/g, ''), mine = (t: string | undefined, x: number, y: number) => t?.toLowerCase().replace(/\s/g, '') === field && screen.some(l => {
+                    for (let k = 1; k < l.length; k++) {
+                        const [ax, ay] = l[k - 1], [bx, by] = l[k], dx = bx - ax, dy = by - ay, u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+                        if (Math.hypot(ax + u * dx - x, ay + u * dy - y) < 1.5) return true;
+                    }
+                    return false;
+                });
+                if (text && texts.some(t => t.line && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1] && mine(t.text, t.ax ?? t.x, t.ay ?? t.y))) return true;
                 for (let i = 0; i < icons.length; i += 2) {
                     const [x, y] = tr.project(lngFromMerc(icons[i]), latFromMerc(icons[i + 1]));
-                    if (x + x0 > box[2] || x + x1 < box[0] || y + y0 > box[3] || y + y1 < box[1]) continue;
-                    for (const l of screen) for (let k = 1; k < l.length; k++) {
-                        const [ax, ay] = l[k - 1], [bx, by] = l[k], dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
-                        if (Math.hypot(ax + t * dx - x, ay + t * dy - y) < 1.5) return true;
-                    }
+                    if (x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1] && mine(iconTexts[i / 2], x, y)) return true;
                 }
                 return false;
             }

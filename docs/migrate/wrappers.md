@@ -111,9 +111,9 @@ as `map.transform` or `map.painter`, does not. These plugins run with this libra
 | Plugin | Version |
 |---|---|
 | `@mapbox/mapbox-gl-draw` | 1.5.2 |
-| `terra-draw` with `terra-draw-maplibre-gl-adapter` | 1.39.0, 1.5.0 |
-| `@geoman-io/maplibre-geoman-free` | 0.10.8 |
-| `@maplibre/maplibre-gl-geocoder` | 1.9.4 |
+| `terra-draw` with `terra-draw-maplibre-gl-adapter` | 1.40.0, 1.5.0 |
+| `@geoman-io/maplibre-geoman-free` | 0.10.10 |
+| `@maplibre/maplibre-gl-geocoder` | 1.9.5 |
 | `@maplibre/maplibre-gl-directions` | 0.10.1 |
 | `@maplibre/maplibre-gl-compare` | 0.5.0 |
 | `@mapbox/mapbox-gl-sync-move` | 0.4.0 |
@@ -121,7 +121,7 @@ as `map.transform` or `map.painter`, does not. These plugins run with this libra
 | `@watergis/maplibre-gl-export` | 6.0.0 |
 | `maplibre-gl-opacity` | 1.8.0 |
 | `@mapbox/mapbox-gl-language` | 1.0.1 |
-| `@deck.gl/mapbox` with `interleaved: false` | 9.4.1 |
+| `@deck.gl/mapbox` with `interleaved: false` | 9.4.2 |
 | `pmtiles` | 4.5.0 |
 
 A source URL that starts with `pmtiles://` works without the `pmtiles` plugin. deck.gl with `interleaved: true` is not checked. See [Ecosystem](https://github.com/map-jr/map-jr-gl/blob/main/docs/ecosystem.md) for the
