@@ -1889,6 +1889,18 @@ new Map(): "<member>" is not an option of the map, so it has no effect. Did you 
 renderElement(): attributes.<attribute> is dropped, because the element already has the attribute "<lower>" from the description or from an earlier entry. Remove it from attributes or change the description.
 ```
 
+## E2412
+
+`Warning` `Main API` `Development build only`
+
+```text
+interactive: the value of "<gesture>" is not true or false, so the gesture stays on. Write true or false.
+```
+
+```text
+interactive: "<gesture>" is not a gesture, so it has no effect. Write one of dragPan, scrollZoom, dragRotate, doubleClickZoom, touchZoomRotate, touchPitch, keyboard or boxZoom.
+```
+
 ## E2434
 
 `Warning` `Server renderer`

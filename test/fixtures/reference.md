@@ -39,7 +39,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `renderer` | `Renderer \| null` | `'auto'` | The thread that renders the map. |
 | `fonts` | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | `fontFamily` | `string \| null` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels whose `text-font` names no loaded font. |
-| `interactive` | `boolean \| null` | `true` | Whether the user can move the map. |
+| `interactive` | `boolean \| Gestures \| null` | `true` | Whether the user can move the map. |
 | `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
 | `nonce` | `string \| null` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| `[`AttributionOptions`](../../docs/reference/description.md#attributionoptions)` \| null` | | The options of the built-in attribution, or `false` to hide it. |

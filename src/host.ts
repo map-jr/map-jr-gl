@@ -29,6 +29,35 @@ import {withCode} from './requests.ts';
  */
 declare const __DEV__: boolean;
 
+/** The gestures that `interactive` can turn off one by one. A gesture that is missing is on. */
+export interface Gestures {
+    /** Drag with the mouse or one finger to move the map. */
+    dragPan?: boolean;
+    /** Wheel or trackpad scroll to zoom. */
+    scrollZoom?: boolean;
+    /** Drag with the right button or Ctrl held to rotate and pitch. */
+    dragRotate?: boolean;
+    /** Double click or double tap to zoom in. */
+    doubleClickZoom?: boolean;
+    /** Pinch with two fingers to zoom and rotate. */
+    touchZoomRotate?: boolean;
+    /** Drag two fingers up or down to pitch. */
+    touchPitch?: boolean;
+    /** Arrow keys, plus and minus to move and zoom. */
+    keyboard?: boolean;
+    /** Shift and drag to draw a box and zoom to it. */
+    boxZoom?: boolean;
+}
+const GESTURES = ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const;
+/** The gestures that `interactive` turns off, as `false` values: an object gives its keys, and `false` gives all of them. */
+const gestureFlags = (v: boolean | Gestures | null | undefined): Gestures => {
+    const out: Gestures = {};
+    if (v === false || (v && typeof v === 'object')) for (const k of GESTURES) if (v === false || (v as Gestures)[k] === false) out[k] = false;
+    return out;
+};
+/** A string that is equal for equal states of the gestures, so that a new object with the same keys changes nothing. */
+const gestureKey = (v: boolean | Gestures | null | undefined) => GESTURES.map(k => gestureFlags(v)[k] === false ? 0 : 1).join('');
+
 /** A control for `controls` of the description, as the functions of `@map-jr/map-jr-gl/controls` return it. */
 export interface ControlSpec {
     /** The identity of the control. A new description with a control of the same `key` keeps the control on the map. */
@@ -326,10 +355,11 @@ export interface MapDescription extends MapSetup {
     cooperativeGestures?: boolean | null;
     /**
      * Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way.
-     * A change in `update` turns every gesture on or off: `false` also turns off a gesture that a plugin had enabled alone, and `true` turns on every gesture.
+     * An object turns single gestures off: a key that is missing is on, and `false` turns that gesture off, as in `{scrollZoom: false}`.
+     * A change in `update` turns the gestures on or off: `false` also turns off a gesture that a plugin had enabled alone, and `true` turns on every gesture.
      * @default true
      */
-    interactive?: boolean | null;
+    interactive?: boolean | Gestures | null;
     /**
      * The color scheme of the controls, the popup and the attribution. `'auto'` follows `prefers-color-scheme` of the
      * browser. The resolved scheme is also the global state `color-scheme` of the style, unless `globalState` sets it.
@@ -864,7 +894,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        startPadding: spec.padding as PaddingInput | undefined, bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
+        startPadding: spec.padding as PaddingInput | undefined, bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive !== false, ...gestureFlags(spec.interactive), antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch, renderWorldCopies: spec.renderWorldCopies,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
@@ -906,9 +936,10 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     let touchAction = map.getCanvas().style.touchAction;
     // `interactive` changes while the map runs: every handler goes off or on, as `interactive: false` does when the map is made (#213).
     // (A handler that a plugin turned off alone is on again after `interactive: true`.)
-    const interact = (on: boolean) => {
-        const canvas = map.getCanvas();
-        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) map[k][on ? 'enable' : 'disable']();
+    const interact = (value: Given['interactive']) => {
+        const canvas = map.getCanvas(), flags = gestureFlags(value);
+        let on = false;
+        for (const k of GESTURES) { const x = flags[k] !== false; on ||= x; map[k][x ? 'enable' : 'disable'](); }
         for (const c of cls('interactive').split(' ')) canvas.classList.toggle(c, on);
         touchAction = on ? 'none' : '';
         if (!cooperating) canvas.style.touchAction = touchAction;
@@ -1275,7 +1306,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         wantedImages = next.images;
         if (next.images !== before?.images) putImages();
-        if (before && (next.interactive === false) !== (before.interactive === false)) interact(next.interactive !== false);
+        if (before && gestureKey(next.interactive) !== gestureKey(before.interactive)) interact(next.interactive);
         if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
         if (next.colorScheme !== before?.colorScheme || !before) scheme(next.colorScheme);
         if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();
