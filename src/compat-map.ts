@@ -1062,8 +1062,8 @@ export class Map extends CoreMap {
         }
         return {pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1], data};
     }
-    /** Returns the names of the images that the map has. */
-    listImages() { return [...this.imageNames]; }
+    /** Returns the names of the images that the map has: the icons of the sprites of the style (`<id>:name` for a sprite that is not `default`) and the images that `addImage` added. */
+    listImages() { return [...new Set([...this.spriteNames, ...this.imageNames])]; }
     /** Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. */
     async loadImage(url: string) {
         const res = await this.fetchAs('Image')(url).catch(e => { throw ajax(e); });
