@@ -3940,13 +3940,15 @@ for (const mode of renderers) {
             m.on('error', e => errors.push(String(e.error?.message)));
             await m.updateImage('sq', square(24, 0, 255, 0));
             const resized = await centre(blue);
+            let thrown = null;
+            try { await m.updateImage('nope', square(16, 0, 0, 0)); } catch (e) { thrown = String(e.message); }
             await m.updateImage('dot', square(16, 255, 255, 255));
             const sdf = m.getImage('dot')?.sdf;
             m.remove(); el.remove();
-            return {before, after, resized, sdf, errors};
+            return {before, after, resized, sdf, errors, thrown};
         }, mode);
-        check(`[${mode}] compat: updateImage draws the new pixels, keeps the options of the image, and an image of another size is an error that changes nothing (#949, #2242)`,
-            r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[2] > 200 && r.resized[0] < 60 && r.sdf === true && r.errors?.length === 1 && r.errors[0].startsWith('[map-jr-gl] E2242 https://map-jr.org/e/2242 '), JSON.stringify(r));
+        check(`[${mode}] compat: updateImage draws the new pixels, keeps the options of the image, and an image of another size or of an unknown name is an error that changes nothing (#949, #2242, #2417)`,
+            r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[2] > 200 && r.resized[0] < 60 && r.sdf === true && r.errors?.length === 2 && r.errors[0].startsWith('[map-jr-gl] E2242 https://map-jr.org/e/2242 ') && r.errors[1] === 'The map has no image with that id. If you are adding a new image use `map.addImage(...)` instead.' && r.thrown === null, JSON.stringify(r));
     }
     // #1434: a video source draws the frames of its video, and `play`, `pause` and `getVideo` work as in MapLibre GL JS.
     // The video is made here: half a second of red, then half a second of blue. Its code loads only with a video source.
