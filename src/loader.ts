@@ -103,6 +103,7 @@ export function partUrls(o: LoadOptions): Record<string, string> | undefined {
         globe: at('globe', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-globe.js?no-inline', import.meta.url)),
         subdivide: at('subdivide', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-subdivide.js?no-inline', import.meta.url)),
         layers: at('layers', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-layers.js?no-inline', import.meta.url)),
+        colors: at('colors', () => new URL(/* @vite-ignore */ './map-jr-gl-worker-colors.js?no-inline', import.meta.url)),
     };
     if (!out.geojson && !warnedParts) {
         warnedParts = true;

@@ -7,6 +7,9 @@ import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {readFileSync} from 'node:fs';
 import {validateStyle, zoomCurveErrors} from '../../src/mistakes.ts';
+import {NAMED} from '../../src/color-names.ts';
+import {useColorNames} from '../../src/expr.ts';
+useColorNames(NAMED); // (Node has no canvas to ask for the value of a color name)
 
 // (The style specification that MapLibre GL JS of the devDependencies uses.)
 const require = createRequire(createRequire(import.meta.url).resolve('maplibre-gl/package.json'));

@@ -245,6 +245,8 @@ export class Map {
     private removed = false;
     private beforeStyle: (() => void)[] = [];
     protected imageNames = new Set<string>();
+    /** The icons of the sprites of the style (`hasImage` and `listImages` count them, as MapLibre GL JS does; #2381). */
+    protected spriteNames: string[] = [];
     /** A count for each image name. It goes up when the image is added or removed, so that an image that was still loading knows that it is too late. */
     private imageTurns = new globalThis.Map<string, number>();
     /** The images that are SVG templates, by name. `count` is the number of variants that the engine asked for. */
@@ -897,6 +899,8 @@ export class Map {
                 this.loadedSources.add(e.source);
                 this.loadedEvents(e.source);
             }
+        } else if (e.type === 'icons') {
+            this.spriteNames = e.names;
         } else if (e.type === 'idle') {
             // (The engine has run every command up to e.seq: a turn that left the camera as it was gets no camera report.)
             if (e.seq > this.reported) this.reported = e.seq;
@@ -1001,7 +1005,7 @@ export class Map {
     private wantsFrames = false;
 
     // ---- requests ----
-    private transformRequest: RequestTransform | null = null;
+    protected transformRequest: RequestTransform | null = null;
     /** Sets or removes the function that changes each request (for example, to add a header). */
     setTransformRequest(fn: RequestTransform | null) { this.transformRequest = fn; this.sendRequestRules(); return this; }
     /** Tells the engine which requests need a question to this thread. */
@@ -1218,13 +1222,25 @@ export class Map {
         const duration = still ? 0 : o.duration ?? 500;
         // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
         // (As in MapLibre GL JS, `easeTo` does not read `elevation`, also when it jumps.)
-        if (duration <= 0 && !around) return this.jumpTo({...o, center, elevation: undefined});
+        if (duration <= 0 && around) {
+            // The jump keeps the point under `around` where it is, as the engine does at the end of an animation.
+            const to = Object.assign(new Transform(), this.tr, padding && {padding}), anchor = this.tr.unproject(around[0], around[1]);
+            to.set(center, zoom, bearing, pitch);
+            to.setLocationAt(anchor[0], anchor[1], around[0], around[1]);
+            return this.jumpTo({...o, center: [to.lng, to.lat], elevation: undefined});
+        }
+        if (duration <= 0) return this.jumpTo({...o, center, elevation: undefined});
         const easing = o.easing && Array.from({length: 65}, (_, i) => o.easing!(i / 64));
         const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
         this.post(c);
         this.eased = {c, at: performance.now()};
+        this.easeStarted();
         return this;
     }
+    /** @internal Called when `easeTo` has sent an animation (not a jump). The compat entry starts the movement here. */
+    protected easeStarted() {}
+    /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
+    protected begin() { if (!this.moving) { this.moving = true; this.fire('movestart'); } }
     /**
      * Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17.
      * The defaults are `curve` 1.42 and `speed` 1.2, and without `duration` the duration follows from the distance.
@@ -2001,8 +2017,8 @@ export class Map {
         this.updates.clear();
         for (const [name, source] of list) if (!this.removed && this.imageNames.has(name)) this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
     }
-    /** Whether the map has an image with this name. */
-    hasImage(name: string) { return this.imageNames.has(name); }
+    /** Whether the map has an image with this name: an image that `addImage` added or an icon of a sprite of the style (`<id>:name` for a sprite that is not `default`). */
+    hasImage(name: string) { return this.imageNames.has(name) || this.spriteNames.includes(name); }
     /**
      * Sets a function that supplies images on demand, as in MapLibre GL JS. When a style asks for an `icon-image` nothing provides, the resolver is called with
      * its name and may call `addImage` (it can be async). This is how generated icons such as highway shields work:

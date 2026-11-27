@@ -469,6 +469,46 @@ for (const mode of renderers) {
         const stopOurs = await stopOrder('ours'), stopMl = await stopOrder('ml');
         check(`[${mode}] stop() during an easeTo fires moveend inside the call and no move after it, as in MapLibre GL JS (#2393)`,
             stopOurs === stopMl && stopMl === '|stop moveend |stopret', JSON.stringify({stopOurs, stopMl}));
+        // An easeTo or flyTo during a running ease ends the old movement and starts the new one inside the call, as in MapLibre GL JS (#2392).
+        const easeOrder = (lib, second) => page.evaluate(async ([lib, renderer, second]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            m.easeTo({center: [20, 50], duration: 2000});
+            await new Promise(r => setTimeout(r, 500));
+            log.push('|call2'); m[second]({center: [30, 55], duration: 1000}); log.push('|ret2');
+            await new Promise(r => setTimeout(r, 1500));
+            m.remove(); el.remove();
+            return log.slice(log.indexOf('|call2')).join(' ');
+        }, [lib, mode, second]).catch(e => String(e));
+        for (const second of ['easeTo', 'flyTo']) {
+            const ours = await easeOrder('ours', second), ml = await easeOrder('ml', second);
+            check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
+                ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
+        }
+        // easeTo with `around` and no duration is a jump: one move, all events inside the call, and the same view as MapLibre GL JS (#2394).
+        const aroundJump = lib => page.evaluate(async ([lib, renderer]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'zoomstart', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => log.push(t));
+            // (MapLibre GL JS reads `around` as a position, and this entry reads a point of the screen in CSS pixels.)
+            m.easeTo({zoom: 5, duration: 0, around: lib === 'ml' ? m.unproject([100, 100]) : [100, 100]});
+            const sync = log.join(' '), c = m.getCenter(), z = m.getZoom();
+            await new Promise(r => setTimeout(r, 800));
+            m.remove(); el.remove();
+            return sync + ' ' + JSON.stringify([z, +c.lng.toFixed(3), +c.lat.toFixed(3)]) + ' ' + log.length;
+        }, [lib, mode]).catch(e => String(e));
+        const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
+        check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
+            aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {
@@ -897,6 +937,23 @@ for (const mode of renderers) {
         return calls;
     }, mode).catch(e => String(e));
     check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
+    // #2234: a second addImage with the name of an image replaces it, calls onRemove of the old image and fires no error. MapLibre GL JS
+    // 6.17 keeps the old image and fires "already exists"; the owner decided on 2026-11-26 to keep the difference.
+    const again = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+        const log = [], errors = [];
+        m.on('error', e => errors.push(String(e.error?.message)));
+        const make = n => ({width: 1, height: 1, data: new Uint8Array([n, 0, 0, 255]), onAdd() { log.push('onAdd' + n); }, onRemove() { log.push('onRemove' + n); }, render: () => false});
+        await m.addImage('twice', make(1));
+        await m.addImage('twice', make(2));
+        const red = m.getImage('twice')?.data?.data?.[0];
+        m.remove(); el.remove();
+        return {log, errors, red};
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] a second addImage with an existing name replaces the image, calls onRemove of the old one and fires no error (#2234)`,
+        JSON.stringify(again.log) === '["onAdd1","onRemove1","onAdd2"]' && again.errors?.length === 0 && again.red === 2, JSON.stringify(again));
     // #2309: setStyle with diff: false drops the images that addImage added, with no onRemove and no more render(), as MapLibre GL JS 6.17 does; the default diff keeps them.
     const swap = await page.evaluate(async renderer => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -1647,6 +1704,15 @@ for (const mode of renderers) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
+    // `@watergis/maplibre-gl-export` reads `map._requestManager._transformRequestFn` and gives it to the map that it draws (#1830).
+    const manager = await page.evaluate(() => {
+        const m = window.map, fn = () => ({url: 'x'});
+        m.setTransformRequest(fn);
+        const set = m._requestManager?._transformRequestFn === fn;
+        m.setTransformRequest(null);
+        return {set, cleared: m._requestManager?._transformRequestFn === null};
+    });
+    check(`[${mode}] maplibre-compat: _requestManager._transformRequestFn is the function of setTransformRequest, and null after it is removed (#1830)`, manager.set && manager.cleared, JSON.stringify(manager));
     // A protocol named "pmtiles" (the pmtiles library's) is not used, because the library reads pmtiles:// itself: the
     // development build warns once (#250), and the production build does not warn (#2133).
     const pmWarns = await page.evaluate(async () => {
@@ -3610,6 +3676,22 @@ for (const mode of renderers) {
         check(`[${mode}${fall ? ', fell back' : ''}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of the style wins over the sprite image of the same name (#1199), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
             (!fall || r.renderer === 'main') && r.pin === '255,0,0' && r.box === '255,0,255' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
     }
+    // #2381: hasImage and listImages count the icons of the sprites, with the prefix of the id for a sheet that is not `default`.
+    {
+        await page.route(/\/sprite2381\//, r => r.request().url().includes('.json') ? r.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 4, height: 4, pixelRatio: 1}})}) : r.fulfill({contentType: 'image/png', body: solidPNG(4, [255, 0, 0])}));
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const o = location.origin + '/sprite2381/';
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, style: {version: 8, sprite: [{id: 'default', url: o + 'd'}, {id: 'a', url: o + 'a'}], sources: {}, layers: []}});
+            const read = () => [m.hasImage('box'), m.hasImage('a:box'), m.hasImage('zz'), m.listImages().join('+')].join();
+            const t0 = performance.now(); let v = read();
+            while (!v.startsWith('true') && performance.now() - t0 < 20000) { await new Promise(res => setTimeout(res, 100)); v = read(); }
+            m.setStyle({version: 8, sources: {}, layers: []});
+            const t1 = performance.now(); while (m.hasImage('box') && performance.now() - t1 < 20000) await new Promise(res => setTimeout(res, 100));
+            const out = [v, read()]; m.remove(); el.remove(); return out;
+        }, mode);
+        check(`[${mode}] compat: hasImage and listImages count the icons of the sprites, and a style without a sprite removes them (#2381)`, r[0] === 'true,true,false,box+a:box' && r[1] === 'false,false,false,', JSON.stringify(r));
+    }
     // #591: the textures of colour ramps (heatmap, line-gradient, color-relief) are deleted when their layer goes. The
     // probe counts live textures whose image is one pixel high (only ramps are), in the page or in the drawing worker.
     if (!workerCan) skip(`[${mode}] the textures of colour ramps are deleted when their layers are removed or the style changes (#591)`, noWorkerRender);
@@ -3800,6 +3882,42 @@ for (const mode of renderers) {
         }
         check('[main] compat: a square cap does not lengthen the dashes of a dashed line, as in MapLibre GL JS (#2144)',
             [1, 2].every(d => rows[d].butt > 0 && Math.abs(rows[d].square - rows[d].butt) <= rows[d].butt * 0.1), JSON.stringify(rows));
+    }
+    // #2443: on a pitched map, each pixel of a line across a tile edge is drawn by one tile, as with the stencil of
+    // MapLibre GL JS. Six lines of width 16 and opacity 0.5 cross several tiles at zoom 4, DPR 2, in four views of pitch
+    // 50 to 60. A pixel inside a line (as gray as the line 3 pixels away in all four directions) that is lighter is a
+    // hole, and one that is darker is drawn twice. Before the fix the views had 5 holes and 5 pixels drawn twice.
+    if (mode === 'main') {
+        const pg = await browser.newPage({viewport: {width: 600, height: 400}, deviceScaleFactor: 2});
+        await pg.goto(page.url());
+        const r = await pg.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = [];
+            const features = [0, 1, 2, 3, 4, 5].map(i => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20 + i * 2, -8 + i * 4], [20 - i * 3, -8 + i * 4 + (i % 2) * 3]]}}));
+            for (const [pitch, bearing] of [[60, -40], [60, 200], [60, 250], [50, 300]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:600px;height:400px'}));
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 4, pitch, bearing, style: {version: 8,
+                    sources: {l: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [
+                        {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'l', type: 'line', source: 'l', layout: {'line-cap': 'butt'}, paint: {'line-color': '#000', 'line-width': 16, 'line-opacity': 0.5}}]}});
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                const cv = m.getCanvas(), w = cv.width, h = cv.height, c = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d');
+                c.drawImage(cv, 0, 0);
+                const d = c.getImageData(0, 0, w, h).data, g = (x, y) => d[(y * w + x) * 4 + 1], near = v => Math.abs(v - 128) <= 2;
+                let holes = 0, twice = 0, inside = 0;
+                for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) {
+                    if (!(near(g(x - 3, y)) && near(g(x + 3, y)) && near(g(x, y - 3)) && near(g(x, y + 3)))) continue;
+                    inside++;
+                    if (g(x, y) > 148) holes++; else if (g(x, y) < 108) twice++;
+                }
+                out.push({pitch, bearing, inside, holes, twice});
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        await pg.close();
+        check('[main] compat: on a pitched map a line across a tile edge has each pixel drawn once, with no hole and no pixel drawn twice (#2443)',
+            r.every(v => v.inside > 10000 && !v.holes && !v.twice), JSON.stringify(r));
     }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
