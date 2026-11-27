@@ -58,7 +58,7 @@ that get their view later, and for an `interface` that adds members: an `interfa
 | Name | Type | Default | Description |
 |---|---|---|---|
 | [`style`](#style) **required** | `unknown` | | The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as `style` of `MapDescription`. |
-| `colorScheme` | `'auto' \| 'light' \| 'dark'` | | The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. |
+| `colorScheme` | `ColorScheme` | | The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. |
 | `globalState` | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. |
 | `center` | `LngLatLike` | | The center of the view, `[lng, lat]`. |
 | `zoom` | `number` | | The zoom level of the view. |
@@ -78,7 +78,7 @@ that get their view later, and for an `interface` that adds members: an `interfa
 | [`overrides`](#overrides) | `false \| Record<string, `[`SSROverrides`](#overrides)`>` | | Changes for the server render, for each id of a style layer: the same values as `map-jr:ssr` in the metadata of a layer, for example `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. |
 | `sources` | `Record<string, object>` | | Sources to add to the style, by id, as `sources` in the description of a map (`MapDescription`). |
 | `layers` | `({id: string; before?: string} & Record<string, unknown>)[]` | | Layers to add to the layers of the style, as `layers` in the description of a map (`MapDescription`). |
-| `sprite` | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as `sprite` in the description of a map (`MapDescription`): `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
+| `sprite` | [`SpriteInput`](description.md#spriteinput)`[]` | | Sprites to add to the sprite of the style, as `sprite` in the description of a map (`MapDescription`): `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
 | `terrain` | `object \| null` | | 3D terrain, as `terrain` in the description of a map (`MapDescription`). |
 | `data` | `Record<string, unknown>` | | GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. |
 | [`fetch`](#fetch) | `typeof fetch` | `globalThis.fetch` | The function that the render uses for its requests. |

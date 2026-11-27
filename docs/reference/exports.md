@@ -245,7 +245,7 @@ const map = createMap('map', {
 | `workerUrl` | `string \| URL` | the file next to the module of the library | The URL of the worker file, `map-jr-gl-worker.js`. |
 | `createWorker` | `() => Worker` | | A function that creates the worker, for a bundler that imports workers its own way (`new Worker(new URL(...))`, `?worker` of Vite). |
 | `tileWorkers` | `number` | the number of CPU cores less 2, from 1 to 4 | The number of workers that parse tiles, shared by all maps of the page. |
-| `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders a map whose description has no `renderer`. |
+| `renderer` | `Renderer` | `'auto'` | The thread that renders a map whose description has no `renderer`. |
 <!-- ref:LoadOptions:end -->
 
 ## See also
