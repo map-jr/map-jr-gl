@@ -49,7 +49,7 @@ const pages = {
   // (The listeners of the other events are added to the document after the element has made its map.)
   await new Promise(r => setTimeout(r));
   window.startedFirst = !!a.map;
-  for (const name of ['map-load', 'map-idle', 'map-click', 'map-viewchange', 'map-moveend', 'map-styleload']) document.addEventListener(name, record);
+  for (const name of ['map-load', 'map-idle', 'map-click', 'map-hover', 'map-viewchange', 'map-moveend', 'map-styleload']) document.addEventListener(name, record);
   window.ready = true;
 </script>`,
     // Two elements on one page.
@@ -248,6 +248,13 @@ try {
         return {sync, calls, d: {cursor: map.description.cursor, maxZoom: map.description.maxZoom, season: map.description.globalState?.season, colorScheme: map.description.colorScheme}, dark: a.classList.contains('map-jr-dark')};
     });
     check('browser: four changes in one task give one update, one microtask later', batch.sync === 0 && batch.calls === 1 && batch.d.cursor === 'wait' && batch.d.maxZoom === 18 && batch.d.season === 'winter' && batch.d.colorScheme === 'dark' && batch.dark, JSON.stringify(batch));
+
+    // The event map-hover has {point, lngLat, features} when the pointer moves onto the point of the layer `dot` (#215).
+    await page.evaluate(() => { window.seen.length = 0; });
+    await page.mouse.move(300, 200);
+    await page.waitForFunction(() => window.seen.some(e => e.name === 'map-hover' && e.detail?.features?.length), null, {timeout: 10000}).catch(() => {});
+    const hover = await page.evaluate(() => window.seen.find(e => e.name === 'map-hover' && e.detail?.features?.length));
+    check('browser: map-hover has {point, lngLat, features}, with the position of the pointer', hover?.target === 'a' && !Array.isArray(hover.detail) && Math.abs(hover.detail.point.x - 300) < 1 && Math.abs(hover.detail.point.y - 200) < 1 && Math.abs(hover.detail.lngLat[0] + 74.0065) < 0.001 && hover.detail.features[0].layer?.id === 'dot', JSON.stringify(hover));
 
     // A click on the point of the layer `dot`, which is in `interactive-layers`.
     await page.evaluate(() => { window.seen.length = 0; });

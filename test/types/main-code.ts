@@ -60,6 +60,8 @@ map.querySource('rain', NYC).then(found => found[0]?.layer.id);
 map.queryFeatures(NYC).then(found => found[0]?.type === 'Polygon');
 const overlay = map.overlay(document.createElement('div'), {lngLat: NYC, anchor: 'bottom'});
 overlay.update({lngLat: map.unproject({x: 10, y: 10})});
+map.patch({images: null});
+map.patch({images: {a: null}});
 const given: Position = map.state.get().view.center;
 const view: View = map.state.get().view;
 console.log(given, view);

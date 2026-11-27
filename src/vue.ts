@@ -419,7 +419,7 @@ const MapJrComponent = defineComponent({
         'update:view': (_view: View) => true,
         'update:colorScheme': (_scheme: ColorScheme) => true,
         click: (_event: MapPointer) => true,
-        hover: (_features: RenderedFeature[]) => true,
+        hover: (_event: MapPointer) => true,
         /** Emitted with the map when the style and the first tiles have loaded. */
         load: (_map: MapInstance) => true,
         idle: () => true,
@@ -486,7 +486,9 @@ const MapJrComponent = defineComponent({
             if (map) map.state.subscribe(s => s.idle, v => { if (v) emit('idle'); });
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
-        watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
+        // (The position is `state.pointer`, and the last one over the map after the pointer has left.)
+        let at = {point: {x: 0, y: 0}, lngLat: [0, 0] as [number, number]};
+        watch(() => state.value?.hover, features => { if (features) { at = state.value!.pointer ?? at; emit('hover', {features, point: {...at.point}, lngLat: [...at.lngLat]}); } });
         // The members of the map, read when they are used. Before the map has loaded, the members are undefined; in the
         // development build, a method is a function that throws a message. (Functions are bound to the map, because Vue calls them on its
         // own proxy, and each one is bound once for each map, so that a read gives the same function again.)
