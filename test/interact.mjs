@@ -217,6 +217,47 @@ for (const mode of renderers) {
         layerTransitions.start?.max < 60 && layerTransitions.middle?.max > 80 && layerTransitions.middle.max < 235 && layerTransitions.end.max > 240
         && layerTransitions.middle.n > layerTransitions.start.n + 100 && layerTransitions.end.n > layerTransitions.middle.n + 100, JSON.stringify(layerTransitions));
 
+    // A transition of `text-translate` and of `icon-translate` moves the text and the icon of a label in each frame, with no
+    // camera move, as MapLibre GL JS draws them (#2478): before, both stayed where the last placement had put them. The text
+    // is white and the icon green; each is found by the mean row of its pixels, and a sample between start and end must exist.
+    const movedLabels = await (async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const rows = async () => page.evaluate(async png => {
+            const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data, s = [0, 0], n = [0, 0];
+            for (let i = 0; i < d.length; i += 4) { const k = d[i] > 128 ? 0 : d[i + 1] > 128 ? 1 : -1; if (k >= 0) { s[k] += Math.floor(i / 4 / bmp.width); n[k]++; } }
+            return s.map((v, k) => n[k] ? Math.round(v / n[k]) : null);
+        }, (await page.screenshot({clip: {x: 0, y: 0, width: 300, height: 300}})).toString('base64'));
+        await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = window.translateEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:300px;z-index:99999'}));
+            const font = style.layers.find(l => l.layout?.['text-font'])?.layout['text-font'], move = {duration: 2000, delay: 0};
+            const m = window.translateMap = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8, glyphs: style.glyphs,
+                sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}},
+                    {id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'WWW', 'text-font': font, 'text-size': 24, 'text-offset': [0, -2], 'icon-image': 'g', 'text-allow-overlap': true, 'icon-allow-overlap': true},
+                        paint: {'text-color': '#fff', 'text-translate-transition': move, 'icon-translate-transition': move}}]}});
+            m.addImage('g', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).map((_, i) => i % 4 === 1 || i % 4 === 3 ? 255 : 0)});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        await wait(300);
+        const out = {start: await rows(), middle: [false, false]};
+        await page.evaluate(() => { const m = window.translateMap; window.translateIdled = false; m.once('idle', () => window.translateIdled = true); m.setPaintProperty('t', 'text-translate', [0, 100]); m.setPaintProperty('t', 'icon-translate', [0, 100]); });
+        while (!await page.evaluate(() => window.translateIdled) && !out.middle.every(Boolean)) {
+            const r = await rows();
+            out.middle = out.middle.map((was, k) => was || r[k] > out.start[k] + 20 && r[k] < out.start[k] + 80);
+            await wait(50);
+        }
+        await page.waitForFunction(() => window.translateIdled, null, {timeout: 30000});
+        await wait(200);
+        out.end = await rows();
+        await page.evaluate(() => { window.translateMap.remove(); window.translateEl.remove(); });
+        return out;
+    })().catch(e => ({error: String(e)}));
+    check(`[${mode}] paint transitions: text-translate and icon-translate move a label over their transition with no camera move (#2478)`,
+        movedLabels.start?.every(v => v !== null) && movedLabels.middle.every(Boolean) && movedLabels.end.every((v, k) => Math.abs(v - movedLabels.start[k] - 100) <= 2), JSON.stringify(movedLabels));
+
     // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
     // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
     {

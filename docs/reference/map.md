@@ -100,6 +100,8 @@ GL JS. This holds for `update`, `patch`, and in the compat entry for `setPaintPr
   for `delay` and then moves over `duration` with a cubic ease in and out.
 - Colors, numbers and lists of numbers of the same length (`fill-translate`) move. A value that depends on the zoom
   moves between the values at the zoom of each frame.
+- A change of `text-translate` or `icon-translate` moves the labels in each frame. As in MapLibre GL JS, their boxes
+  for collisions keep the translate of the last placement until the next placement, for example after a camera move.
 - These change at once: a value that depends on the feature (`get` or `feature-state`, before or after the change),
   `*-pattern`, `line-dasharray`, and a value of any other type.
 - An icon halo of a symbol layer that had none (`icon-halo-width` from 0, or a first `icon-halo-color`) shows at
