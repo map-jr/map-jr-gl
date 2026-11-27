@@ -859,7 +859,8 @@ export class Map {
             if (e.moving) this.awaitingInertia = false;
             this.engineMoving = !!e.moving;
             if (this.loud(e)) {
-                if (!this.moving) this.fire('movestart');
+                // (An ease during a drag that goes on after the release continues the movement: the release has fired the `moveend` of the drag, #2469.)
+                if (!this.moving && !this.easedDuringDrag) this.fire('movestart');
                 this.moving = true;
                 this.fire('move');
                 if (this.dragMove && (e.seq ?? this.dragSeq) >= this.dragSeq) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
@@ -1247,7 +1248,7 @@ export class Map {
     /** @internal Called when `easeTo` has sent an animation (not a jump). The compat entry starts the movement here. */
     protected easeStarted() {}
     /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
-    protected begin() { this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
+    protected begin() { this.easedDuringDrag = false; this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
     /**
      * @internal An `easeTo` or `flyTo` during a drag, as in MapLibre GL JS: the drag goes on, `movestart` fires in the call
      * for the ease, and the end of the ease fires `moveend` while the pointer is still down. The release then fires
@@ -2224,10 +2225,10 @@ export class Map {
      * reports it in a later frame, which can come after the release (#2152). */
     turnPending() { return this.reported < this.turned; }
     /** @internal Ends the movement that runs now, with its end events (the compat entry's `jumpTo` stops it so, #2340). */
-    protected halt() { this.awaitingInertia = false; if (this.moving) this.settle(); }
+    protected halt() { this.awaitingInertia = false; this.easedDuringDrag = false; if (this.moving) this.settle(); }
     /** Ends a movement: the end events of zoom, rotate and pitch, then `moveend`. */
     private settle() {
-        this.moving = false;
+        this.moving = false; this.easedDuringDrag = false;
         if (this.zooming) { this.zooming = false; this.fire('zoomend'); }
         if (this.rotating) { this.rotating = false; this.fire('rotateend'); }
         if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
@@ -2521,7 +2522,7 @@ export class Map {
             if (spin) this.easeTo({bearing: this.spinBearing(last.x + spin.bearing), pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
             // A rotate drag released after a pause ends here; one released while the engine still turns ends at its next report.
             else if (rotating && this.moving && !this.engineMoving && !this.dragging && !this.turnPending()) this.settle();
-            if (wasDragging && !rotating) {
+            if (wasDragging && !rotating && !this.easedDuringDrag) {
                 // Inertia as in MapLibre GL JS (see `inertiaSpan`): in the next frame, the movement of the last 60 ms of
                 // frames over the time up to that frame, so that a pointer that slowed or stopped before the release
                 // gives less or none (#479).
