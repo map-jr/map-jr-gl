@@ -3274,6 +3274,34 @@ for (const mode of renderers) {
         });
         check('[main] on the globe a large icon on the ground far from the center has the width and the height of MapLibre GL JS within 1.5 pixels, with both renderers (#2297)',
             ['-60,20', '-75,30'].every(at => globeBigIcon['ml main ' + at].every((v, i) => v > 10 && ['main', 'worker'].every(r => Math.abs(v - globeBigIcon[`mjr ${r} ${at}`][i]) <= 1.5))), JSON.stringify(globeBigIcon));
+        // With `text-pitch-alignment: map` the query box of an icon on the ground has its corners where MapLibre GL JS 6.17
+        // projects them: the edges of the box of a red icon of 100 pixels (left, up, right and down from its point, where
+        // `queryRenderedFeatures` still finds it) are within 1 pixel of MapLibre's, on the globe at pitch 0, 40 and 30 with
+        // a bearing, and on Mercator at pitch 40, with both renderers. It was the box that faces the viewer, off by up to
+        // 20 pixels (#2336). With the default `text-pitch-alignment` the box faces the viewer in both libraries.
+        const groundQuery = await page.evaluate(async () => {
+            const out = {};
+            const cases = [['globe', [-75, 30], 0, 0, 'map', 'viewport'], ['globe', [-60, 20], 40, 0, 'map', 'viewport'], ['globe', [-60, 20], 30, 30, 'map', 'map'],
+                ['globe', [-60, 20], 30, 30, 'map', 'viewport'], ['mercator', [-30, 10], 40, 20, 'map', 'map'], ['globe', [-75, 30], 0, 0, 'auto', 'viewport']];
+            for (const [lib, renderer] of [['ml', 'main'], ['mjr', 'main'], ['mjr', 'worker']]) for (const [proj, at, pitch, bearing, tp, ta] of cases) {
+                const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:1024px;height:768px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: proj === 'globe' ? 1 : 3, pitch, bearing, attributionControl: false, fadeDuration: 0, style: {version: 8, projection: {type: proj},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}}},
+                    layers: [{id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map', 'text-pitch-alignment': tp, 'text-rotation-alignment': ta}}]}});
+                m.addImage('red', {width: 100, height: 100, data: new Uint8Array(100 * 100 * 4).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const p = m.project(at), hit = async (x, y) => (await m.queryRenderedFeatures([x, y], {layers: ['s']})).length > 0;
+                // (The last pixel from the point that finds the icon, in each direction: the box is convex.)
+                const edge = async (dx, dy) => { let lo = 0, hi = 150; while (hi - lo > 1) { const d = (lo + hi) >> 1; if (await hit(p.x + dx * d, p.y + dy * d)) lo = d; else hi = d; } return lo; };
+                out[`${lib} ${renderer} ${proj} ${at} ${pitch} ${bearing} ${tp} ${ta}`] = [await edge(-1, 0), await edge(0, -1), await edge(1, 0), await edge(0, 1)];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[compat] with text-pitch-alignment map the query box of an icon on the ground has the edges of MapLibre GL JS within 1 pixel, on the globe and on Mercator, with both renderers (#2336)',
+            Object.keys(groundQuery).filter(k => k.startsWith('ml ')).every(k => groundQuery[k].every(v => v > 5) && ['main', 'worker'].every(r => groundQuery[k.replace('ml main', 'mjr ' + r)].every((v, i) => Math.abs(v - groundQuery[k][i]) <= 1))), JSON.stringify(groundQuery));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
