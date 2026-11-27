@@ -1891,7 +1891,7 @@ renderElement(): attributes.<attribute> is dropped, because the element already 
 
 ## E2412
 
-A warning of the main API (development build only).
+`Warning` `Main API` `Development build only`
 
 ```text
 interactive: the value of "<gesture>" is not true or false, so the gesture stays on. Write true or false.
