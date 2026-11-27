@@ -134,7 +134,7 @@ export function renderSVG(s: SVGScene): string {
             };
             if (b.type === 'circle') {
                 const sw = p.strokeWidth.eval(zoom), sc = p.strokeColor.eval(zoom) as RGBA;
-                const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * opacity)}` : '';
+                const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * (p.strokeOpacity.dd ? 1 : p.strokeOpacity.eval(zoom)))}` : '';
                 const {coords, ringEnds, featEnds} = b.geom;
                 for (let f = 0, r = 0; f < n; f++) {
                     const [col, a] = styleOf(f), radius = (b.radius ? b.radius[f] : p.radius.eval(zoom)) + sw / 2;
