@@ -640,8 +640,10 @@ export class Map extends CoreMap {
         }
         return super.addImage(...args);
     }
-    /** Replaces the pixels of an image added earlier and keeps its options. An image of another size fires an `error` event and changes nothing, as in MapLibre GL JS. Returns a promise of the map; MapLibre GL JS returns the map. */
+    /** Replaces the pixels of an image added earlier and keeps its options. An image of another size, or a name that has no image, fires an `error` event and changes nothing, as in MapLibre GL JS. Returns a promise of the map; MapLibre GL JS returns the map. */
     updateImage(name: string, image: Parameters<CoreMap['addImage']>[1]) {
+        // (An unknown name fires an `error` with the text of MapLibre GL JS and changes nothing; the main API throws; #2417.)
+        if (!this.imageInputs.has(name)) { this.fire('error', {error: new Error('The map has no image with that id. If you are adding a new image use `map.addImage(...)` instead.')}); return Promise.resolve(this); }
         const size = (i?: unknown) => { const {width, height, naturalWidth, naturalHeight} = (i ?? {}) as Record<string, number>; return [naturalWidth ?? width, naturalHeight ?? height]; };
         const [width, height] = size(this.imageInputs.get(name)?.[0]), [newWidth, newHeight] = size(image);
         if (width >= 0 && newWidth >= 0 && (width !== newWidth || height !== newHeight)) { this.fire('error', {error: ((method: string) => new Error(`[map-jr-gl] E2242 ${method}("${name}"): the image is ${width}×${height}, but the new one is ${newWidth}×${newHeight}. Pass an image of the same size, or call removeImage() and then addImage().`))('updateImage')}); return Promise.resolve(this); }
