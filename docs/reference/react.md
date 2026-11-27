@@ -55,7 +55,7 @@ lists.
 |---|---|---|---|
 | `mapStyle` **required** | [`MapDescription`](description.md#mapdescription)`['style']` | | The style: a style object, the URL of a style, or `{light, dark}`. |
 | `onViewChange` | `(view: `[`View`](state.md#view)`) => void` | | Called with the first view once, before `load`, and then with the new view at each change of the view. |
-| `onHover` | `(event: MapPointer) => void` | | Called when the features of `interactiveLayers` under the pointer change, with the features (the top one first) and the position of the pointer. |
+| `onHover` | `(event: MapPointer) => void` | | Called when the features of `interactiveLayers` under the pointer change, with `{point, lngLat, features}` (the top feature first). |
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
 | `onError` | `(error: Error, info: MapErrorInfo) => void` | | Called with each error of the map. |
@@ -158,6 +158,9 @@ events.
 `onLoad`, `onIdle`, `onError` and `onHover` are props of the table above, and `onClick` and `onViewChange` are
 fields of the description. These six props receive the value that their entry states, not an event object of
 `listen`.
+
+`onHover` receives `{point, lngLat, features}`, as `onClick` does. The position is that of the pointer. After the pointer
+leaves the map, `features` is `[]` and the position is the last one over the map.
 
 Without `onError`, the map writes each error to the console. With `onError`, the map calls it and writes nothing.
 `onError` receives the `Error` and a [`MapErrorInfo`](events.md#maperrorinfo) object, whose `sourceId` names the
