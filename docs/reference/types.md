@@ -210,6 +210,7 @@ const map = createMap('map', {
 | [`OverlayOptions`](map.md#overlayoptions), [`MapOverlay`](map.md#mapoverlay), `Anchor`, `PopupOffset` | The options and the result of `overlay`. |
 | [`Readable`](state.md#readable), [`Store`](exports.md#createstore) | The stores of `map.state` and of `createStore`. |
 | `ControlSpec` | A control for [`controls`](description.md#controls). |
+| [`StylePair`](description.md#stylepair), [`SpriteInput`](description.md#spriteinput), `ColorScheme`, `Renderer` | The pair of [`style`](description.md#style), an entry of [`sprite`](description.md#sprite), and the values of [`colorScheme`](description.md#colorscheme-and-oncolorschemechange) and [`renderer`](description.md#renderer). |
 | `ImageInput`, `ImageSource`, `ImageOptions` | An image for [`images`](description.md#images). |
 | `FontFaces` | The value of [`fonts`](description.md#fonts). |
 | `PaddingInput` | One number, or `{top, right, bottom, left}`, for [`padding`](description.md#padding). |

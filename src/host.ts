@@ -163,6 +163,28 @@ export type ImageSource = Parameters<Map['addImage']>[1];
  */
 export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
 
+/** The color scheme of the field `colorScheme` of `MapDescription`. `'auto'` follows `prefers-color-scheme` of the browser. */
+export type ColorScheme = 'auto' | 'light' | 'dark';
+
+/** The thread that renders the map, the field `renderer` of `MapSetup`. `'auto'` uses the worker where the browser supports it. */
+export type Renderer = 'auto' | 'worker' | 'main';
+
+/** One style for the light color scheme and one for the dark, the pair form of `style` in `MapDescription`. Each is a style object or the URL of a style. */
+export interface StylePair {
+    /** The style for the light color scheme: a style object or the URL of a style. */
+    light: string | StyleSpecification;
+    /** The style for the dark color scheme: a style object or the URL of a style. */
+    dark: string | StyleSpecification;
+}
+
+/** A sprite of the field `sprite` of `MapDescription`: its `id`, which a layer writes before the image name (`id:name`), and the URL of the sprite without its extension. */
+export interface SpriteInput {
+    /** The prefix of the images of this sprite: a layer writes `id:name`. */
+    id: string;
+    /** The URL of the sprite without a file extension. The map requests `url.json` and `url.png`, or `url@2x.json` and `url@2x.png` on a screen with a pixel ratio above 1. */
+    url: string;
+}
+
 /**
  * The description of a map: one object that states the style, the data, the view and the controls. To change the map, pass a new description to `update`.
  * Every optional field accepts `null` as "not set", the same as leaving the field out, except `terrain`.
@@ -172,7 +194,7 @@ export interface MapDescription extends MapSetup {
      * The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark color scheme.
      * With `{light, dark}`, the map uses the style of the resolved `colorScheme`, and loads the other style when the scheme changes.
      */
-    style: string | StyleSpecification | {light: string | StyleSpecification; dark: string | StyleSpecification};
+    style: string | StyleSpecification | StylePair;
     /**
      * Sources to add to the style, by id. A source here overrides the source of the style that has the same id. A GeoJSON source
      * whose id is a key of `data` needs no `data` of its own: it sets the options of the source, and `data` sets the features.
@@ -222,7 +244,7 @@ export interface MapDescription extends MapSetup {
      * Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. A layer
      * names an image of such a sprite as `id:name` (`pins:hotel`). A change of this field loads the style again.
      */
-    sprite?: {id: string; url: string}[] | null;
+    sprite?: SpriteInput[] | null;
     /** Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. */
     controls?: ControlSpec[] | null;
     /**
@@ -297,12 +319,12 @@ export interface MapDescription extends MapSetup {
      * browser. The resolved scheme is also the global state `color-scheme` of the style, unless `globalState` sets it.
      * @default 'light'
      */
-    colorScheme?: 'auto' | 'light' | 'dark' | null;
+    colorScheme?: ColorScheme | null;
     /**
      * Called with the new value when the control `colorScheme()` changes `colorScheme`. The map has applied the value
      * already; an application that keeps the description in its state stores it.
      */
-    onColorSchemeChange?: ((colorScheme: 'auto' | 'light' | 'dark') => void) | null;
+    onColorSchemeChange?: ((colorScheme: ColorScheme) => void) | null;
     /**
      * The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL
      * JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. A key that is left out keeps the English text.
@@ -337,7 +359,7 @@ export interface MapSetup {
      * The thread that renders the map. `'worker'` keeps the map smooth while the page is busy, and `'auto'` uses it where the browser supports it.
      * @default 'auto'
      */
-    renderer?: 'auto' | 'worker' | 'main' | null;
+    renderer?: Renderer | null;
     /**
      * The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`.
      * @default '"Noto Sans", "Helvetica Neue", Arial, sans-serif'
