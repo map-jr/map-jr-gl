@@ -1617,6 +1617,28 @@ for (const renderer of renderers) {
             editChecked.before?.length === 2 && editChecked.all.length === 2 && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1139 the circle layer "p-dot", paint property "circle-colr":'))
             && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1057 the layer "p-dot", paint property "circle-radius":')), JSON.stringify(editChecked));
 
+        // 3d2. A new style object that update() edits is checked for its zoom curves (#1765), and a layer of update() whose
+        // `before` names no layer warns at the call (#1766).
+        const editedStyle = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const spec = {style, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec);
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            await new Promise(r => setTimeout(r, 300));
+            host.update({...spec, style: {...style, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff', 'background-opacity': ['*', 0.5, ['zoom']]}}]}});
+            await new Promise(r => setTimeout(r, 500));
+            const curve = said.filter(w => /E1057/.test(w)).length;
+            host.update({...spec, layers: [{id: 'added', type: 'background', before: 'nope', paint: {'background-color': '#eee'}}]});
+            await new Promise(r => setTimeout(r, 500));
+            console.warn = warn; host.destroy(); el.remove();
+            return {curve, before: said.filter(w => /E5 /.test(w) && /"nope"/.test(w))};
+        }, renderer);
+        check(`[${renderer}] update() with an edited style object warns for a zoom curve, and a layer with a before that names no layer warns, in the development build (#1765, #1766)`,
+            editedStyle.curve === 1 && editedStyle.before.length === 1, JSON.stringify(editedStyle));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
