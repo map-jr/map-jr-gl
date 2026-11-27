@@ -1028,7 +1028,7 @@ export class Engine {
                     // after its frame: it draws one frame that runs no `render()`, so that the pixels show and the map can
                     // go idle; #2279.)
                     if (!c.fromRender) break;
-                    if (!this.inPreFrame && !this.scheduled) { this.skipPreFrame = true; this.repaint(); }
+                    if (!this.inPreFrame) this.extraFrame();
                     return;
                 }
                 this.dropImage(c.name);
@@ -1273,6 +1273,11 @@ export class Engine {
 
     // ---- frame loop ----
 
+    /**
+     * A frame that runs no `render()` of images (#2279): it shows pixels that came after a frame, or repeats a frame for
+     * WebKit. Otherwise, with slow frames, each such frame would call `render()` again and the map would not go idle.
+     */
+    private extraFrame() { if (!this.scheduled) { this.skipPreFrame = true; this.repaint(); } }
     repaint() {
         if (this.scheduled) return;
         this.scheduled = true;
@@ -2059,14 +2064,15 @@ export class Engine {
                 raf(send); setTimeout(send, 100);
             }
         }
+        // (`busy` first: the two extra frames below run no `render()` of images, and a busy frame must; #2279.)
+        if (busy) this.repaint();
         // (One more frame after the first `idle`: it requests the overview tiles.)
-        if (idle && !this.wentIdle) { this.wentIdle = true; this.repaint(); }
+        if (idle && !this.wentIdle) { this.wentIdle = true; this.extraFrame(); }
         // WebKit does not always show the one frame that a map draws after a pause (#429): the page keeps the old picture,
         // with no error and no lost context. A frame that comes after a pause is therefore followed by one more frame.
-        if (began - this.lastFrameAt > 100) this.repaint();
+        if (began - this.lastFrameAt > 100) this.extraFrame();
         this.lastFrameAt = began;
         this.wasIdle = idle;
-        if (busy) this.repaint();
         const st = this.stats, end = performance.now();
         st.frames++; st.cpu += end - began;
         if (!st.since) st.since = began;

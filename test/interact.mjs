@@ -688,14 +688,15 @@ for (const mode of renderers) {
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
     // #2279: new pixels from render() do not repaint, as in MapLibre GL JS: without triggerRepaint() the image does not keep
-    // the map drawing. (A map of its own: the demo map draws for other reasons.)
+    // the map drawing. (A map of its own: the demo map draws for other reasons. The slow render() makes the pixels arrive
+    // more than 100 ms after the frame, as on a loaded runner, where the frame that follows a pause called render() again.)
     const still = await page.evaluate(async renderer => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
         const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#123'}}]}, renderer, attributionControl: false});
         await new Promise(r => m.once('idle', r));
         let renders = 0, frames = 0;
-        await m.addImage('new-pixels', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; this.data = new Uint8Array(4).fill(renders % 255); return true; }});
+        await m.addImage('new-pixels', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; for (const t = performance.now(); performance.now() - t < 150;); this.data = new Uint8Array(4).fill(renders % 255); return true; }});
         m.addLayer({id: 'use', type: 'background', paint: {'background-pattern': 'new-pixels', 'background-opacity': 0}});
         m.triggerRepaint();
         const t0 = performance.now();
