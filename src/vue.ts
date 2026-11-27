@@ -524,11 +524,11 @@ const MapJrComponent = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             // (The props are the fields of the description, with `mapStyle` for `style`.)
-            first.value = await server.renderFirstView(server.firstViewOptions(unwrapped({
+            first.value = (await server.renderFirstView(server.firstViewOptions(unwrapped({
                 style: props.mapStyle, initialView: props.initialView, view: props.view, images: props.images, sources: props.sources, layers: props.layers, terrain: props.terrain, sprite: props.sprite, data: props.data,
                 fontFamily: props.fontFamily, attribution: props.attribution, colorScheme: props.colorScheme, globalState: props.globalState, controls: controls.value ?? [], locale: props.locale, nonce: props.nonce,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection,
-            } as MapDescription), o as import('./server.ts').DescriptionRenderOptions));
+            } as MapDescription), o as import('./server.ts').DescriptionRenderOptions))).html;
             } catch (cause) {
                 const error = new Error(`[map-jr-gl] E706 <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
                 console.error(error.message);

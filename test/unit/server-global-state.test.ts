@@ -8,16 +8,16 @@ const style = (name: string, d: string) => ({version: 8, state: {[name]: {defaul
 const view = {center: [0, 0] as [number, number], zoom: 1, width: 100, height: 100, attribution: false as const};
 
 test('renderFirstView and renderElement draw with globalState over the default of the style', async () => {
-    assert.match(await renderFirstView({...view, style: style('mode', 'light')}), /fill="#ffffff"/);
-    assert.match(await renderFirstView({...view, style: style('mode', 'light'), globalState: {mode: 'dark'}}), /fill="#000000"/);
-    assert.match(await renderFirstView({...view, style: style('mode', 'dark'), globalState: {mode: null}}), /fill="#000000"/);
+    assert.match((await renderFirstView({...view, style: style('mode', 'light')})).html, /fill="#ffffff"/);
+    assert.match((await renderFirstView({...view, style: style('mode', 'light'), globalState: {mode: 'dark'}})).html, /fill="#000000"/);
+    assert.match((await renderFirstView({...view, style: style('mode', 'dark'), globalState: {mode: null}})).html, /fill="#000000"/);
     assert.match(await renderElement({style: style('mode', 'light'), globalState: {mode: 'dark'}, attribution: false}, {width: 100, height: 100}), /fill="#000000"/);
 });
 
 test('the color scheme is the global state "color-scheme", unless globalState sets it', async () => {
-    assert.match(await renderFirstView({...view, style: style('color-scheme', 'light'), colorScheme: 'dark'}), /fill="#000000"/);
-    assert.match(await renderFirstView({...view, style: style('color-scheme', 'light'), colorScheme: 'dark', globalState: {'color-scheme': 'light'}}), /fill="#ffffff"/);
+    assert.match((await renderFirstView({...view, style: style('color-scheme', 'light'), colorScheme: 'dark'})).html, /fill="#000000"/);
+    assert.match((await renderFirstView({...view, style: style('color-scheme', 'light'), colorScheme: 'dark', globalState: {'color-scheme': 'light'}})).html, /fill="#ffffff"/);
     // Without `colorScheme` the map sets `color-scheme` to 'light', whatever the default of the style is.
-    assert.match(await renderFirstView({...view, style: style('color-scheme', 'dark')}), /fill="#ffffff"/);
+    assert.match((await renderFirstView({...view, style: style('color-scheme', 'dark')})).html, /fill="#ffffff"/);
     assert.match(await renderElement({style: style('color-scheme', 'light'), colorScheme: 'dark', attribution: false}, {width: 100, height: 100}), /fill="#000000"/);
 });

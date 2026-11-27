@@ -190,8 +190,8 @@ try {
     // fill the width of the render, half of it in an element of 100 x 100 and twice of it in one of 400 x 200.
     const shapeStyle = {version: 8, sources: {c: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
         layers: [{id: 'bg', type: 'background', paint: {'background-color': '#00aa00'}}, {id: 'c', type: 'circle', source: 'c', paint: {'circle-radius': 20, 'circle-color': '#0000ff'}}]};
-    const shapeView = await renderFirstView({style: shapeStyle, center: [0, 0], zoom: 2, width: 200, height: 200, attribution: false});
-    const fitView = await renderFirstView({style: shapeStyle, bounds: [[-20, -10], [20, 10]], width: 200, height: 200, attribution: false});
+    const shapeView = (await renderFirstView({style: shapeStyle, center: [0, 0], zoom: 2, width: 200, height: 200, attribution: false})).html;
+    const fitView = (await renderFirstView({style: shapeStyle, bounds: [[-20, -10], [20, 10]], width: 200, height: 200, attribution: false})).html;
     const boxes = [{w: 400, h: 200, scale: 2}, {w: 200, h: 400, scale: 2}, {w: 120, h: 160, scale: 1}, {w: 100, h: 100, scale: 0.5, fit: true}, {w: 400, h: 200, scale: 2, fit: true}];
     page = await browser.newPage({viewport: {width: 600, height: 1300}});
     await page.setContent(`<body style="margin:0;background:#ff00ff">${boxes.map(b => `<div style="position:relative;width:${b.w}px;height:${b.h}px;margin-bottom:20px">${b.fit ? fitView : shapeView}</div>`).join('')}</body>`);

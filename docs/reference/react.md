@@ -59,7 +59,7 @@ lists.
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
 | `onError` | `(error: Error, info: MapErrorInfo) => void` | | Called with each error of the map. |
-| [`firstView`](#firstview) | `string` | | The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
+| [`firstView`](#firstview) | `string` | | The first view rendered on a server, as HTML: `html` of the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. |
 | `className` | `string` | | A CSS class to add to the element, after the class `map-jr-react`. |
 | `style` | `CSSProperties` | | The CSS style of the element, merged over `{position: 'relative', width: '100%', height: '100%'}`. |
 | `children` | `ReactNode` | | Content over the map, and `MapOverlay` elements. |
@@ -208,7 +208,7 @@ export function ZoomToCity() {
 ### `firstView`
 
 `firstView` shows a first view that a server rendered, before the map in the browser has drawn. Its value is the
-HTML that [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server` returns. On the server,
+HTML in `html` of the result of [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server`. On the server,
 `MapJr` renders its element with this HTML inside. In the browser, the component reads the prop on its first render
 only, and React reports no hydration mismatch for the HTML. The map removes the HTML when it has loaded the tiles of
 its first view.
@@ -228,7 +228,7 @@ export default async function Page() {
   // The same style and view as the map in the browser, at the size that the map
   // has on most screens (800 by 500 pixels unless the second argument of
   // firstViewOptions says otherwise).
-  const firstView = await renderFirstView(
+  const {html: firstView} = await renderFirstView(
     firstViewOptions({style, initialView}),
   );
   return (

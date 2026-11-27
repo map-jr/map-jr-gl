@@ -4601,8 +4601,8 @@ for (const [entry, renderer, first] of [['main API', 'worker'], ['main API', 'ma
         const able = await page.evaluate(async () => (await import('/dist/map-jr-gl.js')).supported());
         await page.goto(`${origin}/style.json`); // (a new document: the answer of `supported()` is kept for the page)
         // (The first view is what `renderFirstView` writes, with the zoom buttons of `navigation()` in its layer of controls.)
-        const firstView = first && await (await import('../dist/server.js')).renderFirstView({style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#2a7'}}]}, center: [0, 0], zoom: 2, width: 400, height: 300,
-            controls: [(await import('../dist/controls.js')).navigation()]});
+        const firstView = first && (await (await import('../dist/server.js')).renderFirstView({style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#2a7'}}]}, center: [0, 0], zoom: 2, width: 400, height: 300,
+            controls: [(await import('../dist/controls.js')).navigation()]})).html;
         const none = await page.evaluate(async ([entry, renderer, first]) => {
             const get = HTMLCanvasElement.prototype.getContext;
             HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); };

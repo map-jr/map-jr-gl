@@ -22,11 +22,11 @@ const wide = {file: new URL('../public/home-first-paint-wide.svg', import.meta.u
 const smallDark = {file: new URL('../public/home-first-paint-dark.svg', import.meta.url), width: 1000, height: 1000};
 const wideDark = {file: new URL('../public/home-first-paint-wide-dark.svg', import.meta.url), width: 2560, height: 1600};
 const styleUrl = 'https://styles.map-jr.org/1/elevation-zero.json';
-const render = ({width, height}, controls, colorScheme = 'light') => renderFirstView({
+const render = ({width, height}, controls, colorScheme = 'light') => (await renderFirstView({
     // The first view (`firstCamera` of app/utils/home-scenes.ts, with the first style of the demo "styles").
     style: styleUrl, center: [8.33, 47.03], zoom: 10.6, width, height,
     colorScheme, timeout: 120000, requestTimeout: 30000, ...(controls && {controls: [navigation(), scale()]}),
-});
+})).html;
 // The SVG and the credits that come after it. The SVG is taken out of the box that the renderer puts around it, and its root gets the
 // style `place` in place of the placement of the renderer (#1427); the lines below replace `place` with their own.
 const place = 'position:absolute;inset:0;width:100%;height:100%';
