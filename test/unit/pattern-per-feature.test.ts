@@ -56,3 +56,20 @@ test(`fill-sort-key with more than ${MAX_RUNS} runs of images: one batch for eac
     assert.equal(warn.mock.callCount(), 1);
     assert.match(String(warn.mock.calls[0].arguments[0]), /^\[map-jr-gl\] E2040 layer "many": .*"fill-sort-key".* 64 runs/);
 });
+
+// A line-dasharray that reads feature properties draws the dasharray of each feature, as in MapLibre GL JS (#1807). The
+// tile has one batch for each dasharray, and a feature with no dasharray is in a batch of its own, drawn as a solid line.
+test('line-dasharray with a value for each feature: one batch for each dasharray', () => {
+    const L = compileLayer({id: 'd', type: 'line', source: 'g', paint: {'line-dasharray': ['match', ['get', 'kind'], 'brick', ['literal', [1, 1]], 'wave', ['literal', [2, 2]], ['literal', []]]}} as any)!;
+    const {tile} = toGL(buildTile(data, z, [L], false));
+    const batches = [0, 1, 2, 3].map(k => tile.layers[patternKey('d', k)]);
+    assert.deepEqual(batches.map(b => b?.dash), [[1, 1], [2, 2], [], undefined]);
+    assert.deepEqual(batches.map(b => b?.pat), [undefined, undefined, undefined, undefined]);
+});
+
+test('a line-dasharray that is the same for every feature keeps one batch', () => {
+    const L = compileLayer({id: 'd', type: 'line', source: 'g', paint: {'line-dasharray': [1, 1]}})!;
+    const {tile} = toGL(buildTile(data, z, [L], false));
+    assert.deepEqual(Object.keys(tile.layers), ['d']);
+    assert.equal(tile.layers.d.dash, undefined);
+});

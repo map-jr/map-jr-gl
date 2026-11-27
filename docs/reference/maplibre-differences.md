@@ -130,10 +130,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** An image that is taller than the text of its line makes the line taller, and `vertical-align` places each section within that height.
 - **This library:** `vertical-align` places each section as in MapLibre GL JS, but a tall image does not make its line taller. The image reaches above the line into the line before it or above the label, and the label's box keeps the height of the text.
 
-### `fill-sort-key` and `line-sort-key` with a pattern for each feature
+### `fill-sort-key` and `line-sort-key` with a pattern or a `line-dasharray` for each feature
 
 - **MapLibre GL JS:** The sort key orders all features of the layer.
-- **This library:** The sort key orders all features of the layer while the features of a tile, in the order of the key, form at most 64 runs that have the same image. With more runs, the key orders the features only within each image, the features of each image are drawn together, and the layer warns once.
+- **This library:** The sort key orders all features of the layer while the features of a tile, in the order of the key, form at most 64 runs that have the same image (or the same `line-dasharray`). With more runs, the key orders the features only within each value, the features of each value are drawn together, and the layer warns once.
+- **Without a sort key:** The features of each value are drawn together, so overlapping features that have different values can be drawn in another order than in MapLibre GL JS.
 
 ### Order of symbol layers
 
