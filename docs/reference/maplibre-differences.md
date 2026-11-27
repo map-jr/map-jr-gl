@@ -237,6 +237,11 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 - **MapLibre GL JS:** A tile outside the bounds is not requested.
 - This library does the same, for bounds in the style and in the TileJSON. Not for the bounds in the header of a PMTiles file.
 
+### An image source with a corner past longitude 180
+
+- **MapLibre GL JS:** A corner of `coordinates` with a longitude above 180 (or below -180) fails. The map throws `x=8, y=3, z=3 outside of bounds` and never fires `idle`.
+- **This library:** The image is drawn at the longitudes that the corners give, past the antimeridian, and the map does not throw. Write the corners within -180 to 180 for a page that also runs with MapLibre GL JS.
+
 ### An image tile that the server does not have (404)
 
 - **MapLibre GL JS:** The nearest tile above it is drawn in its place.
