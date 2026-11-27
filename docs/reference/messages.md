@@ -1597,7 +1597,7 @@ The contour source "<source>" has the interval <interval> in "thresholds", so it
 
 ## E2106
 
-An error of both entries.
+A warning of both entries.
 
 The production build prints this:
 
@@ -1937,6 +1937,14 @@ A warning of the main API (development build only).
 
 ```text
 <layer>: "color-relief-color" has <stops> stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.
+```
+
+## E10654
+
+A warning of the server renderer.
+
+```text
+server render: the source "<source>": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).
 ```
 
 ## E10826

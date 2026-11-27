@@ -176,20 +176,6 @@ function once(raw: object, url: string, load: () => Promise<any>, partial?: Part
  * With `fail`, a source that cannot be used (its request failed, or it has no tiles) is reported to that function and
  * left out: the other sources and their layers are drawn. Without it, such a source makes the whole style fail.
  */
-/**
- * A `raster-dem` source (and a contour) with `encoding: 'custom'` and a factor or shift that is not a finite number is read as
- * `mapbox`, with one warning (E590) for each source name in `told` (#590). The map and the server renderer both call it.
- */
-export function finiteEncodings(sources: ResolvedStyle['sources'], told: Set<string>) {
-    for (const [name, src] of Object.entries(sources)) {
-        const bad = (e?: string | number[]) => typeof e == 'object' && !e.every(Number.isFinite);
-        if (src.contour && bad(src.contour.encoding)) src.contour.encoding = 'mapbox';
-        if (!bad(src.encoding)) continue;
-        src.encoding = 'mapbox';
-        if (!told.has(name)) { told.add(name); console.warn(`[map-jr-gl] E590 The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
-    }
-}
-
 export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail, geojsonBuffer?: number): Promise<ResolvedStyle> {
     const bad = (error: unknown): typeof SKIP => { if (!fail) throw error; fail(error); return SKIP; };
     // A source that cannot be used: each map (its `fail`) hears of it one time for the source object.

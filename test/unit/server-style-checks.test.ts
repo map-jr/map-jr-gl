@@ -23,5 +23,5 @@ test('a custom encoding with a factor that is not finite warns once and reads th
         assert.match((await renderToSVG({...view, style: style as any})).svg, /^<svg/);
     } finally { console.warn = warn; }
     assert.equal(told.length, 1);
-    assert.match(told[0], /^\[map-jr-gl\] E590 The source "dem"/);
+    assert.match(told[0], /^\[map-jr-gl\] E10654 server render: the source "dem"/);
 });

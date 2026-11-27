@@ -3,7 +3,7 @@ import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHei
 import {compileFor, IMAGE_OR, mergeFeatureState, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
-import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, finiteEncodings, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -680,7 +680,13 @@ export class Engine {
         for (const id in this.lod) if (this.style?.sources[id] && JSON.stringify(style.sources[id]) !== JSON.stringify(this.style.sources[id])) delete this.lod[id];
         // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
         // TileJSON as they are. When one is not a finite number, the source and its contours are read as `mapbox`.
-        finiteEncodings(style.sources, this.toldEncoding);
+        for (const [name, src] of Object.entries(style.sources)) {
+            const bad = (e?: string | number[]) => typeof e == 'object' && !e.every(Number.isFinite);
+            if (src.contour && bad(src.contour.encoding)) src.contour.encoding = 'mapbox';
+            if (!bad(src.encoding)) continue;
+            src.encoding = 'mapbox';
+            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] E590 The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
+        }
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
         // that needs it (a part of the worker, `map-jr-gl-worker-globe.js`, or a chunk for the engine on the main
         // thread; #2006), and frames wait for it (see `frame`).
