@@ -1309,9 +1309,12 @@ export class GLRenderer {
             const shift = (it: RenderItem<GLTile>) => tx || ty ? [tx / it.scale, ty / it.scale] : undefined;
             // The part of the screen that is the tile's, in the units of the layer's first tile (see FS_CLIP_SCREEN).
             let screen: Float32Array | number[] | undefined;
+            // On the globe a tile of the first or the last row also owns the cap of its pole, as the tile mask of MapLibre GL
+            // JS does (`extendToNorthPole`): a line that is clamped to 85.05° keeps the half of its width past the edge (#2307).
             const clipTo = (u: Record<string, WebGLUniformLocation>, it: RenderItem<GLTile>) => {
                 gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items[0].matrix4, target));
-                gl.uniform4fv(u.u_clip, this.globe ? it.clip : clipIn(items[0].id, it.id, it.clip));
+                const [x0, y0, x1, y1] = it.clip, {y, z} = it.id;
+                gl.uniform4fv(u.u_clip, this.globe ? [x0, y || y0 ? y0 : -1e6, x1, y < 2 ** z - 1 || y1 < EXTENT ? y1 : 1e6] : clipIn(items[0].id, it.id, it.clip));
             };
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {

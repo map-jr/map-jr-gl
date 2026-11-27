@@ -436,6 +436,32 @@ for (const mode of renderers) {
             return result;
         }, mode);
         check(`[${mode}] the globe: queryRenderedFeatures finds an icon moved by icon-translate where it is drawn (#1822)`, moved.drawn[1] > 220 && moved.drawn[1] < 245 && moved.atDrawn === 1 && moved.atScreen === 0, JSON.stringify(moved));
+        // A line at 88° N or S is clamped to the edge of the world at 85.05°, and on the globe the tile of the first or the
+        // last row also draws the half of its width that lies in the cap of the pole, as MapLibre GL JS 6.17 does (#2307).
+        // The line was half as wide before (396 pixels of ink, and 797 in MapLibre). On Mercator the edge of the world
+        // still clips it, and a line at 84° is not affected.
+        const poleLine = (lib, proj, lat) => page.evaluate(async ([lib, renderer, proj, lat]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:300px;z-index:60'}));
+            const coords = Array.from({length: 73}, (_, i) => [-180 + i * 5, lat]);
+            const style = {version: 8, projection: {type: proj}, sources: {s: {type: 'geojson', data: {type: 'LineString', coordinates: coords}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}}, {id: 'l', type: 'line', source: 's', paint: {'line-color': '#fff', 'line-width': 2}}]};
+            const map = new mod.Map({container: el, style, center: [0, Math.sign(lat) * 85], zoom: 2, renderer, attributionControl: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const blob = lib === 'ml' ? await (await fetch(map.getCanvas().toDataURL())).blob() : await map.toBlob();
+            const bmp = await createImageBitmap(blob), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data;
+            let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 60) n++;
+            map.remove(); el.remove();
+            return n;
+        }, [lib, mode, proj, lat]).catch(e => String(e));
+        const poleInk = {};
+        for (const [proj, lat] of [['globe', 88], ['globe', -88], ['globe', 84], ['mercator', 88]]) for (const lib of ['ours', 'ml']) poleInk[`${lib} ${proj} ${lat}`] = await poleLine(lib, proj, lat);
+        check(`[${mode}] the globe: a line north of 85.05° N or south of 85.05° S has the width of MapLibre GL JS within 2%, and Mercator clips it at the edge of the world (#2307)`,
+            ['globe 88', 'globe -88', 'globe 84', 'mercator 88'].every(k => poleInk['ml ' + k] > 200 && Math.abs(poleInk['ours ' + k] - poleInk['ml ' + k]) <= poleInk['ml ' + k] * 0.02)
+            && poleInk['ml globe 88'] > poleInk['ml mercator 88'] * 2, JSON.stringify(poleInk));
         // On a pitched Mercator map icon-translate moves the point in tile units, as in MapLibre GL JS: [0, 60] at pitch 60
         // moves the icon about 27 pixels down the screen, not 60 (#2021). The anchor `viewport` does the same.
         const pitched = await page.evaluate(async renderer => {
