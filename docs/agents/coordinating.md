@@ -246,12 +246,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
     `git merge-tree`).
 
   When the merge changed only the messages, the description, the reference, or another function of a file of `src/`
-  that the branch also changes, do not update the branch. Build the merge tree in a temporary worktree
-  (`git merge` of the branch into `origin/main`) and run `pnpm build`, `pnpm test:unit` and `pnpm test:consistency`
-  on it before you merge. Update the branch only when one of them fails (the owner, 2026-11-27, #2255). Under the
-  full rule, merges of messages, the reference and `src/` restarted the runs of the other lanes coordinator eight
-  times on 2026-11-27, and a series of ten open pull requests restarted five runs of about 25 minutes after each
-  merge of `src/map.ts` or `src/host.ts`.
+  that the branch also changes, test the merge tree instead of updating the branch. Merge the branch into
+  `origin/main` in a temporary worktree, and run `pnpm build`, `pnpm test:unit` and `pnpm test:consistency` on it
+  before you merge. Update the branch when one of them fails. This is the update rule of both lanes coordinators (the
+  owner, 2026-11-27, #2255).
+
+  The full rule restarted the CI of other branches too often. On 2026-11-27, a series of ten open pull requests
+  restarted five runs of about 25 minutes after each merge of `src/map.ts` or `src/host.ts`.
 
   A merge that only adds or changes a check of another feature in `test/interact.mjs` or `test/host.mjs` needs no
   update (the owner, 2026-11-26, #2301). Before this decision, each such merge restarted the CI of every open branch.
