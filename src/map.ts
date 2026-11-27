@@ -1227,8 +1227,13 @@ export class Map {
         const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
         this.post(c);
         this.eased = {c, at: performance.now()};
+        this.easeStarted();
         return this;
     }
+    /** @internal Called when `easeTo` has sent an animation (not a jump). The compat entry starts the movement here. */
+    protected easeStarted() {}
+    /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
+    protected begin() { if (!this.moving) { this.moving = true; this.fire('movestart'); } }
     /**
      * Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17.
      * The defaults are `curve` 1.42 and `speed` 1.2, and without `duration` the duration follows from the distance.
