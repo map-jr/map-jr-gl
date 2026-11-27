@@ -901,6 +901,14 @@ export class Map extends CoreMap {
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
         return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(o))));
     }
+    private observedOnce = false;
+    protected override observed() {
+        // As in MapLibre GL JS, the first call of the observer is for the size that the map has, and does nothing.
+        const first = !this.observedOnce;
+        this.observedOnce = true;
+        if (first && this.container.clientWidth === this.tr.width && this.container.clientHeight === this.tr.height) return;
+        this.resize();
+    }
     /**
      * Reads the size of the container again and resizes the map to it. As in MapLibre GL JS, it fires `movestart`, `move`,
      * `resize` and `moveend` during the call, also when the size has not changed, and only `resize` while the map moves.
@@ -909,7 +917,7 @@ export class Map extends CoreMap {
      */
     override resize(eventData?: EventData) {
         super.resize();
-        const still = !this.isMoving();
+        const still = !this.isMoving() && !this.easing();
         for (const type of still ? ['movestart', 'move', 'resize', 'moveend'] : ['resize']) this.fire(type, {...eventData});
         return this;
     }

@@ -541,7 +541,7 @@ export class Map {
         // (The style of a move to this thread is not new: a `style.load` listener that adds the custom layer would add it twice.)
         if (!this.movingToMain) this.styleEvents(true);
 
-        this.observer = new ResizeObserver(() => { this.styles(); this.resize(); });
+        this.observer = new ResizeObserver(() => { this.styles(); this.observed(); });
         this.observer.observe(this.container);
         this.bindInput();
         if (o.attributionControl !== false && !this.restarted) {
@@ -1375,6 +1375,10 @@ export class Map {
     triggerRepaint() { this.post({type: 'repaint'}); }
 
     /** Reads the size of the container again and resizes the map to it. Call it after a change of the size that the map does not see. */
+    /** @internal The container observer calls this; the compat entry skips the first call when the size has not changed, as MapLibre GL JS does. */
+    protected observed() { this.resize(); }
+    /** @internal Whether an animation that `easeTo` sent runs now, also before the engine reports its first frame. */
+    protected easing() { const e = this.eased; return !!e && performance.now() < e.at + (e.c as {duration: number}).duration; }
     /** @internal The compat entry fires `resize` in `resize()`, so the report of the engine fires nothing. */
     protected fireResize = false;
     resize() {
