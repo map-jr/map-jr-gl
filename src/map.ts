@@ -2475,9 +2475,9 @@ export class Map {
                     if (pendingPan) list.push({t, ...pendingPan}), pendingPan = null;
                     const [a, b] = inertiaSpan(list, t);
                     if (a && b && (a.x !== b.x || a.y !== b.y)) this.post({type: 'fling', dx: b.x - a.x, dy: b.y - a.y, ms: t - a.t});
-                    else { this.awaitingInertia = false; this.moving = false; this.fire('moveend'); }
+                    else { this.awaitingInertia = false; if (this.moving) { this.moving = false; this.fire('moveend'); } }
                 });
-            } else if (wasDragging) { this.moving = false; this.fire('moveend'); }
+            } else if (wasDragging && this.moving) { this.moving = false; this.fire('moveend'); }
             if (moved <= 3 && e.type === 'pointerup' && e.button === 0 && !suppressClick) {
                 const at = pos(e);
                 if (e.pointerType === 'touch') lastTap = {t: now, x: at.x, y: at.y};

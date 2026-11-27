@@ -543,6 +543,34 @@ for (const mode of renderers) {
     const jumpOurs = await jumpEvents('ours'), jumpMl = await jumpEvents('ml');
     check(`[${mode}] maplibre-compat: jumpTo, setZoom and easeTo with duration 0 fire their events during the call, once and in the order of MapLibre GL JS, also during an easeTo (#2340)`,
         jumpOurs.includes('moveend:a |a') && jumpOurs === jumpMl, JSON.stringify({ours: jumpOurs, ml: jumpMl}));
+    // #2340: a jumpTo during a pinch, while the reports of the worker come late, leaves `movestart` and `moveend` in pairs
+    // (the pinch's late reports still fire their own `move`; its release did not fire a `moveend` with no `movestart`).
+    if (mode === 'worker' && browserName === 'chromium') {
+        const pinch = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const d = Object.getOwnPropertyDescriptor(Worker.prototype, 'onmessage');
+            let hold = false;
+            Object.defineProperty(Worker.prototype, 'onmessage', {configurable: true, get: d.get, set(f) { d.set.call(this, f && (e => hold ? setTimeout(() => f(e), 150) : f(e))); }});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'pinch2340', style: 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:99999'}));
+            const m = window.pinchMap = new mod.Map({container: el, renderer: 'worker', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#123'}}]}});
+            await Promise.race([new Promise(r => m.once('load', r)), new Promise(r => setTimeout(r, 15000))]);
+            Object.defineProperty(Worker.prototype, 'onmessage', d);
+            await new Promise(r => setTimeout(r, 300));
+            window.pinchLog = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => window.pinchLog.push(t));
+            hold = true;
+        });
+        const cdp = await page.context().newCDPSession(page);
+        const fingers = i => [0, 1].map(k => ({id: k, x: 300 + (k ? 1 : -1) * (50 + i * 8), y: 200}));
+        await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: fingers(0)});
+        for (let i = 1; i <= 5; i++) { await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: fingers(i)}); await page.waitForTimeout(20); }
+        await page.evaluate(() => window.pinchMap.jumpTo({zoom: 5}));
+        for (let i = 6; i <= 10; i++) { await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: fingers(i)}); await page.waitForTimeout(20); }
+        await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+        await page.waitForTimeout(1500);
+        const seen = await page.evaluate(() => { const log = window.pinchLog, m = window.pinchMap; let open = 0, bad = 0; for (const t of log) { if (t === 'movestart') open++; else if (t === 'moveend' && open-- <= 0) { bad++; open = 0; } } const r = {log: log.join(), open, bad, moving: m.isMoving(), starts: log.filter(t => t === 'movestart').length, ends: log.filter(t => t === 'moveend').length}; m.remove(); document.getElementById('pinch2340').remove(); return r; });
+        check(`[${mode}] maplibre-compat: a jumpTo during a pinch with late reports keeps movestart and moveend in pairs (#2340)`, seen.bad === 0 && seen.open === 0 && seen.starts === seen.ends && seen.starts >= 2 && !seen.moving, JSON.stringify(seen));
+    }
 
     // As in MapLibre's CSS, the controls take the font of the map's container, and an interactive map shows `grab` (#211).
     const css = await page.evaluate(() => {
