@@ -9,7 +9,7 @@ import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 import {SPEC} from './style.ts';
 import {parseColor} from './expr.ts';
-import {layerTypes, layoutExpressions, layoutValues, operators, paintExpressions, paintValues, sourceValues} from './style-spec-values.ts';
+import {layerTypes, layoutExpressions, layoutNames, layoutValues, operators, paintExpressions, paintValues, sourceValues} from './style-spec-values.ts';
 import {expressionErrors} from './expr-check.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
@@ -84,6 +84,8 @@ texts[1647] = (option, call) => `${call}: "${option}" is not an option of an ove
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.`;
 texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map draws the layer without it, but MapLibre GL JS rejects the style. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
+texts[1683] = (where, group) => `${where}: this is a ${group} property. The map reads it here all the same, but MapLibre GL JS rejects the style. Move it to "${group}".`;
+texts[11683] = (where, group) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map reads it here all the same, but it is a ${group} property, and MapLibre GL JS rejects the style. Move it to "${group}".`;
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -171,7 +173,7 @@ export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: 
         const why = zoomCurveError(l[g][k]), key = `${l.id} ${g} ${k} ${JSON.stringify(l[g][k])}`;
         if (why && !reported.has(key)) { reported.add(key); report(new Error(mistake(1057, `layers.${l.id}.${g}.${k}`, why))); }
     }
-    unknownProperties(style?.layers, (l, g, k, near) => { const key = `${l.id} ${g} ${k}`; if (!reported.has(key)) { reported.add(key); report(new Error(mistake(11139, `layers.${l.id}.${g}.${k}`, near))); } });
+    unknownProperties(style?.layers, (l, g, k, near, right) => { const key = `${l.id} ${g} ${k}`; if (!reported.has(key)) { reported.add(key); report(new Error(right ? mistake(11683, `layers.${l.id}.${g}.${k}`, right) : mistake(11139, `layers.${l.id}.${g}.${k}`, near))); } });
 }
 /**
  * Calls `found` with the place and MapLibre's text (GL JS 6.17, style specification 26) for each required field that a
@@ -345,16 +347,22 @@ const distance = (a: string, b: string) => {
  * type of the layer, with the group, the key and the nearest property of that type ('' when none is near). A key of
  * `paint` that is a property and `-transition` is known. (#1139)
  */
-export function unknownProperties(layers: unknown, found: (layer: {id: string; type: string}, group: string, key: string, near: string) => void) {
+export function unknownProperties(layers: unknown, found: (layer: {id: string; type: string}, group: string, key: string, near: string, right: string) => void) {
     for (const l of Array.isArray(layers) ? layers : []) {
         const known = layerProperties(l?.type);
         if (known) for (const g of ['paint', 'layout']) for (const k in l[g]) {
-            if (known.includes(k) || g === 'paint' && k.endsWith('-transition') && known.includes(k.slice(0, -11))) continue;
+            // (A name of the other group is a fault too: the map reads `paint ?? layout`, MapLibre GL JS does not. #1683)
+            if (known.includes(k)) {
+                const layout = layoutNames.split('|').find(e => e.startsWith(l.type + ' '))!.split(' ').slice(1);
+                if (layout.includes(k) !== (g === 'layout')) found(l, g, k, '', g === 'layout' ? 'paint' : 'layout');
+                continue;
+            }
+            if (g === 'paint' && k.endsWith('-transition') && known.includes(k.slice(0, -11))) continue;
             // (The nearest name within a third of the length of the key, so that a short key does not get an unrelated name.)
             const key = k.replace(/[A-Z_]/g, c => '-' + c.toLowerCase().replace('_', '')).replace(/-+/g, '-');
             let near = '', best = Math.max(2, Math.floor(k.length / 3)) + 1;
             for (const n of known) { const d = distance(key, n); if (d < best) { best = d; near = n; } }
-            found(l, g, k, near);
+            found(l, g, k, near, '');
         }
     }
 }
@@ -388,7 +396,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     };
     /** Warns for each property of the layers that the style specification does not have for the type of the layer (#1139). */
     const properties = (layers: unknown) => {
-        unknownProperties(layers, (l, g, k, near) => warn(1139, `the ${l.type} layer "${l.id}", ${g} property "${k}"`, near));
+        unknownProperties(layers, (l, g, k, near, right) => right ? warn(1683, `the ${l.type} layer "${l.id}", ${g} property "${k}"`, right) : warn(1139, `the ${l.type} layer "${l.id}", ${g} property "${k}"`, near));
         // (Accepted, and read neither here nor by MapLibre GL JS 6.17: #1692.)
         for (const l of Array.isArray(layers) ? layers : []) if (l?.type === 'symbol' && l.layout?.['symbol-avoid-edges'] != null) warn(1692, `the symbol layer "${l.id}"`);
         // (Accepted, and not read here, while MapLibre GL JS reads them: #648. A value equal to the default draws the same.)
