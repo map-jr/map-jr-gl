@@ -88,6 +88,17 @@ texts[1683] = (where, group) => `${where}: this is a ${group} property. The map 
 texts[11683] = (where, group) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map reads it here all the same, but it is a ${group} property, and MapLibre GL JS rejects the style. Move it to "${group}".`;
 texts[55] = sprite => `sprite: ${sprite} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
+texts[2265] = (call, faces) => `${call}: ${faces} is not an object of font faces, so the map loads no font from it. Write an object by "text-font" name, such as {"Open Sans": "https://example.com/open-sans.woff2"}, or {"Open Sans": [{"url": "https://example.com/open-sans-latin.woff2", "unicode-range": ["U+0000-00FF"]}]}.`;
+/** For `fonts` of the description, of `new Map()` and `addFonts()` (#2265): what the user wrote, as text, when `faces` is not an object of font faces (a URL, or a list of `{url}`, by name), else ''. */
+export const fontsMistake = (faces: unknown): string => {
+    if (faces == null) return '';
+    const face = (v: unknown) => typeof v === 'string' || (Array.isArray(v) && v.every(e => typeof (e as {url?: unknown} | null)?.url === 'string'));
+    if (typeof faces === 'object' && !Array.isArray(faces) && Object.values(faces).every(face)) return '';
+    let shown: string;
+    try { shown = JSON.stringify(faces) ?? String(faces); } catch { shown = String(faces); }
+    return shown.length > 80 ? shown.slice(0, 77) + '...' : shown;
+};
+
 /** The message with the number `code` for the names `a` and `b`. */
 export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] E' + code + ' ' + texts[code]!(a, b);
 
@@ -434,6 +445,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
             for (const {key} of next.controls ?? []) { if (keys.has(key)) key.startsWith('custom:') ? warn(1195, key.slice(7), 'c') : warn(1195, key.slice(0, key.indexOf('{'))); keys.add(key); }
         }
         if (next.sprite !== before?.sprite && next.sprite != null && !(Array.isArray(next.sprite) && next.sprite.every(s => typeof s?.id === 'string' && typeof s.url === 'string'))) warn(55, JSON.stringify(next.sprite));
+        if (next.fonts !== before?.fonts) { const shown = fontsMistake(next.fonts); if (shown) warn(2265, 'fonts', shown); }
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
         if (next.locale != null && next.locale !== before?.locale) {
             if (typeof next.locale !== 'object' || Array.isArray(next.locale)) warn(685, 'the value is not an object');

@@ -7,7 +7,7 @@ import type {QueriedFeature} from './query.ts';
 import type {Command} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {Evented} from './evented.ts';
-import {zoomCurveErrors, unknownMapOption} from './mistakes.ts';
+import {zoomCurveErrors, unknownMapOption, fontsMistake, mistake} from './mistakes.ts';
 import {httpError, withCode} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
@@ -532,6 +532,13 @@ export class Map extends CoreMap {
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
         if (context?.preserveDrawingBuffer)
             this.mistake('new Map(): canvasContextAttributes.preserveDrawingBuffer', __DEV__ ? '[map-jr-gl] E387 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.' : '');
+        // (Development build, #2265: `fonts` and `addFonts()` take an object of font faces, and nothing else loads a font.)
+        if (__DEV__) {
+            const bad = fontsMistake(o.fonts);
+            if (bad) this.mistake('new Map(): the option fonts', mistake(2265, 'new Map(): the option fonts', bad));
+            const add = this.addFonts;
+            this.addFonts = faces => { const bad = fontsMistake(faces); if (bad) this.mistake('addFonts()', mistake(2265, 'addFonts()', bad)); return add.call(this, faces); };
+        }
         if (__DEV__) for (const k in o) { const text = unknownMapOption(k); if (text) this.mistake('new Map(): the option ' + k, text); }
         this.unsupported('The option logoPosition', !o.logoPosition);
         // (Development build) `validateStyle: false` skips the check of the style, as in MapLibre GL JS (#1748, #2121). `setStyle` can override it for one style.

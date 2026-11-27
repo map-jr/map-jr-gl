@@ -5374,6 +5374,13 @@ for (const mode of renderers) {
             const knownPlain = make({terrainSkirtLength: 'auto', localIdeographFontFamily: 'sans-serif', centerClampedToGround: true, strict: false});
             knownPlain.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: 'sans-serif'});
             out.unknown = {own, plain: warnings.splice(0).length};
+            // `fonts` and `addFonts()` take an object of font faces: an array warns once with the object to write, and an object does not (#2265).
+            const fonts = make({fonts: [{family: 'Open Sans', src: '/x.woff2'}]});
+            fonts.addFonts([{family: 'Open Sans', src: '/x.woff2'}]); fonts.addFonts('/x.woff2'); fonts.addFonts({'Open Sans': '/x.woff2'});
+            const fontsGood = make({fonts: {'Open Sans': [{url: '/x.woff2', 'unicode-range': ['U+0000-00FF']}]}});
+            fontsGood.addFonts({'Open Sans': '/y.woff2'});
+            out.fonts = {own: warnings.splice(0).filter(w => w.includes('E2265')), good: warnings.length};
+            for (const x of [fonts, fontsGood]) { x.getContainer().remove(); x.remove(); }
             for (const x of [unknown, knownPlain]) { x.getContainer().remove(); x.remove(); }
             for (const x of [dragged, draggedPlain]) { x.getContainer().remove(); x.remove(); }
             projected.getContainer().remove(); projected.remove();
@@ -5396,6 +5403,9 @@ for (const mode of renderers) {
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
+        check('[main] maplibre-compat: fonts and addFonts() as an array warn once each with the object to write, and an object of font faces does not warn (#2265)',
+            quiet.fonts.own.length === 2 && quiet.fonts.good === 0 && /E2265 new Map\(\): the option fonts: \[\{"family":"Open Sans".*\{"Open Sans": "https:\/\/example\.com\/open-sans\.woff2"\}/.test(quiet.fonts.own[0])
+            && quiet.fonts.own[1].startsWith('[map-jr-gl] E2265 addFonts(): [{"family"'), JSON.stringify(quiet.fonts));
         check('[main] maplibre-compat: a misspelled option of new Map() warns once with the closest name, the props of a wrapper do not warn, and terrainSkirtLength and localIdeographFontFamily (also of setStyle) warn once (#2272, #1788, #1789)',
             quiet.unknown.own.length === 4 && quiet.unknown.plain === 0 && quiet.unknown.own.filter(w => /E2272/.test(w)).length === 1
             && /"fadeDuraton" is not an option.* Did you mean "fadeDuration"\?/.test(quiet.unknown.own[0])
