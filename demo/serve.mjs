@@ -9,12 +9,14 @@ import {markers, images, view, asSpec} from './markers.mjs';
 import {shield} from './shields.mjs';
 import {renderToSVG, renderToImage} from '../dist/server.js';
 import {Renderer} from '@takumi-rs/core';
+import {survive} from '../scripts/undici-assert.mjs';
 
 const rasteriser = new Renderer();
 
-// An upstream fetch can fail inside Node's undici with an error thrown from a socket event, which no `try` around the
-// fetch catches (#880). The server logs it and goes on, so that one bad answer of the tile host does not end a test run.
-process.on('uncaughtException', error => console.error('[demo] an uncaught error, the server goes on:', error));
+// An upstream fetch can fail inside Node's undici with an assertion thrown from a socket event, which no `try` around
+// the fetch catches (#880, #2289). The server logs that one error and goes on, so that one bad answer of the tile host
+// does not end a test run. Any other uncaught error ends the server with code 1 (#2331).
+survive('demo');
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const port = +(process.env.PORT || 8080), origin = `http://localhost:${port}`;

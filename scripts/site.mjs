@@ -11,6 +11,10 @@ import makeStyle from '../demo/style.mjs';
 import {markers, images, view, asSpec} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
 import {alias, examplesAsFunctions, svelteExamples} from './examples-plugins.mjs';
+import {survive} from './undici-assert.mjs';
+
+// The assertion of undici from a socket event (#2289) is logged; any other uncaught error ends the build.
+survive('site');
 
 // The picture of the server renderer (pnpm screenshots copies it into docs/images/) is made here, at build time, with no browser involved.
 // Each request (the TileJSON, and the tiles, sprites and glyphs of the renders) is tried three times, 2 s apart: the
