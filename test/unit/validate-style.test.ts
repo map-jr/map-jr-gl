@@ -53,6 +53,27 @@ const styles = [
             'symbol-placement': ['interpolate', ['linear'], ['zoom'], 0, 1, 1, 2], 'text-offset': ['semiliteral', [1, 'top']]}, paint: {'text-color': ['rgb', 1, 2]}},
         {id: 'e', type: 'fill', source: 'g', paint: {'fill-color': ['to-color', ['get', 'c']], 'fill-opacity': ['global-state', 'o'], 'fill-pattern': ['get', 'p']}},
     ]},
+    // Step 4: filters (the legacy syntax and expressions) and the `text-font` that is not a literal.
+    {sources: {g: {type: 'geojson', data: fc}}, layers: [
+        {id: 'a', type: 'fill', source: 'g', filter: 5}, {id: 'b', type: 'fill', source: 'g', filter: []}, {id: 'c', type: 'fill', source: 'g', filter: true},
+        {id: 'd', type: 'fill', source: 'g', filter: ['==', 'a', 1, 2]}, {id: 'e', type: 'fill', source: 'g', filter: ['>', '$type', 'Point']},
+        {id: 'f', type: 'fill', source: 'g', filter: ['in', 'a', 1, 'b', null, [1]]}, {id: 'g', type: 'fill', source: 'g', filter: ['in', '$type', 'Point', 'Circle']},
+        {id: 'h', type: 'fill', source: 'g', filter: ['!in', 5, 1]}, {id: 'i', type: 'fill', source: 'g', filter: ['none', ['!has', 'a', 'b'], ['foo'], 3, ['!has', 4], []]},
+        {id: 'j', type: 'fill', source: 'g', filter: ['has', 'a', 'b']}, {id: 'k', type: 'fill', source: 'g', filter: ['all', ['!in', 'a', 1], ['==', 'b', {}]]},
+        {id: 'l', type: 'fill', source: 'g', filter: ['==', ['get', 'a'], 1]}, {id: 'm', type: 'fill', source: 'g', filter: ['get', 'a']},
+        {id: 'n', type: 'fill', source: 'g', filter: ['foo', 1]}, {id: 'o', type: 'fill', source: 'g', filter: ['all', ['==', ['get', 'a'], 1], ['feature-state', 'x']]},
+        {id: 'p', type: 'fill', source: 'g', filter: ['>', ['get', 'a'], ['zoom']]}, {id: 'q', type: 'fill', source: 'g', filter: ['case', ['get', 'a'], 1, 2]},
+        {id: 'r', type: 'fill', source: 'g', filter: ['==', ['feature-state', 'a'], 1]}, {id: 's', type: 'fill', source: 'g', filter: ['has', 'a']},
+        {id: 't', type: 'symbol', source: 'g', layout: {'text-font': ['get', 'font']}}, {id: 'u', type: 'symbol', source: 'g', layout: {'text-font': ['literal', ['Arial']]}},
+        {id: 'v', type: 'symbol', source: 'g', layout: {'text-font': ['case', ['get', 'a'], ['literal', ['A']], ['literal', ['B']]]}},
+        {id: 'w', type: 'symbol', source: 'g', layout: {'text-font': ['case', ['get', 'a'], ['literal', ['A']], ['get', 'f']]}},
+        {id: 'x', type: 'symbol', source: 'g', layout: {'text-font': ['step', ['zoom'], ['literal', ['A']], 5, ['literal', ['B']]]}},
+        {id: 'y', type: 'symbol', source: 'g', layout: {'text-font': ['match', ['get', 'a'], 'x', ['literal', ['A']], ['get', 'f']]}},
+        {id: 'z', type: 'symbol', source: 'g', layout: {'text-font': ['coalesce', ['get', 'f'], ['literal', ['A']]]}},
+        {id: 'A', type: 'symbol', source: 'g', layout: {'text-font': ['array', 'string', ['get', 'f']]}},
+        {id: 'B', type: 'symbol', source: 'g', layout: {'text-font': ['let', 'a', ['literal', ['A']], ['var', 'a']]}},
+        {id: 'C', type: 'symbol', source: 'g', layout: {'text-font': ['at', 0, ['literal', [['A']]]]}},
+    ]},
 ];
 
 test('src/style-spec-values.ts is what scripts/style-spec-values.mjs writes', async () => {
