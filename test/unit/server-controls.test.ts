@@ -95,6 +95,18 @@ test('renderFirstView and renderElement put the controls into the first view; wi
     assert.doesNotMatch(layer(none), /ctrl-attrib/);
 });
 
+test('renderFirstView with a nonce has no style attribute, so that style-src \'nonce-…\' allows it (#466)', async () => {
+    const view = {style, center: [0, 0] as [number, number], zoom: 4, width: 600, height: 400, nonce: 'n1', attribution: 'Own credits'};
+    for (const extra of [{}, {controls: [navigation(), scale()]}, {bounds: [[-1, -1], [1, 1]] as [[number, number], [number, number]], center: undefined, zoom: undefined}]) {
+        const html = (await renderFirstView({...view, ...extra})).html;
+        assert.doesNotMatch(html, /\sstyle=/);
+        assert.match(html, /<style data-map-jr-ssr="" nonce="n1">/);
+        assert.match(html, /\.map-jr-ssr-w\{position:absolute;inset:0;overflow:hidden\}/);
+    }
+    // Without a nonce the sizes stay in style attributes, as before.
+    assert.match((await renderFirstView({...view, nonce: undefined})).html, /<svg[^>]* style="position:absolute;left:50%/);
+});
+
 test('renderElement labels the first view with Map.Title of the locale of the description, and the option label wins (#1620)', async () => {
     const d = {style, initialView: {center: [0, 0] as [number, number], zoom: 4}, locale: {'Map.Title': 'Karte'}};
     assert.match(await renderElement(d, {width: 300, height: 200}), /aria-label="Karte"/);
