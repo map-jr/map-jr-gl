@@ -117,6 +117,8 @@ queryFeatures(): <place> is not a place. Write a point of the screen {x, y}, a p
 
 `Error` `Main API`
 
+The first argument of `querySource()` is the id of a source of the style, as a string. The call does not throw: the returned promise rejects with this error, so a call without `await` or `.catch()` shows it as an unhandled rejection.
+
 `Production build`
 
 ```text
@@ -348,6 +350,8 @@ patch(): the description has no "style". Do not set "style" to undefined.
 ## E63
 
 `Error` `Both entries`
+
+The map reads the style from the URL that the option `style` (or `setStyle()`) gives, and the server answered with a status that is not 2xx. The error has the fields `status` and `url`. A request that gets no answer at all (for example a timeout, which is E415) has another code.
 
 `Production build`
 

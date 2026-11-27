@@ -1652,6 +1652,9 @@ export class Map {
         if (typeof style !== 'string') made = plain(style);
         else {
             const res = await this.fetchAs('Style')(style);
+            // E63: The map reads the style from the URL that the option `style` (or `setStyle()`) gives, and the server answered with a
+            // status that is not 2xx. The error has the fields `status` and `url`. A request that gets no answer at all (for example
+            // a timeout, which is E415) has another code.
             if (!res.ok) throw Object.assign(new Error(`[map-jr-gl] E63 Style ${style}: HTTP ${res.status}`), {status: res.status, url: style});
             made = await res.json();
         }
