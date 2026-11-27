@@ -1587,7 +1587,7 @@
 "text-pitch-alignment/viewport-text-depthtest": "match",
 "text-pitch-alignment/viewport-text-rotation-alignment-map": "near",
 "text-pitch-alignment/viewport-text-rotation-alignment-viewport": "near",
-"text-pitch-scaling/line-half": "near",
+"text-pitch-scaling/line-half": "match",
 "text-pitch-scaling/line-half-roll": "differ",
 "text-radial-offset/basic": "differ",
 "text-roll-alignment/auto-symbol-placement-line": "near",

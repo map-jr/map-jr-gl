@@ -41,6 +41,25 @@ test('the box of an icon along a line is not turned with the line (#1774)', () =
     for (const b of iconBoxes({})) near(size(b), [24, 14]);
 });
 
+test('the box of an icon that icon-text-fit stretches around text along a line is not turned with the line (#2462)', () => {
+    // As in MapLibre GL JS, the box is the icon around the text before the text follows the line: wider than tall on the
+    // line at 45 degrees. (The box turned with the line had the bounds of a square there.)
+    const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'icon-text-fit': 'both', 'icon-padding': 0, 'text-field': 'Main Street', 'text-size': 16, 'symbol-placement': 'line', 'symbol-spacing': 1000}})!;
+    const labels = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: line} as any), z, tx, ty), z, [layer], false).labels;
+    const tr = new Transform();
+    tr.width = 800; tr.height = 600;
+    tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, 0);
+    const boxes: number[][] = [];
+    const grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+    grid.insert = (...b: [number, number, number, number, number?]) => { boxes.push(b); return insert(...b); };
+    const placed = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid,
+        () => ({x: 0, y: 0, width: 20, height: 10, pixelRatio: 1}));
+    assert.ok(placed.length === 1 && placed[0].icon, 'the icon is placed');
+    // (The box of the icon goes into the grid after those of its text.)
+    const b = boxes[boxes.length - 1];
+    assert.ok(size(b)[0] > 3 * size(b)[1], `${size(b)}`);
+});
+
 test('the box of an icon along a line turns with icon-rotate and the bearing, as at a point (#1774)', () => {
     const side = 38 * Math.SQRT1_2;
     // `icon-rotate` 45 turns the box of 24 by 14 pixels to a square of 38 / sqrt(2) pixels a side.
