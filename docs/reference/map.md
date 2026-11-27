@@ -715,7 +715,7 @@ When the system asks for reduced motion, the camera jumps to the target.
 ### `MoveToOptions`
 
 `MoveToOptions` accepts `center`, `zoom`, `bearing` and `pitch` of [`ViewInput`](types.md#viewinput), `bounds`,
-`fitPadding` and `fitMaxZoom` of [`InitialView`](types.md#initialview), and these members, which set how the camera moves:
+`fitPadding` and `fitMaxZoom` of [`InitialView`](types.md#initialview), and these members, which set how the camera moves. With `bounds`, the fit uses `bearing` (default 0), so every corner of the box is in view at that bearing:
 
 <!-- ref:MoveToOptions:start -->
 | Name | Type | Default | Description |
