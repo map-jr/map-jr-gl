@@ -375,6 +375,35 @@
   }
 }
 
+/*
+ * A text fence (a message, a log line, a prompt) wraps at the width of the block instead of scrolling sideways (#2483).
+ * The block leaves room at its end for the copy button, which sits over the first line.
+ */
+pre.language-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-inline-end: 3rem;
+}
+
+pre.language-text code {
+  display: block;
+}
+
+/* The tags under a heading of the page of the messages: the kind, the entry and the build. */
+.message-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0 1.25rem;
+}
+
+.message-tags > code {
+  font-size: 0.8125rem;
+  padding-block: 0.125rem;
+  padding-inline: 0.5rem;
+  border-radius: 999px;
+}
+
 /* Monospace text has its own background and color (#1331). The tokens of a block set their own colors. */
 :not(pre) > code {
   background-color: var(--site-code-bg);

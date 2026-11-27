@@ -363,6 +363,12 @@ const compatCodes = (() => {
 const entryOf = (code, file) => file === 'server.ts' ? 'the server renderer' : file === 'host.ts' ? 'the main API' : file === 'mistakes.ts' ? (sites.some(x => x.alias && x.code === code && x.file === 'host.ts') ? 'the main API' : compatCodes.has(code) ? 'the compat entry (development build only)' : 'the main API (development build only)')
     : /^(compat-|maplibre-compat)/.test(file) ? 'the compat entry' : file === 'vue.ts' ? 'the Vue component' : file === 'nuxt.ts' ? 'the module for Nuxt' : file === 'react.ts' ? 'the React component' : 'both entries';
 const plain = text => text.replace(/\n/g, ' ').replace(/^\[map-jr-gl\] E\d+ /, '').replace(/^\[map-jr-gl\] (<method>\(\): )E\d+ /, '$1').replace(/^\[map-jr-gl\] (\w+\(\): )/, '$1');
+/** The line of tags under a heading: the kind, the entry, and "Development build only". The site shows the inline code of this line as tags (website/build/markdown.ts). */
+const tags = (code, x) => {
+    const entry = entryOf(code, x.file), dev = / \(development build only\)$/.test(entry);
+    const name = entry.replace(/ \(development build only\)$/, '').replace(/^the /, '');
+    return [x.kind, name[0].toUpperCase() + name.slice(1), ...dev ? ['Development build only'] : []].map(t => '`' + t + '`').join(' ');
+};
 // The names of the values that the production build prints for each code (scripts/message-codes.mjs).
 const valueNames = new Map();
 for (const file of files) for (const [code, names] of productionNames(readFileSync(path.join(root, 'src', file), 'utf8'), path.join(root, 'src', file))) valueNames.set(code, names);
@@ -370,7 +376,7 @@ for (const file of files) for (const [code, names] of productionNames(readFileSy
 const production = (code, x) => /development build only|server renderer/.test(entryOf(code, x.file)) ? ''
     : `The production build prints this:\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
 const sections = new Map();
-for (const [code, x] of byCode) sections.set(code, `## E${code}\n\nA${x.kind === 'Error' ? 'n error' : ' warning'} of ${entryOf(code, x.file)}.\n\n` + production(code, x) + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
+for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + production(code, x) + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
 for (const [code, section] of before) if (!byCode.has(code)) sections.set(code, isRemoved(section) ? section : section.replace(/\n\n/, `\n\nRemoved after ${pkg.version}.\n\n`));
 const page = `# Messages
 

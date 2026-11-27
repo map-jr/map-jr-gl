@@ -190,6 +190,17 @@ function markReferenceTables(nodes: Node[]) {
     }
 }
 
+// On the page of the messages, the line under a heading that has only inline code is the kind, the entry and the
+// build of the message (scripts/messages.mjs). It becomes a row of tags.
+function markMessageTags(nodes: Node[]) {
+    nodes.forEach((node, i) => {
+        const next = nodes[i + 1];
+        if (!Array.isArray(node) || node[0] !== 'h2' || !Array.isArray(next) || next[0] !== 'p') return;
+        const parts = next.slice(2) as Node[];
+        if (parts.length && parts.every(part => typeof part === 'string' ? !part.trim() : Array.isArray(part) && part[0] === 'code')) next[1].class = 'message-tags';
+    });
+}
+
 export function transformPage(ctx: {file: {path: string}; content: Record<string, any>}, nav: NavSection[]) {
     const body = ctx.content.body;
     if (!body || !Array.isArray(body.value)) return;
@@ -199,6 +210,7 @@ export function transformPage(ctx: {file: {path: string}; content: Record<string
     body.value = groupFences(pairForms(body.value), state);
     ctx.content.variants = state.variants;
     markReferenceTables(body.value);
+    if (/[\\/]reference[\\/]messages\.md$/.test(ctx.file.path)) markMessageTags(body.value);
     const missing: string[] = [];
     const walk = (node: Node) => {
         if (typeof node === 'string') return;
