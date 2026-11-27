@@ -59,8 +59,8 @@ available, and of the types that differ.
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
 These options of MapLibre GL JS have no effect: `canvasContextAttributes` other than `antialias`, `logoPosition`,
-`fadeDuration` other than 300, `pitchWithRotate: false`, and
-`projection` other than `'mercator'`.
+`fadeDuration` other than 300, `pitchWithRotate: false`, `terrainSkirtLength`, `localIdeographFontFamily` (also in the
+options of `setStyle`), and `projection` other than `'mercator'`.
 
 The option `pixelRatio` sets the number of canvas pixels for each CSS pixel, as in MapLibre GL JS. Without it, the map
 follows `devicePixelRatio`, up to 3. A value that is not a number above 0 writes a warning, and the map follows
