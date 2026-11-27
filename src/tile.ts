@@ -749,8 +749,8 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
             // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
             // MapLibre GL JS takes the centroid of the piece in the tile, so the pieces of a building that crosses the
             // edge of a tile stand at different heights. A GeoJSON source gives the centroid of the whole polygon (#2185),
-            // which is taken when it lies within half a tile of this tile. The ground is read from the elevation tile under
-            // this tile, which holds little more, so the piece of a larger polygon keeps the centroid of the piece.
+            // which is taken when it lies within half a tile of this tile. A centroid in a neighboring tile reads the ground
+            // from the elevation tile under that tile (#2287); the piece of a larger polygon keeps the centroid of the piece.
             const first = count, wx = b.cen?.[ring * 2] ?? NaN, wy = b.cen?.[ring * 2 + 1] ?? NaN;
             let cx = 0, cy = 0, cn = 0;
             for (let r = 0; r + 1 < bounds.length; r++) for (let i = bounds[r]; i < bounds[r + 1]; i++) {

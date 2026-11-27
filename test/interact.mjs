@@ -5261,6 +5261,50 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] 3D terrain: a circle behind a ridge is hidden, and a circle in front of it is whole (#1430)`, r.behind === 0 && r.front > 1100, JSON.stringify(r));
     }
+    // #2287: on 3D terrain a building stands on the ground at the centroid of its polygon. Lng 0 is the edge of every
+    // elevation tile, and the centroid of this building lies 0.001875° east of it, so the piece in the tile west of the edge
+    // must read the ground from the elevation tile east of it. The ground rises to the west (it was read at the edge, 31 m
+    // higher, and that piece stood above the rest). The far edge of the roof is one row, the row of the same building on
+    // level ground at the height of the centroid.
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
+            const at = lng => 1000 - lng * 111320 * 0.15, poly = [[-0.001375, 0.0006], [0.005125, 0.0006], [0.005125, 0.0026], [-0.001375, 0.0026], [-0.001375, 0.0006]];
+            const roof = async (name, height) => {
+                mod.addProtocol(name + renderer, async p => {
+                    const [z, x] = p.url.split('://')[1].split('/').map(Number), c = new OffscreenCanvas(256, 256), g = c.getContext('2d'), img = g.createImageData(256, 256);
+                    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+                        const v = height((x + (i + 0.5) / 256) / 2 ** z * 360 - 180) + 32768, k = (j * 256 + i) * 4;
+                        img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v % 256); img.data[k + 2] = Math.round(v % 1 * 256); img.data[k + 3] = 255;
+                    }
+                    g.putImageData(img, 0, 0);
+                    return {data: await (await c.convertToBlob({type: 'image/png'})).arrayBuffer()};
+                });
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:60'}));
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [name + renderer + '://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 256, maxzoom: 12}, b: {type: 'geojson', data: {type: 'Polygon', coordinates: [poly]}}},
+                    terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': 100, 'fill-extrusion-vertical-gradient': false}}]};
+                const map = new mod.Map({container: el, style, center: [0.00187, 0.0006], zoom: 16, pitch: 50, renderer, attributionControl: false});
+                try {
+                    await new Promise(r => map.once('idle', r));
+                    // The topmost red row of each column from 10 px inside the west end of the far edge to 10 px inside its east end.
+                    const w = Math.round(map.project(poly[3]).x) + 10, e = Math.round(map.project(poly[2]).x) - 10;
+                    let rows = [];
+                    for (let t = 0; t < 25; t++) {
+                        await new Promise(r => setTimeout(r, 200));
+                        const d = await shot(map, 800, 600);
+                        rows = [];
+                        for (let x = w; x <= e; x += 4) { let y = 0; while (y < 600 && !(d[(y * 800 + x) * 4] > 200 && d[(y * 800 + x) * 4 + 1] < 80)) y++; rows.push(y); }
+                        if ((map.queryTerrainElevation([0, 0.001]) ?? 0) > 900 && rows.every(y => y < 600)) break;
+                    }
+                    return [Math.min(...rows), Math.max(...rows)];
+                } finally { map.remove(); el.remove(); }
+            };
+            return {slope: await roof('slope2287', at), level: await roof('level2287', () => at(0.001875))};
+        }, mode);
+        check(`[${mode}] 3D terrain: a building across the edge of an elevation tile stands at the ground of its centroid in each tile (#2287)`,
+            r.slope[1] - r.slope[0] <= 3 && Math.abs(r.slope[0] - r.level[0]) <= 3 && r.level[1] < 600, JSON.stringify(r));
+    }
     // #1430: on the globe with 3D terrain, project() gives the place where a circle is drawn, and queryRenderedFeatures
     // finds it there. The ground is 3000 m everywhere (before, project() took the place at sea level, 15 px off).
     {
