@@ -2641,6 +2641,29 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find an icon that collision hid, with both renderers (#2181)',
             ['main', 'worker'].every(r => hiddenIcons[r].join() === 'A,A'), JSON.stringify(hiddenIcons));
+        // Of two identical lines with an icon each, whose icons collide, the hidden one is not found over the view, and the
+        // shown one is found on its icon and not along the whole line: MapLibre GL JS finds only placed symbols (#2243).
+        const hiddenLineIcons = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const line = name => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: [[-30, 0], [30, 0]]}});
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line('A'), line('B')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': 250, 'icon-image': 'sq'}}]}});
+                m.addImage('sq', {width: 32, height: 32, data: new Uint8Array(32 * 32 * 4).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const all = await m.queryRenderedFeatures({layers: ['t']}), a = m.project([-30, 0]), b = m.project([30, 0]);
+                let found = 0, points = 0;
+                for (let x = a.x + 5; x < b.x; x += 10, points++) if ((await m.queryRenderedFeatures([x, a.y], {layers: ['t']})).length) found++;
+                out[renderer] = {all: all.length, found, points};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds a line with an icon only on its shown icon, with both renderers (#2243)',
+            ['main', 'worker'].every(r => hiddenLineIcons[r].all >= 1 && hiddenLineIcons[r].found >= 2 && hiddenLineIcons[r].found <= 12), JSON.stringify(hiddenLineIcons));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
@@ -2660,7 +2683,10 @@ for (const mode of renderers) {
             const out = {};
             let {m, done} = await make([A, line([[30, -30], [30, 30]], 'V')], {'icon-image': ['case', ['==', ['get', 'name'], 'V'], 'dot', ''], 'text-allow-overlap': true});
             const v = m.project([30, 0]);
-            out.icon = [await ask(m, v.x, v.y + 20), await ask(m, v.x - 50, v.y + 20)];
+            // (The icon of V is drawn at the anchor of its label, which is not at the middle of the line: find it on the line.)
+            let at = 0;
+            for (let dy = -140; dy <= 140 && !at; dy++) if (await ask(m, v.x, v.y + dy) === 'V') at = dy;
+            out.icon = [await ask(m, v.x, v.y + at), await ask(m, v.x - 50, v.y + at)];
             done();
             ({m, done} = await make([A], {}));
             const a = m.project([-40, 0]), b = m.project([40, 0]), found = [];
@@ -8486,6 +8512,60 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         const off = Math.max(...ours.flat().map((v, i) => Math.abs(v - ml.flat()[i])));
         check('[main] 3D terrain: getBounds at pitch 60 and 85 over a mountain gives the box of MapLibre GL JS 6.17 within 0.01° (#898)', off < 0.01, JSON.stringify({ours, ml}));
     } catch (e) { check('[main] 3D terrain: the check of getBounds at a high pitch ran (#898)', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// 3D terrain: a fill-extrusion polygon that lies wholly in the buffer of a tile is drawn only by the tile that holds it, as
+// in MapLibre GL JS (`isEntirelyOutside`). A tile of zoom 10 to the north holds the north edge of this building in its
+// buffer. It drew a copy that stood on the ground at the edge of its elevation tile, kilometers up the slope, so the copy
+// floated above the roof (#2287).
+for (const mode of renderers) {
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + `/?renderer=${mode}&nomarkers`);
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    try {
+        await page.evaluate(async ([mode]) => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            // A slope that rises 3 m for each 100 m to the north.
+            try { mod.removeProtocol('dem2287'); } catch { /* not added yet */ }
+            mod.addProtocol('dem2287', async request => {
+                const [z, x, y] = request.url.slice(10).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(512, 512), g = c.getContext('2d'), img = g.createImageData(512, 512);
+                for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
+                    const my = (y + (j + 0.5) / 512) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                    const v = 2000 + (lat - 46.01) * 110540 * 0.03 + 32768, k = (j * 512 + i) * 4;
+                    img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                return {data: await (await c.convertToBlob()).arrayBuffer()};
+            });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'map2287', style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9;background:#fff'}));
+            const poly = {type: 'Polygon', coordinates: [[[7.766, 46.0075], [7.774, 46.0075], [7.774, 46.0125], [7.766, 46.0125], [7.766, 46.0075]]]};
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem2287://{z}/{x}/{y}'], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': 40, 'fill-extrusion-vertical-gradient': false}}],
+                terrain: {source: 'dem', exaggeration: 1}};
+            const m = new mod.Map({container: el, renderer: mode, style, center: [7.77, 46.01], zoom: 15, pitch: 65, attributionControl: false});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => { const t = setTimeout(r, 8000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
+        }, [mode]);
+        // Each column of the picture crosses the building once: a copy above the roof makes a second run of red pixels.
+        const png = (await page.locator('#map2287').screenshot()).toString('base64');
+        const roof = await page.evaluate(async png => {
+            const bm = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
+            const g = new OffscreenCanvas(bm.width, bm.height).getContext('2d'); g.drawImage(bm, 0, 0);
+            const d = g.getImageData(0, 0, bm.width, bm.height).data;
+            const count = [];
+            for (let x = 0; x < bm.width; x++) {
+                let n = 0, was = false;
+                for (let y = 0; y < bm.height; y++) { const k = (y * bm.width + x) * 4, red = d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90; if (red && !was) n++; was = red; }
+                count.push(n);
+            }
+            // (The middle three fifths of the building: at its corners a wall can stand apart from the roof.)
+            const cols = count.map((n, x) => n ? x : -1).filter(x => x >= 0), a = cols[0], w = cols.at(-1) - a, columns = cols.length;
+            const runs = Math.max(...count.slice(Math.round(a + w / 5), Math.round(a + w * 4 / 5)));
+            return {runs, columns};
+        }, png);
+        check(`[${mode}] 3D terrain: a tile that holds a building only in its buffer draws no copy of it above the roof (#2287)`, roof.columns > 100 && roof.runs === 1, JSON.stringify(roof));
+    } catch (e) { check(`[${mode}] 3D terrain: the check of a building in the buffer of a tile ran (#2287)`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer

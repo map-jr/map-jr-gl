@@ -1694,6 +1694,10 @@ export class Engine {
                 lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration);
             }
             tr.groundRange = [lo, hi];
+            // The lowest ground of the elevation tile under the center, for the far plane (`farZ`), as MapLibre GL JS's
+            // `minElevationForCurrentTile` (#2212).
+            const under = this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), Math.floor(tr.zoom))?.t.dem;
+            tr.lowUnder = under ? under.lo * this.exaggeration : undefined;
             // A center with a height of its own keeps it: it does not follow the ground, and the camera may go below it.
             if (held !== null) tr.elevation = held;
             else {
@@ -1749,7 +1753,7 @@ export class Engine {
             }
             this.rawElevation = tr.elevation / this.exaggeration;
         } else {
-            tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = held ?? 0;
+            tr.heightAt = undefined; tr.groundRange = tr.lowUnder = undefined; tr.elevation = held ?? 0;
             if (!globeness) aboveSeaLevel(tr);
             const st = this.style.terrain, src = st && this.style.sources[st.source];
             if (src) {
@@ -2163,7 +2167,25 @@ export class Engine {
         // icon is found within `radius` pixels of its geometry as before.)
         if (!points) {
             const text = String(L.p.field.eval(z, f) ?? '');
-            return image || !text || !g || g.type === 'Point' || g.type === 'MultiPoint' ? true
+            if (!g || g.type === 'Point' || g.type === 'MultiPoint' || !image && !text) return true;
+            // (An icon on a line is found where it is drawn, as in MapLibre GL JS: an icon that collision hid is not found, #2243.
+            // The icon belongs to the feature when its point lies on the feature's line.)
+            if (image && (g.type === 'LineString' || g.type === 'MultiLineString')) {
+                const lines = (g.type === 'LineString' ? [g.coordinates] : g.coordinates) as number[][][], size = L.p.iconSize.eval(z, f), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
+                const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f);
+                const screen = lines.map(l => l.map(([lng, lat]) => tr.project(lng, lat)));
+                if (text && this.textOnLine(g, box, texts)) return true;
+                for (let i = 0; i < icons.length; i += 2) {
+                    const [x, y] = tr.project(lngFromMerc(icons[i]), latFromMerc(icons[i + 1]));
+                    if (x + x0 > box[2] || x + x1 < box[0] || y + y0 > box[3] || y + y1 < box[1]) continue;
+                    for (const l of screen) for (let k = 1; k < l.length; k++) {
+                        const [ax, ay] = l[k - 1], [bx, by] = l[k], dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+                        if (Math.hypot(ax + t * dx - x, ay + t * dy - y) < 1.5) return true;
+                    }
+                }
+                return false;
+            }
+            return image || !text ? true
                 : this.textOnLine(g, box, texts) || this.labelInPolygon(g, box, texts, text.toLowerCase().replace(/\s/g, ''));
         }
         // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
