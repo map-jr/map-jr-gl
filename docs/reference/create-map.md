@@ -52,6 +52,10 @@ the container. The element fills the container. To change its text, set its `tex
 look, write a CSS rule for `.map-jr-unavailable`: the rules of the library have no specificity, so a rule of the page
 overrides them. `destroy()` removes the element.
 
+When the container has a first view from the server (the result of `renderFirstView`, the `ssr` prop of the Vue
+component, the `firstView` prop of the React component, or the markup of `renderElement`), the first view stays, and
+the element is a bar over its top edge.
+
 To show other content before a map is created, call [`supported()`](exports.md#supported) first:
 
 ```js

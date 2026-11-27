@@ -4282,14 +4282,15 @@ for (const [build, file] of [['the development build, and the file of the checks
 }
 
 // A browser without WebGL2, on the page and in the worker: `supported()` says so before a map is made. A map that is
-// made all the same reports one error (`onError`) and puts a message into the container.
-for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker']]) {
+// made all the same reports one error (`onError`) and puts a message into the container. With a first view from the
+// server in the container (`first`), the first view stays and the message is a bar over its top edge (#1386).
+for (const [entry, renderer, first] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker'], ['main API', 'main', true], ['maplibre-compat', 'worker', true]]) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     try {
         await page.goto(`${origin}/bench`);
         const able = await page.evaluate(async () => (await import('/dist/map-jr-gl.js')).supported());
         await page.goto(`${origin}/style.json`); // (a new document: the answer of `supported()` is kept for the page)
-        const none = await page.evaluate(async ([entry, renderer]) => {
+        const none = await page.evaluate(async ([entry, renderer, first]) => {
             const get = HTMLCanvasElement.prototype.getContext;
             HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); };
             const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
@@ -4298,6 +4299,8 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             console.warn = () => {}; // (the map says that it uses the main thread)
             addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+            // (As `renderFirstView` writes it: a layer that is marked `data-map-jr-ssr`, which the map puts after its own canvas.)
+            if (first) el.innerHTML = '<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden"><svg data-map-jr-ssr="" width="100%" height="100%"><rect width="100%" height="100%" fill="#2a7"/></svg></div>';
             const style = await (await fetch('/style.json')).json(), message = () => el.querySelector('.map-jr-unavailable');
             let supported, state, destroy;
             if (entry === 'main API') {
@@ -4319,7 +4322,8 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             for (let i = 0; i < 150 && !errors.length; i++) await wait(100);
             await wait(500);
             const box = message()?.getBoundingClientRect();
-            const out = {supported, errors, ...state(), text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === el.clientWidth && box.height === el.clientHeight && box.width > 800, unhandled};
+            const top = message() && document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+            const out = {supported, errors, ...state(), shows: !first || top === message() && el.querySelector('svg[data-map-jr-ssr]').getBoundingClientRect().height === el.clientHeight && box.height < el.clientHeight / 2 && box.top === el.getBoundingClientRect().top, text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === el.clientWidth && (first || box.height === el.clientHeight) && box.width > 800, unhandled};
             // (The message is the application's to change: a rule of its own style sheet wins over the rule of the library.)
             document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.map-jr-unavailable{display:none}'}));
             out.hidden = !!message() && getComputedStyle(message()).display === 'none';
@@ -4327,12 +4331,12 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             out.after = el.querySelectorAll('.map-jr-unavailable, canvas').length;
             console.warn = warn;
             return out;
-        }, [entry, renderer]);
+        }, [entry, renderer, first]);
         const text = '[map-jr-gl] E30017 https://map-jr.org/e/30017 message="WebGL2 is not available"';
-        check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
+        check(`no WebGL2 (${entry}, ${renderer}${first ? ', first view' : ''}): supported() is false, the map reports one error and shows a message in the container${first ? ' over the top of the first view, which stays' : ''}, and removing the map removes the message`,
             able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
-            && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
-    } catch (e) { check(`no WebGL2 (${entry}, ${renderer}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+            && none.children === 0 && none.covers && none.shows && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
+    } catch (e) { check(`no WebGL2 (${entry}, ${renderer}${first ? ", first view" : ""}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 
