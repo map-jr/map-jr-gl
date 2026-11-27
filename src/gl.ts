@@ -26,6 +26,13 @@ vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 #endif
 `;
 export const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
+// On a flat map the tile of a pixel comes from its place on the screen (u_screen takes it to the units of one tile of the
+// layer, and u_clip is in those units), as the stencil of MapLibre GL JS does: each pixel then belongs to one tile
+// exactly. Two neighbor tiles that both draw across their edge would otherwise both keep or both drop some pixels of the
+// edge, because each interpolates its v_tile with its own error (#2443, #2464). On the globe u_screen is zero, and v_tile
+// decides.
+const FS_CLIP_SCREEN = `{ vec3 g = u_screen * vec3(gl_FragCoord.xy, 1.0); vec2 p = g.xy / g.z;
+  if (u_screen[2] == vec3(0.0)) { ${FS_CLIP} } else if (p.x < u_clip.x || p.y < u_clip.y || p.x >= u_clip.z || p.y >= u_clip.w) discard; }`;
 
 // Ground height from an elevation tile, for vertex shaders. `u_demRect` is the part of the elevation image under this
 // tile (offset x, y and scale, then the image size in pixels, without the border); `u_exag` of zero means "no heights
@@ -73,7 +80,7 @@ export function clipIn(ref: TileID, id: TileID, clip: number[]): number[] {
     return clip.map((v, i) => v * k + (i % 2 ? oy : ox));
 }
 
-const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1, 0];
+const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1, 0], NO_SCREEN = new Float32Array(9);
 /**
  * Perspective weights for a quadrilateral's corners, from where its diagonals cross (all equal for a parallelogram).
  * A quadrilateral that is not convex (concave, or crossing itself) has none, because no perspective view gives it.
@@ -154,8 +161,8 @@ void main() {
     fill: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
 void main() { v_tile = unpole(a_pos); v_color = a_color; gl_Position = toClip(a_pos); }`, `
-uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
-void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
+uniform vec4 u_color; uniform vec4 u_clip; uniform mat3 u_screen; in vec4 v_color; in vec2 v_tile; out vec4 o;
+void main() { ${FS_CLIP_SCREEN} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
 
     // Repeating image fill. The image is tiled in world pixels at whole zoom levels, so it stays put while panning
     // and grows with the map between levels, as in MapLibre.
@@ -164,11 +171,11 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
     pattern: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform mat3 u_pat; uniform vec2 u_world; out vec2 v_p; out vec2 v_tile; out vec4 v_color; out vec2 v_px;
 void main() { v_tile = unpole(a_pos); v_color = a_color; v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); v_px = (gl_Position.xy / gl_Position.w + 1.0) / 2.0 * u_world; }`, `
-uniform vec2 u_fade; uniform vec4 u_clip; uniform float u_sdf; uniform vec4 u_color; uniform vec2 u_world; in vec2 v_p; in vec2 v_tile; in vec4 v_color; in vec2 v_px; out vec4 o;
+uniform vec2 u_fade; uniform vec4 u_clip; uniform mat3 u_screen; uniform float u_sdf; uniform vec4 u_color; uniform vec2 u_world; in vec2 v_p; in vec2 v_tile; in vec4 v_color; in vec2 v_px; out vec4 o;
 ${PATTERN_GLSL}
 float edge(float a) { float g = max(fwidth(a) * 0.5, 1.0 / 255.0 / 16.0); return smoothstep(0.75 - g, 0.75 + g, a); }
 void main() {
-  ${FS_CLIP} vec4 a = tile(v_p), b = tile(v_p * 2.0);
+  ${FS_CLIP_SCREEN} vec4 a = tile(v_p), b = tile(v_p * 2.0);
   if (u_sdf < 0.5) o = mix(a, b, u_fade.x) * u_fade.y;
   else { vec4 c = v_color * u_color; float k = mix(edge(a.a), edge(b.a), u_fade.x) * c.a * u_fade.y; o = vec4(c.rgb * k, k); }
   // With u_world set, these are the edges of a fill drawn as lines (fill-antialias without fill-outline-color), as in MapLibre GL JS.
@@ -180,8 +187,8 @@ void main() {
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform vec2 u_world; uniform float u_attr;
 out vec4 v_color; out vec2 v_tile; out vec2 v_px;
 void main() { v_tile = a_pos; v_color = mix(vec4(1.0), a_color, u_attr); gl_Position = toClip(a_pos); v_px = (gl_Position.xy / gl_Position.w + 1.0) / 2.0 * u_world; }`, `
-uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in vec2 v_px; out vec4 o;
-void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
+uniform vec4 u_color; uniform vec4 u_clip; uniform mat3 u_screen; in vec4 v_color; in vec2 v_tile; in vec2 v_px; out vec4 o;
+void main() { ${FS_CLIP_SCREEN} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
 layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1; layout(location=6) in float a_offset; layout(location=7) in float a_blur; layout(location=8) in float a_gap;
@@ -226,13 +233,7 @@ float outside(float t, float from, float to) { return max(max(from - t, t - to),
 float span(float t, float from, float to, float p, bool keep) { return keep || to > from ? min(outside(t, from, to), min(outside(t, from - p, to - p), outside(t, from + p, to + p))) : 99.0; }
 in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; in float v_fw; out vec4 o;
 void main() {
-  // On a flat map the tile of a pixel comes from its place on the screen (u_screen takes it to the units of one tile
-  // of the layer, and u_clip is in those units), as the stencil of MapLibre GL JS does: each pixel then belongs to one
-  // tile exactly. Two neighbor tiles that both draw a line across their edge would otherwise both keep or both drop
-  // some pixels of the edge, because each interpolates its v_tile with its own error (#2443). On the globe u_screen is
-  // zero, and v_tile decides.
-  vec3 g = u_screen * vec3(gl_FragCoord.xy, 1.0); vec2 p = g.xy / g.z;
-  if (u_screen[2] == vec3(0.0)) { ${FS_CLIP} } else if (p.x < u_clip.x || p.y < u_clip.y || p.x >= u_clip.z || p.y >= u_clip.w) discard;
+  ${FS_CLIP_SCREEN}
   vec4 c = v_color * u_color;
   if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
   float bl = v_persp * (v_aa + u_blur + v_blur), a = c.a * clamp((v_hw - abs(v_d)) / bl, 0.0, 1.0); // line-blur widens the soft edge
@@ -1149,6 +1150,7 @@ export class GLRenderer {
             const img = s.icon?.(name);
             if (!img) return null;
             const u = use('pattern');
+            gl.uniformMatrix3fv(u.u_screen, false, NO_SCREEN);
             bindImage(u, img);
             gl.uniform2f(u.u_fade, 0, opacity);
             gl.uniform1f(u.u_sdf, sdfColor && img.sdf ? 1 : 0);
@@ -1207,7 +1209,7 @@ export class GLRenderer {
                 const name = L.p.pattern.eval(zoom), place = name != null ? pattern(name, L.p.opacity.eval(zoom)) : null;
                 if (name != null && !place) continue;
                 const u = place ? undefined : use('fill');
-                if (u) { gl.vertexAttrib4f(1, 1, 1, 1, 1); gl.uniform4fv(u.u_color, color(L)); }
+                if (u) { gl.vertexAttrib4f(1, 1, 1, 1, 1); gl.uniform4fv(u.u_color, color(L)); gl.uniformMatrix3fv(u.u_screen, false, NO_SCREEN); }
                 gl.bindVertexArray(this.globeGrid().vao);
                 for (const id of this.globe.tiles) {
                     const px = 512 * 2 ** (Z - id.z), uu = u ?? place!([px / EXTENT, 0, 0, 0, px / EXTENT, 0, id.x * px, id.y * px, 1]);
@@ -1242,6 +1244,7 @@ export class GLRenderer {
                 const bottom = under !== null ? Math.max(-1, 1 - 2 * (tr.cy + under) / tr.height) : -1;
                 gl.uniformMatrix4fv(u.u_matrix, false, [2, 0, 0, 0, 0, bottom - top, 0, 0, 0, 0, 1, 0, -1, top, 0, 1]);
                 gl.uniform4f(u.u_clip, -1, -1, 2, 2);
+                gl.uniformMatrix3fv(u.u_screen, false, NO_SCREEN);
                 gl.uniform4fv(u.u_color, color(L));
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 continue;
@@ -1304,6 +1307,12 @@ export class GLRenderer {
             // On the globe the shaders take the point on the sphere from the tile position, so the tile is moved there
             // too, by the same tile units (MapLibre GL JS adds the translation to the position before projectTile).
             const shift = (it: RenderItem<GLTile>) => tx || ty ? [tx / it.scale, ty / it.scale] : undefined;
+            // The part of the screen that is the tile's, in the units of the layer's first tile (see FS_CLIP_SCREEN).
+            let screen: Float32Array | number[] | undefined;
+            const clipTo = (u: Record<string, WebGLUniformLocation>, it: RenderItem<GLTile>) => {
+                gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items[0].matrix4, target));
+                gl.uniform4fv(u.u_clip, this.globe ? it.clip : clipIn(items[0].id, it.id, it.clip));
+            };
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {
                 // The fills of all batches first, then the edges in the pattern, unless the style has an outline color
@@ -1317,14 +1326,14 @@ export class GLRenderer {
                     if (!place) continue;
                     const u = place(tilePixels(it.id));
                     this.placeTile(u, it.id, moved(it), shift(it));
-                    gl.uniform4fv(u.u_clip, it.clip);
+                    clipTo(u, it);
                     if (edges) gl.uniform2f(u.u_world, target[0], target[1]);
                     gl.bindVertexArray(edges ? b.edgeVao! : b.vao);
                     gl.drawElements(edges ? gl.LINES : gl.TRIANGLES, edges ? b.edgeCount! : b.count, b.indexType, 0);
                 }
                 if (own) continue;
             }
-            let first = true, screen: number[] | undefined;
+            let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [], hb = extrude ? [L.p.height, L.p.base].map(q => q.dd ? 0 : Math.max(0, q.eval(zoom))) : [];
             let patImg: Parameters<typeof bindImage>[1] | undefined;
@@ -1414,7 +1423,7 @@ export class GLRenderer {
                     if (b.type === 'line') gl.uniform2f(u.u_patSize, img.width / img.pixelRatio, img.height / img.pixelRatio);
                 }
                 this.placeTile(u, it.id, m, sh);
-                gl.uniform4fv(u.u_clip, it.clip);
+                if (b.type === 'fill' || b.type === 'line') clipTo(u, it); else gl.uniform4fv(u.u_clip, it.clip);
                 gl.bindVertexArray(b.vao);
                 // Attributes without a buffer read these constants, so shaders need no variants.
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
@@ -1429,9 +1438,6 @@ export class GLRenderer {
                     gl.uniform1f(u.u_cam, tr.cameraDistance);
                 }
                 if (b.type === 'line') {
-                    // The part of the screen that is this tile's, in the units of the layer's first tile (see the line shader, #2443).
-                    gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? new Array(9).fill(0) : screenToTile(items[0].matrix4, target));
-                    if (!this.globe) gl.uniform4fv(u.u_clip, clipIn(items[0].id, it.id, it.clip));
                     // Dashes are sized at whole zoom levels so they stretch, rather than crawl, while zooming.
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
@@ -1466,7 +1472,7 @@ export class GLRenderer {
                     gl.uniform2f(u.u_world, target[0], target[1]);
                     gl.uniform1f(u.u_attr, b.color && !explicit ? 1 : 0);
                     this.placeTile(u, it.id, moved(it), shift(it));
-                    gl.uniform4fv(u.u_clip, it.clip);
+                    clipTo(u, it);
                     gl.bindVertexArray(b.edgeVao);
                     gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
                 }

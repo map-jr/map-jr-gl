@@ -265,7 +265,7 @@
 "debug/raster": "near",
 "debug/tile": "differ",
 "debug/tile-raster": "match",
-"distance/paint-text": "near",
+"distance/paint-text": "match",
 "empty/empty": "match",
 "extent/1024-circle": "match",
 "extent/1024-fill": "match",
