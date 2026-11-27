@@ -251,8 +251,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   coordinator five times each.
 
   A merge that only changes a script that no check of the branch runs needs no update either: the tools of
-  `scripts/agents/`, the reports (`scripts/status.mjs`, `scripts/timeline.mjs`), and `scripts/ci-paths.mjs` when the
-  branch changes `src/`, so that every job of `CI` runs (the owner, 2026-11-27, #2360).
+  `scripts/agents/` and the reports (`scripts/status.mjs`, `scripts/timeline.mjs`). The same holds for
+  `scripts/ci-paths.mjs` when the branch changes `src/`, because every job of `CI` runs then, and its `--check` in
+  `pnpm test:consistency` reads only the files that the browser jobs read (the owner, 2026-11-27, #2360).
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
   (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
