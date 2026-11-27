@@ -11,7 +11,7 @@ method on that name in the same file (for example `const gc = new maplibregl.Geo
 The script reads the code as text. It does not run the packages. So a package with "none" in each column can still
 have a problem, and a method in the list is possibly used only in a part of the package that you do not use.
 
-**23 of 27 packages** use only parts of the API that this library has.
+**26 of 27 packages** use only parts of the API that this library has.
 
 A missing method throws a `TypeError` when the package calls it. A method that is "accepted, with no effect" exists and
 does nothing, so the package goes on, and it does not count as missing. Most of these methods warn once when they get a
@@ -26,12 +26,12 @@ react-map-gl 7 does not work with this library, and the tables below read versio
 These plugins were run with this library in a browser by `node test/conformance/plugins.mjs --write`. Each one has a
 short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` and gets this library.
 
-**16 of 16 scenarios pass.**
+**16 of 17 scenarios pass.**
 
 | Scenario | Plugin | Result |
 |---:|---|---|
 | 1 | @mapbox/mapbox-gl-draw 1.5.2 | Pass |
-| 2 | terra-draw 1.39.0, terra-draw-maplibre-gl-adapter 1.5.0 | Pass |
+| 2 | terra-draw 1.40.0, terra-draw-maplibre-gl-adapter 1.5.0 | Pass |
 | 3 | @maplibre/maplibre-gl-compare 0.5.0 | Pass |
 | 4 | @mapbox/mapbox-gl-sync-move 0.4.0 | Pass |
 | 5 | pmtiles 4.5.0 | Pass |
@@ -39,13 +39,14 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | 7 | @maplibre/maplibre-gl-inspect 1.9.0 | Pass |
 | 8 | @watergis/maplibre-gl-export 6.0.0 | Pass |
 | 9 | @vis.gl/react-maplibre 8.1.3, react 19.3.1, react-dom 19.3.1 | Pass |
-| 10 | @vis.gl/react-maplibre 8.1.3, react 19.3.1, react-dom 19.3.1 | Pass |
-| 11 | @indoorequal/vue-maplibre-gl 9.0.1, vue 3.5.45 | Pass |
-| 12 | @deck.gl/mapbox 9.4.1, @deck.gl/layers 9.4.1, @deck.gl/core 9.4.1 | Pass |
-| 13 | @maplibre/maplibre-gl-geocoder 1.9.4 | Pass |
+| 10 | @vis.gl/react-maplibre 8.1.3, react 19.3.1, react-dom 19.3.1 | Fail |
+| 11 | @indoorequal/vue-maplibre-gl 9.0.1, vue 3.5.46 | Pass |
+| 12 | @deck.gl/mapbox 9.4.2, @deck.gl/layers 9.4.2, @deck.gl/core 9.4.2 | Pass |
+| 13 | @maplibre/maplibre-gl-geocoder 1.9.5 | Pass |
 | 14 | @maplibre/maplibre-gl-directions 0.10.1 | Pass |
 | 15 | @mapbox/mapbox-gl-language 1.0.1 | Pass |
-| 16 | @geoman-io/maplibre-geoman-free 0.10.8 | Pass |
+| 16 | @geoman-io/maplibre-geoman-free 0.10.10 | Pass |
+| 17 | svelte-maplibre-gl 2.2.1, svelte 5.59.2, esbuild-svelte 0.9.5 | Pass |
 
 What each scenario found:
 
@@ -58,13 +59,14 @@ What each scenario found:
 7. the inspect view is on; the style has 49 layers
 8. the control is in the page (an export of an image is not tested: the plugin reads map._requestManager, which the compat map does not have)
 9. events: move, load; layer from <Layer>: true; marker: true; control: true; popup: true; zoom after jumpTo: 13.00
-10. drag followed by the state: true; state change from outside: true; onMove that limits the latitude: true (after the drag: map 40.72000, limit 40.72000; during the drag the map went 0.01991° past the limit); warnings about setTransformCameraUpdate: 0 before the limit, 1 after it
+10. default renderer: drag followed by the state: true; state change from outside: true; onMove that limits the latitude: true (after the drag: map 40.72000, limit 40.72000; during the drag the map went 0.01685° past the limit); warnings about setTransformCameraUpdate: 0 before the limit, 0 after it. renderer 'main': drag followed by the state: true; state change from outside: true; onMove that limits the latitude: true (after the drag: map 40.72000, limit 40.72000; during the drag the map went 0.00000° past the limit); warnings about setTransformCameraUpdate: 0 before the limit, 0 after it Errors: Error: Minified React error #185; visit https://react.dev/errors/185 for the full message or use the non-minified dev environment for full errors and additional
 11. events: load; layer from <MglCircleLayer>: true; marker: true; control: true
 12. deck.gl canvas: true; frames drawn: 3 then 4; the point at the map center was picked there: true
 13. the control is in the page: true; result: Eiffel Tower; the map went to the place: true; marker: true
 14. routes: 1; layers of the plugin: 11; features under the first waypoint, read at once: 7; waypoints added by a click on the map: 1
-15. the plugin changes the text fields: true; the map has the changed fields: true; style.load fired: true
+15. the plugin changes the text fields: true; the map has the changed fields: true; in 5 s, style.load fired 2 times and setStyle was called 3 times
 16. features after the import: 1; after a marker was drawn with a click: 2; layers of the plugin: 33
+17. load: true; layer from <CircleLayer>: true; marker: true; control: true; the fragment has the camera from <Hash>: true (#12/40.7085/-74.0065)
 <!-- plugins:end -->
 
 <!-- maputnik:start -->
@@ -110,15 +112,15 @@ many labels. A larger number shows something that the library draws wrongly or n
 
 | Style | world | country | city | streets | close | tilted |
 |---|---|---|---|---|---|---|
-| [liberty](https://tiles.openfreemap.org/styles/liberty) | 3.4 | 2.8 | 2.5 | 5.9 | 1.1 | 5.2 |
-| [bright](https://tiles.openfreemap.org/styles/bright) | 3.3 | 2.7 | 2.5 | 5.5 | 1 | 5.6 |
-| [positron](https://tiles.openfreemap.org/styles/positron) | 3.3 | 2.7 | 2.4 | 2.5 | 0.7 | 3.5 |
-| [versatiles](https://tiles.versatiles.org/assets/styles/colorful/style.json) | 0 | 4.1 | 2.6 | 4.3 | 0.6 | 4 |
-| [demotiles](https://demotiles.maplibre.org/style.json) | 0.7 | 0.6 | 0 | 0 | 0 | 0 |
-| [voyager](https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json) | 0 | 1 | 0.4 | 1.2 | 0.4 | 2 |
-| [darkmatter](https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json) | 0 | 1.1 | 0.4 | 1.3 | 0.3 | 1 |
-| [dark](https://tiles.openfreemap.org/styles/dark) | 1.7 | 1.6 | 1 | 0.8 | 0.1 | 0.9 |
-| [shortbread](https://vector.openstreetmap.org/styles/shortbread/colorful.json) | 0 | 4 | 2.8 | 4 | 0.3 | 3.8 |
+| [liberty](https://tiles.openfreemap.org/styles/liberty) | 0.9 | 0.7 | 0.3 | 1.4 | 0.3 | 0.8 |
+| [bright](https://tiles.openfreemap.org/styles/bright) | 0.9 | 0.7 | 0.3 | 1.3 | 0.2 | 1.1 |
+| [positron](https://tiles.openfreemap.org/styles/positron) | 0.9 | 0.7 | 0.3 | 0.3 | 0.1 | 0.5 |
+| [versatiles](https://tiles.versatiles.org/assets/styles/colorful/style.json) | 0 | 0 | 0.2 | 0.7 | 0 | 0.6 |
+| [demotiles](https://demotiles.maplibre.org/style.json) | 0 | 0 | 0 | 0 | 0 | 0 |
+| [voyager](https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json) | 0 | 0 | 0.1 | 0.4 | 0 | 0.5 |
+| [darkmatter](https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json) | 0 | 0 | 0.1 | 0.3 | 0 | 0.3 |
+| [dark](https://tiles.openfreemap.org/styles/dark) | 0.3 | 0.2 | 0.1 | 0.1 | 0 | 0.1 |
+| [shortbread](https://vector.openstreetmap.org/styles/shortbread/colorful.json) | 0 | 0.3 | 0.2 | 0.3 | 0 | 0.8 |
 
 The views: world (zoom 1.6), country (zoom 5.3), city (zoom 11.2), streets (zoom 14.6), close (zoom 17.4), tilted (zoom 15.7, tilted).
 <!-- styles:end -->
@@ -131,65 +133,58 @@ runs each page two times: with MapLibre GL JS, and with this library in its plac
 A page works when this library gives no error that MapLibre GL JS does not give, and at most 12 percent of the
 pixels of the two images differ clearly (labels and controls are drawn in different ways).
 
-**122 of 142 pages work.**
+**125 of 142 pages work.**
 
 | Result | Pages | Share |
 |---|---:|---:|
-| Works | 122 | 85.9% |
-| Gives an error | 13 | 9.2% |
-| Draws a different image | 7 | 4.9% |
+| Works | 125 | 88.0% |
+| Gives an error | 5 | 3.5% |
+| Draws a different image | 12 | 8.5% |
 | Not compared | 0 | 0.0% |
 
 The pages that do not work:
 
 | Example page | Result | Pixels that differ, % |
 |---|---|---:|
-| add-3d-tiles-3d-objects-and-models-using-threejs | error | 41.7 |
-| add-a-3d-model-with-babylonjs | error | 0.8 |
-| add-a-custom-layer-with-tiles-to-a-globe | error | 42.5 |
-| add-a-custom-style-layer | error | 3.4 |
-| add-a-simple-custom-layer-on-a-globe | error | 5.2 |
-| add-a-video | differs | 28.1 |
-| add-custom-layers-that-follow-the-terrain | error | 15.7 |
-| add-live-realtime-data | differs | 45.8 |
-| animate-an-icon-on-the-gpu | error | 0.7 |
-| create-a-heatmap-layer-on-a-globe-with-terrain-elevation | differs | 20.7 |
-| customize-the-map-transform-constrain | differs | 23 |
-| display-a-hybrid-satellite-map-with-terrain-elevation | differs | 13.7 |
+| 3d-terrain | differs | 22.9 |
+| add-3d-terrain-from-quantized-mesh-tiles | differs | 20.1 |
+| add-a-raster-tile-source | differs | 61.8 |
+| add-custom-layers-that-follow-the-terrain | differs | 14.2 |
+| animate-an-icon-on-the-gpu | error | 0.5 |
+| create-a-heatmap-layer-on-a-globe-with-terrain-elevation | differs | 12.4 |
 | display-a-map-in-a-polar-stereographic-projection | error | 87.3 |
 | display-a-map-in-utm-zone-32n | error | 69.5 |
 | display-a-map-with-mlt | error | 11.1 |
 | display-geojson-in-a-polar-stereographic-projection | error | 86.9 |
-| enter-a-360-photosphere | error | 7.2 |
-| navigate-the-map-with-game-like-controls | differs | 36.4 |
-| raycast-3d-tiles-using-threejs | error | 88.8 |
-| set-center-point-above-ground | differs | 95.6 |
+| draw-a-circle | differs | 50.4 |
+| elevate-symbols-above-the-terrain | differs | 57.9 |
+| enter-a-360-photosphere | differs | 64.9 |
+| extrude-polygons-for-3d-indoor-mapping | differs | 44.8 |
+| navigate-the-map-with-game-like-controls | differs | 36.3 |
+| set-center-point-above-ground | differs | 18.6 |
+| sky-fog-terrain | differs | 18.2 |
 
 The first error that this library gives on each of these pages:
 
-- add-3d-tiles-3d-objects-and-models-using-threejs: Error: [map-jr-gl] addLayer: the custom layer "maplibre-gl-three-1" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
-- add-a-3d-model-with-babylonjs: Error: [map-jr-gl] addLayer: the custom layer "3d-model" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
-- add-a-custom-layer-with-tiles-to-a-globe: Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
-- add-a-custom-style-layer: Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
-- add-a-simple-custom-layer-on-a-globe: Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
-- add-custom-layers-that-follow-the-terrain: Error: [map-jr-gl] addLayer: the custom layer "grid" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
-- animate-an-icon-on-the-gpu: [map-jr-gl] addImage("rainbow-triangle"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG tex
+- animate-an-icon-on-the-gpu: [map-jr-gl] E464 https://map-jr.org/e/464 image="rainbow-triangle"
 - display-a-map-in-a-polar-stereographic-projection: maplibregl.addProjection is not a function
 - display-a-map-in-utm-zone-32n: maplibregl.addProjection is not a function
-- display-a-map-with-mlt: [map-jr-gl] Error: Unsupported protobuf wire type 6
+- display-a-map-with-mlt: Error: [map-jr-gl] E2106 https://map-jr.org/e/2106 source="maplibre" Unsupported protobuf wire type 6
 - display-geojson-in-a-polar-stereographic-projection: maplibregl.importScriptInWorkers is not a function
-- enter-a-360-photosphere: Error: [map-jr-gl] addLayer: the custom layer "photosphere-2286828-48856625" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
-- raycast-3d-tiles-using-threejs: Error: [map-jr-gl] addLayer: the custom layer "agi-hq-3d" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().
 <!-- examples:end -->
 
 Most of the pages that do not work need a globe, another projection or a custom 3D layer.
 
-Custom layers need `renderer: 'main'`, which the example pages do not pass, so the pages with a custom layer give the
-error that says so. `node test/conformance/examples.mjs --renderer=main` gives each map of this library that option.
-On 2026-11-15 it ran the 10 pages that use custom layers, three.js, Babylon.js or deck.gl: 8 work. The page
-add-custom-layers-that-follow-the-terrain draws a different image (15.7 percent) because it needs
-`renderTerrainHeightMap`, which this library does not have. The page add-a-custom-layer-with-tiles-to-a-globe gives an
-error because it reads `map.style.projection`, a private member of MapLibre GL JS for the globe.
+A map that draws in a worker moves to the main thread at its first custom layer (#1987), so the example pages with a
+custom layer need no option. On 2026-11-26 the 10 pages that use custom layers, three.js, Babylon.js or deck.gl were
+run without `renderer: 'main'`: 8 work and none gives an error. The page add-custom-layers-that-follow-the-terrain
+draws a different image (14.2 percent) because it needs `renderTerrainHeightMap`, which this library does not have.
+The page enter-a-360-photosphere draws a different image (64.9 percent), and its cause is not examined.
+
+In the run of 2026-11-26 the image of this library for add-a-raster-tile-source (61.8 percent) shows the tile
+"Access blocked" (HTTP 403) of tile.openstreetmap.org, while MapLibre GL JS drew the map. The difference of that page
+comes from the tile server, and the cause of the refusal is not examined. The other pages that are new in the list of
+different images in that run (3d-terrain, draw-a-circle and four more) were not examined.
 
 ## What is missing most often
 
@@ -209,15 +204,11 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 | `TwoFingersTouchRotateHandler` | export | 1 | @maptiler/sdk |
 | `TwoFingersTouchZoomHandler` | export | 1 | @maptiler/sdk |
 | `TwoFingersTouchZoomRotateHandler` | export | 1 | @maptiler/sdk |
-| `Marker.setSubpixelPositioning` | method of an instance | 2 | @indoorequal/vue-maplibre-gl, svelte-maplibre-gl |
-| `Popup.setPadding` | method of an instance | 2 | svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
 
 ## What is accepted with no effect
 
 | Method of `Map` | Packages | Names of the packages |
 |---|---:|---|
-| `setTransformCameraUpdate` | 3 | react-map-gl, @vis.gl/react-maplibre, svelte-maplibre-gl |
-| `setAnisotropicFilterPitch` | 2 | svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
 | `setCenterClampedToGround` | 1 | svelte-maplibre-gl |
 | `setCenterElevation` | 1 | @maplibre/ngx-maplibre-gl |
 | `setRoll` | 1 | @maptiler/sdk |
@@ -268,11 +259,11 @@ error because it reads `map.style.projection`, a private member of MapLibre GL J
 
 | Package | Version | Methods in use | Exports in use | Events in use | Missing methods | Accepted, with no effect | Missing exports | Missing events | Missing methods of instances |
 |---|---|---:|---:|---:|---|---|---|---|---|
-| react-map-gl | 8.1.3 | 54 | 20 | 8 | none | `setTransformCameraUpdate` | none | none | none |
-| @vis.gl/react-maplibre | 8.1.3 | 48 | 15 | 6 | none | `setTransformCameraUpdate` | none | none | none |
+| react-map-gl | 8.1.3 | 54 | 20 | 8 | none | none | none | none | none |
+| @vis.gl/react-maplibre | 8.1.3 | 48 | 15 | 6 | none | none | none | none | none |
 | vue-maplibre-gl | 5.6.1 | 40 | 6 | 17 | none | none | none | none | none |
-| @indoorequal/vue-maplibre-gl | 9.0.1 | 39 | 9 | 5 | none | none | none | none | `Marker.setSubpixelPositioning` |
-| svelte-maplibre-gl | 2.2.1 | 55 | 26 | 5 | none | `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setTransformCameraUpdate`, `setVerticalFieldOfView` | none | none | `Marker.setSubpixelPositioning`, `Popup.setPadding` |
+| @indoorequal/vue-maplibre-gl | 9.0.1 | 39 | 9 | 5 | none | none | none | none | none |
+| svelte-maplibre-gl | 2.2.1 | 55 | 26 | 5 | none | `setCenterClampedToGround`, `setVerticalFieldOfView` | none | none | none |
 | svelte-maplibre | 2.0.1 | 37 | 19 | 26 | none | none | none | none | none |
-| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 | 11 | 46 | none | `setAnisotropicFilterPitch`, `setCenterElevation` | none | none | `Popup.setPadding` |
+| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 | 11 | 46 | none | `setCenterElevation` | none | none | none |
 | @maptiler/sdk | 5.0.0 | 71 | 57 | 20 | none | `setRoll` | `BoxZoomHandler`, `CooperativeGesturesHandler`, `DoubleClickZoomHandler`, `DragPanHandler`, `DragRotateHandler`, `KeyboardHandler`, `ScrollZoomHandler`, `Style`, `TwoFingersTouchPitchHandler`, `TwoFingersTouchRotateHandler`, `TwoFingersTouchZoomHandler`, `TwoFingersTouchZoomRotateHandler`, `addSourceType`, `importScriptInWorkers` | none | none |
