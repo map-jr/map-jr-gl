@@ -16,13 +16,13 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
     // A request that fails (no network, a blocked origin) says which resource and URL it was for. The URL is cut, because it comes from a style.
     return (input, init) => run(input, init).catch(e => {
         if (e?.name === 'AbortError' || String(e?.message).startsWith('[map-jr-gl]')) throw e;
-        throw Object.assign(requestError(KINDS[kind] ?? kind, String(input), e?.message ?? e, e), {final: e?.final});
+        throw Object.assign(requestError(KINDS[kind] ?? kind, String(input), e?.message ?? e, e, e?.status ?? (e?.final ? undefined : 0)), {final: e?.final});
     });
 }
-/** The error of a request that failed: it names the resource, the URL (cut, because it comes from a style) and the reason. */
-export const requestError = (what: string, url: string, reason: unknown, cause?: unknown) => new Error(`[map-jr-gl] E1163 the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause});
+/** The error of a request that failed: it names the resource, the URL (cut, because it comes from a style) and the reason. With a `status` (0 for a request that got no response), it has the fields `status` and `url` (whole). */
+export const requestError = (what: string, url: string, reason: unknown, cause?: unknown, status?: number) => Object.assign(new Error(`[map-jr-gl] E1163 the request for the ${what} ${url.length > 200 ? url.slice(0, 200) + '...' : url} failed: ${reason}`, {cause}), status == null ? {} : {status, url});
 /** The error of a response with an HTTP error status. */
-export const httpError = (what: string, url: string, status: number) => requestError(what, url, 'HTTP ' + status);
+export const httpError = (what: string, url: string, status: number) => requestError(what, url, 'HTTP ' + status, undefined, status);
 /**
  * Whether a failed request would fail again: an HTTP status 4xx, or a rejection by a custom protocol or by
  * `transformRequest`. A network error and an HTTP status 5xx are worth another request (#652). Such an error has

@@ -101,6 +101,11 @@ A position in an event is `[lng, lat]`, and a box is `[[west, south], [east, nor
   placed. Icons that the map draws from buffers are not counted: see [Markers and popups](../guide/markers-and-popups.md#keep-many-markers-fast).
 - `error` has the value that failed, which can be other than an `Error`. `onError` of the description receives the
   same errors as `Error` objects. Without `onError`, the map writes each error to the console.
+- The `error` of a request that failed (a style, a TileJSON, a sprite, an image, a font file or a tile) has the number
+  `status` (the HTTP status, or 0 when the request got no response) and the string `url` (the whole URL) next to its
+  message. This holds in both renderers. A failure that is not a request, such as an image that cannot be decoded, has
+  neither. The main entry gives plain `Error` objects with these two fields, because the class `AJAXError` exists only
+  in `@map-jr/map-jr-gl/maplibre-compat`. A tile that answers 404 fires no `error`.
 
 ## A lost WebGL context
 

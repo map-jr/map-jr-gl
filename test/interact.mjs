@@ -4347,6 +4347,44 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a source has on, once, off and fire, and gets its own dataloading, data and error events, as in MapLibre GL JS (#1720)`,
             JSON.stringify(ours) === JSON.stringify(ml) && ours.methods && ours.same && ours.seen.length === 2 && ours.errors.r && ours.errors.u, JSON.stringify({ours, maplibre: ml}));
     }
+    // A request that fails with an HTTP status gives an `AJAXError` with `status` and `url` in the `error` event of the
+    // compat entry, as in MapLibre GL JS 6.17, for a style, a TileJSON, a sprite and a tile, and in the promise
+    // of `loadImage`. A tile of the worker renderer has to keep the fields across `postMessage` (#1921).
+    {
+        await page.route(/\/no-such-1921\//, r => r.fulfill({status: r.request().url().includes('/tile/') ? 500 : 404, body: ''}));
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const base = location.origin + '/no-such-1921/', out = {};
+            const make = style => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, style, ...lib === 'ml' ? {} : {renderer: mode}, center: [0, 0], zoom: 1}), seen = [];
+                m.on('error', e => seen.push(e.error));
+                return {m, el, seen};
+            };
+            const pick = e => e && {ajax: e instanceof mod.AJAXError, status: e.status, url: e.url, text: typeof e.statusText};
+            const cases = {
+                style: base + 'style.json',
+                tilejson: {version: 8, sources: {s: {type: 'raster', url: base + 'tiles.json'}}, layers: [{id: 'r', type: 'raster', source: 's'}]},
+                tile: {version: 8, sources: {s: {type: 'raster', tiles: [base + 'tile/{z}/{x}/{y}.png'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 's'}]},
+                sprite: {version: 8, sprite: base + 'sprite', sources: {}, layers: [{id: 'bg', type: 'background'}]},
+            };
+            for (const [name, style] of Object.entries(cases)) {
+                const {m, el, seen} = make(style);
+                await wait(2500);
+                out[name] = pick(seen.find(e => e && typeof e.status == 'number'));
+                m.remove(); el.remove();
+            }
+            const {m, el} = make({version: 8, sources: {}, layers: []});
+            await new Promise(r => m.once('load', r));
+            out.loadImage = pick(await m.loadImage(base + 'a.png').then(() => null, e => e));
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = await run('ml', mode);
+        check(`[${mode}] compat: a request that fails with an HTTP status gives an AJAXError with status and url, for a style, TileJSON, sprite, tile and loadImage, as in MapLibre GL JS (#1921)`,
+            ['style', 'tilejson', 'tile', 'sprite', 'loadImage'].every(k => ours[k]?.ajax && ours[k].status === ml[k]?.status && (k === 'tile' ? ours[k].url.startsWith(origin) : ours[k].url === ml[k].url) && ours[k].text === 'string'), JSON.stringify({ours, maplibre: ml}));
+    }
     // A tile server that answers 500 for every tile: the map fires one `error` for each tile, as MapLibre GL JS 6.17
     // does, and the retries of this library add none (#2007). A vector and a raster source.
     {

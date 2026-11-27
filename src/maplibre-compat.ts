@@ -115,8 +115,8 @@ export class FullscreenControl extends CoreFullscreen {
     once(type: string, fn: (e: any) => void) { this.events.once(type, fn); return this; }
     protected override changed(on: boolean) { this.events.fire(on ? 'fullscreenstart' : 'fullscreenend', {target: this}); }
 }
-export {Point} from './compat-map.ts';
-import {Point} from './compat-map.ts';
+export {Point, AJAXError} from './compat-map.ts';
+import {Point, AJAXError} from './compat-map.ts';
 import {LogoControl as Empty, GlobeControl} from './controls-more.ts';
 export {GlobeControl};
 export {GPUInitializationError} from './gpu-error.ts';
@@ -222,17 +222,6 @@ export const Event = class { constructor(type: string, data: object = {}) { Obje
  */
 export class GeolocateEvent extends Event {
     static [Symbol.hasInstance](x: any) { return /^(trackuserlocation(start|end)|userlocation(lost)?focus)$/.test(x?.type); }
-}
-/**
- * The error class of MapLibre GL JS for a failed request, for `new` and `instanceof`. The requests of this library
- * fail with an `Error`, not with an `AJAXError`.
- */
-export class AJAXError extends Error {
-    declare status: number; declare statusText: string; declare url: string; declare body: Blob;
-    constructor(status: number, statusText: string, url: string, body: Blob) {
-        super(`AJAXError: ${statusText} (${status}): ${url}`);
-        Object.assign(this, {status, statusText, url, body});
-    }
 }
 /** Padding in pixels on each side, as the class of MapLibre GL JS, with its fields only: wrappers re-export it and call no method. */
 export class EdgeInsets {
