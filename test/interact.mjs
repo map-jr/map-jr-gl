@@ -1846,6 +1846,30 @@ for (const mode of renderers) {
         easeLost.events.includes('webglcontextrestored') && easeLost.events.filter(e => e === 'moveend').length === 1 && Math.abs(easeLost.lng - 20) < 1e-6 && Math.abs(easeLost.lat - 10) < 1e-6 && Math.abs(easeLost.zoom - 4) < 1e-6, JSON.stringify(easeLost));
     }
 
+    // A lost WebGL context during an `easeTo`, and a restart that takes longer than the time that is left (a loaded
+    // machine): the camera still ends at the target, and not where the old engine stopped (#1757). The page is busy for
+    // 1500 ms at the loss, which is longer than the 1000 ms of the ease.
+    if (mode === 'main') {
+        const slow = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, center: [0, 0], zoom: 2, attributionControl: false, renderer: 'main'});
+            await new Promise(r => m.once('load', r));
+            const events = [];
+            for (const type of ['webglcontextlost', 'webglcontextrestored', 'moveend']) m.on(type, () => events.push(type));
+            m.once('webglcontextlost', () => { const end = performance.now() + 1500; while (performance.now() < end); });
+            m.easeTo({center: [20, 10], zoom: 4, duration: 1000});
+            setTimeout(() => m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(), 200);
+            for (let i = 0; i < 100 && !events.includes('moveend'); i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 500));
+            const c = m.getCenter(), out = {events, lng: c.lng, lat: c.lat, zoom: m.getZoom()};
+            m.remove(); el.remove();
+            return out;
+        });
+        check(`[${mode}] a lost WebGL context during an easeTo and a restart slower than the ease: the camera ends at the target (#1757)`,
+            slow.events.includes('webglcontextrestored') && slow.events.filter(e => e === 'moveend').length === 1 && Math.abs(slow.lng - 20) < 1e-6 && Math.abs(slow.lat - 10) < 1e-6 && Math.abs(slow.zoom - 4) < 1e-6, JSON.stringify(slow));
+    }
+
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter(), p = m.project(c);
