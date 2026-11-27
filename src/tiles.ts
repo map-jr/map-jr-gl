@@ -321,7 +321,7 @@ export class PortBackend implements TileBackend {
             const p = this.pending.get(e.data.id);
             if (!p) return;
             this.pending.delete(e.data.id);
-            if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final}));
+            if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final, status: e.data.status, url: e.data.url}));
             else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, etag: e.data.tile.etag, fault: e.data.tile.fault});
             else p.resolve(e.data.result);
         };
@@ -393,13 +393,13 @@ export function serveTiles(port: Port) {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));
         } else if (m.type === 'dem' || m.type === 'image') {
             (m.type === 'dem' ? builder.loadElevation(m.req) : builder.loadImage(m.req)).then(result => port.postMessage({id: m.req.id, result}, !result ? [] : 'grid' in result ? [result.pixels.buffer, result.grid.buffer] : result.image ? [result.image] : []),
-                err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final}));
+                err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final, status: (err as {status?: number}).status, url: (err as {url?: string}).url}));
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = await finish(await builder.loadIR(m.req), m.req);
                 port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, etag: tile.etag, fault: tile.fault}}, transfer);
             } catch (err) {
-                port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final});
+                port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final, status: (err as {status?: number}).status, url: (err as {url?: string}).url});
             }
         }
     };

@@ -418,8 +418,11 @@ JS. The events that the map fires are plain objects, so `instanceof Event` is fa
 
 ### AJAXError, EdgeInsets and GeolocateEvent
 
-- `new AJAXError(status, statusText, url, body)` has these four fields and the message of MapLibre GL JS. A failed
-  request of this library rejects with an `Error`, not with an `AJAXError`.
+- `new AJAXError(status, statusText, url, body)` has these four fields and the message of MapLibre GL JS. The `error`
+  of an `error` event and the rejection of `loadImage` are an `AJAXError` when a request of a style, a TileJSON, a
+  sprite, an image or a tile fails (`status` is 0 without a response). Its `url` is the URL before `transformRequest`,
+  its `statusText` is empty, its `body` is an empty `Blob`, and its message is the message of this library. Other
+  errors stay `Error` objects.
 - `new EdgeInsets(top, bottom, left, right)` has the four fields in pixels, each 0 by default. It has none of the
   methods of MapLibre GL JS (`interpolate`, `getCenter`, `equals`, `clone`, `toJSON`), because no wrapper calls them.
 - `new GeolocateEvent(type)` makes an event to pass to `fire`. `e instanceof GeolocateEvent` is true for an event of

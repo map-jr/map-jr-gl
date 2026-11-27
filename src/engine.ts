@@ -125,7 +125,7 @@ export type EngineEvent =
     | {type: 'resized'; width: number; height: number; dpr: number; /** The size of the drawing buffer, which the browser can clamp (#950). */ buffer: [number, number]}
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
-    | {type: 'error'; message: string; source?: string}
+    | {type: 'error'; message: string; source?: string; /** For a failed request: its HTTP status (0 when it got no response) and URL. */ status?: number; url?: string}
     /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`, `rebuild`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
     | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string}
     /** After `tileLoads`: the tile `key` (`source|z/x/y`) has loaded. */
@@ -275,6 +275,8 @@ function packGeoJSON(data: unknown): () => Uint8Array | null {
  * The message of a tile that failed names its source, after the prefix (#2099). A part of the worker that did not load
  * is not a fault of the source, and its message stays the same for each source, so that the map reports it once (#79).
  */
+/** The fields of a failed request (`status`, `url`) for the message to the page. */
+const failed = (err: any) => err.status == null ? {} : {status: err.status, url: err.url};
 const tileMessage = (source: string, err: Error, m = String(err.message)) => isPartFailure(m) ? m : m.replace(/^(\[map-jr-gl\] )?/, `[map-jr-gl] E2106 The source "${source}": `);
 
 export class Engine {
@@ -581,7 +583,7 @@ export class Engine {
                 const image = (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
                 image.close();
-            }).catch(err => this.emit({type: 'error', message: String(err.message), source})).finally(() => { state.loading = false; this.invalidate(); });
+            }).catch(err => this.emit({type: 'error', message: String(err.message), source, ...failed(err)})).finally(() => { state.loading = false; this.invalidate(); });
         }
         if (!st.gl) return [];
         const z = clamp(Math.floor(tr.zoom), 0, 22), n = 2 ** z, cx = mercX(tr.lng) * n, w = Math.floor(cx / n);
@@ -727,7 +729,7 @@ export class Engine {
             this.spriteUrl = style.sprite;
             // The map is not idle while the sprite loads: its icons are part of the first complete picture.
             this.spritePending++;
-            this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { this.spritePending--; this.invalidate(); });
+            this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message), ...failed(err)})).finally(() => { this.spritePending--; this.invalidate(); });
         } else if (!style.sprite && this.spriteUrl) {
             // (A style without a sprite: the icons of the sprite before are not drawn any more.)
             this.spriteUrl = ''; this.sprite = null;
@@ -807,7 +809,7 @@ export class Engine {
             const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, got(withTimeout(this.fetchAs('SpriteJSON')))), got(withTimeout(this.fetchAs('SpriteImage')))(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw httpError('sprite image', url + (dense ? '@2x.png' : '.png'), res.status);
             return {id, sprite, image: (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob())};
-        }).map(p => p.catch(err => { if (spec === this.spriteUrl) this.emit({type: 'error', message: String(err.message)}); })))).filter(l => !!l);
+        }).map(p => p.catch(err => { if (spec === this.spriteUrl) this.emit({type: 'error', message: String(err.message), ...failed(err)}); })))).filter(l => !!l);
         if (spec !== this.spriteUrl || !loaded.length) return;
         const icons: Sprite['icons'] = {}, width = Math.max(...loaded.map(l => l.image.width)), height = loaded.reduce((sum, l) => sum + l.image.height, 0);
         const all = loaded.length > 1 ? new OffscreenCanvas(width, height) : null, ctx = all?.getContext('2d');
@@ -844,7 +846,7 @@ export class Engine {
             } catch (err) {
                 // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
                 const m = (err as Error).message, font = f.name ?? f.family;
-                if (m.startsWith('[map-jr-gl]')) this.emit({type: 'error', message: m.replace(/^\[map-jr-gl\] /, `[map-jr-gl] E10494 The labels use the next font of their "text-font" instead of "${font}". `)});
+                if (m.startsWith('[map-jr-gl]')) this.emit({type: 'error', message: m.replace(/^\[map-jr-gl\] /, `[map-jr-gl] E10494 The labels use the next font of their "text-font" instead of "${font}". `), ...failed(err)});
                 else this.emit({type: 'error', message: `[map-jr-gl] E494 fonts: the font "${font}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
             }
         })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
@@ -1462,7 +1464,7 @@ export class Engine {
             if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
             // A tile reports its failure once, at its first failed request, as MapLibre GL JS 6.17 fires one `error` for
             // each failed tile (and makes no request again). The retries below are silent (#2007).
-            if (!t.tries) this.emit({type: 'error', message: tileMessage(source, err), source});
+            if (!t.tries) this.emit({type: 'error', message: tileMessage(source, err), source, ...failed(err)});
             // A failed request (a lost connection, an HTTP status 5xx) is made again while the view needs the tile:
             // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
             // A status 4xx or a rejection by a protocol would fail again, so it is final (#652).
@@ -1573,7 +1575,7 @@ export class Engine {
             // A failed reload of an expired tile fires one `error`, with its source, as in MapLibre GL JS 6.17. The
             // reloads after it (1 s, 2 s, 4 s and so on, see `expire`) fire none until one succeeds (#2072).
             if (fresh) { this.expire(t, 0); if (t.reloadFailed) return; t.reloadFailed = true; }
-            this.emit({type: 'error', message: tileMessage(source, err), source});
+            this.emit({type: 'error', message: tileMessage(source, err), source, ...failed(err)});
         });
     }
 

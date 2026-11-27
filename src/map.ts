@@ -968,7 +968,7 @@ export class Map {
                 if (!this.imageNames.has(e.name)) this.fire('styleimagemissing', {id: e.name});
             });
         }
-        else if (e.type === 'error') this.fire('error', {error: new Error(e.message), ...e.source && {sourceId: e.source}});
+        else if (e.type === 'error') this.fire('error', {error: Object.assign(new Error(e.message), e.status == null ? {} : {status: e.status, url: e.url}), ...e.source && {sourceId: e.source}});
     }
 
     // ---- events ----
@@ -1625,7 +1625,7 @@ export class Map {
         if (typeof style !== 'string') made = plain(style);
         else {
             const res = await this.fetchAs('Style')(style);
-            if (!res.ok) throw new Error(`[map-jr-gl] E63 Style ${style}: HTTP ${res.status}`);
+            if (!res.ok) throw Object.assign(new Error(`[map-jr-gl] E63 Style ${style}: HTTP ${res.status}`), {status: res.status, url: style});
             made = await res.json();
         }
         if (!Array.isArray(made?.layers)) throw new Error('[map-jr-gl] E539 The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.');

@@ -17,6 +17,21 @@ import {LngLat, LngLatBounds} from './lnglat.ts';
 import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, StyleImageInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification, Subscription} from './compat-types.ts';
 
 /**
+ * The error class of MapLibre GL JS for a failed request, for `new` and `instanceof`. The `error` event, and the promise
+ * of `loadImage`, give an `AJAXError` for a request that failed with an HTTP status (0 when there was no response). Its
+ * `statusText` is empty and its `body` is an empty `Blob`, because this library does not keep them.
+ */
+export class AJAXError extends Error {
+    declare status: number; declare statusText: string; declare url: string; declare body: Blob;
+    constructor(status: number, statusText: string, url: string, body: Blob) {
+        super(`AJAXError: ${statusText} (${status}): ${url}`);
+        Object.assign(this, {status, statusText, url, body});
+    }
+}
+/** Makes the error of a failed request an `AJAXError`: the same object, so its message stays. Another error stays as it is. */
+const ajax = (e: any) => typeof e?.status == 'number' && !(e instanceof AJAXError) ? Object.assign(Object.setPrototypeOf(e, AJAXError.prototype), {statusText: '', body: new Blob()}) : e;
+
+/**
  * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
  * of the event, and a name that is not in the list gets an event of the type `any`. (Types only: the methods are those
  * of the core map.)
@@ -1044,8 +1059,8 @@ export class Map extends CoreMap {
     listImages() { return [...this.imageNames]; }
     /** Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. */
     async loadImage(url: string) {
-        const res = await this.fetchAs('Image')(url);
-        if (!res.ok) throw httpError('image', url, res.status);
+        const res = await this.fetchAs('Image')(url).catch(e => { throw ajax(e); });
+        if (!res.ok) throw ajax(httpError('image', url, res.status));
         return {data: (res as {image?: ImageBitmap}).image ?? await createImageBitmap(await res.blob())};
     }
     /** The code for queries on the page, loaded when the style has a GeoJSON source with its data in the style. */
@@ -1232,7 +1247,8 @@ export class Map extends CoreMap {
         // (As in MapLibre GL JS, an event of the data on the source has no `sourceId`, `isSourceLoaded` or `source`.)
         if (own && ev) { const {sourceId, isSourceLoaded, source, ...rest} = data; ev.fire(own, own === 'error' ? {...data} : rest); }
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
-        const e = data.error as Error | undefined;
+        const e = ajax(data.error) as Error | undefined;
+        if (e !== data.error) data = {...data, error: e};
         if (type === 'error' && (e?.message?.startsWith('[map-jr-gl] E20017 ') || e?.message?.startsWith('[map-jr-gl] E30017 ')) && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};
         // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
