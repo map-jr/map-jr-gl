@@ -1617,6 +1617,28 @@ for (const renderer of renderers) {
             editChecked.before?.length === 2 && editChecked.all.length === 2 && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1139 the circle layer "p-dot", paint property "circle-colr":'))
             && editChecked.all.some(w => w.startsWith('[map-jr-gl] E1057 the layer "p-dot", paint property "circle-radius":')), JSON.stringify(editChecked));
 
+        // 3d2. A new style object that update() edits is checked for its zoom curves (#1765), and a layer of update() whose
+        // `before` names no layer warns at the call (#1766).
+        const editedStyle = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const spec = {style, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec);
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            await new Promise(r => setTimeout(r, 300));
+            host.update({...spec, style: {...style, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff', 'background-opacity': ['*', 0.5, ['zoom']]}}]}});
+            await new Promise(r => setTimeout(r, 500));
+            const curve = said.filter(w => /E1057/.test(w)).length;
+            host.update({...spec, layers: [{id: 'added', type: 'background', before: 'nope', paint: {'background-color': '#eee'}}]});
+            await new Promise(r => setTimeout(r, 500));
+            console.warn = warn; host.destroy(); el.remove();
+            return {curve, before: said.filter(w => /E5 /.test(w) && /"nope"/.test(w))};
+        }, renderer);
+        check(`[${renderer}] update() with an edited style object warns for a zoom curve, and a layer with a before that names no layer warns, in the development build (#1765, #1766)`,
+            editedStyle.curve === 1 && editedStyle.before.length === 1, JSON.stringify(editedStyle));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -4772,6 +4794,36 @@ for (const status of [404, 403, 503]) {
             && got.errors.every(e => e.source === 'dem' && e.message.startsWith('[map-jr-gl] E2106 https://map-jr.org/e/2106 source="dem" E1163 https://map-jr.org/e/1163 what="tile" url="http') && e.message.includes('reason="undecodable image"')),
             JSON.stringify({tiles: seen.size, most, idle: got.idle, errors: got.errors.slice(0, 2)}));
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The tile workers start from a blob: URL, and a request from such a worker sends no Referer unless it names one.
+// OpenStreetMap answers a tile request without one with its "Access blocked" image (#2347). A raster tile and an
+// elevation tile send what a fetch of the page sends, as in MapLibre GL JS, on both renderers: the page's URL to the
+// same origin, its origin to another origin (127.0.0.1), and nothing under <meta name="referrer" content="no-referrer">.
+for (const renderer of renderers) for (const [name, host, meta] of [['the same origin', origin, ''], ['another origin', origin.replace('localhost', '127.0.0.1'), ''], ['another origin under no-referrer', origin.replace('localhost', '127.0.0.1'), 'no-referrer']]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = {raster: [], dem: [], page: []}, png = solidPNG(256, [1, 134, 160]);
+        await page.goto(`${origin}/bench?ref2347`);
+        await page.route(/\/ref-2347\/(raster|dem|page)\//, async route => {
+            const req = route.request();
+            seen[new URL(req.url()).pathname.split('/')[2]].push((await req.allHeaders()).referer ?? null);
+            route.fulfill({status: 200, contentType: 'image/png', headers: {'access-control-allow-origin': '*'}, body: png});
+        });
+        await page.evaluate(async ([renderer, host, meta]) => {
+            if (meta) document.head.append(Object.assign(document.createElement('meta'), {name: 'referrer', content: meta}));
+            await fetch(`${host}/ref-2347/page/0/0/0.png`);
+            const lib = await import('/dist/map-jr-gl.js'), tiles = kind => [`${host}/ref-2347/${kind}/{z}/{x}/{y}.png`];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = lib.createMap(el, {style: {version: 8, sources: {r: {type: 'raster', tiles: tiles('raster'), tileSize: 256}, dem: {type: 'raster-dem', tiles: tiles('dem'), tileSize: 256, maxzoom: 10}},
+                terrain: {source: 'dem'}, layers: [{id: 'r', type: 'raster', source: 'r'}]}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false});
+            await m.once('idle');
+            m.destroy();
+        }, [renderer, host, meta]);
+        const want = host === origin ? page.url() : meta ? null : `${origin}/`;
+        check(`[${renderer}] a raster tile and an elevation tile fetched in a tile worker send the Referer that a fetch of the page sends, to ${name} (#2347)`,
+            seen.page[0] === want && seen.raster.length > 0 && seen.dem.length > 0 && [...seen.raster, ...seen.dem].every(r => r === want), JSON.stringify({want, page: seen.page, raster: seen.raster.slice(0, 2), dem: seen.dem.slice(0, 2)}));
+    } catch (e) { check(`[${renderer}] the test of the Referer of tile requests to ${name} was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // A tile that a custom protocol rejects is asked for once (#652): the loader is called once for each tile in 6 s.
