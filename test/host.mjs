@@ -4774,6 +4774,33 @@ for (const status of [404, 403, 503]) {
     } catch (e) { check('the test of a raster-dem tile that cannot be decoded was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The tile workers start from a blob: URL, and a request from such a worker sends no Referer unless it names one.
+// OpenStreetMap answers a tile request without one with its "Access blocked" image (#2347). A raster tile and an
+// elevation tile carry the page's URL, as in MapLibre GL JS, on both renderers.
+for (const renderer of renderers) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = {raster: [], dem: []}, png = solidPNG(256, [1, 134, 160]);
+        await page.goto(`${origin}/bench?ref2347`);
+        await page.route(/\/ref-2347\/(raster|dem)\//, async route => {
+            const req = route.request();
+            seen[new URL(req.url()).pathname.split('/')[2]].push((await req.allHeaders()).referer ?? null);
+            route.fulfill({status: 200, contentType: 'image/png', body: png});
+        });
+        const page2347 = page.url();
+        await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), tiles = kind => [`${location.origin}/ref-2347/${kind}/{z}/{x}/{y}.png`];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = lib.createMap(el, {style: {version: 8, sources: {r: {type: 'raster', tiles: tiles('raster'), tileSize: 256}, dem: {type: 'raster-dem', tiles: tiles('dem'), tileSize: 256, maxzoom: 10}},
+                terrain: {source: 'dem'}, layers: [{id: 'r', type: 'raster', source: 'r'}]}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false});
+            await m.once('idle');
+            m.destroy();
+        }, renderer);
+        check(`[${renderer}] a raster tile and an elevation tile fetched in a tile worker send the page's URL as Referer (#2347)`,
+            seen.raster.length > 0 && seen.dem.length > 0 && [...seen.raster, ...seen.dem].every(r => r === page2347), JSON.stringify({page: page2347, raster: seen.raster.slice(0, 2), dem: seen.dem.slice(0, 2)}));
+    } catch (e) { check(`[${renderer}] the test of the Referer of tile requests was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A tile that a custom protocol rejects is asked for once (#652): the loader is called once for each tile in 6 s.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});

@@ -55,12 +55,18 @@ const fromUrl = async (partName: PartName) => {
     return scope.MapJrPart;
 };
 
+/** The URL of the page that started this worker (see `ref` below). */
+let referrer = '';
 /** The ports of the maps that this worker serves tiles for, by the id that the page gave each. */
 const tilePorts = new Map<number, MessagePort>();
 scope.onmessage = e => {
     const m = e.data;
     // (The page sends the URLs of the parts with each role. The standalone build sends none: its worker has them inside.)
     if (m.parts) { partUrls = m.parts; setPartLoader(fromUrl); }
+    // A worker that starts from a blob: URL sends no Referer, and some tile servers (OpenStreetMap) then refuse the
+    // request (#2347). Each request of this worker that names no referrer of its own sends the page's URL, as MapLibre
+    // GL JS does (`getReferrer`). The page's referrer policy still applies, and the URL is the same for every map of a page.
+    if (m.ref && !referrer) { referrer = m.ref; const f = self.fetch; self.fetch = (input, init) => f(input, init?.referrer == null ? {...init, referrer} : init); }
     for (const name of m.coming ?? []) given(name);
     if (m.role === 'part') given(m.name).done(m.code);
     // A warning goes through the port of any map that is still open: the page prints each once, whichever map it came from.

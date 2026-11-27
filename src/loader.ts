@@ -263,7 +263,7 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
             ids = workers.map(() => ++channels);
             // (The parts that the page fetches for this style go to each worker when they arrive; the worker waits for them.)
             const coming = partsComing(o, workers);
-            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming}, [ch.port1]); return ch.port2; });
+            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i], parts, coming, ref: globalThis.location?.href}, [ch.port1]); return ch.port2; });
             return ports;
         },
         // WebKit can hold a message on the port of a worker that has been idle for a few seconds for about a second

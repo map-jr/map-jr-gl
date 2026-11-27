@@ -516,8 +516,8 @@ export class Map {
             // (A style with a Vue reactive proxy in it cannot be cloned: the engine then gets a JSON copy, #242.)
             // (The engine loads the part for 3D terrain, #1849: the page sends the code that it fetches, see `partsComing`.)
             const parts = partUrls(o), coming = partsComing(o, [w]);
-            try { w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports, parts, coming}, [off, ...ports]); }
-            catch { w.postMessage({role: 'engine', canvas: off, options: plain(engineOptions), ports, parts, coming}, [off, ...ports]); }
+            try { w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports, parts, coming, ref: location.href}, [off, ...ports]); }
+            catch { w.postMessage({role: 'engine', canvas: off, options: plain(engineOptions), ports, parts, coming, ref: location.href}, [off, ...ports]); }
             this.send = (c, transfer) => w.postMessage(c, transfer ?? []);
             this.renderer = 'worker';
         } else {

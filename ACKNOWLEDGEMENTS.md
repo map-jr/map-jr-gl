@@ -21,6 +21,8 @@ BSD-3-Clause.
   distances of `cheap_ruler.ts` there, which comes from [cheap-ruler](https://github.com/mapbox/cheap-ruler) (ISC,
   Mapbox). `THIRD-PARTY-LICENSES.md` has both license texts.
 - A layer with the legacy property `ref` takes the keys of the layer that it names as `derefLayers` of the MapLibre style specification (BSD-3-Clause) does, with the same list of keys. The code in `src/resolve.ts` is new.
+- The workers send the page's URL as the referrer of their requests, because a worker that starts from a `blob:` URL
+  sends none. This follows `getReferrer` of `util/ajax.ts` in MapLibre GL JS (BSD-3-Clause). The code is new.
 - Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
   (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
   and which values move. The code is new.
