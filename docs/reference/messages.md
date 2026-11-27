@@ -1995,7 +1995,7 @@ jumpTo(): the map center is clamped to the ground, which replaces "elevation" in
 
 ## E11139
 
-A warning of the main API (development build only).
+An error of the main API (development build only).
 
 ```text
 <where>: unknown property "<property>". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "<near>".
@@ -2099,7 +2099,7 @@ server render: the options have "zoom" but no "center", and no "bounds". Pass "c
 
 ## E11683
 
-A warning of the main API (development build only).
+An error of the main API (development build only).
 
 ```text
 <where>: unknown property "<property>". The map reads it here all the same, but it is a <group> property, and MapLibre GL JS rejects the style. Move it to "<group>".

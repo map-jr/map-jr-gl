@@ -173,7 +173,7 @@ export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: 
         const why = zoomCurveError(l[g][k]), key = `${l.id} ${g} ${k} ${JSON.stringify(l[g][k])}`;
         if (why && !reported.has(key)) { reported.add(key); report(new Error(mistake(1057, `layers.${l.id}.${g}.${k}`, why))); }
     }
-    unknownProperties(style?.layers, (l, g, k, near, right) => { const key = `${l.id} ${g} ${k}`; if (!reported.has(key)) { reported.add(key); report(new Error(right ? mistake(11683, `layers.${l.id}.${g}.${k}`, right) : mistake(11139, `layers.${l.id}.${g}.${k}`, near))); } });
+    unknownProperties(style?.layers, (l, g, k, near, right) => { const key = `${l.id} ${g} ${k}`; if (!reported.has(key)) { reported.add(key); if (right) report(new Error(mistake(11683, `layers.${l.id}.${g}.${k}`, right))); else report(new Error(mistake(11139, `layers.${l.id}.${g}.${k}`, near))); } });
 }
 /**
  * Calls `found` with the place and MapLibre's text (GL JS 6.17, style specification 26) for each required field that a
