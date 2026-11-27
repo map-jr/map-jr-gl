@@ -86,6 +86,7 @@ const valueNames = [
     ['engine.ts', 494, 'm', 'reason'],
     ['map.ts', 464, 'name', 'image'],
     ['map.ts', 2233, 'name', 'image'],
+    ['compat-map.ts', 2242, 'name', 'image'],
     ['maplibre-compat.ts', 11510, 'n', 'option'],
     ['mistakes.ts', 206, 'name', 'member'],
     ['mistakes.ts', 206, 'privateState[key]', 'advice'],

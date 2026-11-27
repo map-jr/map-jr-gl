@@ -1660,11 +1660,25 @@ An error of both entries.
 The production build prints this:
 
 ```text
-[map-jr-gl] E2233 https://map-jr.org/e/2233 image=… length=… width=… height=… expected=…
+[map-jr-gl] E2233 https://map-jr.org/e/2233 method=… image=… length=… width=… height=… expected=…
 ```
 
 ```text
-addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
+<method>("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
+```
+
+## E2242
+
+An error of the compat entry.
+
+The production build prints this:
+
+```text
+[map-jr-gl] E2242 https://map-jr.org/e/2242 method=… image=… width=… height=… newWidth=… newHeight=…
+```
+
+```text
+<method>("<image name>"): the image is <width>×<height>, but the new one is <newWidth>×<newHeight>. Pass an image of the same size, or call removeImage() and then addImage().
 ```
 
 ## E2265

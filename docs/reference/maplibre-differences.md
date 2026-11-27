@@ -401,8 +401,10 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 ### `updateImage`
 
-- MapLibre GL JS replaces the pixels of an image in place and keeps its options. New pixels of another size fire an `error` event, and the image stays as it was.
-- This library replaces the pixels in place and keeps the options, as MapLibre GL JS does, and the icons keep their places. New pixels of another size replace the image as `addImage` would, with the old options. It accepts a URL and an SVG string as `addImage` does, and it returns a promise. Pixels, ImageData and drawables are sent to the map at the end of the task, so of several calls in one task only the last is drawn.
+- MapLibre GL JS replaces the pixels of an image in place and keeps its options. New pixels of another size fire an `error` event, and the image stays as it was. A name that has no image also fires an `error` event. Pixels with the wrong number of values raise no error, and the image becomes blank.
+- This library replaces the pixels in place and keeps the options, as MapLibre GL JS does, and the icons keep their places. It accepts a URL and an SVG string as `addImage` does, and it returns a promise. Pixels, ImageData and drawables are sent to the map at the end of the task, so of several calls in one task only the last is drawn.
+- New pixels of another size fire an `error` event (E2242) and the image stays as it was, as in MapLibre GL JS. The size is compared when the first image was pixels, a canvas, an image element or a bitmap.
+- Pixels with the wrong number of values throw E2233 from the call, and the image stays as it was. A name that has no image throws `There is no image with ID "name"`, where MapLibre GL JS fires an `error` event.
 
 ### `getImage`
 
