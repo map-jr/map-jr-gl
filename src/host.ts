@@ -640,11 +640,12 @@ export interface MapInstance {
     update(spec: MapDescription): void;
     /**
      * Applies the fields of `part` and keeps the other fields of the current description. A field of `part` that is `undefined` is removed.
-     * `data` is merged by key: `patch({data: {a: x}})` changes only the source `a`, and a key that is `null` removes the
-     * data of that source. Every other field, `layers` included, is replaced whole.
+     * `data` and `images` are merged by key: `patch({data: {a: x}})` changes only the source `a`, `patch({images: {pin}})`
+     * changes only the image `pin`, and a key that is `null` removes that source data or that image. Every other field,
+     * `layers` included, is replaced whole.
      * @param part The fields to change.
      */
-    patch(part: Partial<Omit<MapDescription, 'data'>> & {data?: Record<string, GeoJSON | string | null>}): void;
+    patch(part: Partial<Omit<MapDescription, 'data' | 'images'>> & {data?: Record<string, GeoJSON | string | null>; images?: Record<string, ImageInput | null>}): void;
     /** The description of the last `createMap`, `update` or `patch`. To change the map, call `update` or `patch`. */
     readonly description: Readonly<MapDescription>;
     /**
@@ -1356,6 +1357,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             if (part.data && typeof part.data === 'object') {
                 next.data = {...now.data};
                 for (const id in part.data) if (part.data[id] == null) delete next.data[id]; else next.data[id] = part.data[id];
+            }
+            // (`images` is merged by key in the same way, #1196.)
+            if (part.images && typeof part.images === 'object') {
+                next.images = {...now.images};
+                for (const id in part.images) if (part.images[id] == null) delete next.images[id]; else next.images[id] = part.images[id];
             }
             complete(next, 'patch', 'Do not set "style" to undefined.');
             if (alive) apply(next, now);

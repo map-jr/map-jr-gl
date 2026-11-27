@@ -40,10 +40,10 @@ container.after(readout);
 const map = createMap(container, {style, initialView: {center: [-74.0, 40.75], zoom: 10.5}, attribution: {compact: true}});
 
 // The map reports each image name that a layer asks for and that it does not have. The page adds the image to
-// `images`, and the map draws it.
+// `images` with `patch`, which keeps the other images, and the map draws it.
 map.listen('styleimagemissing', e => {
   if (!e.id.startsWith('shield|')) return;
-  map.patch({images: {...map.description.images, [e.id]: shield(e.id)}});
+  map.patch({images: {[e.id]: shield(e.id)}});
   const made = Object.keys(map.description.images).length;
   readout.textContent = `${made} shields made so far`;
 });

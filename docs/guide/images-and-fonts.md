@@ -720,10 +720,11 @@ const map = createMap(container, {
 });
 
 // The map reports each image name that a layer asks for and that it does not
-// have. The page adds the image to `images`, and the map draws it.
+// have. The page adds the image to `images` with `patch`, which keeps the other
+// images, and the map draws it.
 map.listen('styleimagemissing', e => {
   if (!e.id.startsWith('shield|')) return;
-  map.patch({images: {...map.description.images, [e.id]: shield(e.id)}});
+  map.patch({images: {[e.id]: shield(e.id)}});
   const made = Object.keys(map.description.images).length;
   readout.textContent = `${made} shields made so far`;
 });
@@ -1294,9 +1295,9 @@ export default function Shields() {
 ```
 <!-- example:shields:end -->
 
-[`map.patch`](../reference/map.md#patch) replaces the field `images` whole, so the listener passes the images that the
-map has (`map.description.images`, the `images` of the last description) with the new one. Where the description
-has no `images`, `map.description.images` is `undefined`, and the spread adds nothing.
+[`map.patch`](../reference/map.md#patch) merges `images` by key, so the listener passes only the new image and the
+map keeps the others. `map.description.images` holds the merged set afterwards. A key that is `null` removes its
+image, as in `map.patch({images: {[name]: null}})`.
 
 **MapLibre**
 

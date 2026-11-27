@@ -1222,6 +1222,33 @@ for (const renderer of renderers) {
         check(`[${renderer}] patch merges data by key, null removes a source, and layers is replaced whole`,
             JSON.stringify(merged) === JSON.stringify({both: [['a', 'b'], true, true], removed: [['b'], false, true, false, true], same: [['b'], false, true], nulls: [['b'], false, false, '']}), JSON.stringify(merged));
 
+        // 3b4. `patch` merges `images` by key, and a key that is `null` removes its image (#1196).
+        const mergedImages = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const svg = c => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10" height="10"><rect width="10" height="10" fill="${c}"/></svg>`;
+            const host = t.lib.createMap(el, {style: t.style, renderer, attribution: false, images: {a: svg('red')}});
+            await new Promise(r => host._map.once('load', r));
+            const has = () => ['a', 'b'].map(id => host._map.hasImage(id));
+            const out = {};
+            await wait(300);
+            out.start = [Object.keys(host.description.images), has()];
+            host.patch({images: {b: svg('blue')}});
+            await wait(300);
+            out.added = [Object.keys(host.description.images), has()];
+            const before = host.description.images.a;
+            host.patch({images: {a: svg('green')}});
+            await wait(300);
+            out.replaced = [Object.keys(host.description.images), host.description.images.a !== before, has()];
+            host.patch({images: {a: null, nothing: null}});
+            await wait(300);
+            out.removed = [Object.keys(host.description.images), has()];
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] patch merges images by key, and null removes an image`,
+            JSON.stringify(mergedImages) === JSON.stringify({start: [['a'], [true, false]], added: [['a', 'b'], [true, true]], replaced: [['a', 'b'], true, [true, true]], removed: [['b'], [false, true]]}), JSON.stringify(mergedImages));
+
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
         const tiles2007 = new Set();
