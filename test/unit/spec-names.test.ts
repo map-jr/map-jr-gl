@@ -13,12 +13,12 @@ const apply = (code: string) => {
     return out;
 };
 
-test('the built SPEC leaves out the layer types and has the names of src/style.ts after it runs (#2342)', () => {
+test('the built SPEC leaves out the layer types (`text` in a symbol layer) and has the names of src/style.ts after it runs (#2342)', () => {
     const source = readFileSync(new URL('../../src/style.ts', import.meta.url), 'utf8');
     const start = source.indexOf('\nexport const SPEC'), end = source.indexOf('\n};\n', start) + 3;
     const out = apply(source.slice(start, end) + '\n');
-    for (const name of ["'fill-opacity'", "'fill-extrusion-height'", "'line-dasharray'", "'color-relief-opacity'"]) assert.ok(!out.includes(name), name);
-    for (const name of ["'-opacity'", "'-height'", "'icon-image'", "'symbol-placement'", "'resampling'"]) assert.ok(out.includes(name), name);
+    for (const name of ["'fill-opacity'", "'fill-extrusion-height'", "'line-dasharray'", "'color-relief-opacity'", "'text-field'"]) assert.ok(!out.includes(name), name);
+    for (const name of ["'-opacity'", "'-height'", "'-field'", "'icon-image'", "'symbol-placement'", "'resampling'"]) assert.ok(out.includes(name), name);
     // (The literal of SPEC, without its types, run with the loop that follows it.)
     const js = out.replace(/^\nexport const SPEC: [^=]+= /, 'const SPEC = ') + '\nreturn SPEC;';
     const built = new Function('ANCHORS', js)([]) as typeof SPEC;
