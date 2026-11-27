@@ -248,7 +248,7 @@ See [Show the first view before the script runs](../guide/server-rendering.md#sh
 props are the options of [`overlay`](map.md#overlay) of the map ([`OverlayOptions`](map.md#overlayoptions)), and `children`. The map
 applies the props of each render.
 
-With `onClose`, the popup has a button that closes it, and a popup cannot be dragged. After a drag, the element
+With `closeButton` or `onClose`, the popup has a button that closes it, and a popup cannot be dragged. After a drag, the element
 stays where the user dropped it until `lngLat` changes. To keep the position, set it in
 `onDragEnd`.
 
