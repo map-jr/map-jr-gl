@@ -163,7 +163,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### Queries on labels
 
 - **MapLibre GL JS:** A label is found on the collision boxes of its text and of its icon.
-- This library does the same for text at a point and for icons. Text that follows a line is found on one square box for each glyph, centered where the glyph meets the line, where MapLibre GL JS uses a circle for each glyph. A label on a line whose text is not shown is not found, as in MapLibre GL JS. A label at a point whose text is not shown at the moment is found within 10 pixels of its point, and a line with an icon is found when the line passes within the reach of the largest icon or text box of the layer from the point of the query.
+- This library does the same for text at a point and for icons. Text that follows a line is found on one square box for each glyph, centered where the glyph meets the line, where MapLibre GL JS uses a circle for each glyph. A label on a line whose text is not shown is not found, as in MapLibre GL JS. A label at a point whose text is not shown at the moment is found within 10 pixels of its point. A line with an icon is found on the icons and the glyph boxes of its shown labels, as in MapLibre GL JS. MapLibre GL JS knows which feature made a label. Here a label belongs to each line of the layer that has the label's text and passes within 1.5 pixels of the label's point, so a label where two pieces of one street meet can be found for both pieces.
 
 ### Feature state
 

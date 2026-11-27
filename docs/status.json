@@ -72,7 +72,7 @@
     {
       "area": "MapLibre plugins, run in a browser",
       "passing": 16,
-      "total": 16,
+      "total": 17,
       "details": {
         "text": "Plugins that were run",
         "href": "docs/ecosystem.md#plugins-that-were-run"
@@ -80,7 +80,7 @@
     },
     {
       "area": "Plugins and frameworks, read from npm",
-      "passing": 23,
+      "passing": 26,
       "total": 27,
       "details": {
         "text": "Each package",
@@ -89,7 +89,7 @@
     },
     {
       "area": "Example pages of the MapLibre documentation",
-      "passing": 122,
+      "passing": 125,
       "total": 142,
       "details": {
         "text": "Example pages",
