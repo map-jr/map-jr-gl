@@ -353,40 +353,36 @@ for (const renderer of renderers) {
             const jumped = zoom();
             // (The engine reports the move with its first frame, which on a slow machine without a GPU comes more than 150 ms
             // after the command, while the animation runs from the command. Read the view at the first report of a zoom
-            // between the two, and not at a fixed time. A read that comes too early fails this check, and the animation that
-            // goes on is then cancelled by the padding of an update() of check 3, so that four more checks run with the map
-            // at zoom 3, #1335.)
-            // (In a worker the next frame waits for the GPU process. A machine without a GPU keeps that process busy for 2 to
-            // 3 s while it ends the WebGL contexts of the maps that the checks of #1686 and #1157 have just destroyed, and then
-            // the 800 ms end before the first report, so that the map is never seen moving (#2303). Before the animation, the
-            // map makes small jumps at zoom 3 until two of them in a row are reported within 100 ms, which shows that the engine
-            // draws frames promptly again. A fitBounds that jumps is reported within the 800 ms at its end zoom, and fails.)
-            const ready = async () => {
-                const until = performance.now() + 10000;
-                let prompt = 0, n = 0;
-                while (prompt < 2) {
-                    const left = until - performance.now();
-                    if (left <= 0) return false;
-                    const asked = performance.now();
-                    const reported = new Promise(r => { const off = t.host.listen('move', () => { off(); r(true); }); setTimeout(() => { off(); r(false); }, left); });
-                    t.host.moveTo({center: [-74.01 + (n++ % 2) * 1e-4, 40.71], zoom: 3});
-                    if (!await reported) return false;
-                    prompt = performance.now() - asked < 100 ? prompt + 1 : 0;
-                }
-                return true;
-            };
-            if (!await ready()) return {jumped, error: 'the engine drew no frame in 10 s'};
-            let seen;
-            const began = performance.now();
-            const off = t.host.listen('move', () => { if (!seen && zoom() !== 3) seen = {at: performance.now() - began, during: zoom(), moving: t.host.state.get().moving}; });
-            t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]], {duration: 800});
-            for (let i = 0; i < 250 && !seen; i++) await wait(20);
-            off();
-            for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
-            return {jumped, first: seen ? Math.round(seen.at) : null, during: seen?.during, moving: !!seen?.moving, end: zoom()};
+            // other than 3, and not at a fixed time. The check waits for the end of the animation before it goes on: an
+            // animation that goes on is cancelled by the padding of an update() of check 3, so that four more checks run with
+            // the map at zoom 3, #1335.)
+            // (In a worker the next frame waits for the GPU process, which on a machine without a GPU can be busy for 1 to 5 s
+            // (#2303). The frames of the engine come promptly before such a wait and then not at all, so no wait before the
+            // animation can show that its frames will come. Then the 800 ms end before the first report, and that report has
+            // the end zoom as a jump has. Such an attempt shows nothing, and the check makes it again, up to five times. An
+            // attempt counts when its first report comes in the first half of the animation, where the zoom is at most 11.8
+            // (the bound is a zoom below 12.96): a fitBounds that jumps is reported at its end zoom then, and fails.)
+            const attempts = [];
+            for (let n = 0; n < 5; n++) {
+                // (The jump back to zoom 3 is a change, so the engine reports it; that report is not read as the animation.)
+                const back = new Promise(r => { const off = t.host.listen('move', () => { off(); r(); }); setTimeout(() => { off(); r(); }, 10000); });
+                t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
+                await back;
+                let seen;
+                const began = performance.now();
+                const off = t.host.listen('move', () => { if (!seen && zoom() !== 3) seen = {at: Math.round(performance.now() - began), during: zoom()}; });
+                t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]], {duration: 800});
+                for (let i = 0; i < 500 && !seen; i++) await wait(20);
+                off();
+                for (let i = 0; i < 100 && t.host.state.get().moving; i++) await wait(100);
+                attempts.push(seen ?? {at: null});
+                if (seen && seen.at < 400) break;
+            }
+            const last = attempts.at(-1);
+            return {jumped, counted: last.at !== null && last.at < 400, first: last.at, during: last.during, attempts: attempts.map(a => a.at), end: zoom()};
         });
         check(`[${renderer}] fitBounds jumps without a duration and animates with duration 800 (#1154)`,
-            fitJump.jumped > 12 && fitJump.moving && fitJump.during < fitJump.jumped - 1 && Math.abs(fitJump.end - fitJump.jumped) < 0.25, JSON.stringify(fitJump));
+            fitJump.jumped > 12 && fitJump.counted && fitJump.during < fitJump.jumped - 1 && Math.abs(fitJump.end - fitJump.jumped) < 0.25, JSON.stringify(fitJump));
 
         // 2d. update() with the padding going from 0 to unset is no change, and does not cancel a running animation (#1351).
         const padKept = await page.evaluate(async () => {
