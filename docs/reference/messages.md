@@ -1705,6 +1705,14 @@ A warning of the server renderer.
 renderElement(): attributes.<attribute> is dropped, because the element already has the attribute "<lower>" from the description or from an earlier entry. Remove it from attributes or change the description.
 ```
 
+## E2434
+
+A warning of the server renderer.
+
+```text
+server render: the layer "<layerId>" is not drawn, because the server render does not draw <kind>. The map draws it in the browser. To leave it out of the server render without this warning, set overrides: {"<layerId>": {hidden: true}}.
+```
+
 ## E10017
 
 A warning of both entries.

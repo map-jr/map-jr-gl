@@ -409,6 +409,8 @@ async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" styl
     const svg = renderSVG({
         tr, layers, items, labels, sprite, images, fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
         rootAttrs,
+        // Once for each layer and render: a server renders other styles in other calls, so no list of layers is kept between calls (#2434).
+        skipped: (layerId, kind) => console.warn(`[map-jr-gl] E2434 server render: the layer "${layerId}" is not drawn, because the server render does not draw ${kind}. The map draws it in the browser. To leave it out of the server render without this warning, set overrides: {"${layerId}": {hidden: true}}.`),
     });
     // (The credits are those of `getAttributions` of the map: only the sources that a visible layer uses at this zoom, so that they do not change when the map takes over.)
     return {svg, tiles: urls, attribution: [...new Set(Object.entries(style.sources).filter(([id]) => layers.some(l => l.source === id && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)).map(([, s]) => s.attribution?.trim()).filter((a): a is string => !!a))], view: {lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing}};
