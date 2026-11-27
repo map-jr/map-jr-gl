@@ -226,12 +226,38 @@ function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[]
         if (!drawn) return false;
         // (On a tilted map or the globe a near icon is larger and a far icon is smaller, as it is drawn.)
         const depth = tr.pitch || tr.globeness ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
+        const pitch = L.p.textPitch.eval(z, f), align = L.p.textAlign.eval(z, f);
+        if (pitch === 'map' || pitch !== 'viewport' && align === 'map') {
+            const [x0, y0, x1, y1] = groundIconBox.call(this, L, f, image.width / image.pixelRatio, image.height / image.pixelRatio, turn, mercX(lng), mercY(lat), depth, align === 'map'), [mx, my] = this.iconMove(L, mercX(lng), mercY(lat), x, y);
+            return x0 + mx <= box[2] && x1 + mx >= box[0] && y0 + my <= box[3] && y1 + my >= box[1];
+        }
         // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)
         const size = L.p.iconSize.eval(z, f) * (depth > 0 && !L.fixedSize ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
         // (An icon is found on its collision box, with `icon-padding`, as in MapLibre GL JS.)
         const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f, this.iconMove(L, mercX(lng), mercY(lat), x, y));
         return x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1];
     });
+}
+
+/**
+ * The box on the screen of the icon of a symbol layer at a point whose `text-pitch-alignment` is `map`, as in MapLibre
+ * GL JS (`_projectCollisionBox`): the box of the icon, with `icon-rotate` and `icon-padding`, lies on the ground at the
+ * point (mx, my) in Mercator, at the distance `depth` from the camera, and the corners and the middles of its sides are
+ * projected each on its own. The box turns with the map when `text-rotation-alignment` is `map` (`turns`), and is
+ * upright on the screen otherwise. Its size on the ground is as in `flatSize`. Left, top, right and bottom in pixels.
+ */
+function groundIconBox(this: any, L: CompiledLayer, f: Feature, w: number, h: number, turn: number, mx: number, my: number, depth: number, turns: boolean): number[] {
+    const tr = this.tr, z = tr.zoom, size = L.p.iconSize.eval(z, f), anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[];
+    const ox = (offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size, oy = (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size;
+    const [l, t, r, b] = boxAround(ox * Math.cos(turn) - oy * Math.sin(turn), ox * Math.sin(turn) + oy * Math.cos(turn), w * size, h * size, turn, L.p.iconPadding.eval(z, f));
+    // (A pixel on the ground is longer on the globe away from the center, as in `groundFrame` of placement.ts.)
+    const k = flatSize(tr, depth) / tr.worldSize * (1 + tr.globeness * (Math.cosh(Math.PI * (1 - 2 * my)) * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180) - 1));
+    const a = turns ? 0 : tr.bearing * Math.PI / 180, c = Math.cos(a) * k, s = Math.sin(a) * k, out = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const u of [l, (l + r) / 2, r]) for (const v of [t, (t + b) / 2, b]) {
+        const [px, py] = tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, (mx + u * c - v * s) * EXTENT, (my + u * s + v * c) * EXTENT);
+        out[0] = Math.min(out[0], px); out[1] = Math.min(out[1], py); out[2] = Math.max(out[2], px); out[3] = Math.max(out[3], py);
+    }
+    return out;
 }
 
 /**
@@ -316,7 +342,7 @@ function iconReach(this: any, L: CompiledLayer): [number, number, number, number
     if (w) {
         // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
         // feature, an icon can reach as far as its corner and its offset in each direction.)
-        size *= tr.pitch ? 4 : 1;
+        size *= tr.pitch || tr.globeness ? 4 : 1;
         // (On the globe or a pitched map icon-translate moves each icon by its own amount on the screen (see
         // `iconMove`): the reach covers no move, twice the move in pixels and, on a pitched map, the move at the
         // bottom corners of the view, where the ground is nearest and a move is largest.)
