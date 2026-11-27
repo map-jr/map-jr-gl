@@ -49,7 +49,7 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
     // (Updated by #1706 and #1981, which changed the joins of lines, by #2118, which packs line vertices in halves of a tile
     // unit, by #2114, which stores how line-offset moves a flipbevel in the side of its vertices, and by #2185, which
     // gives a building no wall along the edge of the buffer of the tile, and by #2287, which draws no building that lies
-    // wholly in the buffer.)
+    // wholly in the buffer, and by #2464, which keeps a smoothing edge of a fill that touches the tile border.)
     const h = createHash('sha256'), flat = tile();
     // (A field that is undefined carries no data, and is left out: #2075 gave a line and a building such fields. The
     // code of main before #2075 gives the same hash.)
@@ -59,7 +59,7 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }
-    assert.equal(h.digest('hex'), '64bf3dce4de1b4650c27f0c57ba4f30acfc2b3bb6d35b8781b5a6a164d44f947');
+    assert.equal(h.digest('hex'), 'be5e1134146ad8f5ea897678eb7c6119fa9d96a9dea506abea67f42c69587ba0');
 });
 
 test('globe: the fills and lines of a real tile get the vertices that were measured', () => {

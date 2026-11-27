@@ -612,10 +612,12 @@ export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
         }
         if (!idx.length) return null;
         // Without multisampling, triangle edges are jagged; a one-pixel line along every polygon edge smooths them
-        // (and carries the outline color when the style sets one). Edges created by clipping at the tile border are skipped.
+        // (and carries the outline color when the style sets one). Edges wholly outside the tile, which clipping at the
+        // buffer creates, are skipped. An edge on the tile border is kept, as MapLibre GL JS draws it: both neighbor tiles
+        // have it, and the clip of the fragment shader gives each of its pixels to one tile (#2464).
         let edges: Uint32Array | undefined;
         if (b.antialias !== false || b.outline) {
-            const list: number[] = [], out = (i: number, j: number, k: number) => (coords[i * 2 + k] <= 0 && coords[j * 2 + k] <= 0) || (coords[i * 2 + k] >= EXTENT && coords[j * 2 + k] >= EXTENT);
+            const list: number[] = [], out = (i: number, j: number, k: number) => (coords[i * 2 + k] < 0 && coords[j * 2 + k] < 0) || (coords[i * 2 + k] > EXTENT && coords[j * 2 + k] > EXTENT);
             for (let r = 0; r < ringEnds.length; r++) {
                 const s = r ? ringEnds[r - 1] : 0, e = ringEnds[r];
                 for (let i = s, j = e - 1; i < e; j = i++) if (!out(i, j, 0) && !out(i, j, 1)) list.push(j, i);
