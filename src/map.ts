@@ -742,7 +742,8 @@ export class Map {
     /**
      * No engine could start, usually because the browser has no WebGL2. The container gets a message in place of an
      * empty canvas, and the caller reports the error that this returns. An application changes the message with CSS
-     * (`.map-jr-unavailable`), or avoids it with `supported()`. When the container holds a first view from the server, the message is a bar at the top and the first view stays.
+     * (`.map-jr-unavailable`), or avoids it with `supported()`. When the container holds a first view from the server, the
+     * message is a bar at the top and the first view stays.
      */
     private cannotShow(cause: Error) {
         if (!this.unavailable) {
@@ -750,8 +751,10 @@ export class Map {
             const el = this.unavailable = document.createElement('div');
             el.className = 'map-jr-unavailable';
             el.textContent = 'This browser cannot show the map.';
-            // A first view from the server stays: the message is a bar along the top edge, above the picture (the first view follows the canvas in the container), so that the picture and its credits at the bottom stay visible (#1386).
-            if (this.container.querySelector('[data-map-jr-ssr]')) el.style.cssText = 'inset:0 0 auto;z-index:3';
+            // A first view from the server stays: the message is a bar along the top edge, above the picture (the first view
+            // follows the canvas in the container) and below the controls of the first view, which have `z-index: 2`, so
+            // that the picture, its controls and its credits at the bottom stay visible (#1386).
+            if (this.container.querySelector('[data-map-jr-ssr]')) el.style.cssText = 'inset:0 0 auto;z-index:1';
             this.canvas.after(el);
         }
         return new Error(/WebGL2/.test(cause.message) ? `[map-jr-gl] E30017 The map cannot be shown: ${cause.message}. Call supported() before you make a map, and show other content when it returns false.` : `[map-jr-gl] E20017 The map cannot be shown: ${cause.message}.`, {cause});

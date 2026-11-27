@@ -4290,6 +4290,9 @@ for (const [entry, renderer, first] of [['main API', 'worker'], ['main API', 'ma
         await page.goto(`${origin}/bench`);
         const able = await page.evaluate(async () => (await import('/dist/map-jr-gl.js')).supported());
         await page.goto(`${origin}/style.json`); // (a new document: the answer of `supported()` is kept for the page)
+        // (The first view is what `renderFirstView` writes, with the zoom buttons of `navigation()` in its layer of controls.)
+        const firstView = first && await (await import('../dist/server.js')).renderFirstView({style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#2a7'}}]}, center: [0, 0], zoom: 2, width: 400, height: 300,
+            controls: [(await import('../dist/controls.js')).navigation()]});
         const none = await page.evaluate(async ([entry, renderer, first]) => {
             const get = HTMLCanvasElement.prototype.getContext;
             HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); };
@@ -4299,8 +4302,7 @@ for (const [entry, renderer, first] of [['main API', 'worker'], ['main API', 'ma
             console.warn = () => {}; // (the map says that it uses the main thread)
             addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
-            // (As `renderFirstView` writes it: a layer that is marked `data-map-jr-ssr`, which the map puts after its own canvas.)
-            if (first) el.innerHTML = '<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden"><svg data-map-jr-ssr="" width="100%" height="100%"><rect width="100%" height="100%" fill="#2a7"/></svg></div>';
+            if (first) el.innerHTML = first;
             const style = await (await fetch('/style.json')).json(), message = () => el.querySelector('.map-jr-unavailable');
             let supported, state, destroy;
             if (entry === 'main API') {
@@ -4323,7 +4325,10 @@ for (const [entry, renderer, first] of [['main API', 'worker'], ['main API', 'ma
             await wait(500);
             const box = message()?.getBoundingClientRect();
             const top = message() && document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-            const out = {supported, errors, ...state(), shows: !first || top === message() && el.querySelector('svg[data-map-jr-ssr]').getBoundingClientRect().height === el.clientHeight && box.height < el.clientHeight / 2 && box.top === el.getBoundingClientRect().top, text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === el.clientWidth && (first || box.height === el.clientHeight) && box.width > 800, unhandled};
+            const out = {supported, errors, ...state(), shows: !first || top === message() && el.querySelector('svg[data-map-jr-ssr]').getBoundingClientRect().height >= el.clientHeight && box.height < el.clientHeight / 2 && box.top === el.getBoundingClientRect().top
+                // (The controls of the first view are above the bar, so that the zoom buttons are whole.)
+                && !!el.querySelector('.map-jr-ssr-layer .map-jr-ctrl-zoom-in') && +getComputedStyle(el.querySelector('.map-jr-ssr-layer .map-jr-ctrl-top-right')).zIndex > +getComputedStyle(message()).zIndex,
+                text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === el.clientWidth && (first || box.height === el.clientHeight) && box.width > 800, unhandled};
             // (The message is the application's to change: a rule of its own style sheet wins over the rule of the library.)
             document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.map-jr-unavailable{display:none}'}));
             out.hidden = !!message() && getComputedStyle(message()).display === 'none';
@@ -4331,7 +4336,7 @@ for (const [entry, renderer, first] of [['main API', 'worker'], ['main API', 'ma
             out.after = el.querySelectorAll('.map-jr-unavailable, canvas').length;
             console.warn = warn;
             return out;
-        }, [entry, renderer, first]);
+        }, [entry, renderer, firstView]);
         const text = '[map-jr-gl] E30017 https://map-jr.org/e/30017 message="WebGL2 is not available"';
         check(`no WebGL2 (${entry}, ${renderer}${first ? ', first view' : ''}): supported() is false, the map reports one error and shows a message in the container${first ? ' over the top of the first view, which stays' : ''}, and removing the map removes the message`,
             able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
