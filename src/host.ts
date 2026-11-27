@@ -1160,7 +1160,12 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else {
             // (Layers that went to the map as edits are checked now, as a new style is, and not only when the map is next idle; #1684.)
-            if (__DEV__ && before && next.layers && differ(next.layers, before.layers)) check(4, {layers: next.layers});
+            // (A new style object that went to the map as edits is checked as a style is: its zoom curves too, #1765. The layers of the description are checked with the style that the map has, so that a `before` that names no layer warns, #1766.)
+            if (__DEV__ && before && differ(next.style, before.style)) check(4, styleFor(next.style, styledDark));
+            if (__DEV__ && before && next.layers && differ(next.layers, before.layers)) {
+                const now = map.getStyle(), added = new Set(next.layers.map((l: {id: string}) => l?.id));
+                check(4, {sources: now?.sources, layers: now?.layers.filter((l: {id: string}) => !added.has(l.id)) ?? []}, {sources: next.sources, layers: next.layers});
+            }
             for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         }
         // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font
