@@ -1,5 +1,5 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import {withFilter, screenTranslate, mapTranslate, type CompiledLayer, type Light} from './style.ts';
+import {withFilter, mapTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp, type Prop} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
@@ -262,21 +262,22 @@ void main() {
   float ext = v_r + v_sb.x + 1.0;
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
-  float h = ground(a_pos / ${EXTENT}.0);
-  vec4 c = toClip3(a_pos, h);
+  // circle-translate (u_translate, in pixels along the axes of the map) moves the center in tile units before the
+  // projection, as in MapLibre GL JS: on a pitched map the move lies in the plane of the map for both anchors.
+  vec2 at = a_pos + u_translate / u_scale;
+  float h = ground(at / ${EXTENT}.0);
+  vec4 c = toClip3(at, h);
   // u_pitch.x: circle-pitch-alignment is 'map', and the circle lies on the map: the offset is in tile units.
   // Otherwise the circle faces the viewer, and the offset is in screen pixels after projection.
   // u_pitch.y: circle-pitch-scale is 'map' (the default), and a distant circle is smaller, as the map under it is.
   // With 'viewport' every circle has the size that it has at the center of the view (as in MapLibre).
   float w = c.w;
-  vec2 px = u_translate;
-  if (u_pitch.x > 0.0) c = toClipTurn(a_pos, v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale, h);
-  else px += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0);
-  c.xy += px * vec2(2.0, -2.0) / u_view * c.w;
+  if (u_pitch.x > 0.0) c = toClipTurn(at, v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale, h);
+  else c.xy += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0) * vec2(2.0, -2.0) / u_view * c.w;
   // With 3D terrain a circle is hidden when the ground in front covers its center (lifted by u_lift), as in MapLibre GL
   // JS: u_depth has the depth of the terrain on the screen.
   if (u_lift > 0.0) {
-    vec4 d = toClip3D(a_pos, h + u_lift); vec3 n = d.xyz / d.w;
+    vec4 d = toClip3D(at, h + u_lift); vec3 n = d.xyz / d.w;
     if (d.w <= 0.0 || n.z * 0.5 + 0.5 > texture(u_depth, n.xy * 0.5 + 0.5).r) inside = false;
   }
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
@@ -1365,7 +1366,7 @@ export class GLRenderer {
                     if (b.type === 'circle') {
                         // (A property with a value for each feature is in the vertices: its uniform is 1 for a color and 0 for the rest.)
                         const sc = L.p.strokeColor.dd ? [1, 1, 1, 1] : L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
-                        const tl = screenTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing);
+                        const tl = mapTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing);
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform2f(u.u_translate, tl[0], tl[1]);
                         gl.uniform1f(u.u_radius, L.p.radius.dd ? 1 : L.p.radius.eval(zoom));

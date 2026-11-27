@@ -160,6 +160,21 @@ const partImport = /(?<=\(\) => )import\('\.\/([\w-]+)\.ts'\)/g;
 const partOwn = /(^\.|\/src)\/(contour|terrain)\.ts$/;
 const workerParts = [...readFileSync('src/parts.ts', 'utf8').matchAll(/^ {4}(\w+): \(\) => import\('\.\/([\w-]+)\.ts'\),$/gm)].map(m => ({name: m[1], file: m[2]}));
 if (!workerParts.length) throw new Error('build.mjs: src/parts.ts has no parts.');
+/**
+ * The page never loads the part `colors` (a thread of the page asks its own canvas for a color name, and only a tile
+ * worker without `OffscreenCanvas` loads the table, #72): without this, the page build writes a chunk for it that no
+ * code calls. The line `colors: () => import(...)` of src/parts.ts stays as it is for `workerParts` above.
+ */
+const noColorsOnPage = {
+    name: 'no-colors-on-page',
+    enforce: 'pre',
+    transform(code, id) {
+        const line = "colors: () => import('./color-names.ts')";
+        if (!id.endsWith('/src/parts.ts') || !code.includes(line)) return null;
+        const edited = new MagicString(code), at = code.indexOf(line);
+        return withMap(edited.overwrite(at, at + line.length, 'colors: () => Promise.reject()'), id);
+    },
+};
 const splitParts = {
     name: 'worker-parts',
     enforce: 'pre',
@@ -263,21 +278,21 @@ const esm = (input, extra = {}) => ({
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
 const entries = {'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', element: 'src/element.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'};
 // (The production files keep the code of each message and its link, and not its text: scripts/message-codes.mjs, #2148.)
-await run(esm(entries), undefined, [messageCodes, controlCss]);
+await run(esm(entries), undefined, [messageCodes, controlCss, noColorsOnPage]);
 // The development build of the same entries (`<name>.dev.js`, the `development` condition of package.json). It differs
 // from the build above in `__DEV__` only: it loads the checks for common mistakes (src/mistakes.ts) after the map has
 // started, and the build above has no code for that. The name of a chunk has a hash of its content, so a chunk that is
 // the same in both builds is one file, and dist/ grows only by the files that differ. The build stops if it would
 // change a file of the production build.
 const production = Object.fromEntries(readdirSync('dist').map(f => [f, readFileSync('dist/' + f, 'utf8')]));
-await run(esm(entries, {entryFileNames: '[name].dev.js'}), {__WORKER_SRC__: '""', __DEV__: 'true'}, [controlCss]);
+await run(esm(entries, {entryFileNames: '[name].dev.js'}), {__WORKER_SRC__: '""', __DEV__: 'true'}, [controlCss, noColorsOnPage]);
 for (const f in production) if (readFileSync('dist/' + f, 'utf8') !== production[f]) throw new Error(`The development build changed dist/${f}, a file of the production build.`);
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
 // (One for each of the two APIs. The checks for common mistakes are inside the file of the main API, as the worker is:
 // a page with this file has no bundler that could choose a build, and the checks cost it no request.)
-await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc), __DEV__: 'true'});
-await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
+await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc), __DEV__: 'true'}, [noColorsOnPage]);
+await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)}, [noColorsOnPage]);
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM). It draws without WebGL, so of the
 // part `dem` it takes the contour lines and not 3D terrain, which would bring the renderer of WebGL with it (#1849).
 // The parts `globe`, `subdivide` and `layers` are for the WebGL engine and its tiles only, and the server renderer does not contain them (#2006, #2075, #2215).

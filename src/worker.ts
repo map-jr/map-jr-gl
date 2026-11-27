@@ -2,8 +2,8 @@ import {Engine} from './engine.ts';
 
 declare const __VERSION__: string; // the version of package.json, set by the build
 import {PortBackend, serveTiles} from './tiles.ts';
-import {relayWarnings} from './expr.ts';
-import {setPartLoader, type PartName} from './parts.ts';
+import {browserColors, relayWarnings, useColorNames, warnOnce} from './expr.ts';
+import {part, setPartLoader, type PartName} from './parts.ts';
 
 // What the parts that load on demand (parts.ts) take from this file. A part file is built with these modules left
 // out, and reads them from `MapJrWorker`, the global of this file (see build.mjs).
@@ -59,6 +59,12 @@ const fromUrl = async (partName: PartName) => {
 let referrer = '', policy = '' as ReferrerPolicy;
 /** The ports of the maps that this worker serves tiles for, by the id that the page gave each. */
 const tilePorts = new Map<number, MessagePort>();
+/**
+ * A tile worker without a 2d canvas (Safari before 16.4, WebKit on Windows) cannot ask the browser for a color name: it
+ * loads the table first, and the messages of a port wait in the port until then (#72). Without the table a name is
+ * not a color, and the page shows the failure of the part once.
+ */
+let names: Promise<unknown> | undefined;
 scope.onmessage = e => {
     const m = e.data;
     // (The page sends the URLs of the parts with each role. The standalone build sends none: its worker has them inside.)
@@ -76,7 +82,14 @@ scope.onmessage = e => {
     for (const name of m.coming ?? []) given(name);
     if (m.role === 'part') given(m.name).done(m.code);
     // A warning goes through the port of any map that is still open: the page prints each once, whichever map it came from.
-    if (m.role === 'tiles') { tilePorts.set(m.id, m.port); serveTiles(m.port); relayWarnings(msg => tilePorts.values().next().value?.postMessage({type: 'warn', msg})); }
+    if (m.role === 'tiles') {
+        const port = m.port;
+        tilePorts.set(m.id, port);
+        relayWarnings(msg => tilePorts.values().next().value?.postMessage({type: 'warn', msg}));
+        if (browserColors()) serveTiles(port);
+        // (The text of a failed part starts with the prefix, which the page adds again: `isPartFailure`.)
+        else (names ??= part('colors').then(p => useColorNames(p.NAMED), (err: Error) => warnOnce(err.message.slice(12)))).then(() => serveTiles(port));
+    }
     // The page drops the port of a map that it no longer uses (its engine worker ended, or the map was removed; #838).
     else if (m.role === 'drop') { const p = tilePorts.get(m.id); tilePorts.delete(m.id); if (p) { p.onmessage = null; p.close(); } }
     else if (m.role === 'engine') {

@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import {compileLayer} from '../../src/style.ts';
 import {buildTile, tessellate} from '../../src/tile.ts';
 import {prepareGeoJSON, sliceGeoJSON} from '../../src/geojson.ts';
+import {NAMED} from '../../src/color-names.ts';
+import {useColorNames} from '../../src/expr.ts';
+useColorNames(NAMED); // (Node has no canvas to ask for the value of a color name)
 
 test('circle stroke and blur: a data expression gives each feature its own values in the vertices', () => {
     const z = 10, tx = 300, ty = 380, n = 2 ** z;
