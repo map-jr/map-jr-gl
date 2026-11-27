@@ -615,12 +615,15 @@ export function placeLabels(
                         const ground = !!(tr.pitch || tr.globeness) && l.flat, fit = L.fixedSize ? ground ? persp : 1 / persp : 1;
                         const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, ground ? s / persp / persp : 0, fit);
                         if (!curved) continue;
+                        // (`text-translate` moves the whole text and its boxes, as MapLibre GL JS moves each point of the line by it.)
+                        const [mx, my] = translateAt(tr, it.id, l.x, l.y, ax, ay, tt);
+                        if (mx || my) for (const b of curved.boxes) { b[0] += mx; b[1] += my; b[2] += mx; b[3] += my; }
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
                         // (Its boxes go into the grid after its icon is placed: as in MapLibre, an icon is not blocked by its own text.)
                         bentBoxes = l.ignore ? [] : curved.boxes;
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        bent = {x: ax, y: ay, angle: 0, size: (curved.ground ? size / persp / persp : size) * fit, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha, fixedSize: L.fixedSize || undefined};
+                        bent = {x: ax + mx, y: ay + my, angle: 0, size: (curved.ground ? size / persp / persp : size) * fit, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha, fixedSize: L.fixedSize || undefined, tt};
                         // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
                         if (!meta) { for (const b of bentBoxes) grid.insert(...b); out.push(bent); continue; }
                     } else if (line && !l.upright) {
