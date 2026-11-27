@@ -9,7 +9,7 @@ import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 import {SPEC} from './style.ts';
 import {parseColor} from './expr.ts';
-import {layerTypes, layoutExpressions, layoutValues, operators, paintExpressions, paintValues} from './style-spec-values.ts';
+import {layerTypes, layoutExpressions, layoutValues, operators, paintExpressions, paintValues, sourceValues} from './style-spec-values.ts';
 import {expressionErrors} from './expr-check.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
@@ -180,19 +180,38 @@ export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: 
  * specification does not have, `minzoom` and `maxzoom`, the type of the source of a layer (`layer "a" requires a
  * raster-dem source`), and each paint and layout value that is not an expression or a function (an enum, a color, a
  * number and its minimum and maximum, a boolean, an array and its length; see scripts/style-spec-values.mjs), and
- * the types of each expression of a paint or layout property (`expressionErrors` of src/expr-check.ts).
+ * the types of each expression of a paint or layout property (`expressionErrors` of src/expr-check.ts). The values of each
+ * source are checked by `sourceValues` of src/style-spec-values.ts (its `type`, the type of each property, an unknown
+ * property and the coordinates of an image or video).
  */
 export function validateStyle(style: {sources?: Record<string, any>; layers?: any[]} | undefined, found: (where: string, why: string) => void) {
     const need = (where: string, o: any, k: string) => { if (o[k] === undefined) found(where, `missing required property "${k}"`); };
     const values: Record<string, string> = {};
     for (const [g, t] of [['paint', paintValues], ['layout', layoutValues], ['paint=', paintExpressions], ['layout=', layoutExpressions]]) for (const e of t.split('|')) { const [type, k, ...c] = e.split(' '); values[`${g} ${type} ${k}`] = c.join(' '); }
-    const types = layerTypes.split(' ');
+    const types = layerTypes.split(' '), sourceTypes = ['vector', 'raster', 'raster-dem', 'geojson', 'video', 'image'];
+    const sourceCodes: Record<string, string> = {};
+    for (const e of sourceValues.split('|')) { const [type, k, c] = e.split(' '); sourceCodes[`${type} ${k}`] = c; }
     for (const [id, s] of Object.entries(style?.sources ?? {})) {
         if (!s || typeof s !== 'object') continue;
         const where = 'sources.' + id;
-        if (s.type === undefined) found(where, '"type" is required');
-        else if (s.type === 'geojson') need(where, s, 'data');
-        else if (s.type === 'video' || s.type === 'image') { if (s.type === 'video') need(where, s, 'urls'); need(where, s, 'coordinates'); }
+        const t = s.type, dem = t === 'raster-dem', custom = s.encoding === 'custom';
+        if (!t) { found(where, '"type" is required'); continue; }
+        // (A canvas source is left to its own step of #1748.)
+        if (!sourceTypes.includes(t)) { if (t !== 'canvas') checkValue(where + '.type', t, '!e' + sourceTypes.join(), found); continue; }
+        if (t === 'geojson') need(where, s, 'data');
+        else if (t === 'video' || t === 'image') { if (t === 'video') need(where, s, 'urls'); need(where, s, 'coordinates'); }
+        for (const k in s) {
+            // (MapLibre names a property of a raster-dem source with its bare name, and looks up a name before its first dot in the other types.)
+            if (k === 'type') continue;
+            const v = s[k], at = dem ? k : `${where}.${k}`, c = sourceCodes[`${t} ${dem ? k : k.split('.')[0]}`] ?? (dem ? undefined : sourceCodes[t + ' *']);
+            if (dem && !custom && 'redFactor greenFactor blueFactor baseShift'.split(' ').includes(k)) found(k, `In "${where}": "${k}" is only valid when "encoding" is set to "custom". ${s.encoding ? `"${s.encoding}"` : 'Default'} encoding found`);
+            else if (c === undefined) found(dem ? k : where, `unknown property "${k}"`);
+            else if (v === undefined || c === '-') continue;
+            else if (c === '#') { if (typeof v === 'string') continue; for (const p in v) checkValue(`${at}.${p}`, v[p], '!S', found); }
+            else if (c === 'F') validateFilter(at, v, found);
+            else if (c === 'K') { if (Array.isArray(v) && v.length === 4) v.forEach((e: unknown, j: number) => checkValue(`${at}[${j}]`, e, '!a2', found)); else checkValue(at, v, '!a4', found); }
+            else checkValue(at, v, c, found);
+        }
     }
     (style?.layers ?? []).forEach((l, i) => {
         if (!l || typeof l !== 'object') return;

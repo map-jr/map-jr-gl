@@ -32,10 +32,15 @@ export const expressionCode = v => {
     const flags = (['data-driven', 'cross-faded-data-driven'].includes(v['property-type']) ? 'd' : '') + (v.expression?.parameters?.includes('zoom') ? 'z' : '') + (v.expression?.interpolated ? 'i' : '');
     return type && `${type} ${flags || '-'}`;
 };
+/** The code of one property of a source, as `code` gives it, and also S (a string), # (a promoteId), F (a filter), K (the
+ * four coordinates of an image or video) and - (not checked). The properties of a source take no expression, so each
+ * code starts with !. */
+const sourceCode = v => v.type === 'string' ? '!S' : v.type === 'promoteId' ? '#' : v.type === 'filter' ? 'F' : v.type === 'array' && v.value?.type === 'array' ? 'K' : code(v) || '-';
 export function source() {
     const types = Object.keys(spec.layer.type.values);
     const group = g => types.flatMap(t => Object.entries(spec[`${g}_${t}`] ?? {}).map(([k, v]) => code(v) && `${t} ${k} ${code(v)}`).filter(Boolean)).join('|');
     const expressions = g => types.flatMap(t => Object.entries(spec[`${g}_${t}`] ?? {}).filter(([, v]) => v.expression && expressionCode(v)).map(([k, v]) => `${t} ${k} ${expressionCode(v)}`)).join('|');
+    const sources = ['vector', 'raster', 'raster-dem', 'geojson', 'video', 'image'].flatMap(t => Object.entries(spec[`source_${t.replace('-', '_')}`]).filter(([k]) => k !== 'type').map(([k, v]) => `${t} ${k} ${sourceCode(v)}`)).join('|');
     return `// Written by scripts/style-spec-values.mjs from the style specification ${spec.$version} of @maplibre/maplibre-gl-style-spec. Do not edit.
 // Each entry is "<layer type> <property> <code>"; the script says what the codes mean. (Development build only, #1748.)
 export const layerTypes = ${JSON.stringify(types.join(' '))};
@@ -45,6 +50,8 @@ export const layoutValues = ${JSON.stringify(group('layout'))};
 // The type and the flags of each property that takes an expression ("<layer type> <property> <type> <flags>").
 export const paintExpressions = ${JSON.stringify(expressions('paint'))};
 export const layoutExpressions = ${JSON.stringify(expressions('layout'))};
+// The code of each property of a source ("<source type> <property> <code>"; a property "*" means that the type takes other properties).
+export const sourceValues = ${JSON.stringify(sources)};
 `;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) writeFileSync(new URL('../src/style-spec-values.ts', import.meta.url), source());

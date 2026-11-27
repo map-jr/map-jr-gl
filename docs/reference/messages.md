@@ -925,6 +925,14 @@ A warning of the main API (development build only).
 <where>: "<property>" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.
 ```
 
+## E654
+
+An error of the server renderer.
+
+```text
+The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.
+```
+
 ## E685
 
 A warning of the main API (development build only).
@@ -1937,6 +1945,14 @@ A warning of the main API (development build only).
 
 ```text
 <layer>: "color-relief-color" has <stops> stops. The map uses the first 2048 and drops the others. Write at most 2048 stops.
+```
+
+## E10654
+
+A warning of the server renderer.
+
+```text
+server render: the source "<source>": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).
 ```
 
 ## E10826
