@@ -2007,6 +2007,36 @@ for (const renderer of renderers) {
             ofSprite === '#80f' && spriteGone.some(e => e.includes('test-sprite-495/missing')) && !withoutSprite.includes('#80f'),
             JSON.stringify({ofSprite, spriteGone, withoutSprite}));
 
+        // #1194: a change of `sprite` alone loads the new sprite files only. The style is not requested again, and a layer that
+        // the application added to the map stays (a restyle removes it).
+        await page.route(/\/test-sprite-1194\//, route => {
+            if (route.request().url().includes('.json')) return route.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 40, height: 40, pixelRatio: 1}})});
+            route.fulfill({contentType: 'image/png', body: solidPNG(40, route.request().url().includes('/b.png') ? [0x00, 0xff, 0x00] : [0x88, 0x00, 0xff])});
+        });
+        await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300});
+            const spot = {sources: {spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [{id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'pins:box', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
+            t.host.update(t.spec = {...t.spec, style: '/style.json', ...spot, sprite: [{id: 'pins', url: '/test-sprite-1194/a'}]});
+            for (let i = 0; i < 100 && !(t.host._map.getStyle()?.sprite && t.host._map.areTilesLoaded()); i++) await wait(100);
+            t.host._map.addLayer({id: 'app-added', type: 'background', paint: {'background-opacity': 0}});
+        });
+        const asked1194 = [], on1194 = r => asked1194.push(new URL(r.url()).pathname);
+        page.on('request', on1194);
+        const spriteOnly = await page.evaluate(async () => {
+            const t = window.t;
+            t.host.update(t.spec = {...t.spec, sprite: [{id: 'pins', url: '/test-sprite-1194/b'}]});
+            await new Promise(r => setTimeout(r, 1500));
+            return {kept: !!t.host._map.getLayer('app-added')};
+        });
+        page.off('request', on1194);
+        spriteOnly.asked = asked1194;
+        const spriteSwapped = await shows('#0f0');
+        check(`[${renderer}] a change of sprite alone draws the new sprite and does not load the style again (#1194)`,
+            spriteSwapped === '#0f0' && spriteOnly.kept && !spriteOnly.asked.some(u => u.includes('style.json')) && spriteOnly.asked.some(u => u.includes('/b.')),
+            JSON.stringify({spriteSwapped, spriteOnly}));
+        await page.evaluate(() => { const t = window.t, {sprite: _s, sources: _a, layers: _b, ...rest} = t.spec; t.host.update(t.spec = {...rest, style: t.style}); });
+
         // #1199: an image of metadata["map-jr:images"] takes the place of the sprite image of the same name, and an image
         // of `images` of the description takes the place of both.
         await page.route(/\/test-sprite-1199\//, route => route.request().url().includes('.json')
