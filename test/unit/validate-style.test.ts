@@ -56,6 +56,13 @@ const styles = [
             'symbol-placement': ['interpolate', ['linear'], ['zoom'], 0, 1, 1, 2], 'text-offset': ['semiliteral', [1, 'top']]}, paint: {'text-color': ['rgb', 1, 2]}},
         {id: 'e', type: 'fill', source: 'g', paint: {'fill-color': ['to-color', ['get', 'c']], 'fill-opacity': ['global-state', 'o'], 'fill-pattern': ['get', 'p']}},
     ]},
+    // The values of icon-image, text-field and text-variable-anchor-offset (a value that is not an expression too).
+    {sources: {g: {type: 'geojson', data: fc}}, layers: [
+        ...[5, true, ['a'], ['a', 'b'], [{a: 1}], 'a', ['literal', 5], ['image', 3], {stops: [[0, 'a']]}, ['get', 'i'], ['literal', 'a']].map((v, i) => ({id: 'i' + i, type: 'symbol', source: 'g', layout: {'icon-image': v}})),
+        ...[5, true, ['a', 'b'], [{'text-color': 'red'}], 'a', ['literal', 5], ['format', 'a'], ['get', 'n']].map((v, i) => ({id: 't' + i, type: 'symbol', source: 'g', layout: {'text-field': v}})),
+        ...['x', 5, [], ['top'], ['top', 1], ['top', [1, 2]], ['bogus', [1, 2]], ['top', [1, 'a']], ['top', [1, 2, 3]], ['top', [1, 2], 'left'], ['top', [1, 2], 'left', [0, 1]], ['literal', ['top', [1, 2]]], ['interpolate', ['linear'], ['zoom'], 0, ['literal', ['top', [1, 2]]], 5, ['literal', ['top', [2, 3]]]]]
+            .map((v, i) => ({id: 'v' + i, type: 'symbol', source: 'g', layout: {'text-variable-anchor-offset': v}})),
+    ]},
     // Step 4: filters (the legacy syntax and expressions) and the `text-font` that is not a literal.
     {sources: {g: {type: 'geojson', data: fc}}, layers: [
         {id: 'a', type: 'fill', source: 'g', filter: 5}, {id: 'b', type: 'fill', source: 'g', filter: []}, {id: 'c', type: 'fill', source: 'g', filter: true},
@@ -79,7 +86,7 @@ const styles = [
     ]},
 ];
 
-// (The values of sources, step 4 of #1748. A canvas source is not in the list: it has a step of its own.)
+// (The values of sources, step 4 of #1748. A canvas source is in the list as MapLibre rejects it in a style.)
 const coords = [[0, 1], [1, 1], [1, 0], [0, 0]];
 const sourceStyles = [
     {sources: {v: {type: 'vector', url: 5, tiles: 'a', bounds: [1, 2, 3], scheme: 'zxy', emptyResponse: 'x', minzoom: '0', maxzoom: NaN, attribution: 3, promoteId: {a: 1, b: 'p'}, volatile: 1, encoding: 'pbf', extra: 1}}, layers: []},
@@ -89,6 +96,7 @@ const sourceStyles = [
     {sources: {d: {type: 'raster-dem', url: 3, encoding: 'x', redFactor: 2, tileSize: 'a', unknown: 1}, e: {type: 'raster-dem', encoding: 'custom', redFactor: 'a', baseShift: 1, bounds: [1, 2, 3, 4]}, f: {type: 'raster-dem', encoding: 'terrarium', baseShift: 1, blueFactor: 1}}, layers: []},
     {sources: {i: {type: 'image', url: 4, coordinates: coords, extra: 1}, j: {type: 'image', url: 'a', coordinates: [[0, 1], [1, 1], [1, 0]]}, k: {type: 'image', coordinates: [[0, 1], [1, 1], [1, 0], 'a']}, l: {type: 'image', coordinates: [[0, 1], [1, 'x'], [1, 0, 3], [0, 0]]}, m: {type: 'image', coordinates: 'a'}}, layers: []},
     {sources: {m: {type: 'video', urls: ['a', 2], coordinates: coords, url: 'a'}, n: {type: 'video', urls: 'a', coordinates: [[0, 1], [1, 1], [1, 0], [0, 0], [1, 1]]}}, layers: []},
+    {sources: {c: {type: 'canvas', canvas: 'x', coordinates: coords}, d: {type: 'canvas'}}, layers: []},
     {sources: {a: {type: 'tiles'}, b: {type: 5}, c: {type: 'vector', url: 'https://example.com/v.json', minzoom: 0, maxzoom: 14}, d: {type: 'raster', url: 'https://example.com/r.json', tileSize: 256}}, layers: []},
 ];
 test('the texts of the values of sources are those of MapLibre GL JS', () => {
