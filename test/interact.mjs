@@ -617,13 +617,18 @@ for (const mode of renderers) {
             send('pointerdown', [100, 100]); await frame();
             for (let i = 1; i < 8; i++) { send('pointermove', [100 + i * 8, 100]); await frame(); }
             await new Promise(r => setTimeout(r, 200));
-            log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 1500 : 300}); log.push('|ret');
+            log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 3000 : 300}); log.push('|ret');
             // (`early`: the pointer lifts while the ease still runs.)
-            if (early) await new Promise(r => setTimeout(r, 300));
-            else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
+            // (It waits for the first `move` of the ease, not for a time: the report of the engine can come late. When the ease
+            // has ended by then, the attempt is void and the caller tries again.)
+            if (early) {
+                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('move'); i++) await new Promise(r => setTimeout(r, 25));
+                if (log.slice(log.indexOf('|call')).includes('moveend')) { m.remove(); el.remove(); return 'RETRY'; }
+            } else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
             await new Promise(r => setTimeout(r, 100));
             send('pointerup', [200, 120]);
-            await new Promise(r => setTimeout(r, early ? 2800 : 600));
+            if (early) for (let i = 0; i < 200 && log.slice(log.indexOf('|call')).filter(t => t === 'moveend').length < 2; i++) await new Promise(r => setTimeout(r, 25));
+            else await new Promise(r => setTimeout(r, 600));
             m.remove(); el.remove();
             return log.slice(log.indexOf('|call')).join(' ');
         }, [lib, mode, second, early]).catch(e => String(e));
@@ -632,7 +637,8 @@ for (const mode of renderers) {
             check(`[${mode}] ${second} during a drag fires movestart inside the call and moveend, dragend and moveend after it, as in MapLibre GL JS (#2469)`,
                 ours === ml && ml === '|call movestart |ret move moveend dragend moveend', JSON.stringify({ours, ml}));
             // The release during the ease fires the `moveend` of the drag, and the ease goes on without a second `movestart`.
-            const earlyOurs = await dragEase('ours', second, true), earlyMl = await dragEase('ml', second, true);
+            const attempt = async lib => { let out; for (let i = 0; i < 4 && (i === 0 || out === 'RETRY'); i++) out = await dragEase(lib, second, true); return out; };
+            const earlyOurs = await attempt('ours'), earlyMl = await attempt('ml');
             check(`[${mode}] ${second} during a drag, released while it runs, fires dragend and moveend and then the rest of the ease with no second movestart, as in MapLibre GL JS (#2469)`,
                 earlyOurs === earlyMl && earlyMl === '|call movestart |ret move dragend moveend move moveend', JSON.stringify({earlyOurs, earlyMl}));
         }
