@@ -14,7 +14,7 @@ import {Marker, Popup, part, type PopupOffset} from './overlays.ts';
 export {defaultPin} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
-import type {Control, ControlPosition} from './controls.ts';
+import {cls, type Control, type ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
 import {derefLayers, fontFaces, type FontFaces} from './resolve.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
@@ -316,6 +316,12 @@ export interface MapDescription extends MapSetup {
      */
     cooperativeGestures?: boolean | null;
     /**
+     * Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way.
+     * A change in `update` turns every gesture on or off: `false` also turns off a gesture that a plugin had enabled alone, and `true` turns on every gesture.
+     * @default true
+     */
+    interactive?: boolean | null;
+    /**
      * The color scheme of the controls, the popup and the attribution. `'auto'` follows `prefers-color-scheme` of the
      * browser. The resolved scheme is also the global state `color-scheme` of the style, unless `globalState` sets it.
      * @default 'light'
@@ -366,11 +372,6 @@ export interface MapSetup {
      * @default '"Noto Sans", "Helvetica Neue", Arial, sans-serif'
      */
     fontFamily?: string | null;
-    /**
-     * Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way.
-     * @default true
-     */
-    interactive?: boolean | null;
     /**
      * Whether the canvas uses multisample antialiasing. It smooths the edges of polygons at a cost in frame time.
      * @default false
@@ -892,7 +893,16 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     // loaded, the gestures are blocked without the hint. `stop` removes the hint; `cooperating` is the wanted state.
     let cooperating = false, stop: (() => void) | undefined;
     // (The canvas is read each time: a fall back from the worker to the main thread replaces it; #777.)
-    const touchAction = map.getCanvas().style.touchAction;
+    let touchAction = map.getCanvas().style.touchAction;
+    // `interactive` changes while the map runs: every handler goes off or on, as `interactive: false` does when the map is made (#213).
+    // (A handler that a plugin turned off alone is on again after `interactive: true`.)
+    const interact = (on: boolean) => {
+        const canvas = map.getCanvas();
+        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) map[k][on ? 'enable' : 'disable']();
+        for (const c of cls('interactive').split(' ')) canvas.classList.toggle(c, on);
+        touchAction = on ? 'none' : '';
+        if (!cooperating) canvas.style.touchAction = touchAction;
+    };
     const cooperate = (on: boolean) => {
         cooperating = on;
         if (!on) { stop?.(); stop = map.gate = undefined; map.getCanvas().style.touchAction = touchAction; return; }
@@ -1255,6 +1265,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         wantedImages = next.images;
         if (next.images !== before?.images) putImages();
+        if (before && (next.interactive === false) !== (before.interactive === false)) interact(next.interactive !== false);
         if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
         if (next.colorScheme !== before?.colorScheme || !before) scheme(next.colorScheme);
         if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();

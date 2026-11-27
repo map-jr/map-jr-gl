@@ -2708,6 +2708,15 @@ for (const renderer of renderers) {
                 panned: Math.abs(c[0] - t.center0[0]) + Math.abs(c[1] - t.center0[1]) > 1e-9, keptOk: Math.abs(kept[0] - end[0]) < 1e-3 && Math.abs(kept[1] - end[1]) < 1e-3, fill: t.dragPin.querySelector('path')?.getAttribute('fill')}; });
         check(`[${renderer}] a draggable overlay: a click is a click, a drag after a move calls onDragStart, onDrag and onDragEnd with [lng, lat], the map does not pan, and the same lngLat keeps the dropped place; defaultPin() is the pin of Marker`,
             dClick === 'click' && dEarly === 0 && dragged.seq === 'start 2 drags' && dragged.endOk && !dragged.panned && dragged.keptOk && dragged.fill === 'rgb(200, 0, 0)', JSON.stringify({dClick, dEarly, dragged}));
+        // `interactive` (#213): update() turns the gestures off and on again, and the grab cursor class follows.
+        const dragMoved = async () => { const c = () => page.evaluate(() => window.t.host.state.get().view.center); const [x, y] = await c(); await page.mouse.move(450, 300); await page.mouse.down(); await page.mouse.move(600, 400, {steps: 8}); await page.mouse.up(); await page.waitForTimeout(400); const [x2, y2] = await c(); return Math.abs(x2 - x) + Math.abs(y2 - y) > 1e-6; };
+        const grab = () => page.evaluate(() => document.querySelector('#host canvas').classList.contains('map-jr-interactive'));
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: false}); });
+        const liveOff = {moved: await dragMoved(), grab: await grab()};
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: true}); });
+        const liveOn = {moved: await dragMoved(), grab: await grab()};
+        check(`[${renderer}] interactive: update({interactive: false}) stops a drag and update({interactive: true}) brings it back (#213)`,
+            !liveOff.moved && !liveOff.grab && liveOn.moved && liveOn.grab, JSON.stringify({liveOff, liveOn}));
         // `cooperativeGestures` (#41): a plain wheel does not zoom and shows the hint; Ctrl + wheel zooms; update() turns it off.
         const zoomNow = () => page.evaluate(() => window.t.host.state.get().view.zoom);
         // (The library asks for ⌘ instead of Ctrl when the user agent says Mac, as MapLibre GL JS does.)

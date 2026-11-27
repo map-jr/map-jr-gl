@@ -66,7 +66,7 @@ The fields with an object, a list or a function as value have no attribute: set 
 | `renderer`, `font-family` | `renderer`, `fontFamily` | A string. |
 
 The defaults and the meaning of each value are those of the field in [`MapDescription`](description.md#mapdescription).
-The map reads `renderer`, `font-family`, `no-interactive`, `antialias`, `no-attribution`, `attribution-compact`,
+The map reads `renderer`, `font-family`, `antialias`, `no-attribution`, `attribution-compact`,
 `hash` and `nonce` only when it is created, as every field of [`MapSetup`](description.md#mapsetup). The `nonce` of
 the element, set as an attribute or as a property, sets `nonce` of the description.
 

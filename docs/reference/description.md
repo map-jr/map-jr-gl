@@ -50,6 +50,7 @@ const map = createMap('map', {
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
+| `interactive` | `boolean \| null` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
 | [`colorScheme`](#colorscheme-and-oncolorschemechange) | `ColorScheme \| null` | `'light'` | The color scheme of the controls, the popup and the attribution. |
 | [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `((colorScheme: ColorScheme) => void) \| null` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
 | [`locale`](#locale) | `Record<string, string> \| null` | | The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
@@ -67,7 +68,6 @@ ignores a change in a later description. To change one, destroy the map and crea
 |---|---|---|---|
 | [`renderer`](#renderer) | `Renderer \| null` | `'auto'` | The thread that renders the map. |
 | `fontFamily` | `string \| null` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`. |
-| `interactive` | `boolean \| null` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
 | `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
 | [`attribution`](#attribution) | `false \| `[`AttributionOptions`](#attributionoptions)` \| null` | | The options of the built-in attribution (`{compact, customAttribution}`), or `false` to hide it when the page shows the credits itself. |
 | [`hash`](#hash) | `boolean \| string \| null` | `false` | `true` keeps the view in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), and a string keeps it in the parameter of that name. |

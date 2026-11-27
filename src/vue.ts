@@ -386,7 +386,7 @@ const MapJrComponent = defineComponent({
          */
         fontFamily: String as PropType<string | null>,
         /**
-         * Whether the user can move the map. Read only when the map is created.
+         * Whether the user can move the map.
          * @default true
          */
         interactive: {type: Boolean as PropType<boolean | null>, default: undefined},

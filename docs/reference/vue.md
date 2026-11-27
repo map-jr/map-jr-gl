@@ -32,7 +32,7 @@ flex or grid container. A parent with only `min-height` gives the map a height o
 
 Each prop sets the field of the description with the same name, except `mapStyle`, which sets `style`, and `ssr`.
 See [the description](description.md) for what each field does. In a template, write a prop in kebab-case
-(`initial-view`) or in camelCase. The props `renderer`, `fontFamily`, `interactive`, `antialias`, `nonce`, `attribution`
+(`initial-view`) or in camelCase. The props `renderer`, `fontFamily`, `antialias`, `nonce`, `attribution`
 and `hash` are read only when the map is created. To change one of them, create the component again, for example with a
 new `key`.
 
