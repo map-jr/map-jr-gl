@@ -5752,15 +5752,25 @@ for (const mode of renderers) {
             console.warn = (...a) => warnings.push(String(a[0]));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: []}, ...options}); maps.push(m); return m; };
             let thrown = '', thrownCode;
+            const strictOptions = [];
             try {
                 const m = make({fadeDuration: 0, projection: {type: 'globe'}, locale: 'fr', canvasContextAttributes: {preserveDrawingBuffer: true}, dragPan: {linearity: 0.5}, rotateSpeed: 2});
                 m.setRoll(10); m.showCollisionBoxes = true; m.setVerticalFieldOfView(NaN); m.setCenterElevation(100); m.setFeatureState({source: 's'}, {});
                 new mod.LogoControl({compact: true}); new mod.Popup({locationOccludedOpacity: 0.5}); mod.setWorkerUrl('https://unpkg.com/maplibre-gl/dist/maplibre-gl-csp-worker.js');
                 try { make({strict: true, fadeDuration: 0}); } catch (e) { thrown = e.message; thrownCode = e.code; }
+                // #2366: the two options that MapLibre GL JS reads throw too, in new Map() and in setStyle().
+                for (const options of [{terrainSkirtLength: 5}, {localIdeographFontFamily: 'serif'}]) {
+                    try { make({strict: true, ...options}); strictOptions.push('no throw ' + Object.keys(options)); } catch (e) { strictOptions.push(e.code + ' ' + e.message.split('key=')[1]); }
+                }
+                const sm = make({strict: true});
+                try { sm.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: 'serif'}); strictOptions.push('no throw setStyle'); } catch (e) { strictOptions.push(e.code + ' ' + e.message.split('key=')[1]); }
+                make({strict: true, terrainSkirtLength: 'auto', localIdeographFontFamily: 'sans-serif'}).setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: 'sans-serif'});
             } finally { console.warn = warn; }
             for (const m of maps) { const el = m.getContainer(); m.remove(); el.remove(); }
-            return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown, thrownCode};
+            return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown, thrownCode, strictOptions};
         });
+        check('[main] maplibre-compat: strict: true throws E90 in the production build for terrainSkirtLength and localIdeographFontFamily, and not for their defaults (#2366)',
+            JSON.stringify(prod.strictOptions) === JSON.stringify(['E90 "The option terrainSkirtLength"', 'E90 "The option localIdeographFontFamily"', 'E90 "The option localIdeographFontFamily of setStyle"']), JSON.stringify(prod.strictOptions));
         check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws the code, its link and the option (#2133, #2148)',
             prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 https://map-jr.org/e/90 key="The option fadeDuration"' && prod.thrownCode === 'E90', JSON.stringify(prod));
     }
