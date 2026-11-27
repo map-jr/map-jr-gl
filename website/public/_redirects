@@ -1,0 +1,3 @@
+# The links of the messages of the production files (map-jr.org/e/63, src/requests.ts) go to the message on
+# /reference/messages, whose anchors are e63. Cloudflare reads this file; scripts/serve.mjs too.
+/e/:code /reference/messages#e:code 302
