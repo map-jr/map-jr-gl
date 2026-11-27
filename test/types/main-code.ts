@@ -160,7 +160,7 @@ void renderToSVG({style: 'https://example.com/style.json', center: [8, 46.5], wi
 const renderOptions: RenderOptions = {style: 'https://example.com/style.json', center: [8, 46.5], zoom: 6, width: 600, height: 400};
 void renderToSVG(renderOptions);
 const firstViewOptions: FirstViewOptions = {style: 'https://example.com/style.json', bounds: [5, 45, 11, 48], width: 600, height: 400, attribution: false};
-void renderFirstView(firstViewOptions);
+void renderFirstView(firstViewOptions).then(({html, tiles}) => [html as string, tiles as string[]]);
 const imageOptions: ImageOptions = {style: 'https://example.com/style.json', bounds: [5, 45, 11, 48], width: 600, height: 400, rasteriser: {render: async () => new Uint8Array()}};
 void renderToImage(imageOptions);
 // @ts-expect-error a variable typed RenderOptions needs a view as well (#1204).

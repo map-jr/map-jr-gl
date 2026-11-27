@@ -20,8 +20,8 @@ test('renderToSVG fits small bounds up to fitMaxZoom, and up to 22 without it', 
 test('renderFirstView fits small bounds up to fitMaxZoom, else up to maxZoom', async () => {
     // The zoom-in button is disabled when the view is at `maxZoom`.
     const zoomIn = /<button class="map-jr-ctrl-zoom-in[^>]*>/;
-    const atMax = await renderFirstView({...view, maxZoom: 12, controls: [navigation()]});
+    const atMax = (await renderFirstView({...view, maxZoom: 12, controls: [navigation()]})).html;
     assert.match(zoomIn.exec(atMax)![0], /disabled/);
-    const below = await renderFirstView({...view, maxZoom: 12, fitMaxZoom: 9, controls: [navigation()]});
+    const below = (await renderFirstView({...view, maxZoom: 12, fitMaxZoom: 9, controls: [navigation()]})).html;
     assert.doesNotMatch(zoomIn.exec(below)![0], /disabled/);
 });
