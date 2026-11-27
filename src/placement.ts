@@ -241,6 +241,8 @@ export {CollisionGrid};
 
 
 type Box = [number, number, number, number];
+/** A circle of the grid: its bound and its radius (see `CollisionGrid`). */
+type Circle = [number, number, number, number, number];
 /**
  * `pad` is one number for every side, or [top, right, bottom, left] (`icon-padding`). As in MapLibre GL JS, the padding
  * is added before the box is turned by `angle`.
@@ -557,7 +559,7 @@ export function placeLabels(
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
                 let flatFrames: number[][] | undefined, flatSizes: number[] = [], textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
-                let bent: Placed | undefined, bentBoxes: Box[] = [];
+                let bent: Placed | undefined, bentBoxes: Circle[] = [];
                 const anchors: string[] = [];
                 if (hasText) {
                     const shift = (anchor: string, r: number): [number, number] => [
@@ -749,9 +751,9 @@ export function placeLabels(
                     const {bx, by, iframe, merc} = drawn;
                     angle = drawn.ang;
                     // As in MapLibre GL JS, the collision box of an icon along a line is not turned with the line: it is the box
-                    // that the icon would have at a point (#1774). (An icon that `icon-text-fit` stretches around text along the
-                    // line keeps the box in the direction of the text.)
-                    const unturned = line && fit === 'none', base = ic.upright ? 0 : north;
+                    // that the icon would have at a point (#1774). An icon that `icon-text-fit` stretches around text along the line
+                    // has the box of the icon around the text before the text follows the line (#2462).
+                    const unturned = line, base = ic.upright ? 0 : north;
                     const held = unturned ? turnTo(base + rot, base + rot - north) : drawn, bt = unturned ? l.upright ? 0 : north : bturn;
                     let {bw, bh} = held;
                     // As in MapLibre GL JS, the collision box keeps the perspective ratio where the drawn icon has none
@@ -816,11 +818,11 @@ export function placeLabels(
 
 /**
  * Lays one line of text along a label's path. Returns each glyph's start point (relative to the anchor) and angle, plus
- * collision boxes, or null when the text does not fit or the line bends too sharply to read.
+ * collision circles, or null when the text does not fit or the line bends too sharply to read.
  */
 function followLine(
     tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, flat = 0,
-): {curve: number[]; ground?: number[]; boxes: Box[]} | null {
+): {curve: number[]; ground?: number[]; boxes: Circle[]} | null {
     const path = l.path!, n = path.length / 2;
     // On the globe the ground has the scale of the sphere at the anchor (MapLibre GL JS's `getPitchedTextCorrection`):
     // the cosine of the latitude of the anchor over that of the center, mixed with Mercator by the globeness.
@@ -852,7 +854,7 @@ function followLine(
     // under each glyph (in the tile, at its place along the piece) gives nearly the same result without the division.
     const z = 2 ** it.id.z, behind = (u: number, v: number) => !!tr.globeness && tr.globe!.hidden(tr, (it.id.x + u / EXTENT) / z, (it.id.y + v / EXTENT) / z);
     const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centered on the line
-    const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
+    const curve: number[] = [], boxes: Circle[] = [], ground: number[] = [], mids: number[] = [];
     let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
     for (const advance of line.advances) {
         const a = advance * size, mid = pen + a / 2;
@@ -879,9 +881,23 @@ function followLine(
         if (!k) { bx = -dy; by = dx; }
         curve.push(cx - dx * a / 2 + bx * shift - ax, cy - dy * a / 2 + by * shift - ay, angle);
         if (k) ground.push(Math.hypot(dx, dy), bx, by);
-        const r = h / 2 + l.padding;
-        boxes.push([cx - r, cy - r, cx + r, cy + r]);
+        mids.push(cx, cy);
         pen += a + spacing;
+    }
+    // As in MapLibre GL JS (`placeCollisionCircles`), the text takes space as circles of the height of the text and
+    // `text-padding`, on the line from the center of the first glyph to that of the last (inset by a quarter of the
+    // radius at each end), with their centers 2.5 radii apart. (The glyph centers stand for the line between them; the
+    // text has two glyphs or more.)
+    const r = h / 2 + l.padding, along = [0];
+    for (let i = 2; i < mids.length; i += 2) along.push(along[i / 2 - 1] + Math.hypot(mids[i] - mids[i - 2], mids[i + 1] - mids[i - 1]));
+    const length = along[along.length - 1], inset = Math.min(r / 4, length / 2), padded = length - inset * 2;
+    const count = length <= r / 2 ? 1 : Math.ceil(padded / (r * 2.5)) + 1;
+    for (let i = 0, j = 1; i < count; i++) {
+        const d = inset + padded * i / Math.max(count - 1, 1);
+        while (j < along.length - 1 && along[j] < d) j++;
+        const f = along[j] > along[j - 1] ? (d - along[j - 1]) / (along[j] - along[j - 1]) : 0;
+        const x = mids[j * 2 - 2] + (mids[j * 2] - mids[j * 2 - 2]) * f, y = mids[j * 2 - 1] + (mids[j * 2 + 1] - mids[j * 2 - 1]) * f;
+        boxes.push([x - r, y - r, x + r, y + r, r]);
     }
     return {curve, ground: k ? ground : undefined, boxes};
 }
