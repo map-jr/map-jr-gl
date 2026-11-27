@@ -624,8 +624,7 @@ export class Map extends CoreMap {
     }
     private renderImages = (used: string[]) => {
         // (Only the images that the tiles in view or a pattern of a layer use, as in MapLibre GL JS; #2236.)
-        // (Pixels that did not change are not sent: each image sent to the engine makes it draw a frame, so a `render` that
-        // returns true without a change would keep the map from `idle`.)
+        // (Pixels that did not change are not sent: the copy and the upload would be wasted.)
         for (const name of used) {
             const image = this.animated.get(name);
             if (!image?.render?.() || !this.hasImage(name)) continue;

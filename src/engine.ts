@@ -59,7 +59,7 @@ export type Command =
      */
     | {type: 'templates'; slots: Record<string, string[]>; changed: string[]; rebuild: boolean}
     | {type: 'fonts'; fonts: FontSource[]}
-    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; sdf?: boolean; update?: boolean}
+    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; sdf?: boolean; update?: boolean; fromRender?: boolean}
     | {type: 'removeImage'; name: string}
     /** A new frame of a video or canvas source (the page makes it). The engine closes the bitmap. */
     | {type: 'frame'; source: string; image: ImageBitmap}
@@ -328,6 +328,9 @@ export class Engine {
     private contourWait = false;
     private reportFrames = false;
     private preFrames = false;
+    /** Whether the page runs `render()` of its images now (main renderer), and whether the next frame skips it (#2279). */
+    private inPreFrame = false;
+    private skipPreFrame = false;
     private drew = false;
     private pinged = 0;
     /** The `snapshot` commands that wait for the next frame. */
@@ -1018,7 +1021,16 @@ export class Engine {
             case 'image': {
                 // (`updateImage` with pixels of the same size: the texture changes in place, and the icons keep their places.)
                 const old = c.update && this.images.get(c.name);
-                if (old && old.width === c.w && old.height === c.h) { this.renderer.uploadSprite(old.x, old.y, c.w, c.h, c.data, false); break; }
+                if (old && old.width === c.w && old.height === c.h) {
+                    this.renderer.uploadSprite(old.x, old.y, c.w, c.h, c.data, false);
+                    // (Pixels from `render()` do not repaint, as in MapLibre GL JS, so an image animates only while the page
+                    // calls `triggerRepaint()`. On the main renderer they are in the frame that runs now. A worker gets them
+                    // after its frame: it draws one frame that runs no `render()`, so that the pixels show and the map can
+                    // go idle; #2279.)
+                    if (!c.fromRender) break;
+                    if (!this.inPreFrame) this.extraFrame();
+                    return;
+                }
                 this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight, sdf: c.sdf});
@@ -1088,6 +1100,7 @@ export class Engine {
             case 'cameraUpdate': this.cameraUpdate = c.fn; this.cameraUpdated = undefined; break;
             case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
+        this.skipPreFrame = false;
         this.repaint();
     }
 
@@ -1260,6 +1273,11 @@ export class Engine {
 
     // ---- frame loop ----
 
+    /**
+     * A frame that runs no `render()` of images (#2279): it shows pixels that came after a frame, or repeats a frame for
+     * WebKit. Otherwise, with slow frames, each such frame would call `render()` again and the map would not go idle.
+     */
+    private extraFrame() { if (!this.scheduled) { this.skipPreFrame = true; this.repaint(); } }
     repaint() {
         if (this.scheduled) return;
         this.scheduled = true;
@@ -1627,7 +1645,8 @@ export class Engine {
     /** The camera after the last call of `cameraUpdate`: as in MapLibre GL JS, the function runs only when the camera changed, so that a map whose function always changes the camera still goes idle (#1970). */
     private cameraUpdated?: number[];
     private frame(now: number) {
-        const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
+        const tr = this.tr, frameNo = ++this.frameNo, began = performance.now(), skipPre = this.skipPreFrame;
+        this.skipPreFrame = false;
         // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
         if (this.transitionEnd && began >= this.transitionEnd) { this.transitionEnd = 0; for (const l of this.layers) for (const k in l.p) l.p[k] = (l.p[k] as any).to ?? l.p[k]; }
         compileFor(this.states); // (the light of the style is compiled when it is drawn)
@@ -1647,7 +1666,7 @@ export class Engine {
         }
         // The page runs `render()` of its images before the frame (#2128). On the main renderer this is a call, and the new
         // pixels are in this frame, as in MapLibre GL JS. A worker does not wait for the page: its pixels come a frame later.
-        if (this.preFrames) this.emit({type: 'beforeFrame', images: this.usedImages(frameNo - 1)});
+        if (this.preFrames && !skipPre) { this.inPreFrame = true; this.emit({type: 'beforeFrame', images: this.usedImages(frameNo - 1)}); this.inPreFrame = false; }
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;
@@ -2049,14 +2068,15 @@ export class Engine {
                 raf(send); setTimeout(send, 100);
             }
         }
+        // (`busy` first: the two extra frames below run no `render()` of images, and a busy frame must; #2279.)
+        if (busy) this.repaint();
         // (One more frame after the first `idle`: it requests the overview tiles.)
-        if (idle && !this.wentIdle) { this.wentIdle = true; this.repaint(); }
+        if (idle && !this.wentIdle) { this.wentIdle = true; this.extraFrame(); }
         // WebKit does not always show the one frame that a map draws after a pause (#429): the page keeps the old picture,
         // with no error and no lost context. A frame that comes after a pause is therefore followed by one more frame.
-        if (began - this.lastFrameAt > 100) this.repaint();
+        if (began - this.lastFrameAt > 100) this.extraFrame();
         this.lastFrameAt = began;
         this.wasIdle = idle;
-        if (busy) this.repaint();
         const st = this.stats, end = performance.now();
         st.frames++; st.cpu += end - began;
         if (!st.since) st.since = began;

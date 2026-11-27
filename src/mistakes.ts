@@ -197,8 +197,58 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
             // (An expression too deep for the stack is left to the map, which reports what it cannot draw.)
             if (e && Array.isArray(v) && typeof v[0] === 'string' && operators.split(' ').includes(v[0])) { try { for (const r of expressionErrors(v, e, g === 'layout')) found(at + r.key, r.error); } catch { /* see above */ } }
             else if (c) checkValue(at, v, c, found);
+            if (g === 'layout' && k === 'text-font' && Array.isArray(v) && operators.split(' ').includes(v[0]) && !outputDefined(v) && !(e && expressionErrors(v, e, true).some(r => !r.error.startsWith('"feature-state"')))) found(at, 'Invalid data expression for "text-font". Output values must be contained as literals within the expression.');
         }
+        if (l.filter !== undefined) validateFilter(where + '.filter', l.filter, found);
     });
+}
+/** Whether every output of the expression `e` is a literal, as `outputDefined` of MapLibre's expressions says (the `text-font` check). MapLibre folds a constant expression to a literal. */
+function outputDefined(e: any): boolean {
+    if (!Array.isArray(e) || typeof e[0] !== 'string') return true;
+    const op = e[0], dynamic = (x: any): boolean => Array.isArray(x) && (typeof x[0] === 'string' && 'get has properties geometry-type id feature-state zoom heatmap-density elevation line-progress accumulated is-supported-script error collator within distance global-state image'.split(' ').includes(x[0]) || x.some(dynamic));
+    if (op === 'literal' || op === 'within' || op === 'distance' || !dynamic(e)) return true;
+    const outputs = (from: number, every?: boolean) => e.slice(from).filter((_: unknown, i: number) => every || i % 2 < 1).every(outputDefined);
+    // (A variable of constant bindings is folded to a literal; a binding that is not constant is treated as not defined.)
+    return op === 'let' ? !e.slice(2, -1).some(dynamic) && outputDefined(e[e.length - 1]) : op === 'step' ? outputs(2) : op.startsWith('interpolate') ? outputs(4)
+        : op === 'case' || op === 'match' ? e.every((x: unknown, i: number) => i < (op === 'case' ? 2 : 3) || (i - (op === 'case' ? 2 : 3)) % 2 && i < e.length - 1 || outputDefined(x))
+        : ['coalesce', 'array', 'string', 'number', 'boolean', 'object', 'to-number', 'to-color', 'to-boolean', 'to-string'].includes(op) && outputs(1, true);
+}
+/** MapLibre's `classifyFilter` of the filter `f`: 'e' expression, 'l' legacy syntax or 'n' neutral (valid in both). */
+const classify = (f: any): string => {
+    if (typeof f === 'boolean') return 'n';
+    if (!Array.isArray(f) || !f.length) return 'l';
+    const n = f.length, [op, a, b] = f;
+    if (op === 'has') return n < 2 || a === '$id' || a === '$type' ? 'l' : n === 2 ? 'n' : 'e';
+    if (op === 'in') return n >= 3 && (typeof a !== 'string' || Array.isArray(b)) ? 'e' : 'l';
+    if (op === '!in' || op === '!has' || op === 'none') return 'l';
+    if (['==', '!=', '>', '>=', '<', '<='].includes(op)) return n !== 3 || Array.isArray(a) || Array.isArray(b) ? 'e' : 'l';
+    if (op === 'any' || op === 'all') { const c = f.slice(1).map(classify); return c.includes('e') ? 'e' : c.includes('l') ? 'l' : 'n'; }
+    return 'e';
+};
+/** Calls `found` with MapLibre's text for the `filter` `f` of a layer at `where`: the types of an expression, or the legacy syntax (`validateFilter`, #1748). */
+function validateFilter(where: string, f: any, found: (where: string, why: string) => void) {
+    if (classify(f) !== 'l') {
+        if (Array.isArray(f) && typeof f[0] === 'string') try { for (const r of expressionErrors(f, ' dzi', 'filter')) found(where + r.key, r.error); } catch { /* too deep for the stack */ }
+        return;
+    }
+    legacyFilter(where, f, found);
+}
+/** MapLibre's `validateNonExpressionFilter`. */
+function legacyFilter(where: string, f: any, found: (where: string, why: string) => void) {
+    const t = typeOf(f), op = f?.[0], ops = '== != > >= < <= in !in all any none has !has'.split(' '), order = ['<', '<=', '>', '>=', '==', '!='];
+    if (t !== 'array') return found(where, `array expected, ${t} found`);
+    if (!f.length) return found(where, 'filter array must have at least 1 element');
+    if (!ops.includes(op)) found(where + '[0]', `expected one of [${ops.join(', ')}], ${JSON.stringify(op)} found`);
+    if (order.slice(0, 4).includes(op) && f.length >= 2 && f[1] === '$type') found(where, `"$type" cannot be use with operator "${op}"`);
+    if (order.includes(op) && f.length !== 3) found(where, `filter array for operator "${op}" must have 3 elements`);
+    if (order.includes(op) || op === 'in' || op === '!in') {
+        if (f.length >= 2 && typeOf(f[1]) !== 'string') found(where + '[1]', `string expected, ${typeOf(f[1])} found`);
+        for (let i = 2; i < f.length; i++) {
+            if (f[1] === '$type') { if (!['Point', 'LineString', 'Polygon'].includes(f[i])) found(`${where}[${i}]`, `expected one of [Point, LineString, Polygon], ${JSON.stringify(f[i])} found`); }
+            else if (!['string', 'number', 'boolean'].includes(typeOf(f[i]))) found(`${where}[${i}]`, `string, number, or boolean expected, ${typeOf(f[i])} found`);
+        }
+    } else if (op === 'any' || op === 'all' || op === 'none') f.slice(1).forEach((c: unknown, i: number) => legacyFilter(`${where}[${i + 1}]`, c, found));
+    else if (op === 'has' || op === '!has') { if (f.length !== 2) found(where, `filter array for "${op}" operator must have 2 elements`); else if (typeOf(f[1]) !== 'string') found(where + '[1]', `string expected, ${typeOf(f[1])} found`); }
 }
 /** The type of `v` as the style specification names it. */
 const typeOf = (v: unknown) => v === null ? 'null' : Array.isArray(v) ? 'array' : v !== v ? 'NaN' : typeof v;
