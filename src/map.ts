@@ -985,8 +985,9 @@ export class Map {
         return this;
     }
     off(type: string, a: string | string[] | Listener, b?: Listener) {
-        const layers = typeof a === 'string' ? [a] : Array.isArray(a) ? a : null, key = String(layers);
-        if (layers) this.layerListeners = this.layerListeners.filter(l => !(l.type === type && String(l.layers) === key && l.fn === b));
+        const layers = typeof a === 'string' ? [a] : Array.isArray(a) ? a : null;
+        // As in MapLibre GL JS: the first listener with the same ids (in any order) and function goes, and only that one.
+        if (layers) { const i = this.layerListeners.findIndex(l => l.type === type && l.fn === b && l.layers.length === layers.length && l.layers.every(id => layers.includes(id))); if (i >= 0) this.layerListeners.splice(i, 1); }
         else this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== a);
         return this;
     }
