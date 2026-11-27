@@ -242,7 +242,7 @@ export interface MapDescription extends MapSetup {
     images?: Record<string, ImageInput> | null;
     /**
      * Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. A layer
-     * names an image of such a sprite as `id:name` (`pins:hotel`). A change of this field loads the style again.
+     * names an image of such a sprite as `id:name` (`pins:hotel`). A change of this field loads the new sprite only.
      */
     sprite?: SpriteInput[] | null;
     /** Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. */
@@ -905,7 +905,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     // The sources of the base style: a source of the description with one of these ids replaces it, and only a new style gives it back.
     let baseSources: object = {};
     // The terrain of the base style, which a description without `terrain` gives back without a new style (#1143).
-    let styleTerrain: TerrainSpecification | null = null;
+    let styleTerrain: TerrainSpecification | null = null, styleSprite: unknown;
+    // (A URL of `sprite` that is relative is relative to the page, and the style has its own base.)
+    const absoluteSprites = (sprite: Given['sprite']) => Array.isArray(sprite) ? sprite.map(({id, url}) => ({id, url: new URL(url, document.baseURI).href})) : undefined;
+    // (The sprites of the style with those of the description added, as `extended` has them.)
+    const sprites = (sprite: Given['sprite']) => extended({layers: [], sprite: styleSprite}, {sprite: absoluteSprites(sprite)}).sprite ?? null;
     // The projection of the style itself, which applies when the description has none, and that of the last description.
     let styleProjection: ProjectionSpecification | undefined, wantedProjection = spec.projection;
     // The ids of the GeoJSON sources that keys of `data` made, because the style and `sources` have no source of that id (#487).
@@ -928,6 +932,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         styled = true;
         baseSources = style.sources ?? {};
         styleTerrain = style.terrain ?? null;
+        styleSprite = style.sprite;
         styleProjection = style.projection;
         // (The code for the images of a style is loaded only for a style that has them. After it has loaded, the map must
         // still exist and the style must not have been replaced.)
@@ -948,8 +953,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
         check(4, style, parts(next));
-        // (A URL of `sprite` that is relative is relative to the page, and the style has its own base.)
-        const sprite = Array.isArray(next.sprite) ? next.sprite.map(({id, url}) => ({id, url: new URL(url, document.baseURI).href})) : undefined;
+        const sprite = absoluteSprites(next.sprite);
         const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers), sprite}), wantedData, false, typeError);
         madeData.clear();
         for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
@@ -1192,9 +1196,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) && !(styled && editStyle(next.style, before.style, differ)) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite));
+        const restyled = !!before && (differ(next.style, before.style) && !(styled && editStyle(next.style, before.style, differ)) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite) && !styled);
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else {
+            // (A changed `sprite` goes to `setSprite`, which loads the sprite files only, as the diff of MapLibre GL JS does; #1194.)
+            if (before && differ(next.sprite, before.sprite)) { state.set({idle: false}); map.setSprite(sprites(next.sprite)); }
             // (Layers that went to the map as edits are checked now, as a new style is, and not only when the map is next idle; #1684.)
             // (A new style object that went to the map as edits is checked as a style is: its zoom curves too, #1765. The layers of the description are checked with the style that the map has, so that a `before` that names no layer warns, #1766.)
             if (__DEV__ && before && differ(next.style, before.style)) check(4, styleFor(next.style, styledDark));

@@ -918,8 +918,6 @@ export class Map extends CoreMap {
     }
     /** Returns the sprites of the style as `{id, url}` objects. A sprite that the style gives as one URL has the id `'default'`. */
     getSprite(): {id: string; url: string}[] { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
-    /** Replaces the sprites of the style, or removes them with `null`. */
-    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
     /** Adds a sprite sheet with an id and a URL to the style, as in MapLibre GL JS. Its images have the names `id:name`. */
     addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
     /** Removes the sprite sheet with this id from the style. */
