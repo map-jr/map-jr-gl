@@ -81,6 +81,8 @@ export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
     validateStyle?: boolean;
     /** The angle in degrees from north within which `snapToNorth` and the end of a gesture turn the map north. The default is 7, and 0 turns the snap off. */
     bearingSnap?: number;
+    /** No effect: a value other than the default `"sans-serif"` warns once. Ideographs use the font list of the style. */
+    localIdeographFontFamily?: string | false;
     /** No effect: a value other than the default `"auto"` warns once. */
     terrainSkirtLength?: 'auto' | 'none' | number;
     /** No effect: labels show and hide without a fade. */
@@ -221,7 +223,7 @@ export type StyleSetterOptions = {validate?: boolean};
  * `validate: false` skips the check of this style, and `validate: true` checks it; without `validate`, the option
  * `validateStyle` of `new Map()` applies. The production build checks no style.
  */
-export type StyleSwapOptions = {diff?: boolean; validate?: boolean; transformStyle?: (previous: any, next: any) => any};
+export type StyleSwapOptions = {diff?: boolean; validate?: boolean; /** No effect: a value other than "sans-serif" warns once. */ localIdeographFontFamily?: string | false; transformStyle?: (previous: any, next: any) => any};
 export type StyleImageMetadata = {pixelRatio?: number; sdf?: boolean; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: string; textFitHeight?: string};
 
 /**
