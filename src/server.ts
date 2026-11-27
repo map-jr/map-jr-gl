@@ -257,12 +257,15 @@ function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined,
     return fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], width, height, p, p, maxZoom);
 }
 
+// The warning about `pitch` is shown once per process; it holds no state of a map.
+let warnedPitch = false;
+
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
 async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
     if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] ${o.center == null && o.zoom == null ? 'E1640 server render: the options have no "center" and no "zoom"' : o.center == null ? 'E11640 server render: the options have "zoom" but no "center"' : 'E21640 server render: the options have "center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
-    if (o.pitch) console.warn(`[map-jr-gl] E2513 server render: "pitch" is ${o.pitch}, and the server render draws the view flat, as if the pitch were 0. The map draws the pitch in the browser. Remove "pitch" from the options, or leave it for the map.`);
+    if (o.pitch && !warnedPitch) { warnedPitch = true; console.warn(`[map-jr-gl] E2513 server render: the pitch is ${o.pitch}, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.`); }
     // The size is written into the markup as it is: a string could add attributes, and NaN gives a size of NaN (#1668).
     for (const name of ['width', 'height'] as const) {
         const size: unknown = o[name];

@@ -248,7 +248,7 @@ everything when it takes over in the browser.
 
 | Not drawn | What the render shows |
 |---|---|
-| Pitch | The view from straight above. A `pitch` other than 0 in the options or in the view of the description writes one warning (`E2513`) for each render. |
+| Pitch | The view from straight above. A `pitch` other than 0 in the options or in the view of the description writes one warning (`E2513`) for each process. |
 | `hillshade`, `color-relief` and `heatmap` layers | Nothing for that layer. |
 | Lines with a `line-gap-width` above 0 | Nothing for that layer. |
 | 3D terrain | The layers on flat ground. |

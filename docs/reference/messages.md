@@ -1922,7 +1922,7 @@ server render: the layer "<layerId>" is not drawn, because the server render doe
 `Warning` `Server renderer`
 
 ```text
-server render: "pitch" is <pitch>, and the server render draws the view flat, as if the pitch were 0. The map draws the pitch in the browser. Remove "pitch" from the options, or leave it for the map.
+server render: the pitch is <pitch>, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.
 ```
 
 ## E10017
