@@ -345,7 +345,7 @@ export class Map {
         // As in MapLibre, `bounds` comes before `center` and `zoom`: the map starts with that area in view.
         // (The padding of the map is in place for the first fit, so that the box fits into the free part; the main API passes it, #1162.)
         if (options.startPadding !== undefined) this.tr.padding = paddingOf(options.startPadding);
-        if (options.bounds) { const fit = this.cameraForBounds(options.bounds, options.fitBoundsOptions); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
+        if (options.bounds) { const fit = this.cameraForBounds(options.bounds, {bearing: options.bearing, ...options.fitBoundsOptions}); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
         // As in MapLibre, `interactive: false` turns every handler off, and `enable()` on one turns it on later (#196).
         // The map still fires its mouse events (#253), and a touch scrolls the page until a handler is enabled.
         const still = options.interactive === false;
@@ -480,7 +480,7 @@ export class Map {
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
                 this.fellBack(e.data.message);
-                const fresh = this.canvas.cloneNode() as HTMLCanvasElement;
+                const at = performance.now(), fresh = this.canvas.cloneNode() as HTMLCanvasElement;
                 this.canvas.replaceWith(fresh);
                 for (const fn of this.inputCleanup.splice(0)) fn();
                 this.canvas = fresh;
@@ -505,7 +505,7 @@ export class Map {
                     this.templates.clear();
                     for (const [name, [source, options]] of this.imageInputs) this.putImage(name, source, options);
                     // (The worker drew nothing, so an animation that the page started went nowhere; #777.)
-                    this.resumeEase();
+                    this.resumeEase(at);
                     this.bindInput();
                 }, error => this.fire('error', {error}));
             };
@@ -566,6 +566,7 @@ export class Map {
         if (!quiet) this.retried = true;
         this.movingToMain = !!quiet;
         if (__DEV__) this.note('restart()', {main: !!main, quiet: !!quiet, renderer: this.renderer});
+        const at = performance.now();
         this.watchTurn++;
         if (!quiet) this.fire('webglcontextlost');
         // (A move for a custom layer keeps the queries that the old engine has not answered: the new engine answers them
@@ -592,7 +593,7 @@ export class Map {
             // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
             // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
             this.restyle(true);
-            this.resumeEase();
+            this.resumeEase(at);
             this.templates.clear(); // (as after a fall back; #882)
             for (const [name, [source, options]] of this.imageInputs) await this.putImage(name, source, options);
             for (const p of asked) if (p.sent && [...this.pending.values()].includes(p)) this.post(p.sent);
@@ -613,10 +614,14 @@ export class Map {
         if (this.renderer === 'worker') await this.restart(true, true);
     }
 
-    /** A new engine (after a fall back or a restart) runs the last `easeTo` for the time that is left; #777, #807. */
-    private resumeEase() {
-        const ease = this.eased, left = ease ? (ease.c as {duration: number}).duration - (performance.now() - ease.at) : 0;
-        if (left > 0) this.post({...ease!.c, duration: left} as Command);
+    /**
+     * A new engine (after a fall back or a restart) runs the last `easeTo` for the time that is left; #777, #807. An
+     * `easeTo` that still ran when the old engine stopped (at `since`) and whose time ran out during a slow start ends
+     * at its target at once, and not where the old engine stopped (#1757).
+     */
+    private resumeEase(since = performance.now()) {
+        const ease = this.eased, end = ease ? ease.at + (ease.c as {duration: number}).duration : 0;
+        if (end > since) this.post({...ease!.c, duration: Math.max(1, end - performance.now())} as Command);
     }
 
     /** The engine of the last start has drawn a frame. */

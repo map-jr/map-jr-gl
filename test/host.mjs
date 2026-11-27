@@ -267,6 +267,23 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] initialView.bounds is fitted into the part that the padding of the description leaves free (#1162)`,
             Math.abs(firstFit.first - firstFit.later) < 1e-6, JSON.stringify(firstFit));
+        // 2c. A fit of a box at a bearing keeps every corner of the box in view, for initialView and for moveTo (#1686).
+        const turned = await page.evaluate(async renderer => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+            const bounds = [[-74.1, 40.70], [-73.9, 40.72]], corners = [[-74.1, 40.70], [-74.1, 40.72], [-73.9, 40.70], [-73.9, 40.72]];
+            const outside = m => corners.filter(c => { const p = m.project(c); return p.x < -0.5 || p.y < -0.5 || p.x > 800.5 || p.y > 600.5; }).length;
+            const h = t.lib.createMap(el, {style: t.style, initialView: {bounds, bearing: 45}, renderer, attribution: false});
+            await wait(300);
+            const first = outside(h._map), firstZoom = h._map.getZoom();
+            h.moveTo({bounds, bearing: 90});
+            await wait(300);
+            const later = outside(h._map);
+            h.destroy(); el.remove();
+            return {first, firstZoom, later};
+        }, renderer);
+        check(`[${renderer}] a fit of bounds at a bearing keeps every corner of the box in view (#1686)`,
+            turned.first === 0 && turned.later === 0 && turned.firstZoom < 11.4, JSON.stringify(turned));
         // 2c. After a lost WebGL context, the new engine has the padding of the description (#1050). The camera that the
         // engine reports after a move carries its padding.
         if (renderer === 'main') {
@@ -1638,6 +1655,31 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] update() with an edited style object warns for a zoom curve, and a layer with a before that names no layer warns, in the development build (#1765, #1766)`,
             editedStyle.curve === 1 && editedStyle.before.length === 1, JSON.stringify(editedStyle));
+
+        // 3d3. A layer whose `before` names a later layer of the same list warns in update() as in createMap (#2354).
+        const forward = await page.evaluate(async renderer => {
+            const t = window.t, said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const layers = [{id: 'first', type: 'background', before: 'later', paint: {'background-color': '#eee'}}, {id: 'later', type: 'background', paint: {'background-color': '#ddd'}}];
+            const spec = {style, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const make = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            const count = () => said.filter(w => /E5 /.test(w) && /"later"/.test(w)).length;
+            const el1 = make(), h1 = t.lib.createMap(el1, {...spec, layers});
+            await idle(h1); await new Promise(r => setTimeout(r, 500));
+            const created = count(), order1 = h1._map.getStyle().layers.map(l => l.id).join();
+            h1.destroy(); el1.remove(); said.length = 0;
+            const el2 = make(), h2 = t.lib.createMap(el2, spec);
+            await idle(h2); await new Promise(r => setTimeout(r, 300));
+            h2.update({...spec, layers});
+            await new Promise(r => setTimeout(r, 500));
+            const updated = count(), order2 = h2._map.getStyle().layers.map(l => l.id).join();
+            console.warn = warn; h2.destroy(); el2.remove();
+            return {created, updated, order1, order2};
+        }, renderer);
+        check(`[${renderer}] a layer with a before that names a later layer of the same list warns once in update() and is placed as in createMap, in the development build (#2354)`,
+            forward.created === 1 && forward.updated === 1 && forward.order1 === forward.order2, JSON.stringify(forward));
 
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
