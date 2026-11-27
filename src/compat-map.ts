@@ -198,6 +198,8 @@ export class Map extends CoreMap {
     /** The controls on the map, in the order they were added. vue-maplibre-gl reads this private member of MapLibre GL JS. */
     get _controls() { return this.added = (this.added ?? []).filter(c => this.hasControl(c)); }
     declare private added?: Parameters<CoreMap['addControl']>[0][];
+    /** The request manager of MapLibre GL JS, with the one member that wrappers read: `@watergis/maplibre-gl-export` passes `_transformRequestFn` to the map that it draws. */
+    get _requestManager() { return {_transformRequestFn: this.transformRequest}; }
     // ---- Accepted, with no effect ----
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
     // value. They are here so that such code does not stop. A value that this library cannot do gives one warning.

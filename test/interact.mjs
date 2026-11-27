@@ -1621,6 +1621,15 @@ for (const mode of renderers) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
+    // `@watergis/maplibre-gl-export` reads `map._requestManager._transformRequestFn` and gives it to the map that it draws (#1830).
+    const manager = await page.evaluate(() => {
+        const m = window.map, fn = () => ({url: 'x'});
+        m.setTransformRequest(fn);
+        const set = m._requestManager?._transformRequestFn === fn;
+        m.setTransformRequest(null);
+        return {set, cleared: m._requestManager?._transformRequestFn === null};
+    });
+    check(`[${mode}] maplibre-compat: _requestManager._transformRequestFn is the function of setTransformRequest, and null after it is removed (#1830)`, manager.set && manager.cleared, JSON.stringify(manager));
     // A protocol named "pmtiles" (the pmtiles library's) is not used, because the library reads pmtiles:// itself: the
     // development build warns once (#250), and the production build does not warn (#2133).
     const pmWarns = await page.evaluate(async () => {
