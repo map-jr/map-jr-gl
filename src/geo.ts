@@ -174,6 +174,8 @@ export class Transform {
     heightAt?: (mx: number, my: number) => number;
     /** With 3D terrain: the lowest and highest ground in view, in the same meters. Tile selection covers both extremes. */
     groundRange?: [number, number];
+    /** With 3D terrain: the lowest ground of the elevation tile under the center, in the same meters (see `farZ`). */
+    lowUnder?: number;
 
     /** The globe (globe.ts) once it has loaded, and the stops of the projection (see `globeStops`). */
     globe?: typeof import('./globe.ts');
@@ -431,13 +433,14 @@ export class Transform {
     }
 
     /**
-     * MapLibre GL JS's far plane (_calculateNearFarZ). It is worked out for the lowest of the ground and a plane 100 m
-     * below the camera, so at a high pitch the ground reaches a little above the horizon line.
+     * MapLibre GL JS's far plane (_calculateNearFarZ). It is worked out for the lowest of the ground under the center, the
+     * lowest ground of the elevation tile there (`lowUnder`) and a plane 100 m below the camera, so at a high pitch the
+     * ground reaches a little above the horizon line.
      */
     farZ(): number {
         const p = this.pitch * Math.PI / 180, lp = Math.min(p, 89.25 * Math.PI / 180), d = this.cameraDistance, h = this.horizon();
         const near = Math.max(d / 2, d + this.elevation * this.pixelsPerMetre / Math.cos(lp)), oy = this.cy - this.height / 2;
-        const low = Math.min(this.elevation, Math.cos(p) * d / this.pixelsPerMetre + this.elevation - 100);
+        const low = Math.min(this.elevation, this.lowUnder ?? this.elevation, Math.cos(p) * d / this.pixelsPerMetre + this.elevation - 100);
         const plane = low < 0 ? near - low * this.pixelsPerMetre / Math.cos(lp) : near;
         const ground = Math.PI / 2 + p, far = (a: number) => Math.sin(a) * plane / Math.sin(clamp(Math.PI - ground - a, 0.01, Math.PI - 0.01));
         const ha = Math.atan(h / d), min = (90 - 89.25) * Math.PI / 180;

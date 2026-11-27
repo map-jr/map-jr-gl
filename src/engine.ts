@@ -1694,6 +1694,10 @@ export class Engine {
                 lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration);
             }
             tr.groundRange = [lo, hi];
+            // The lowest ground of the elevation tile under the center, for the far plane (`farZ`), as MapLibre GL JS's
+            // `minElevationForCurrentTile` (#2212).
+            const under = this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), Math.floor(tr.zoom))?.t.dem;
+            tr.lowUnder = under ? under.lo * this.exaggeration : undefined;
             // A center with a height of its own keeps it: it does not follow the ground, and the camera may go below it.
             if (held !== null) tr.elevation = held;
             else {
@@ -1749,7 +1753,7 @@ export class Engine {
             }
             this.rawElevation = tr.elevation / this.exaggeration;
         } else {
-            tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = held ?? 0;
+            tr.heightAt = undefined; tr.groundRange = tr.lowUnder = undefined; tr.elevation = held ?? 0;
             if (!globeness) aboveSeaLevel(tr);
             const st = this.style.terrain, src = st && this.style.sources[st.source];
             if (src) {
