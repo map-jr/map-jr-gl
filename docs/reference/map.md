@@ -840,8 +840,8 @@ The pointer events of an overlay reach the page as usual, and a press on an over
 element with `draggable` starts once the pointer has moved 3 pixels. A click without that move calls no drag
 callback, and the click at the end of a drag does not reach the element.
 
-A popup with a close button (see `closeButton`) closes on the Escape key while the keyboard focus is inside it. A popup stays open when the
-map moves.
+A popup with a close button (see `closeButton`) closes on the Escape key while the keyboard focus is inside it. A popup
+stays open when the map moves.
 
 A popup that the user opens from the keyboard takes the focus. The map counts a popup as opened from the keyboard
 when it opens within one second of a key press on the map, with no press of a pointer in between. The focus goes to
@@ -872,11 +872,12 @@ near no edge, and `'left'` or `'right'` near a side. The two parts join into a c
 `anchor` that you set keeps the popup on that side.
 
 `offset` of a marker is a pair, `[x, y]`. `offset` of a popup is a pair, one number, or an object with a pair for each
-anchor. The type is `PopupOffset`, as in `Popup` of `@map-jr/map-jr-gl/maplibre-compat`.
+anchor. The type `PopupOffset` is the same as `Offset` of `@map-jr/map-jr-gl/maplibre-compat`, which `Popup` takes.
 
 One number moves the popup away from the position on the side that it has, so that `offset: 16` keeps 16 pixels from
-the position on every side, also when the popup chooses its own anchor. An object such as `{bottom: [0, -16], top: [0, 16]}` gives the pair
-for the anchor that the popup has, and a side that it leaves out has `[0, 0]`. A marker with an offset that is not a
+the position on every side, also when the popup chooses its own anchor. An object such as
+`{bottom: [0, -16], top: [0, 16]}` gives the pair for the anchor that the popup has, and a side that it leaves out has
+`[0, 0]`. A marker with an offset that is not a
 pair warns in the development build and has no offset.
 
 `closeButton` and `closeOnClick` are options of a popup. A popup has a close button when `closeButton` is `true`, and

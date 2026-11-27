@@ -347,7 +347,7 @@ The props `offset`, `closeButton` and `closeOnClick` take the values of the same
 
 | Event | Value | When |
 |---|---|---|
-| `close` | none | When the user closes the popup. A listener for `close` adds the button that closes the popup. |
+| `close` | none | When the user closes the popup. A listener for `close` adds the button that closes the popup, unless `closeButton` is `false`. |
 | `dragstart` | `[lng, lat]` | When a drag starts, after the pointer has moved 3 pixels. A shorter move stays a click. |
 | `drag` | `[lng, lat]` | At each move of a drag. |
 | `dragend` | `[lng, lat]` | When the user drops the content. |
