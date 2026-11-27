@@ -59,6 +59,7 @@ export type FontFaces = Record<string, string | {url: string; 'unicode-range'?: 
 /** The font files of `font-faces`, one for each URL, with relative URLs joined to `base`. */
 export function fontFaces(faces: FontFaces | undefined, base?: string): FontSource[] {
     const fonts: FontSource[] = [];
+    if (!faces || typeof faces !== 'object' || Array.isArray(faces)) return fonts;
     for (const name in faces) {
         const value = faces[name], face = parseFontName(name);
         for (const entry of Array.isArray(value) ? value : [{url: value} as {url: string; 'unicode-range'?: string[]}]) {
