@@ -2177,7 +2177,7 @@ export class Map {
      * reports it in a later frame, which can come after the release (#2152). */
     turnPending() { return this.reported < this.turned; }
     /** @internal Ends the movement that runs now, with its end events (the compat entry's `jumpTo` stops it so, #2340). */
-    halt() { this.awaitingInertia = false; if (this.moving) this.settle(); }
+    protected halt() { this.awaitingInertia = false; if (this.moving) this.settle(); }
     /** Ends a movement: the end events of zoom, rotate and pitch, then `moveend`. */
     private settle() {
         this.moving = false;
