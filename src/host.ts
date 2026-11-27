@@ -11,6 +11,7 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, part, type PopupOffset} from './overlays.ts';
+export {defaultPin} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
