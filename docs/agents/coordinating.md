@@ -29,6 +29,16 @@ a batch shows a fault in them.
   the tracking issues stay with the owner.
 - **Lanes that change the same file belong to one coordinator,** and they move together. Lanes E, F and K of #46 all change `src/gl.ts`. When
   the lanes are split again, keep such lanes together, and write the new split into the coordination issue first.
+- **The triage coordinator checks for new `unverified` issues in the background** (the owner, 2026-11-27). In a cloud
+  session it creates a scheduled task that fires into its own session every hour (`create_trigger` with a cron
+  expression and no other session; the first one, of 2026-11-27, runs at minute 35), and on the Mac it runs
+  `/loop 1h`. Each check lists the open issues with the label `unverified` and compares them with its row of the
+  coordination issue. When there are new ones, it starts one triage worker for up to about seven issues, corrects or
+  closes each issue by the table of triage (see "Before a batch") and updates its row. When a check finds no new
+  issue, it does not write to the coordination issue.
+- **A successor of the triage coordinator** finds the scheduled task of the session that it replaces with
+  `list_triggers`, deletes it (`delete_trigger`) and creates its own, so that only one session checks. A triage
+  coordinator that ends with no successor deletes its own scheduled task.
 
 ### Handoff
 
