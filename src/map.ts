@@ -1884,12 +1884,12 @@ export class Map {
      */
     addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) { return this.putImage(name, source, options); }
     /** Throws when raw pixels do not have width × height × 4 values. Both entries call it before anything else, so that the compat entry throws as MapLibre GL JS does (#2233). */
-    protected checkPixels(name: string, source: Parameters<Map['addImage']>[1]) {
+    protected checkPixels(name: string, source: Parameters<Map['addImage']>[1], method = 'addImage') {
         const data = typeof source == 'object' && 'data' in source ? (source as {data?: {length?: unknown}}).data : undefined;
         if (typeof data?.length != 'number') return;
         const {width, height} = source as {width: number; height: number};
         const length = data.length, expected = width * height * 4;
-        if (length !== expected) throw new Error(`[map-jr-gl] E2233 addImage("${name}"): the data has ${length} values, but an image of ${width}×${height} needs ${expected} (width × height × 4, RGBA). Pass an array of that length.`);
+        if (length !== expected) throw new Error(`[map-jr-gl] E2233 ${method}("${name}"): the data has ${length} values, but an image of ${width}×${height} needs ${expected} (width × height × 4, RGBA). Pass an array of that length.`);
     }
     /** `variant`: the image is one variant of a template. It is not an image that the page added, and it is not looked at for slots. */
     private async putImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions, variant?: boolean, update?: boolean): Promise<this> {
@@ -1969,6 +1969,7 @@ export class Map {
      */
     updateImage(name: string, source: Parameters<Map['addImage']>[1]) {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);
+        this.checkPixels(name, source, 'updateImage');
         if (this.templates.has(name) || typeof source === 'string' && source.trimStart().startsWith('<') && templateSlots(source).length) return this.removeImage(name).addImage(name, source, this.imageInputs.get(name)?.[1]);
         // Pixels and drawables wait for the end of the task: of several calls in one task, only the last is scaled,
         // premultiplied and sent (#979). Any other command sends them first, so the order stays.

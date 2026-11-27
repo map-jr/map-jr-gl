@@ -828,7 +828,23 @@ for (const mode of renderers) {
         window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onError);
         return {...out, calls, uncaught, seen, has: window.map.hasImage('bad')};
     });
-    check(`[${mode}] addImage with pixels of the wrong length throws a clear error and calls nothing (#2233)`, size.message === '[map-jr-gl] E2233 https://map-jr.org/e/2233 image="bad" length=3 width=1 height=1 expected=4' && size.calls.add === 0 && size.calls.render === 0 && !size.uncaught.length && !size.has, JSON.stringify(size));
+    check(`[${mode}] addImage with pixels of the wrong length throws a clear error and calls nothing (#2233)`, size.message === '[map-jr-gl] E2233 https://map-jr.org/e/2233 method="addImage" image="bad" length=3 width=1 height=1 expected=4' && size.calls.add === 0 && size.calls.render === 0 && !size.uncaught.length && !size.has, JSON.stringify(size));
+    // #2242: updateImage with pixels of the wrong length throws E2233 from the call, and one of another size fires an `error`
+    // event and changes nothing, as MapLibre GL JS does. The page gets no uncaught error and no unhandled rejection.
+    const upd = await page.evaluate(async () => {
+        const uncaught = [], onError = e => uncaught.push(e.message || String(e.reason)), seen = [];
+        window.addEventListener('error', onError); window.addEventListener('unhandledrejection', onError);
+        window.map.on('error', e => seen.push(String(e.error?.message)));
+        const out = {};
+        await window.map.addImage('upd', {width: 2, height: 1, data: new Uint8Array(8)});
+        try { window.map.updateImage('upd', {width: 2, height: 1, data: new Uint8Array(5)}); out.length = 'no throw'; } catch (e) { out.length = String(e.message); }
+        try { await window.map.updateImage('upd', {width: 1, height: 1, data: new Uint8Array(4)}); out.size = 'no throw'; } catch (e) { out.size = String(e.message); }
+        await new Promise(r => setTimeout(r, 500));
+        window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onError);
+        const image = window.map.getImage('upd');
+        return {...out, seen, uncaught, width: image?.data?.width};
+    });
+    check(`[${mode}] updateImage with the wrong length throws and with another size fires an error, without an unhandled rejection (#2242)`, upd.length?.startsWith('[map-jr-gl] E2233 ') && upd.length.includes('updateImage') && upd.size === 'no throw' && upd.seen.length === 1 && upd.seen[0].includes('E2242') && !upd.uncaught.length && upd.width === 2, JSON.stringify(upd));
     // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
     const reads = await page.evaluate(async () => {
         const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;
@@ -3745,7 +3761,7 @@ for (const mode of renderers) {
             r.blue?.[2] > 200 && r.red?.[0] > 200 && r.edge?.[0] > 120 && r.edge[1] < 60, JSON.stringify(r));
     }
     // #949: updateImage replaces the pixels in place and keeps the options of the image (here `sdf`), as in MapLibre
-    // GL JS. The icon is drawn with the new pixels, and an image of another size replaces the old one.
+    // GL JS. The icon is drawn with the new pixels. An image of another size fires an `error` event and changes nothing (#2242).
     {
         const r = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -3774,15 +3790,17 @@ for (const mode of renderers) {
             const before = await centre(red);
             await m.updateImage('sq', square(16, 0, 0, 255));
             const after = await centre(blue);
+            const errors = [];
+            m.on('error', e => errors.push(String(e.error?.message)));
             await m.updateImage('sq', square(24, 0, 255, 0));
-            const resized = await centre(green);
+            const resized = await centre(blue);
             await m.updateImage('dot', square(16, 255, 255, 255));
             const sdf = m.getImage('dot')?.sdf;
             m.remove(); el.remove();
-            return {before, after, resized, sdf};
+            return {before, after, resized, sdf, errors};
         }, mode);
-        check(`[${mode}] compat: updateImage draws the new pixels, also at another size, and keeps the options of the image (#949)`,
-            r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[1] > 200 && r.resized[0] < 60 && r.sdf === true, JSON.stringify(r));
+        check(`[${mode}] compat: updateImage draws the new pixels, keeps the options of the image, and an image of another size is an error that changes nothing (#949, #2242)`,
+            r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[2] > 200 && r.resized[0] < 60 && r.sdf === true && r.errors?.length === 1 && r.errors[0].startsWith('[map-jr-gl] E2242 https://map-jr.org/e/2242 '), JSON.stringify(r));
     }
     // #1434: a video source draws the frames of its video, and `play`, `pause` and `getVideo` work as in MapLibre GL JS.
     // The video is made here: half a second of red, then half a second of blue. Its code loads only with a video source.
