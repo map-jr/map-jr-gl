@@ -275,7 +275,9 @@ export class Map {
     /** The number of the last command to the engine that can change what is loaded. */
     private seq = 0;
     /** The `seq` of the last jumpTo, which wrote `this.tr` in advance: an older camera report does not overwrite it (#548). */
-    private jumped = 0;
+    protected jumped = 0;
+    /** Whether a report of the camera fires the events of a move. The compat entry fires those of its jumps during the call instead (#2340). */
+    protected loud(_e: Extract<EngineEvent, {type: 'camera'}>) { return true; }
     /** The sources whose tiles for the view are all loaded, as the engine tells it. */
     private loadedSources = new Set<string>();
     private sourceRules = new globalThis.Map<string, {text: string; data: unknown; v: number}>();
@@ -784,7 +786,7 @@ export class Map {
         }
     }
 
-    private seen?: {zoom: number; bearing: number; pitch: number};
+    protected seen?: {zoom: number; bearing: number; pitch: number};
     /**
      * The last pointer move of a drag pan whose `drag` event has not fired. As in MapLibre GL JS, `drag` fires after the
      * `move` of the frame that applies the move, once for the moves of one frame (or at the release).
@@ -837,21 +839,23 @@ export class Map {
             if (h && e.grab && e.grab[2] >= h.from) h.at = [e.grab[0], e.grab[1]];
             if (h?.at && h.x !== undefined && !this.tr.heightAt && !this.tr.globeness && performance.now() - h.t < 100) this.tr.setLocationAt(h.at[0], h.at[1], h.x, h.y!);
             this.tilesLoaded = false;
-            if (!this.moving) this.fire('movestart');
-            this.moving = true;
-            this.fire('move');
-            if (this.dragMove && (e.seq ?? this.dragSeq) >= this.dragSeq) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
-            if (zoomed) { if (!this.zooming) this.fire('zoomstart'); this.zooming = true; this.fire('zoom'); }
-            if (turned) { if (!this.rotating) this.fire('rotatestart'); this.rotating = true; this.fire('rotate'); }
-            if (tilted) { if (!this.pitching) this.fire('pitchstart'); this.pitching = true; this.fire('pitch'); }
             // After a drag is released with inertia, the last drag frame can report "not moving" before the inertia's
             // first frame arrives. Movement has not ended until the inertia has been seen to start and then stop.
             if (e.moving) this.awaitingInertia = false;
             this.engineMoving = !!e.moving;
+            if (this.loud(e)) {
+                if (!this.moving) this.fire('movestart');
+                this.moving = true;
+                this.fire('move');
+                if (this.dragMove && (e.seq ?? this.dragSeq) >= this.dragSeq) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
+                if (zoomed) { if (!this.zooming) this.fire('zoomstart'); this.zooming = true; this.fire('zoom'); }
+                if (turned) { if (!this.rotating) this.fire('rotatestart'); this.rotating = true; this.fire('rotate'); }
+                if (tilted) { if (!this.pitching) this.fire('pitchstart'); this.pitching = true; this.fire('pitch'); }
+            }
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
             // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
             // of its last turn, with one `moveend`, #2163.)
-            if (!e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
+            if (this.moving && !e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
@@ -2159,6 +2163,8 @@ export class Map {
     /** @internal True while the engine has not reported the camera of the last turn of a rotate drag: the worker renderer
      * reports it in a later frame, which can come after the release (#2152). */
     turnPending() { return this.reported < this.turned; }
+    /** @internal Ends the movement that runs now, with its end events (the compat entry's `jumpTo` stops it so, #2340). */
+    halt() { this.awaitingInertia = false; if (this.moving) this.settle(); }
     /** Ends a movement: the end events of zoom, rotate and pitch, then `moveend`. */
     private settle() {
         this.moving = false;

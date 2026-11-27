@@ -4,7 +4,7 @@
 // results that are arrays and promises at the same time.
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
-import type {Command} from './engine.ts';
+import type {Command, EngineEvent} from './engine.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {Evented} from './evented.ts';
 import {zoomCurveErrors, unknownMapOption} from './mistakes.ts';
@@ -759,6 +759,8 @@ export class Map extends CoreMap {
 
     /**
      * Moves the camera to a view without an animation, as in MapLibre GL JS.
+     * As in MapLibre GL JS, the events of the move fire before the call returns: `movestart`, `move`, the zoom, rotate and
+     * pitch events of what changed, and `moveend`. A movement that runs, other than a gesture, ends first with its end events.
      * As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom,
      * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls flyTo) keeps it.
      */
@@ -771,7 +773,36 @@ export class Map extends CoreMap {
                 if (__DEV__ && !this.warned.has('jump-elevation')) { this.warned.add('jump-elevation'); console.warn('[map-jr-gl] E10897 jumpTo(): the map center is clamped to the ground, which replaces "elevation" in the next frame, as in MapLibre GL JS. Call setCenterClampedToGround(false) first.'); }
             }
         }
-        return this.camera(eventData, () => super.jumpTo(this.snapped(o)));
+        // As in MapLibre GL JS, the events of the jump fire during the call (#2340). A movement that runs ends first, with
+        // its end events, unless it is a gesture. A jump of easeTo or flyTo (with no duration) fires the start events of
+        // zoom, rotate and pitch before `move`, as a movement of MapLibre GL JS does; jumpTo fires each one after `move`.
+        const ease = this.nested, data = ease ? this.moveData : eventData, cam = () => [this.tr.lng, this.tr.lat, this.tr.zoom, this.tr.bearing, this.tr.pitch], was = cam(), parts = ['start', '', 'end'];
+        if (!this.gesturing?.()) this.halt();
+        this.camera(eventData, () => super.jumpTo(this.snapped(o)));
+        const now = this.hushedAt = cam(), axes = ['zoom', 'rotate', 'pitch'].filter((_, i) => was[i + 2] !== now[i + 2]);
+        // (A later report compares its camera with the camera of the jump, which the page has.)
+        this.hushed = this.jumped; this.seen = undefined;
+        this.moveData = undefined;
+        this.moved((ease ? parts.flatMap((s, i) => i > 1 ? [...axes.map(a => a + s), 'moveend'] : ['move' + s, ...axes.map(a => a + s)]) : ['movestart', 'move', ...axes.flatMap(a => parts.map(s => a + s)), 'moveend']).map(t => [t, data]));
+        return this;
+    }
+    /** The command of the last jump and its camera: the engine's reports up to that command, or with that camera after
+     * other commands, fire no events, because the jump fired them during the call (#2340). (After a restart of the engine,
+     * whose commands count from 0 again, only the camera counts.) */
+    private hushed = 0;
+    private hushedAt?: number[];
+    protected override loud(e: Extract<EngineEvent, {type: 'camera'}>) {
+        const at = [e.lng, e.lat, e.zoom, e.bearing, e.pitch];
+        if (this.hushed <= this.jumped && e.seq! <= this.hushed || this.hushedAt?.every((v, i) => v === at[i])) return false;
+        this.hushedAt = undefined;
+        return true;
+    }
+    /** The events of jumps that wait: a jump from a listener of these events fires its own after them, as in MapLibre GL JS. */
+    private waiting?: [string, EventData | undefined][];
+    private moved(list: [string, EventData | undefined][]) {
+        if (this.waiting) return void this.waiting.push(...list);
+        this.waiting = list;
+        try { for (let e; (e = list.shift());) this.fire(e[0], {...e[1]}); } finally { this.waiting = undefined; }
     }
     easeTo(o: EaseToOptions, eventData?: EventData) {
         return this.camera(eventData, () => super.easeTo(this.snapped(o)));

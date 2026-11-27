@@ -611,6 +611,8 @@ Other:
 
 The camera methods of the entry `@map-jr/map-jr-gl/maplibre-compat` (`jumpTo`, `easeTo`, `flyTo`, `fitBounds`, `fitScreenCoordinates`, `panTo`, `panBy`, `zoomTo`, `zoomIn`, `zoomOut`, `rotateTo`, `resetNorth`, `resetNorthPitch`, `snapToNorth`, `setCenter`, `setZoom`, `setBearing`, `setPitch` and `setPadding`) take `eventData` as the last argument, as in MapLibre GL JS. Its fields are on the `move`, `zoom`, `rotate` and `pitch` events of that move, from `movestart` to `moveend`. A later camera call replaces it.
 
+As in MapLibre GL JS, `jumpTo`, `setCenter`, `setZoom`, `setBearing`, `setPitch`, `setPadding`, and `easeTo`, `flyTo` and `fitBounds` with `duration: 0` and without `around`, fire all the events of their move before they return, and the engine's later report of the same move fires no second `move`.
+
 The option `zoomSnap` and `setZoomSnap` work as in MapLibre GL JS: with a value above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn`, `zoomOut`, the double-click, the keyboard and the navigation buttons goes to the nearest multiple of the value, and `cameraForBounds` and `fitBounds` go to the multiple below. A turn of a mouse wheel ends at the next multiple in the direction of the turn, as in MapLibre GL JS. A trackpad and a pinch do not snap, in either library.
 
 `setEventedParent(parent, data)` passes each event of the map to `parent.fire` while `parent.listens(type)` is true, as one object with the fields of the event and of `data` (an object, or a function that returns one). The parent gets a `click` after the listeners of the map.
