@@ -163,11 +163,21 @@ for (const mode of renderers) {
             m.setPaintProperty(water.id, 'fill-color', '#f00'); out.paint = m.queryRenderedFeatures().length;
             await idle();
             m.setStyle(JSON.parse(JSON.stringify(style)), {diff: true}); out.diff = m.queryRenderedFeatures().length;
+            // As in MapLibre GL JS, a filter takes effect when the tiles have loaded again: the array is the old one at once, and the new one after idle.
+            const ids = [water.id], q = () => m.queryRenderedFeatures(undefined, {layers: ids});
+            await idle(); await q(); out.before = q().length;
+            m.setFilter(water.id, ['==', ['get', 'no-such-property'], 1]); out.filterNow = q().length;
+            await idle(); out.filterIdle = q().length;
+            // Data of another source drops only the answers that named that source; `refreshTiles` of the source drops its answers.
+            m.setFilter(water.id, null); await idle(); await q(); out.again = q().length;
+            m.addSource('other', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+            m.getSource('other').setData({type: 'FeatureCollection', features: []}); out.otherData = q().length;
+            m.refreshTiles?.(Object.keys(style.sources).find(k => style.sources[k].type === 'vector')); out.refreshed = q().length;
             m.remove(); el.remove();
             return out;
         }, mode).catch(e => ({error: String(e)}));
-        check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff (#817)`,
-            kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first, JSON.stringify(kept));
+        check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff, and after setData of another source (#817)`,
+            kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first && kept.before > 0 && kept.filterNow === kept.before && kept.filterIdle === 0 && kept.again === kept.before && kept.otherData === kept.before && kept.refreshed === 0, JSON.stringify(kept));
     }
 
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
