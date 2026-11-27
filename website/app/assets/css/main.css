@@ -389,7 +389,10 @@ pre.language-text code {
   display: block;
 }
 
-/* The tags under a heading of the page of the messages: the kind, the entry and the build. */
+/*
+ * The tags of the page of the messages: the kind, the entry, the build, and the label of a block. They use the text font
+ * and one color pair each. Contrast of the text on its background: light 7.0 or more, dark 8.0 or more.
+ */
 .message-tags {
   display: flex;
   flex-wrap: wrap;
@@ -397,11 +400,38 @@ pre.language-text code {
   margin-block: 0 1.25rem;
 }
 
-.message-tags > code {
+.message-tags > .message-tag {
+  font-family: var(--font-sans);
   font-size: 0.8125rem;
+  font-weight: 500;
   padding-block: 0.125rem;
-  padding-inline: 0.5rem;
+  padding-inline: 0.625rem;
+  line-height: 1.5;
   border-radius: 999px;
+  --tag-bg: var(--site-code-bg);
+  --tag-fg: var(--ui-text-muted);
+  background-color: var(--tag-bg);
+  color: var(--tag-fg);
+}
+
+.message-tags > .tag-error { --tag-bg: #fde8e8; --tag-fg: #8f1d1d; }
+.message-tags > .tag-warning { --tag-bg: #fdf0d0; --tag-fg: #714200; }
+.message-tags > .tag-entry { --tag-bg: #e3edfb; --tag-fg: #1b4a86; }
+.message-tags > .tag-dev { --tag-bg: #efe6fb; --tag-fg: #55289a; }
+
+.dark .message-tags > .tag-error { --tag-bg: #3d1c1e; --tag-fg: #ffb8b8; }
+.dark .message-tags > .tag-warning { --tag-bg: #3b2c10; --tag-fg: #f7d283; }
+.dark .message-tags > .tag-entry { --tag-bg: #17294a; --tag-fg: #b0cdf8; }
+.dark .message-tags > .tag-dev { --tag-bg: #2d2048; --tag-fg: #d8c2ff; }
+
+/* The label of a block ("Production build") has a line around it instead of a fill, and sits close to its block. */
+.message-tags > .tag-build {
+  --tag-bg: transparent;
+  box-shadow: inset 0 0 0 1px var(--ui-border-accented);
+}
+
+.message-tags:has(> .tag-build) {
+  margin-block-end: 0.5rem;
 }
 
 /* Monospace text has its own background and color (#1331). The tokens of a block set their own colors. */

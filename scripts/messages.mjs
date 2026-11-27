@@ -374,9 +374,9 @@ const valueNames = new Map();
 for (const file of files) for (const [code, names] of productionNames(readFileSync(path.join(root, 'src', file), 'utf8'), path.join(root, 'src', file))) valueNames.set(code, names);
 /** What the production build prints for a code, with each value as `name=…`; nothing for a message that production does not have. */
 const production = (code, x) => /development build only|server renderer/.test(entryOf(code, x.file)) ? ''
-    : `The production build prints this:\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
+    : `\`Production build\`\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
 const sections = new Map();
-for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + production(code, x) + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
+for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + production(code, x) + (production(code, x) ? '`Development build`\n\n' : '') + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
 for (const [code, section] of before) if (!byCode.has(code)) sections.set(code, isRemoved(section) ? section : section.replace(/\n\n/, `\n\nRemoved after ${pkg.version}.\n\n`));
 const page = `# Messages
 
@@ -391,7 +391,7 @@ prints in quotes, and a number without. The section of each code gives the names
 in both builds. The server renderer (\`@map-jr/map-jr-gl/server\`) and the standalone files print the full
 text.
 
-Each section starts with tags for the kind of the message (\`Error\` or \`Warning\`), for its entry, and for \`Development build only\` where the message exists only in the development build.
+Each section starts with tags for the kind of the message (\`Error\` or \`Warning\`), for its entry, and for \`Development build only\` where the message exists only in the development build. Where the two builds print different text, the section shows the text of each build under a label, \`Production build\` or \`Development build\`.
 
 An error of the library that has a code in its message also carries the code in its field \`code\`, such as
 \`error.code === 'E63'\`. The field is set when the error is thrown, when a promise rejects with it, and in the

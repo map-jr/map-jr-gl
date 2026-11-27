@@ -190,15 +190,21 @@ function markReferenceTables(nodes: Node[]) {
     }
 }
 
-// On the page of the messages, the line under a heading that has only inline code is the kind, the entry and the
-// build of the message (scripts/messages.mjs). It becomes a row of tags.
+// On the page of the messages, a paragraph that has only inline code is a row of tags (scripts/messages.mjs): the kind,
+// the entry and the build of a message, or the label of a block (`Production build`). Each tag gets a class by its text,
+// which the CSS colors.
+const messageTagClass = (text: string) => text === 'Error' ? 'tag-error' : text === 'Warning' ? 'tag-warning' : text === 'Development build only' ? 'tag-dev'
+    : /^(Production|Development) build$/.test(text) ? 'tag-build' : 'tag-entry';
 function markMessageTags(nodes: Node[]) {
-    nodes.forEach((node, i) => {
-        const next = nodes[i + 1];
-        if (!Array.isArray(node) || node[0] !== 'h2' || !Array.isArray(next) || next[0] !== 'p') return;
-        const parts = next.slice(2) as Node[];
-        if (parts.length && parts.every(part => typeof part === 'string' ? !part.trim() : Array.isArray(part) && part[0] === 'code')) next[1].class = 'message-tags';
-    });
+    for (const node of nodes) {
+        if (!Array.isArray(node) || node[0] !== 'p') continue;
+        const parts = node.slice(2) as Node[];
+        if (!parts.length || !parts.every(part => typeof part === 'string' ? !part.trim() : Array.isArray(part) && part[0] === 'code')) continue;
+        node[1].class = 'message-tags';
+        // A span, because the prose component of code sets its own class.
+        parts.forEach((part, i) => { if (Array.isArray(part)) parts[i] = ['span', {class: `message-tag ${messageTagClass(textOf(part).trim())}`}, textOf(part).trim()]; });
+        node.splice(2, node.length, ...parts);
+    }
 }
 
 export function transformPage(ctx: {file: {path: string}; content: Record<string, any>}, nav: NavSection[]) {
