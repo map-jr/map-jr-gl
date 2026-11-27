@@ -27,16 +27,33 @@ vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 export const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
 
 // Ground height from an elevation tile, for vertex shaders. `u_demRect` is the part of the elevation image under this
-// tile (offset x, y and scale, then the image size in pixels); `u_exag` of zero means "no heights here (yet)", and
-// the ground is then taken to be level at `u_level`.
+// tile (offset x, y and scale, then the image size in pixels, without the border); `u_exag` of zero means "no heights
+// here (yet)", and the ground is then taken to be level at `u_level`. The texture has a border of 2 pixels from the
+// neighbor tiles (see `padDem`), as in MapLibre GL JS, so the heights near an edge and up to 1.5 pixels past it (the
+// centroid of a building in the buffer of a tile) are those of the neighbor (#2319).
 const TERRAIN_GLSL = `uniform highp sampler2D u_dem; uniform vec4 u_demRect; uniform vec4 u_unpack; uniform float u_exag; uniform float u_level;
-float demAt(ivec2 p) { vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), ivec2(int(u_demRect.w) - 1)), 0) * 255.0; return dot(c.rgb, u_unpack.rgb) - u_unpack.a; }
+float demAt(ivec2 p) { vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), ivec2(int(u_demRect.w) + 3)), 0) * 255.0; return dot(c.rgb, u_unpack.rgb) - u_unpack.a; }
 float ground(vec2 uv) {
   if (u_exag == 0.0) return u_level;
-  vec2 p = (u_demRect.xy + uv * u_demRect.z) * u_demRect.w - 0.5, f = fract(p); ivec2 i = ivec2(floor(p));
+  vec2 p = (u_demRect.xy + uv * u_demRect.z) * u_demRect.w + 1.5, f = fract(p); ivec2 i = ivec2(floor(p));
   return mix(mix(demAt(i), demAt(i + ivec2(1, 0)), f.x), mix(demAt(i + ivec2(0, 1)), demAt(i + ivec2(1, 1)), f.x), f.y) * u_exag;
 }
 `;
+
+/**
+ * An elevation image (`w` by `h` pixels) with a border of 2 pixels on each side, as MapLibre GL JS keeps it (`DEMData`).
+ * The border repeats the edge until the loaded neighbor tiles fill it (`backfillDem`).
+ */
+function padDem(w: number, h: number, data: Uint8Array): Uint8Array {
+    const W = w + 4, out = new Uint8Array(W * (h + 4) * 4), px = new Uint32Array(out.buffer);
+    for (let y = 0; y < h + 4; y++) {
+        const r = clamp(y - 2, 0, h - 1) * w * 4, o = y * W;
+        out.set(data.subarray(r, r + w * 4), (o + 2) * 4);
+        px.fill(px[o + 2], o, o + 2);
+        px.fill(px[o + w + 1], o + w + 2, o + W);
+    }
+    return out;
+}
 
 const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1, 0];
 /**
@@ -400,12 +417,13 @@ void main() {
 void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
 uniform sampler2D u_dem; uniform float u_zoom; uniform vec4 u_unpack; in vec2 v_uv; out vec4 o;
 float elev(ivec2 p, ivec2 size) {
-  vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), size - 1), 0) * 255.0;
+  vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), size - 1) + 2, 0) * 255.0;
   c.a = -1.0;
   return dot(c, u_unpack);
 }
 void main() {
-  ivec2 size = textureSize(u_dem, 0), p = ivec2(v_uv * vec2(size));
+  // (The slopes are those of the image without its border, which the neighbor tiles fill later.)
+  ivec2 size = textureSize(u_dem, 0) - 4, p = ivec2(v_uv * vec2(size));
   float a = elev(p + ivec2(-1, -1), size), b = elev(p + ivec2(0, -1), size), c = elev(p + ivec2(1, -1), size);
   float d = elev(p + ivec2(-1, 0), size), f = elev(p + ivec2(1, 0), size);
   float g = elev(p + ivec2(-1, 1), size), h = elev(p + ivec2(0, 1), size), i = elev(p + ivec2(1, 1), size);
@@ -525,7 +543,7 @@ export interface GLTile {
     /** Latitude of the tile's top and bottom edges, for hillshade. */
     lat?: [number, number];
     /** Elevation tiles: the encoded heights as downloaded, their size in pixels and how to decode them. */
-    raw?: WebGLTexture; rawSize?: number; unpack?: number[];
+    raw?: WebGLTexture; rawSize?: number; unpack?: number[]; /** The elevation image is square, so neighbor tiles can fill its border (see `backfillDem`). */ square?: boolean;
 }
 
 /** The part of an elevation tile that lies under some other tile. */
@@ -993,8 +1011,9 @@ export class GLRenderer {
         const gl = this.gl, tex = into ? into.tex! : this.newTexture();
         if (into) gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
-        // (Elevation tiles arrive as plain pixels, which a tile worker decoded.)
-        if ('data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image.data);
+        // (Elevation tiles arrive as plain pixels, which a tile worker decoded. They get a border, see `padDem`.)
+        if (dem && 'data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width + 4, image.height + 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, padDem(image.width, image.height, image.data));
+        else if ('data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image.data);
         else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         if (into) return into;
@@ -1016,11 +1035,27 @@ export class GLRenderer {
             gl.bindVertexArray(this.quad);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-            tile.raw = tex; tile.rawSize = image.width;
+            tile.raw = tex; tile.rawSize = image.width; tile.square = image.width === image.height;
             tile.tex = slopes;
             tile.lat = [latFromMerc(id.y / n), latFromMerc((id.y + 1) / n)];
         }
         return tile;
+    }
+
+    /**
+     * Copies the edge of the elevation tile `from`, the neighbor at (dx, dy) of `to` (each -1, 0 or 1), into the border
+     * of `to`, as MapLibre GL JS does (`backfillBorder`). The heights of `to` then go on past its edge.
+     */
+    backfillDem(to: GLTile, from: GLTile, dx: number, dy: number) {
+        const gl = this.gl, d = to.rawSize!;
+        if (!to.square || !from.square || from.rawSize !== d) return;
+        const x = dx < 0 ? 0 : dx ? d + 2 : 2, y = dy < 0 ? 0 : dy ? d + 2 : 2;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, from.raw!, 0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, to.raw!);
+        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, x, y, x - dx * d, y - dy * d, dx ? 2 : d, dy ? 2 : d);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
     destroyTile(t: GLTile) {
