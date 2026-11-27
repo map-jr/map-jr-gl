@@ -870,6 +870,12 @@ export class Map {
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
             // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
             // of its last turn, with one `moveend`, #2163.)
+            if (this.easedDuringDrag && this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt) {
+                this.easedDuringDrag = false;
+                this.settle();
+                // (The drag is not over: its release fires `dragend` and the `moveend` of the drag.)
+                this.moving = this.dragging;
+            }
             if (this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
@@ -1242,6 +1248,13 @@ export class Map {
     protected easeStarted() {}
     /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
     protected begin() { this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
+    /**
+     * @internal An `easeTo` or `flyTo` during a drag, as in MapLibre GL JS: the drag goes on, `movestart` fires in the call
+     * for the ease, and the end of the ease fires `moveend` while the pointer is still down. The release then fires
+     * `dragend` and a second `moveend` (#2469).
+     */
+    protected beginDuringDrag() { if (!this.dragging || !this.moving) return; this.beganAt = this.seq; this.easedDuringDrag = true; this.fire('movestart'); }
+    private easedDuringDrag = false;
     /** The command that began the movement: a report of the engine from before it does not end the movement. */
     private beganAt = 0;
     /**

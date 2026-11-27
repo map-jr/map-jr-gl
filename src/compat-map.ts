@@ -863,7 +863,7 @@ export class Map extends CoreMap {
         this.halt();
         return f();
     }
-    protected override easeStarted() { if (!this.gesturing?.()) this.begin(); }
+    protected override easeStarted() { if (!this.gesturing?.()) this.begin(); else this.beginDuringDrag(); }
     /**
      * Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`.
      * The zoom fits the box as seen from above, turned by `bearing`. As in MapLibre GL JS, `offset` moves the fitted view and then the move, so it counts twice. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.
