@@ -2683,7 +2683,10 @@ for (const mode of renderers) {
             const out = {};
             let {m, done} = await make([A, line([[30, -30], [30, 30]], 'V')], {'icon-image': ['case', ['==', ['get', 'name'], 'V'], 'dot', ''], 'text-allow-overlap': true});
             const v = m.project([30, 0]);
-            out.icon = [await ask(m, v.x, v.y + 20), await ask(m, v.x - 50, v.y + 20)];
+            // (The icon of V is drawn at the anchor of its label, which is not at the middle of the line: find it on the line.)
+            let at = 0;
+            for (let dy = -140; dy <= 140 && !at; dy++) if (await ask(m, v.x, v.y + dy) === 'V') at = dy;
+            out.icon = [await ask(m, v.x, v.y + at), await ask(m, v.x - 50, v.y + at)];
             done();
             ({m, done} = await make([A], {}));
             const a = m.project([-40, 0]), b = m.project([40, 0]), found = [];
