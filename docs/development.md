@@ -317,6 +317,12 @@ has such names, and the build shortens them too. Add a name to the list only whe
 and no browser object has a property with that name. The build fails if the name is also a key of an object
 literal, a field of a type, a string, or a member that `src/` reads from the WebGL context (`gl.depthRange`).
 
+Two more steps of the build change text that a reader of a built file can meet (#2342). In `SPEC` of `src/style.ts`,
+the name of a property of a layer type other than `symbol` loses the type at its start (`'-opacity'` in `fill`), and a
+loop after `SPEC` puts the type back when the module loads (`scripts/spec-names.mjs`). Write each name of `SPEC` in full;
+the build stops when it finds no name to shorten. The page scripts have `CONTROL_CSS` of `src/controls.ts` without its
+line breaks (`scripts/minify-css.mjs`), and `server.js` keeps them.
+
 The production files (the page scripts, their chunks, the worker and its parts) keep the code of each message and not
 its text (`scripts/message-codes.mjs`, #2148): `[map-jr-gl] E1163 the request for the ${what} ${url} failed: ${reason}`
 prints `[map-jr-gl] E1163 https://map-jr.org/e/1163 what="tile" url="https://example.com/1/2/3.pbf" reason="HTTP 404"`.

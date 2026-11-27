@@ -7,10 +7,12 @@ import {createRequire} from 'node:module';
 import MagicString from 'magic-string';
 import {privateNames, shortenPrivateNames} from './scripts/private-names.mjs';
 import {minifyShaders} from './scripts/minify-shaders.mjs';
+import {specNames} from './scripts/spec-names.mjs';
+import {minifyControlCss} from './scripts/minify-css.mjs';
 import {inlineGlConstants} from './scripts/gl-constants.mjs';
 import {removedReads} from './scripts/server-reads.mjs';
 import {aliasGlobals, globalsModule, GLOBALS_MODULE} from './scripts/global-names.mjs';
-import {messageCodes, errorCodes} from './scripts/message-codes.mjs';
+import {messageCodes, workerMessageCodes, errorCodes} from './scripts/message-codes.mjs';
 
 // The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
 // entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
@@ -59,6 +61,30 @@ const shaders = {
         if (!/\/src\/(gl|terrain|globe|layers-more)\.ts$/.test(id)) return null;
         const edited = new MagicString(code);
         for (const [start, end, text] of minifyShaders(code)) edited.overwrite(start, end, text);
+        return withMap(edited, id);
+    },
+};
+
+/** The names of the properties in `SPEC` of src/style.ts leave out their layer type, which the module puts back when it loads (scripts/spec-names.mjs). */
+const specNamesPlugin = {
+    name: 'spec-names',
+    enforce: 'pre',
+    transform(code, id) {
+        if (!id.endsWith('/src/style.ts')) return null;
+        const edited = new MagicString(code);
+        for (const [start, end, text] of specNames(code)) if (start === end) edited.appendLeft(start, text); else if (!text) edited.remove(start, end); else edited.overwrite(start, end, text);
+        return withMap(edited, id);
+    },
+};
+
+/** For the page scripts: `CONTROL_CSS` of src/controls.ts loses its line breaks (scripts/minify-css.mjs). */
+const controlCss = {
+    name: 'minify-css',
+    enforce: 'pre',
+    transform(code, id) {
+        if (!id.endsWith('/src/controls.ts')) return null;
+        const edited = new MagicString(code);
+        for (const [start, end, text] of minifyControlCss(code)) edited.overwrite(start, end, text);
         return withMap(edited, id);
     },
 };
@@ -140,7 +166,9 @@ const splitParts = {
     transform(code, id) {
         if (!id.endsWith('/src/parts.ts')) return null;
         const edited = new MagicString(code);
-        for (const m of code.matchAll(partImport)) edited.overwrite(m.index, m.index + m[0].length, `Promise.reject(Error('[map-jr-gl] The page sent no URL for the part ${m[1]} of the worker.'))`);
+        // (One function gives the error for each part, so that the worker file does not repeat its text.)
+        for (const m of code.matchAll(partImport)) edited.overwrite(m.index, m.index + m[0].length, `noPartUrl('${m[1]}')`);
+        edited.append('\nfunction noPartUrl(file: string) { return Promise.reject(Error(`[map-jr-gl] The page sent no URL for the part ${file} of the worker.`)); }\n');
         return withMap(edited, id);
     },
 };
@@ -205,7 +233,7 @@ const hoistImports = {
  * tools are open.
  */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [errorCodes, shaders, glConstants, privates, noPreload, keepEnv, hoistImports, ...plugins],
+    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [errorCodes, specNamesPlugin, shaders, glConstants, privates, noPreload, keepEnv, hoistImports, ...plugins],
     build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
@@ -213,13 +241,14 @@ const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
 // so it can be started from a blob or another origin.
 // The copy of the worker inside a standalone file contains its parts. It starts from a blob, which has no file beside
 // it: the line that names the source map goes. (It is built into a folder of its own, and only its text is used.)
-const workerLib = {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'};
-await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false}, undefined, [allInOne, globalNames]);
+// (The globals MapJrWorker and MapJrPart are plain objects: nothing reads their Symbol.toStringTag, so the files do not set it.)
+const workerLib = {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'}, plain = {generatedCode: {symbols: false}};
+await run({lib: workerLib, outDir: '.cache/worker-all-in-one', sourcemap: false, rollupOptions: {output: plain}}, undefined, [allInOne, globalNames]);
 const workerSrc = readFileSync('.cache/worker-all-in-one/map-jr-gl-worker.js', 'utf8');
-await run({lib: workerLib}, undefined, [splitParts, allInOne, globalNames, messageCodes]);
+await run({lib: workerLib, rollupOptions: {output: plain}}, undefined, [splitParts, allInOne, globalNames, workerMessageCodes]);
 for (const {name, file} of workerParts) {
     await run({lib: {entry: `src/${file}.ts`, formats: ['iife'], name: 'MapJrPart', fileName: () => `map-jr-gl-worker-${name}.js`},
-        rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker'}}}, undefined, [messageCodes]);
+        rollupOptions: {external: (id, importer) => !!importer && !partOwn.test(id), output: {globals: () => 'MapJrWorker', ...plain}}}, undefined, [messageCodes]);
 }
 
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
@@ -234,14 +263,14 @@ const esm = (input, extra = {}) => ({
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
 const entries = {'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', element: 'src/element.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'};
 // (The production files keep the code of each message and its link, and not its text: scripts/message-codes.mjs, #2148.)
-await run(esm(entries), undefined, [messageCodes]);
+await run(esm(entries), undefined, [messageCodes, controlCss]);
 // The development build of the same entries (`<name>.dev.js`, the `development` condition of package.json). It differs
 // from the build above in `__DEV__` only: it loads the checks for common mistakes (src/mistakes.ts) after the map has
 // started, and the build above has no code for that. The name of a chunk has a hash of its content, so a chunk that is
 // the same in both builds is one file, and dist/ grows only by the files that differ. The build stops if it would
 // change a file of the production build.
 const production = Object.fromEntries(readdirSync('dist').map(f => [f, readFileSync('dist/' + f, 'utf8')]));
-await run(esm(entries, {entryFileNames: '[name].dev.js'}), {__WORKER_SRC__: '""', __DEV__: 'true'});
+await run(esm(entries, {entryFileNames: '[name].dev.js'}), {__WORKER_SRC__: '""', __DEV__: 'true'}, [controlCss]);
 for (const f in production) if (readFileSync('dist/' + f, 'utf8') !== production[f]) throw new Error(`The development build changed dist/${f}, a file of the production build.`);
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.

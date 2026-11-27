@@ -61,3 +61,16 @@ test('a path of Windows finds the names of valueNames, as a path with slashes do
         assert.match(productionMessages(code, file)?.code ?? '', /E2145 https:\/\/map-jr\.org\/e\/2145 member=/, file);
     }
 });
+
+test('the value function comes from src/requests.ts in the worker file and in a module that imports that file, and is a copy elsewhere (#2342)', () => {
+    const message = 'console.warn(`[map-jr-gl] E1163 the request for the ${source} failed.`);\n';
+    const imports = (code: string) => /import \{messageValue as __mjrValue\} from "[^"]*\/src\/requests\.ts";/.test(code), copy = (code: string) => code.includes('function __mjrValue(v)');
+    const own = "import {httpError} from './requests.ts';\n" + message;
+    // (The plugin errorCodes adds an import of src/requests.ts for a new Error that can be in the development build only.)
+    const added = 'import {withCode} from "/x/src/requests.ts";\n' + message;
+    assert.ok(imports(built(own)) && !copy(built(own)));
+    assert.ok(copy(built(added)) && !imports(built(added)));
+    assert.ok(copy(built("import type {Ask} from './requests.ts';\n" + message)));
+    assert.ok(imports(productionMessages(message, '/x/src/a.ts', true).code));
+    assert.match(productionMessages(message, '/x/src/requests.ts', true).code, /\nconst __mjrValue = messageValue;\n/);
+});
