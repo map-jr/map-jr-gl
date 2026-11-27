@@ -101,3 +101,7 @@ const layer: CustomLayerInterface = {id: 'custom', type: 'custom', render(_gl, i
 map.addLayer(layer);
 
 export {logo, subscription, loaded, events, gestures, cluster, clusters, canvas, stored, styleOptions, kind};
+
+// `padding` is not an option of `new Map` in MapLibre GL JS, and the constructor does not read it (#2369).
+// @ts-expect-error `padding` is not a constructor option: call `setPadding` after the map exists.
+new Map({container: 'map', padding: 10});

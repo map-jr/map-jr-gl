@@ -66,7 +66,9 @@ export type MapLayerEventType = Each<'click' | 'mousemove' | 'mouseenter' | 'mou
  * The options of `new Map(options)`. The options of MapLibre GL JS that are listed here and not in the main API are
  * accepted with no effect (see docs/reference/maplibre-differences.md).
  */
-export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
+export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate' | 'padding'> & {
+    /** Not an option of MapLibre GL JS, and the constructor does not read it: call `setPadding` or `jumpTo({padding})` after the map exists. */
+    padding?: never;
     /** Whether a drag pans the map. An object is accepted as `true` and warns once: its options have no effect. */
     dragPan?: boolean | DragPanOptions;
     /** Whether a drag with the right mouse button turns and tilts the map. An object is accepted as `true` and warns once: its options have no effect. */
