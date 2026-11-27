@@ -2664,6 +2664,30 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures finds a line with an icon only on its shown icon, with both renderers (#2243)',
             ['main', 'worker'].every(r => hiddenLineIcons[r].all >= 1 && hiddenLineIcons[r].found >= 2 && hiddenLineIcons[r].found <= 12), JSON.stringify(hiddenLineIcons));
+        // A label of a layer with an icon belongs to the line that made it, as in MapLibre GL JS: a street V of the same
+        // layer that crosses the label of A at its icon is not found on that icon or on a glyph of A. The text has a token (#2243).
+        const crossedLabel = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const line = (c, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: c}});
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                // (Each line is shorter than `symbol-spacing`, so it has one label, with its point and its icon at the middle
+                // of the line. A's middle is where V crosses, and V's middle is out of view to the north. Both lie in one tile.)
+                const m = new mod.Map({container: el, renderer, center: [45, 20], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line([[25, 20], [65, 20]], 'Main street'), line([[45, 18], [45, 64]], 'V')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': 1000, 'text-field': '{name}', 'text-size': 16, 'icon-image': 'dot',
+                        'text-allow-overlap': true, 'icon-allow-overlap': true}}]}});
+                m.addImage('dot', {width: 8, height: 8, data: new Uint8Array(256).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const c = m.project([45, 20]), ask = async x => (await m.queryRenderedFeatures([x, c.y], {layers: ['t']})).map(f => f.properties.name).sort().join('/');
+                out[renderer] = [await ask(c.x), await ask(c.x - 20)];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures does not find a line with an icon on the label of a line that it crosses, with both renderers (#2243)',
+            ['main', 'worker'].every(r => crossedLabel[r].join() === 'Main street,Main street'), JSON.stringify(crossedLabel));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
