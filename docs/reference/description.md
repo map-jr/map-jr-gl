@@ -24,7 +24,7 @@ const map = createMap('map', {
 <!-- ref:MapDescription:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`style`](#style) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark color scheme. |
+| [`style`](#style) **required** | `string \| StyleSpecification \| `[`StylePair`](#stylepair) | | The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark color scheme. |
 | [`sources`](#sources) | `Record<string, SourceInput> \| null` | | Sources to add to the style, by id. |
 | [`layers`](#layers) | `LayerInput[] \| null` | | Layers to add to the style, in order. |
 | [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`, in place of the `terrain` of the style. |
@@ -34,7 +34,7 @@ const map = createMap('map', {
 | [`onViewChange`](#view-and-onviewchange) | `((view: `[`View`](state.md#view)`) => void) \| null` | | Called with the first view once, right after `createMap` returns, and then with the new view at each change of the view. |
 | [`data`](#data) | `Record<string, GeoJSON \| string> \| null` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
 | [`images`](#images) | `Record<string, ImageInput> \| null` | | Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
-| [`sprite`](#sprite) | `{id: string; url: string}[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
+| [`sprite`](#sprite) | [`SpriteInput`](#spriteinput)`[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
 | [`controls`](#controls) | `ControlSpec[] \| null` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
 | [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`, in place of the `projection` of the style. |
 | [`globalState`](#globalstate) | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
@@ -50,8 +50,8 @@ const map = createMap('map', {
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark' \| null` | `'light'` | The color scheme of the controls, the popup and the attribution. |
-| [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `((colorScheme: 'auto' \| 'light' \| 'dark') => void) \| null` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
+| [`colorScheme`](#colorscheme-and-oncolorschemechange) | `ColorScheme \| null` | `'light'` | The color scheme of the controls, the popup and the attribution. |
+| [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `((colorScheme: ColorScheme) => void) \| null` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
 | [`locale`](#locale) | `Record<string, string> \| null` | | The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
 | [`padding`](#padding) | `PaddingInput \| null` | `0` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` with 0 for a side that is left out. |
 | [`transformRequest`](#transformrequest) | `RequestTransform \| null` | | A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. |
@@ -65,7 +65,7 @@ ignores a change in a later description. To change one, destroy the map and crea
 <!-- ref:MapSetup:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`renderer`](#renderer) | `'auto' \| 'worker' \| 'main' \| null` | `'auto'` | The thread that renders the map. |
+| [`renderer`](#renderer) | `Renderer \| null` | `'auto'` | The thread that renders the map. |
 | `fontFamily` | `string \| null` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`. |
 | `interactive` | `boolean \| null` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
 | `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
@@ -80,7 +80,7 @@ ignores a change in a later description. To change one, destroy the map and crea
 |---|---|
 | The URL of a style, as a string | Loads the style from that URL. |
 | A style object of the MapLibre style specification | Draws it. |
-| `{light, dark}`, each a URL or a style object | Draws the style that matches the resolved [`colorScheme`](#colorscheme-and-oncolorschemechange), and loads the other style when the scheme changes. |
+| A [`StylePair`](#stylepair), `{light, dark}` | Draws the style that matches the resolved [`colorScheme`](#colorscheme-and-oncolorschemechange), and loads the other style when the scheme changes. |
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -102,6 +102,15 @@ keeps the view and the other fields of the description.
 In the main entry (`@map-jr/map-jr-gl`), a raster layer that does not set `raster-fade-duration` shows a new tile at
 once, because the default is 0. The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) fades the tile in over 300 ms,
 as MapLibre GL JS does. See [Differences from MapLibre GL JS](maplibre-differences.md#the-fade-of-raster-tiles).
+
+### `StylePair`
+
+<!-- ref:StylePair:start -->
+| Name | Type | Description |
+|---|---|---|
+| `light` | `string \| StyleSpecification` | The style for the light color scheme: a style object or the URL of a style. |
+| `dark` | `string \| StyleSpecification` | The style for the dark color scheme: a style object or the URL of a style. |
+<!-- ref:StylePair:end -->
 
 ## `sources`
 
@@ -374,7 +383,7 @@ the name of the image, and draws the layer without it.
 
 `sprite` adds sprites to the map. A sprite is one file with many small images.
 
-`sprite` is a list of `{id, url}`, as the list form of `sprite` in the MapLibre style specification. An `icon-image`
+`sprite` is a list of [`SpriteInput`](#spriteinput), `{id, url}`, as the list form of `sprite` in the MapLibre style specification. An `icon-image`
 refers to an image of such a sprite as `id:name`.
 
 ```js
@@ -407,6 +416,15 @@ createMap('map', {
   URL has the id `default`.
 - The map reports a sprite that does not load to `onError`, and still draws the images of the other
   sprites.
+
+### `SpriteInput`
+
+<!-- ref:SpriteInput:start -->
+| Name | Type | Description |
+|---|---|---|
+| `id` | `string` | The prefix of the images of this sprite: a layer writes `id:name`. |
+| `url` | `string` | The URL of the sprite without a file extension. |
+<!-- ref:SpriteInput:end -->
 
 ## `controls`
 
@@ -592,7 +610,7 @@ two fingers down one after the other. Set the text of the hint in [`locale`](#lo
 
 ## `colorScheme` and `onColorSchemeChange`
 
-`colorScheme` sets whether the map is light or dark. `'auto'` follows the browser (`prefers-color-scheme`) and
+`colorScheme` (type `ColorScheme`: `'auto'`, `'light'` or `'dark'`) sets whether the map is light or dark. `'auto'` follows the browser (`prefers-color-scheme`) and
 changes while the page is open. The resolved scheme is
 `colorScheme` of [the state of the map](state.md#mapstate), and it has these effects:
 
@@ -679,7 +697,7 @@ new function as a change, so a framework can pass a new function in each render.
 
 ## `renderer`
 
-`renderer` selects the thread that draws the map.
+`renderer` (type `Renderer`: `'auto'`, `'worker'` or `'main'`) selects the thread that draws the map.
 
 | Value | The map draws |
 |---|---|

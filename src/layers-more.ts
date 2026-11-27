@@ -104,7 +104,9 @@ in vec2 v_uv; in vec2 v_tile; out vec4 o;
 float stop(int i) { return texelFetch(u_stops, ivec2(i, 0), 0).r; }
 void main() {
   ${FS_CLIP}
-  float e = dot(texture(u_image, v_uv).rgb * 255.0, u_unpack.rgb) - u_unpack.a;
+  // (The elevation image has a border of 2 pixels, as in MapLibre GL JS; see padDem.)
+  vec2 size = vec2(textureSize(u_image, 0));
+  float e = dot(texture(u_image, (v_uv * (size - 4.0) + 2.0) / size).rgb * 255.0, u_unpack.rgb) - u_unpack.a;
   int l = 0, r = textureSize(u_stops, 0).x - 1;
   while (r - l > 1) { int m = (l + r) / 2; if (e < stop(m)) r = m; else l = m; }
   float d = stop(r) - stop(l);
