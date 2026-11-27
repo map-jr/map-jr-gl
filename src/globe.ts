@@ -81,8 +81,7 @@ export function toScreen(tr: Transform, mx: number, my: number, metres: number, 
 }
 
 /** The side of the horizon of a Mercator position, in radii: negative where the horizon hides it. */
-export function side(tr: Transform, mx: number, my: number): number {
-    const h = frame(tr).horizon;
+export function side(tr: Transform, mx: number, my: number, h = frame(tr).horizon): number {
     return dot(sphere(mx, my), h) + h[3];
 }
 

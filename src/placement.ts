@@ -212,11 +212,11 @@ export function groundCorners(tr: Transform, p: Placed, depth: number): number[]
     const i = p.icon!, m = i.merc!, n = 2 ** p.tile.z, ax = (p.tile.x + p.src.x / EXTENT) / n, ay = (p.tile.y + p.src.y / EXTENT) / n;
     const k = i.fixedSize ? 1 : flatSize(tr, depth) / flatSize(tr, p.depth), cx = ax + (m[0] - ax) * k, cy = ay + (m[1] - ay) * k, out: number[] = [];
     // (The corners take the height of the anchor, as the points of `groundFrame` do.)
-    const h = tr.heightAt?.(ax, ay);
+    const h = tr.heightAt?.(ax, ay), hz = tr.globe!.frame(tr).horizon, side = tr.globe!.side;
     for (let c = 0; c < 4; c++) {
         const x = (c & 1 ? i.w : -i.w) / 2 * k, y = (c & 2 ? i.h : -i.h) / 2 * k, mx = cx + x * m[2] + y * m[4], my = cy + x * m[3] + y * m[5];
         const [sx, sy] = tr.projectTile(p.tile, (mx * n - p.tile.x) * EXTENT, (my * n - p.tile.y) * EXTENT, h);
-        out.push(sx, sy, tr.globe!.side(tr, mx, my));
+        out.push(sx, sy, side(tr, mx, my, hz));
     }
     return out;
 }
