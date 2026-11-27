@@ -12,7 +12,7 @@ import {
     type CustomLayerInterface, type StyleImageInterface, type StyleImageData, type MissingStyleImageResolver,
     type TransformStyleFunction, type StyleOptions, type MapSourceDataType, type MapSourceDataEvent, type ResourceType,
     type AddProtocolAction, type CustomLayerProjectionData, type ProjectionData, type GeoJSONSource, type ImageSource,
-    type MapMouseEvent,
+    type MapMouseEvent, type Geometry,
 } from '@map-jr/map-jr-gl/maplibre-compat';
 
 declare const map: Map;
@@ -100,4 +100,14 @@ addProtocol('custom', protocol);
 const layer: CustomLayerInterface = {id: 'custom', type: 'custom', render(_gl, input) { const data: CustomLayerProjectionData = input.defaultProjectionData, same: ProjectionData = data; void same; }};
 map.addLayer(layer);
 
-export {logo, subscription, loaded, events, gestures, cluster, clusters, canvas, stored, styleOptions, kind};
+// `padding` is not an option of `new Map` in MapLibre GL JS, and the constructor does not read it (#2369).
+// @ts-expect-error `padding` is not a constructor option: call `setPadding` after the map exists.
+new Map({container: 'map', padding: [10, 10, 10, 10]});
+
+// Geometry has the GeometryCollection member of the GeoJSON types of MapLibre GL JS.
+const collection: Geometry = {type: 'GeometryCollection', geometries: [{type: 'Point', coordinates: [0, 0]}]};
+if (collection.type === 'GeometryCollection') collection.geometries[0].type;
+// @ts-expect-error a GeometryCollection has `geometries`, not `coordinates`
+collection.coordinates;
+
+export {collection, logo, subscription, loaded, events, gestures, cluster, clusters, canvas, stored, styleOptions, kind};

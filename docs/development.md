@@ -317,11 +317,12 @@ has such names, and the build shortens them too. Add a name to the list only whe
 and no browser object has a property with that name. The build fails if the name is also a key of an object
 literal, a field of a type, a string, or a member that `src/` reads from the WebGL context (`gl.depthRange`).
 
-Two more steps of the build change text that a reader of a built file can meet (#2342). In `SPEC` of `src/style.ts`,
-the name of a property of a layer type other than `symbol` loses the type at its start (`'-opacity'` in `fill`), and a
-loop after `SPEC` puts the type back when the module loads (`scripts/spec-names.mjs`). Write each name of `SPEC` in full;
+Three more steps of the build change text that a reader of a built file can meet (#2342). In `SPEC` of `src/style.ts`,
+the name of a property loses the layer type at its start (`'-opacity'` in `fill`; in `symbol`, the `text` of `text-`),
+and a loop after `SPEC` puts it back when the module loads (`scripts/spec-names.mjs`). Write each name of `SPEC` in full;
 the build stops when it finds no name to shorten. The page scripts have `CONTROL_CSS` of `src/controls.ts` without its
-line breaks (`scripts/minify-css.mjs`), and `server.js` keeps them.
+line breaks (`scripts/minify-css.mjs`), and `server.js` keeps them. In the shaders, `layout(location=0) in` becomes
+`L(0)`, a macro that `HEAD` of `src/gl.ts` defines (`scripts/minify-shaders.mjs`).
 
 The production files (the page scripts, their chunks, the worker and its parts) keep the code of each message and not
 its text (`scripts/message-codes.mjs`, #2148): `[map-jr-gl] E1163 the request for the ${what} ${url} failed: ${reason}`
@@ -332,7 +333,9 @@ list `valueNames` of the script names it. Users read these names in logs and on 
 a change that renames a variable of a message adds its old name to `valueNames`. The development build, the standalone files and `server.js` keep the full texts. A check of a test that reads a message of a production file compares the
 code and the values, not the text. Code of `src/` that tests a message tests its code (`isPartFailure` in
 `src/parts.ts`). A message whose code the source adds at run time needs an entry in the list `special` of the script,
-and the build stops when an entry no longer matches `src/`.
+and the build stops when an entry no longer matches `src/`. In a module that imports `src/requests.ts` and in the
+worker file, the function `messageHead` of that file writes the code and the link, so the number of the code is in the
+built file once.
 
 Each built file has a source map beside it (`dist/<file>.js.map`), and its last line names the map. A browser fetches
 a source map only when its developer tools are open, and `pnpm test:size` does not count the maps. The map contains

@@ -1664,6 +1664,28 @@ for (const mode of renderers) {
         check(`[${mode}] addProtocol: a range of glyphs and a font file have the request type arrayBuffer, as in MapLibre GL JS (#1675)`,
             r.glyphs === 'arrayBuffer' && r.font === 'arrayBuffer', JSON.stringify(r));
     }
+    // #1191: the option `fonts` and `addFonts` of the compat `Map` take an object of font faces by `text-font` name, as `fonts` of the main API.
+    if (mode === 'main') {
+        const asked = [];
+        const {squareFont} = await import('./fixtures/square-font.mjs');
+        await page.route(/\/fonts1191\//, route => { asked.push(new URL(route.request().url()).pathname); route.fulfill({status: 200, contentType: 'font/ttf', body: squareFont()}); });
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:99'}));
+            const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}}, layers: [{id: 'label', type: 'symbol', source: 'p', layout: {'text-field': 'Ab', 'text-font': ['F1191a Regular', 'F1191b Regular']}}]};
+            const m = new mod.Map({container: el, style, center: [0, 0], zoom: 2, renderer: 'main', fonts: {'F1191a Regular': '/fonts1191/a.ttf'}});
+            m.on('error', () => {});
+            await new Promise(r => m.once('load', r));
+            m.addFonts({'F1191b Regular': '/fonts1191/b.ttf'});
+            await new Promise(r => setTimeout(r, 1500));
+            m.remove(); el.remove();
+            // (The faces stay in `document.fonts` after the map is removed: take them out, so that later checks do not see them.)
+            for (const f of [...document.fonts]) if (f.family.includes('F1191')) document.fonts.delete(f);
+        });
+        await page.unroute(/\/fonts1191\//);
+        check(`fonts: the option and addFonts of the compat Map take an object of font faces and fetch each file (#1191)`,
+            asked.includes('/fonts1191/a.ttf') && asked.includes('/fonts1191/b.ttf'), JSON.stringify(asked));
+    }
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
@@ -1847,6 +1869,30 @@ for (const mode of renderers) {
     }, mode);
     check(easeName,
         easeLost.events.includes('webglcontextrestored') && easeLost.events.filter(e => e === 'moveend').length === 1 && Math.abs(easeLost.lng - 20) < 1e-6 && Math.abs(easeLost.lat - 10) < 1e-6 && Math.abs(easeLost.zoom - 4) < 1e-6, JSON.stringify(easeLost));
+    }
+
+    // A lost WebGL context during an `easeTo`, and a restart that takes longer than the time that is left (a loaded
+    // machine): the camera still ends at the target, and not where the old engine stopped (#1757). The page is busy for
+    // 1500 ms at the loss, which is longer than the 1000 ms of the ease.
+    if (mode === 'main') {
+        const slow = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, center: [0, 0], zoom: 2, attributionControl: false, renderer: 'main'});
+            await new Promise(r => m.once('load', r));
+            const events = [];
+            for (const type of ['webglcontextlost', 'webglcontextrestored', 'moveend']) m.on(type, () => events.push(type));
+            m.once('webglcontextlost', () => { const end = performance.now() + 1500; while (performance.now() < end); });
+            m.easeTo({center: [20, 10], zoom: 4, duration: 1000});
+            setTimeout(() => m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(), 200);
+            for (let i = 0; i < 100 && !events.includes('moveend'); i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 500));
+            const c = m.getCenter(), out = {events, lng: c.lng, lat: c.lat, zoom: m.getZoom()};
+            m.remove(); el.remove();
+            return out;
+        });
+        check(`[${mode}] a lost WebGL context during an easeTo and a restart slower than the ease: the camera ends at the target (#1757)`,
+            slow.events.includes('webglcontextrestored') && slow.events.filter(e => e === 'moveend').length === 1 && Math.abs(slow.lng - 20) < 1e-6 && Math.abs(slow.lat - 10) < 1e-6 && Math.abs(slow.zoom - 4) < 1e-6, JSON.stringify(slow));
     }
 
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.

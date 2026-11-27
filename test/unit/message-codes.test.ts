@@ -64,7 +64,7 @@ test('a path of Windows finds the names of valueNames, as a path with slashes do
 
 test('the value function comes from src/requests.ts in the worker file and in a module that imports that file, and is a copy elsewhere (#2342)', () => {
     const message = 'console.warn(`[map-jr-gl] E1163 the request for the ${source} failed.`);\n';
-    const imports = (code: string) => /import \{messageValue as __mjrValue\} from "[^"]*\/src\/requests\.ts";/.test(code), copy = (code: string) => code.includes('function __mjrValue(v)');
+    const imports = (code: string) => /import \{messageValue as __mjrValue, messageHead as __mjrHead\} from "[^"]*\/src\/requests\.ts";/.test(code), copy = (code: string) => code.includes('function __mjrValue(v)');
     const own = "import {httpError} from './requests.ts';\n" + message;
     // (The plugin errorCodes adds an import of src/requests.ts for a new Error that can be in the development build only.)
     const added = 'import {withCode} from "/x/src/requests.ts";\n' + message;
@@ -73,4 +73,16 @@ test('the value function comes from src/requests.ts in the worker file and in a 
     assert.ok(copy(built("import type {Ask} from './requests.ts';\n" + message)));
     assert.ok(imports(productionMessages(message, '/x/src/a.ts', true).code));
     assert.match(productionMessages(message, '/x/src/requests.ts', true).code, /\nconst __mjrValue = messageValue;\n/);
+});
+
+test('where the module shares the functions of src/requests.ts, messageHead writes the code and the link, and the message is the same (#2342)', async () => {
+    const {messageValue, messageHead} = await import('../../src/requests.ts');
+    const run = (code: string) => new Function('source', '__mjrValue', '__mjrHead', 'return ' + code.replace(/\nimport [^\n]*\n$/, ''))('roads', messageValue, messageHead);
+    for (const message of ['`[map-jr-gl] E1163 the request for the ${source} failed.`', "'[map-jr-gl] E97 The map has no container.'", "'E259 addControl(): the argument is not a control.'"]) {
+        const shared = productionMessages(message, '/x/src/a.ts', true).code, alone = built(message);
+        assert.match(shared, /__mjrHead\(\d+\)/);
+        assert.doesNotMatch(alone, /__mjrHead/);
+        assert.equal(run(shared), run(alone), message);
+    }
+    assert.equal(messageHead(1163), 'E1163 https://map-jr.org/e/1163');
 });
