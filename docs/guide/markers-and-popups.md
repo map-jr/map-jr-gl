@@ -699,14 +699,17 @@ show(`Drag the pin. It is at ${at(marker.getLngLat())}`);
 <script setup>
 // The map fills its parent element, so give the parent a height.
 import {ref} from 'vue';
+import {defaultPin} from '@map-jr/map-jr-gl';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-// The outline of the pin.
-const pinPath =
-  'M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z';
 const pin = ref([-74.0065, 40.7085]);
 const moving = ref(false);
+// The default pin of Marker, as an element that the overlay shows. The tip of
+// the pin is at the position.
+const addPin = el => {
+  if (el && !el.firstChild) el.append(defaultPin({color: '#d6453d'}));
+};
 </script>
 
 <template>
@@ -731,10 +734,7 @@ const moving = ref(false);
         }
       "
     >
-      <svg width="27" height="41" viewBox="0 0 27 41">
-        <path :d="pinPath" fill="#d6453d" />
-        <circle cx="13.5" cy="13.5" r="5.5" fill="#fff" />
-      </svg>
+      <div :ref="addPin"></div>
     </MapOverlay>
     <p class="note">
       {{
@@ -750,13 +750,16 @@ const moving = ref(false);
 ```jsx [React]
 // The map fills its parent element, so give the parent a height.
 import {useState} from 'react';
+import {defaultPin} from '@map-jr/map-jr-gl';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
-// The outline of the pin.
-const pinPath =
-  'M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z';
+// The default pin of Marker, as an element that the overlay shows. The tip of
+// the pin is at the position.
+const addPin = el => {
+  if (el && !el.firstChild) el.append(defaultPin({color: '#d6453d'}));
+};
 
 export default function Draggable() {
   const [pin, setPin] = useState(NYC);
@@ -778,10 +781,7 @@ export default function Draggable() {
           setMoving(false);
         }}
       >
-        <svg width="27" height="41" viewBox="0 0 27 41">
-          <path d={pinPath} fill="#d6453d" />
-          <circle cx="13.5" cy="13.5" r="5.5" fill="#fff" />
-        </svg>
+        <div ref={addPin} />
       </MapOverlay>
       <p className="note">
         {moving
