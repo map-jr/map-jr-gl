@@ -242,6 +242,18 @@ Two things of the application need `style-src 'unsafe-inline'`, because the poli
 - the markup of the [server renderer](server-rendering.md) in the page;
 - a `style` attribute in HTML that the application passes to a popup or a marker. Use classes instead.
 
+## Referrer policy
+
+Most requests of the map are made in its workers. Each of them sends the URL of the page as its referrer under the
+referrer policy of the page, as a request of the page does, in both entries. Some tile servers, such as
+tile.openstreetmap.org, refuse a tile request that has no `Referer`.
+
+The map reads the policy from the last `<meta name="referrer">` of the page that has a valid value, when the map
+starts. Chrome and Edge do not apply a `Referrer-Policy` header of the page to the requests of the workers: these
+requests use the default policy `strict-origin-when-cross-origin`, which sends the origin of the page to another
+origin. To keep the policy of the header in every browser, repeat it in a `<meta name="referrer">` element. Firefox
+and Safari apply the header. MapLibre GL JS behaves the same way.
+
 ## Vite in development
 
 In development, Vite 5 serves the library from its cache of dependencies, which does not contain the worker file.

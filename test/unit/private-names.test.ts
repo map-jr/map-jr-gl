@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {readFileSync} from 'node:fs';
-import {privateNames} from '../../scripts/private-names.mjs';
+import {privateNames, shortenShaderLocals} from '../../scripts/private-names.mjs';
 
 const fixtures = path.join(import.meta.dirname, 'fixtures/private-names-export');
 
@@ -30,4 +30,14 @@ test('private-names: a protected method that another file overrides gets the sam
     assert.ok(base, built['map.ts']);
     assert.match(built['map.ts'], new RegExp(`this\\.${base}\\(id\\)`));
     assert.match(built['compat-map.ts'], new RegExp(`protected override ${base}\\(id: string\\)`));
+});
+
+test('private-names: the later names of a declaration of several variables in a shader get short names, and a name that is called does not (#2342)', () => {
+    const code = 'const fs = `uniform float u_k; float edge(float x) { return x; }\nvoid main() { float far = 1.0, side = sign(far), near = edge(side) * ${N}.0, inner[2], edge2 = max(side, near); vec2 q = vec2(side, near), mix = q; float k = mix(q.x, q.y, u_k); }`;';
+    const out: string = shortenShaderLocals(code);
+    for (const name of ['far', 'side', 'near', 'inner', 'edge2', 'edge']) assert.doesNotMatch(out, new RegExp(`\\b${name}\\b`), out);
+    // (`mix` is a function of GLSL: a name that the shaders call keeps its name.)
+    assert.match(out, /, mix = q; float \w+ = mix\(/, out);
+    assert.match(out, /uniform float u_k;/);
+    assert.match(out, /\$\{N\}\.0/);
 });

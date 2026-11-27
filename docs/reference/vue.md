@@ -39,14 +39,14 @@ new `key`.
 <!-- ref:VueMapJrProps:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`mapStyle`](#mapstyle) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. |
+| [`mapStyle`](#mapstyle) **required** | `string \| StylePair \| StyleSpecification` | | The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. |
 | [`view`](#view) | [`ViewInput`](types.md#viewinput)` \| null` | | The view that the application controls, for `v-model:view`. |
 | `initialView` | [`InitialView`](types.md#initialview)` \| null` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | `sources` | `Record<string, SourceInput> \| null` | | Sources to add to the style, by id. |
 | `layers` | `LayerInput[] \| null` | | Layers to add to the style. |
 | [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
 | `images` | `Record<string, ImageInput> \| null` | | Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
-| `sprite` | `{id: string; url: string}[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. |
+| `sprite` | `SpriteInput[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. |
 | [`data`](#data) | `Record<string, string \| GeoJSON> \| null` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
 | `interactiveLayers` | `string[] \| null` | | The ids of the style layers that respond to the pointer: their features are in the events `click` and `hover`. |
 | `hoverState` | `boolean \| null` | `false` | Whether the top feature of `interactive-layers` under the pointer has the feature state `hover: true`. |
@@ -58,7 +58,7 @@ new `key`.
 | `maxBounds` | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map. |
 | `cooperativeGestures` | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| `colorScheme` | `'auto' \| 'dark' \| 'light' \| null` | `'light'` | The color scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
+| `colorScheme` | `ColorScheme \| null` | `'light'` | The color scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. |
 | `locale` | `Record<string, string> \| null` | | The texts of the controls by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
 | `padding` | `PaddingInput \| null` | `0` | Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. |
 | `controls` | `ControlSpec[] \| null` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
@@ -335,15 +335,19 @@ const popupOpen = ref(true);
 |---|---|---|---|
 | `lngLat` **required** | `[number, number]` | | The position of the content, `[lng, lat]`. |
 | `anchor` | `Anchor` | `'center'` for a marker; for a popup, chosen by the position | The part of the content that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners. |
-| `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
+| `offset` | `PopupOffset` | | A distance in CSS pixels from the position, to the right and down. |
 | `popup` | `boolean` | `false` | Whether the content is shown in a box with a tip that points to the position (a popup). |
 | `onClose` | `() => void` | | Called when the user closes the popup, as the listener `@close`. |
+| `closeButton` | `boolean` | true when `onClose` is set, else false | Whether the popup has a button to close it. |
+| `closeOnClick` | `boolean` | `false` | Whether a click on the map closes the popup. |
 | `draggable` | `boolean` | `false` | Whether the user can drag the content. |
 <!-- ref:VueMapOverlayProps:end -->
 
+The props `offset`, `closeButton` and `closeOnClick` take the values of the same options of [`overlay`](map.md#overlayoptions).
+
 | Event | Value | When |
 |---|---|---|
-| `close` | none | When the user closes the popup. A listener for `close` adds the button that closes the popup. |
+| `close` | none | When the user closes the popup. A listener for `close` adds the button that closes the popup, unless `closeButton` is `false`. |
 | `dragstart` | `[lng, lat]` | When a drag starts, after the pointer has moved 3 pixels. A shorter move stays a click. |
 | `drag` | `[lng, lat]` | At each move of a drag. |
 | `dragend` | `[lng, lat]` | When the user drops the content. |

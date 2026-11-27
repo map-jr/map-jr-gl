@@ -24,9 +24,14 @@ const {parseAst} = await import(pathToFileURL(createRequire(createRequire(import
 export const LINK = 'https://map-jr.org/e/';
 const CODED = /^(\[map-jr-gl\] )?E(\d+) /;
 
-/** The function that a production message calls on each value: a string prints in quotes, and a number or another value as it is. */
+/**
+ * The function that a production message calls on each value: a string prints in quotes, and a number or another value as
+ * it is. A module that imports src/requests.ts already, and each module of the worker file, imports it from there
+ * (`messageValue`), so that a built file does not repeat it for each module; any other module gets a copy of its own.
+ */
 const QUOTE = '__mjrValue';
 const quoteFunction = `\nfunction ${QUOTE}(v) { return typeof v == 'string' ? JSON.stringify(v) : v; }\n`;
+const REQUESTS = new URL('../src/requests.ts', import.meta.url).pathname;
 
 /**
  * The places where the source adds the code at run time: [file, text in src/, text in production, and the code and the names
@@ -182,8 +187,12 @@ function shortenMessages(code, file, found = []) {
     return edits;
 }
 
-/** The production form of one file of src/, with its source map, or null when the file has no message. */
-export function productionMessages(code, id) {
+/**
+ * The production form of one file of src/, with its source map, or null when the file has no message.
+ * `shared`: each module that needs the value function imports it from src/requests.ts (the worker file, which is one
+ * file); otherwise only a module that imports src/requests.ts already does.
+ */
+export function productionMessages(code, id, shared = false) {
     id = id.replaceAll('\\', '/'); // (A path of Windows, as scripts/messages.mjs gives it.)
     if (!/\/src\/[^/]+\.ts$/.test(id) || !/E\d+ |\[map-jr-gl\] E'/.test(code)) return null;
     const edits = shortenMessages(code, id);
@@ -194,7 +203,13 @@ export function productionMessages(code, id) {
     const edited = new MagicString(code);
     let end = -1;
     for (const [s, e, t] of edits) { if (s < end) continue; edited.overwrite(s, e, t); end = e; }
-    if (edits.some(e => e[2].includes(QUOTE + '('))) edited.append(quoteFunction);
+    if (edits.some(e => e[2].includes(QUOTE + '('))) {
+        if (id.endsWith('/src/requests.ts')) edited.append(`\nconst ${QUOTE} = messageValue;\n`);
+        // (Only an import that src/ writes counts: the plugin `errorCodes` adds one for a `new Error` that can be in the
+        // development build only, which the bundler then drops.)
+        else if (shared || /^import (?!type )[^;]*from '\.\/requests\.ts';$/m.test(code)) edited.append(`\nimport {messageValue as ${QUOTE}} from ${JSON.stringify(REQUESTS)};\n`);
+        else edited.append(quoteFunction);
+    }
     return {code: edited.toString(), map: edited.generateMap({source: id, hires: true})};
 }
 
@@ -208,7 +223,9 @@ export function productionNames(code, id) {
 }
 
 /** The plugin of build.mjs. */
-export const messageCodes = {name: 'message-codes', enforce: 'pre', transform: productionMessages};
+export const messageCodes = {name: 'message-codes', enforce: 'pre', transform: (code, id) => productionMessages(code, id)};
+/** The plugin of build.mjs for the worker file, where every module shares the value function of src/requests.ts. */
+export const workerMessageCodes = {name: 'message-codes', enforce: 'pre', transform: (code, id) => productionMessages(code, id, true)};
 
 /**
  * The plugin of build.mjs for both builds (#2148): `new Error(text)` and `new TypeError(text)` whose text has a code become

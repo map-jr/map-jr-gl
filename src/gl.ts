@@ -27,16 +27,33 @@ vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 export const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
 
 // Ground height from an elevation tile, for vertex shaders. `u_demRect` is the part of the elevation image under this
-// tile (offset x, y and scale, then the image size in pixels); `u_exag` of zero means "no heights here (yet)", and
-// the ground is then taken to be level at `u_level`.
+// tile (offset x, y and scale, then the image size in pixels, without the border); `u_exag` of zero means "no heights
+// here (yet)", and the ground is then taken to be level at `u_level`. The texture has a border of 2 pixels from the
+// neighbor tiles (see `padDem`), as in MapLibre GL JS, so the heights near an edge and up to 1.5 pixels past it (the
+// centroid of a building in the buffer of a tile) are those of the neighbor (#2319).
 const TERRAIN_GLSL = `uniform highp sampler2D u_dem; uniform vec4 u_demRect; uniform vec4 u_unpack; uniform float u_exag; uniform float u_level;
-float demAt(ivec2 p) { vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), ivec2(int(u_demRect.w) - 1)), 0) * 255.0; return dot(c.rgb, u_unpack.rgb) - u_unpack.a; }
+float demAt(ivec2 p) { vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), ivec2(int(u_demRect.w) + 3)), 0) * 255.0; return dot(c.rgb, u_unpack.rgb) - u_unpack.a; }
 float ground(vec2 uv) {
   if (u_exag == 0.0) return u_level;
-  vec2 p = (u_demRect.xy + uv * u_demRect.z) * u_demRect.w - 0.5, f = fract(p); ivec2 i = ivec2(floor(p));
+  vec2 p = (u_demRect.xy + uv * u_demRect.z) * u_demRect.w + 1.5, f = fract(p); ivec2 i = ivec2(floor(p));
   return mix(mix(demAt(i), demAt(i + ivec2(1, 0)), f.x), mix(demAt(i + ivec2(0, 1)), demAt(i + ivec2(1, 1)), f.x), f.y) * u_exag;
 }
 `;
+
+/**
+ * An elevation image (`w` by `h` pixels) with a border of 2 pixels on each side, as MapLibre GL JS keeps it (`DEMData`).
+ * The border repeats the edge until the loaded neighbor tiles fill it (`backfillDem`).
+ */
+function padDem(w: number, h: number, data: Uint8Array): Uint8Array {
+    const W = w + 4, out = new Uint8Array(W * (h + 4) * 4), px = new Uint32Array(out.buffer);
+    for (let y = 0; y < h + 4; y++) {
+        const r = clamp(y - 2, 0, h - 1) * w * 4, o = y * W;
+        out.set(data.subarray(r, r + w * 4), (o + 2) * 4);
+        px.fill(px[o + 2], o, o + 2);
+        px.fill(px[o + w + 1], o + w + 2, o + W);
+    }
+    return out;
+}
 
 const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1, 0];
 /**
@@ -400,12 +417,13 @@ void main() {
 void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
 uniform sampler2D u_dem; uniform float u_zoom; uniform vec4 u_unpack; in vec2 v_uv; out vec4 o;
 float elev(ivec2 p, ivec2 size) {
-  vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), size - 1), 0) * 255.0;
+  vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), size - 1) + 2, 0) * 255.0;
   c.a = -1.0;
   return dot(c, u_unpack);
 }
 void main() {
-  ivec2 size = textureSize(u_dem, 0), p = ivec2(v_uv * vec2(size));
+  // (The slopes are those of the image without its border, which the neighbor tiles fill later.)
+  ivec2 size = textureSize(u_dem, 0) - 4, p = ivec2(v_uv * vec2(size));
   float a = elev(p + ivec2(-1, -1), size), b = elev(p + ivec2(0, -1), size), c = elev(p + ivec2(1, -1), size);
   float d = elev(p + ivec2(-1, 0), size), f = elev(p + ivec2(1, 0), size);
   float g = elev(p + ivec2(-1, 1), size), h = elev(p + ivec2(0, 1), size), i = elev(p + ivec2(1, 1), size);
@@ -525,7 +543,7 @@ export interface GLTile {
     /** Latitude of the tile's top and bottom edges, for hillshade. */
     lat?: [number, number];
     /** Elevation tiles: the encoded heights as downloaded, their size in pixels and how to decode them. */
-    raw?: WebGLTexture; rawSize?: number; unpack?: number[];
+    raw?: WebGLTexture; rawSize?: number; unpack?: number[]; /** The elevation image is square, so neighbor tiles can fill its border (see `backfillDem`). */ square?: boolean;
 }
 
 /** The part of an elevation tile that lies under some other tile. */
@@ -993,8 +1011,9 @@ export class GLRenderer {
         const gl = this.gl, tex = into ? into.tex! : this.newTexture();
         if (into) gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
-        // (Elevation tiles arrive as plain pixels, which a tile worker decoded.)
-        if ('data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image.data);
+        // (Elevation tiles arrive as plain pixels, which a tile worker decoded. They get a border, see `padDem`.)
+        if (dem && 'data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width + 4, image.height + 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, padDem(image.width, image.height, image.data));
+        else if ('data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image.data);
         else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         if (into) return into;
@@ -1016,11 +1035,27 @@ export class GLRenderer {
             gl.bindVertexArray(this.quad);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-            tile.raw = tex; tile.rawSize = image.width;
+            tile.raw = tex; tile.rawSize = image.width; tile.square = image.width === image.height;
             tile.tex = slopes;
             tile.lat = [latFromMerc(id.y / n), latFromMerc((id.y + 1) / n)];
         }
         return tile;
+    }
+
+    /**
+     * Copies the edge of the elevation tile `from`, the neighbor at (dx, dy) of `to` (each -1, 0 or 1), into the border
+     * of `to`, as MapLibre GL JS does (`backfillBorder`). The heights of `to` then go on past its edge.
+     */
+    backfillDem(to: GLTile, from: GLTile, dx: number, dy: number) {
+        const gl = this.gl, d = to.rawSize!;
+        if (!to.square || !from.square || from.rawSize !== d) return;
+        const x = dx < 0 ? 0 : dx ? d + 2 : 2, y = dy < 0 ? 0 : dy ? d + 2 : 2;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, from.raw!, 0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, to.raw!);
+        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, x, y, x - dx * d, y - dy * d, dx ? 2 : d, dy ? 2 : d);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
     destroyTile(t: GLTile) {
@@ -1831,6 +1866,19 @@ export class GLRenderer {
             f[o] = x; f[o + 1] = y; f[o + 2] = u; f[o + 3] = v; f[o + 4] = alpha;
             f[o + 5] = tint[0]; f[o + 6] = tint[1]; f[o + 7] = tint[2]; f[o + 8] = tint[3]; o += 9;
         };
+        /**
+         * One triangle of an icon on the ground of the globe, as x, y, u, v and the side of the horizon at each corner (see
+         * `groundCorners`): the part on the hidden side is cut off, as MapLibre GL JS cuts it with the plane of the horizon.
+         */
+        const cut = (t: number[][], alpha: number, tint: number[]) => {
+            const q: number[][] = [];
+            for (let k = 0; k < 3; k++) {
+                const a = t[k], b = t[(k + 1) % 3];
+                if (a[4] >= 0) q.push(a);
+                if (a[4] >= 0 !== b[4] >= 0) q.push(a.map((v, j) => v + (b[j] - v) * a[4] / (a[4] - b[4])));
+            }
+            for (let k = 1; k + 1 < q.length; k++) for (const v of [q[0], q[k], q[k + 1]]) vertex(v[0], v[1], v[2], v[3], alpha, tint);
+        };
         const plain = [0, 0, 0, -1];
         for (const {icon: i, opacity} of labels) {
             if (!i || !!i.custom !== custom || !(opacity > 0)) continue;
@@ -1844,7 +1892,12 @@ export class GLRenderer {
             // MapLibre GL JS draws it where it falls.
             const ox = i.angle === 0 && !i.color ? snap(i.x - hw) - (i.x - hw) : 0, oy = i.angle === 0 && !i.color ? snap(i.y - hh) - (i.y - hh) : 0;
             const x = i.x + ox, y = i.y + oy;
-            room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * 54);
+            // (On the globe a point of the icon is between its corners, which `groundCorners` projected: x, y and the side.)
+            const gc = i.corners, at = (px: number, py: number) => {
+                const tx = px / i.w + 0.5, ty = py / i.h + 0.5;
+                return [0, 1, 2].map(k => { const top = gc![k] + (gc![3 + k] - gc![k]) * tx; return top + (gc![6 + k] + (gc![9 + k] - gc![6 + k]) * tx - top) * ty; });
+            };
+            room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * (gc ? 108 : 54));
             // A halo is the same picture drawn first, in the halo color and out to a lower level of the distance field.
             for (let pass = i.halo ? 0 : 1; pass < 2; pass++) {
                 const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) + 100 * Math.round(i.haloBlur! * 100) : 0);
@@ -1852,6 +1905,12 @@ export class GLRenderer {
                     // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
                     const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;
                     const u0 = sx + gx[a], u1 = sx + gx[a + 2], v0 = sy + gy[b], v1 = sy + gy[b + 2];
+                    if (gc) {
+                        const c = (px: number, py: number, u: number, v: number) => { const [x, y, s] = at(px, py); return [x, y, u, v, s]; };
+                        const c10 = c(x1, y0, u1, v0), c01 = c(x0, y1, u0, v1);
+                        cut([c(x0, y0, u0, v0), c10, c01], alpha, tint); cut([c10, c(x1, y1, u1, v1), c01], alpha, tint);
+                        continue;
+                    }
                     const p00x = x + x0 * cos + y0 * nx + second(fr, 0, x0, y0), p00y = y + x0 * sin + y0 * ny + second(fr, 1, x0, y0), p10x = x + x1 * cos + y0 * nx + second(fr, 0, x1, y0), p10y = y + x1 * sin + y0 * ny + second(fr, 1, x1, y0);
                     const p01x = x + x0 * cos + y1 * nx + second(fr, 0, x0, y1), p01y = y + x0 * sin + y1 * ny + second(fr, 1, x0, y1), p11x = x + x1 * cos + y1 * nx + second(fr, 0, x1, y1), p11y = y + x1 * sin + y1 * ny + second(fr, 1, x1, y1);
                     vertex(p00x, p00y, u0, v0, alpha, tint); vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);

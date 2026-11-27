@@ -6,7 +6,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {boxAround, CollisionGrid, flatSize, FULL_CLIP, groundCorners, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
@@ -1447,6 +1447,7 @@ export class Engine {
             if (this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
+            this.backfill(source, id, key, gl);
             this.expire(t, t.expires);
             t.at = performance.now();
             t.rev = ++this.tilesVersion;
@@ -1562,6 +1563,7 @@ export class Engine {
             if (this.tiles.get(key) !== t || !gl) return gl && this.renderer.destroyTile(gl);
             const old = t.gl;
             t.gl = gl;
+            this.backfill(source, id, key, gl);
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
             if (report && !same && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
@@ -1608,6 +1610,22 @@ export class Engine {
         t.dem = undefined;
         t.missing = true;
         return {labels: {}, batches: {}};
+    }
+
+    /**
+     * The border of the texture of a new elevation tile takes the edges of the loaded tiles around it, and their borders
+     * take its edges, as in MapLibre GL JS (#2319). (This runs when the tile is stored, so two tiles that arrive in the
+     * same frame each find the other.)
+     */
+    private backfill(source: string, id: TileID, key: string, gl: GLTile) {
+        const n = 2 ** id.z;
+        if (!gl.raw) return;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const y = id.y + dy, k = `${source}|${id.z}/${(id.x + dx + n) % n}/${y}`, o = this.tiles.get(k)?.gl;
+            if (k === key || y < 0 || y >= n || !o?.raw) continue;
+            this.renderer.backfillDem(gl, o, dx, dy);
+            this.renderer.backfillDem(o, gl, -dx, -dy);
+        }
     }
 
     private elevationTile(dem: ElevationTile, source: string, id: TileID, key: string, t: TileState, encoding: DemEncoding) {
@@ -1999,6 +2017,7 @@ export class Engine {
             // (Text along a line, and a symbol at a point that is aligned with the map, turn with the map between
             // placements; otherwise they would hold the old angle and then snap, which reads as rocking while the map rotates.)
             st.turned = moveLabel(tr, p, d, q[0], q[1], q[2], turn, !!st.turned);
+            if (p.icon?.merc) d.icon!.corners = globeness ? groundCorners(tr, p, q[2]) : undefined;
         }
         if (this.iconsRev !== this.iconsDone) {
             // Images often come one after another (the variants of a template, the answers to missing images). The

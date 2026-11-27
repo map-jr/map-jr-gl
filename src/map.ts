@@ -11,7 +11,7 @@ import type {QueriedFeature, QuerySet} from './query.ts';
 import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
 import type {GeoJSONGeometry} from './host.ts';
-import {acquireTileWorkers, defaults as loadDefaults, partUrls, partsComing, prefetchParts, startWorker, type LoadOptions} from './loader.ts';
+import {acquireTileWorkers, defaults as loadDefaults, pageReferrer, partUrls, partsComing, prefetchParts, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 // The warnings of the engine workers, each once on the page, as each thread warns once (expr.ts, #1141).
@@ -516,8 +516,8 @@ export class Map {
             // (A style with a Vue reactive proxy in it cannot be cloned: the engine then gets a JSON copy, #242.)
             // (The engine loads the part for 3D terrain, #1849: the page sends the code that it fetches, see `partsComing`.)
             const parts = partUrls(o), coming = partsComing(o, [w]);
-            try { w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports, parts, coming}, [off, ...ports]); }
-            catch { w.postMessage({role: 'engine', canvas: off, options: plain(engineOptions), ports, parts, coming}, [off, ...ports]); }
+            try { w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports, parts, coming, ref: pageReferrer()}, [off, ...ports]); }
+            catch { w.postMessage({role: 'engine', canvas: off, options: plain(engineOptions), ports, parts, coming, ref: pageReferrer()}, [off, ...ports]); }
             this.send = (c, transfer) => w.postMessage(c, transfer ?? []);
             this.renderer = 'worker';
         } else {
@@ -1584,6 +1584,8 @@ export class Map {
         if (!terrain) { this.tr.heightAt = undefined; if (!this.centreHeld) this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
+    /** Replaces the sprites of the style, or removes them with `null`. */
+    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
     /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
     /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), color and intensity. */
