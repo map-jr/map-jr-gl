@@ -238,15 +238,17 @@ const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const view = {center: [-74.0065, 40.7085], zoom: 13.6};
 // Set on the server only: in the browser, MapJr keeps the HTML of the page.
 const firstView = ref();
-onServerPrefetch(async () => {
-  const {renderFirstView} = await import('@map-jr/map-jr-gl/server');
-  firstView.value = await renderFirstView({
-    style,
-    ...view,
-    width: 800,
-    height: 500,
-  }).catch(() => '');
-});
+// The check keeps the server renderer out of the files for the browser.
+if (import.meta.env.SSR)
+  onServerPrefetch(async () => {
+    const {renderFirstView} = await import('@map-jr/map-jr-gl/server');
+    firstView.value = await renderFirstView({
+      style,
+      ...view,
+      width: 800,
+      height: 500,
+    }).catch(() => '');
+  });
 </script>
 
 <template>

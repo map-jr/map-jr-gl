@@ -83,17 +83,19 @@ const view = {center: [-74.0065, 40.7085], zoom: 13.6};
 // Set on the server only. In the browser, MapJr keeps the HTML that the page
 // from the server has, so the page does not carry it twice.
 const firstView = ref();
-onServerPrefetch(async () => {
-  const {renderFirstView} = await import('@map-jr/map-jr-gl/server');
-  // A failed render must not fail the page: the map then draws in the
-  // browser.
-  firstView.value = await renderFirstView({
-    style,
-    ...view,
-    width: 800,
-    height: 500,
-  }).catch(() => '');
-});
+// The check keeps the server renderer out of the files for the browser.
+if (import.meta.env.SSR)
+  onServerPrefetch(async () => {
+    const {renderFirstView} = await import('@map-jr/map-jr-gl/server');
+    // A failed render must not fail the page: the map then draws in the
+    // browser.
+    firstView.value = await renderFirstView({
+      style,
+      ...view,
+      width: 800,
+      height: 500,
+    }).catch(() => '');
+  });
 </script>
 
 <template>
@@ -147,6 +149,8 @@ browser.
 
 - In Vue, `onServerPrefetch` runs before the server renders the children of the component, so `MapJr` gets the HTML.
   In the browser the prop stays empty, and `MapJr` keeps the HTML that the page has.
+  The check `import.meta.env.SSR` (`import.meta.server` in Nuxt) keeps `@map-jr/map-jr-gl/server` out of the files for
+  the browser.
 - The built files of `@map-jr/map-jr-gl/react` start with `'use client'`, so a server component of Next.js imports
   `MapJr` from the entry and needs no client file of its own. Next.js sends the props of a client component to the
   browser, so the page contains the HTML of `firstView` twice.
