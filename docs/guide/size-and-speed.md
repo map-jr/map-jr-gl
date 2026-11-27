@@ -10,13 +10,13 @@ Sizes in KB, compressed with gzip, next to MapLibre GL JS 6.17.0. The page scrip
 
 | File | Map Jr. GL | MapLibre GL JS | Share |
 |---|---:|---:|---:|
-| Page script of `@map-jr/map-jr-gl` | 49.8 | 300.1 | 16.6% |
-| Page script of `@map-jr/map-jr-gl/maplibre-compat` | 59.4 | 300.1 | 19.8% |
-| Worker file | 84.7 | 145.0 | 58.4% |
-| Page script and worker file of `@map-jr/map-jr-gl` | 134.6 | 445.1 | 30.2% |
-| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 144.1 | 445.1 | 32.4% |
+| Page script of `@map-jr/map-jr-gl` | 50.3 | 300.1 | 16.8% |
+| Page script of `@map-jr/map-jr-gl/maplibre-compat` | 60.1 | 300.1 | 20.0% |
+| Worker file | 79.7 | 145.0 | 55.0% |
+| Page script and worker file of `@map-jr/map-jr-gl` | 130.0 | 445.1 | 29.2% |
+| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 139.8 | 445.1 | 31.4% |
 | Hard line for the page script and the worker file | 148.4 | 445.1 | 33.3% |
-| Server renderer | 60.8 |  |  |
+| Server renderer | 62.0 |  |  |
 <!-- sizes:end -->
 
 - A usual map downloads the page script of its entry and the worker file. The [loading guide](loading.md#the-files-that-a-map-loads)
@@ -34,34 +34,37 @@ building outlines, no small roads) make a page of 245 KB into one of 115 KB. The
 ## Speed in browsers
 
 <!-- speed:start -->
-The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS 6.17.0. These figures are from the run of 2026-11-27, for commit e644ddc. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
+The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS 6.17.0. These figures are from the run of 2026-11-27, for commit b28987d. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
 
 Load to idle, in milliseconds. A ratio below 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 1150 | 699 | 0.61 |
-| Linux, Chromium | 655 | 551 | 0.84 |
-| Linux, Firefox | 1812 | 693 | 0.38 |
-| Linux, WebKit | 1341 | 687 | 0.51 |
+| macOS, Chromium | 1435 | 576 | 0.40 |
+| macOS, WebKit | 1304 | 606 | 0.46 |
+| Linux, Chromium | 819 | 654 | 0.80 |
+| Linux, Firefox | 957 | 476 | 0.50 |
+| Linux, WebKit | 2528 | 843 | 0.33 |
 
 Frames per second while the map moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 33 | 26 | 0.80 |
-| Linux, Chromium | 8 | 7 | 0.86 |
-| Linux, Firefox | 14 | 49 | 3.61 |
-| Linux, WebKit | 15 | 13 | 0.89 |
+| macOS, Chromium | 28 | 35 | 1.25 |
+| macOS, WebKit | 57 | 54 | 0.95 |
+| Linux, Chromium | 6 | 5 | 0.85 |
+| Linux, Firefox | 20 | 52 | 2.58 |
+| Linux, WebKit | 11 | 11 | 1.00 |
 
 Frames per second while a map with 10,000 markers moves. A ratio above 1 means that Map Jr. GL is faster.
 
 | System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
 |---|---:|---:|---:|
-| macOS, Chromium | 2 | 24 | 11.89 |
-| Linux, Chromium | 3 | 10 | 3.58 |
-| Linux, Firefox | 5 | 40 | 8.62 |
-| Linux, WebKit | 3 | 19 | 6.06 |
+| macOS, Chromium | 2 | 20 | 12.19 |
+| macOS, WebKit | 5 | 54 | 10.79 |
+| Linux, Chromium | 2 | 7 | 3.14 |
+| Linux, Firefox | 6 | 45 | 7.10 |
+| Linux, WebKit | 2 | 14 | 6.59 |
 <!-- speed:end -->
 
 Load to idle is the time from the start of the page until the map has drawn its first view completely. The
