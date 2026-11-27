@@ -117,6 +117,35 @@ for (const mode of renderers) {
     }, mode).catch(e => ({error: String(e)}));
     check(`[${mode}] compat: an image source with a concave shape of corners, or with corners 0, 1 and 2 on one line, is drawn as in MapLibre GL JS, in Mercator and on the globe (#1983)`,
         ['mercator', 'globe'].every(t => concave[t]?.inside && !concave[t].point && !concave[t].arm && concave[t].line === false), JSON.stringify(concave));
+    // #1953: a pitched map at rest moves a raster image by less than a pixel onto the pixels of the screen, as MapLibre GL JS
+    // (served at /ml/) does at any pitch. A checker of 4 texels with linear filtering shows a shift of half a pixel at
+    // its edges: without the snap about 14 % of the pixels differ from MapLibre at pitch 30, with it almost none.
+    const pitchSnap = await page.evaluate(async renderer => {
+        const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+        g.fillStyle = '#000'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#fff';
+        for (let i = 0; i < 256; i += 4) for (let j = 0; j < 256; j += 4) if ((i + j) / 4 % 2) g.fillRect(i, j, 4, 4);
+        const style = {version: 8, sources: {i: {type: 'image', url: c.toDataURL(), coordinates: [[-10, 10], [10, 10], [10, -10], [-10, -10]]}},
+            layers: [{id: 'i', type: 'raster', source: 'i', paint: {'raster-fade-duration': 0}}]};
+        const pixels = async lib => {
+            const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:301px;height:201px'}));
+            const m = new mod.Map({container: el, renderer, attributionControl: false, pixelRatio: 1, canvasContextAttributes: {preserveDrawingBuffer: true},
+                center: [0.37, 0.21], zoom: 3.17, pitch: 30, style});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            const bmp = await createImageBitmap(lib === 'ml' ? m.getCanvas() : await m.toBlob()), cv = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), cg = cv.getContext('2d');
+            cg.drawImage(bmp, 0, 0);
+            m.remove(); el.remove();
+            return cg.getImageData(0, 0, cv.width, cv.height).data;
+        };
+        const a = await pixels('compat'), b = await pixels('ml');
+        if (a.length !== b.length) return {error: `sizes ${a.length} and ${b.length}`};
+        let differ = 0;
+        for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) > 64) differ++;
+        return {differ: +(400 * differ / a.length).toFixed(2)};
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] compat: a pitched map at rest draws a raster image on whole pixels, as MapLibre GL JS does (#1953)`,
+        pitchSnap.differ < 1, JSON.stringify(pitchSnap));
 
     // Paint transitions (#960), as in MapLibre GL JS: setPaintProperty and setStyle with `diff` move a colour over the
     // layer's `*-transition` (here 3 s), `idle` waits for the end, and setStyle with `diff: false` changes it at once.
@@ -530,6 +559,27 @@ for (const mode of renderers) {
             check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
         }
+        // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
+        // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
+        const resizeOrder = lib => page.evaluate(async ([lib, renderer]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => setTimeout(r, 500));
+            const log = [];
+            for (const t of ['movestart', 'move', 'resize', 'moveend']) m.on(t, () => log.push(t));
+            log.push('|same'); m.resize(); log.push('|ret');
+            await new Promise(r => setTimeout(r, 500));
+            log.push('|width'); el.style.width = '300px'; m.resize(); log.push('|ret');
+            await new Promise(r => setTimeout(r, 800));
+            m.remove(); el.remove();
+            return log.join(' ');
+        }, [lib, mode]).catch(e => String(e));
+        const resizeOurs = await resizeOrder('ours'), resizeMl = await resizeOrder('ml');
+        check(`[${mode}] resize() fires movestart, move, resize and moveend inside the call, as in MapLibre GL JS (#2395)`,
+            resizeOurs === resizeMl && resizeMl.startsWith('|same movestart move resize moveend |ret |width movestart move resize moveend |ret'), JSON.stringify({resizeOurs, resizeMl}));
         // easeTo with `around` and no duration is a jump: one move, all events inside the call, and the same view as MapLibre GL JS (#2394).
         const aroundJump = lib => page.evaluate(async ([lib, renderer]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
@@ -1712,6 +1762,10 @@ for (const mode of renderers) {
     const tap = await page.evaluate(async () => {
         const m = window.map, c = m.getCanvas(), r = {}, x = c.clientWidth / 2 - 70, y = c.clientHeight / 2 + 50;
         m.once('click', e => { r.ms = Math.round(performance.now() - r.t0); r.found = [...m.queryRenderedFeatures(e.point)].filter(f => f.sourceLayer).length; });
+        // Tiles of the tap must be loaded before the tap (#2487): wait for them, and for a frame, without a query that would
+        // fill the answers that the tap is to get by itself.
+        for (let i = 0; i < 100 && !(m.areTilesLoaded() && !m.isMoving()); i++) await new Promise(f => setTimeout(f, 100));
+        await new Promise(f => requestAnimationFrame(() => f()));
         await new Promise(f => setTimeout(f, 500)); r.t0 = performance.now(); window.touch('pointerdown', 11, x, y); await new Promise(f => setTimeout(f, 80)); window.touch('pointerup', 11, x, y);
         await new Promise(f => setTimeout(f, 1000)); delete r.t0;
         // The tap lands on a pin, so the demo opens a popup there that would cover the clicks of the tests below.
@@ -1736,16 +1790,22 @@ for (const mode of renderers) {
     await settle(page);
     // #7: `click` and `contextmenu` reach a map listener within 300 ms of the pointer event (the bounded wait for the
     // features), not after a query of any length.
+    // The library's wait is a timer of 300 ms that it starts in the handler of the pointer event. The page starts a timer of
+    // 300 ms after it, when the same event reaches `window` (bubbling), so that the library's timer fires first in any
+    // load: a loaded machine delays both timers and a single wait for the features is not counted as late (#2486). A
+    // listener that runs after the page's timer has waited for longer than 300 ms.
     await page.evaluate(() => {
-        window.late = {}; const t = {};
+        window.late = {};
         for (const [dom, ev] of [['pointerup', 'click'], ['contextmenu', 'contextmenu']]) {
-            window.addEventListener(dom, () => { t[ev] = performance.now(); }, {once: true, capture: true});
-            window.map.once(ev, () => { window.late[ev] = Math.round(performance.now() - t[ev]); });
+            window.addEventListener(dom, () => { setTimeout(() => { window.late[ev + 'Ref'] = performance.now(); }, 300); }, {once: true});
+            window.map.once(ev, () => { window.late[ev] = performance.now(); });
         }
     });
-    await page.mouse.click(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.waitForTimeout(500);
-    const lateness = await page.evaluate(() => window.late);
-    check(`[${mode}] click and contextmenu: a map listener runs within 300 ms of the pointer event`, lateness.click <= 330 && lateness.contextmenu <= 330, JSON.stringify(lateness));
+    await page.mouse.click(500, 350); await page.mouse.click(500, 350, {button: 'right'});
+    await page.waitForFunction(() => ['click', 'contextmenu'].every(ev => window.late[ev + 'Ref'] > 0), null, {timeout: 10000}).catch(() => {});
+    const lateness = await page.evaluate(() => { const l = window.late; return {click: l.click, clickRef: l.clickRef, contextmenu: l.contextmenu, contextmenuRef: l.contextmenuRef}; });
+    check(`[${mode}] click and contextmenu: a map listener runs within 300 ms of the pointer event`,
+        ['click', 'contextmenu'].every(ev => lateness[ev] !== undefined && lateness[ev + 'Ref'] > 0 && lateness[ev] <= lateness[ev + 'Ref']), JSON.stringify(lateness));
     await settle(page);
 
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
@@ -3244,6 +3304,26 @@ for (const mode of renderers) {
         check('[main] queryRenderedFeatures on the globe without pitch finds point text with text-pitch-alignment map where it is drawn, with both renderers (#2012)',
             Object.values(globePoint).every(r => r.drawn[2] - r.drawn[0] > 30 && r.drawn[2] - r.drawn[0] < 200 && r.x[0] >= r.drawn[0] - 10 && r.x[1] <= r.drawn[2] + 10 && r.y[0] >= r.drawn[1] - 10 && r.y[1] <= r.drawn[3] + 10 && r.x[1] - r.x[0] > 30),
             JSON.stringify(globePoint));
+        // On the globe at pitch 50 the top corners of the canvas are off the sphere, at latitude 51, and the middle of the
+        // top edge shows latitude 66: a query of the whole view finds the label at 60 that is drawn there, as a query at
+        // its point does (#2446). (The tiles were asked with the rectangle around the four corners only.)
+        const globeTop = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:600px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 30], zoom: 2, pitch: 50, attributionControl: false, fadeDuration: 0, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [[0, 45], [0, 60]].map(c => ({type: 'Feature', properties: {lat: c[1]}, geometry: {type: 'Point', coordinates: c}}))}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'HH', 'text-size': 24, 'text-pitch-alignment': 'map', 'text-allow-overlap': true}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const p = m.project([0, 60]);
+                out[renderer] = {all: (await m.queryRenderedFeatures({layers: ['t']})).map(f => f.properties.lat).sort(), atPoint: (await m.queryRenderedFeatures([p.x, p.y], {layers: ['t']})).length, corner: Math.round(m.unproject([0, 0]).lat)};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures of the whole view on the globe at pitch 50 finds a label near the top edge that is past the latitude of the corners, with both renderers (#2446)',
+            Object.values(globeTop).every(r => r.all.join() === '45,60' && r.atPoint === 1 && r.corner < 60), JSON.stringify(globeTop));
         // On the globe each corner of an icon on the ground goes through the sphere at its own place, as in MapLibre GL JS
         // 6.17 (served at /ml/): a red icon of 40 pixels off the center has the width and the height of MapLibre's within
         // 1.5 pixels (2 and 3 pixels more with one frame at the anchor, #2194). With `icon-offset` neither has the

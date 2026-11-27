@@ -961,7 +961,7 @@
 "projection/perspective": "match",
 "raster-alpha/default": "match",
 "raster-anisotropic-filtering/no-pitch": "match",
-"raster-anisotropic-filtering/pitch-45": "near",
+"raster-anisotropic-filtering/pitch-45": "match",
 "raster-brightness/default": "match",
 "raster-brightness/function": "match",
 "raster-brightness/literal": "match",

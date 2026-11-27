@@ -190,6 +190,23 @@ function markReferenceTables(nodes: Node[]) {
     }
 }
 
+// On the page of the messages, a paragraph that has only inline code is a row of tags (scripts/messages.mjs): the kind,
+// the entry and the build of a message, or the label of a block (`Production build`). Each tag gets a class by its text,
+// which the CSS colors.
+const messageTagClass = (text: string) => text === 'Error' ? 'tag-error' : text === 'Warning' ? 'tag-warning' : text === 'Development build only' ? 'tag-dev'
+    : /^(Production|Development) build$/.test(text) ? 'tag-build' : 'tag-entry';
+function markMessageTags(nodes: Node[]) {
+    for (const node of nodes) {
+        if (!Array.isArray(node) || node[0] !== 'p') continue;
+        const parts = node.slice(2) as Node[];
+        if (!parts.length || !parts.every(part => typeof part === 'string' ? !part.trim() : Array.isArray(part) && part[0] === 'code')) continue;
+        node[1].class = 'message-tags';
+        // A span, because the prose component of code sets its own class.
+        parts.forEach((part, i) => { if (Array.isArray(part)) parts[i] = ['span', {class: `message-tag ${messageTagClass(textOf(part).trim())}`}, textOf(part).trim()]; });
+        node.splice(2, node.length, ...parts);
+    }
+}
+
 export function transformPage(ctx: {file: {path: string}; content: Record<string, any>}, nav: NavSection[]) {
     const body = ctx.content.body;
     if (!body || !Array.isArray(body.value)) return;
@@ -199,6 +216,7 @@ export function transformPage(ctx: {file: {path: string}; content: Record<string
     body.value = groupFences(pairForms(body.value), state);
     ctx.content.variants = state.variants;
     markReferenceTables(body.value);
+    if (/[\\/]reference[\\/]messages\.md$/.test(ctx.file.path)) markMessageTags(body.value);
     const missing: string[] = [];
     const walk = (node: Node) => {
         if (typeof node === 'string') return;

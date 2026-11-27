@@ -1267,7 +1267,7 @@ export class GLRenderer {
                     const h = p.hueRotate.eval(zoom) * Math.PI / 180, sn = Math.sin(h), cs = Math.cos(h);
                     gl.uniform3f(u.u_spin, (2 * cs + 1) / 3, (-Math.sqrt(3) * sn - cs + 1) / 3, (Math.sqrt(3) * sn - cs + 1) / 3);
                 } else s.layerCode!.demUniforms.call(this, L, u, zoom, s.tr.bearing);
-                // A map at rest, seen from above: the image (raster, hillshade or color-relief) moves by less than a pixel, so that its pixels are on the pixels of
+                // A map at rest, at any pitch: the image (raster, hillshade or color-relief) moves by less than a pixel, so that its pixels are on the pixels of
                 // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the center of the
                 // map goes to a whole pixel of the world (to a half pixel when the size of the map is odd).
                 let snap: number[] | undefined;
@@ -1277,7 +1277,7 @@ export class GLRenderer {
                     if (o < 1) this.fading = true;
                     if (o !== last) { adjust!(o); last = o; }
                     let m = it.matrix4;
-                    if (pass === 'all' && !s.moving && !tr.pitch && !this.globe) {
+                    if (pass === 'all' && !s.moving && !this.globe) {
                         const a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a), xs = tr.width % 2 / 2, ys = tr.height % 2 / 2;
                         snap ??= [mercX(tr.lng) * tr.worldSize + cos * xs + sin * ys, mercY(tr.lat) * tr.worldSize + cos * ys + sin * xs].map(v => (v -= Math.round(v)) > 0.5 ? v - 1 : v);
                         const x = snap[0] / it.scale, y = snap[1] / it.scale;
