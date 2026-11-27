@@ -1637,7 +1637,8 @@ for (const mode of renderers) {
     // #1191: the option `fonts` and `addFonts` of the compat `Map` take an object of font faces by `text-font` name, as `fonts` of the main API.
     if (mode === 'main') {
         const asked = [];
-        await page.route(/\/fonts1191\//, route => { asked.push(new URL(route.request().url()).pathname); route.fulfill({status: 404, body: ''}); });
+        const {squareFont} = await import('./fixtures/square-font.mjs');
+        await page.route(/\/fonts1191\//, route => { asked.push(new URL(route.request().url()).pathname); route.fulfill({status: 200, contentType: 'font/ttf', body: squareFont()}); });
         await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:99'}));
