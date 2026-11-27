@@ -5,7 +5,7 @@
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
-import {Comment, computed, defineComponent, Fragment, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {Comment, computed, defineComponent, Fragment, getCurrentInstance, h, inject, mergeProps, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import {earlyMethod, mistake} from './mistakes.ts';
 import type {AttributionOptions, ColorScheme, Renderer, SpriteInput, ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
@@ -149,7 +149,8 @@ export const MapOverlay = defineComponent({
         color: String,
     },
     emits: ['close', 'dragstart', 'drag', 'dragend'],
-    setup(props, {slots, emit}) {
+    inheritAttrs: false,
+    setup(props, {slots, emit, attrs}) {
         const host = useMapInstance(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
         let overlay: Overlay | null = null;
         const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: Array.isArray(props.offset) ? [props.offset[0], props.offset[1]] : props.offset, popup: props.popup, onClose: props.onClose, closeButton: props.closeButton, closeOnClick: props.closeOnClick,
@@ -175,7 +176,9 @@ export const MapOverlay = defineComponent({
         const blank = (nodes: VNode[] | undefined): boolean => !nodes || nodes.every(n => n.type === Comment || (n.type === Fragment && blank(n.children as VNode[])));
         return () => {
             const content = slots.default?.();
-            return h('div', {ref: el, style: {display: shown.value ? undefined : 'none'}}, blank(content) ? [h('div', {ref: holder})] : content);
+            // The element moves into the map, out of the parent that Vue knows. The fragment keeps anchors in that parent, so that Vue
+            // inserts and removes the nodes next to this component at places that exist (#2383).
+            return h(Fragment, [h('div', mergeProps(attrs, {ref: el, style: {display: shown.value ? undefined : 'none'}}), blank(content) ? [h('div', {ref: holder})] : content)]);
         };
     },
 });

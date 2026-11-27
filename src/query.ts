@@ -50,6 +50,8 @@ export function featureKey(f: FoundFeature): string {
 }
 export interface QuerySet {
     layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number;
+    /** A line layer: the rings of a polygon are drawn as lines, so a feature of a polygon is found near its rings only. */
+    ring?: boolean;
     /** A circle layer: the first value is true when `circle-pitch-alignment` is `map`, the second when `circle-pitch-scale` is `map`. */
     pitch?: [boolean, boolean];
     /**
@@ -175,7 +177,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
     // each feature is read one time and tested for each set.
-    const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius}])
+    const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius, ring: undefined as boolean | undefined}])
         .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also),
             size: 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0), o: compileProp(s.size.o, 'number', 0)} : null}));
     for (const name in layers) {
@@ -195,8 +197,15 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
                 const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
-                const offset = size && f.type === 2 ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
-                if (!touches(f.type, offset ? offsetLine(c, ends, offset) : c, ends, q.px, q.py, radius, q.box)) continue;
+                const offset = size && (f.type === 2 || set.ring) ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
+                // A line layer draws the rings of a polygon as lines (closed), so it finds them near the ring only.
+                let tc: number[] = c, te = ends;
+                const ring = set.ring && f.type === 3;
+                if (ring) {
+                    tc = []; te = [];
+                    for (let i = 0, s = 0; i < ends.length; s = ends[i++]) tc.push(...c.slice(s * 2, ends[i] * 2), c[s * 2], c[s * 2 + 1]), te.push(tc.length / 2);
+                }
+                if (!touches(ring ? 2 : f.type, offset ? offsetLine(tc, te, offset) : tc, te, q.px, q.py, radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
                 if (q.box && f.index !== undefined) feature.index = f.index;
