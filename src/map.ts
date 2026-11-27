@@ -60,7 +60,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
      */
     fonts?: FontFaces;
     interactive?: boolean;
-    /** Changes a request before the library makes it, as in MapLibre: a new URL, headers or credentials. */
+    /** Changes a request before the library makes it, as in MapLibre: a new URL, headers, credentials or a referrer policy. */
     transformRequest?: RequestTransform | null;
     /** Each kind of interaction can be off from the start, as in MapLibre. */
     dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
