@@ -1,7 +1,8 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {compileFor, geo, mergeFeatureState, warnOnce, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type GlobeBuild, type GlobeCut, type TileGL, type TileIR} from './tile.ts';
-import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
+import {decodeElevation, type DemEncoding} from './elevation.ts';
+import type {QueriedFeature, TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, requestError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {fetchTile, heads, type TileFetchState} from './tile-fetch.ts';
@@ -231,13 +232,15 @@ export class TileBuilder {
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
     /** (The filters of a question are compiled when it is answered: for the states of this map.) */
-    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return queryTile(data, q, this.states.f[q.source]); }
+    private find(m: Parts['query'], data: Parameters<Parts['query']['queryTile']>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return m.queryTile(data, q, this.states.f[q.source]); }
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
+        // The code of the queries is a part that loads on demand (parts.ts): it loads while the tile is read.
+        const code = part('query');
         // (A filter of the question can use them where the style does not.)
         if (!this.geo && /"(within|distance)"/.test(JSON.stringify(q.filter ?? null))) this.geo = this.loadGeo();
         if (this.geo) await this.geo;
-        if (url.startsWith(GEOJSON_PREFIX)) return this.find(await this.slice(url), q);
-        if (url.startsWith('contour://')) return this.find((await this.contour(url)).layers, q);
+        if (url.startsWith(GEOJSON_PREFIX)) return this.find(await code, await this.slice(url), q);
+        if (url.startsWith('contour://')) return this.find(await code, (await this.contour(url)).layers, q);
         const key = q.source + '|' + url, n = this.forgotten;
         let bytes = this.recent.get(key);
         if (!bytes) {
@@ -247,7 +250,7 @@ export class TileBuilder {
             bytes = fetched;
             if (n === this.forgotten) this.remember(key, bytes);
         }
-        return bytes.length ? this.find(decodeVectorTile(bytes, this.ids[q.source]), q) : [];
+        return bytes.length ? this.find(await code, decodeVectorTile(bytes, this.ids[q.source]), q) : [];
     }
 }
 

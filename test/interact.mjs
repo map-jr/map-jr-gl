@@ -511,6 +511,25 @@ for (const mode of renderers) {
         const resizeOurs = await resizeOrder('ours'), resizeMl = await resizeOrder('ml');
         check(`[${mode}] resize() fires movestart, move, resize and moveend inside the call, as in MapLibre GL JS (#2395)`,
             resizeOurs === resizeMl && resizeMl.startsWith('|same movestart move resize moveend |ret |width movestart move resize moveend |ret'), JSON.stringify({resizeOurs, resizeMl}));
+        // easeTo with `around` and no duration is a jump: one move, all events inside the call, and the same view as MapLibre GL JS (#2394).
+        const aroundJump = lib => page.evaluate(async ([lib, renderer]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'zoomstart', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => log.push(t));
+            // (MapLibre GL JS reads `around` as a position, and this entry reads a point of the screen in CSS pixels.)
+            m.easeTo({zoom: 5, duration: 0, around: lib === 'ml' ? m.unproject([100, 100]) : [100, 100]});
+            const sync = log.join(' '), c = m.getCenter(), z = m.getZoom();
+            await new Promise(r => setTimeout(r, 800));
+            m.remove(); el.remove();
+            return sync + ' ' + JSON.stringify([z, +c.lng.toFixed(3), +c.lat.toFixed(3)]) + ' ' + log.length;
+        }, [lib, mode]).catch(e => String(e));
+        const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
+        check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
+            aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {
@@ -939,6 +958,23 @@ for (const mode of renderers) {
         return calls;
     }, mode).catch(e => String(e));
     check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
+    // #2234: a second addImage with the name of an image replaces it, calls onRemove of the old image and fires no error. MapLibre GL JS
+    // 6.17 keeps the old image and fires "already exists"; the owner decided on 2026-11-26 to keep the difference.
+    const again = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+        const log = [], errors = [];
+        m.on('error', e => errors.push(String(e.error?.message)));
+        const make = n => ({width: 1, height: 1, data: new Uint8Array([n, 0, 0, 255]), onAdd() { log.push('onAdd' + n); }, onRemove() { log.push('onRemove' + n); }, render: () => false});
+        await m.addImage('twice', make(1));
+        await m.addImage('twice', make(2));
+        const red = m.getImage('twice')?.data?.data?.[0];
+        m.remove(); el.remove();
+        return {log, errors, red};
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] a second addImage with an existing name replaces the image, calls onRemove of the old one and fires no error (#2234)`,
+        JSON.stringify(again.log) === '["onAdd1","onRemove1","onAdd2"]' && again.errors?.length === 0 && again.red === 2, JSON.stringify(again));
     // #2309: setStyle with diff: false drops the images that addImage added, with no onRemove and no more render(), as MapLibre GL JS 6.17 does; the default diff keeps them.
     const swap = await page.evaluate(async renderer => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -3867,6 +3903,42 @@ for (const mode of renderers) {
         }
         check('[main] compat: a square cap does not lengthen the dashes of a dashed line, as in MapLibre GL JS (#2144)',
             [1, 2].every(d => rows[d].butt > 0 && Math.abs(rows[d].square - rows[d].butt) <= rows[d].butt * 0.1), JSON.stringify(rows));
+    }
+    // #2443: on a pitched map, each pixel of a line across a tile edge is drawn by one tile, as with the stencil of
+    // MapLibre GL JS. Six lines of width 16 and opacity 0.5 cross several tiles at zoom 4, DPR 2, in four views of pitch
+    // 50 to 60. A pixel inside a line (as gray as the line 3 pixels away in all four directions) that is lighter is a
+    // hole, and one that is darker is drawn twice. Before the fix the views had 5 holes and 5 pixels drawn twice.
+    if (mode === 'main') {
+        const pg = await browser.newPage({viewport: {width: 600, height: 400}, deviceScaleFactor: 2});
+        await pg.goto(page.url());
+        const r = await pg.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = [];
+            const features = [0, 1, 2, 3, 4, 5].map(i => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20 + i * 2, -8 + i * 4], [20 - i * 3, -8 + i * 4 + (i % 2) * 3]]}}));
+            for (const [pitch, bearing] of [[60, -40], [60, 200], [60, 250], [50, 300]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:600px;height:400px'}));
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 4, pitch, bearing, style: {version: 8,
+                    sources: {l: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [
+                        {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'l', type: 'line', source: 'l', layout: {'line-cap': 'butt'}, paint: {'line-color': '#000', 'line-width': 16, 'line-opacity': 0.5}}]}});
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                const cv = m.getCanvas(), w = cv.width, h = cv.height, c = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d');
+                c.drawImage(cv, 0, 0);
+                const d = c.getImageData(0, 0, w, h).data, g = (x, y) => d[(y * w + x) * 4 + 1], near = v => Math.abs(v - 128) <= 2;
+                let holes = 0, twice = 0, inside = 0;
+                for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) {
+                    if (!(near(g(x - 3, y)) && near(g(x + 3, y)) && near(g(x, y - 3)) && near(g(x, y + 3)))) continue;
+                    inside++;
+                    if (g(x, y) > 148) holes++; else if (g(x, y) < 108) twice++;
+                }
+                out.push({pitch, bearing, inside, holes, twice});
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        await pg.close();
+        check('[main] compat: on a pitched map a line across a tile edge has each pixel drawn once, with no hole and no pixel drawn twice (#2443)',
+            r.every(v => v.inside > 10000 && !v.holes && !v.twice), JSON.stringify(r));
     }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
@@ -9111,12 +9183,15 @@ for (const mode of renderers) {
 // the building of #2287 in the tile of zoom 14 to the north) is read from the neighbor tile, as in MapLibre GL JS: the
 // texture of an elevation tile has a border of 2 pixels from its neighbors. Clamped to the last row of its own tile, the
 // ground was 2 pixels too far north on a slope, and the roof line stood 6 px above that of MapLibre GL JS (#2319).
+// The same building on the real ground (mapterhorn) has walls that stand partly above the ground: only the outside of
+// a wall is drawn, as in MapLibre GL JS (`CullFaceMode.backCCW`). The inside of the side walls showed below the near
+// corners, down to 26 px below the lowest edge of MapLibre GL JS (#2341).
 {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
-    const roofLine = async lib => {
+    const roofLine = async (lib, tiles = 'dem2319://{z}/{x}/{y}') => {
         await page.goto(origin + '/?renderer=main&nomarkers');
         await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
-        await page.evaluate(async lib => {
+        await page.evaluate(async ([lib, tiles]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
             if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
             // A slope that rises 50 m for each 100 m to the north.
@@ -9133,7 +9208,7 @@ for (const mode of renderers) {
             });
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'map2319', style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9;background:#fff'}));
             const poly = {type: 'Polygon', coordinates: [[[7.766, 46.0075], [7.774, 46.0075], [7.774, 46.0125], [7.766, 46.0125], [7.766, 46.0075]]]};
-            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem2319://{z}/{x}/{y}'], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [tiles], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
                     {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': 40, 'fill-extrusion-vertical-gradient': false}}],
                 terrain: {source: 'dem', exaggeration: 1}};
@@ -9142,25 +9217,25 @@ for (const mode of renderers) {
             const m = new mod.Map(opts);
             await new Promise(r => m.once('load', r));
             await new Promise(r => { const t = setTimeout(r, 8000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
-        }, lib);
-        // The topmost red pixel of each column.
+        }, [lib, tiles]);
+        // The topmost and the lowest red pixel of each column.
         const png = (await page.locator('#map2319').screenshot()).toString('base64');
         return page.evaluate(async png => {
             const bm = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
             const g = new OffscreenCanvas(bm.width, bm.height).getContext('2d'); g.drawImage(bm, 0, 0);
-            const d = g.getImageData(0, 0, bm.width, bm.height).data, top = [];
+            const d = g.getImageData(0, 0, bm.width, bm.height).data, top = [], bottom = [];
             for (let x = 0; x < bm.width; x++) {
-                let t = -1;
-                for (let y = 0; y < bm.height && t < 0; y++) { const k = (y * bm.width + x) * 4; if (d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90) t = y; }
-                top.push(t);
+                let t = -1, b = -1;
+                for (let y = 0; y < bm.height; y++) { const k = (y * bm.width + x) * 4; if (d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90) { if (t < 0) t = y; b = y; } }
+                top.push(t); bottom.push(b);
             }
-            return top;
+            return {top, bottom};
         }, png);
     };
     try {
-        const ml = await roofLine('ml');
+        const {top: ml} = await roofLine('ml');
         for (const mode of renderers) {
-            const ours = await roofLine(mode);
+            const {top: ours} = await roofLine(mode);
             // (The middle three fifths of the building: at its corners the roof line is a slanted edge.)
             const cols = ml.map((t, x) => t >= 0 ? x : -1).filter(x => x >= 0), a = cols[0], w = cols.at(-1) - a;
             let off = 0, at = -1;
@@ -9168,6 +9243,16 @@ for (const mode of renderers) {
             check(`[${mode}] 3D terrain: a building whose centroid lies past the edge of its elevation tile stands on the ground of the neighbor tile, as in MapLibre GL JS (#2319)`, cols.length > 100 && off <= 1, JSON.stringify({off, at, ours: ours[at], ml: ml[at], columns: cols.length}));
         }
     } catch (e) { check('[main] 3D terrain: the check of the ground past the edge of an elevation tile ran (#2319)', false, String(e.message).split('\n')[0]); }
+    try {
+        const real = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp', {bottom: ml} = await roofLine('ml', real);
+        for (const mode of renderers) {
+            const {bottom: ours} = await roofLine(mode, real);
+            // (All columns of the building, the corners too.)
+            let off = 0, at = -1;
+            ml.forEach((b, x) => { if (b >= 0 && Math.abs(ours[x] - b) > off) off = Math.abs(ours[x] - b), at = x; });
+            check(`[${mode}] 3D terrain: the inside of the walls of a building on a slope is not drawn, so its lowest edge is that of MapLibre GL JS (#2341)`, ml.filter(b => b >= 0).length > 100 && off <= 3, JSON.stringify({off, at, ours: ours[at], ml: ml[at]}));
+        }
+    } catch (e) { check('[main] 3D terrain: the check of the walls of a building on the real ground ran (#2341)', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer

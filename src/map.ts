@@ -1222,7 +1222,14 @@ export class Map {
         const duration = still ? 0 : o.duration ?? 500;
         // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
         // (As in MapLibre GL JS, `easeTo` does not read `elevation`, also when it jumps.)
-        if (duration <= 0 && !around) return this.jumpTo({...o, center, elevation: undefined});
+        if (duration <= 0 && around) {
+            // The jump keeps the point under `around` where it is, as the engine does at the end of an animation.
+            const to = Object.assign(new Transform(), this.tr, padding && {padding}), anchor = this.tr.unproject(around[0], around[1]);
+            to.set(center, zoom, bearing, pitch);
+            to.setLocationAt(anchor[0], anchor[1], around[0], around[1]);
+            return this.jumpTo({...o, center: [to.lng, to.lat], elevation: undefined});
+        }
+        if (duration <= 0) return this.jumpTo({...o, center, elevation: undefined});
         const easing = o.easing && Array.from({length: 65}, (_, i) => o.easing!(i / 64));
         const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
         this.post(c);
