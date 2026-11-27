@@ -1839,7 +1839,7 @@ for (const renderer of renderers) {
             await idle(bad);
             for (let i = 0; i < 2; i++) { // (twice: a warning comes once)
                 // (The second time, the template is replaced by one without the slot {{fill}}.)
-                bad.update({...spec, interactive: false, initialView: {center: [0, 0], zoom: 2}, images: i ? {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'} : spec.images});
+                bad.update({...spec, antialias: true, initialView: {center: [0, 0], zoom: 2}, images: i ? {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'} : spec.images});
                 await bad.queryFeatures({x: 100, y: 75}, {layers: ['nope']}).catch(() => {});
                 await bad.querySource('nope', {x: 100, y: 75}, {layers: ['lost']}).catch(() => {});
                 await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], sources: ['omt'], radius: 5}).catch(() => {});
@@ -1856,7 +1856,7 @@ for (const renderer of renderers) {
         }, renderer);
         const expected = ['E0 createMap(): the container has height 0', 'E1 interactiveLayers: the style has no layer "nope"', 'E3 queryFeatures(): the style has no layer "nope"',
             'E4 querySource(): the style has no source "nope"', 'E5 layers: the layer "lost" has before: "nonexistent"', 'E6 layers: the layer "lost" uses the source "missing"', 'E14 images: a layer gives the parameter "colour" to the image "dot"', 'E14 images: a layer gives the parameter "size" to the image "dot"', 'E14 images: a layer gives the parameter "fill" to the image "dot"',
-            'E8 update(): "interactive" changed', 'E8 update(): "initialView" changed', 'E12 queryFeatures(): "sourceLayers" is not an option', 'E12 queryFeatures(): "sources" is not an option', 'E13 queryFeatures(): "radius" has an effect only in a query at a point or a position',
+            'E8 update(): "antialias" changed', 'E8 update(): "initialView" changed', 'E12 queryFeatures(): "sourceLayers" is not an option', 'E12 queryFeatures(): "sources" is not an option', 'E13 queryFeatures(): "radius" has an effect only in a query at a point or a position',
             'E13 querySource(): "radius" has an effect only', 'E11 querySource(): "zoom" has an effect only', 'E12 querySource(): "layers" is not an option'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
@@ -2772,6 +2772,15 @@ for (const renderer of renderers) {
                 panned: Math.abs(c[0] - t.center0[0]) + Math.abs(c[1] - t.center0[1]) > 1e-9, keptOk: Math.abs(kept[0] - end[0]) < 1e-3 && Math.abs(kept[1] - end[1]) < 1e-3, fill: t.dragPin.querySelector('path')?.getAttribute('fill')}; });
         check(`[${renderer}] a draggable overlay: a click is a click, a drag after a move calls onDragStart, onDrag and onDragEnd with [lng, lat], the map does not pan, and the same lngLat keeps the dropped place; defaultPin() is the pin of Marker`,
             dClick === 'click' && dEarly === 0 && dragged.seq === 'start 2 drags' && dragged.endOk && !dragged.panned && dragged.keptOk && dragged.fill === 'rgb(200, 0, 0)', JSON.stringify({dClick, dEarly, dragged}));
+        // `interactive` (#213): update() turns the gestures off and on again, and the grab cursor class follows.
+        const dragMoved = async () => { const c = () => page.evaluate(() => window.t.host.state.get().view.center); const [x, y] = await c(); await page.mouse.move(450, 300); await page.mouse.down(); await page.mouse.move(600, 400, {steps: 8}); await page.mouse.up(); await page.waitForTimeout(400); const [x2, y2] = await c(); return Math.abs(x2 - x) + Math.abs(y2 - y) > 1e-6; };
+        const grab = () => page.evaluate(() => document.querySelector('#host canvas').classList.contains('map-jr-interactive'));
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: false}); });
+        const liveOff = {moved: await dragMoved(), grab: await grab()};
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: true}); });
+        const liveOn = {moved: await dragMoved(), grab: await grab()};
+        check(`[${renderer}] interactive: update({interactive: false}) stops a drag and update({interactive: true}) brings it back (#213)`,
+            !liveOff.moved && !liveOff.grab && liveOn.moved && liveOn.grab, JSON.stringify({liveOff, liveOn}));
         // `cooperativeGestures` (#41): a plain wheel does not zoom and shows the hint; Ctrl + wheel zooms; update() turns it off.
         const zoomNow = () => page.evaluate(() => window.t.host.state.get().view.zoom);
         // (The library asks for ⌘ instead of Ctrl when the user agent says Mac, as MapLibre GL JS does.)

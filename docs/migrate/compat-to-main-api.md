@@ -230,7 +230,7 @@ engine and read the same styles, so the map looks the same.
 | `setFeatureState`, `removeFeatureState` | `map.setFeatureState`, `map.removeFeatureState` | The same arguments. |
 | `new Marker()`, `new Popup()` | `map.overlay(element, {lngLat, popup})` | |
 | `map.addControl(new NavigationControl())` | `controls: [navigation()]` | The functions are in `@map-jr/map-jr-gl/controls`. |
-| `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attributionControl` | `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attribution` | `hash`, `interactive`, `renderer` and `attribution` are read only when the map is created. |
+| `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attributionControl` | `locale`, `cooperativeGestures`, `transformRequest`, `hash`, `interactive`, `renderer`, `attribution` | `hash`, `renderer` and `attribution` are read only when the map is created. |
 
 ## What the main API does not have
 
