@@ -14,7 +14,7 @@ import {isGeometrySource, screenTranslate, tileURL, type CompiledLayer, type Sou
 import {VARIANT} from './markers.ts';
 import {BASELINE, EM} from './text.ts';
 import {boxAround, flatSize, perspective, quadBox} from './placement.ts';
-import {circleCenters, circleRadius, circleTouches, featureKey, pitchedCircles, setBox, setReach, tilesUnderBox, type QueriedFeature} from './query.ts';
+import {circleCenters, circleRadius, circleTouches, featureKey, movedCenter, pitchedCircles, setBox, setReach, tilesUnderBox, type QueriedFeature} from './query.ts';
 import type {Command} from './engine.ts';
 
 export * from './query.ts';
@@ -82,7 +82,7 @@ export async function queryRendered(this: any, c: Extract<Command, {type: 'query
         const L = radii.has(f.layer!) && this.layers.find((l: CompiledLayer) => l.id === f.layer);
         if (L && !underIcon.call(this, L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!, icons.get(f.layer!)!)) return false;
         const circle = circles.get(f.layer!);
-        if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
+        if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, ...movedCenter(this.tr, circle, mercX(lng), mercY(lat)), c.box, circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
         if ((L || circle) && !c.geometry) delete f.geometry;
         const key = featureKey(f);
         return !key || (seen.has(key) ? false : (seen.add(key), true));

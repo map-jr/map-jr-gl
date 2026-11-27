@@ -869,15 +869,16 @@ function tessellateLine(b: Batch): GLBatch | null {
      * A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. `line-offset` moves
      * the whole fan along (ox, oy), as MapLibre GL JS does, so that it is centered on the offset corner: each vertex
      * stores that vector as its normal, and an outer vertex stores the angle of its direction in the side, as
-     * 16384 + (angle / PI + 1) * 8191. The middle vertex has side 0.
+     * 16384 + (angle / PI + 1) * 8191. The middle vertex has side 0. A cap passes `ends`: its middle vertex, and the pair
+     * at the end of the line as its first and last outer vertex, so that the fan and the line share their edges (see `quad`).
      */
     const angle = (a: number) => 16384 + Math.round((Math.atan2(Math.sin(a), Math.cos(a)) / Math.PI + 1) * 8191);
-    const fan = (x: number, y: number, from: number, sweep: number, dist: number, ox: number, oy: number) => {
-        const steps = Math.max(1, Math.ceil(Math.abs(sweep) / ARC_STEP)), centre = vert(x, y, ox, oy, 0, dist);
+    const fan = (x: number, y: number, from: number, sweep: number, dist: number, ox: number, oy: number, ends?: number[]) => {
+        const steps = Math.max(1, Math.ceil(Math.abs(sweep) / ARC_STEP)), centre = ends ? ends[0] : vert(x, y, ox, oy, 0, dist);
         const rim = (a: number) => vert(x, y, ox, oy, angle(a), dist);
-        let prev = rim(from);
+        let prev = ends ? ends[1] : rim(from);
         for (let k = 1; k <= steps; k++) {
-            const cur = rim(from + sweep * k / steps);
+            const cur = ends && k === steps ? ends[2] : rim(from + sweep * k / steps);
             idx.push(centre, prev, cur);
             prev = cur;
         }
@@ -893,7 +894,20 @@ function tessellateLine(b: Batch): GLBatch | null {
             const n = xs.length;
             if (n < 2) continue;
             if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) / 2; }
-            let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0;
+            let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0, mid1 = -1, mid2 = -1;
+            /**
+             * The two triangles from the pair `last` to the pair `a`. The middle vertex of a round cap lies on the edge
+             * between the two vertices of the pair at the end of the line (`mid1` on that of `last`, `mid2` on that of
+             * `a`): the triangles then have it as a corner too, because a vertex in the middle of an edge of another
+             * triangle leaves a crack of a pixel at some angles (#2318).
+             */
+            const quad = (a: number) => {
+                if (last < 0) return;
+                // (The middle splits the triangle that has that edge in two, so that the diagonal stays where it was.)
+                if (mid1 < 0) idx.push(last, last + 1, a); else idx.push(last, mid1, a, mid1, last + 1, a);
+                if (mid2 < 0) idx.push(last + 1, a + 1, a); else idx.push(last + 1, a + 1, mid2, last + 1, mid2, a);
+                mid1 = mid2 = -1;
+            };
             /**
              * (ox, oy) moves the vertices along the line: both of them, or with `only` (1 or -1) the one on that side.
              * `c` is for the other vertex of a bevel, whose partner is moved to the inner miter point: `line-offset` moves
@@ -904,22 +918,22 @@ function tessellateLine(b: Batch): GLBatch | null {
                 const k = c ? 2 + Math.round((c + 2) * 4096) : 1;
                 const a = vert(x, y, nx + (only < 0 ? 0 : ox), ny + (only < 0 ? 0 : oy), only < 0 ? k : 1, dist);
                 vert(x, y, -nx + (only > 0 ? 0 : ox), -ny + (only > 0 ? 0 : oy), only > 0 ? -k : -1, dist);
-                if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
+                quad(a);
                 last = a;
             };
             /** A pair at (x, y) across the normal (nx, ny) that `line-offset` moves along (ox, oy): stored as in `fan`. */
             const movedPair = (x: number, y: number, nx: number, ny: number, ox: number, oy: number) => {
                 const a = vert(x, y, ox, oy, angle(Math.atan2(ny, nx)), dist);
                 vert(x, y, -ox, -oy, -angle(Math.atan2(-ny, -nx)), dist);
-                if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
+                quad(a);
                 last = a;
             };
             for (let i = 0; i < n - 1; i++) {
                 const x = xs[i], y = ys[i], ex = xs[i + 1] - x, ey = ys[i + 1] - y, len2 = Math.hypot(ex, ey), len = len2 / 2;
                 const dx = ex / len2, dy = ey / len2, nx = -dy, ny = dx;
                 if (i === 0) {
-                    if (b.cap === 'round') fan(x, y, Math.atan2(ny, nx), Math.PI, dist, nx, ny);
                     pair(x, y, nx, ny, ...(b.cap === 'square' ? [-dx, -dy] : [0, 0]));
+                    if (b.cap === 'round') fan(x, y, Math.atan2(ny, nx), Math.PI, dist, nx, ny, [mid1 = vert(x, y, nx, ny, 0, dist), last, last + 1]);
                 } else {
                     const pnx = -pdy, pny = pdx, mx = pnx + nx, my = pny + ny, ml = Math.hypot(mx, my);
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
@@ -941,7 +955,7 @@ function tessellateLine(b: Batch): GLBatch | null {
                         const flip = (jx: number, jy: number) => {
                             const q = jy * mx - jx * my < 0 ? -1 : 1, a = vert(x, y, jx, jy, 15872 + q * k, dist);
                             vert(x, y, -jx, -jy, -(15872 - q * k), dist);
-                            if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
+                            quad(a);
                             last = a;
                         };
                         flip(fx, fy);
@@ -974,8 +988,9 @@ function tessellateLine(b: Batch): GLBatch | null {
                 pdx = dx; pdy = dy; plen = len;
                 if (i === n - 2) {
                     const px = xs[n - 1], py = ys[n - 1];
+                    const centre = b.cap === 'round' ? mid2 = vert(px, py, nx, ny, 0, dist) : -1;
                     pair(px, py, nx, ny, ...(b.cap === 'square' ? [dx, dy] : [0, 0]));
-                    if (b.cap === 'round') fan(px, py, Math.atan2(ny, nx), -Math.PI, dist, nx, ny);
+                    if (centre >= 0) fan(px, py, Math.atan2(ny, nx), -Math.PI, dist, nx, ny, [centre, last, last + 1]);
                 }
             }
         }

@@ -108,6 +108,7 @@ when a map needs it, from the folder of the worker file.
 | `map-jr-gl-worker-subdivide.js` | A style whose `projection` draws a globe: the tile workers cut the tiles along the grid of the globe with it |
 | `map-jr-gl-worker-layers.js` | A style with a layer of the type `heatmap`, `hillshade` or `color-relief`. With `renderer: 'main'`, the page loads it as a chunk of the library instead. |
 | `map-jr-gl-worker-query.js` | The queries of features. A map loads it after its first `idle`, or at a query before that. With `renderer: 'main'`, the page loads it as a chunk of the library instead. |
+| `map-jr-gl-worker-colors.js` | The table of the CSS color names, in a browser without `OffscreenCanvas` in workers (Safari before 16.4, WebKit on Windows). Other browsers do not load it. |
 
 Copy every `map-jr-gl-worker*.js` file of `node_modules/@map-jr/map-jr-gl/dist/` into one folder under its own name, so that a part
 that a later version adds is there too. When a part is missing, the worker reports an error that names the file

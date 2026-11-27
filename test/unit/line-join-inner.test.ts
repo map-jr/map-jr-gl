@@ -103,6 +103,34 @@ test('line joins: line-offset moves a round join and a round cap as a whole, so 
     }
 });
 
+test('line caps: the middle of a round cap is a corner of each triangle whose edge it lies on, so that no crack shows', () => {
+    // A line of two points and one of three, with round caps (#2318). The middle vertex of the fan of a cap lay on the
+    // edge between the two vertices at the end of the line, which was one edge of the first triangles of the line. The
+    // rasterizer can leave a pixel of such an edge to neither side: a white pixel in the line, at pitch 60 most often.
+    const z = 10, tx = 300, ty = 380, n = 2 ** z;
+    const lng = (tx + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 0.5) / n))) * 180 / Math.PI, d = 0.01;
+    for (const coords of [[[lng - d, lat], [lng + d, lat + d / 3]], [[lng - d, lat], [lng, lat + d / 2], [lng + d, lat]]]) {
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: coords}} as any), z, tx, ty);
+        const out = tessellate(buildTile(data, z, [compileLayer({id: 'l', type: 'line', source: 'g', layout: {'line-cap': 'round'}})!], false).layers.l)!;
+        const view = new DataView(out.v.buffer, out.v.byteOffset, out.v.byteLength);
+        // Where the vertex shader of src/gl.ts puts a vertex for a half width of 10 tile units, without an offset.
+        const at = (i: number) => {
+            const o = i * LINE_VERTEX, x = view.getInt16(o, true) / 2, y = view.getInt16(o + 2, true) / 2, raw = view.getInt16(o + 8, true), sa = Math.abs(raw);
+            const t = (sa - 24575) / 8191 * Math.PI, [ex, ey] = sa > 16383.5 ? [Math.cos(t), Math.sin(t)] : [view.getInt16(o + 4, true) / LINE_NORMAL * Math.abs(Math.sign(raw)), view.getInt16(o + 6, true) / LINE_NORMAL * Math.abs(Math.sign(raw))];
+            return [x + ex * 10, y + ey * 10];
+        };
+        const middles = Array.from({length: view.byteLength / LINE_VERTEX}, (_, i) => i).filter(i => view.getInt16(i * LINE_VERTEX + 8, true) === 0);
+        assert.equal(middles.length, 2, 'two round caps');
+        for (let t = 0; t < out.idx.length; t += 3) for (let e = 0; e < 3; e++) {
+            const [ax, ay] = at(out.idx[t + e]), [bx, by] = at(out.idx[t + (e + 1) % 3]), len = Math.hypot(bx - ax, by - ay);
+            for (const m of middles) {
+                const [mx, my] = at(m), along = ((mx - ax) * (bx - ax) + (my - ay) * (by - ay)) / len, across = Math.abs((mx - ax) * (by - ay) - (my - ay) * (bx - ax)) / len;
+                assert.ok(!(across < 0.01 && along > 0.01 && along < len - 0.01), `the middle of a cap lies inside the edge of triangle ${t / 3}`);
+            }
+        }
+    }
+});
+
 test('line joins: past a turn of 120 degrees, line-offset moves the pairs of a round join with its fan, as MapLibre GL JS does', () => {
     // A turn of 135 degrees moves the whole corner twice the offset along the bisector. A turn of 165 degrees eases that
     // vector back to the normal of each segment (offsetFallback of MapLibre), so that each segment keeps its own round

@@ -262,10 +262,20 @@ export function pitchedCircles(tr: Transform, box: number[], sets: QuerySet[]) {
     // A circle is largest at the bottom of the screen, which is nearest to the camera.
     const k = Math.max(1, tr.perspectiveAt(...tr.screenToGround(tr.width / 2, Math.max(box[3], tr.height))));
     // (A reach that is larger than the canvas is cut to it and one tile: the tiles that a map holds lie in about that distance around the view, and `circleTouches` decides each feature.)
-    const r = Math.min(Math.max(...circles.map(s => setReach(s))), Math.max(tr.width, tr.height) + 512) * k;
-    // (A translated circle is drawn away from its feature: the rectangle also reaches back by each translation.)
-    const [x0, y0, x1, y1] = circles.reduce((b, s) => { const t = setBox(box, s); return [Math.min(b[0], t[0]), Math.min(b[1], t[1]), Math.max(b[2], t[2]), Math.max(b[3], t[3])]; }, box);
-    return {box: [x0 - r, y0 - r, x1 + r, y1 + r], circles: new Set(circles), k};
+    // (A translated circle is drawn away from its feature, by its translation on the map: the reach grows by it.)
+    const r = (Math.min(Math.max(...circles.map(s => setReach(s))), Math.max(tr.width, tr.height) + 512) + Math.max(...circles.map(s => s.translate ? Math.hypot(...s.translate) : 0))) * k;
+    return {box: [box[0] - r, box[1] - r, box[2] + r, box[3] + r], circles: new Set(circles), k};
+}
+
+/**
+ * The Mercator point (0 to 1) that a circle of the set `s` is drawn at on a tilted map: `circle-translate` moves its
+ * center (mx, my) along the map before the projection, as the shader and MapLibre GL JS do.
+ */
+export function movedCenter(tr: Transform, s: QuerySet, mx: number, my: number): [number, number] {
+    if (!s.translate) return [mx, my];
+    // (`translate` is in pixels of the screen at a pitch of 0; turned back by the bearing it is along the axes of the map.)
+    const a = tr.bearing * Math.PI / 180, c = Math.cos(a), n = Math.sin(a), [x, y] = s.translate;
+    return [mx + (x * c - y * n) / tr.worldSize, my + (x * n + y * c) / tr.worldSize];
 }
 
 const sizes = new WeakMap<QuerySet, {r: ReturnType<typeof compileProp>; w: ReturnType<typeof compileProp>}>();

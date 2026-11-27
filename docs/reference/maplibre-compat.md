@@ -182,7 +182,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setFeatureState` | `(feature: FeatureIdentifier, state: Record<string, unknown>) => Map` | Merges `state` into the feature state of one feature. |
 | `getFeatureState` | `(feature: FeatureIdentifier) => Record<string, unknown>` | Returns the feature state of one feature. |
 | `getImage` | `(name: string) => object \| undefined` | Returns `{data, pixelRatio, sdf}` and the other options of an image that `addImage` added, or `undefined`. |
-| `listImages` | `() => string[]` | Returns the names of the images that the map has. |
+| `listImages` | `() => string[]` | Returns the names of the images that the map has: the icons of the sprites of the style (`<id>:name` for a sprite that is not `default`) and the images that `addImage` added. |
 | `loadImage` | `(url: string) => Promise<{data: ImageBitmap}>` | Fetches and decodes the image at a URL, and returns a promise of `{data}` with an `ImageBitmap`, as in MapLibre GL JS. |
 | `querySourceFeatures` | `(sourceId: string, options?: QuerySourceFeatureOptions) => GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>` | Returns the features of a source in the tiles of the present view, as an array that is also a promise; MapLibre GL JS returns only the array. |
 | [`queryRenderedFeatures`](#queryrenderedfeatures) | `(geometry?: PointLike \| [PointLike, PointLike] \| RenderedQueryOptions, options?: RenderedQueryOptions) => MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]>` | Returns the features that the style layers draw at a point or in a box of the screen, the top layer first, as an array that is also a promise; MapLibre GL JS returns only the array. |
@@ -250,7 +250,7 @@ library" names a member that MapLibre GL JS does not have.
 | `removeControl` | `(control: Control) => Map` | Removes a control that `addControl` added. |
 | `hasControl` | `(control: Control) => boolean` | Whether the map has this control. |
 | `addFonts` | `(faces: FontFaces) => Map` | Only in this library: loads more web fonts for labels after the map is created. |
-| `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
+| `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name: an image that `addImage` added or an icon of a sprite of the style (`<id>:name` for a sprite that is not `default`). |
 | `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| `[`FeatureOptions`](map.md#featureoptions)`, o?: `[`FeatureOptions`](map.md#featureoptions)`) => Promise<`[`RenderedFeature`](types.md#renderedfeature)`[]>` | Only in this library: returns a promise of the features that the style layers draw, the top one first. |
 | `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| `[`SourceOptions`](map.md#sourceoptions)`, o?: `[`SourceOptions`](map.md#sourceoptions)`) => Promise<`[`QueriedFeature`](types.md#queriedfeature)`[]>` | Only in this library: returns a promise of the features of the tile data of the source `sourceId`. |
 | `queryElevation` | `(at: LngLatLike \| {x: number; y: number}, options?: {source?: string; zoom?: number}) => Promise<number \| null>` | Only in this library: returns a promise of the elevation of the ground in meters at a position, from the raster-dem source of the style, or `null` where it has no data. |
