@@ -944,7 +944,7 @@ export class Map {
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedEvents(sourceId);
             }
             // (As in MapLibre GL JS, a video that plays, or a canvas source that plays, keeps the map from `idle`. A pause sends a frame, and then `idle` fires.)
-            this.queryStale.clear();
+            if (this.queryStale.size) { this.queryStale.clear(); this.staleCleared(); }
             if (!this.videos || !this.videos.playing()) this.fire('idle');
         } else if (e.type === 'heights') {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
@@ -1864,7 +1864,12 @@ export class Map {
      * values until the source reloads, so the query keeps using them until then (#2364).
      */
     private queryStale = new globalThis.Map<string, {visibility: unknown; filter: unknown}>();
+    /** @internal Only the compat entry keeps the old values (MapLibre GL JS behavior); the main API answers with the current ones. */
+    protected keepsOldQuery = false;
+    /** @internal Called when the old values of the queries are dropped at `idle`. */
+    protected staleCleared() {}
     private keepForQuery(id: string) {
+        if (!this.keepsOldQuery) return;
         const l = this.rawStyle?.layers.find((l: any) => l.id === id);
         if (l && !this.queryStale.has(id)) this.queryStale.set(id, {visibility: l.layout?.visibility, filter: l.filter});
     }

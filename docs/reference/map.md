@@ -227,8 +227,6 @@ queryFeatures(
 **Returns:** `Promise<`[`RenderedFeature`](types.md#renderedfeature)`[]>`. A promise of the features.
 <!-- ref:MapInstance.queryFeatures:end -->
 
-After `update()` changes the `visibility` or the filter of a layer, `queryFeatures` answers with the old values of that layer until the tiles have loaded again (`idle`), as MapLibre GL JS does. See [differences from MapLibre GL JS](maplibre-differences.md#feature-queries).
-
 ### `FeaturePlace`
 
 `FeaturePlace` is the type of a place of a query:
