@@ -166,6 +166,8 @@ function textBoxes(this: any, layer: string) {
 function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[], {at: icons, text: iconTexts}: {at: number[]; text: string[]}): boolean {
     const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
     const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
+    // (A `{name}` token of the text is replaced as the tiles replace it, so that the text is the one that is drawn.)
+    const untoken = (t: string) => L.p.field.tokens ? t.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : t;
     const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => imageNamed.call(this, n.split(VARIANT)[0])).split(VARIANT)[0];
     const image = imageNamed.call(this, (L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
     // Text on a line is found on the boxes of its glyphs (see `textBoxes`) when it is shown, and not found when it is
@@ -174,7 +176,7 @@ function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[]
     // the polygon's when its point lies in the polygon and its text is the polygon's. (A line or a polygon with an
     // icon is found within `radius` pixels of its geometry as before.)
     if (!points) {
-        const text = String(L.p.field.eval(z, f) ?? '');
+        const text = untoken(String(L.p.field.eval(z, f) ?? ''));
         if (!g || g.type === 'Point' || g.type === 'MultiPoint' || !image && !text) return true;
         // (A line with an icon is found where its shown labels are drawn, on their icons and the boxes of their glyphs, as in
         // MapLibre GL JS: an icon that collision hid is not found, #2243.)
@@ -186,8 +188,7 @@ function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[]
             // feature's line, as in MapLibre GL JS, where each label belongs to the one feature that made it. A glyph of a
             // label can lie on another line that the label crosses, and the point of a label of another street can lie on
             // this line where the two meet.)
-            // (A `{name}` token of the text is replaced as the tiles replace it.)
-            const field = (L.p.field.tokens ? text.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : text).toLowerCase().replace(/\s/g, ''), mine = (t: string | undefined, x: number, y: number) => t?.toLowerCase().replace(/\s/g, '') === field && screen.some(l => {
+            const field = text.toLowerCase().replace(/\s/g, ''), mine = (t: string | undefined, x: number, y: number) => t?.toLowerCase().replace(/\s/g, '') === field && screen.some(l => {
                 for (let k = 1; k < l.length; k++) {
                     const [ax, ay] = l[k - 1], [bx, by] = l[k], dx = bx - ax, dy = by - ay, u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
                     if (Math.hypot(ax + u * dx - x, ay + u * dy - y) < 1.5) return true;
@@ -205,7 +206,7 @@ function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[]
             : textOnLine.call(this, g, box, texts) || labelInPolygon.call(this, g, box, texts, text.toLowerCase().replace(/\s/g, ''));
     }
     // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
-    const text = String(L.p.field.eval(z, f) ?? ''), field = text.toLowerCase().replace(/\s/g, ''), near = !image && !text, turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
+    const text = untoken(String(L.p.field.eval(z, f) ?? '')), field = text.toLowerCase().replace(/\s/g, ''), near = !image && !text, turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
     return points.some(([lng, lat]) => {
         const [x, y] = tr.project(lng, lat);
         // A label that is shown at the point is found on the box of its text, and only there.
