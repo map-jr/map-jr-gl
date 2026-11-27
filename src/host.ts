@@ -1345,6 +1345,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     const host: MapInstance & {readonly _map: Map} = {
         update(next) {
             complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.patch({${Object.keys(next ?? {})[0] ?? 'field'}: …}) to change only some fields.`);
+            // (A description that a framework passes again is the same object by design, so only `createMap()` is checked, #1144.)
+            if (__DEV__ && next === now && name === 'createMap()') check(1144);
             if (alive) apply(next, now);
         },
         patch(part) {

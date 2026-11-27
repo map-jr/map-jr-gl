@@ -1091,6 +1091,14 @@ A warning of the main API (development build only).
 <where>: a layer of this type has no such property in the style specification, so the map ignores it. Check the name in the style specification, or remove it.
 ```
 
+## E1144
+
+A warning of the main API (development build only).
+
+```text
+update(): this is the description object that the map already has, so a field that you changed in it has no effect. Write a new object for each change, for example map.update({...description, data: {...description.data, points}}), or call map.patch({...}).
+```
+
 ## E1147
 
 A warning of the main API (development build only).

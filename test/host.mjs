@@ -182,6 +182,22 @@ for (const renderer of renderers) {
         check(`[${renderer}] the view: changes are reported, a reported view is not applied again and warns once in the development build for a stored view and not for a late echo (#1190), a new view moves the map`,
             view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.echoSaid === 0 && view.storedSaid === 1 && view.stored === 14.5 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
 
+        // 2b. update() with the description object that the map already has warns once in the development build (#1144); a new object does not.
+        const same = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const warned = [], warn = console.warn; console.warn = (...a) => warned.push(a.join(' '));
+            const said = () => warned.filter(w => w.includes('update(): this is the description object that the map already has')).length;
+            const d = t.spec = {...t.spec};
+            t.host.update(d);
+            await wait(300);
+            const fresh = said();
+            t.host.update(d); t.host.update(d);
+            await wait(300);
+            console.warn = warn;
+            return {fresh, same: said()};
+        });
+        check(`[${renderer}] update() with the description object that the map has warns once in the development build (#1144)`, same.fresh === 0 && same.same === 1, JSON.stringify(same));
+
         // 2a. moveTo with `fly` (#43) zooms out and back in on the way, as flyTo of MapLibre GL JS. (For these 1650 pixels
         // at zoom 13.5 in a view of 900 pixels, the curve goes down by 1.07 zoom levels; the state sees some frames of it.)
         const fly = await page.evaluate(async () => {
