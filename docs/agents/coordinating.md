@@ -246,12 +246,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
     changes.
 
   A merge that only adds or changes a check of another feature in `test/interact.mjs` or `test/host.mjs` needs no
-  update (the owner, 2026-11-26, #2301). A merge that only changes a script that no check of the branch runs needs
-  none either: the tools of `scripts/agents/`, the reports (`scripts/status.mjs`, `scripts/timeline.mjs`), and
-  `scripts/ci-paths.mjs` when the branch changes `src/`, so that every job of `CI` runs (the owner, 2026-11-27,
-  #2360). Before this decision, each such merge restarted the CI of every open branch.
+  update (the owner, 2026-11-26, #2301). Before this decision, each such merge restarted the CI of every open branch.
   From 21:35 to 23:10 UTC on 2026-11-26, five merges of one coordinator restarted the four runs of another
   coordinator five times each.
+
+  A merge that only changes a script that no check of the branch runs needs no update either: the tools of
+  `scripts/agents/`, the reports (`scripts/status.mjs`, `scripts/timeline.mjs`), and `scripts/ci-paths.mjs` when the
+  branch changes `src/`, so that every job of `CI` runs (the owner, 2026-11-27, #2360).
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
   (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
