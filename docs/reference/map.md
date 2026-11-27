@@ -137,8 +137,8 @@ keys of `data`, and a key that is `null` removes the data of its source, as in `
 `map.patch({images: {pin: null}})` removes it. Code that passed the whole set to `patch({images})` now has to call
 `update` or set the removed keys to `null`.
 
-Every other field, `layers` included, is replaced whole, because the order
-of `layers` matters. `map.description` holds the merged `data` and `images` afterwards, so `map.update(map.description)` gives the same map.
+Every other field, `layers` included, is replaced whole, because the order of `layers` matters. `map.description` holds
+the merged `data` and `images` afterwards, so `map.update(map.description)` gives the same map.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
