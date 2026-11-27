@@ -117,6 +117,35 @@ for (const mode of renderers) {
     }, mode).catch(e => ({error: String(e)}));
     check(`[${mode}] compat: an image source with a concave shape of corners, or with corners 0, 1 and 2 on one line, is drawn as in MapLibre GL JS, in Mercator and on the globe (#1983)`,
         ['mercator', 'globe'].every(t => concave[t]?.inside && !concave[t].point && !concave[t].arm && concave[t].line === false), JSON.stringify(concave));
+    // #1953: a pitched map at rest moves a raster image by less than a pixel onto the pixels of the screen, as MapLibre GL JS
+    // (served at /ml/) does at any pitch. A checker of 4 texels with linear filtering shows a shift of half a pixel at
+    // its edges: without the snap about 14 % of the pixels differ from MapLibre at pitch 30, with it almost none.
+    const pitchSnap = await page.evaluate(async renderer => {
+        const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+        g.fillStyle = '#000'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#fff';
+        for (let i = 0; i < 256; i += 4) for (let j = 0; j < 256; j += 4) if ((i + j) / 4 % 2) g.fillRect(i, j, 4, 4);
+        const style = {version: 8, sources: {i: {type: 'image', url: c.toDataURL(), coordinates: [[-10, 10], [10, 10], [10, -10], [-10, -10]]}},
+            layers: [{id: 'i', type: 'raster', source: 'i', paint: {'raster-fade-duration': 0}}]};
+        const pixels = async lib => {
+            const mod = lib === 'ml' ? await import('/ml/maplibre-gl.mjs') : await import('/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:301px;height:201px'}));
+            const m = new mod.Map({container: el, renderer, attributionControl: false, pixelRatio: 1, canvasContextAttributes: {preserveDrawingBuffer: true},
+                center: [0.37, 0.21], zoom: 3.17, pitch: 30, style});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            const bmp = await createImageBitmap(lib === 'ml' ? m.getCanvas() : await m.toBlob()), cv = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), cg = cv.getContext('2d');
+            cg.drawImage(bmp, 0, 0);
+            m.remove(); el.remove();
+            return cg.getImageData(0, 0, cv.width, cv.height).data;
+        };
+        const a = await pixels('compat'), b = await pixels('ml');
+        if (a.length !== b.length) return {error: `sizes ${a.length} and ${b.length}`};
+        let differ = 0;
+        for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) > 64) differ++;
+        return {differ: +(400 * differ / a.length).toFixed(2)};
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] compat: a pitched map at rest draws a raster image on whole pixels, as MapLibre GL JS does (#1953)`,
+        pitchSnap.differ < 1, JSON.stringify(pitchSnap));
 
     // Paint transitions (#960), as in MapLibre GL JS: setPaintProperty and setStyle with `diff` move a colour over the
     // layer's `*-transition` (here 3 s), `idle` waits for the end, and setStyle with `diff: false` changes it at once.
