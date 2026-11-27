@@ -2,6 +2,7 @@
  * How the library finds and starts its workers. The default needs no configuration: the worker file is looked for
  * next to this module. Everything can be overridden per map or globally with `configure()`.
  */
+import type {Renderer} from './host.ts';
 import {LOSE_CONTEXT, RARE_LAYERS} from './gl-names.ts';
 import {globeStops} from './geo.ts';
 
@@ -49,7 +50,7 @@ export interface LoadOptions {
      * The thread that renders a map whose description has no `renderer`.
      * @default 'auto'
      */
-    renderer?: 'auto' | 'worker' | 'main';
+    renderer?: Renderer;
 }
 
 export const defaults: LoadOptions = {};

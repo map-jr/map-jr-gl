@@ -10,7 +10,7 @@ import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts'
 import type {QueriedFeature, QuerySet} from './query.ts';
 import type {ProjectionSpecification, ResourceType} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
-import type {GeoJSONGeometry} from './host.ts';
+import type {AttributionOptions, GeoJSONGeometry, Renderer, SpriteInput} from './host.ts';
 import {acquireTileWorkers, defaults as loadDefaults, pageReferrer, partUrls, partsComing, prefetchParts, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
@@ -49,7 +49,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
      * Where the engine (camera, placement, drawing) runs. 'worker' keeps the map smooth while the page is busy;
      * 'main' renders on the page's own thread. 'auto' picks 'worker' when the browser supports it.
      */
-    renderer?: 'auto' | 'worker' | 'main';
+    renderer?: Renderer;
     /** Fallback CSS font-family for labels, used when the family a style names is not available. */
     fontFamily?: string;
     /**
@@ -70,7 +70,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     /** Whether copies of the world are drawn beside it, as in MapLibre GL JS (see `setRenderWorldCopies`). The default is `true`. */
     renderWorldCopies?: boolean;
     /** Data credits are shown by default; pass false to add your own, or options for the built-in control. */
-    attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
+    attributionControl?: false | AttributionOptions;
     /** Multisample antialiasing for the whole canvas. Smoother polygon edges, at a real cost in fill rate. */
     antialias?: boolean;
     /**
@@ -1585,7 +1585,7 @@ export class Map {
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
     /** Replaces the sprites of the style, or removes them with `null`. */
-    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
+    setSprite(url: string | SpriteInput[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
     /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
     /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), color and intensity. */

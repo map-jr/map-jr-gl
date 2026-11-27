@@ -4,7 +4,7 @@
 // server entry only, so the page script does not carry it. test/unit/server-controls.test.ts and test/element.mjs check that
 // the markup and the look stay the same as those of the controls.
 import {CONTROL_CSS, cls, type ControlPosition} from './controls.ts';
-import type {ControlSpec} from './host.ts';
+import type {AttributionOptions, ColorScheme, ControlSpec} from './host.ts';
 import {cleanCredits} from './svg.ts';
 import {EARTH_CIRCUMFERENCE} from './geo.ts';
 
@@ -12,7 +12,7 @@ import {EARTH_CIRCUMFERENCE} from './geo.ts';
 export interface FirstViewControls {
     controls: readonly ControlSpec[];
     lat: number; zoom: number; bearing: number; width: number;
-    colorScheme: 'auto' | 'light' | 'dark';
+    colorScheme: ColorScheme;
     locale?: Record<string, string> | null;
     nonce?: string | null;
     minZoom?: number | null; maxZoom?: number | null;
@@ -20,7 +20,7 @@ export interface FirstViewControls {
     terrain?: boolean;
     /** The credits as HTML, from the sources or from the options. `false` leaves out the attribution. */
     credits: string[] | false;
-    attribution?: {compact?: boolean; customAttribution?: string | string[]} | null;
+    attribution?: AttributionOptions | null;
 }
 
 const esc = (t: unknown) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

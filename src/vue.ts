@@ -8,7 +8,7 @@
 import {Comment, computed, defineComponent, Fragment, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import {earlyMethod, mistake} from './mistakes.ts';
-import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
+import type {AttributionOptions, ColorScheme, Renderer, SpriteInput, ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
 import {FORWARDED, type Forwarded} from './map-events.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
@@ -377,7 +377,7 @@ const MapJrComponent = defineComponent({
          * The thread that renders the map. Read only when the map is created.
          * @default 'auto'
          */
-        renderer: String as PropType<'auto' | 'worker' | 'main' | null>,
+        renderer: String as PropType<Renderer | null>,
         /** Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. */
         fonts: Object as PropType<MapDescription['fonts']>,
         /**
@@ -398,7 +398,7 @@ const MapJrComponent = defineComponent({
         /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
         nonce: String as PropType<string | null>,
         /** The options of the built-in attribution, or `false` to hide it. Read only when the map is created. */
-        attribution: {type: [Boolean, Object] as PropType<false | {compact?: boolean; customAttribution?: string | string[]} | null>, default: undefined},
+        attribution: {type: [Boolean, Object] as PropType<false | AttributionOptions | null>, default: undefined},
         /**
          * Whether the view is kept in the hash of the URL; a string is the name of the parameter. Read only when the map is created.
          * @default false
@@ -414,7 +414,7 @@ const MapJrComponent = defineComponent({
     },
     emits: {
         'update:view': (_view: View) => true,
-        'update:colorScheme': (_scheme: 'auto' | 'light' | 'dark') => true,
+        'update:colorScheme': (_scheme: ColorScheme) => true,
         click: (_event: MapPointer) => true,
         hover: (_features: RenderedFeature[]) => true,
         /** Emitted with the map when the style and the first tiles have loaded. */
