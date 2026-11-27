@@ -2044,7 +2044,9 @@ export class Engine {
         if (idle && !this.wentIdle) { this.wentIdle = true; this.extraFrame(); this.needQueries().catch(() => {}); }
         // WebKit does not always show the one frame that a map draws after a pause (#429): the page keeps the old picture,
         // with no error and no lost context. A frame that comes after a pause is therefore followed by one more frame.
-        if (began - this.lastFrameAt > 100) this.extraFrame();
+        // (That one more frame asks for no other: where frames come more than 100 ms apart, a slow device or WebGL in
+        // software, each would ask for the next, and a map at rest would draw without end; #971.)
+        if (began - this.lastFrameAt > 100 && !skipPre) this.extraFrame();
         this.lastFrameAt = began;
         this.wasIdle = idle;
         const st = this.stats, end = performance.now();
