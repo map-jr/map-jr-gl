@@ -8,8 +8,7 @@
 import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 declare const __DEV__: boolean;
-import {makeMap, defaultPin, type MapEvents, type MapInstance, type MapOverlay as Overlay, type MapPointer, type MapDescription, type MapErrorInfo, type MapState, type OverlayOptions, type View} from './host.ts';
-import type {RenderedFeature} from './map.ts';
+import {makeMap, watchHover, defaultPin, type MapEvents, type MapInstance, type MapOverlay as Overlay, type MapPointer, type MapDescription, type MapErrorInfo, type MapState, type OverlayOptions, type View} from './host.ts';
 
 type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
 /**
@@ -26,8 +25,8 @@ export interface MapJrProps extends Omit<MapDescription, 'style' | 'onViewChange
     mapStyle: MapDescription['style'];
     /** Called with the first view once, before `load`, and then with the new view at each change of the view. To control the view, pass the value back to `view`. */
     onViewChange?: (view: View) => void;
-    /** Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. */
-    onHover?: (features: RenderedFeature[]) => void;
+    /** Called when the features of `interactiveLayers` under the pointer change, with `{point, lngLat, features}` (the top feature first). The position is that of the pointer. After the pointer leaves the map, `features` is `[]` and the position is the last one over the map. */
+    onHover?: (event: MapPointer) => void;
     /** Called when the style and the first tiles have loaded. */
     onLoad?: () => void;
     /** Called each time the camera is still and nothing loads. */
@@ -119,7 +118,7 @@ export const MapJr = forwardRef<MapInstance | null, MapJrProps>(function MapJr(p
         const stops = [
             map.state.subscribe(s => s.loaded, v => { if (v) last.current.onLoad?.(); }),
             map.state.subscribe(s => s.idle, v => { if (v) last.current.onIdle?.(); }),
-            map.state.subscribe(s => s.hover, v => last.current.onHover?.(v)),
+            watchHover(map.state, e => last.current.onHover?.(e)),
         ];
         return () => { for (const stop of stops) stop(); made.current = null; map.destroy(); setHost(null); };
     }, []);

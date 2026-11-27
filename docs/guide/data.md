@@ -1262,7 +1262,7 @@ const layers = [
     },
   },
 ];
-// The features under the pointer, from the event `hover`.
+// The features under the pointer, from `features` of the event `hover`.
 const hover = ref([]);
 </script>
 
@@ -1280,7 +1280,7 @@ const hover = ref([]);
     :interactive-layers="['landings']"
     hover-state
     :attribution="{compact: true}"
-    @hover="hover = $event"
+    @hover="hover = $event.features"
   />
   <p>
     {{ hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.' }}
@@ -1338,7 +1338,8 @@ export default function Hover() {
   const [hover, setHover] = useState([]);
   // With `hoverState`, the map gives the top feature of `interactiveLayers`
   // under the pointer the feature state `hover: true`, and removes it when the
-  // pointer leaves the feature.
+  // pointer leaves the feature. `onHover` gets the features under the pointer
+  // as `features`, with the position of the pointer.
   return (
     <>
       <MapJr
@@ -1349,7 +1350,7 @@ export default function Hover() {
         interactiveLayers={['landings']}
         hoverState
         attribution={{compact: true}}
-        onHover={setHover}
+        onHover={e => setHover(e.features)}
       />
       <p>
         {hover[0]?.properties.name ?? 'Move the pointer over a ferry landing.'}
@@ -1505,14 +1506,15 @@ export default function Hover() {
   map.data = data;
   map.layers = layers;
 
-  // The event `map-hover` has the
-  // features of
+  // The event `map-hover` has
+  // `features`, the features of
   // `interactive-layers` under
-  // the pointer, the top one
-  // first.
+  // the pointer (the top one
+  // first), and the position of
+  // the pointer.
   map.addEventListener('map-hover', event => {
     readout.textContent =
-      event.detail[0]?.properties.name ??
+      event.detail.features[0]?.properties.name ??
       'Move the pointer over a ferry landing.';
   });
 </script>
@@ -1526,8 +1528,8 @@ export default function Hover() {
   the option `id`. For GeoJSON of your own, give each feature an `id`, or declare the source with `promoteId` or
   `generateId: true`.
 - [`state.hover`](../reference/state.md#mapstate) lists the features of `interactiveLayers` under the pointer, the top
-  one first. Vue has it in the event `hover`, React in `onHover`, Svelte in [`mapState`](../reference/svelte.md#mapstate)
-  and `<map-jr>` in the event `map-hover`.
+  one first. Vue has it in `features` of the event `hover`, React in `features` of the argument of `onHover`, Svelte in
+  [`mapState`](../reference/svelte.md#mapstate) and `<map-jr>` in `detail.features` of the event `map-hover`.
 - In the compat entry, the code sets the state itself with `setFeatureState` on `mousemove` and `mouseleave` of the
   layer, as in MapLibre GL JS.
 

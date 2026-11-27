@@ -1222,6 +1222,33 @@ for (const renderer of renderers) {
         check(`[${renderer}] patch merges data by key, null removes a source, and layers is replaced whole`,
             JSON.stringify(merged) === JSON.stringify({both: [['a', 'b'], true, true], removed: [['b'], false, true, false, true], same: [['b'], false, true], nulls: [['b'], false, false, '']}), JSON.stringify(merged));
 
+        // 3b4. `patch` merges `images` by key, and a key that is `null` removes its image (#1196).
+        const mergedImages = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const svg = c => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10" height="10"><rect width="10" height="10" fill="${c}"/></svg>`;
+            const host = t.lib.createMap(el, {style: t.style, renderer, attribution: false, images: {a: svg('red')}});
+            await new Promise(r => host._map.once('load', r));
+            const has = () => ['a', 'b'].map(id => host._map.hasImage(id));
+            const out = {};
+            await wait(300);
+            out.start = [Object.keys(host.description.images), has()];
+            host.patch({images: {b: svg('blue')}});
+            await wait(300);
+            out.added = [Object.keys(host.description.images), has()];
+            const before = host.description.images.a;
+            host.patch({images: {a: svg('green')}});
+            await wait(300);
+            out.replaced = [Object.keys(host.description.images), host.description.images.a !== before, has()];
+            host.patch({images: {a: null, nothing: null}});
+            await wait(300);
+            out.removed = [Object.keys(host.description.images), has()];
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] patch merges images by key, and null removes an image`,
+            JSON.stringify(mergedImages) === JSON.stringify({start: [['a'], [true, false]], added: [['a', 'b'], [true, true]], replaced: [['a', 'b'], true, [true, true]], removed: [['b'], [false, true]]}), JSON.stringify(mergedImages));
+
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
         const tiles2007 = new Set();
@@ -2797,6 +2824,20 @@ for (const renderer of renderers) {
         const liveOn = {moved: await dragMoved(), grab: await grab()};
         check(`[${renderer}] interactive: update({interactive: false}) stops a drag and update({interactive: true}) brings it back (#213)`,
             !liveOff.moved && !liveOff.grab && liveOn.moved && liveOn.grab, JSON.stringify({liveOff, liveOn}));
+        // `interactive` as an object (#2412): a key that is `false` turns that gesture off, a missing key is on.
+        const viewBefore = await page.evaluate(() => window.t.host.state.get().view);
+        const wheelZoomed = async () => { const z = await page.evaluate(() => window.t.host.state.get().view.zoom); await page.mouse.move(450, 300); await page.mouse.wheel(0, -300); await page.waitForTimeout(900); return Math.abs(await page.evaluate(() => window.t.host.state.get().view.zoom) - z) > 0.05; };
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: {scrollZoom: false}}); });
+        const noWheel = {moved: await dragMoved(), zoomed: await wheelZoomed(), grab: await grab()};
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: {dragPan: false}}); });
+        const noDrag = {moved: await dragMoved(), zoomed: await wheelZoomed()};
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: {}}); });
+        const allOn = {moved: await dragMoved(), zoomed: await wheelZoomed()};
+        check(`[${renderer}] interactive: {scrollZoom: false} stops the wheel and keeps the drag, {dragPan: false} stops the drag and keeps the wheel, and {} turns every gesture on (#2412)`,
+            noWheel.moved && !noWheel.zoomed && noWheel.grab && !noDrag.moved && noDrag.zoomed && allOn.moved && allOn.zoomed, JSON.stringify({noWheel, noDrag, allOn}));
+        // (The wheel zoomed the map in and the drags moved it: later checks start from the view of before.)
+        await page.evaluate(v => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: undefined}); t.host.moveTo({center: v.center, zoom: v.zoom, bearing: v.bearing, pitch: v.pitch, animate: false}); }, viewBefore);
+        await page.waitForTimeout(800);
         // `cooperativeGestures` (#41): a plain wheel does not zoom and shows the hint; Ctrl + wheel zooms; update() turns it off.
         const zoomNow = () => page.evaluate(() => window.t.host.state.get().view.zoom);
         // (The library asks for ⌘ instead of Ctrl when the user agent says Mac, as MapLibre GL JS does.)
@@ -5687,6 +5728,23 @@ for (const renderer of ['worker', 'main']) {
         check("a page with style-src 'nonce-x' has styled controls and a styled pin (#47)", ok(n.first), JSON.stringify(n));
         const e = await styled({csp: "style-src 'nonce-x'", adopt: false});
         check("a page with style-src 'nonce-x' and no adoptedStyleSheets has styled controls with nonce: 'x' (#47)", ok(e.first), JSON.stringify(e));
+        // #2435: the sheet of a map without a nonce is blocked and stays in the root. A later map with a nonce replaces it.
+        const page = await browser.newPage({viewport: {width: 600, height: 400}});
+        try {
+            await page.route(`${origin}/csp-page`, r => r.fulfill({contentType: 'text/html', headers: {'Content-Security-Policy': "style-src 'nonce-x'"}, body: '<!doctype html><title>csp</title><body></body>'}));
+            await page.addInitScript(() => { delete Document.prototype.adoptedStyleSheets; delete ShadowRoot.prototype.adoptedStyleSheets; });
+            await page.goto(`${origin}/csp-page`);
+            const two = await page.evaluate(async () => {
+                const lib = await import('/dist/map-jr-gl.js');
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+                const make = nonce => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'})); return {el, map: lib.createMap(el, {style, renderer: 'main', ...nonce && {nonce}})}; };
+                const a = make(), b = make('x');
+                const out = {corner: getComputedStyle(b.el.querySelector('.map-jr-ctrl-bottom-right')).position, sheets: document.querySelectorAll('#map-jr-control-css').length};
+                a.map.destroy(); b.map.destroy();
+                return out;
+            });
+            check("a map with nonce: 'x' after a map without one has styled controls when style-src blocked the first sheet (#2435)", two.corner === 'absolute' && two.sheets === 1, JSON.stringify(two));
+        } finally { await page.close(); }
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
 }
 // #828: a map in an open shadow root. The focus moves into a popup that opens and returns to the map after Escape, from

@@ -58,7 +58,7 @@ The fields with an object, a list or a function as value have no attribute: set 
 | `interactive-layers` | `interactiveLayers` | The ids of style layers with spaces between them. |
 | `projection` | `projection` | `globe` or `mercator`. |
 | `hover-state`, `cooperative-gestures`, `antialias` | `hoverState`, `cooperativeGestures`, `antialias` | A boolean attribute: present is `true`. |
-| `no-interactive` | `interactive` | A boolean attribute: present is `false`. |
+| `no-interactive` | `interactive` | A boolean attribute: present is `false`. To turn off single gestures, set the property `interactive` to an object such as `{scrollZoom: false}`. |
 | `no-render-world-copies` | `renderWorldCopies` | A boolean attribute: present is `false`. |
 | `no-attribution` | `attribution` | A boolean attribute: present is `false`, which hides the attribution. |
 | `attribution-compact` | `attribution.compact` | A boolean attribute: present is `attribution: {compact: true}`. `no-attribution` wins over it, and the property `attribution` wins over both. |
@@ -159,7 +159,7 @@ Each event of the map is a `CustomEvent` that bubbles, named `map-` and the name
 | `map-load` | The map, once, when the style and the first tiles have loaded. |
 | `map-idle` | `null`, each time the camera is still and nothing loads. |
 | `map-click` | `{point, lngLat, features}`, with the features of `interactive-layers` at the point. |
-| `map-hover` | The features of `interactive-layers` under the pointer, the top one first, when they change. |
+| `map-hover` | `{point, lngLat, features}`, when the features under the pointer change. `features` are the top one first. The position is that of the pointer, or its last one over the map after it has left. |
 | `map-viewchange` | The view, `{center, zoom, bearing, pitch, bounds}`: once with the first view before `map-load`, and then at each change of the view. |
 | `map-colorschemechange` | The `colorScheme` that the control `colorScheme()` set. |
 | `map-error` | Each error of the map, an `Error`. When the error belongs to a source, such as a tile or a GeoJSON URL that does not load, the `Error` has the property `sourceId` with the id of that source. |

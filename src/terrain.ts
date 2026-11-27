@@ -301,6 +301,9 @@ export function updateDrapes(this: any, s: Scene) {
             if (!tex) {
                 tex = this.newTexture();
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                // The largest anisotropy, as MapLibre GL JS sets on its drape at any pitch: the far ground is sharper
+                // (#2017). (0x84FE is TEXTURE_MAX_ANISOTROPY_EXT.)
+                if (this.aniso) gl.texParameterf(gl.TEXTURE_2D, 0x84FE, this.aniso);
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
             }
             d = {tex, size, signature: '', used: this.frame};

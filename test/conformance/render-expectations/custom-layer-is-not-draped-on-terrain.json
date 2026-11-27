@@ -1,0 +1,7 @@
+{
+  "label": "a custom layer is not draped on terrain",
+  "decision": "later",
+  "issue": 1787,
+  "reason": "renderToTerrainTile() of a custom layer is never called, so the layer is not draped on the terrain as in MapLibre GL JS.",
+  "pattern": "^custom-layer-js/null-island-terrain$"
+}

@@ -4,5 +4,5 @@ import assert from 'node:assert/strict';
 import * as server from '../../src/server.ts';
 
 test('the server entry exports only its documented functions (#1206)', () => {
-    assert.deepEqual(Object.keys(server).sort(), ['decodePNG', 'decodeWebPLossless', 'renderElement', 'renderFirstView', 'renderToImage', 'renderToSVG']);
+    assert.deepEqual(Object.keys(server).sort(), ['decodePNG', 'decodeWebPLossless', 'firstViewOptions', 'renderElement', 'renderFirstView', 'renderToImage', 'renderToSVG']);
 });

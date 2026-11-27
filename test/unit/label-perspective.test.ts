@@ -7,7 +7,7 @@ import {compileLayer} from '../../src/style.ts';
 import {buildTile} from '../../src/tile.ts';
 import {prepareGeoJSON, sliceGeoJSON} from '../../src/geojson.ts';
 import * as placement from '../../src/placement.ts';
-import {EstimateShaper} from '../../src/text.ts';
+import {BASELINE, EM, EstimateShaper} from '../../src/text.ts';
 
 const {CollisionGrid, perspective, placeLabels, renderItems} = placement;
 const z = 14, tx = 8000, ty = 5000, n = 2 ** z;
@@ -141,4 +141,45 @@ for (const align of ['viewport', 'map'] as const) test(`placeLabels: text of a l
     assert.ok(Math.abs(ri - 1) > 0.05, `the ratio of the screen is ${ri}`);
     assert.ok(Math.abs(off.p.icon.w * ri - plain.p.icon.w) < 0.01 && Math.abs(off.p.icon.h * ri - plain.p.icon.h) < 0.01, `the fitted icon is ${off.p.icon.w}x${off.p.icon.h} px, ${plain.p.icon.w}x${plain.p.icon.h} px with the ratio ${ri}`);
     for (let b = 0; b < 2; b++) for (let i = 0; i < 4; i++) assert.ok(Math.abs(off.boxes[b][i] - plain.boxes[b][i]) < 0.01, `box ${b} with icon-offset is ${off.boxes[b].map(v => v.toFixed(2))}, without it ${plain.boxes[b].map(v => v.toFixed(2))}`);
+});
+
+// Along a line MapLibre GL JS places each glyph with the perspective ratio (`updateLineLabels`) and draws it without the
+// ratio when the layer has `icon-offset` (`u_is_offset`). The places of the glyphs and the collision boxes are those of
+// a layer without `icon-offset`, and only the size of each glyph differs (#2188).
+for (const align of ['viewport', 'map'] as const) test(`placeLabels: text along a line of a layer with icon-offset and text-pitch-alignment ${align} has glyphs without the perspective ratio`, () => {
+    const run = (layout: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'symbol-placement': 'line', 'icon-image': 'a', 'text-field': 'Main Street', 'text-size': 16, 'text-pitch-alignment': align, ...layout}})!;
+        const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: cases[0][2] as any}), z, tx, ty);
+        const labels = buildTile(data, z, [layer], false).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600; tr.maxPitch = 90;
+        tr.set([lngOf(tx + 0.5), latOf(ty + 0.8)], z, 0, 60);
+        const boxes: number[][] = [], grid = new CollisionGrid(), insert = grid.insert.bind(grid);
+        grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); insert(...b); };
+        const icons = () => ({x: 0, y: 0, width: 4, height: 4, pixelRatio: 1} as any);
+        const [p] = (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons);
+        return {p, boxes, tr};
+    };
+    // The center of each glyph on the screen, relative to the anchor, as `textBoxes` of `src/engine-query.ts` finds it.
+    const centers = (p: any) => {
+        const out: number[] = [], g = p.ground, s = p.size / EM, shift = (p.src.offset[1] + BASELINE) * p.size, adv = p.shaped.lines[0].advances;
+        for (let i = 0; i < p.curve.length / 3; i++) {
+            const a = p.curve[i * 3 + 2], len = adv[i] * s * (g ? g[i * 3] : 1) / 2;
+            out.push(p.curve[i * 3] + Math.cos(a) * len - (g ? g[i * 3 + 1] : -Math.sin(a)) * shift, p.curve[i * 3 + 1] + Math.sin(a) * len - (g ? g[i * 3 + 2] : Math.cos(a)) * shift);
+        }
+        return out;
+    };
+    const plain = run({}), off = run({'icon-offset': [0, 0]});
+    assert.ok(plain.p?.curve && off.p?.curve && off.p.icon, 'the labels follow their line and have their icon');
+    assert.equal(!!off.p.ground, align === 'map', 'only the text with map lies on the ground');
+    const r = perspective(off.tr, off.p.depth);
+    assert.ok(Math.abs(r - 1) > 0.05, `the ratio is ${r}`);
+    // A glyph on the screen has the size of the text, and a glyph on the ground has the size of the text on the ground.
+    const want = align === 'map' ? plain.p.size * r : 16;
+    assert.ok(Math.abs(off.p.size - want) < 0.01, `the glyphs with icon-offset are ${off.p.size} px, not ${want} (${plain.p.size} px without it)`);
+    const a = centers(plain.p), b = centers(off.p);
+    assert.equal(b.length, a.length);
+    for (let i = 0; i < a.length; i += 2) assert.ok(Math.hypot(a[i] - b[i], a[i + 1] - b[i + 1]) < 0.01, `glyph ${i / 2} is centered at ${b[i].toFixed(2)}, ${b[i + 1].toFixed(2)} with icon-offset, at ${a[i].toFixed(2)}, ${a[i + 1].toFixed(2)} without it`);
+    assert.equal(off.boxes.length, plain.boxes.length);
+    for (let b = 0; b < plain.boxes.length; b++) for (let i = 0; i < 4; i++) assert.ok(Math.abs(off.boxes[b][i] - plain.boxes[b][i]) < 0.01, `box ${b} with icon-offset is ${off.boxes[b].map(v => v.toFixed(2))}, without it ${plain.boxes[b].map(v => v.toFixed(2))}`);
 });

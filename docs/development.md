@@ -478,6 +478,21 @@ the numbered texts of `src/mistakes.ts`. It fails when a placeholder says nothin
 message cannot be classed as a warning or an error, and when the source adds the prefix to a text that the script
 cannot read; the message of the failure says which entry to add to `prefixHelpers`.
 
+A code can have a paragraph of explanation on `docs/reference/messages.md`, for a message whose one line leaves a common
+question open. The paragraph is a comment in `src/`, on the lines before the place that raises the code:
+
+```ts
+// E63: The map reads the style from the URL that the option `style` gives, and the server answered with a
+// status that is not 2xx. The error has the fields `status` and `url`.
+```
+
+The comment starts with `// E<code>: ` and goes on in each `//` line that follows directly. It ends at a line that is
+not a `//` comment, at an empty `//` line, or at the next `// E<code>:` line. The lines are joined with one space, so
+the paragraph is one block of text on the page, after the tags and before the texts of the builds. The build drops
+comments, so a paragraph adds no bytes. Write complete sentences, and say only what the source at that place does.
+`node scripts/messages.mjs --write` puts the paragraph in the page, and `--check` fails on a paragraph for a code that
+no message has, and on two paragraphs for one code.
+
 ## Where a document goes
 
 A document that is not a page of the user docs has one place, by its kind. `pnpm test:consistency` runs

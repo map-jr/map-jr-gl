@@ -68,7 +68,7 @@ new `key`.
 | `renderer` | `Renderer \| null` | `'auto'` | The thread that renders the map. |
 | `fonts` | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | `fontFamily` | `string \| null` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels whose `text-font` names no loaded font. |
-| `interactive` | `boolean \| null` | `true` | Whether the user can move the map. |
+| `interactive` | `boolean \| Gestures \| null` | `true` | Whether the user can move the map. |
 | `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
 | `nonce` | `string \| null` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| `[`AttributionOptions`](description.md#attributionoptions)` \| null` | | The options of the built-in attribution, or `false` to hide it. |
@@ -233,7 +233,7 @@ in the browser.
 | `update:view` | `View` | Once with the first view, and then at each change of the view. See [`view`](#view). |
 | `update:colorScheme` | `'auto' \| 'light' \| 'dark'` | When a control sets the color scheme. With `v-model:color-scheme`, the prop follows. |
 | `click` | `{point: {x, y}, lngLat: [lng, lat], features}` | At each click on the map. `features` are those of `interactiveLayers` at the point. |
-| `hover` | `RenderedFeature[]` | When the features of `interactiveLayers` under the pointer change. |
+| `hover` | `{point: {x, y}, lngLat: [lng, lat], features}` | When the features of `interactiveLayers` under the pointer change. `features` are the top one first. The position is that of the pointer, or its last one over the map after it has left. |
 | `load` | `MapInstance` | Once, when the style and the first tiles have loaded. The map is not yet idle then. |
 | `idle` | none | Each time the map has drawn everything and nothing moves. |
 | `error` | `Error`, [`MapErrorInfo`](events.md#maperrorinfo) | At each error of the map. The second value has `sourceId` when the error belongs to a source. Without a listener for `error`, the map writes each error to the console. |

@@ -8,12 +8,11 @@
 import {Comment, computed, defineComponent, Fragment, getCurrentInstance, h, inject, mergeProps, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import {earlyMethod, mistake} from './mistakes.ts';
-import type {AttributionOptions, ColorScheme, Renderer, SpriteInput, ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
+import type {AttributionOptions, ColorScheme, Renderer, SpriteInput, ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, Gestures, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
 import {FORWARDED, type Forwarded} from './map-events.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
-import type {LngLatBoundsInput} from './lnglat.ts';
 
 /** A description whose fields are the objects behind Vue's reactive objects (a reactive object cannot go to a worker). */
 function unwrapped(spec: MapDescription): MapDescription {
@@ -389,10 +388,10 @@ const MapJrComponent = defineComponent({
          */
         fontFamily: String as PropType<string | null>,
         /**
-         * Whether the user can move the map.
+         * Whether the user can move the map. An object turns single gestures off: `{scrollZoom: false}`.
          * @default true
          */
-        interactive: {type: Boolean as PropType<boolean | null>, default: undefined},
+        interactive: {type: [Boolean, Object] as PropType<boolean | Gestures | null>, default: undefined},
         /**
          * Whether the canvas uses multisample antialiasing. Read only when the map is created.
          * @default false
@@ -419,7 +418,7 @@ const MapJrComponent = defineComponent({
         'update:view': (_view: View) => true,
         'update:colorScheme': (_scheme: ColorScheme) => true,
         click: (_event: MapPointer) => true,
-        hover: (_features: RenderedFeature[]) => true,
+        hover: (_event: MapPointer) => true,
         /** Emitted with the map when the style and the first tiles have loaded. */
         load: (_map: MapInstance) => true,
         idle: () => true,
@@ -486,7 +485,9 @@ const MapJrComponent = defineComponent({
             if (map) map.state.subscribe(s => s.idle, v => { if (v) emit('idle'); });
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
-        watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
+        // (The position is `state.pointer`, and the last one over the map after the pointer has left.)
+        let at = {point: {x: 0, y: 0}, lngLat: [0, 0] as [number, number]};
+        watch(() => state.value?.hover, features => { if (features) { at = state.value!.pointer ?? at; emit('hover', {features, point: {...at.point}, lngLat: [...at.lngLat]}); } });
         // The members of the map, read when they are used. Before the map has loaded, the members are undefined; in the
         // development build, a method is a function that throws a message. (Functions are bound to the map, because Vue calls them on its
         // own proxy, and each one is bound once for each map, so that a read gives the same function again.)
@@ -514,7 +515,7 @@ const MapJrComponent = defineComponent({
         // @ts-ignore: `import.meta.env` is Vite's, and it must stay written out in full for Vite to replace it
         if (!import.meta.env || import.meta.env.SSR) onServerPrefetch(async () => {
             if (!props.ssr) return;
-            const view = {...props.initialView, ...props.view}, fit = !props.view && props.initialView?.bounds, o = props.ssr === true ? {} : props.ssr;
+            const o = props.ssr === true ? {} : props.ssr;
             // A render that fails does not fail the page (#706): the page is sent without the first view, and the map
             // draws in the browser as it does without the `ssr` prop.
             try {
@@ -522,10 +523,12 @@ const MapJrComponent = defineComponent({
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
-            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) as LngLatBoundsInput : undefined, padding: props.initialView?.fitPadding, fitMaxZoom: props.initialView?.fitMaxZoom, width: o.width ?? 800, height: o.height ?? 500,
-                images: props.images ? toRaw(props.images) as Record<string, string> : undefined, overrides: o.overrides, sources: toRaw(props.sources) ?? undefined, layers: toRaw(props.layers) ?? undefined, terrain: toRaw(props.terrain), sprite: props.sprite ? toRaw(props.sprite) : undefined, data: props.data ? toRaw(props.data) : undefined, timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, tileZoomOffset: o.tileZoomOffset, fontFamily: props.fontFamily ?? undefined, label: o.label ?? props.locale?.['Map.Title'], attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light', globalState: props.globalState && toRaw(props.globalState),
-                controls: controls.value ?? [], locale: props.locale && toRaw(props.locale), nonce: props.nonce, minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection && toRaw(props.projection),
-                attributionOptions: typeof props.attribution === 'object' ? toRaw(props.attribution) : undefined});
+            // (The props are the fields of the description, with `mapStyle` for `style`.)
+            first.value = await server.renderFirstView(server.firstViewOptions(unwrapped({
+                style: props.mapStyle, initialView: props.initialView, view: props.view, images: props.images, sources: props.sources, layers: props.layers, terrain: props.terrain, sprite: props.sprite, data: props.data,
+                fontFamily: props.fontFamily, attribution: props.attribution, colorScheme: props.colorScheme, globalState: props.globalState, controls: controls.value ?? [], locale: props.locale, nonce: props.nonce,
+                minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection,
+            } as MapDescription), o as import('./server.ts').DescriptionRenderOptions));
             } catch (cause) {
                 const error = new Error(`[map-jr-gl] E706 <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
                 console.error(error.message);

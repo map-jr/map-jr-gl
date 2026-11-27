@@ -29,6 +29,35 @@ import {withCode} from './requests.ts';
  */
 declare const __DEV__: boolean;
 
+/** The gestures that `interactive` can turn off one by one. A gesture that is missing is on. */
+export interface Gestures {
+    /** Drag with the mouse or one finger to move the map. */
+    dragPan?: boolean;
+    /** Wheel or trackpad scroll to zoom. */
+    scrollZoom?: boolean;
+    /** Drag with the right button or Ctrl held to rotate and pitch. */
+    dragRotate?: boolean;
+    /** Double click or double tap to zoom in. */
+    doubleClickZoom?: boolean;
+    /** Pinch with two fingers to zoom and rotate. */
+    touchZoomRotate?: boolean;
+    /** Drag two fingers up or down to pitch. */
+    touchPitch?: boolean;
+    /** Arrow keys, plus and minus to move and zoom. */
+    keyboard?: boolean;
+    /** Shift and drag to draw a box and zoom to it. */
+    boxZoom?: boolean;
+}
+const GESTURES = ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const;
+/** The gestures that `interactive` turns off, as `false` values: an object gives its keys, and `false` gives all of them. */
+const gestureFlags = (v: boolean | Gestures | null | undefined): Gestures => {
+    const out: Gestures = {};
+    if (v === false || (v && typeof v === 'object')) for (const k of GESTURES) if (v === false || (v as Gestures)[k] === false) out[k] = false;
+    return out;
+};
+/** A string that is equal for equal states of the gestures, so that a new object with the same keys changes nothing. */
+const gestureKey = (v: boolean | Gestures | null | undefined) => GESTURES.map(k => gestureFlags(v)[k] === false ? 0 : 1).join('');
+
 /** A control for `controls` of the description, as the functions of `@map-jr/map-jr-gl/controls` return it. */
 export interface ControlSpec {
     /** The identity of the control. A new description with a control of the same `key` keeps the control on the map. */
@@ -142,7 +171,7 @@ export interface PointerPosition {
     /** The position under the pointer, `[lng, lat]`. */
     lngLat: [number, number];
 }
-/** The argument of `onClick`: where the user clicked, and the features there. */
+/** The argument of `onClick`, and of `onHover` (React), the event `hover` (Vue) and the event `map-hover` (`<map-jr>`): a position on the map, and the features there. */
 export interface MapPointer {
     /** The point in CSS pixels from the top left corner of the map. */
     point: {x: number; y: number};
@@ -151,6 +180,15 @@ export interface MapPointer {
     /** The features of `interactiveLayers` at the point, the top one first. */
     features: RenderedFeature[];
 }
+
+/**
+ * Calls `fn` with a `MapPointer` each time the features under the pointer change. The position is the one in `state.pointer`,
+ * and when the pointer has left the map it is the last position over the map.
+ */
+export const watchHover = (state: Readable<MapState>, fn: (event: MapPointer) => void) => {
+    let at: PointerPosition = {point: {x: 0, y: 0}, lngLat: [0, 0]};
+    return state.subscribe(s => s.hover, (features, s) => { at = s.pointer ?? at; fn({features, point: {...at.point}, lngLat: [...at.lngLat]}); });
+};
 
 /** The fields of `MapDescription` that add to the parts of the style: `sources`, `layers` and `terrain`. */
 type StyleParts = Pick<Given, 'sources' | 'layers' | 'terrain'>;
@@ -317,10 +355,11 @@ export interface MapDescription extends MapSetup {
     cooperativeGestures?: boolean | null;
     /**
      * Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way.
-     * A change in `update` turns every gesture on or off: `false` also turns off a gesture that a plugin had enabled alone, and `true` turns on every gesture.
+     * An object turns single gestures off: a key that is missing is on, and `false` turns that gesture off, as in `{scrollZoom: false}`.
+     * A change in `update` turns the gestures on or off: `false` also turns off a gesture that a plugin had enabled alone, and `true` turns on every gesture.
      * @default true
      */
-    interactive?: boolean | null;
+    interactive?: boolean | Gestures | null;
     /**
      * The color scheme of the controls, the popup and the attribution. `'auto'` follows `prefers-color-scheme` of the
      * browser. The resolved scheme is also the global state `color-scheme` of the style, unless `globalState` sets it.
@@ -640,11 +679,12 @@ export interface MapInstance {
     update(spec: MapDescription): void;
     /**
      * Applies the fields of `part` and keeps the other fields of the current description. A field of `part` that is `undefined` is removed.
-     * `data` is merged by key: `patch({data: {a: x}})` changes only the source `a`, and a key that is `null` removes the
-     * data of that source. Every other field, `layers` included, is replaced whole.
+     * `data` and `images` are merged by key: `patch({data: {a: x}})` changes only the source `a`, `patch({images: {pin}})`
+     * changes only the image `pin`, and a key that is `null` removes that source data or that image. Every other field,
+     * `layers` included, is replaced whole. `patch({images: null})` removes all images.
      * @param part The fields to change.
      */
-    patch(part: Partial<Omit<MapDescription, 'data'>> & {data?: Record<string, GeoJSON | string | null>}): void;
+    patch(part: Partial<Omit<MapDescription, 'data' | 'images'>> & {data?: Record<string, GeoJSON | string | null>; images?: Record<string, ImageInput | null> | null}): void;
     /** The description of the last `createMap`, `update` or `patch`. To change the map, call `update` or `patch`. */
     readonly description: Readonly<MapDescription>;
     /**
@@ -854,7 +894,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        startPadding: spec.padding as PaddingInput | undefined, bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
+        startPadding: spec.padding as PaddingInput | undefined, bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding: fitPadding, maxZoom: fitMaxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive !== false, ...gestureFlags(spec.interactive), antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch, renderWorldCopies: spec.renderWorldCopies,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
@@ -896,9 +936,10 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     let touchAction = map.getCanvas().style.touchAction;
     // `interactive` changes while the map runs: every handler goes off or on, as `interactive: false` does when the map is made (#213).
     // (A handler that a plugin turned off alone is on again after `interactive: true`.)
-    const interact = (on: boolean) => {
-        const canvas = map.getCanvas();
-        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) map[k][on ? 'enable' : 'disable']();
+    const interact = (value: Given['interactive']) => {
+        const canvas = map.getCanvas(), flags = gestureFlags(value);
+        let on = false;
+        for (const k of GESTURES) { const x = flags[k] !== false; on ||= x; map[k][x ? 'enable' : 'disable'](); }
         for (const c of cls('interactive').split(' ')) canvas.classList.toggle(c, on);
         touchAction = on ? 'none' : '';
         if (!cooperating) canvas.style.touchAction = touchAction;
@@ -1265,7 +1306,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         wantedImages = next.images;
         if (next.images !== before?.images) putImages();
-        if (before && (next.interactive === false) !== (before.interactive === false)) interact(next.interactive !== false);
+        if (before && gestureKey(next.interactive) !== gestureKey(before.interactive)) interact(next.interactive);
         if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
         if (next.colorScheme !== before?.colorScheme || !before) scheme(next.colorScheme);
         if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();
@@ -1294,6 +1335,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         return map.queryFeatures(at as FeaturePlace | undefined, o);
     };
     const querySource = (id: string, at?: FeaturePlace | SourceOptions, o: SourceOptions = {}): Promise<QueriedFeature[]> => {
+        // E10: The first argument of `querySource()` is the id of a source of the style, as a string. The call does not throw: the
+        // returned promise rejects with this error, so a call without `await` or `.catch()` shows it as an unhandled rejection.
         if (typeof id !== 'string') return reject(10, JSON.stringify(id) ?? String(id), 'querySource(): the first argument is not the id of a source.');
         if (isOptions(at)) { o = at as SourceOptions; at = undefined; }
         check(6, at, {...o, id});
@@ -1356,6 +1399,11 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             if (part.data && typeof part.data === 'object') {
                 next.data = {...now.data};
                 for (const id in part.data) if (part.data[id] == null) delete next.data[id]; else next.data[id] = part.data[id];
+            }
+            // (`images` is merged by key in the same way, #1196.)
+            if (part.images && typeof part.images === 'object') {
+                next.images = {...now.images};
+                for (const id in part.images) if (part.images[id] == null) delete next.images[id]; else next.images[id] = part.images[id];
             }
             complete(next, 'patch', 'Do not set "style" to undefined.');
             if (alive) apply(next, now);

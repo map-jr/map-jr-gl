@@ -55,7 +55,7 @@ lists.
 |---|---|---|---|
 | `mapStyle` **required** | [`MapDescription`](description.md#mapdescription)`['style']` | | The style: a style object, the URL of a style, or `{light, dark}`. |
 | `onViewChange` | `(view: `[`View`](state.md#view)`) => void` | | Called with the first view once, before `load`, and then with the new view at each change of the view. |
-| `onHover` | `(features: `[`RenderedFeature`](types.md#renderedfeature)`[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
+| `onHover` | `(event: MapPointer) => void` | | Called when the features of `interactiveLayers` under the pointer change, with `{point, lngLat, features}` (the top feature first). |
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
 | `onError` | `(error: Error, info: MapErrorInfo) => void` | | Called with each error of the map. |
@@ -159,6 +159,9 @@ events.
 fields of the description. These six props receive the value that their entry states, not an event object of
 `listen`.
 
+`onHover` receives `{point, lngLat, features}`, as `onClick` does. The position is that of the pointer. After the pointer
+leaves the map, `features` is `[]` and the position is the last one over the map.
+
 Without `onError`, the map writes each error to the console. With `onError`, the map calls it and writes nothing.
 `onError` receives the `Error` and a [`MapErrorInfo`](events.md#maperrorinfo) object, whose `sourceId` names the
 source when the error belongs to a source: `onError={(error, {sourceId}) => …}`.
@@ -215,24 +218,24 @@ The built files of the entry start with `'use client'`, so a server component of
 so the page contains the HTML of `firstView` twice.
 
 ```jsx
-import {renderFirstView} from '@map-jr/map-jr-gl/server';
+import {renderFirstView, firstViewOptions} from '@map-jr/map-jr-gl/server';
 import {MapJr} from '@map-jr/map-jr-gl/react';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const initialView = {center: [-74.0065, 40.7085], zoom: 13.6};
 
 export default async function Page() {
   // The same style and view as the map in the browser, at the size that the map
-  // has on most screens.
-  const firstView = await renderFirstView({
-    style: 'https://styles.map-jr.org/1/elevation-zero.json',
-    center: [-74.0065, 40.7085],
-    zoom: 13.6,
-    width: 800,
-    height: 500,
-  });
+  // has on most screens (800 by 500 pixels unless the second argument of
+  // firstViewOptions says otherwise).
+  const firstView = await renderFirstView(
+    firstViewOptions({style, initialView}),
+  );
   return (
     <div style={{height: 500}}>
       <MapJr
-        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
-        initialView={{center: [-74.0065, 40.7085], zoom: 13.6}}
+        mapStyle={style}
+        initialView={initialView}
         firstView={firstView}
       />
     </div>

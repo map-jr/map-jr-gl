@@ -2211,25 +2211,26 @@ for (const mode of renderers) {
 
     // A lost WebGL context during an `easeTo`, and a restart that takes longer than the time that is left (a loaded
     // machine): the camera still ends at the target, and not where the old engine stopped (#1757). The page is busy for
-    // 1500 ms at the loss, which is longer than the 1000 ms of the ease.
-    if (mode === 'main') {
-        const slow = await page.evaluate(async () => {
+    // 1500 ms, which is longer than the 1000 ms of the ease: at the loss, or before the loss is seen (`loseContext()`
+    // can block that long on software WebGL, so the time of the ease runs out while the old engine still has it).
+    if (mode === 'main') for (const before of [false, true]) {
+        const slow = await page.evaluate(async before => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
             const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, center: [0, 0], zoom: 2, attributionControl: false, renderer: 'main'});
             await new Promise(r => m.once('load', r));
-            const events = [];
+            const events = [], busy = () => { const end = performance.now() + 1500; while (performance.now() < end); };
             for (const type of ['webglcontextlost', 'webglcontextrestored', 'moveend']) m.on(type, () => events.push(type));
-            m.once('webglcontextlost', () => { const end = performance.now() + 1500; while (performance.now() < end); });
+            if (!before) m.once('webglcontextlost', busy);
             m.easeTo({center: [20, 10], zoom: 4, duration: 1000});
-            setTimeout(() => m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(), 200);
+            setTimeout(() => { if (before) busy(); m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(); }, 200);
             for (let i = 0; i < 100 && !events.includes('moveend'); i++) await new Promise(r => setTimeout(r, 100));
             await new Promise(r => setTimeout(r, 500));
             const c = m.getCenter(), out = {events, lng: c.lng, lat: c.lat, zoom: m.getZoom()};
             m.remove(); el.remove();
             return out;
-        });
-        check(`[${mode}] a lost WebGL context during an easeTo and a restart slower than the ease: the camera ends at the target (#1757)`,
+        }, before);
+        check(`[${mode}] a lost WebGL context during an easeTo and a restart slower than the ease${before ? ', with the page blocked before the loss is seen' : ''}: the camera ends at the target (#1757)`,
             slow.events.includes('webglcontextrestored') && slow.events.filter(e => e === 'moveend').length === 1 && Math.abs(slow.lng - 20) < 1e-6 && Math.abs(slow.lat - 10) < 1e-6 && Math.abs(slow.zoom - 4) < 1e-6, JSON.stringify(slow));
     }
 
@@ -5435,6 +5436,53 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] setAnisotropicFilterPitch: raster tiles are filtered anisotropically above the pitch (20 by default), and a pitch above 180 throws (#1713)`,
             r.pitch === 20 && r.set === 80 && r.reset === 20 && r.on > r.off + 10 && r.error === '[map-jr-gl] E2011 https://map-jr.org/e/2011 pitch=200', JSON.stringify(r));
+    }
+    // With 3D terrain, the picture of the ground (the drape) is filtered anisotropically at any pitch, as in MapLibre GL
+    // JS (#2017). The stripes of the check above lie on flat terrain at a pitch of 75: the far ground keeps its contrast,
+    // where the same tiles with mipmaps alone (no terrain, setAnisotropicFilterPitch(80)) blur to gray.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            const name = 'aniso2017' + mode;
+            mod.addProtocol(name, async () => {
+                const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+                g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#000';
+                for (let x = 0; x < 256; x += 8) g.fillRect(x, 0, 4, 256);
+                return {data: await createImageBitmap(c)};
+            });
+            const contrast = async m => {
+                const blob = await Promise.race([m.toBlob(), new Promise(r => setTimeout(r, 8000))]);
+                if (!blob) return -1;
+                const bmp = await createImageBitmap(blob), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                let sum = 0, n = 0;
+                for (const f of [0.3, 0.35, 0.4]) {
+                    const row = g.getImageData(0, Math.round(bmp.height * f), bmp.width, 1).data, v = [];
+                    for (let i = 0; i < row.length; i += 4) v.push(row[i]);
+                    const mean = v.reduce((a, b) => a + b, 0) / v.length;
+                    sum += Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length); n++;
+                }
+                return Math.round(sum / n);
+            };
+            const dem = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), d = dem.getContext('2d');
+            d.fillStyle = 'rgb(128,0,0)'; d.fillRect(0, 0, 256, 256); // 0 m in the terrarium encoding
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 3, pitch: 75, maxPitch: 85,
+                style: {version: 8, sources: {r: {type: 'raster', tiles: [name + '://{z}/{x}/{y}'], tileSize: 256},
+                    dem: {type: 'raster-dem', tiles: [dem.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10}},
+                terrain: {source: 'dem'}, layers: [{id: 'r', type: 'raster', source: 'r', paint: {'raster-fade-duration': 0}}]}});
+            try {
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                out.terrain = !!m.getTerrain();
+                out.drape = await contrast(m);
+                m.setTerrain(null).setAnisotropicFilterPitch(80);
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                out.mipmaps = await contrast(m);
+            } finally { m.remove(); el.remove(); mod.removeProtocol(name); }
+            return out;
+        }, mode);
+        check(`[${mode}] 3D terrain: the drape is filtered anisotropically, so the far ground of a pitch of 75 keeps its contrast (#2017)`,
+            r.terrain && r.drape > r.mipmaps + 10, JSON.stringify(r));
     }
     // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
     // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).

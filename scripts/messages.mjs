@@ -3,13 +3,16 @@
 //   node scripts/messages.mjs --check   fails when a message of src/ cannot be read, has a placeholder that says nothing,
 //                                       cannot be classed as a warning or an error, has no code or the code of another
 //                                       message, uses a code that was removed, or when docs/reference/messages.md differs
-//                                       from what --write makes
+//                                       from what --write makes, or when a paragraph comment `// E<code>: <text>` in src/
+//                                       (see below) is for a code that does not exist or is a second one for its code
 //   node scripts/messages.mjs --write   writes docs/reference/messages.md, and dist/messages.json when dist/ exists
 //   node scripts/messages.mjs --json    writes dist/messages.json only (build.mjs runs this)
 //
 // Each message has a code, `E` and a number, right after the prefix: `[map-jr-gl] E1846 workerUrl: ...`. The source writes
 // the code at the start of the text, and the texts of src/mistakes.ts take their number as their code. A new message takes
 // the number of its issue; a second one for the same issue takes that number plus 10000 (see docs/development/error-codes.md).
+// A code can have a paragraph of explanation (#2484): a comment `// E<code>: <text>` on the lines before the place in src/ that
+// raises it, which continues in the `//` lines that follow. --write puts it in the section of the code. See docs/development.md.
 // A code that leaves src/ stays in docs/reference/messages.md as removed, so that a link in an old log still works, and it
 // is not used again.
 //
@@ -24,6 +27,7 @@ import {fileURLToPath} from 'node:url';
 import {transformSync} from 'esbuild';
 import {parseAst} from 'vite';
 import {LINK, productionNames} from './message-codes.mjs';
+import {paragraphProblems, paragraphText, readParagraphs} from './message-paragraphs.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mode = ['--check', '--write', '--json'].find(m => process.argv.includes(m));
@@ -375,8 +379,16 @@ for (const file of files) for (const [code, names] of productionNames(readFileSy
 /** What the production build prints for a code, with each value as `name=…`; nothing for a message that production does not have. */
 const production = (code, x) => /development build only|server renderer/.test(entryOf(code, x.file)) ? ''
     : `\`Production build\`\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
+/**
+ * The paragraph of a code (#2484): a comment `// E<code>: <text>` in src/, on the lines before the place that raises the code.
+ * The paragraph goes on in each `//` line that follows directly, and it ends at a line that is not a `//` comment, at an empty
+ * `//` line, or at the next `// E<code>:` line. The lines are joined with one space. The build drops comments, so a paragraph adds no bytes.
+ */
+const paragraphs = readParagraphs(files.map(f => [f, readFileSync(path.join(root, 'src', f), 'utf8')]));
+problems.push(...paragraphProblems(paragraphs, code => byCode.has(code)));
+const paragraphOf = code => { const x = paragraphs.get(code)?.[0]; return x ? paragraphText(x) + '\n\n' : ''; };
 const sections = new Map();
-for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + production(code, x) + (production(code, x) ? '`Development build`\n\n' : '') + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
+for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + paragraphOf(code) + production(code, x) + (production(code, x) ? '`Development build`\n\n' : '') + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
 for (const [code, section] of before) if (!byCode.has(code)) sections.set(code, isRemoved(section) ? section : section.replace(/\n\n/, `\n\nRemoved after ${pkg.version}.\n\n`));
 const page = `# Messages
 

@@ -39,7 +39,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `renderer` | `Renderer \| null` | `'auto'` | The thread that renders the map. |
 | `fonts` | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | `fontFamily` | `string \| null` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels whose `text-font` names no loaded font. |
-| `interactive` | `boolean \| null` | `true` | Whether the user can move the map. |
+| `interactive` | `boolean \| Gestures \| null` | `true` | Whether the user can move the map. |
 | `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
 | `nonce` | `string \| null` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| `[`AttributionOptions`](../../docs/reference/description.md#attributionoptions)` \| null` | | The options of the built-in attribution, or `false` to hide it. |
@@ -54,7 +54,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 |---|---|---|---|
 | `mapStyle` **required** | [`MapDescription`](../../docs/reference/description.md#mapdescription)`['style']` | | The style: a style object, the URL of a style, or `{light, dark}`. |
 | `onViewChange` | `(view: `[`View`](../../docs/reference/state.md#view)`) => void` | | Called with the first view once, before `load`, and then with the new view at each change of the view. |
-| `onHover` | `(features: `[`RenderedFeature`](../../docs/reference/types.md#renderedfeature)`[]) => void` | | Called with the features of `interactiveLayers` under the pointer, the top one first, when they change. |
+| `onHover` | `(event: MapPointer) => void` | | Called when the features of `interactiveLayers` under the pointer change, with `{point, lngLat, features}` (the top feature first). |
 | `onLoad` | `() => void` | | Called when the style and the first tiles have loaded. |
 | `onIdle` | `() => void` | | Called each time the camera is still and nothing loads. |
 | `onError` | `(error: Error, info: MapErrorInfo) => void` | | Called with each error of the map. |
