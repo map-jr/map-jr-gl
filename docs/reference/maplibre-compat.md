@@ -54,7 +54,7 @@ available, and of the types that differ.
 |---|---|---|---|
 | `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders the map: see [`renderer`](description.md#renderer) of the main API for each value. |
 | [`strict`](#strict) | `boolean` | `false` | Whether an option or a call that the map cannot carry out throws an error. |
-| `fonts` | `FontSource[]` | | Web fonts for labels, for example `[{family: 'Open Sans', src: '/fonts/open-sans.woff2', weight: '300 800'}]`. |
+| `fonts` | `FontFaces` | | Web fonts for labels by `text-font` name, in the shape of [`fonts`](description.md#fonts) of the main API, for example `{'Open Sans': '/fonts/open-sans.woff2'}`. |
 | `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font. |
 | `nonce` | `string` | | The nonce of a [Content Security Policy](../guide/loading.md#content-security-policy) with `style-src 'nonce-…'`. |
 
@@ -249,7 +249,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setFilter` | `(layerId: string, filter: unknown) => Map` | Sets the filter of a style layer. |
 | `removeControl` | `(control: Control) => Map` | Removes a control that `addControl` added. |
 | `hasControl` | `(control: Control) => boolean` | Whether the map has this control. |
-| `addFonts` | `(fonts: FontSource[]) => Map` | Only in this library: loads more web fonts for labels after the map is created. |
+| `addFonts` | `(faces: FontFaces) => Map` | Only in this library: loads more web fonts for labels after the map is created. |
 | `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
 | `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| `[`FeatureOptions`](map.md#featureoptions)`, o?: `[`FeatureOptions`](map.md#featureoptions)`) => Promise<`[`RenderedFeature`](types.md#renderedfeature)`[]>` | Only in this library: returns a promise of the features that the style layers draw, the top one first. |
 | `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| `[`SourceOptions`](map.md#sourceoptions)`, o?: `[`SourceOptions`](map.md#sourceoptions)`) => Promise<`[`QueriedFeature`](types.md#queriedfeature)`[]>` | Only in this library: returns a promise of the features of the tile data of the source `sourceId`. |

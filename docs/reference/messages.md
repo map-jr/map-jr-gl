@@ -1689,6 +1689,14 @@ A warning of the compat entry (development build only).
 new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
 ```
 
+## E2404
+
+A warning of the server renderer.
+
+```text
+renderElement(): attributes.<attribute> is dropped, because the element already has the attribute "<lower>" from the description or from an earlier entry. Remove it from attributes or change the description.
+```
+
 ## E10017
 
 A warning of both entries.

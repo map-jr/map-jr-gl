@@ -18,11 +18,12 @@ export type MapEvent = CoreMapEvent & {target: Map};
 /** The base of each map event. `originalEvent` is the DOM event that caused it, if there is one. */
 export type MapLibreEvent<T = unknown> = MapEvent & {originalEvent?: T};
 type Pointed<T> = MapEvent & {point: {x: number; y: number}; lngLat: LngLat; originalEvent: T; preventDefault(): void; readonly defaultPrevented: boolean};
-/** A GeoJSON geometry. Narrow it by `type` before you read `coordinates`, as with the types of MapLibre GL JS. */
+/** A GeoJSON geometry. Narrow it by `type` before you read `coordinates` or `geometries`, as with the types of MapLibre GL JS. The geometry of a queried feature is never a `GeometryCollection` in this library. */
 export type Geometry =
     | {type: 'Point'; coordinates: number[]} | {type: 'MultiPoint'; coordinates: number[][]}
     | {type: 'LineString'; coordinates: number[][]} | {type: 'MultiLineString'; coordinates: number[][][]}
-    | {type: 'Polygon'; coordinates: number[][][]} | {type: 'MultiPolygon'; coordinates: number[][][][]};
+    | {type: 'Polygon'; coordinates: number[][][]} | {type: 'MultiPolygon'; coordinates: number[][][][]}
+    | {type: 'GeometryCollection'; geometries: Geometry[]};
 /** A feature from `querySourceFeatures`. It has no style layer. */
 export type GeoJSONFeature = Omit<RenderedFeature, 'geometry' | 'properties' | 'layer'> & {geometry: Geometry; properties: Record<string, any>};
 /** A feature from `queryRenderedFeatures` or from an event of one layer, with the style layer that draws it. */
@@ -66,7 +67,9 @@ export type MapLayerEventType = Each<'click' | 'mousemove' | 'mouseenter' | 'mou
  * The options of `new Map(options)`. The options of MapLibre GL JS that are listed here and not in the main API are
  * accepted with no effect (see docs/reference/maplibre-differences.md).
  */
-export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
+export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate' | 'padding'> & {
+    /** Not an option of MapLibre GL JS, and the constructor does not read it: call `setPadding` or `jumpTo({padding})` after the map exists. */
+    padding?: never;
     /** Whether a drag pans the map. An object is accepted as `true` and warns once: its options have no effect. */
     dragPan?: boolean | DragPanOptions;
     /** Whether a drag with the right mouse button turns and tilts the map. An object is accepted as `true` and warns once: its options have no effect. */

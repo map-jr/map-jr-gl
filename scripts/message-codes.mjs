@@ -30,6 +30,8 @@ const CODED = /^(\[map-jr-gl\] )?E(\d+) /;
  * (`messageValue`), so that a built file does not repeat it for each module; any other module gets a copy of its own.
  */
 const QUOTE = '__mjrValue';
+/** The function that writes the code and the link of a production message (`messageHead` of src/requests.ts). */
+const HEAD = '__mjrHead';
 const quoteFunction = `\nfunction ${QUOTE}(v) { return typeof v == 'string' ? JSON.stringify(v) : v; }\n`;
 const REQUESTS = new URL('../src/requests.ts', import.meta.url).pathname;
 
@@ -134,7 +136,7 @@ function valueName(node, src, file, code) {
 }
 
 /** The edits of one file of src/: [start, end, text]. */
-function shortenMessages(code, file, found = []) {
+function shortenMessages(code, file, found = [], shared = false) {
     const ast = parseAst(code, {lang: 'ts'}, file), edits = [], parents = new Map();
     walk(ast, (n, parent) => parents.set(n, parent));
     const src = n => code.slice(n.start, n.end);
@@ -175,10 +177,12 @@ function shortenMessages(code, file, found = []) {
         for (let p = parents.get(top); p?.type === 'BinaryExpression' && p.operator === '+' && p.left === top; p = parents.get(p)) top = p;
         // (A text that ends with a space, such as a prefix that the source puts before another message, keeps one.)
         // (A value that the text names twice prints once.)
-        const head = `${prefix}E${number} ${LINK}${number}`, list = values(top).filter((v, i, all) => all.findIndex(w => src(w) === src(v)) === i), space = /\s$/.test(lastText(top)) ? ' ' : '';
+        // (Where the module shares the functions of src/requests.ts, the code and the link come from `messageHead`, which
+        // writes the number of the code once.)
+        const head = shared ? `${prefix}\${${HEAD}(${number})}` : `${prefix}E${number} ${LINK}${number}`, list = values(top).filter((v, i, all) => all.findIndex(w => src(w) === src(v)) === i), space = /\s$/.test(lastText(top)) ? ' ' : '';
         const names = list.map(v => valueName(v, src, file, number));
         if (!special.some(x => x[3]?.[0] === +number)) found.push([+number, names]);
-        edits.push([top.start, top.end, list.length ? '`' + head + list.map((v, i) => ` ${names[i]}=\${${QUOTE}(${src(v)})}`).join('') + space + '`' : JSON.stringify(head + space)]);
+        edits.push([top.start, top.end, list.length || shared ? '`' + head + list.map((v, i) => ` ${names[i]}=\${${QUOTE}(${src(v)})}`).join('') + space + '`' : JSON.stringify(head + space)]);
     });
     // The texts that `complete(spec, method, fix)` and `reject(code, value, short)` of src/host.ts get go: the code is added by those functions.
     if (file.endsWith('/src/host.ts')) walk(ast, n => {
@@ -196,7 +200,10 @@ function shortenMessages(code, file, found = []) {
 export function productionMessages(code, id, shared = false) {
     id = id.replaceAll('\\', '/'); // (A path of Windows, as scripts/messages.mjs gives it.)
     if (!/\/src\/[^/]+\.ts$/.test(id) || !/E\d+ |\[map-jr-gl\] E'/.test(code)) return null;
-    const edits = shortenMessages(code, id);
+    // (Only an import that src/ writes counts: the plugin `errorCodes` adds one for a `new Error` that can be in the
+    // development build only, which the bundler then drops.)
+    const own = id.endsWith('/src/requests.ts'), share = own || shared || /^import (?!type )[^;]*from '\.\/requests\.ts';$/m.test(code);
+    const edits = shortenMessages(code, id, [], share);
     if (!edits.length) return null;
     // (An edit inside another one, such as a text with a code inside a longer message, is left out, and of two edits of
     // the same text the first, which is the one of `special`, wins.)
@@ -204,13 +211,10 @@ export function productionMessages(code, id, shared = false) {
     const edited = new MagicString(code);
     let end = -1;
     for (const [s, e, t] of edits) { if (s < end) continue; edited.overwrite(s, e, t); end = e; }
-    if (edits.some(e => e[2].includes(QUOTE + '('))) {
-        if (id.endsWith('/src/requests.ts')) edited.append(`\nconst ${QUOTE} = messageValue;\n`);
-        // (Only an import that src/ writes counts: the plugin `errorCodes` adds one for a `new Error` that can be in the
-        // development build only, which the bundler then drops.)
-        else if (shared || /^import (?!type )[^;]*from '\.\/requests\.ts';$/m.test(code)) edited.append(`\nimport {messageValue as ${QUOTE}} from ${JSON.stringify(REQUESTS)};\n`);
-        else edited.append(quoteFunction);
-    }
+    const used = [['messageValue', QUOTE], ['messageHead', HEAD]].filter(([, local]) => edits.some(e => e[2].includes(local + '(')));
+    if (own) for (const [name, local] of used) edited.append(`\nconst ${local} = ${name};\n`);
+    else if (share && used.length) edited.append(`\nimport {${used.map(([name, local]) => name + ' as ' + local).join(', ')}} from ${JSON.stringify(REQUESTS)};\n`);
+    else if (used.length) edited.append(quoteFunction);
     return {code: edited.toString(), map: edited.generateMap({source: id, hires: true})};
 }
 
