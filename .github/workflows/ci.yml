@@ -78,7 +78,10 @@ jobs:
   # interact.mjs and host.mjs each run in two parallel jobs, one for each renderer (issue #519): RENDERER=worker runs
   # the checks of the worker renderer, and RENDERER=main the checks of the main renderer and every check after the
   # loop over the renderers. The adapters and loading.mjs (about 1.2 minutes) run in the shortest part. Each job
-  # starts its own demo server. The timeout leaves room for the setup and one rerun of the slowest suite of the job.
+  # starts its own demo server. The timeout of a part holds its setup and two runs of its slowest suite (for
+  # host-worker: one run of every suite and one rerun of the slowest), plus a margin of 20 percent, from the 19 runs of
+  # CI of 2026-11-27 (#2368). The slowest suite takes 14.3 minutes (interact-main), 13.5 (host-main), 9.2 (interact-worker)
+  # and about 5.3 (host.mjs in host-worker); the setup takes at most 1.3. Measure again when a suite gets slower.
   browser-part:
     needs: changes
     if: needs.changes.outputs.browser == 'true'
@@ -92,19 +95,19 @@ jobs:
           - part: interact-main
             renderer: main
             suites: '"test/interact.mjs .cache/shots"'
-            timeout: 20
+            timeout: 36
           - part: interact-worker
             renderer: worker
             suites: '"test/interact.mjs .cache/shots"'
-            timeout: 20
+            timeout: 24
           - part: host-main
             renderer: main
             suites: 'test/host.mjs'
-            timeout: 20
+            timeout: 34
           - part: host-worker
             renderer: worker
             suites: 'test/host.mjs test/vue.mjs test/element.mjs test/react.mjs test/loading.mjs'
-            timeout: 20
+            timeout: 21
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
