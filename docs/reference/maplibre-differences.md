@@ -134,6 +134,7 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - **MapLibre GL JS:** The sort key orders all features of the layer.
 - **This library:** The sort key orders all features of the layer while the features of a tile, in the order of the key, form at most 64 runs that have the same image (or the same `line-dasharray`). With more runs, the key orders the features only within each value, the features of each value are drawn together, and the layer warns once.
+- **Without a sort key:** The features of each value are drawn together, so overlapping features that have different values can be drawn in another order than in MapLibre GL JS.
 
 ### Order of symbol layers
 
