@@ -135,6 +135,7 @@ library" names a member that MapLibre GL JS does not have.
 | `addSource` | `(id: string, source: object) => Map` | Adds a source to the style, as in MapLibre GL JS. |
 | `removeSource` | `(id: string) => Map` | Removes a source from the style, as in MapLibre GL JS. |
 | `jumpTo` | `(o: CameraInput, eventData?: EventData \| undefined) => Map` | Moves the camera to a view without an animation, as in MapLibre GL JS. |
+| `stop` | `() => Map` | As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`. |
 | `fitBounds` | `(bounds: LngLatBoundsInput, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`. |
 | `fitScreenCoordinates` | `(p0: PointLike, p1: PointLike, bearing: number, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`. |
 | `flyTo` | `(o: Omit<CameraOptions, 'padding'> & {padding?: PaddingInput} & object & `[`FlyOptions`](map.md#flyoptions)`, eventData?: EventData \| undefined) => Map` | Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17. The `object` has the members `duration`, `around`, `essential`, `offset` and `easing`. |
@@ -212,7 +213,6 @@ library" names a member that MapLibre GL JS does not have.
 | `unproject` | `(point: {x: number; y: number} \| [number, number]) => LngLat` | Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. |
 | `isLocationOccluded` | `(lngLat: LngLatLike) => boolean` | Only in this library: whether the far side of the globe hides a position from the camera. |
 | `getBounds` | `() => LngLatBounds` | Returns the smallest box that contains the visible map. |
-| `stop` | `() => Map` | Stops the animation of the camera, where it is. |
 | `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Sets whether copies of the world are drawn beside it, as in MapLibre GL JS. |
 | `getRenderWorldCopies` | `() => boolean` | Returns whether copies of the world are drawn beside it. |
 | `setMinZoom` | `(z?: number \| null \| undefined) => Map` | Sets the smallest zoom level that the user can reach. |
