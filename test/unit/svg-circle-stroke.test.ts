@@ -21,3 +21,8 @@ test('circle-stroke-opacity is the stroke opacity, and circle-opacity is not', (
     assert.doesNotMatch(draw({...stroke, 'circle-opacity': 0.5}), /stroke-opacity/);
     assert.match(draw({...stroke, 'circle-stroke-color': 'rgba(0,0,255,0.5)', 'circle-stroke-opacity': 0.3}), /stroke-opacity="0\.15"/);
 });
+
+test("a circle with circle-opacity 0 still draws its stroke, and without a stroke it writes nothing", () => {
+    assert.match(draw({"circle-opacity": 0, "circle-stroke-width": 4}), /<circle [^>]*stroke-width="4"/);
+    assert.doesNotMatch(draw({"circle-opacity": 0}), /<circle /);
+});
