@@ -25,7 +25,7 @@ export interface MapJrProps extends Omit<MapDescription, 'style' | 'onViewChange
     mapStyle: MapDescription['style'];
     /** Called with the first view once, before `load`, and then with the new view at each change of the view. To control the view, pass the value back to `view`. */
     onViewChange?: (view: View) => void;
-    /** Called when the features of `interactiveLayers` under the pointer change, with the features (the top one first) and the position of the pointer. */
+    /** Called when the features of `interactiveLayers` under the pointer change, with `{point, lngLat, features}` (the top feature first). The position is that of the pointer. After the pointer leaves the map, `features` is `[]` and the position is the last one over the map. */
     onHover?: (event: MapPointer) => void;
     /** Called when the style and the first tiles have loaded. */
     onLoad?: () => void;
