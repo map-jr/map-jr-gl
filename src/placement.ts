@@ -762,19 +762,30 @@ export function placeLabels(
                     const r = L.fixedSize && fit === 'none' ? iflat ? flatSize(tr, depth) : persp : 1, cx = ax + move[0], cy = ay + move[1];
                     const qx = cx + (held.bx - cx) * r, qy = cy + (held.by - cy) * r;
                     bw *= r; bh *= r;
+                    // As in MapLibre GL JS, `text-pitch-alignment` and `text-rotation-alignment` decide the collision box of the icon
+                    // too, whatever `icon-pitch-alignment` and `icon-rotation-alignment` are (#2202). An icon at a point that is not
+                    // fitted to text has the box of its picture, turned by `icon-rotate` with its offset from the anchor. (`k`: the size
+                    // of the box for each pixel of `iw`, which has the size of the drawn icon.)
+                    const point = !line && fit === 'none', k = L.fixedSize ? 1 : iflat ? flatSize(tr, depth) : persp;
+                    const c = Math.cos(rot), sn = Math.sin(rot), dx = ix - move[0] - ax, dy = iy - move[1] - ay;
                     // (On the globe without pitch, the box lies on the ground only with text on the ground (`flat`): as in
                     // MapLibre GL JS, `text-pitch-alignment` decides it, so a box does not change at the switch to Mercator.)
-                    let box = line && !unturned || (iflat && (!!tr.pitch || flat)) ? boxAround(qx, qy, bw, bh, held.ang, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, rot + bt, ic.padding, bt) : boxAround(qx, qy, bw, bh, rot + bt, ic.padding, bt);
-                    if (unturned && !iflat && l.flat) {
-                        // As in MapLibre GL JS, `text-pitch-alignment` decides whether the box lies on the ground, also for an icon
-                        // that `icon-pitch-alignment` stands up (#2461): the box at the point, turned by `icon-rotate`, has its size
-                        // on the ground (`flatSize`) and goes through the ground at the anchor, so it is lower on a tilted map.
+                    // (On the screen the box has the perspective ratio, `e` for each pixel of `iw`, and turns by the bearing with `bt`.)
+                    const e = persp / k, a = rot + bt, ca = Math.cos(a) * e, sa = Math.sin(a) * e;
+                    let box = point ? boxAround(cx + dx * ca - dy * sa, cy + dx * sa + dy * ca, iw * e, ih * e, a, ic.padding, bt)
+                        : iflat && (!!tr.pitch || flat) ? boxAround(qx, qy, bw, bh, held.ang, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, rot + bt, ic.padding, bt) : boxAround(qx, qy, bw, bh, rot + bt, ic.padding, bt);
+                    if (point ? flat : unturned && !iflat && l.flat) {
+                        // The box lies on the ground also for an icon that `icon-pitch-alignment` stands up (#2461): the box at the
+                        // point, turned by `icon-rotate`, has its size on the ground (`flatSize`) and goes through the ground at the
+                        // anchor, so it is lower on a tilted map. It turns with the map when `text-rotation-alignment` is `map`.
                         // (The offset of the box from the anchor is turned by `icon-rotate` alone: the frame on the ground has the bearing.
                         // The padding is added on the ground before the turn, as at a point.)
-                        const [pt, pr, pb, pl] = ic.padding, g = flatSize(tr, depth) / (L.fixedSize ? 1 : persp), w0 = iw * g + pl + pr, h0 = ih * g + pt + pb;
-                        const c = Math.cos(rot), sn = Math.sin(rot), ux = held.bx - cx, uy = held.by - cy, bc = Math.cos(base), bs = Math.sin(base);
-                        const ox = (ux * bc + uy * bs) * g + ((pr - pl) * c - (pb - pt) * sn) / 2, oy = (uy * bc - ux * bs) * g + ((pr - pl) * sn + (pb - pt) * c) / 2;
-                        const [f, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, bt - north), ox, oy);
+                        const [pt, pr, pb, pl] = ic.padding, g = flatSize(tr, depth) / k, w0 = iw * g + pl + pr, h0 = ih * g + pt + pb;
+                        const ux = held.bx - cx, uy = held.by - cy, bc = Math.cos(base), bs = Math.sin(base);
+                        // (Along a line the offset of `held` is turned by `base` too, and is turned back here.)
+                        const vx = point ? dx * c - dy * sn : ux * bc + uy * bs, vy = point ? dx * sn + dy * c : uy * bc - ux * bs;
+                        const ox = vx * g + ((pr - pl) * c - (pb - pt) * sn) / 2, oy = vy * g + ((pr - pl) * sn + (pb - pt) * c) / 2;
+                        const [f, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, l.upright ? -north : 0), ox, oy);
                         box = quadBox(f, cx + px, cy + py, w0 * Math.abs(c) + h0 * Math.abs(sn), w0 * Math.abs(sn) + h0 * Math.abs(c), 0);
                     }
                     if (ic.overlap || !grid.hits(...box)) {
