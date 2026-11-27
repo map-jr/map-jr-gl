@@ -58,6 +58,11 @@ export interface RenderOptionsBase {
      * @default 0
      */
     bearing?: number;
+    /**
+     * The pitch of the view in degrees. The server renderer draws every view flat (see #395), so a value other than 0 has no effect and warns.
+     * @default 0
+     */
+    pitch?: number;
     /** A box `[west, south, east, north]` to fit into the view. It overrides `center` and `zoom`. */
     bounds?: LngLatBoundsInput;
     /**
@@ -257,6 +262,7 @@ async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" styl
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
     if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] ${o.center == null && o.zoom == null ? 'E1640 server render: the options have no "center" and no "zoom"' : o.center == null ? 'E11640 server render: the options have "zoom" but no "center"' : 'E21640 server render: the options have "center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
+    if (o.pitch) console.warn(`[map-jr-gl] E2513 server render: "pitch" is ${o.pitch}, and the server render draws the view flat, as if the pitch were 0. The map draws the pitch in the browser. Remove "pitch" from the options, or leave it for the map.`);
     // The size is written into the markup as it is: a string could add attributes, and NaN gives a size of NaN (#1668).
     for (const name of ['width', 'height'] as const) {
         const size: unknown = o[name];
@@ -470,7 +476,7 @@ export async function renderFirstView(o: FirstViewOptions): Promise<string> {
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'fitMaxZoom' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'pitch' | 'bounds' | 'padding' | 'fitMaxZoom' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800
@@ -509,7 +515,7 @@ export function firstViewOptions(description: MapDescription, options: Descripti
     const {width = 800, height = 500, attribution, ...rest} = options;
     // Like the map, a `view` takes the place of the `initialView`, bounds included.
     const fit = !d.view && d.initialView?.bounds;
-    return {...rest, style: d.style as FirstViewOptions['style'], center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number,
+    return {...rest, style: d.style as FirstViewOptions['style'], center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, pitch: view.pitch as number,
         bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding, fitMaxZoom: d.initialView?.fitMaxZoom, width, height,
         images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
         attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,

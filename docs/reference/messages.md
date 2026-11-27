@@ -1917,6 +1917,14 @@ interactive: "<gesture>" is not a gesture, so it has no effect. Write one of dra
 server render: the layer "<layerId>" is not drawn, because the server render does not draw <kind>. The map draws it in the browser. To leave it out of the server render without this warning, set overrides: {"<layerId>": {hidden: true}}.
 ```
 
+## E2513
+
+`Warning` `Server renderer`
+
+```text
+server render: "pitch" is <pitch>, and the server render draws the view flat, as if the pitch were 0. The map draws the pitch in the browser. Remove "pitch" from the options, or leave it for the map.
+```
+
 ## E10017
 
 `Warning` `Both entries`
