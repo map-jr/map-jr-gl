@@ -446,8 +446,8 @@ that a map shows, pass its `center`, `zoom` and `bearing`.
 ## What the server renderer does not draw
 
 The server renderer draws the view from straight above, and it leaves out hillshade, color relief, heatmap layers,
-image patterns and 3D terrain. It writes one warning for each layer that it leaves out. The live map draws them when
-it takes over. [What the server renderer does not draw](../reference/server.md#what-the-server-renderer-does-not-draw)
+hollow lines, image patterns and 3D terrain. It writes one warning for each layer that it leaves out. The live map
+draws them when it takes over. [What the server renderer does not draw](../reference/server.md#what-the-server-renderer-does-not-draw)
 lists each case and what the render shows instead.
 
 The SVG uses the fonts of the page that shows it. Set `fontFamily` to the font of the live map. The server estimates

@@ -137,6 +137,7 @@ export function renderSVG(s: SVGScene): string {
     }
 
     const marks: [string, number][] = [];
+    const hollow = new Set<string>();
     for (const L of s.layers) {
         marks.push([L.id, body.length]);
         if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
@@ -190,7 +191,7 @@ export function renderSVG(s: SVGScene): string {
             const gap = fill ? 0 : p.gap.eval(zoom), dash = fill ? null : p.dash.eval(zoom) as number[] | null;
             const oc = fill && p.outline ? p.outline.eval(zoom) as RGBA : null;
             const outline = oc && oc[3] > 0 ? ` stroke="${hex(oc)}" stroke-width="1"${alpha('stroke-opacity', oc[3] * opacity)}` : '';
-            if (gap > 0) continue; // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
+            if (gap > 0) { if (!hollow.has(L.id)) { hollow.add(L.id); s.skipped?.(L.id, 'hollow lines (line-gap-width)'); } continue; } // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
             // The viewport in this tile's coordinates (plus a margin for stroke widths), to skip what is off screen.
             const [a, bb, c, dd, e, ff] = it.matrix, det = a * dd - bb * c, pad = 24 / it.scale;
             const corners = [[0, 0], [tr.width, 0], [0, tr.height], [tr.width, tr.height]].map(([x, y]) =>

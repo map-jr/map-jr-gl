@@ -249,12 +249,13 @@ everything when it takes over in the browser.
 |---|---|
 | Pitch | The view from straight above. |
 | `hillshade`, `color-relief` and `heatmap` layers | Nothing for that layer. |
+| Lines with a `line-gap-width` above 0 | Nothing for that layer. |
 | 3D terrain | The layers on flat ground. |
 | Image patterns (`background-pattern`, `fill-pattern`, `fill-extrusion-pattern`) | Nothing for that layer. |
 | Images that a page adds with `map.addImage` of `@map-jr/map-jr-gl/maplibre-compat` | Nothing. Pass them as [`images`](#images), or return them from `resolveImage`. |
 | Images of `images` that are not SVG documents | Nothing for that image. |
 
-Each render writes one warning (`E2434`) for each layer that it leaves out because of its type or its image pattern,
+Each render writes one warning (`E2434`) for each layer that it leaves out because of its type, its image pattern or its `line-gap-width`,
 when the layer is visible at the zoom of the render. The warning names the id of the layer. To leave such a layer
 out of the server render without the warning, set `overrides: {"<layer id>": {hidden: true}}` or return `false` for
 its id from `layerFilter`.
