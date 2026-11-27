@@ -18,11 +18,13 @@ const alpha = (name: string, a: number) => a < 0.999 ? ` ${name}="${num(a)}"` : 
  * Path data for one feature, or '' when nothing of it would be visible. `box` is the viewport in tile units;
  * `minSize` and `tol` (quantized units) drop features and vertices too small to see at this scale.
  */
-function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number, cap?: Cap): string {
-    const {coords, ringEnds, featEnds} = b.geom, k = b.geom.half ? 0.5 : 1;
+function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number, cap?: Cap, off = 0): string {
+    const {ringEnds, featEnds} = b.geom, k = b.geom.half ? 0.5 : 1;
+    let coords: ArrayLike<number> = b.geom.coords;
     let d = '';
     for (let r = f ? featEnds[f - 1] : 0; r < featEnds[f]; r++) {
         const start = r ? ringEnds[r - 1] : 0, end = ringEnds[r];
+        if (off) coords = offsetLine(b.geom.coords, start, end, k, off);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (let i = start; i < end; i++) {
             const x = coords[i * 2] * k, y = coords[i * 2 + 1] * k;
@@ -45,6 +47,31 @@ function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: n
         if (cap && n >= 2 && !close) cap.e += capEnds(cap, sx, sy, ax, ay, bx, by, px, py, len);
     }
     return d;
+}
+
+/**
+ * `line-offset`: the points of a line moved by `off` (tile units after `k`; positive is to the right of the direction of
+ * the line). A corner moves along its miter, which is shortened to the normal of the first segment where it would grow too long.
+ * The result is indexed like `coords` (only from `start` to `end` is set).
+ */
+function offsetLine(coords: ArrayLike<number>, start: number, end: number, k: number, off: number): number[] {
+    const out: number[] = [], nx: number[] = [], ny: number[] = [];
+    const m = end - start;
+    for (let i = 0; i < m - 1; i++) {
+        const dx = coords[(start + i + 1) * 2] - coords[(start + i) * 2], dy = coords[(start + i + 1) * 2 + 1] - coords[(start + i) * 2 + 1], l = Math.hypot(dx, dy) || 1;
+        nx.push(-dy / l); ny.push(dx / l);
+    }
+    for (let i = 0; i < m; i++) {
+        const a = Math.max(i - 1, 0), c = Math.min(i, m - 2);
+        let ox = nx[a], oy = ny[a];
+        if (a !== c) {
+            const d = 1 + nx[a] * nx[c] + ny[a] * ny[c];
+            if (d > 0.25) { ox = (nx[a] + nx[c]) / d; oy = (ny[a] + ny[c]) / d; }
+        }
+        const j = (start + i) * 2;
+        out[j] = (coords[j] * k + ox * off) / k; out[j + 1] = (coords[j + 1] * k + oy * off) / k;
+    }
+    return out;
 }
 
 /** The extra length of a square cap (path units), the dash pattern in pixels, pixels for each path unit, and the extension paths. */
@@ -166,7 +193,7 @@ export function renderSVG(s: SVGScene): string {
                     : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
                         (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
                 const cap = dash && b.cap === 'square' ? {half: w / 2 * unitsPerPx, pat: dash.map(d => d * Math.max(w, 0.5)), px: it.scale * Q, e: ''} : undefined;
-                const d = pathData(b, f, fill, box, minSize, tol, cap);
+                const d = pathData(b, f, fill, box, minSize, tol, cap, fill ? 0 : (b.offset ? b.offset[f] : p.offset.eval(zoom)) / it.scale);
                 if (d) groups.set(key, (groups.get(key) ?? '') + d);
                 if (cap?.e) { const k2 = `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}`; groups.set(k2, (groups.get(k2) ?? '') + cap.e); }
             }
