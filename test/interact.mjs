@@ -3919,6 +3919,42 @@ for (const mode of renderers) {
         check('[main] compat: on a pitched map a line across a tile edge has each pixel drawn once, with no hole and no pixel drawn twice (#2443)',
             r.every(v => v.inside > 10000 && !v.holes && !v.twice), JSON.stringify(r));
     }
+    // #2464: the same for a fill (with its antialiased edges) and a fill-pattern. Three polygons that do not overlap cross
+    // the tile edges of zoom 4 at opacity 0.5, DPR 2. Before the fix the four views had holes and pixels drawn twice.
+    if (mode === 'main') {
+        const pg = await browser.newPage({viewport: {width: 600, height: 400}, deviceScaleFactor: 2});
+        await pg.goto(page.url());
+        const r = await pg.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = [];
+            const features = [0, 1, 2].map(i => [-32 + i * 22, -20 + i * 9]).map(([x, y]) => ({type: 'Feature', properties: {},
+                geometry: {type: 'Polygon', coordinates: [[[x, y], [x + 18, y + 3], [x + 17, y + 25], [x + 2, y + 20], [x, y]]]}}));
+            const black = {width: 8, height: 8, data: new Uint8Array(256).map((_, i) => i % 4 === 3 ? 255 : 0)};
+            for (const paint of [{'fill-color': '#000', 'fill-opacity': 0.5}, {'fill-pattern': 'p', 'fill-opacity': 0.5}]) for (const [pitch, bearing] of [[60, -40], [60, 200], [60, 250], [50, 300]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:600px;height:400px'}));
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 4, pitch, bearing, style: {version: 8,
+                    sources: {l: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [
+                        {id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'l', type: 'fill', source: 'l', paint}]}});
+                m.addImage('p', black);
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                const cv = m.getCanvas(), w = cv.width, h = cv.height, c = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d');
+                c.drawImage(cv, 0, 0);
+                const d = c.getImageData(0, 0, w, h).data, g = (x, y) => d[(y * w + x) * 4 + 1], near = v => Math.abs(v - 128) <= 2;
+                let holes = 0, twice = 0, inside = 0;
+                for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) {
+                    if (!(near(g(x - 3, y)) && near(g(x + 3, y)) && near(g(x, y - 3)) && near(g(x, y + 3)))) continue;
+                    inside++;
+                    if (g(x, y) > 148) holes++; else if (g(x, y) < 108) twice++;
+                }
+                out.push({pattern: !!paint['fill-pattern'], pitch, bearing, inside, holes, twice});
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        await pg.close();
+        check('[main] compat: on a pitched map a fill and a fill-pattern across a tile edge have each pixel drawn once, with no hole and no pixel drawn twice (#2464)',
+            r.every(v => v.inside > 10000 && !v.holes && !v.twice), JSON.stringify(r));
+    }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
     if (mode === 'main') {
