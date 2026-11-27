@@ -906,14 +906,9 @@ for (const mode of renderers) {
                 await new Promise(r => setTimeout(r, 16));
             }
             window.touch('pointerup', 11, ...to[0]); window.touch('pointerup', 12, ...to[1]);
-            // Wait until the camera has not changed for some time: in a worker the gesture is applied a little later.
-            await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, last = ''; i < 40 && quiet < 2; i++) {
-                await new Promise(r => setTimeout(r, 100));
-                const now = JSON.stringify(window.cam());
-                quiet = now === last ? quiet + 1 : 0;
-                last = now;
-            }
+            // Wait for the real state: the gesture is applied a little later in a worker, and a turn that ends near north snaps to it (#1324).
+            await new Promise(r => setTimeout(r));
+            for (let i = 0; i < 100 && !(window.map.areTilesLoaded() && !window.map.isMoving()); i++) await new Promise(r => setTimeout(r, 50));
         };
         window.cam = () => ({zoom: window.map.getZoom(), bearing: window.map.getBearing(), pitch: window.map.getPitch()});
     });
