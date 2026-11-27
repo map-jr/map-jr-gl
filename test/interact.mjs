@@ -509,6 +509,32 @@ for (const mode of renderers) {
         const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
         check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
             aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
+        // An easeTo or flyTo with no movement running fires movestart inside the call, also right after a jumpTo and for an
+        // ease that leaves the view as it is, and the movement does not end before the animation, as in MapLibre GL JS (#2451).
+        const firstEase = (lib, scenario) => page.evaluate(async ([lib, renderer, scenario]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => setTimeout(r, 300));
+            const log = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            if (scenario === 'afterJump') m.jumpTo({center: [12, 46]});
+            log.push('|call');
+            if (scenario === 'flyTo') m.flyTo({center: [20, 50], duration: 600});
+            else m.easeTo({center: scenario === 'noop' ? m.getCenter() : [20, 50], duration: scenario === 'noop' ? 300 : 600});
+            log.push('|ret');
+            await new Promise(r => setTimeout(r, 1200));
+            const out = log.slice(log.indexOf('|call')).join(' ');
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode, scenario]).catch(e => String(e));
+        for (const scenario of ['easeTo', 'flyTo', 'afterJump', 'noop']) {
+            const ours = await firstEase('ours', scenario), ml = await firstEase('ml', scenario);
+            check(`[${mode}] ${scenario} with no movement running fires movestart inside the call, as in MapLibre GL JS (#2451)`,
+                ours === ml && ml === '|call movestart |ret move moveend', JSON.stringify({ours, ml}));
+        }
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {

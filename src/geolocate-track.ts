@@ -65,7 +65,7 @@ export function tracker(host: TrackHost, map: Map, b: HTMLButtonElement, positio
         if (state !== 'ACTIVE_LOCK') return;
         set('BACKGROUND'); host.fire('trackuserlocationend'); host.fire('userlocationlostfocus');
     };
-    const onMoveStart = () => { if (!own) onUserMove(); };
+    const onMoveStart = (e: object) => { if (!own && !(e as {geolocateSource?: boolean}).geolocateSource) onUserMove(); };
     const onMoveEnd = () => { own = false; };
     map.on('movestart', onMoveStart); map.on('dragstart', onUserMove); map.on('moveend', onMoveEnd); map.on('move', place);
     return {

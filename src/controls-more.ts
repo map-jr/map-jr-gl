@@ -368,16 +368,18 @@ export class GeolocateControl extends Evented implements Control {
     }
     private follow(map: Map, p: GeolocationPosition) {
         const {longitude: x, latitude: y, accuracy} = p.coords, o = this.options;
-        if (o.zoom !== undefined) { map.easeTo({duration: 1200, center: [x, y], zoom: Math.max(map.getZoom(), o.zoom)}); return; }
+        // As in MapLibre GL JS, the events of the move carry `geolocateSource`, so that the tracker does not take this move for the user's (`movestart` of the compat entry fires inside the call).
+        const data = {geolocateSource: true}, m = map as unknown as {easeTo(o: object, d: object): void, flyTo(o: object, d: object): void, fitBounds(b: object, o: object, d: object): void};
+        if (o.zoom !== undefined) { m.easeTo({duration: 1200, center: [x, y], zoom: Math.max(map.getZoom(), o.zoom)}, data); return; }
         // As in MapLibre GL JS: with zoomToUserAccuracy false, keep the zoom and fly (or ease when linear) with fitBoundsOptions.
         if (o.zoomToUserAccuracy === false) {
             const {linear, maxZoom: _, ...f} = o.fitBoundsOptions ?? {}, c = {...f, center: [x, y] as [number, number], bearing: map.getBearing(), zoom: map.getZoom()};
-            if (linear) map.easeTo(c); else map.flyTo(c);
+            if (linear) m.easeTo(c, data); else m.flyTo(c, data);
             return;
         }
         // As in MapLibre GL JS: fit the accuracy circle (meters); a given fitBoundsOptions replaces the default as a whole.
         const r = (accuracy || 0) / 111320, rx = r / Math.max(Math.cos(y * Math.PI / 180), 1e-6);
-        map.fitBounds([x - rx, y - r, x + rx, y + r], {bearing: map.getBearing(), ...(o.fitBoundsOptions ?? {maxZoom: 15})});
+        m.fitBounds([x - rx, y - r, x + rx, y + r], {bearing: map.getBearing(), ...(o.fitBoundsOptions ?? {maxZoom: 15})}, data);
     }
     onRemove() {
         this.t?.then(t => t.remove(), () => {});
