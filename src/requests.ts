@@ -74,6 +74,8 @@ export function withTimeout(f: typeof fetch, ms = 30000): typeof fetch {
  * build calls it (scripts/message-codes.mjs); src/ does not.
  */
 export const messageValue = (v: unknown) => typeof v == 'string' ? JSON.stringify(v) : v;
+/** The code and the link of a message of the production files (`E63 https://map-jr.org/e/63`), for the build as above. */
+export const messageHead = (code: number) => `E${code} https://map-jr.org/e/${code}`;
 
 /**
  * Puts the code of the message in the field `code` of the error (`error.code === 'E63'`, #2148). `name` stays `Error`. An
