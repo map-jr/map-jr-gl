@@ -113,6 +113,13 @@ export interface SVGScene {
  * Serializes one frame as a standalone SVG document. Pure string building: runs on any JavaScript server.
  * @internal Used by `renderToSVG` of `@map-jr/map-jr-gl/server`; not exported from any entry.
  */
+/**
+ * Raster tiles sit at fractional pixel positions, and each is clipped at its own edge, so the anti-aliased edges of two neighbors
+ * add up to less than full coverage and a lighter line shows between them (#388). Each tile reaches half a pixel (in image units)
+ * past its right and bottom edge, under the neighbor that is drawn later.
+ */
+const padOf = (m: number[]) => +(1 / (Math.hypot(m[0], m[1]) * Q || 1)).toFixed(3);
+
 export function renderSVG(s: SVGScene): string {
     const {tr} = s, zoom = tr.zoom;
     const defs: string[] = [], body: string[] = [];
@@ -121,9 +128,9 @@ export function renderSVG(s: SVGScene): string {
     const clipIds = new Map<RenderItem<TileIR | TileImage>, string>();
     for (const list of s.items.values()) {
         for (const it of list) {
-            const id = 'c' + clipIds.size, [x0, y0, x1, y1] = it.clip;
+            const id = 'c' + clipIds.size, [x0, y0, x1, y1] = it.clip, pad = 'href' in it.tile ? padOf(it.matrix) : 0;
             clipIds.set(it, id);
-            defs.push(`<clipPath id="${id}"><rect x="${x0 / Q}" y="${y0 / Q}" width="${(x1 - x0) / Q}" height="${(y1 - y0) / Q}"/></clipPath>`);
+            defs.push(`<clipPath id="${id}"><rect x="${x0 / Q}" y="${y0 / Q}" width="${(x1 - x0) / Q + pad}" height="${(y1 - y0) / Q + pad}"/></clipPath>`);
         }
     }
 
@@ -145,7 +152,7 @@ export function renderSVG(s: SVGScene): string {
                 if (L.type === 'raster') {
                     const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
                     body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${alpha('opacity', opacity)}>` +
-                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q}" height="${EXTENT / Q}" preserveAspectRatio="none"${(p.resampling.eval(zoom) ?? p.rasterResampling.eval(zoom)) === 'nearest' ? ' style="image-rendering:pixelated"' : ''}/></g>`);
+                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q + padOf(it.matrix)}" height="${EXTENT / Q + padOf(it.matrix)}" preserveAspectRatio="none"${(p.resampling.eval(zoom) ?? p.rasterResampling.eval(zoom)) === 'nearest' ? ' style="image-rendering:pixelated"' : ''}/></g>`);
                 }
                 continue;
             }

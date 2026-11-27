@@ -6,7 +6,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, transition, isGeometrySource, screenTranslate, mapTranslate, loadSprite, tileURL, promoteIds, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {boxAround, CollisionGrid, flatSize, FULL_CLIP, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {boxAround, CollisionGrid, flatSize, FULL_CLIP, groundCorners, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
@@ -2017,6 +2017,7 @@ export class Engine {
             // (Text along a line, and a symbol at a point that is aligned with the map, turn with the map between
             // placements; otherwise they would hold the old angle and then snap, which reads as rocking while the map rotates.)
             st.turned = moveLabel(tr, p, d, q[0], q[1], q[2], turn, !!st.turned);
+            if (p.icon?.merc) d.icon!.corners = globeness ? groundCorners(tr, p, q[2]) : undefined;
         }
         if (this.iconsRev !== this.iconsDone) {
             // Images often come one after another (the variants of a template, the answers to missing images). The
