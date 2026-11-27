@@ -847,8 +847,21 @@ export class Map extends CoreMap {
         try { for (let e; (e = list.shift());) this.fire(e[0], {...e[1]}); } finally { this.waiting = undefined; }
     }
     easeTo(o: EaseToOptions, eventData?: EventData) {
-        return this.camera(eventData, () => super.easeTo(this.snapped(o)));
+        return this.interrupting(() => this.camera(eventData, () => super.easeTo(this.snapped(o))));
     }
+    /**
+     * As `scheduleSegment` of MapLibre GL JS, an animation that starts while another runs ends the old movement during
+     * the call, with its end events, and fires `movestart` for the new one. A gesture is not stopped, and a nested call
+     * (`fitBounds` calls `flyTo`) leaves this to the outer call.
+     */
+    private interrupting(f: () => this) {
+        if (this.nested || this.gesturing?.() || !this.isMoving()) return f();
+        this.halt();
+        this.interrupted = true;
+        try { return f(); } finally { this.interrupted = false; }
+    }
+    private interrupted = false;
+    protected override easeStarted() { if (this.interrupted) this.begin(); }
     /**
      * Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`.
      * The zoom fits the box as seen from above, turned by `bearing`. As in MapLibre GL JS, `offset` moves the fitted view and then the move, so it counts twice. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.
@@ -881,7 +894,7 @@ export class Map extends CoreMap {
     private gesturing?: () => boolean;
     private nested = 0;
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
-        return this.camera(eventData, () => super.flyTo(this.snapped(o)));
+        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(o))));
     }
     /** Sets the padding in CSS pixels: the space at the edges that other things cover, such as a side panel. The map center moves to the middle of the rest. */
     setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }

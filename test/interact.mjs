@@ -443,6 +443,27 @@ for (const mode of renderers) {
         const stopOurs = await stopOrder('ours'), stopMl = await stopOrder('ml');
         check(`[${mode}] stop() during an easeTo fires moveend inside the call and no move after it, as in MapLibre GL JS (#2393)`,
             stopOurs === stopMl && stopMl === '|stop moveend |stopret', JSON.stringify({stopOurs, stopMl}));
+        // An easeTo or flyTo during a running ease ends the old movement and starts the new one inside the call, as in MapLibre GL JS (#2392).
+        const easeOrder = (lib, second) => page.evaluate(async ([lib, renderer, second]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            m.easeTo({center: [20, 50], duration: 2000});
+            await new Promise(r => setTimeout(r, 500));
+            log.push('|call2'); m[second]({center: [30, 55], duration: 1000}); log.push('|ret2');
+            await new Promise(r => setTimeout(r, 1500));
+            m.remove(); el.remove();
+            return log.slice(log.indexOf('|call2')).join(' ');
+        }, [lib, mode, second]).catch(e => String(e));
+        for (const second of ['easeTo', 'flyTo']) {
+            const ours = await easeOrder('ours', second), ml = await easeOrder('ml', second);
+            check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
+                ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
+        }
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {
