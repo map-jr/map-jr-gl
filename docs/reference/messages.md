@@ -925,6 +925,14 @@ A warning of the main API (development build only).
 <where>: "<property>" has no effect, because this library does not read it, while MapLibre GL JS does. Remove the property, or see docs/reference/maplibre-differences.md.
 ```
 
+## E654
+
+An error of the server renderer.
+
+```text
+The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.
+```
+
 ## E685
 
 A warning of the main API (development build only).
@@ -1589,7 +1597,7 @@ The contour source "<source>" has the interval <interval> in "thresholds", so it
 
 ## E2106
 
-A warning of both entries.
+An error of both entries.
 
 The production build prints this:
 

@@ -1,6 +1,6 @@
 import type {LngLatBoundsInput} from './lnglat.ts';
 import {Transform, fitBox, sides, toLngLat, type LngLatLike, type PaddingInput} from './geo.ts';
-import {SSR_KEY, applySSROverrides, type SSROverrides, compileLayer, loadSprite, promoteIds, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
+import {SSR_KEY, applySSROverrides, type SSROverrides, compileLayer, loadSprite, finiteEncodings, promoteIds, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
 import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
@@ -271,8 +271,11 @@ async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" styl
         if (!res.ok) throw httpError('style', given, res.status);
         given = await res.json();
     }
+    // The same check and text as the map (E654, as E539 of the map); without it a style with no list "layers" fails with a TypeError.
+    if (!Array.isArray((given as any)?.layers)) throw new Error('[map-jr-gl] E654 The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.');
     const full: any = withData(adds ? extended(given, o) : given, o.data, true, (id, type) => { throw dataTypeError(id, type); });
     const style = await resolveStyle(full, fetchFn, base);
+    finiteEncodings(style.sources, new Set());
     const over = o.overrides;
     // (`false` also removes `map-jr:ssr` from the layers, because `compileLayer` reads `simplify` and `minSize` from it (#723).)
     style.layers = over === false ? style.layers.map(l => l.metadata?.[SSR_KEY] ? {...l, metadata: {...l.metadata, [SSR_KEY]: undefined}} : l)

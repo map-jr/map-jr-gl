@@ -60,7 +60,7 @@ const valueNames = [
     ['compat-map.ts', 208, 'name', 'method'],
     ['compat-style-images.ts', 121, 'name', 'image'],
     ['control-specs.ts', 160, 'name', 'control'],
-    ['engine.ts', 590, 'name', 'source'],
+    ['resolve.ts', 590, 'name', 'source'],
     ['engine.ts', 494, 'f.name ?? f.family', 'font'],
     ['expr.ts', 583, "JSON.stringify({locale: l, 'min-fraction-digits': mn, 'max-fraction-digits': mx, currency: cur, unit: u})", 'options'],
     ['gpu-error.ts', 10205, "status ? ` (${status}).` : '.'", 'status'],
