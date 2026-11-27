@@ -9,6 +9,10 @@ import {launch} from './launch.mjs';
 import makeStyle from '../demo/style.mjs';
 import {MapJr} from '../dist/vue.js';
 import {navigation, scale} from '../dist/controls.js';
+import {survive} from '../scripts/undici-assert.mjs';
+
+// The assertion of undici from a socket event (#2289) is logged; any other uncaught error ends the run.
+survive('vue');
 
 const root = path.resolve(import.meta.dirname, '..');
 let failed = 0;
