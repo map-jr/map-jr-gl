@@ -2925,6 +2925,37 @@ for (const mode of renderers) {
         check('[main] on the globe at pitch 0 an icon that faces the viewer 55 degrees from the center has the size of MapLibre GL JS within 1 pixel, and 40 pixels on Mercator (#2201)',
             globeFacing['ml globe'].every(v => v < 39) && ['main', 'worker', 'overlap'].every(n => globeFacing[n].every((v, i) => Math.abs(v - globeFacing['ml globe'][i]) <= 1))
             && globeFacing.mercator.every((v, i) => v === 40 && globeFacing['ml mercator'][i] === 40), JSON.stringify(globeFacing));
+        // A large icon on the ground far from the center of the globe has each corner where MapLibre GL JS 6.17 projects it:
+        // a red icon of 60 pixels at pitch 40 and one of 100 pixels at pitch 0 have the width and the height of MapLibre's
+        // within 1.5 pixels, with both renderers. (With corners from the frame at the center of the icon, they were 5 to 12
+        // pixels larger, #2297.)
+        const globeBigIcon = await page.evaluate(async () => {
+            const out = {};
+            for (const [lib, renderer] of [['ml', 'main'], ['mjr', 'main'], ['mjr', 'worker']]) for (const [at, pitch, size] of [[[-60, 20], 40, 60], [[-75, 30], 0, 100]]) {
+                const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:512px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 1, pitch, attributionControl: false, fadeDuration: 0, canvasContextAttributes: {preserveDrawingBuffer: true}, style: {version: 8, projection: {type: 'globe'},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map'}}]}});
+                const red = new Uint8Array(size * size * 4);
+                for (let i = 0; i < red.length; i += 4) red.set([255, 0, 0, 255], i);
+                m.addImage('red', {width: size, height: size, data: red});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await new Promise(r => m.getCanvas().toBlob(r))), k = bmp.width / 512, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, box = [Infinity, Infinity, -Infinity, -Infinity];
+                for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i] > 200 && d[i + 1] < 100 && d[i + 2] < 100) box.splice(0, 4, Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x + 1), Math.max(box[3], y + 1));
+                }
+                out[`${lib} ${renderer} ${at}`] = [(box[2] - box[0]) / k, (box[3] - box[1]) / k];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] on the globe a large icon on the ground far from the center has the width and the height of MapLibre GL JS within 1.5 pixels, with both renderers (#2297)',
+            ['-60,20', '-75,30'].every(at => globeBigIcon['ml main ' + at].every((v, i) => v > 10 && ['main', 'worker'].every(r => Math.abs(v - globeBigIcon[`mjr ${r} ${at}`][i]) <= 1.5))), JSON.stringify(globeBigIcon));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
