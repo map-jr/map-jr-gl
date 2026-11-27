@@ -40,6 +40,7 @@ BSD-3-Clause.
 - A query of rendered features tests a line with `line-offset` at the line moved along the bisector of its corners, as `offsetLine` of MapLibre GL JS 6.17 (BSD-3-Clause) does. The code in `src/query.ts` is new.
 - The reload of expired tiles follows `setExpiryData`, `getExpiryTimeout` and `_setTileReloadTimer` of MapLibre GL JS 6.17 (BSD-3-Clause): `max-age` of `Cache-Control` before `Expires`, and a delay of 1 s, 2 s, 4 s and so on for a response that is out of date when it arrives. The code in `src/tile-fetch.ts` and `src/engine.ts` is new.
 - `fill-extrusion-pattern` follows the method of the shader `fill_extrusion_pattern` and of `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): the image lies on the roof by tile position and on the walls by the distance along the ring and the height, and the light of a patterned wall is computed with a gray of 0.5. The code is new.
+- Building extrusions follow `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): a polygon whose outer ring lies wholly in the buffer of the tile gets no roof and no walls (`isEntirelyOutside`), and an edge along the buffer gets no wall (`isBoundaryEdge`). The code in `src/tile.ts` is new.
 - The level of detail of a pitched view (`lodZoom` in `src/geo.ts`, used with 3D terrain and by `setSourceTileLodParams`) follows the formula of `createCalculateTileZoomFunction` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
 - The globe leaves out a tile (`covering` in `src/globe.ts`) when a hull around it is more than 60 pixels outside one edge of the view, as `coveringTiles` of MapLibre GL JS 6.17 (BSD-3-Clause) leaves out a tile whose volume is outside the view. The hull and the code are new.
 - The zoom of the scroll wheel (`src/engine.ts`), and its snap to `zoomSnap` in the compat entry, follow the method of `ScrollZoomHandler` and `evaluateZoomSnap` of MapLibre GL JS 6.17 (BSD-3-Clause). The code is new.
@@ -48,6 +49,10 @@ BSD-3-Clause.
   in labels, the light on buildings, the size of dashes, the joins of lines (`LineBucket`: the inner vertices of a
   bevel and the extra vertices at a sharp corner), the size of circles on a map with pitch, and the movement of the camera
   on 3D terrain.
+- The ends of the dashes of `line-dasharray` follow the dash texture of MapLibre GL JS 6.17 (BSD-3-Clause; `LineAtlas`
+  and the shader `line_sdf`): the end is soft over `sdfgamma`, one device pixel to each side, a round cap is half an
+  ellipse, and a dash is one texel of that texture longer. The shader computes the distance instead of reading a
+  texture, and the code in `src/gl.ts` is new.
 - The layer type `color-relief` follows the method of MapLibre GL JS (BSD-3-Clause; `color_relief_style_layer.ts` and
   the shader `color_relief`): the stops of the `interpolate` expression go to the GPU, and the shader searches the two
   stops around an elevation and mixes their colors. The code in `src/style.ts`, `src/gl.ts` and `src/layers-more.ts` is new.
