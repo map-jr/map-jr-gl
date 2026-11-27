@@ -1,6 +1,6 @@
 // A minimal TrueType font for tests: each printable ASCII character is a filled square of 1 em, so text drawn with it
 // looks clearly different from text drawn with any font of the device.
-export function squareFont(familyName = 'Test Square') {
+export function squareFont(familyName = 'Test Square', advance = 1100) {
     const u16 = n => [(n >> 8) & 255, n & 255], i16 = n => u16(n & 0xffff), u32 = n => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
     const glyf = [
         // glyph 1: one contour of four points on the curve, a square from (0, -100) to (1000, 900)
@@ -17,7 +17,7 @@ export function squareFont(familyName = 'Test Square') {
         ...u32(0), ...u32(0), ...u32(0), ...u32(0), ...i16(0), ...i16(-100), ...i16(1000), ...i16(900), ...u16(0), ...u16(8), ...i16(2), ...i16(0), ...i16(0)];
     const hhea = [...u32(0x10000), ...i16(900), ...i16(-100), ...i16(0), ...u16(1000), ...i16(0), ...i16(0), ...i16(1000),
         ...i16(1), ...i16(0), ...i16(0), ...i16(0), ...i16(0), ...i16(0), ...i16(0), ...i16(0), ...u16(2)];
-    const hmtx = [...u16(500), ...i16(0), ...u16(1100), ...i16(0)];
+    const hmtx = [...u16(500), ...i16(0), ...u16(advance), ...i16(0)];
     const maxp = [...u32(0x10000), ...u16(2), ...u16(4), ...u16(1), ...u16(0), ...u16(0), ...u16(1), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u16(0)];
     const os2 = [...u16(1), ...i16(1000), ...u16(400), ...u16(5), ...u16(0), ...Array(20).fill(0), ...i16(0), ...Array(10).fill(0),
         ...Array(16).fill(0), ...Array(4).fill(0), ...u16(0x40), ...u16(0x20), ...u16(0x7e), ...i16(900), ...i16(-100), ...i16(0), ...u16(900), ...u16(100), ...u32(1), ...u32(0)];

@@ -370,6 +370,8 @@ export class Engine {
     private styleFonts = '';
     /** The web fonts that were given to the browser, as text (see `loadFonts`). */
     private fontsLoaded = new Set<string>();
+    /** The end of the last call of `loadFonts`: the next call adds its faces after it. */
+    private fontsAdding: Promise<void> = Promise.resolve();
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
     /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
@@ -846,7 +848,10 @@ export class Engine {
         if (!todo.length) return;
         this.spritePending++; // fonts are also part of the first complete picture
         // (Each font loads on its own: a file that does not load is an error with its name, and the other fonts are still used.)
-        Promise.all(todo.map(async f => {
+        // (The faces load at the same time, but they go to the browser in the order they were given, across calls too: of two
+        // faces of one name and style, the one given last is the one that draws, as on a map that never restarted; #1657.)
+        const before = this.fontsAdding;
+        const loaded = Promise.all(todo.map(async f => {
             try {
                 // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
                 // URL inside a worker, and the labels then used a fallback font.
@@ -854,14 +859,19 @@ export class Engine {
                 if (!res.ok) throw httpError('font', f.src, res.status);
                 const bytes = await res.arrayBuffer();
                 const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
-                set.add(await face.load());
+                return await face.load();
             } catch (err) {
                 // (A failed request already names the font and its URL: its text is used as it is, with the name of the font.)
                 const m = (err as Error).message, font = f.name ?? f.family;
                 if (m.startsWith('[map-jr-gl]')) this.emit({type: 'error', message: m.replace(/^\[map-jr-gl\] /, `[map-jr-gl] E10494 The labels use the next font of their "text-font" instead of "${font}". `), ...failed(err)});
                 else this.emit({type: 'error', message: `[map-jr-gl] E494 fonts: the font "${font}" did not load from ${f.src} (${m}). The labels use the next font of their "text-font".`});
             }
-        })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
+        }));
+        this.fontsAdding = loaded.then(async faces => {
+            await before;
+            for (const face of faces) if (face) set.add(face);
+            this.atlas.clear(true); this.relabel();
+        }).finally(() => { this.spritePending--; this.invalidate(); });
     }
 
     /** The slots of each SVG template (see the command `templates`). */
