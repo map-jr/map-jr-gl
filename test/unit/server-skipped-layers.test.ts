@@ -13,6 +13,7 @@ const style = {
         {id: 'plain', type: 'fill', source: 'g', paint: {'fill-color': '#f00'}},
         {id: 'hatched', type: 'fill', source: 'g', paint: {'fill-pattern': 'dots'}},
         {id: 'blocks', type: 'fill-extrusion', source: 'g', paint: {'fill-extrusion-pattern': 'dots'}},
+        {id: 'dotted', type: 'line', source: 'g', paint: {'line-pattern': 'dots', 'line-color': '#00f', 'line-width': 2}},
         {id: 'heat', type: 'heatmap', source: 'p'},
         {id: 'hills', type: 'hillshade', source: 'dem'},
         {id: 'relief', type: 'color-relief', source: 'dem'},
@@ -32,14 +33,14 @@ async function warnings(o: any): Promise<string[]> {
 test('each layer that the server render leaves out gets one warning in each render, with its id', async () => {
     for (let run = 0; run < 2; run++) {
         const seen = await warnings(options);
-        assert.deepEqual(seen.map(w => /the layer "([^"]+)"/.exec(w)?.[1]), ['paper', 'hatched', 'blocks', 'heat', 'hills', 'relief', 'hollow']);
+        assert.deepEqual(seen.map(w => /the layer "([^"]+)"/.exec(w)?.[1]), ['paper', 'hatched', 'blocks', 'dotted', 'heat', 'hills', 'relief', 'hollow']);
         assert.match(seen[0], /^\[map-jr-gl\] E2434 server render: the layer "paper" is not drawn, because the server render does not draw image patterns\. The map draws it in the browser\. .*overrides: \{"paper": \{hidden: true\}\}/);
-        assert.match(seen[6], /does not draw hollow lines \(line-gap-width\)\./);
-        assert.match(seen[4], /does not draw hillshade layers\./);
+        assert.match(seen[7], /does not draw hollow lines \(line-gap-width\)\./);
+        assert.match(seen[5], /does not draw hillshade layers\./);
     }
 });
 
 test('a layer that is hidden for the server render, or left out by layerFilter, gets no warning', async () => {
-    const hidden = Object.fromEntries(['paper', 'hatched', 'blocks', 'heat', 'hills', 'hollow'].map(id => [id, {hidden: true}]));
+    const hidden = Object.fromEntries(['paper', 'hatched', 'blocks', 'dotted', 'heat', 'hills', 'hollow'].map(id => [id, {hidden: true}]));
     assert.deepEqual(await warnings({...options, overrides: hidden, layerFilter: (id: string) => id !== 'relief'}), []);
 });

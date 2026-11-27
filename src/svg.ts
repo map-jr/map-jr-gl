@@ -144,7 +144,7 @@ export function renderSVG(s: SVGScene): string {
         if (L.type === 'hillshade' || L.type === 'heatmap' || L.type === 'color-relief') { s.skipped?.(L.id, L.type + ' layers'); continue; } // drawn by the client only for now
         const p = L.p, opacity = p.opacity.dd ? 1 : p.opacity.eval(zoom);
         const uniform = !p.color || p.color.dd ? null : p.color.eval(zoom) as RGBA;
-        if (L.type === 'background' ? L.p.pattern.eval(zoom) != null : (L.type === 'fill' || L.type === 'fill-extrusion') && L.p.pattern.eval(zoom)) { s.skipped?.(L.id, 'image patterns'); continue; } // image patterns are not drawn in SVG output
+        if (L.type === 'background' ? L.p.pattern.eval(zoom) != null : (L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion') && L.p.pattern.eval(zoom)) { s.skipped?.(L.id, 'image patterns'); continue; } // image patterns are not drawn in SVG output
         if (L.type === 'background') {
             if (opacity > 0 && uniform![3] > 0) body.push(`<rect width="100%" height="100%" fill="${hex(uniform!)}"${alpha('fill-opacity', uniform![3] * opacity)}/>`);
             continue;

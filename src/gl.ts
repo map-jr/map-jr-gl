@@ -5,7 +5,7 @@ import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
-import {demUnpack, type DemEncoding} from './query.ts';
+import {demUnpack, type DemEncoding} from './elevation.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 // (The build writes `L(0)` for `layout(location=0) in`: scripts/minify-shaders.mjs.)

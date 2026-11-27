@@ -251,7 +251,7 @@ everything when it takes over in the browser.
 | `hillshade`, `color-relief` and `heatmap` layers | Nothing for that layer. |
 | Lines with a `line-gap-width` above 0 | Nothing for that layer. |
 | 3D terrain | The layers on flat ground. |
-| Image patterns (`background-pattern`, `fill-pattern`, `fill-extrusion-pattern`) | Nothing for that layer. |
+| Image patterns (`background-pattern`, `fill-pattern`, `fill-extrusion-pattern`, `line-pattern`) | Nothing for that layer. |
 | Images that a page adds with `map.addImage` of `@map-jr/map-jr-gl/maplibre-compat` | Nothing. Pass them as [`images`](#images), or return them from `resolveImage`. |
 | Images of `images` that are not SVG documents | Nothing for that image. |
 
