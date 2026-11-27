@@ -47,7 +47,7 @@ description, with the names of props and attributes (`map-style` for `style`). N
 
 | Adapter | Form | Server rendering of the first view |
 |---|---|---|
-| [Vue and Nuxt](../reference/vue.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and composables | The `ssr` prop |
+| [Vue and Nuxt](../reference/vue.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and composables | The `firstView` prop, from `renderFirstView` of `@map-jr/map-jr-gl/server` |
 | [React](../reference/react.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and hooks | The `firstView` prop, from `renderFirstView` of `@map-jr/map-jr-gl/server` |
 | [Svelte](../reference/svelte.md) | The action `mapJr` and the store `mapState` | `renderFirstView` of `@map-jr/map-jr-gl/server` |
 | [The element](../reference/element.md) | The custom element `<map-jr>` | `renderElement` of `@map-jr/map-jr-gl/server` |

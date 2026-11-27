@@ -3,12 +3,12 @@
 import http from 'node:http';
 import path from 'node:path';
 import {readFileSync} from 'node:fs';
-import {createSSRApp, h} from 'vue';
+import {createSSRApp, h, onServerPrefetch, ref} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 import {launch} from './launch.mjs';
 import makeStyle from '../demo/style.mjs';
 import {MapJr} from '../dist/vue.js';
-import {navigation, scale} from '../dist/controls.js';
+import {renderFirstView} from '../dist/server.js';
 import {survive} from '../scripts/undici-assert.mjs';
 
 // The assertion of undici from a socket event (#2289) is logged; any other uncaught error ends the run.
@@ -39,54 +39,20 @@ const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{co
 const pinData = list => ({type: 'FeatureCollection', features: list.map(([lngLat, color]) => ({type: 'Feature', properties: {color}, geometry: {type: 'Point', coordinates: lngLat}}))});
 const pins = {data: {pins: pinData([[view.center, '#d00']])}, layers: [{id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
 
-// 1. On the server.
-const html = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, ssr: {width: 800, height: 500}, attribution: false})])}));
-check('server: the component renders the first view as SVG, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.length > 20000 && html.includes('map-jr-vue') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);
-const named = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, fontFamily: 'Own Sans', locale: {'Map.Title': 'Karte'}, ssr: {width: 800, height: 500}, attribution: false})}));
-const labelled = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, locale: {'Map.Title': 'Karte'}, ssr: {width: 800, height: 500, label: 'Map of Bern'}, attribution: false})}));
-check('server: the ssr prop passes the font family, and the label from ssr.label or the locale text Map.Title (#1203)', /<svg[^>]*aria-label="Karte"/.test(named) && /font-family="Own Sans"/.test(named) && /<svg[^>]*aria-label="Map of Bern"/.test(labelled), (named.match(/<svg[^>]*>/)?.[0] ?? '') + ' ' + (named.match(/font-family="[^"]*"/)?.[0] ?? 'no font-family'));
-const credited = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: true})}));
-check('server: the credits of the sources are in the page, as text and links only, in the attribution control', !html.includes('example.com/credits') && /<div class="map-jr-ctrl-attrib-inner[^"]*"><a href="https:\/\/example.com\/credits" target="_blank" rel="noopener noreferrer">Example tiles<\/a><\/div>/.test(credited), credited.match(/ctrl-attrib-inner.{0,160}/)?.[0] ?? 'no credits');
-const withControls = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, controls: [navigation(), scale()], locale: {'NavigationControl.ZoomIn': 'Zoom avant'}, nonce: 'n2', ssr: {width: 800, height: 500, attribution: false}})}));
-check('server: the controls of the description are in the first view, with the locale and the nonce of the description', /<style data-map-jr-ssr="" nonce="n2">/.test(withControls) && withControls.includes('map-jr-ctrl-zoom-in') && withControls.includes('title="Zoom avant"') && withControls.includes('map-jr-ctrl-scale') && !withControls.includes('class="map-jr-ctrl-attrib-inner'), `${(withControls.length / 1024).toFixed(0)} KB of HTML`);
-const small = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {width: 800, height: 500, overrides: {building: {hidden: true}, 'building-outline': {hidden: true}, road: {minzoom: 20}}, attribution: 'Own credits'}})}));
-check('server: overrides for style layers make the render smaller, and the credits can be given', small.length < html.length * 0.8 && small.includes('>Own credits</div>'), `${(small.length / 1024).toFixed(0)} KB against ${(html.length / 1024).toFixed(0)} KB`);
+// 1. On the server. The prop `firstView` takes the HTML of `renderFirstView`, as the prop of the React component does (#1182).
+const firstView = await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, ...pins, attribution: false});
+const html = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, firstView, attribution: false})])}));
+check('server: the prop firstView puts the HTML of renderFirstView into the page, with the marker from its image (#1182)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.length > 20000 && html.includes('map-jr-vue') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html) && html.includes(firstView), `${(html.length / 1024).toFixed(0)} KB of HTML`);
+// The form of the guide: a parent renders the first view in onServerPrefetch, which runs before the server renders MapJr.
+const Parent = {setup() {
+    const first = ref();
+    onServerPrefetch(async () => { first.value = await renderFirstView({style, ...view, width: 400, height: 300, attribution: false}); });
+    return () => h(MapJr, {mapStyle: style, initialView: view, firstView: first.value, attribution: false});
+}};
+const prefetched = await renderToString(createSSRApp(Parent));
+check('server: a firstView that a parent sets in onServerPrefetch reaches the page (#1182)', /<svg[^>]*data-map-jr-ssr/.test(prefetched) && prefetched.includes('width:max(100%,400px)'), prefetched.slice(0, 160));
 const plain = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view})}));
-const square = c => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[c[0] - 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] - 0.002]]]}}]});
-const empty = {type: 'geojson', data: {type: 'FeatureCollection', features: []}};
-const extended = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, attribution: false, ssr: {timeout: 20000, allowHosts: [new URL(tiles).host]},
-    sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}],
-    data: {live: square([view.center[0] + 0.004, view.center[1]])}})}));
-check('server: the SVG has the sources and layers of the description and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({layers: extended.includes('#123456'), data: extended.includes('#654321')}));
-// The global state of the description sets the background, and `fitMaxZoom` stops the fit at zoom 5, where the layer
-// with `maxzoom: 6` shows. A fit up to zoom 22 would hide that layer (#1752).
-const stateStyle = {version: 8, state: {tone: {default: '#111111'}}, sources: {wide: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[6.44, 45.95], [8.44, 45.95], [8.44, 47.95], [6.44, 47.95], [6.44, 45.95]]]}}}},
-    layers: [{id: 'bg', type: 'background', paint: {'background-color': ['global-state', 'tone']}}, {id: 'low', type: 'fill', source: 'wide', maxzoom: 6, paint: {'fill-color': '#abcdef'}}]};
-const stated = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: stateStyle, globalState: {tone: '#fedcba'}, initialView: {bounds: [7.43, 46.94, 7.45, 46.96], fitMaxZoom: 5}, ssr: {width: 400, height: 300}, attribution: false})}));
-check('server: the ssr prop passes globalState and initialView.fitMaxZoom to the server renderer', stated.includes('#fedcba') && !stated.includes('#111111') && stated.includes('#abcdef'), JSON.stringify({globalState: stated.includes('#fedcba'), fitMaxZoom: stated.includes('#abcdef')}));
-// A render that fails: the page has no first view, the console has one message, and a listener of `error` gets the error.
-const failing = async (props) => {
-    const logged = [], emitted = [], thrown = [], error = console.error;
-    console.error = (...args) => logged.push(args.join(' '));
-    const app = createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, onError: e => emitted.push(e), ...props})});
-    app.config.errorHandler = e => thrown.push(e.message);
-    let page = '';
-    try { page = await renderToString(app); } catch (e) { thrown.push(e.message); } finally { console.error = error; }
-    return {page, logged, emitted, thrown};
-};
-const guarded = await failing({ssr: {allowHosts: ['other.example.com']}});
-check('server: the ssr prop passes allowHosts to the server renderer', guarded.logged.length === 1 && guarded.logged[0].includes('allowHosts'), (guarded.logged[0] ?? guarded.thrown[0] ?? '').slice(0, 200));
-// (A tile server that answers 500 for each tile, and a style whose source has its tiles there.)
-const broken = http.createServer((req, res) => { res.writeHead(500); res.end(); });
-await new Promise(resolve => broken.listen(0, '127.0.0.1', resolve));
-const down = await failing({mapStyle: makeStyle(`http://127.0.0.1:${broken.address().port}/{z}/{x}/{y}.pbf`, 'Example tiles'), ssr: {width: 800, height: 500}});
-const silent = await failing({mapStyle: makeStyle(`http://127.0.0.1:${broken.address().port}/{z}/{x}/{y}.pbf`, 'Example tiles'), ssr: true, onError: undefined});
-broken.close();
-check('server: a tile with status 500 gives the page without the first view, one message in the console and one error event (#706)',
-    down.page.includes('map-jr-vue') && !down.page.includes('<svg') && !down.thrown.length && down.logged.length === 1 && down.logged[0].startsWith('[map-jr-gl] E706 https://map-jr.org/e/706 message="') && down.logged[0].includes('500') && down.emitted.length === 1 && down.emitted[0] instanceof Error && down.emitted[0].message === down.logged[0]
-    && silent.page.includes('map-jr-vue') && !silent.thrown.length && silent.logged.length === 1,
-    JSON.stringify({page: down.page.slice(0, 80), thrown: down.thrown, logged: down.logged.map(m => m.slice(0, 200)), emitted: down.emitted.length, silent: {thrown: silent.thrown, logged: silent.logged.length}}));
-check('server: without the ssr prop the component renders an empty element', !plain.includes('<svg') && plain.includes('map-jr-vue'), plain.slice(0, 120));
+check('server: without the prop firstView the component renders an empty element', !plain.includes('<svg') && plain.includes('map-jr-vue'), plain.slice(0, 120));
 
 const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, attribution: false})])}));
 
@@ -101,7 +67,7 @@ const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true)
 // (A component inside the SVG of an image: its own change must reach the map.)
 const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
 const t = window.t = {view, data, pinLayers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: [], projection: ref(null)};
-const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), data: data.value, layers: pinLayers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
+const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), data: data.value, layers: pinLayers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
   // An image that the style asks for and the map does not have: the application adds it to the prop images.
   onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => (t.renders = (t.renders ?? 0) + 1, [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
@@ -144,7 +110,7 @@ try {
     check('browser: Vue takes over the HTML of the server without a difference, and the map takes over the SVG', early.svg && !late.svg && late.canvas && late.loaded && !warnings.length && !errors.length, JSON.stringify({early, late, warnings: warnings.slice(0, 2), errors: errors.slice(0, 2)}));
     const controlsWithSsr = await page.evaluate(() => document.querySelectorAll('#frame .map-jr-ctrl-group, #frame .map-jr-ctrl-scale').length);
     await page.close();
-    // The page from a server without the ssr prop: an empty element from the server, then the map with its controls.
+    // The page from a server without the prop firstView: an empty element from the server, then the map with its controls.
     page = await browser.newPage({viewport: {width: 900, height: 600}});
     page.on('console', m => { if (/warn|error/.test(m.type()) && /hydrat|mismatch/i.test(m.text())) warnings.push(m.text().split('\n')[0]); });
     page.on('pageerror', e => errors.push(e.message));
@@ -153,7 +119,7 @@ try {
     const controlsBare = await page.evaluate(() => document.querySelectorAll('#frame .map-jr-ctrl-group, #frame .map-jr-ctrl-scale').length);
     const bareShift = await page.evaluate(() => ({shifts: window.shifts, after: Math.round(document.getElementById('after').getBoundingClientRect().top)}));
     check('browser: no layout shift when the map starts in an empty element from the server', (bareShift.shifts === null || bareShift.shifts.length === 0) && bareShift.after === afterBefore, JSON.stringify(bareShift));
-    check('browser: controls show on a page from a server, with the ssr prop and without it', controlsWithSsr >= 2 && controlsBare >= 2 && !warnings.length && !errors.length, JSON.stringify({controlsWithSsr, controlsBare, warnings: warnings.slice(0, 2), errors: errors.slice(0, 2)}));
+    check('browser: controls show on a page from a server, with the prop firstView and without it', controlsWithSsr >= 2 && controlsBare >= 2 && !warnings.length && !errors.length, JSON.stringify({controlsWithSsr, controlsBare, warnings: warnings.slice(0, 2), errors: errors.slice(0, 2)}));
     await page.close();
 
     // The component in the browser only: v-model:view, the points of data, the pointer, and the end.

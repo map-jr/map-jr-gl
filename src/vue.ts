@@ -2,18 +2,16 @@
  * The adapter for Vue 3 (and Nuxt): `import {MapJr, useMapJr} from '@map-jr/map-jr-gl/vue'`.
  *
  * It is a thin layer over `createMap` (host.ts). The component gives its props to the map as one description, and
- * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
- * over that SVG, so a page from Nuxt shows a map before any script has run.
+ * the map does the rest. On a server the component renders the HTML of a first view from `renderFirstView` (prop
+ * `firstView`); in the browser the map takes over that HTML, so a page from Nuxt shows a map before any script has run.
  */
-import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import {earlyMethod, mistake} from './mistakes.ts';
 import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
 import {FORWARDED, type Forwarded} from './map-events.ts';
-import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
-import type {LngLatBoundsInput} from './lnglat.ts';
 
 /** A description whose fields are the objects behind Vue's reactive objects (a reactive object cannot go to a worker). */
 function unwrapped(spec: MapDescription): MapDescription {
@@ -227,33 +225,6 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  * ```
  * The style is the prop `map-style` (`style` is the CSS style of an element in Vue).
  */
-/** The options of the prop `ssr` of `MapJr`: how the server renders the first view as SVG. */
-export interface MapJrSSROptions {
-    /** The width in CSS pixels that the map has on most screens. @default 800 */
-    width?: number;
-    /** The height in CSS pixels that the map has on most screens. @default 500 */
-    height?: number;
-    /** Changes for the server render, for each id of a style layer, as `overrides` of `renderToSVG`. */
-    overrides?: false | Record<string, SSROverrides>;
-    /** The attribution to show, as HTML. The prop `:attribution="false"` overrides it and shows none. @default the attribution of the sources */
-    attribution?: string | string[];
-    /** The time in milliseconds that all requests of the render can take together, as `timeout` of `renderToSVG`. `0` sets no limit. @default 30000 */
-    timeout?: number;
-    /** The time in milliseconds that one request can take, as `requestTimeout` of `renderToSVG`. `0` sets no limit. @default 10000 */
-    requestTimeout?: number;
-    /** The largest body of one response in bytes, after decompression, as `maxBytes` of `renderToSVG`. `0` sets no limit. @default 0 */
-    maxBytes?: number;
-    /** The host names that the render can request, as `allowHosts` of `renderToSVG`. Without it, all hosts are allowed. */
-    allowHosts?: string[];
-    /** The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. @default 0 */
-    tileZoomOffset?: number;
-    /**
-     * The `aria-label` of the SVG, as `label` of `renderToSVG`. Say what the map shows, for example "Map of the hotels in Bern".
-     * @default the text `Map.Title` of the prop `locale`, as the canvas of the map has it, else `'Map'`
-     */
-    label?: string;
-}
-
 /**
  * What a template ref on `MapJr` holds: the members of the map (`MapInstance`), as the ref of the React component
  * holds them. Call them as `mapRef.value.queryFeatures(…)`, and read the state as `mapRef.value.state.get()`.
@@ -374,12 +345,11 @@ const MapJrComponent = defineComponent({
          */
         hash: {type: [Boolean, String] as PropType<boolean | string | null>, default: undefined},
         /**
-         * Whether a server renders the first view as SVG into the page: `true`, or options. `width` and `height` are the
-         * size in CSS pixels on most screens (default 800 by 500). `attribution` sets the credits. The other options are
-         * those of `RenderOptions` of `@map-jr/map-jr-gl/server` with the same names.
-         * @default false
+         * The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. The
+         * page shows it until the map has rendered. Read only on the first render. In the browser, without the prop, the
+         * component keeps the HTML that the page from the server has.
          */
-        ssr: {type: [Boolean, Object] as PropType<boolean | MapJrSSROptions>, default: false},
+        firstView: {type: String, default: undefined},
     },
     emits: {
         'update:view': (_view: View) => true,
@@ -471,35 +441,13 @@ const MapJrComponent = defineComponent({
             getOwnPropertyDescriptor: (t, k) => k in t ? Reflect.getOwnPropertyDescriptor(t, k) : host.value && k in host.value ? {value: read(k), enumerable: true, configurable: true, writable: false} : undefined,
         }));
 
-        // The first view from the server: the SVG and the credits. On the server they are made here. In the browser,
-        // when the page came from the server, they are read from the element that is there already: the component then
-        // renders the same content, and Vue finds no difference. The map removes them when it has drawn its first frame.
-        const first = shallowRef((getCurrentInstance()?.vnode.el as HTMLElement | null)?.firstElementChild?.innerHTML ?? '');
-        // (Vite writes `false` for `import.meta.env.SSR` in a client build, which then drops this code and does not emit
-        // the server renderer as a file. Without Vite, `import.meta.env` is undefined and the server render runs.)
-        // @ts-ignore: `import.meta.env` is Vite's, and it must stay written out in full for Vite to replace it
-        if (!import.meta.env || import.meta.env.SSR) onServerPrefetch(async () => {
-            if (!props.ssr) return;
-            const view = {...props.initialView, ...props.view}, fit = !props.view && props.initialView?.bounds, o = props.ssr === true ? {} : props.ssr;
-            // A render that fails does not fail the page (#706): the page is sent without the first view, and the map
-            // draws in the browser as it does without the `ssr` prop.
-            try {
-            // (By the name of the package, so that this file does not contain the server renderer, and so that a tool that
-            // collects the files of a server finds it.)
-            // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
-            const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
-            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) as LngLatBoundsInput : undefined, padding: props.initialView?.fitPadding, fitMaxZoom: props.initialView?.fitMaxZoom, width: o.width ?? 800, height: o.height ?? 500,
-                images: props.images ? toRaw(props.images) as Record<string, string> : undefined, overrides: o.overrides, sources: toRaw(props.sources) ?? undefined, layers: toRaw(props.layers) ?? undefined, terrain: toRaw(props.terrain), sprite: props.sprite ? toRaw(props.sprite) : undefined, data: props.data ? toRaw(props.data) : undefined, timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, tileZoomOffset: o.tileZoomOffset, fontFamily: props.fontFamily ?? undefined, label: o.label ?? props.locale?.['Map.Title'], attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light', globalState: props.globalState && toRaw(props.globalState),
-                controls: controls.value ?? [], locale: props.locale && toRaw(props.locale), nonce: props.nonce, minZoom: props.minZoom, maxZoom: props.maxZoom, projection: props.projection && toRaw(props.projection),
-                attributionOptions: typeof props.attribution === 'object' ? toRaw(props.attribution) : undefined});
-            } catch (cause) {
-                const error = new Error(`[map-jr-gl] E706 <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
-                console.error(error.message);
-                if (listensForError) emit('error', error, {});
-            }
-        });
+        // The first view from the server: the HTML of `renderFirstView`. On the server it is the prop. In the browser, when
+        // the page came from the server, it is read from the element that is there already, so the page does not need to
+        // send it twice: the component then renders the same content, and Vue finds no difference. The map removes it when
+        // it has loaded the tiles of its first view.
+        const first = props.firstView ?? (getCurrentInstance()?.vnode.el as HTMLElement | null)?.firstElementChild?.innerHTML ?? '';
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
-            h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
+            h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first}),
             // (`state` is read when the slot reads it: a slot that does not read it does not render again at each move of the
             // pointer, which changes `state.pointer`.)
             slots.default?.({map: host.value, get state() { return state.value; }}),

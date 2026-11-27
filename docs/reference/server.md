@@ -404,32 +404,14 @@ The decoders that `decodeImage` uses by default. `data` has the RGBA bytes of th
 an elevation tile. Each returns the pixels of an image as RGBA bytes. Call one of them
 from your own `decodeImage` to keep these formats and add another one.
 
-## The `ssr` prop of `<MapJr>`
+## The `firstView` prop of the components
 
-The Vue component of `@map-jr/map-jr-gl/vue` renders the first view on the server when it has the prop `ssr`. The
-value `true` renders with the defaults below. An object sets these options. When the render fails, the component renders the element without
-the first view, writes the error to the console of the server, and emits it as `error` when it has a listener for `error`.
+The `MapJr` components of `@map-jr/map-jr-gl/vue` and `@map-jr/map-jr-gl/react` have the prop `firstView`, of type
+`string`. Its value is the HTML that [`renderFirstView`](#renderfirstview) returns. On the server, the component renders
+its element with this HTML inside, and the map removes the HTML when it has loaded the tiles of its first view. The
+component reads the prop on its first render only. The guide
+[Server rendering](../guide/server-rendering.md#show-the-first-view-before-the-script-runs) shows how a page passes it.
 
-<!-- ref:MapJrSSROptions:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `width` | `number` | `800` | The width in CSS pixels that the map has on most screens. |
-| `height` | `number` | `500` | The height in CSS pixels that the map has on most screens. |
-| `overrides` | `false \| Record<string, `[`SSROverrides`](#overrides)`>` | | Changes for the server render, for each id of a style layer, as `overrides` of `renderToSVG`. |
-| `attribution` | `string \| string[]` | the attribution of the sources | The attribution to show, as HTML. |
-| `timeout` | `number` | `30000` | The time in milliseconds that all requests of the render can take together, as `timeout` of `renderToSVG`. |
-| `requestTimeout` | `number` | `10000` | The time in milliseconds that one request can take, as `requestTimeout` of `renderToSVG`. |
-| `maxBytes` | `number` | `0` | The largest body of one response in bytes, after decompression, as `maxBytes` of `renderToSVG`. |
-| `allowHosts` | `string[]` | | The host names that the render can request, as `allowHosts` of `renderToSVG`. |
-| `tileZoomOffset` | `number` | `0` | The number of zoom levels below the zoom of the render at which the server loads vector tiles, as `tileZoomOffset` of `renderToSVG`. |
-| `label` | `string` | the text `Map.Title` of the prop `locale`, as the canvas of the map has it, else `'Map'` | The `aria-label` of the SVG, as `label` of `renderToSVG`. |
-<!-- ref:MapJrSSROptions:end -->
-
-The prop `:attribution="false"` overrides `attribution` and shows none.
-
-The render uses the props `map-style`, `initial-view`, `view`, `sources`, `layers`, `terrain`, `sprite`, `data`,
-`images`, `font-family`, `color-scheme`, `global-state`, `controls`, `locale`, `nonce`, `min-zoom`, `max-zoom`,
-`projection` and `attribution`, including `fitPadding` and `fitMaxZoom` of `initial-view`.
-
-The React component of `@map-jr/map-jr-gl/react` has the prop `firstView`: the HTML of `renderFirstView`. The
-component reads it in its first render only.
+The action of `@map-jr/map-jr-gl/svelte` and the element `<map-jr>` have no such prop. In Svelte, put the HTML into
+the element of the action with `{@html firstView}`. For `<map-jr>`, [`renderElement`](#renderelement) returns the
+element with the first view inside.
