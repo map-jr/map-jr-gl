@@ -2207,8 +2207,8 @@ export class Engine {
             const mx = mercX(lng), my = mercY(lat), e = 1 / tr.worldSize;
             for (let i = 0; i < icons.length && !drawn; i += 2) drawn = Math.abs(icons[i] - mx) < e && Math.abs(icons[i + 1] - my) < e;
             if (!drawn) return false;
-            // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
-            const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
+            // (On a tilted map or the globe a near icon is larger and a far icon is smaller, as it is drawn.)
+            const depth = tr.pitch || tr.globeness ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
             // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)
             const size = L.p.iconSize.eval(z, f) * (depth > 0 && !L.fixedSize ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
             // (An icon is found on its collision box, with `icon-padding`, as in MapLibre GL JS.)
@@ -2361,7 +2361,7 @@ export class Engine {
                     if (!m || x < it.clip[0] || y < it.clip[1] || x >= it.clip[2] || y >= it.clip[3]) continue;
                     const [ax, ay, depth] = tr.projectTile(it.id, x, y);
                     if (ax < -100 || ay < -100 || ax > tr.width + 100 || ay > tr.height + 100) continue;
-                    const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * (tr.pitch && !L.fixedSize ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
+                    const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * ((tr.pitch || tr.globeness) && !L.fixedSize ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
                     // (`icon-padding` is added before the box is turned, as for a placed icon (#1734).)
                     const [x0, y0, x1, y1] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn, pad, undefined, this.iconMove(L, (it.id.x + it.id.w * 2 ** it.id.z + x / EXTENT) / 2 ** it.id.z, (it.id.y + y / EXTENT) / 2 ** it.id.z, ax, ay));
                     grid.insert(ax + x0, ay + y0, ax + x1, ay + y1);
