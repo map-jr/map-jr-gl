@@ -1936,7 +1936,7 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] images of the style in metadata["map-jr:images"]: drawn, replaced by images of the description, removed with the style, an SVG with a reference to another file is left out, and a URL goes through transformRequest as Image`,
             ofStyle === '#f80' && onDemand[0] && !onDemand[1] && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
-            && styleGone.errors.some(e => e.startsWith('[map-jr-gl] E20495 the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] E20121 the style: the image "far" did not load')),
+            && styleGone.errors.some(e => e.startsWith('[map-jr-gl] E20495 the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] E50121 the style: the image "far" did not load')),
             JSON.stringify({ofStyle, onDemand, overridden, back, styleGone}));
 
         // A sprite of the description (#495): added to the sprite of the style, its images named `id:name` in icon-image,
@@ -3048,15 +3048,15 @@ for (const renderer of renderers) {
             await new Promise(r => setTimeout(r, 500));
             host.destroy();
             const half = t.lib.createMap(el, {style: red, renderer, attribution: false, controls: [styles({entries: [{label: 'A', style: red}], preview: {center: [0, 0]}})]});
-            await until(() => warns.some(w => w.startsWith('[map-jr-gl] E11560 ')), 5000);
+            await until(() => warns.some(w => w.startsWith('[map-jr-gl] E21560 ')), 5000);
             half.destroy();
             el.remove();
             console.warn = warn;
             // (The production file prints the code, its link, the label and the reason, #2148.)
-            const mine = warns.filter(w => /^\[map-jr-gl\] E1?1560 https:\/\/map-jr\.org\/e\/1?1560\b/.test(w));
+            const mine = warns.filter(w => /^\[map-jr-gl\] E[12]?1560 https:\/\/map-jr\.org\/e\/[12]?1560\b/.test(w));
             out.labels = mine.filter(w => w.startsWith('[map-jr-gl] E1560 ')).map(w => w.match(/ label="([^"]*)"/)[1]).join(',');
             out.text = mine.join(' | ');
-            out.half = mine.some(w => w === '[map-jr-gl] E11560 https://map-jr.org/e/11560');
+            out.half = mine.some(w => w === '[map-jr-gl] E21560 https://map-jr.org/e/21560');
             return out;
         }, renderer);
         check(`[${renderer}] a picture of styles() that fails warns once with the label and the reason, later pictures draw, a style of addProtocol has a picture, and a preview with center and no zoom warns`,
@@ -4207,7 +4207,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             console.warn = warn;
             return out;
         }, [entry, renderer]);
-        const text = '[map-jr-gl] E20017 https://map-jr.org/e/20017 message="WebGL2 is not available"';
+        const text = '[map-jr-gl] E30017 https://map-jr.org/e/30017 message="WebGL2 is not available"';
         check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
             able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
             && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));

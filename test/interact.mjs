@@ -721,19 +721,17 @@ for (const mode of renderers) {
         return {frames, errors: errors.filter(e => e === 'boom').length};
     });
     check(`[${mode}] a throw of render() fires error and does not stop the frames (#2278)`, hookFaults.frames >= 3 && hookFaults.errors >= 3, JSON.stringify(hookFaults));
-    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own; compat entry only).
-    if (mode === 'compat') {
-        const removed = await page.evaluate(async renderer => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
-            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
-            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
-            let calls = 0;
-            await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
-            m.remove(); el.remove();
-            return calls;
-        }, mode).catch(e => String(e));
-        check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
-    }
+    // #2235: map.remove() does not call onRemove of an image, as in MapLibre GL JS (a map of its own on the compat entry, in each renderer).
+    const removed = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:100px;height:100px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer, attributionControl: false});
+        let calls = 0;
+        await m.addImage('gone', {width: 1, height: 1, data: new Uint8Array(4), render: () => false, onRemove() { calls++; }});
+        m.remove(); el.remove();
+        return calls;
+    }, mode).catch(e => String(e));
+    check(`[${mode}] map.remove() does not call onRemove of an image with render() (#2235)`, removed === 0, String(removed));
     // #2233: pixels with the wrong length are an error of addImage. The compat entry throws at once, as MapLibre GL JS does, and
     // calls neither onAdd nor render; the main API rejects. The page gets no uncaught error.
     const size = await page.evaluate(async () => {
@@ -933,7 +931,7 @@ for (const mode of renderers) {
         m.on('click', ['missing-layer', 'zones-fill'], e => window.arrayEvents.push('click:' + e.features[0].properties.name));
         m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
-        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E278 https://map-jr.org/e/278 type="mouseenter"' ? 'message' : error.message); }
+        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E10278 https://map-jr.org/e/10278 type="mouseenter"' ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
         const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
@@ -4405,7 +4403,7 @@ for (const mode of renderers) {
         // an unroute, and its 404 is a page error, #517.)
         await page.unroute('**/test-255.json');
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
-            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E255 https://map-jr.org/e/255 id="r"', JSON.stringify(r));
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message === '[map-jr-gl] E10255 https://map-jr.org/e/10255 id="r"', JSON.stringify(r));
     }
     // Raster tiles are fetched and decoded in the tile workers, and the thread that draws only sends the images to the
     // GPU (#2068). In WebKit a decode runs on the thread that asks for it, and decodes on the thread that draws held its

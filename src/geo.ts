@@ -415,7 +415,10 @@ export class Transform {
         // The far plane reaches the ground at the top of the screen or at the horizon, whichever is nearer (and at least 4
         // times the camera distance, for buildings beyond that ground at a low pitch).
         const top = Math.min(this.cy, Math.max(0, this.horizon())), reach = cp * d - top * sp > 1e-6 ? d + top * d * sp / (cp * d - top * sp) : 100 * d;
-        return [d / 10, Math.min(100 * d, Math.max(4 * d, reach * 1.01) * (1 + drop / (d * Math.max(cp, 1e-3))))];
+        const far = Math.min(100 * d, Math.max(4 * d, reach * 1.01) * (1 + drop / (d * Math.max(cp, 1e-3))));
+        // At least MapLibre GL JS's far plane (`farZ`, for a plane 100 m below the camera), so the tiles reach as far as
+        // its ground does at a high pitch (#2211).
+        return [d / 10, this.globeness ? far : Math.max(far, this.farZ())];
     }
 
     /**
