@@ -3301,6 +3301,23 @@ for (const mode of renderers) {
         check('maplibre-compat: on returns a Subscription (with and without a layer id) whose unsubscribe() removes the listener, and once with a listener returns the map (#675)',
             r.notMap && String(r.keys) === 'unsubscribe' && String(r.layerKeys) === 'unsubscribe' && r.once && r.onceLayer && String(r.heard) === 'on,once', JSON.stringify(r));
     }
+    // #1902: `off` and `unsubscribe` of a layer listener remove the first match only, and compare the layer ids without their order (as MapLibre GL JS 6.17).
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const m = new mod.Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}}), f = () => {};
+            const s = m.on('click', ['a', 'b'], f); m.on('click', ['a', 'b'], f);
+            s.unsubscribe(); const afterOne = m.listens('click');
+            m.off('click', ['b', 'a'], f); const afterReordered = m.listens('click');
+            m.on('click', ['a', 'b'], f); m.off('click', ['a'], f); const subsetKept = m.listens('click');
+            m.off('click', ['b', 'a'], f);
+            m.remove(); el.remove();
+            return {afterOne, afterReordered, subsetKept, end: true};
+        });
+        check('maplibre-compat: unsubscribe() of a layer listener added twice removes one, and off() matches layer ids in any order, not a subset (#1902)',
+            r.afterOne === true && r.afterReordered === false && r.subsetKept === true, JSON.stringify(r));
+    }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
         const r = await page.evaluate(async () => {
