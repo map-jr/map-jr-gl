@@ -1,6 +1,6 @@
 // TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the examples write it.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {createMap, points, type AttributionOptions, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
+import {createMap, points, type AttributionOptions, type ColorScheme, type Renderer, type SpriteInput, type StylePair, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
 import {navigation, scale, geolocate, terrain, type NavigationOptions, type ScaleOptions, type GeolocateOptions, type TerrainOptions} from '@map-jr/map-jr-gl/controls';
 import {renderFirstView, renderToImage, renderToSVG, type FirstViewOptions, type ImageOptions, type RenderOptions, type RenderOptionsBase} from '@map-jr/map-jr-gl/server';
 
@@ -110,6 +110,21 @@ const geoOptions: GeolocateOptions = {zoom: 12, trackUserLocation: true};
 const terrainOptions: TerrainOptions = {source: 'dem', exaggeration: 1.5};
 const attributionOptions: AttributionOptions = {compact: true, customAttribution: ['© Me']};
 createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json', attribution: attributionOptions, controls: [navigation(navOptions), scale(scaleOptions), geolocate(geoOptions), terrain(terrainOptions)]});
+// The pair of styles, the sprites and the two unions have names.
+const pair: StylePair = {light: 'https://styles.map-jr.org/1/openfreemap-positron.json', dark: {version: 8, sources: {}, layers: []}};
+const pinSprite: SpriteInput = {id: 'pins', url: 'https://example.com/sprites/pins'};
+const scheme: ColorScheme = 'auto';
+const thread: Renderer = 'worker';
+createMap('map', {style: pair, sprite: [pinSprite], colorScheme: scheme, renderer: thread, onColorSchemeChange: (next: ColorScheme) => console.log(next)});
+// @ts-expect-error A pair needs both styles.
+const halfPair: StylePair = {light: 'https://example.com/style.json'};
+// @ts-expect-error `colorScheme` takes `'auto'`, `'light'` or `'dark'`.
+const badScheme: ColorScheme = 'sepia';
+// @ts-expect-error `renderer` takes `'auto'`, `'worker'` or `'main'`.
+const badThread: Renderer = 'gpu';
+// @ts-expect-error A sprite needs its `url`.
+const noURL: SpriteInput = {id: 'pins'};
+console.log(halfPair, badScheme, badThread, noURL);
 // @ts-expect-error `unit` takes one of three names.
 const badScale: ScaleOptions = {unit: 'miles'};
 // @ts-expect-error `source` is required.
