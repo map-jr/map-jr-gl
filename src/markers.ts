@@ -1,3 +1,4 @@
+import type {SpriteInput} from './host.ts';
 /**
  * SVG templates, and the `data`, `sources` and `layers` of the description in a style.
  *
@@ -80,7 +81,7 @@ export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl
  * A style with the `sources`, `layers`, `terrain` and `sprite` of the description. A `terrain` of `null` removes that of
  * the style (a flat map), and no `terrain` keeps it. Each sprite of the description is added to the sprites of the style, in place of a sprite with the same id (#495).
  */
-export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null; sprite?: {id: string; url: string}[] | null}) {
+export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null; sprite?: SpriteInput[] | null}) {
     if (!extend) return style;
     const layers = [...style.layers];
     for (const {before, ...layer} of extend.layers ?? []) {

@@ -11,6 +11,7 @@ import {zoomCurveErrors, unknownMapOption, fontsMistake, mistake} from './mistak
 import {httpError, withCode} from './requests.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {absolute, LAYER_TYPES} from './resolve.ts';
+import type {SpriteInput} from './host.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, toLngLat, TILE_SIZE, FOV, EARTH_CIRCUMFERENCE, type LngLatLike} from './geo.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, StyleImageInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification, Subscription} from './compat-types.ts';
@@ -924,7 +925,7 @@ export class Map extends CoreMap {
         });
     }
     /** Returns the sprites of the style as `{id, url}` objects. A sprite that the style gives as one URL has the id `'default'`. */
-    getSprite(): {id: string; url: string}[] { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
+    getSprite(): SpriteInput[] { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
     /** Adds a sprite sheet with an id and a URL to the style, as in MapLibre GL JS. Its images have the names `id:name`. */
     addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
     /** Removes the sprite sheet with this id from the style. */

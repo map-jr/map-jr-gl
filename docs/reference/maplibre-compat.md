@@ -170,7 +170,7 @@ library" names a member that MapLibre GL JS does not have.
 | `getLayoutProperty` | `(layerId: string, name: string) => unknown` | Returns the value of a layout property as the style sets it, or `undefined` when the style does not set it. |
 | `getFilter` | `(layerId: string) => unknown` | Returns the filter of a style layer, or `undefined` when it has none. |
 | `moveLayer` | `(id: string, beforeId?: string \| undefined) => Map` | Moves a style layer below the layer `beforeId`, or to the top when `beforeId` is left out. |
-| `getSprite` | `() => {id: string; url: string}[]` | Returns the sprites of the style as `{id, url}` objects. |
+| `getSprite` | `() => `[`SpriteInput`](description.md#spriteinput)`[]` | Returns the sprites of the style as `{id, url}` objects. |
 | `addSprite` | `(id: string, url: string) => Map` | Adds a sprite sheet with an id and a URL to the style, as in MapLibre GL JS. |
 | `removeSprite` | `(id: string) => Map` | Removes the sprite sheet with this id from the style. |
 | `getGlyphs` | `() => string \| null` | Returns the URL of the glyph files of the style, or `null` when the style has none. |
@@ -236,7 +236,7 @@ library" names a member that MapLibre GL JS does not have.
 | `getGlobalState` | `() => Record<string, unknown>` | The values `global-state` expressions read: the style's `state` defaults with anything set since. |
 | `setGlobalStateProperty` | `(name: string, value: unknown) => Map` | Sets one global state value (`null` or `undefined` returns it to the style's default); layers that read it update. |
 | `setTerrain` | `(terrain: {source: string; exaggeration?: number} \| null) => Map` | Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). |
-| `setSprite` | `(url: string \| {id: string; url: string}[] \| null) => Map` | Replaces the sprites of the style, or removes them with `null`. |
+| `setSprite` | `(url: string \| `[`SpriteInput`](description.md#spriteinput)`[] \| null) => Map` | Replaces the sprites of the style, or removes them with `null`. |
 | `getTerrain` | `() => {source: string; exaggeration?: number} \| null` | Returns the `terrain` of the style, or `null` when the map has no 3D terrain. |
 | `setLight` | `(light: {anchor?: 'map' \| 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) => Map` | Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), color and intensity. |
 | `setSky` | `(sky?: Record<string, unknown> \| null \| undefined) => Map` | Sets the sky above the horizon and the fog on 3D terrain (the `sky` of the style); `null` removes them. |

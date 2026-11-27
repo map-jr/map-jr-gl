@@ -17,7 +17,7 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `layers` | `LayerInput[] \| null` | | Layers to add to the style. |
 | `terrain` | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source. |
 | `images` | `Record<string, ImageInput> \| null` | | Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
-| `sprite` | `SpriteInput[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. |
+| `sprite` | [`SpriteInput`](../../docs/reference/description.md#spriteinput)`[] \| null` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. |
 | `data` | `Record<string, string \| GeoJSON> \| null` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
 | `interactiveLayers` | `string[] \| null` | | The ids of the style layers that respond to the pointer: their features are in the events `click` and `hover`. |
 | `hoverState` | `boolean \| null` | `false` | Whether the top feature of `interactive-layers` under the pointer has the feature state `hover: true`. |
@@ -36,13 +36,13 @@ props of the Vue and React components, the options of the Svelte action, and the
 | `projection` | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`. |
 | `globalState` | `Record<string, unknown> \| null` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
 | `transformRequest` | `RequestTransform \| null` | | A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. |
-| `renderer` | `'auto' \| 'main' \| 'worker' \| null` | `'auto'` | The thread that renders the map. |
+| `renderer` | `Renderer \| null` | `'auto'` | The thread that renders the map. |
 | `fonts` | `FontFaces \| null` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | `fontFamily` | `string \| null` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels whose `text-font` names no loaded font. |
 | `interactive` | `boolean \| null` | `true` | Whether the user can move the map. |
 | `antialias` | `boolean \| null` | `false` | Whether the canvas uses multisample antialiasing. |
 | `nonce` | `string \| null` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
-| `attribution` | `false \| {compact?: boolean; customAttribution?: string \| string[]} \| null` | | The options of the built-in attribution, or `false` to hide it. |
+| `attribution` | `false \| `[`AttributionOptions`](../../docs/reference/description.md#attributionoptions)` \| null` | | The options of the built-in attribution, or `false` to hide it. |
 | `hash` | `string \| boolean \| null` | `false` | Whether the view is kept in the hash of the URL; a string is the name of the parameter. |
 | `ssr` | `boolean \| `[`MapJrSSROptions`](../../docs/reference/server.md#the-ssr-prop-of-mapjr) | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
 <!-- ref:VueMapJrProps:end -->

@@ -9,7 +9,7 @@ import {dataTypeError, escapeXML, extended, styleFor, fillTemplate, svgSize, tem
 import {renderSVG, cleanCredits} from './svg.ts';
 import {controlsMarkup} from './server-controls.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
-import type {ControlSpec, MapDescription} from './host.ts';
+import type {AttributionOptions, ColorScheme, ControlSpec, MapDescription, SpriteInput} from './host.ts';
 import {unset, type Given} from './unset.ts';
 import {compileFor, pickImage} from './expr.ts';
 import {styleImages, STYLE_IMAGES} from './style-images.ts';
@@ -38,7 +38,7 @@ export interface RenderOptionsBase {
      */
     style: unknown;
     /** The color scheme that selects the style of `{light, dark}` in `style`, and the colors of the credits of `renderFirstView`. */
-    colorScheme?: 'auto' | 'light' | 'dark';
+    colorScheme?: ColorScheme;
     /**
      * Values for the `global-state` expressions of the style, by name, as `globalState` of `MapDescription`. A value here
      * overrides the default in `state` of the style; a name that is left out or set to `null` uses the default. Unless
@@ -120,7 +120,7 @@ export interface RenderOptionsBase {
      * `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. An `icon-image` names an image of such a sprite as `id:name`.
      * A relative URL is relative to the URL of the style.
      */
-    sprite?: {id: string; url: string}[];
+    sprite?: SpriteInput[];
     /** 3D terrain, as `terrain` in the description of a map (`MapDescription`). It overrides the `terrain` of the style, and `null` renders none. */
     terrain?: object | null;
     /** GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. */
@@ -434,7 +434,7 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
     /** The projection of the description, which sets the state of the globe control. It has an effect with `controls`. */
     projection?: {type?: unknown} | null;
     /** The options of the attribution, as `attribution` of the description. They have an effect with `controls`. */
-    attributionOptions?: {compact?: boolean; customAttribution?: string | string[]} | null;
+    attributionOptions?: AttributionOptions | null;
 }
 
 /**
@@ -527,7 +527,7 @@ export async function renderElement(description: MapDescription, options: Elemen
             width, height, images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
             attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
             controls: (d.controls ?? []) as ControlSpec[], locale: d.locale, label: rest.label ?? d.locale?.['Map.Title'], nonce: d.nonce, minZoom: d.minZoom, maxZoom: d.maxZoom, projection: d.projection as {type?: unknown} | null | undefined,
-            attributionOptions: d.attribution === false ? undefined : d.attribution as {compact?: boolean; customAttribution?: string | string[]} | undefined});
+            attributionOptions: d.attribution === false ? undefined : d.attribution as AttributionOptions | undefined});
     } catch (cause) {
         console.error(`[map-jr-gl] E40826 renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`);
     }

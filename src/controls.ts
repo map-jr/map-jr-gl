@@ -1,4 +1,5 @@
 import type {Map} from './map.ts';
+import type {AttributionOptions} from './host.ts';
 
 /**
  * Controls use MapLibre's `IControl` contract (`onAdd` returns an element, `onRemove` cleans up) and its class names,
@@ -140,7 +141,7 @@ export function sanitizeAttribution(html: string, into: HTMLElement) {
 export class AttributionControl implements Control {
     private el?: HTMLElement;
     private update = () => {};
-    constructor(private options: {compact?: boolean; customAttribution?: string | string[]} = {}) {}
+    constructor(private options: AttributionOptions = {}) {}
     getDefaultPosition(): ControlPosition { return 'bottom-right'; }
 
     onAdd(map: Map) {
