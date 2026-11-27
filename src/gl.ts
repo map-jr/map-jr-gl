@@ -1,6 +1,6 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import {withFilter, screenTranslate, mapTranslate, type CompiledLayer, type Light} from './style.ts';
-import {compileProp} from './expr.ts';
+import {compileProp, type Prop} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
@@ -1738,7 +1738,11 @@ export class GLRenderer {
 
     /** Draws placed labels: their icons, then their text in one pass for the halos and one for the fill. */
     private drawLabels(s: Scene, labels: Placed[]) {
-        const gl = this.gl, use = (name: ProgramName) => this.use(name, s.tr);
+        const gl = this.gl, use = (name: ProgramName) => this.use(name, s.tr), at = (q: Prop) => q.dd ? undefined : q.eval(s.tr.zoom);
+        // The paint values of each symbol layer that are the same for the whole layer, at the zoom of the map in this frame,
+        // so that they transition as in MapLibre GL JS and a change needs no new tiles (#972). A value for each feature is in the tile.
+        this.paint = new Map(s.layers.filter(L => L.type === 'symbol').map(({id, p}) => [id, [at(p.color), at(p.haloColor), at(p.haloWidth), at(p.haloBlur), at(p.opacity),
+            at(p.iconColor), at(p.iconHalo), at(p.iconHaloWidth), at(p.iconHaloBlur), at(p.iconOpacity)]]));
         // Style-sheet icons and images added at runtime live in different textures.
         for (const custom of [false, true]) {
             const icons = this.iconQuads(labels, custom, s.icon);
@@ -1855,6 +1859,8 @@ export class GLRenderer {
         this.sdfVersion = a.version;
     }
 
+    /** See `drawLabels`. */
+    private paint = new Map<string, any[]>();
     /** Kept between frames and grown when necessary, as `textData` is: icons are built again on each frame. */
     private iconData = new Float32Array(0);
     private iconQuads(labels: Placed[], custom: boolean, lookup?: Scene['icon']): Float32Array {
@@ -1881,13 +1887,15 @@ export class GLRenderer {
             for (let k = 1; k + 1 < q.length; k++) for (const v of [q[0], q[k], q[k + 1]]) vertex(v[0], v[1], v[2], v[3], alpha, tint);
         };
         const plain = [0, 0, 0, -1];
-        for (const {icon: i, opacity} of labels) {
+        for (const {icon: i, opacity, layer, src} of labels) {
             if (!i || !!i.custom !== custom || !(opacity > 0)) continue;
+            // (The paint values of the layer: see `paint`. In the distance field of a sprite, one image pixel is one eighth of the range.)
+            const P = this.paint.get(layer) ?? [], ic = src.icon!, hc = P[6] ?? ic.halo, haw = P[7] ?? ic.haloWidth, ring = i.color && haw > 0 && hc[3] > 0;
             // (An icon on the ground of a tilted map has a frame: where one pixel across and one pixel down it go.)
             const fr = i.frame, cos = fr ? fr[0] : Math.cos(i.angle), sin = fr ? fr[1] : Math.sin(i.angle), nx = fr ? fr[2] : -sin, ny = fr ? fr[3] : cos, [sx, sy, sw, sh] = i.rect;
             // Plain icons are one quad; stretched ones are a grid whose fixed cells keep their size.
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
-            const col = i.color ?? plain, hw = i.w / 2, hh = i.h / 2;
+            const col = i.color ? P[5] ?? i.color : plain, hw = i.w / 2, hh = i.h / 2;
             // Upright icons are placed on whole device pixels. Between pixels, the texture filter would smear fine
             // detail such as a one-pixel outline into its neighbors. A distance field has no such detail, and
             // MapLibre GL JS draws it where it falls.
@@ -1898,10 +1906,10 @@ export class GLRenderer {
                 const tx = px / i.w + 0.5, ty = py / i.h + 0.5;
                 return [0, 1, 2].map(k => { const top = gc![k] + (gc![3 + k] - gc![k]) * tx; return top + (gc![6 + k] + (gc![9 + k] - gc![6 + k]) * tx - top) * ty; });
             };
-            room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * (gc ? 108 : 54));
+            room((ring ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * (gc ? 108 : 54));
             // A halo is the same picture drawn first, in the halo color and out to a lower level of the distance field.
-            for (let pass = i.halo ? 0 : 1; pass < 2; pass++) {
-                const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) + 100 * Math.round(i.haloBlur! * 100) : 0);
+            for (let pass = ring ? 0 : 1; pass < 2; pass++) {
+                const halo = pass === 0, tint = halo ? hc : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity * (P[9] ?? 1))) * 0.999 + (halo ? Math.round(Math.min(0.7, haw / i.k / 8) * 100) + 100 * Math.round(Math.min(0.99, (P[8] ?? ic.haloBlur) * 1.19 / i.k / 8) * 100) : 0);
                 for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
                     // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
                     const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;
@@ -1958,7 +1966,7 @@ export class GLRenderer {
         let o = 0;
         const B = SDF_BUFFER;
         // The state of the label in work. `glyph` reads it, so that no objects are made for each glyph.
-        let q: number[] | undefined, hedge = 0, gamma = 0, haloGamma = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
+        let q: number[] | undefined, hedge = 0, gamma = 0, haloGamma = 0, hw = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
         /**
          * One glyph: two triangles about the origin (ox, oy). (cos, sin) is where one pixel along the text goes on the
          * screen, and (px, py) one pixel down the text: a turn by an angle, or the ground of a tilted map.
@@ -1986,11 +1994,13 @@ export class GLRenderer {
             // (Text on the ground of a tilted map has a frame in the place of its angle: see `Placed.frame`.)
             const s = l.size / EM, fr = l.frame, cos = fr ? fr[0] : Math.cos(l.angle), sin = fr ? fr[1] : Math.sin(l.angle), nx = fr ? fr[2] : -sin, ny = fr ? fr[3] : cos, src = l.src;
             // Where the halo's outer edge sits in distance-field units, limited by how far the field extends.
-            hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
-            gamma = 0.7 / (SDF_RADIUS * s * this.dpr); haloGamma = gamma + src.haloBlur * 1.19 / s / SDF_RADIUS;
-            const col = src.color, halo = src.halo;
-            c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * 255 * l.opacity * (l.alpha ?? 1));
-            h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * 255 * l.opacity * (l.alpha ?? 1));
+            // (A paint value that is the same for the layer is the one of this frame, so that it transitions: see `paint`.)
+            const P = this.paint.get(l.layer) ?? [], col = P[0] ?? src.color, halo = P[1] ?? src.halo, a = 255 * l.opacity * (P[4] ?? l.alpha ?? 1);
+            hw = P[2] ?? src.haloWidth;
+            hedge = hw > 0 && halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - hw / s / SDF_RADIUS) : 2;
+            gamma = 0.7 / (SDF_RADIUS * s * this.dpr); haloGamma = gamma + (P[3] ?? src.haloBlur) * 1.19 / s / SDF_RADIUS;
+            c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * a * (P[0] ? src.op ?? 1 : 1));
+            h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * a * (P[1] ? src.op ?? 1 : 1));
             q = !l.curve && fr && fr.length > 4 ? fr : undefined;
             if (l.curve) {
                 // Text along a line: every glyph has its own origin and rotation.
@@ -2002,7 +2012,7 @@ export class GLRenderer {
                     // Rich text: this glyph has its own color or size. The label's values come back after it.
                     const keep = [c0, c1, c2, gamma, haloGamma, hedge], gs = g.scale ?? 1;
                     if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
-                    if (gs !== 1) { gamma /= gs; haloGamma /= gs; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * gs) / SDF_RADIUS); }
+                    if (gs !== 1) { gamma /= gs; haloGamma /= gs; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - hw / (s * gs) / SDF_RADIUS); }
                     glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga) * along, Math.sin(ga) * along, x0, y0, x0 + g.w * k, y0 + g.h * k, l.ground?.[i * 3 + 1], l.ground?.[i * 3 + 2]);
                     [c0, c1, c2, gamma, haloGamma, hedge] = keep;
                 }
@@ -2019,7 +2029,7 @@ export class GLRenderer {
                             // Rich text: this glyph has its own size or color. The label's values come back after it.
                             const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline + (g.dy ?? 0) - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
                             if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
-                            gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * k) / SDF_RADIUS);
+                            gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - hw / (s * k) / SDF_RADIUS);
                             glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * k * s, y0 + g.h * k * s, nx, ny);
                             [c0, c1, c2, gamma, haloGamma, hedge] = keep;
                         } else {

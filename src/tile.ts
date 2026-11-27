@@ -99,6 +99,8 @@ export interface LabelSrc {
     /** With `line`: `symbol-spacing` in tile units, tile units per pixel, the over-scaling of the tile, the stretch of line kept for curved text, and the zoom of the tile. */
     lineSpacing?: number; tpr?: number; ov?: number; window?: number; tz?: number;
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number; haloBlur: number;
+    /** `text-opacity` when it has a value for each feature, else 1. It is in `color` and `halo` too; the page multiplies a color of the layer by it. */
+    op: number;
     /** How the lines of a multi-line label align with each other: -1 left, 0 center, 1 right. */
     justify: number;
     /** `text-rotate`, in radians clockwise. */
@@ -238,7 +240,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 // `text-pitch-alignment` and `icon-pitch-alignment`: `auto` follows the rotation alignment.
                 const flat = (pitch: unknown, alignment: unknown) => pitch === 'map' || (pitch !== 'viewport' && !turns(alignment));
                 const base = {
-                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f),
+                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f), op,
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(zs, f), haloBlur: p.haloBlur.eval(zs, f), rotate: p.rotate.eval(zs, f) * Math.PI / 180, justify: justification(p.justify.eval(zs, f), p.anchor.eval(zs, f)), font: fontKey(p.font.eval(zs, f)),
                     maxWidth: p.maxWidth.eval(zs, f), spacing: p.spacing.eval(zs, f), offset: p.offset.eval(zs, f), anchor: p.anchor.eval(zs, f),
