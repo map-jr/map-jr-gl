@@ -336,7 +336,28 @@ for (const part of generated.split(/^(?=## E\d+$)/m)) { const m = part.match(/^#
 const isRemoved = section => /\nRemoved after /.test(section);
 for (const [code, section] of before) if (isRemoved(section) && byCode.has(code))
     problems.push(`the code E${code} was removed (see docs/reference/messages.md), and a message of src/ uses it again. Give the message the number of its issue.`);
-const entryOf = (code, file) => file === 'server.ts' ? 'the server renderer' : file === 'host.ts' ? 'the main API' : file === 'mistakes.ts' ? (sites.some(x => x.alias && x.code === code && x.file === 'host.ts') ? 'the main API' : 'the main API (development build only)')
+// The entry of a text of src/mistakes.ts is the entry that calls the function that raises it: a code that every raising
+// function of src/mistakes.ts shares with the imports of compat-*.ts or maplibre-compat.ts (and with no other file) belongs to
+// the compat entry. (A raise is a call `mistake(N`, `warnOnce(N`, `warn(N` or a literal with `E<N> `, outside comments.)
+const compatNames = new Set();
+for (const f of readdirSync(path.join(root, 'src')).filter(f => /^(compat-|maplibre-compat)/.test(f)))
+    for (const m of readFileSync(path.join(root, 'src', f), 'utf8').matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/mistakes\.ts'/g)) for (const n of m[1].split(',')) compatNames.add(n.trim().split(/\s+as\s+/)[0]);
+const otherNames = new Set();
+for (const f of readdirSync(path.join(root, 'src')).filter(f => f.endsWith('.ts') && f !== 'mistakes.ts' && !/^(compat-|maplibre-compat)/.test(f)))
+    for (const m of readFileSync(path.join(root, 'src', f), 'utf8').matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/mistakes\.ts'/g)) for (const n of m[1].split(',')) otherNames.add(n.trim().split(/\s+as\s+/)[0]);
+/** The codes that only the compat entry raises, from the top-level declaration in src/mistakes.ts that contains each raise. */
+const compatCodes = (() => {
+    const raisedBy = new Map();
+    let name = '';
+    for (const line of mistakesSource.split('\n')) {
+        const decl = line.match(/^(?:export\s+)?(?:async\s+)?(?:function|const|let)\s+(\w+)/);
+        if (decl) name = decl[1];
+        if (/^\s*(\*|\/\/|\/\*)/.test(line)) continue;
+        for (const m of line.matchAll(/\b(?:mistake|warnOnce|warn)\((\d+)\b|\[map-jr-gl\] E(\d+) /g)) { const c = +(m[1] ?? m[2]); (raisedBy.get(c) ?? raisedBy.set(c, new Set()).get(c)).add(name); }
+    }
+    return new Set([...raisedBy].filter(([, names]) => [...names].every(n => compatNames.has(n) && !otherNames.has(n))).map(([c]) => c));
+})();
+const entryOf = (code, file) => file === 'server.ts' ? 'the server renderer' : file === 'host.ts' ? 'the main API' : file === 'mistakes.ts' ? (sites.some(x => x.alias && x.code === code && x.file === 'host.ts') ? 'the main API' : compatCodes.has(code) ? 'the compat entry (development build only)' : 'the main API (development build only)')
     : /^(compat-|maplibre-compat)/.test(file) ? 'the compat entry' : file === 'vue.ts' ? 'the Vue component' : file === 'nuxt.ts' ? 'the module for Nuxt' : file === 'react.ts' ? 'the React component' : 'both entries';
 const plain = text => text.replace(/\n/g, ' ').replace(/^\[map-jr-gl\] E\d+ /, '').replace(/^\[map-jr-gl\] (<method>\(\): )E\d+ /, '$1').replace(/^\[map-jr-gl\] (\w+\(\): )/, '$1');
 // The names of the values that the production build prints for each code (scripts/message-codes.mjs).

@@ -471,7 +471,7 @@ map.painter does not exist in @map-jr/map-jr-gl/maplibre-compat. To check for We
 
 ## E206
 
-A warning of the main API (development build only).
+A warning of the compat entry (development build only).
 
 ```text
 <member> is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. <advice>
@@ -1507,7 +1507,7 @@ style: the root property "centerAltitude" has no effect, as in MapLibre GL JS, w
 
 ## E1748
 
-An error of the main API (development build only).
+An error of the compat entry (development build only).
 
 ```text
 <where>: <why>. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.
@@ -1669,7 +1669,7 @@ addImage("<image name>"): the data has <length> values, but an image of <width>Ã
 
 ## E2272
 
-A warning of the main API (development build only).
+A warning of the compat entry (development build only).
 
 ```text
 new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
@@ -1857,7 +1857,7 @@ The map cannot start: WebGL2 is not available.
 
 ## E10206
 
-A warning of the main API (development build only).
+A warning of the compat entry (development build only).
 
 ```text
 <member> is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/reference/maplibre-differences.md for what replaces it.
@@ -1995,7 +1995,7 @@ jumpTo(): the map center is clamped to the ground, which replaces "elevation" in
 
 ## E11139
 
-An error of the main API (development build only).
+An error of the compat entry (development build only).
 
 ```text
 <where>: unknown property "<property>". The map draws the layer without it, but MapLibre GL JS rejects the style. Write "<near>".
@@ -2099,7 +2099,7 @@ server render: the options have "zoom" but no "center", and no "bounds". Pass "c
 
 ## E11683
 
-An error of the main API (development build only).
+An error of the compat entry (development build only).
 
 ```text
 <where>: unknown property "<property>". The map reads it here all the same, but it is a <group> property, and MapLibre GL JS rejects the style. Move it to "<group>".
