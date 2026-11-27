@@ -107,6 +107,8 @@ export interface SVGScene {
     rootAttrs?: string;
     /** The name of the image for assistive technology (`aria-label`). The default is "Map". */
     label?: string;
+    /** Called once for each layer that the SVG leaves out although it is visible at this zoom, with what the SVG does not draw. */
+    skipped?: (layerId: string, kind: string) => void;
 }
 
 /**
@@ -135,13 +137,14 @@ export function renderSVG(s: SVGScene): string {
     }
 
     const marks: [string, number][] = [];
+    const hollow = new Set<string>();
     for (const L of s.layers) {
         marks.push([L.id, body.length]);
         if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
-        if (L.type === 'hillshade' || L.type === 'heatmap' || L.type === 'color-relief') continue; // drawn by the client only for now
+        if (L.type === 'hillshade' || L.type === 'heatmap' || L.type === 'color-relief') { s.skipped?.(L.id, L.type + ' layers'); continue; } // drawn by the client only for now
         const p = L.p, opacity = p.opacity.dd ? 1 : p.opacity.eval(zoom);
         const uniform = !p.color || p.color.dd ? null : p.color.eval(zoom) as RGBA;
-        if (L.type === 'background' ? L.p.pattern.eval(zoom) != null : (L.type === 'fill' || L.type === 'fill-extrusion') && L.p.pattern.eval(zoom)) continue; // image patterns are not drawn in SVG output
+        if (L.type === 'background' ? L.p.pattern.eval(zoom) != null : (L.type === 'fill' || L.type === 'fill-extrusion') && L.p.pattern.eval(zoom)) { s.skipped?.(L.id, 'image patterns'); continue; } // image patterns are not drawn in SVG output
         if (L.type === 'background') {
             if (opacity > 0 && uniform![3] > 0) body.push(`<rect width="100%" height="100%" fill="${hex(uniform!)}"${alpha('fill-opacity', uniform![3] * opacity)}/>`);
             continue;
@@ -188,7 +191,7 @@ export function renderSVG(s: SVGScene): string {
             const gap = fill ? 0 : p.gap.eval(zoom), dash = fill ? null : p.dash.eval(zoom) as number[] | null;
             const oc = fill && p.outline ? p.outline.eval(zoom) as RGBA : null;
             const outline = oc && oc[3] > 0 ? ` stroke="${hex(oc)}" stroke-width="1"${alpha('stroke-opacity', oc[3] * opacity)}` : '';
-            if (gap > 0) continue; // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
+            if (gap > 0) { if (!hollow.has(L.id)) { hollow.add(L.id); s.skipped?.(L.id, 'hollow lines (line-gap-width)'); } continue; } // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
             // The viewport in this tile's coordinates (plus a margin for stroke widths), to skip what is off screen.
             const [a, bb, c, dd, e, ff] = it.matrix, det = a * dd - bb * c, pad = 24 / it.scale;
             const corners = [[0, 0], [tr.width, 0], [0, tr.height], [tr.width, tr.height]].map(([x, y]) =>

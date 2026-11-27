@@ -50,6 +50,7 @@ type Method = {[K in keyof MapInstance]: MapInstance[K] extends Function ? K : n
 const methods = {update: 1, patch: 1, getResolvedDescription: 1, destroy: 1, queryFeatures: 1, querySource: 1, watchFeatures: 1, watchSource: 1, setFeatureState: 1, removeFeatureState: 1, queryElevation: 1, toBlob: 1, clusterExpansionZoom: 1, clusterChildren: 1, clusterLeaves: 1, moveTo: 1, fitBounds: 1, project: 1, unproject: 1, overlay: 1, listen: 1, once: 1} satisfies Record<Method, 1>;
 export const earlyMethod = (k: PropertyKey) => Object.hasOwn(methods, k);
 texts[1148] = call => `${call}: the description has both "view" and "initialView.bounds". "view" wins, so the map does not fit "initialView.bounds". Remove "view" to fit the bounds, or remove "bounds" from "initialView".`;
+texts[1144] = () => 'update(): this is the description object that the map already has, so a field that you changed in it has no effect. Write a new object for each change, for example map.update({...description, data: {...description.data, points}}), or call map.patch({...}).';
 texts[1190] = () => 'update(): "view" is a view that the map reported earlier, so the map does not move. The map ignores such a view so that a slow application does not pull it back while the user moves it. To return to a stored view, call moveTo(view).';
 texts[1147] = (target, option) => `${target}: "${option}" is not an option of a fit, so it has no effect. For the fit of "bounds", write "fit${option[0].toUpperCase() + option.slice(1)}". "${option}" of the description applies to the map for good.`;
 texts[1189] = sourceId => `sources: the GeoJSON source "${sourceId}" has no "data", and "data" of the description has no key "${sourceId}", so the source has no features. Give the source its own "data", or write the features as "data: {${sourceId}: geojson}".`;
@@ -382,7 +383,7 @@ export function unknownProperties(layers: unknown, found: (layer: {id: string; t
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description and the
  * properties of the layers of the map, when the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
  * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it (also their ids, images, zoom curves and properties), or with no `b`, the style of an update() that went to the map as edits (#1765); `a` can also be the style that the map has, without the layers of `b` (#1684, #1766); 9, a feature with no id under the pointer in the layer `a` of the source `b`
- * with `hoverState`; 1189, a GeoJSON source of `sources` with no `data` and no key in `data`; 7, `moveTo` with `fitPadding` or `fitMaxZoom` and no `bounds`; 1148 is the first description (kind 2) with `view` and `initialView.bounds`; 1190, `update` with a `view` that the map reported earlier and ignores; 1147, `padding` or `maxZoom` (the old names) in the options `b` of `a` (`initialView`, `moveTo()` or `fitBounds()`); 1647, the options `b` of an overlay in the call `a` (`overlay()`, `update()` or `patch()`). Kind 2 also warns 1195 for a control that `controls` has twice.
+ * with `hoverState`; 1189, a GeoJSON source of `sources` with no `data` and no key in `data`; 7, `moveTo` with `fitPadding` or `fitMaxZoom` and no `bounds`; 1148 is the first description (kind 2) with `view` and `initialView.bounds`; 1144, `update` with the description object that the map has; 1190, `update` with a `view` that the map reported earlier and ignores; 1147, `padding` or `maxZoom` (the old names) in the options `b` of `a` (`initialView`, `moveTo()` or `fitBounds()`); 1647, the options `b` of an overlay in the call `a` (`overlay()`, `update()` or `patch()`). Kind 2 also warns 1195 for a control that `controls` has twice.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -477,6 +478,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         const o = b as {popup?: boolean; offset?: unknown};
         if (a !== 'patch()' && !o.popup && o.offset !== undefined && !Array.isArray(o.offset) && !c.warned.has('214')) { c.warned.add('214'); console.warn(mistake(214, a)); }
     }
+    else if (kind === 1144) warn(1144);
     else if (kind === 1190) warn(1190);
     else if (kind === 1147) { for (const k of ['padding', 'maxZoom']) if (k in b) warn(1147, a, k); }
     else {
