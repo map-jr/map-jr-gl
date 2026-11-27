@@ -1199,6 +1199,16 @@ try {
         const gone = (await fetch(base + '/styles/elevation', {redirect: 'manual'})).status;
         check('/styles/elevation answers 404 (no page and no redirect for a style)', gone === 404, String(gone));
 
+        // The links of the messages of the production files (`E63 https://map-jr.org/e/63`, src/requests.ts) go to the
+        // anchor of the message on /reference/messages (#2476). The redirect is the rule of public/_redirects.
+        for (const code of ['63', '1163']) {
+            const response = await fetch(`${base}/e/${code}`, {redirect: 'manual'});
+            const location = response.headers.get('location');
+            check(`/e/${code} redirects to /reference/messages#e${code}`, response.status === 302 && location === `/reference/messages#e${code}`, `${response.status} ${location}`);
+        }
+        const messages = await (await fetch(base + '/reference/messages')).text();
+        check('/reference/messages has the anchor e63 that /e/63 targets', messages.includes('id="e63"'));
+
         for (const [width, height] of [[1440, 900], [390, 844]]) {
             const at = `/styles at ${width} px`;
             const styles = await open('/styles', {width, height});
