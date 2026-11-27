@@ -142,7 +142,7 @@ export interface PointerPosition {
     /** The position under the pointer, `[lng, lat]`. */
     lngLat: [number, number];
 }
-/** The argument of `onClick`: where the user clicked, and the features there. */
+/** The argument of `onClick`, and of `onHover` (React), the event `hover` (Vue) and the event `map-hover` (`<map-jr>`): a position on the map, and the features there. */
 export interface MapPointer {
     /** The point in CSS pixels from the top left corner of the map. */
     point: {x: number; y: number};
@@ -151,6 +151,15 @@ export interface MapPointer {
     /** The features of `interactiveLayers` at the point, the top one first. */
     features: RenderedFeature[];
 }
+
+/**
+ * Calls `fn` with a `MapPointer` each time the features under the pointer change. The position is the one in `state.pointer`,
+ * and when the pointer has left the map it is the last position over the map.
+ */
+export const watchHover = (state: Readable<MapState>, fn: (event: MapPointer) => void) => {
+    let at: PointerPosition = {point: {x: 0, y: 0}, lngLat: [0, 0]};
+    return state.subscribe(s => s.hover, (features, s) => { at = s.pointer ?? at; fn({features, point: {...at.point}, lngLat: [...at.lngLat]}); });
+};
 
 /** The fields of `MapDescription` that add to the parts of the style: `sources`, `layers` and `terrain`. */
 type StyleParts = Pick<Given, 'sources' | 'layers' | 'terrain'>;

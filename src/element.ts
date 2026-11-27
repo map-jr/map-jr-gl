@@ -12,7 +12,7 @@
  * event of the Vue component, for example `map-click`. Each one bubbles, and the element dispatches it whenever the
  * map fires it, so a listener on the document receives it too, whenever it was added.
  */
-import {makeMap, type MapDescription, type MapInstance} from './host.ts';
+import {makeMap, watchHover, type MapDescription, type MapInstance} from './host.ts';
 import {logError} from './map.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute, type AttributeKind} from './element-attributes.ts';
 import {FORWARDED} from './map-events.ts';
@@ -117,7 +117,7 @@ export class MapJrElement extends Base {
         this.stops = [
             map.state.subscribe(s => s.loaded, v => { if (v) this.emit('load', map); }),
             map.state.subscribe(s => s.idle, v => { if (v) this.emit('idle'); }),
-            map.state.subscribe(s => s.hover, v => this.emit('hover', v)),
+            watchHover(map.state, e => this.emit('hover', e)),
             ...FORWARDED.map(name => map.listen(name as 'move', e => this.emit(name.replace('.', ''), e))),
         ];
         this.emit('ready', map);
