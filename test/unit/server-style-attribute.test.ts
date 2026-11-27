@@ -31,3 +31,12 @@ test('renderElement has one style attribute on the element, whatever the case of
         for (const value of Object.values(attributes)) assert.ok(tag.includes(value), `${tag} keeps ${value}`);
     }
 });
+
+test('renderElement writes each attribute once, whatever the case of the name in attributes (#2404)', async () => {
+    const description = {style, initialView: {center: [0, 0] as [number, number], zoom: 3}, nonce: 'n'};
+    const html = await renderElement(description as any, {attributes: {nonce: 'x', Zoom: '5', id: 'a', ID: 'b', class: 'c'}});
+    const tag = html.match(/^<map-jr [^>]*>/)![0];
+    const names = [...tag.matchAll(/\s([\w:.-]+)(?==|\s|>)/g)].map(m => m[1].toLowerCase());
+    assert.deepEqual(names.filter((n, i) => names.indexOf(n) !== i), [], tag);
+    assert.ok(tag.includes('nonce="n"') && tag.includes('zoom="3"') && tag.includes('id="a"') && tag.includes('class="c"'), tag);
+});
