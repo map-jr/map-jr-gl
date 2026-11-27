@@ -5728,6 +5728,23 @@ for (const renderer of ['worker', 'main']) {
         check("a page with style-src 'nonce-x' has styled controls and a styled pin (#47)", ok(n.first), JSON.stringify(n));
         const e = await styled({csp: "style-src 'nonce-x'", adopt: false});
         check("a page with style-src 'nonce-x' and no adoptedStyleSheets has styled controls with nonce: 'x' (#47)", ok(e.first), JSON.stringify(e));
+        // #2435: the sheet of a map without a nonce is blocked and stays in the root. A later map with a nonce replaces it.
+        const page = await browser.newPage({viewport: {width: 600, height: 400}});
+        try {
+            await page.route(`${origin}/csp-page`, r => r.fulfill({contentType: 'text/html', headers: {'Content-Security-Policy': "style-src 'nonce-x'"}, body: '<!doctype html><title>csp</title><body></body>'}));
+            await page.addInitScript(() => { delete Document.prototype.adoptedStyleSheets; delete ShadowRoot.prototype.adoptedStyleSheets; });
+            await page.goto(`${origin}/csp-page`);
+            const two = await page.evaluate(async () => {
+                const lib = await import('/dist/map-jr-gl.js');
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+                const make = nonce => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'})); return {el, map: lib.createMap(el, {style, renderer: 'main', ...nonce && {nonce}})}; };
+                const a = make(), b = make('x');
+                const out = {corner: getComputedStyle(b.el.querySelector('.map-jr-ctrl-bottom-right')).position, sheets: document.querySelectorAll('#map-jr-control-css').length};
+                a.map.destroy(); b.map.destroy();
+                return out;
+            });
+            check("a map with nonce: 'x' after a map without one has styled controls when style-src blocked the first sheet (#2435)", two.corner === 'absolute' && two.sheets === 1, JSON.stringify(two));
+        } finally { await page.close(); }
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
 }
 // #828: a map in an open shadow root. The focus moves into a popup that opens and returns to the map after Escape, from

@@ -1880,7 +1880,10 @@ export class Map {
             if (!root.adoptedStyleSheets.includes(sheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
             return;
         } catch { /* a browser without constructable style sheets uses a <style> element */ }
-        if (!root.getElementById('map-jr-control-css')) {
+        // A sheet that `style-src` blocked has no `sheet`: a map with another `nonce` replaces it (#2435).
+        const old = root.getElementById('map-jr-control-css') as HTMLStyleElement | null;
+        if (!old || !old.sheet && this.options.nonce && old.nonce !== this.options.nonce) {
+            old?.remove();
             const el = Object.assign(doc.createElement('style'), {id: 'map-jr-control-css', textContent: CONTROL_CSS});
             if (this.options.nonce) el.nonce = this.options.nonce;
             ((root as Document).head ?? root).appendChild(el);
